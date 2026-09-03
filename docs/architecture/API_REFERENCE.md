@@ -65,14 +65,15 @@ Host-hidden session/view state (not in APVTS).
 | `copyState` / `restoreState` | `juce::ValueTree () const / void (const juce::ValueTree&)` | Persistence. |
 | `migrateFromLegacyApvts` | `void (const juce::ValueTree&)` | One-time pre-0.8.4 migration (legacy APVTS → InternalState). |
 | `resolveRestore` / `resolveLegacy` | `static juce::ValueTree (const juce::ValueTree&)` | The pure half of the two above: the six typed values a session resolves to. Any thread (D-2, ADR-0036). |
-| `applyResolved` | `void (const juce::ValueTree&)` | Writes a resolved set into the GUI-bound tree. **Message thread only.** |
+| `applyResolved` | `void (const juce::ValueTree&)` | Writes a resolved set into the GUI-bound tree — the inline restore, the newest arrival by definition, every field. **Message thread only.** |
+| `adoptResolved` | `void (const juce::ValueTree&, juce::uint32 generation)` | Writes an ADOPTED host-thread restore into the tree, keeping every field the user edited after that restore arrived (its recorded generation ≥ `generation`): precedence by arrival (ADR-0036 §9). Republishes the word from the whole tree afterwards. **Message thread only.** |
 | `publishEngineConfig` | `bool (const juce::ValueTree&, juce::uint32 generation) noexcept` | Publishes the oversampling index from a resolved set into the generation-tagged engine-config word — the part of an off-message-thread restore that must be synchronous. Lands (returns true) only if no higher generation stands: the latest restore wins (ADR-0036 §8). Any thread but the audio thread. |
 | `noteAdoptedGeneration` | `void (juce::uint32) noexcept` | Message thread: the generation of the last host restore it adopted, which tags every publication the tree makes from then on. Set before an adoption writes the tree. |
 | `engineConfigGeneration` | `juce::uint32 () const noexcept` | The generation that published the current engine config (diagnostic; State test 43). |
 | `onChanged` | `std::function<void()>` | Fires on the message thread after any property change; the processor republishes its program snapshot from it. |
 | `onOversampleChanged` | `std::function<void()>` | Fires on the message thread so the wrapper re-reports PDC. |
 
-Evidence [Verified]: src/InternalState.h:165-361.
+Evidence [Verified]: src/InternalState.h:165-376.
 
 ## `PresetManager` — `src/PresetManager.h`
 

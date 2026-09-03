@@ -676,10 +676,11 @@ so the same file measures the pre-fix tree with the same instruments:
   the drain; the owner then walks new history — undo, undo, redo, redo, a Copy undone on the other
   slot — while a host thread saves throughout, and every step lands exactly.
 
-**State tests 42–43 (round 2, the PR review's two findings) reproduce a reviewed interleaving
+**State tests 42–44 (rounds 2 and 3, the PR review's findings) reproduce a reviewed interleaving
 deterministically** rather than by timing, through the two seams `AnamorphAudioProcessor::seams`
 exposes for exactly that (empty in production: one null check each, on non-audio paths). Each was
-mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37's window check:
+mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37's window check
+(44 uses no seam for its first three legs, the adoption seam for the fourth):
 
 - **42 (first-save consistency)** — the host thread is inside its save and has TAKEN the mailbox
   (the previous program's snapshot); the seam holds it there while the owner adopts the restore and
@@ -694,13 +695,21 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   cell, B lands from a host thread before A's tail runs (the adoption seam), and A's tail must not
   overwrite B's oversampling — an activation in the window primes the engine at B's setting and
   reports B's latency; B's adoption then brings the tree to B and a save equals B's session.
+- **44 (Settings edits inside the pending window, round 3)** — precedence by arrival (ADR-0036
+  §9): each of the six Settings edited alone after a restore arrived stands through the adoption
+  while the other five take the restore's values, the engine word and a save agreeing; all six
+  edited stand; an edit made *before* the restore arrived is replaced by it; two restores around
+  two edits through the adoption seam (an edit after R1 but before R2 survives R1 and is replaced
+  by R2, one after R2 survives both); an inline restore replaces every field. Every edit starts
+  from a shown program it actually changes (a toggle can only flip what is shown). Mutation-tested:
+  the adoption writing every field again fails it.
 
 State tests 22 and 27 were re-shaped in the same change: their off-thread requester used to be a
 `juce::Value` written from a worker, which after D-2 models nothing the plug-in does; both now drive
 the real `setStateInformation` from the worker, and 27 asserts the ORDER of reported values because
 the tick that adopts a restore delivers its latency from inside the adoption.
 
-`tests/state_tests.cpp` (**42 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**43 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

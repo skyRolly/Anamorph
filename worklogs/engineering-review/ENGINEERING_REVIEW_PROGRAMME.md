@@ -251,6 +251,70 @@ on the same thread. No further actionable instance.
 message-thread A/B switch between the two leaves the earlier index around the later sound (the
 host-timing class; ADR-0036 consequences). **D-2 / RISK-007 — RESOLVED, round 2 closed.**
 
+### 9. Round 3 — pending restores must not discard Settings edits (2026-09-03)
+
+One further review finding against the round-2 tree, real, closed by an explicit precedence rule
+at the boundary that can enforce it. Not a ThreadSanitizer class: the six Settings are message-
+thread state on both ends.
+
+| | |
+|---|---|
+| actors | H (a restore, generation g); M (the editor's Settings bindings, then the adoption) |
+| state | `InternalState::tree` (the six Settings, M-owned); the pending decode's `internalResolved`; the engine-config word |
+| old order | H restore g arrives (word = g's oversampling; decode put). M: the user edits Setting S through a `juce::Value` binding (tree.S = U). M: the adoption's `applyResolved` writes all six from g's decode — tree.S = g's |
+| window | the whole pending window: from g's arrival to its adoption (≤ 50 ms with the timer, longer with a starved message queue) |
+| observable | the user's edit, made AFTER the restore arrived, is silently replaced by the older restore — the one message-thread mutation not ordered after the restore it overlapped; every other mutating entry point drains first, but a binding write reaches our code only through the tree listener, after the fact |
+| semantics decided | **precedence by arrival**, the rule the rest of the design already has ("a user action inside the pending window lands on top of the restore"): an edit is newer than every restore that has arrived when it is made and older than every restore that arrives after it. "User always wins" was rejected (a project load could fail to restore a Setting touched minutes earlier), "restore always wins" is the defect, excluding Settings from restores changes the file format's meaning, field-level timestamps are what this is — keyed on the generation the design already carries |
+| new invariant | an edit records, against its field, the generation of the latest restore that had arrived (the engine-config word's tag, the one trace of an arrival visible to M before adoption) and publishes the word under it; `adoptResolved (resolved, g)` keeps a field recorded at ≥ g and writes the rest; an inline restore (`applyResolved`) writes every field; the word is republished from the whole tree after every adoption |
+| why unrepresentable | the adoption cannot write a field whose recorded generation says the edit came after the restore's arrival; a restore that arrives after the edit carries a higher generation than the edit recorded, so it replaces the field — the order of arrivals is the order of outcomes, on every interleaving |
+
+**Interaction with rounds 1–2, checked.** Finding 1 (save selection) is untouched: the snapshot's
+generation is still the last adopted one and the host side's rule is unchanged; State test 42 passes
+on the round-3 tree. Finding 2 (the word): an edit now publishes under the latest arrival's
+generation rather than the last adopted one, so it lands over the restore it follows; an older
+restore's completion still cannot overwrite a newer restore (State test 43, its edit leg restated to
+the new rule: the edit lands, B's completion keeps it, a newer C replaces it). Restore precedence,
+adoption order and the host-side selection are unchanged.
+
+**Related-state audit (the same pattern, the rest of the tail).** The tail also writes `abActive`,
+`abSlot[]`, `abMatchGain[]`, clears `abUndo[]`, sets the preset name/baseline/selection and
+re-syncs the committed baseline. Every message-thread mutation of those goes through an entry
+point that drains first (`abSwitchTo`, `abCopyToOther`, `undo`/`redo`, `applyAutoGain`, preset
+load/save, `pollUndoCoalesce`, `createEditor`, get/setState) — so a user action on them is ordered
+after the restore by construction. The sound (the APVTS) is applied on the restoring thread at
+arrival and a later parameter edit lands on top of it; the tail never touches it. The one
+un-drained path was the Settings bindings, now covered. A gesture in flight across an adoption
+keeps its parameter values and loses only the undo step for that drag, exactly as an inline
+restore mid-gesture always has (round 1, the gesture-callback rule). **No sibling defect.**
+
+**What changed.** `src/InternalState.h` — `adoptResolved`, `writeResolved`, the per-field edit
+generations, the listener's edit branch (records the arrival, publishes under it), `publishFromTree`
+returning whether the index moved. `src/PluginProcessor.cpp` — `adoptRestoreTail` routes a cell
+restore (generation ≠ 0) through `adoptResolved`. `tests/state_tests.cpp` — State test 44; test 43's
+edit leg restated. Docs: ADR-0036 (status, §8, new §9, consequences, related code, evidence),
+`THREADING_POLICY`, `THREAD_MODEL`, `STATE_SERIALIZATION`, `API_REFERENCE`, `TESTING`,
+`TESTING_POLICY`, `CHANGELOG`, `HANDOVER`, `README`, coverage, this section, the dashboard.
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 44 with the fix reverted (the adoption writes every field) | FAILS (13 checks; 43's restated edit leg fails alongside; 42 untouched) |
+| State tests 37–44 on the tree | green; suite 1836 checks / 0 failures, 43 tests |
+| the four probes under TSan, after (round-3 tree) | silent in 10/10 runs each |
+| the state suite under TSan, after | 0 reports; 1836 checks, 0 failures |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | clean; 398 anchors against origin/main AND against the round-2 commit (the push predecessor) |
+| `preflight.sh` | exit 0 on the committed round-3 tree (all gates, both suites) |
+| first-party warnings | none new in the touched files on clang 18 / gcc 13 (the pinned gates run in CI) |
+
+**Residual, non-actionable (unchanged).** A host-thread save's snapshot then `copyState()` across
+a concurrent message-thread A/B switch (the host-timing class). A Settings edit inside the pending
+window is visible to a host-thread save only after the adoption (≤ one timer period), the same lag
+the whole tail has. **D-2 / RISK-007 — RESOLVED, round 3 closed; no actionable review issue
+remains.**
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can

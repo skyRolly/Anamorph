@@ -156,7 +156,7 @@ public:
         for (const auto& s : settings())
             tree.setProperty (s.id, s.defaultValue, nullptr);
         tree.addListener (this);
-        publishFromTree();
+        publishFromTree (0);
     }
 
     ~InternalState() override { tree.removeListener (this); }
@@ -310,18 +310,33 @@ public:
     // Write a resolved set into the GUI-bound tree. MESSAGE THREAD ONLY: the
     // juce::Value bindings and the editor's getters read `tree` there, and
     // ValueTree is not a synchronised type. Every field is written, in the table's
-    // order, so the listener fires (publishFromTree + onOversampleChanged + onChanged)
+    // order, so the listener fires (the word, onOversampleChanged, onChanged)
     // exactly as the in-place loops did. An invalid tree is a no-op (the former
-    // early returns for invalid input).
+    // early returns for invalid input). This is the INLINE restore -- one that runs
+    // on the message thread itself -- which is the newest arrival by definition and
+    // therefore replaces every field.
     void applyResolved (const juce::ValueTree& resolved)
     {
-        if (! resolved.isValid()) return;
-        for (const auto& s : settings())
-            tree.setProperty (s.id, resolved.getProperty (s.id), nullptr);
-        // (publishFromTree + onOversampleChanged + onChanged run via the property-change callbacks
-        // above. On an ADOPTION the oversampling publication carries the adopted restore's
-        // generation -- noteAdoptedGeneration() -- and lands only if no newer host restore has
-        // published: an older restore's completion never overwrites a newer restore's value.)
+        writeResolved (resolved, false, messageGeneration);
+    }
+
+    // Write an ADOPTED host-thread restore into the tree (D-2 round 3): the same
+    // write, except that a field the user edited AFTER this restore arrived is newer
+    // than the restore and is kept. "Arrived" is the restore's synchronous
+    // publication on its own thread, which is what gives it its generation; an edit
+    // records, against its field, the generation of the latest restore that had
+    // arrived when the edit was made (the tag the engine-config word carried -- the
+    // one place a restore's arrival is visible to this thread before its adoption).
+    // So an edit made before this restore arrived carries a lower generation and is
+    // replaced -- the restore is the newer arrival -- and one made after it carries
+    // this generation or a later one and stands. That is the ordering every other
+    // message-thread mutation already has through adopt-before-use: a user action
+    // inside the pending window lands ON TOP of the restore, never under it. The
+    // word is republished from the whole tree afterwards, so the two agree whatever
+    // the loop kept.
+    void adoptResolved (const juce::ValueTree& resolved, juce::uint32 restoreGeneration)
+    {
+        writeResolved (resolved, true, restoreGeneration);
     }
 
     // The engine-facing half of a restore (D-2): the oversampling index the audio
@@ -361,25 +376,64 @@ public:
     std::function<void()> onChanged;
 
 private:
+    void writeResolved (const juce::ValueTree& resolved, bool adoption, juce::uint32 generation)
+    {
+        if (! resolved.isValid()) return;
+        const juce::ScopedValueSetter<bool> writing (applyingResolved, true);
+        const auto& table = settings();
+        for (size_t i = 0; i < table.size(); ++i)
+        {
+            // Edited after this restore arrived: the edit is the newer arrival, it stands.
+            if (adoption && (juce::int32) (editGeneration[i] - generation) >= 0) continue;
+            tree.setProperty (table[i].id, resolved.getProperty (table[i].id), nullptr);
+        }
+        // The word follows the tree, whatever the loop kept (idempotent when the
+        // callbacks above already published it); a change the loop produced without
+        // an oversample property write cannot happen, but the latency re-report is
+        // raised on the word's actual move rather than on that reasoning.
+        if (publishFromTree (generation) && onOversampleChanged) onOversampleChanged();
+    }
+
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier& id) override
     {
         gen.fetch_add (1, std::memory_order_relaxed); // H15 re-arm signal
-        publishFromTree();
+        if (applyingResolved)
+        {
+            // A restore's write (inline, or an adoption): the word carries the
+            // generation the write is for -- noteAdoptedGeneration() for an
+            // adoption -- and lands only if no newer host restore has published.
+            publishFromTree (messageGeneration);
+        }
+        else
+        {
+            // A user edit -- the editor's juce::Value bindings are the only other
+            // writer. It is newer than every restore that has arrived so far: the
+            // latest of those is the generation the word carries, so the edit is
+            // recorded against its field at that generation (adoptResolved keeps
+            // it against that restore and every older one) and the word is
+            // published with it, so the edit lands over the restore it follows.
+            // A restore that arrives LATER carries a higher generation, wins the
+            // word, and replaces the field at its adoption -- the newer arrival.
+            const auto arrival = engineConfigGeneration();
+            const auto& table = settings();
+            for (size_t i = 0; i < table.size(); ++i)
+                if (table[i].id == id) editGeneration[i] = arrival;
+            publishFromTree (arrival);
+        }
         if (id == iid::oversample && onOversampleChanged) onOversampleChanged();
         if (onChanged) onChanged();
     }
 
     // Message thread, from the tree: the animation flag the imager (message thread)
     // polls -- message-thread state on both ends, so a plain mirror the host thread
-    // never writes -- and the oversampling index through the tagged word with THIS
-    // thread's generation. A tree write made while a newer host restore stands
-    // (a Settings edit inside the pending window, or the adoption of the restore
-    // that newer one superseded) therefore yields at the word, and the newer
-    // restore's own adoption rewrites the tree to its value within a timer period.
-    void publishFromTree() noexcept
+    // never writes -- and the oversampling index through the tagged word with the
+    // given generation. Returns whether the word's INDEX moved.
+    bool publishFromTree (juce::uint32 generation) noexcept
     {
         animFloat.store ((bool) tree[iid::uiAnimations] ? 1.0f : 0.0f, std::memory_order_relaxed);
-        publishOversample (juce::jlimit (0, 3, (int) tree[iid::oversample] - 1), messageGeneration);
+        const int before = oversampleIndex();
+        publishOversample (juce::jlimit (0, 3, (int) tree[iid::oversample] - 1), generation);
+        return oversampleIndex() != before;
     }
 
     // The one writer of the engine-config word. Lands iff no arrival with a higher
@@ -409,6 +463,11 @@ private:
     static_assert (std::atomic<juce::uint64>::is_always_lock_free,
                    "the audio thread reads the engine-config word every block");
     juce::uint32 messageGeneration = 0;      // message thread only
+    bool applyingResolved = false;           // message thread only: inside writeResolved
+    // Per field, the generation of the latest restore that had arrived when the user
+    // last edited it (message thread only; 0 = never edited). adoptResolved keeps a
+    // field whose value is >= the restore being adopted.
+    std::array<juce::uint32, 6> editGeneration {};
     std::atomic<float> animFloat { 1.0f };   // written on the message thread only; polled there
     std::atomic<juce::uint32> gen { 1 };
 };

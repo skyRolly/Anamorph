@@ -7990,3 +7990,21 @@ the dashboard.
 **Drift.** None found: every document that named `restoreGen` / `adoptedGen` or the "oversampling
 atomic" as a plain store was on the trigger list above and re-worded; `FUTURE_RISKS.md`'s RISK-007
 record keeps its round-1 wording as the measured history it is.
+
+## D-2 round 3 (2026-09-03) — pending restores no longer discard Settings edits (ADR-0036 §9)
+
+**Code changed:** `src/InternalState.h` (`adoptResolved`: an adopted restore keeps every field the
+user edited after it arrived; per-field edit generations recorded from the engine-config word's
+tag; an edit publishes the word under the latest arrival's generation; the word republished from
+the tree after every adoption), `src/PluginProcessor.cpp` (`adoptRestoreTail` routes a cell restore
+through `adoptResolved`), `tests/state_tests.cpp` (State test 44; test 43's edit leg restated).
+
+**Documents updated:** `ADR-0036` (status, §8, new §9, the consequences bullet on user actions
+inside the window, related code, evidence); `THREADING_POLICY.md` (the GUI → Audio row);
+`THREAD_MODEL.md` (the word's row); `STATE_SERIALIZATION.md` (the Settings restore step);
+`API_REFERENCE.md` (`applyResolved` re-described, `adoptResolved` added); `TESTING.md` (test 44,
+43 tests); `TESTING_POLICY.md`, `HANDOVER.md`, `README.md` (43 tests / 1836 checks);
+`CHANGELOG.md` (the `[0.9.7]` D-2 entry gains the third pass); the worklog (§9) and the dashboard.
+
+**Drift.** None: the round-2 sentence in ADR-0036 §8 that described the edit yielding to the
+restore was the defect's description, not a decision, and is replaced by §9.

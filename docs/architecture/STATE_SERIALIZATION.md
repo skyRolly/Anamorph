@@ -4,7 +4,7 @@ How session state is saved and restored. The field-level ledger is in
 `SERIALIZATION_REGISTRY.md`; binding rules are in
 `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:1189-1234 (`getStateInformation`), :1226-1485
+Evidence [Verified]: src/PluginProcessor.cpp:1193-1238 (`getStateInformation`), :1226-1485
 (`decodeRestore` + `setStateInformation`), :980-999 (the `writeSelection` / `readSelection` helpers);
 src/PresetManager.cpp:430-483 (`encodeSelection` / `decodeSelection`).
 
@@ -59,7 +59,7 @@ a factory id removed by a later version, a user preset deleted, renamed or moved
 rather than falling back to a same-named row. The field-level ledger, including the file-name vs
 absolute-path encoding rule, is in `SERIALIZATION_REGISTRY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:1189-1234 (`getStateInformation`).
+Evidence [Verified]: src/PluginProcessor.cpp:1193-1238 (`getStateInformation`).
 
 ## Which thread (D-2 / ADR-0036)
 
@@ -112,7 +112,9 @@ window). `docs/architecture/THREAD_MODEL.md` carries the cells and their orderin
    - Resolve InternalState from `ANAMORPH_INTERNAL` **if present** (`InternalState::resolveRestore`),
      **else** from the legacy APVTS params (`resolveLegacy`; pre-0.8.4 sessions had these as APVTS
      params). The six resolved values are written into the Settings tree by the message thread
-     (`applyResolved`); off the message thread the engine-config word is published immediately
+     (`applyResolved` for an inline restore; `adoptResolved` for an adopted one, which keeps a
+     Setting the user edited after that restore arrived — ADR-0036 §9); off the message thread the
+     engine-config word is published immediately
      (`publishEngineConfig`, with the restore's generation) so a `prepareToPlay` that follows on the
      same thread primes the engine from the restored Setting — the latest restore's, if two overlap.
    - Restore preset name + baseline (dirty-star reproduced) and decode the indicator identity

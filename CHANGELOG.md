@@ -95,7 +95,10 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   previous project's bookkeeping around the newly restored sound, and when two restores overlapped
   the older one's bookkeeping could briefly reinstate its Oversampling over the newer one's. Both
   are gone — the newer restore always wins, and a save always describes one project — with State
-  tests 42–43 reproducing each interleaving deterministically. [Verified]
+  tests 42–43 reproducing each interleaving deterministically. A third pass closed the last
+  reviewed window: a Settings change made in the moment between such a restore arriving and the
+  plug-in adopting it used to be replaced by the older restore; it now stands, and only a restore
+  that arrives *after* the change replaces it (State test 44). [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

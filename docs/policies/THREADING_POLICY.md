@@ -12,7 +12,7 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 | Direction | Mechanism | Rule |
 |---|---|---|
 | GUI → Audio (automatable params) | APVTS `std::atomic<float>*` | Read once per block into `EngineParameters`. |
-| GUI → Audio (host-hidden) | `InternalState` ValueTree + the engine-config word | Only Oversampling crosses to audio, read as the low byte of one `std::atomic<uint64>` (`oversampleIndex()`, relaxed). Its writers — the message thread from the tree, a host-thread restore (D-2) — publish through one compare-exchange tagged with the generation of the arrival, and a publication lands only if no higher generation stands: the latest restore wins, an older restore's completion never overwrites it (ADR-0036 §8). |
+| GUI → Audio (host-hidden) | `InternalState` ValueTree + the engine-config word | Only Oversampling crosses to audio, read as the low byte of one `std::atomic<uint64>` (`oversampleIndex()`, relaxed). Its writers — the message thread from the tree, a host-thread restore (D-2) — publish through one compare-exchange tagged with the generation of the arrival, and a publication lands only if no higher generation stands: the latest restore wins, an older restore's completion never overwrites it (ADR-0036 §8). A Settings edit is an arrival too: it publishes under the generation of the latest restore that had arrived, lands over it, and its field survives that restore's adoption (ADR-0036 §9). |
 | GUI → Audio (momentary solo) | `std::atomic<int> soloPreviewMask` | −1 = use the param; relaxed. |
 | GUI → Audio (meter reset) | `std::atomic<int> resetReq` | `exchange` consumed on the audio thread. |
 | Audio → GUI (scope) | `ScopeBuffer` SPSC ring | Exactly one producer + one reader **thread** (message thread; stateless read sites: Vectorscope, SpectrumImager, read-only `writeCount`); release/acquire on the write index. |
@@ -113,7 +113,7 @@ relies on.
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-190;
-  src/PluginProcessor.cpp:94-116, 307; src/InternalState.h:175, 387-410
+  src/PluginProcessor.cpp:94-116, 307; src/InternalState.h:175, 441-464
 - D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
   generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,
   `getStateInformation`); ADR-0036; State tests 37–41; the `tsan` job in

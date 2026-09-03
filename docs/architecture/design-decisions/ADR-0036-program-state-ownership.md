@@ -3,7 +3,8 @@
 **Status:** Accepted (Thread Model change — maintainer instruction 2026-09-03: resolve D-2 / RISK-007).
 **Amended 2026-09-03, round 2** (the PR review's two findings): decisions 5 and 8 — the generation
 travels *inside* the snapshot, and the engine-facing oversampling is a generation-tagged word where
-the latest restore wins.
+the latest restore wins. **Round 3** (one further finding): decision 9 — a Settings edit made after
+a restore *arrived* is the newer arrival and survives that restore's adoption.
 
 **Resolves decision D-2** (`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, deferred in
 round 4) and **closes RISK-007** (`docs/FUTURE_RISKS.md`). **Amends `THREADING_POLICY.md`** §Host state
@@ -150,12 +151,39 @@ turn late) and leaves a save issued on the host thread right after its restore d
    A's adoption carries A's generation and yields. The semantics chosen are **the latest restore
    supersedes an older one completely**: the sound already did (the APVTS holds the last
    `replaceState`), the cell already did (a superseded decode is freed by the `put` that supersedes
-   it), and the word now does. A Settings edit made inside a pending window yields the same way;
-   the restore's own adoption rewrites the tree within a timer period, which is the order the
-   message thread sees anyway. The animation flag stays a plain message-thread mirror — its one
-   reader is the imager on that thread — and the host thread no longer writes it. State test 43 pins
-   the rule on the word alone (generations 1, 2, a delayed completion of 1, an edit in the window,
-   a late republication) and the interleaving on the processor through the adoption seam.
+   it), and the word now does. A Settings edit is an arrival too (decision 9): it publishes the word
+   under the generation of the latest restore that had arrived when it was made, so it lands over
+   that restore and yields only to one that arrives later. The animation flag stays a plain
+   message-thread mirror — its one reader is the imager on that thread — and the host thread no
+   longer writes it. State test 43 pins the rule on the word alone (generations 1, 2, a delayed
+   completion of 1, an edit in the window, a late republication, a newer restore over the edit)
+   and the interleaving on the processor through the adoption seam.
+
+9. **Settings edits and pending restores: precedence by arrival (round 3).** The six host-hidden
+   Settings are message-thread state written by the editor's `juce::Value` bindings; an off-thread
+   restore's values reach that tree only at the adoption. Round 2's adoption wrote all six
+   unconditionally, so an edit made inside the pending window — *after* the restore had arrived —
+   was replaced by the older restore: the one message-thread mutation not ordered after the restore
+   it overlapped, because a binding write reaches this code only through the tree listener, after
+   the fact, where every other mutating entry point drains first. The rule the rest of the design
+   already has — *a user action inside the pending window lands on top of the restore, never under
+   it* — is now enforced at the boundary that can enforce it, the adoption: an edit records, against
+   its field, the generation of the latest restore that had arrived when it was made (the tag the
+   engine-config word carries — the one place a restore's arrival is visible to the message thread
+   before its adoption), and `InternalState::adoptResolved (resolved, generation)` keeps a field
+   whose recorded generation is that restore's or later. So an edit made *before* a restore arrived
+   carries a lower generation and is replaced — the restore is the newer arrival, exactly as an
+   inline restore replaces everything — and one made *after* it stands, through that restore's
+   adoption and any older one's. An inline (message-thread) restore is the newest arrival by
+   definition and still writes every field (`applyResolved`). The models rejected: "the user edit
+   always wins" would let a project load fail to restore a Setting the user had touched minutes
+   earlier; "the restore always wins" is the defect; excluding Settings from restores changes the
+   file format's meaning. The word follows: the edit publishes under that same generation, so the
+   engine takes it at once; the adoption republishes from the whole tree afterwards, so the tree and
+   the word agree after every adoption; a restore that arrives later carries a higher generation,
+   wins the word, and replaces the field at its adoption. State test 44 pins all of it: each field
+   alone, all six, an edit before the arrival, two restores around two edits through the adoption
+   seam, the inline restore.
 
 ## Consequences
 
@@ -173,7 +201,9 @@ turn late) and leaves a save issued on the host thread right after its restore d
 - **The message-thread path is unchanged** apart from one relaxed load at each entry point and one
   small allocation per metadata mutation. Serialization output is byte-identical (State test 3).
 - **The off-message-thread path defers the metadata tail by at most one timer period (≤ 50 ms)**, and
-  a user action landing inside that window is ordered after the restore. Both are inside the timing
+  a user action landing inside that window is ordered after the restore — through adopt-before-use
+  for every entry point that can drain, and through precedence by arrival (decision 9) for a
+  Settings edit, which cannot. Both are inside the timing
   tolerance of a host restore and replace undefined behaviour. With the editor closed and a starved
   message queue (RISK-008's Linux case) the tail waits, the sound and the engine-config word are
   live, and host saves are served from the host side's own view.
@@ -201,13 +231,14 @@ turn late) and leaves a save issued on the host thread right after its restore d
 - `src/PluginProcessor.cpp` — `adoptPendingHostState`, `adoptRestoreTail`, `decodeRestore`,
   `applySoundTree`, `repairSerializedValues`, `viewOfRestore`, `writeState`, `ownedProgram`,
   `publishProgram`; the drains at each entry point.
-- `src/InternalState.h` — `resolveRestore` / `resolveLegacy` (any thread), `applyResolved` (message
-  thread), `publishEngineConfig` / `noteAdoptedGeneration` / `engineConfigGeneration` (the
+- `src/InternalState.h` — `resolveRestore` / `resolveLegacy` (any thread), `applyResolved` (the
+  inline restore) and `adoptResolved` (an adopted one, keeping the fields edited after it arrived;
+  message thread), `publishEngineConfig` / `noteAdoptedGeneration` / `engineConfigGeneration` (the
   generation-tagged engine-config word), `onChanged`.
 - `src/PresetManager.{h,cpp}` — `onMetaChanged`, `onAboutToSave`, `soundSignatureFor`.
 - `tests/state_tests.cpp` — State tests 37–41 and `--d2-stress-probe`; tests 22 and 27 re-shaped to
   the production off-thread path; State tests 42–43 (round 2), each reproducing its reviewed
-  interleaving deterministically through a seam.
+  interleaving deterministically through a seam; State test 44 (round 3).
 
 Evidence [Verified]:
 - Baseline: `--state-thread-probe` and `--state-prepare-race-probe` under ThreadSanitizer on the
@@ -222,3 +253,6 @@ Evidence [Verified]:
   (mutation-tested: the mailbox chosen regardless of generation; the word stored regardless of
   generation) and pass with it; the four probes and the suite under ThreadSanitizer stay silent.
   Figures in the worklog's §D-2 round 2.
+- Round 3: State test 44 fails on the round-2 tree with the adoption writing every field again
+  (mutation-tested) and passes with decision 9; the four probes and the suite under ThreadSanitizer
+  stay silent. Figures in the worklog's §D-2 round 3.

@@ -1074,8 +1074,12 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
     // thread when that was not this one; the tree write republishes it with this
     // restore's generation, which is idempotent -- or yields, if a newer restore has
     // published since. The tree's value then trails that newer restore's by at most
-    // one timer period, until its own tail lands.)
-    internal.applyResolved (d.internalResolved);
+    // one timer period, until its own tail lands.) A restore that came through the
+    // cell carries its generation, and a Setting the user edited AFTER it arrived is
+    // the newer arrival and stands (D-2 round 3); an inline restore is the newest
+    // arrival by definition and writes every field.
+    if (d.generation != 0) internal.adoptResolved (d.internalResolved, d.generation);
+    else                   internal.applyResolved (d.internalResolved);
 
     // The slot set as a WHOLE -- both slots, the active index and the per-slot
     // Level-Match memory -- from the one decode, so no half of it can come from a

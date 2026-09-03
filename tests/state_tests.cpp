@@ -7342,7 +7342,7 @@ static void testOlderRestoreCannotOverwriteNewerOversampling()
         };
         const auto A = resolvedWithOversample (2);   // 2x  -> index 1
         const auto B = resolvedWithOversample (3);   // 4x  -> index 2
-        const auto C = resolvedWithOversample (4);   // 8x  -> index 3
+        const auto C = resolvedWithOversample (1);   // Off -> index 0
 
         anamorph::InternalState st;
         check (st.oversampleIndex() == 0 && st.engineConfigGeneration() == 0, "fresh: Off, generation 0");
@@ -7351,29 +7351,35 @@ static void testOlderRestoreCannotOverwriteNewerOversampling()
         check (st.publishEngineConfig (B, 2) && st.oversampleIndex() == 2, "restore B (generation 2) publishes 4x");
 
         st.noteAdoptedGeneration (1);
-        st.applyResolved (A);                        // A's delayed completion, on the owner's thread
+        st.adoptResolved (A, 1);                     // A's delayed completion, on the owner's thread
         check (st.oversampleIndex() == 2 && st.engineConfigGeneration() == 2,
                "A's completion (generation 1) yields: B's 4x stands");
         check ((int) st.oversampleValue().getValue() == 2, "...while the tree holds A's value until B's tail lands");
 
-        st.oversampleValue().setValue (4);           // a Settings edit inside the window (generation 1)
-        check (st.oversampleIndex() == 2, "an edit made while a newer restore stands yields at the word");
+        // A Settings edit inside B's pending window (round 3): newer than every
+        // restore that has arrived, so it lands at the word at once and B's own
+        // completion keeps it -- the edit came after B arrived.
+        st.oversampleValue().setValue (4);           // 8x -> index 3
+        check (st.oversampleIndex() == 3 && st.engineConfigGeneration() == 2,
+               "an edit made after the latest arrival lands at the word at once, under that arrival's generation");
 
         st.noteAdoptedGeneration (2);
-        st.applyResolved (B);                        // B's completion
-        check (st.oversampleIndex() == 2 && (int) st.oversampleValue().getValue() == 3,
-               "B's completion lands (idempotent) and the tree agrees with the word");
-
-        st.oversampleValue().setValue (4);           // an edit after the latest restore landed
-        check (st.oversampleIndex() == 3, "an edit after the latest restore lands (generation 2 <= 2)");
+        st.adoptResolved (B, 2);                     // B's completion
+        check (st.oversampleIndex() == 3 && (int) st.oversampleValue().getValue() == 4,
+               "B's completion keeps the edit made after B arrived; the tree and the word agree");
 
         check (! st.publishEngineConfig (A, 1) && st.oversampleIndex() == 3,
                "a late republication of A (generation 1) is refused");
-        check (st.publishEngineConfig (C, 3) && st.oversampleIndex() == 3 && st.engineConfigGeneration() == 3,
-               "a newer restore C (generation 3) lands");
+        check (st.publishEngineConfig (C, 3) && st.oversampleIndex() == 0 && st.engineConfigGeneration() == 3,
+               "a newer restore C (generation 3) lands over the edit: it arrived after it");
         st.noteAdoptedGeneration (3);
-        st.applyResolved (C);
-        check (st.oversampleIndex() == 3 && st.engineConfigGeneration() == 3, "C's completion is idempotent");
+        st.adoptResolved (C, 3);
+        check (st.oversampleIndex() == 0 && (int) st.oversampleValue().getValue() == 1 && st.engineConfigGeneration() == 3,
+               "C's completion replaces the older edit (idempotent at the word) and the tree agrees");
+
+        st.oversampleValue().setValue (3);           // an edit after the latest restore landed
+        check (st.oversampleIndex() == 2 && st.engineConfigGeneration() == 3,
+               "an edit after the latest restore lands (generation 3 <= 3)");
     }
 
     // --- (2) the interleaving, on the processor -------------------------
@@ -7433,6 +7439,227 @@ static void testOlderRestoreCannotOverwriteNewerOversampling()
     juce::MemoryBlock hostSave;
     d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
     check (hostSave == B.blob, "...and so is a host-thread save");
+}
+
+// ---------------------------------------------------------------------------
+//  State test 44 -- a Settings edit made after a restore ARRIVED survives that
+//  restore's adoption (D-2 round 3, review finding: "pending restores discard
+//  Settings edits").
+//
+//  The six host-hidden Settings are message-thread state written by the editor's
+//  juce::Value bindings, and an off-thread restore's values reach that tree only
+//  at the adoption (<= one timer period later). Round 2's adoption wrote all six
+//  unconditionally, so an edit made inside the pending window -- AFTER the
+//  restore had arrived -- was replaced by the older restore: the one message-
+//  thread mutation not ordered after the restore it overlapped (every other one
+//  drains first). The rule now is precedence by ARRIVAL: an edit records the
+//  generation of the latest restore that had arrived when it was made, and an
+//  adoption keeps a field edited at its own generation or later. So
+//    (1) each field, edited alone after the arrival, stands and the other five
+//        take the restore's values; the engine word and a save agree;
+//    (2) all six edited after the arrival all stand;
+//    (3) an edit made BEFORE the restore arrived is replaced -- the restore is
+//        the newer arrival;
+//    (4) two restores around the edits, through the adoption seam: an edit after
+//        R1 but before R2 survives R1's adoption and is replaced by R2's; an edit
+//        after R2 survives both;
+//    (5) an inline (message-thread) restore is the newest arrival by definition
+//        and replaces every field.
+//  Mutation-tested: with the adoption writing every field again, (1), (2) and
+//  (4) fail.
+// ---------------------------------------------------------------------------
+namespace r3
+{
+    struct SettingsSet { int oversample, uiScale; double scopePersist; bool metersOn, tooltipsOn, uiAnimations; };
+    static const char* const fieldNames[6] = { "oversample", "uiScale", "scopePersist", "metersOn", "tooltipsOn", "uiAnimations" };
+
+    // Through the editor's own path: the juce::Value bindings.
+    static void setField (anamorph::InternalState& st, int i, const SettingsSet& v)
+    {
+        switch (i)
+        {
+            case 0: st.oversampleValue().setValue (v.oversample);       break;
+            case 1: st.uiScaleValue().setValue (v.uiScale);             break;
+            case 2: st.scopePersistValue().setValue (v.scopePersist);   break;
+            case 3: st.metersValue().setValue (v.metersOn);             break;
+            case 4: st.tooltipsValue().setValue (v.tooltipsOn);         break;
+            default: st.animationsValue().setValue (v.uiAnimations);    break;
+        }
+    }
+    static void apply (anamorph::InternalState& st, const SettingsSet& v)
+    {
+        for (int i = 0; i < 6; ++i) setField (st, i, v);
+    }
+    static SettingsSet read (anamorph::InternalState& st)
+    {
+        const auto t = st.copyState();
+        return { (int) t[anamorph::iid::oversample], (int) t[anamorph::iid::uiScale],
+                 (double) t[anamorph::iid::scopePersist], (bool) t[anamorph::iid::metersOn],
+                 (bool) t[anamorph::iid::tooltipsOn], (bool) t[anamorph::iid::uiAnimations] };
+    }
+    static bool fieldEquals (const SettingsSet& a, const SettingsSet& b, int i)
+    {
+        switch (i)
+        {
+            case 0:  return a.oversample == b.oversample;
+            case 1:  return a.uiScale == b.uiScale;
+            case 2:  return juce::exactlyEqual (a.scopePersist, b.scopePersist);
+            case 3:  return a.metersOn == b.metersOn;
+            case 4:  return a.tooltipsOn == b.tooltipsOn;
+            default: return a.uiAnimations == b.uiAnimations;
+        }
+    }
+    static bool same (const SettingsSet& a, const SettingsSet& b)
+    {
+        for (int i = 0; i < 6; ++i) if (! fieldEquals (a, b, i)) return false;
+        return true;
+    }
+    static juce::MemoryBlock authorSession (const char* name, const SettingsSet& v)
+    {
+        AnamorphAudioProcessor a;
+        apply (a.getInternal(), v);
+        a.getPresets().setMeta (name, "r3-baseline-" + juce::String (name), anamorph::PresetManager::Selection());
+        return d2::saveOf (a);
+    }
+    // What a message-thread restore of the blob yields: the Settings a save carries.
+    static SettingsSet settingsOf (const juce::MemoryBlock& blob)
+    {
+        AnamorphAudioProcessor q;
+        d2::restoreFrom (q, blob);
+        return read (q.getInternal());
+    }
+}
+
+static void testSettingsEditAfterRestoreArrivalSurvivesAdoption()
+{
+    std::printf ("State test 44: a Settings edit made after a restore arrived survives its adoption (D-2 r3)\n");
+    using r3::SettingsSet;
+
+    // P is what the editor SHOWS before the restore lands (the booleans already at
+    // R's values, so a toggle -- which can only flip what is shown -- produces an
+    // edit that differs from R); R is the restore; U the user's edits, every field
+    // away from both P (so each edit is a real change) and R (so "kept" and
+    // "replaced" are distinguishable); R2 a second restore.
+    const SettingsSet P  { 1, 3, 0.50, true,  true,  false };
+    const SettingsSet R  { 2, 4, 0.25, true,  true,  false };
+    const SettingsSet U  { 3, 5, 0.75, false, false, true  };
+    const SettingsSet R2 { 4, 2, 0.90, false, true,  false };
+    const auto blobR = r3::authorSession ("D2-R3-R", R), blobR2 = r3::authorSession ("D2-R3-R2", R2);
+    check (r3::same (r3::settingsOf (blobR), R) && r3::same (r3::settingsOf (blobR2), R2),
+           "non-vacuity: the two sessions carry their Settings");
+    for (int i = 0; i < 6; ++i)
+        check (! r3::fieldEquals (R, U, i) && ! r3::fieldEquals (P, U, i),
+               "non-vacuity: the edit differs from the restore AND from what the editor shows, in every field");
+    check (R2.oversample != U.oversample && R2.uiScale != R.uiScale, "non-vacuity: R2 differs where (4) looks");
+
+    // --- (1) each field alone, edited after the arrival ---------------------
+    for (int i = 0; i < 6; ++i)
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), P);                                // what the editor shows before the restore
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // arrived; pending
+        r3::setField (p.getInternal(), i, U);                          // the user's edit, after the arrival
+        if (i == 0)
+            check (p.getInternal().oversampleIndex() == U.oversample - 1,
+                   "an Oversampling edit inside the window reaches the engine word at once: it is newer than the restore");
+        p.pollUndoCoalesce();                                          // the adoption
+
+        const auto got = r3::read (p.getInternal());
+        for (int j = 0; j < 6; ++j)
+        {
+            const juce::String what = juce::String (r3::fieldNames[j])
+                                    + (j == i ? ": the edit made after the arrival stands"
+                                              : ": the restore's value (the edit did not touch it)");
+            check (r3::fieldEquals (got, j == i ? U : R, j), what.toRawUTF8());
+        }
+        check (p.getInternal().oversampleIndex() == got.oversample - 1, "the engine word agrees with the tree after the adoption");
+        check (r3::same (r3::settingsOf (d2::saveOf (p)), got), "a save after the adoption carries the resulting Settings");
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+        check (hostSave == d2::saveOf (p), "...and a host-thread save equals the owner's");
+    }
+
+    // --- (2) all six edited after the arrival --------------------------------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), P);                                // what the editor shows before the restore
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
+        r3::apply (p.getInternal(), U);
+        p.pollUndoCoalesce();
+        check (r3::same (r3::read (p.getInternal()), U), "six edits made after the arrival all stand through the adoption");
+        check (r3::same (r3::settingsOf (d2::saveOf (p)), U), "...and the save carries them");
+        check (p.getInternal().oversampleIndex() == U.oversample - 1, "...and the engine word holds the edited Oversampling");
+
+        AnamorphAudioProcessor truth;
+        truth.prepareToPlay (48000.0, 512);
+        r3::apply (truth.getInternal(), U);
+        truth.prepareToPlay (48000.0, 512);
+        p.prepareToPlay (48000.0, 512);
+        check (p.getLatencySamples() == truth.getLatencySamples(),
+               "an activation after the adoption reports the edited Oversampling's latency");
+    }
+
+    // --- (3) edited BEFORE the restore arrived --------------------------------
+    for (int i = 0; i < 6; ++i)
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), P);                                // what the editor shows before the restore
+        r3::setField (p.getInternal(), i, U);                          // the edit first
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // then the restore arrives
+        p.pollUndoCoalesce();
+        const juce::String what = juce::String (r3::fieldNames[i]) + ": an edit made before the restore arrived is replaced by it";
+        check (r3::same (r3::read (p.getInternal()), R), what.toRawUTF8());
+    }
+
+    // --- (4) two restores around the edits, through the adoption seam --------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), P);                                // what the editor shows before the restore
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // R1 pending
+        r3::setField (p.getInternal(), 0, U);                          // Oversampling := U -- after R1, before R2
+        const SettingsSet U2 { 0, 1, 0.0, false, false, false };       // only its uiScale is used
+        int seamRuns = 0;
+        p.seams.afterRestoreTake = [&]
+        {
+            ++seamRuns;
+            d2::offMessageThread ([&] { d2::restoreFrom (p, blobR2); });   // R2 arrives after the owner took R1
+            r3::setField (p.getInternal(), 1, U2);                          // uiScale := U2 -- after R2
+        };
+        p.pollUndoCoalesce();                                          // adopts R1
+        p.seams.afterRestoreTake = nullptr;
+        check (seamRuns == 1, "the overlap was produced exactly once");
+
+        auto got = r3::read (p.getInternal());
+        check (got.oversample == U.oversample, "after R1's adoption the Oversampling edit (made after R1) stands");
+        check (got.uiScale == U2.uiScale, "...and the uiScale edit (made after R2) stands");
+        check (juce::exactlyEqual (got.scopePersist, R.scopePersist) && got.metersOn == R.metersOn
+               && got.tooltipsOn == R.tooltipsOn && got.uiAnimations == R.uiAnimations,
+               "...and the untouched fields take R1's values");
+
+        p.pollUndoCoalesce();                                          // adopts R2
+        got = r3::read (p.getInternal());
+        check (got.oversample == R2.oversample, "after R2's adoption the Oversampling edit (made before R2) is replaced: R2 is the newer arrival");
+        check (got.uiScale == U2.uiScale, "...while the uiScale edit (made after R2) still stands");
+        check (juce::exactlyEqual (got.scopePersist, R2.scopePersist) && got.metersOn == R2.metersOn
+               && got.tooltipsOn == R2.tooltipsOn && got.uiAnimations == R2.uiAnimations,
+               "...and the untouched fields take R2's values");
+        check (p.getInternal().oversampleIndex() == R2.oversample - 1, "the engine word agrees with the tree");
+        check (r3::same (r3::settingsOf (d2::saveOf (p)), got), "the save carries the result");
+    }
+
+    // --- (5) the inline restore is the newest arrival --------------------------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), P);                                // what the editor shows before the restore
+        r3::apply (p.getInternal(), U);
+        d2::restoreFrom (p, blobR);
+        check (r3::same (r3::read (p.getInternal()), R), "an inline (message-thread) restore replaces every field, edits or not");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -7670,6 +7897,7 @@ int main (int argc, char* argv[])
     testUndoHistoryIsOwnedByTheMessageThread();
     testHostSaveNeverPairsRestoredSoundWithOlderProgram();
     testOlderRestoreCannotOverwriteNewerOversampling();
+    testSettingsEditAfterRestoreArrivalSurvivesAdoption();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 
