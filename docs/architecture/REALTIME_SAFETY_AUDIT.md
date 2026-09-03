@@ -31,7 +31,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
   `std::vector::assign` or `juce::dsp::*::prepare`).
 - **Non-finite guard:** an engine-wide per-sample NaN/Inf check replaces only non-finite
   samples with 0 and resets stateful nodes; it is not a level limiter and never alters valid
-  audio. Evidence: src/dsp/AnamorphEngine.cpp:1425-1475.
+  audio. Evidence: src/dsp/AnamorphEngine.cpp:1472-1522.
 - **`reset()` paths run `std::fill`/filter resets** but never allocate, and are invoked at safe
   points (prepare, host reset, the silent duck bottom, NaN self-heal).
 
@@ -93,7 +93,7 @@ calls per run) rather than once in a session.
 
 **The SWITCH is armed as well as the steady state, since 2026-08-19, and until then it was not.**
 Each of the 32 configurations is now applied *inside* the armed region, so the block that adopts a
-discrete change — `src/dsp/AnamorphEngine.cpp:791-881`: algorithm tails cleared, the three
+discrete change — `src/dsp/AnamorphEngine.cpp:838-928`: algorithm tails cleared, the three
 oversamplers and the chorus reset on an oversampling-path change, the crossover cleared on a
 topology change — runs with the counters watching. Before that the configuration was applied and
 then `reset()` *outside* the armed region, and `reset()` flushes an in-flight duck straight to its

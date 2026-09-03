@@ -87,12 +87,38 @@ sample-to-sample step **0.07162** at 2x and **0.09988** at 4x and 8x. After the 
 bound. Its first draft ran at ONE start phase and **passed against the defective engine** — the jump
 is invisible when it lands on a peak of the sine — so leg D sweeps 16 phases and takes the worst.
 
+### The first pass fixed the number and left the interruption
+
+Caught by the round's own adversarial pass, then reproduced independently before acting. Holding the
+reported PDC still does not, on its own, stop the sound being interrupted: crossing the threshold is
+still a discrete PATH change, so it still opens the click-free duck, and an ordinary duck fades to
+**silence**. Measured with the latency fix in and this remedy out, 440 Hz / 64-sample blocks, a
+smooth 0.4 → 0 dB knob move: **−52.6 / −53.3 / −53.3 dB** at 2x/4x/8x, **6.7 ms** more than 20 dB
+down inside a ~34 ms envelope — and **nothing at all with Oversampling Off**, which is the tell that
+it is the duck and not the drive blend.
+
+`discreteDiffers` is split so its `osActiveFor` term is separable (`discreteDiffersOther`), and the
+ordinary discrete branch dry-fills when the OS path is the SOLE difference and the swap keeps the
+reported latency. Every other discrete duck is untouched. **This is legal only because of the
+latency fix**: before it, the crossing genuinely changed the reported latency, so a fill read at one
+fixed offset would have stepped by the delta. Post-fix the same move keeps **0.9556 / 0.9616 /
+0.9616** of settled against a **0.9337** Oversampling-Off control. Test 52 leg E uses that control
+rather than a guessed dB threshold, because the Off case's own shallow dip is the floor a correct
+build must match and asserting a number would have to guess how much of it belongs to the blend.
+
 ### What it cost, stated rather than discovered later
 
 * Selecting 2x/4x/8x now shows latency in the host on a fully linear chain. Three places in the
   user manual and the Settings tooltip promised the opposite and are corrected.
-* A forced swap (A/B, preset, undo) crossing the Drive threshold with a factor selected is now
-  latency-NEUTRAL, so it keeps its dry fill instead of dipping to silence. Correct, audible, declared.
+* The latency-crossing set **moves** rather than shrinking, and both halves are on record. **Gained:**
+  a forced swap (A/B, preset, undo) crossing the Drive threshold with a factor selected is now
+  latency-NEUTRAL, so it keeps its dry fill. **Lost:** a forced swap that changes only the
+  oversampling FACTOR at Drive 0 with a linear algorithm was latency-neutral (0 -> 0) and dry-filled,
+  and is now latency-crossing (0 <-> 6) and ducks to silence — measured Off -> 4x through a forced
+  duck, **-2.1 dB before, -54.2 dB after**. Permitted (it happens at an Oversampling switch) and
+  consistent with the Settings menu, which has always been an ordinary duck-to-silence. Filed in
+  ADR-0034 as a candidate for a later, separately-gated improvement — latching the fill's offset from
+  the TARGET would restore seamlessness for a 4-6 sample crossfade misalignment — not folded in here.
 * **RELEASE_POLICY precondition 7 reopens for v0.9.7** — the Level-5 audition is per-version and
   this build changes audible behaviour. The compatibility checklist's latency box was **re-run**.
 
@@ -111,8 +137,8 @@ defect, because no parameter bears latency any anymore; the test says so rather 
 
 Preflight exit 0 with every stage run (the citation gate first exited 1 on anchors this change
 shifted; re-anchored on both bases, six `DELIBERATE_REAIMS` targets retargeted and two new
-transitions declared for ADR-0003, whose cited lines were themselves rewritten). DSP **304 checks /
-0** (was 282; Test 52 adds 22, of which 9 fail pre-change), state **1506 / 0**, both under GCC 13
+transitions declared for ADR-0003, whose cited lines were themselves rewritten). DSP **308 checks /
+0** (was 282; Test 52 adds 26, of which 12 fail pre-change), state **1506 / 0**, both under GCC 13
 and again under the clean gcc-16 `-flto` build. `check-docs` 118 files clean; realtime lint 47 files
 / 0 violations; citation self-test 176 cases. Clang-22 and GCC-16 warning gates green on clean
 builds — and the **Clang baseline SHRANK 3 → 1** for `-Wswitch-enum` in `AnamorphEngine.cpp`, since

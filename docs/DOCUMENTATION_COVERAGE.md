@@ -412,7 +412,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:912-918` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:959-965` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1906,7 +1906,7 @@ No other approval is claimed by this entry.
 (`src/dsp/AnamorphEngine.cpp:195-202`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:791-881`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:838-928`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2013,7 +2013,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:1425-1475` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:1472-1522` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -7699,6 +7699,25 @@ gain, so a moving `lat` jumped the read position at full level: worst sample-to-
 (2×) and 0.09988 (4×, 8×) against a 0.01440 smooth-signal bound, swept over 16 start phases. Test 52
 leg D; a `[0.9.7]` **Fixed** entry beside the **Changed** one.
 
+**And a third thing the first pass got wrong about its own scope.** Holding the reported NUMBER still
+does not, on its own, stop the sound being interrupted: the crossing is still a discrete path change,
+so it still opens the click-free duck, and an ordinary duck fades to SILENCE. Measured with the
+latency fix in and the remedy out: **−52.6 / −53.3 / −53.3 dB** at 2×/4×/8× with 6.7 ms more than
+20 dB down, and nothing at all with Oversampling Off. `discreteDiffers` is now split so the ordinary
+branch can dry-fill when the OS path is the SOLE difference and the latency is unchanged — which is
+legal only because of the latency fix itself. Post-fix the move keeps 0.9556 / 0.9616 / 0.9616 of
+settled against a 0.9337 Oversampling-Off control. Test 52 leg E, whose control is that Off case
+rather than a guessed dB threshold.
+
+**The latency-crossing set MOVES rather than shrinking, and both halves are declared.** Gained: a
+forced swap crossing the Drive threshold keeps its dry fill. **Lost:** a forced swap that changes
+only the oversampling FACTOR at Drive 0 with a linear algorithm was latency-neutral (0 → 0) and
+dry-filled, and is now latency-crossing (0 ↔ 6) and ducks to silence — measured Off → 4×,
+**−2.1 dB → −54.2 dB**. Permitted by the instruction (it happens at an Oversampling switch, the one
+moment an interruption is allowed) and consistent with the Settings menu, which has always been an
+ordinary duck-to-silence. Recorded in ADR-0034 as a candidate for a later, separately-gated
+improvement rather than folded in here.
+
 **Documents touched:** `CHANGELOG.md` (a new `[0.9.7]` section — one Changed, one Fixed),
 ADR-0034 (new) + `ADR_INDEX.md` + ADR-0003 (amended), `docs/architecture/LATENCY_MODEL.md` (the
 model rewritten and its binding invariant extended with the two things a future change must not
@@ -7723,10 +7742,10 @@ recorded, alongside the row's new mention of the two opt-in probes.
 with every enumerator named removed two accepted sites; the gate reported the surplus as a
 `::notice::` on the full build and the baseline follows the code down.
 
-**Counts.** The DSP suite is **51 tests + the A/B clamp guard / 304 checks** (was 50 / 282; Test 52
-adds 22), counted from `main`'s registered test functions. The state suite is unchanged at **35
+**Counts.** The DSP suite is **51 tests + the A/B clamp guard / 308 checks** (was 50 / 282; Test 52
+adds 26), counted from `main`'s registered test functions. The state suite is unchanged at **35
 tests / 1506 checks** — State tests 22, 24 and 27 were re-instrumented, and the one check removed
 from 22 is balanced by the one added to 24. The `[0.9.7]` section has **1 Changed + 1 Fixed**.
-Measured, not inferred: `AnamorphTests` prints `304 checks, 0 failures` and `AnamorphStateTests`
+Measured, not inferred: `AnamorphTests` prints `308 checks, 0 failures` and `AnamorphStateTests`
 prints `1506 checks, 0 failure(s)`, under GCC 13 and again under the clean gcc-16 `-flto` build.
 [Verified]

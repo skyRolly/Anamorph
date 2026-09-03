@@ -408,20 +408,21 @@ DELIBERATE_REAIMS = {
     # by reading: `isModAlgorithm` now opens at :26 and `osActiveFor` closes at :35,
     # with the (longer) comment's operative tail from :24; the oversampler block and
     # its three stores moved +10 to :52-66 and :64-66; the beginForcedDuck span moved
-    # +27 to :365-401. Keyed on BOTH origin/main's spelling and HEAD's, because this
+    # to :374-448, its end carried further by the dry-fill branch added in the same
+    # change set. Keyed on BOTH origin/main's spelling and HEAD's, because this
     # branch has already moved these anchors once. Retires on merge.
     ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
      "src/dsp/AnamorphEngine.cpp:14-23",
      "src/dsp/AnamorphEngine.cpp:24-35"): "isModAlgorithm",
     ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
      "src/dsp/AnamorphEngine.cpp:14-23, 42-56, 338-374",
-     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 365-401"): "isModAlgorithm",
+     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 374-448"): "isModAlgorithm",
     ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
      "src/dsp/AnamorphEngine.cpp:14-23, 42-54, 313-349",
-     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 365-401"): "isModAlgorithm",
+     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 374-448"): "isModAlgorithm",
     ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
      "src/dsp/AnamorphEngine.cpp:14-23,42-54,293-329",
-     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 365-401"): "isModAlgorithm",
+     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 374-448"): "isModAlgorithm",
     ("docs/architecture/LATENCY_MODEL.md",
      "src/PluginProcessor.cpp:105-108",
      "src/PluginProcessor.cpp:169-193"): "updateLatency",

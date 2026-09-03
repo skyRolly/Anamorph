@@ -150,6 +150,14 @@ private:
     // True when two snapshots differ in a control that would click if applied
     // instantly (so the switch must be ducked rather than applied live).
     static bool discreteDiffers (const EngineParameters& a, const EngineParameters& b) noexcept;
+    // The same test WITHOUT its `osActiveFor` term -- i.e. every discrete control
+    // except whether the oversampling wrap is engaged. `discreteDiffers` is exactly
+    // this OR that term, so `discreteDiffers(a,b) && ! discreteDiffersOther(a,b)`
+    // identifies the one swap where the ONLY discrete difference is the OS path:
+    // an ordinary Drive move through 0.01 dB with a factor selected. Since ADR-0034
+    // that swap keeps the reported latency, which is what lets its duck dry-fill
+    // instead of muting (see setParameters).
+    static bool discreteDiffersOther (const EngineParameters& a, const EngineParameters& b) noexcept;
     // True when two snapshots are BITWISE identical in every field (floats by
     // bit pattern, so NaN == NaN and +0 != -0) -- the Wave-5 steady-state gate.
     // Like discreteDiffers/copyContinuous, this list must cover every

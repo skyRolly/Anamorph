@@ -210,12 +210,26 @@ ran at one phase and **passed against the defective engine**; the same code at a
 measured 0.068 / 0.094. Swept, the pre-change engine measures **0.07162** (2×) and **0.09988** (4×,
 8×) against a 0.01440 bound, and the post-change engine measures exactly the bound.
 
-**22 checks; 9 fail against the pre-change engine and 0 after.** Note which: six are in legs A and
-A2, three in leg D. Legs B and C pass on the pre-change build too — trivially, because there the
-skipped state reports 0 and delays by 0 — so they are there to catch a bad *fix*, not the original
-defect, and the test says so rather than implying twenty-two discriminating checks. The companion
-probe `AnamorphTests --os-latency-probe` prints the full matrix; on the pre-change build its
-`predict` column read 0 → 4 (2×) and 0 → 6 (4×, 8×) for a Drive move of 0.005 dB → 6 dB.
+*Leg E* is the one that keeps the whole test honest about what was actually reported. Holding the
+NUMBER still is only half of it: the crossing is still a discrete path change, so it still opens the
+click-free duck, and an ordinary duck fades to **silence** — an interruption on an ordinary knob
+move, invisible to every other leg here. Measured with the latency fix in place and the dry-fill
+branch absent: **−52.6 / −53.3 / −53.3 dB** at 2×/4×/8× with **6.7 ms** more than 20 dB down. The leg
+uses **Oversampling Off as its control** rather than a fixed dB threshold, because the same knob move
+with no factor selected opens no duck at all and its shallow dip (the drive blend easing out) is the
+floor any correct build must match; asserting a number would have to guess how much of the dip
+belongs to the blend.
+
+**26 checks; 12 fail against the pre-change engine and 0 after.** Note which: six are in legs A and
+A2, three in leg D, three in leg E. Legs B and C pass on the pre-change build too — trivially,
+because there the skipped state reports 0 and delays by 0 — so they are there to catch a bad *fix*,
+not the original defect, and the test says so rather than implying twenty-six discriminating checks.
+Leg C asserts BIT-exactness and its comment records why that is legitimate in its configuration and
+must not be copied to one that engages a widener: `HaasProcessor` is not shift-invariant (its
+fractional read coefficient depends on the absolute write index), a pre-existing property unrelated
+to this change. The companion probe `AnamorphTests --os-latency-probe` prints the full matrix; on the
+pre-change build its `predict` column read 0 → 4 (2×) and 0 → 6 (4×, 8×) for a Drive move of
+0.005 dB → 6 dB.
 
 Before it, the **extreme-finite balance guard**
 (`testCorrelationBalanceExtremeFiniteInput`, Test 51, ER-DSP-11, round 23). It is the sibling of

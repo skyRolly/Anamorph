@@ -275,6 +275,21 @@ bool AnamorphEngine::sameParameters (const EngineParameters& a, const EnginePara
 
 bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EngineParameters& b) noexcept
 {
+    return discreteDiffersOther (a, b)
+        // Engaging / disengaging the OS wrap (Drive crossing 0 with OS selected)
+        // swaps the nonlinear region between the resampled and the base-rate path
+        // -- a discrete, duck-worthy change (#3). Since ADR-0034 it is no longer a
+        // LATENCY change: the stand-in ring carries the wrap's delay while the wrap
+        // is skipped, so the duck now masks only the path swap itself. The term
+        // stays for exactly that reason; dropping it would step the signal -- and
+        // it would strand `osEngaged`, which is written only from `osActiveFor`.
+        // It is the LAST term, and split out below, so that setParameters can ask
+        // "is this the ONLY thing that differs?" and dry-fill that duck.
+        || osActiveFor (a)    != osActiveFor (b);
+}
+
+bool AnamorphEngine::discreteDiffersOther (const EngineParameters& a, const EngineParameters& b) noexcept
+{
     return a.channelMode      != b.channelMode
         || a.monoSum          != b.monoSum
         || a.swapLR           != b.swapLR
@@ -297,13 +312,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // Bypass is NOT listed: it is now a click-free OUTPUT crossfade (bypassBlend),
         // not a ducked switch -- the chain + analysis run regardless, so toggling it
         // never stops Level Match and never needs a duck (Issues 2/3).
-        // Engaging / disengaging the OS wrap (Drive crossing 0 with OS selected)
-        // swaps the nonlinear region between the resampled and the base-rate path
-        // -- a discrete, duck-worthy change (#3). Since ADR-0034 it is no longer a
-        // LATENCY change: the stand-in ring carries the wrap's delay while the wrap
-        // is skipped, so the duck now masks only the path swap itself. The term
-        // stays for exactly that reason; dropping it would step the signal.
-        || osActiveFor (a)    != osActiveFor (b);
+        ;
 }
 
 bool AnamorphEngine::processingDiffers (const EngineParameters& a, const EngineParameters& b) noexcept
@@ -390,10 +399,48 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
         }
         else if (discreteDiffers (np, p))
         {
+            // THE ONE ORDINARY DUCK THAT DRY-FILLS, AND WHY IT MAY (ADR-0034).
+            // Every other discrete change still ducks to silence, unchanged. This
+            // one is the Drive knob crossing 0.01 dB (or Algorithm crossing the mod
+            // boundary) with an oversampling factor selected: `discreteDiffers` is
+            // true ONLY because `osActiveFor` flipped, so the sole thing being
+            // swapped is which path the nonlinear region runs on. Ducking that to
+            // SILENCE is what the user hears as an interruption on an ordinary knob
+            // move -- measured before this branch existed: the output fell to
+            // -53 dB for 6.7 ms inside a ~34 ms envelope at 2x/4x/8x, and not at
+            // all with oversampling Off, which is the whole tell.
+            //
+            // It could not dry-fill before ADR-0034 and it can now, for exactly one
+            // reason: the swap used to CHANGE the reported latency (0 <-> the
+            // factor's), so a fill read at one fixed offset would have stepped by
+            // the latency delta at full dry weight. The factor is part of
+            // `discreteDiffersOther`, so `osPathOnly` implies the factor did not
+            // move, which since ADR-0034 means the latency did not either -- the
+            // equality below is then a tautology, and it is kept because it is the
+            // invariant the fill's single read offset actually depends on. If a
+            // later change makes latency depend on something else again, this gate
+            // turns the fill off rather than reading at a wrong offset.
+            const bool osPathOnly = ! discreteDiffersOther (np, p);
+            if (osPathOnly && predictLatency (np) == getLatencySamples())
+            {
+                dryDuckLat = getLatencySamples();
+                dryDuck    = true;
+                // Latched exactly as beginForcedDuck latches them, and for the same
+                // reason: the smoothers snap at the silent bottom where the fill
+                // carries full weight, so a live gain would step there and the raw
+                // ring would otherwise play at unity under a non-unity Output Gain.
+                const float fg = p.autoGainMatch ? matchGainSmooth.getCurrentValue()
+                                                 : outGainSmooth.getCurrentValue();
+                const float fb = outBalanceSmooth.getCurrentValue();
+                dryDuckGainL = fg * ((fb > 0.0f) ? (1.0f - fb) : 1.0f);
+                dryDuckGainR = fg * ((fb < 0.0f) ? (1.0f + fb) : 1.0f);
+            }
+            else
+                dryDuck = false;             // every other discrete duck: to silence (unchanged)
+
             pendingP = np;
             pendingAlgoReset = (np.algorithm != p.algorithm);
             copyContinuous (p, np);          // knobs respond immediately
-            dryDuck = false;                 // ordinary discrete duck: duck-to-silence (unchanged)
             switchState = SwitchState::FadeOut;
             updateDerived();
         }

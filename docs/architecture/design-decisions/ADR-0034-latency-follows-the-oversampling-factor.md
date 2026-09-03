@@ -74,6 +74,19 @@ CPU saving that skips the wrap for a linear chain must be **kept**.
 4. The ring is flushed wherever the three oversamplers are: `prepare()`, `reset()`, the
    `osPathChanged` branch at the silent duck bottom, the forced-duck wholesale reset, and the
    NaN/Inf self-heal. It is allocated in `prepare()` only.
+5. **The duck around that crossing dry-fills instead of muting.** Holding the reported number still
+   is only half of what the report asked for: the crossing is still a discrete PATH change, so it
+   still opens the click-free duck, and an ordinary duck fades to **silence**. Measured with points
+   1–4 in place and this one absent: an ordinary Drive move 0.4 → 0 dB with a factor selected drove
+   the output to **−52.6 / −53.3 / −53.3 dB** at 2×/4×/8× and spent **6.7 ms more than 20 dB down**,
+   inside a ~34 ms envelope — and not at all with Oversampling Off, which is the tell. So
+   `discreteDiffers` is split: its `osActiveFor` term is separated from the rest as
+   `discreteDiffersOther`, and the ordinary discrete branch dry-fills **only** when the OS path is
+   the sole difference *and* the swap keeps the reported latency. Every other discrete duck is
+   unchanged. **This is legal only because of points 1–2**: before them the crossing changed the
+   reported latency, so a fill read at one fixed offset would have stepped by the latency delta.
+   Post-fix the same move keeps **0.9556 / 0.9616 / 0.9616** of its settled level against a
+   **0.9337** Oversampling-Off control.
 
 ## Consequences
 
@@ -96,12 +109,24 @@ CPU saving that skips the wrap for a linear chain must be **kept**.
   with a 220 Hz / 0.5 sine (largest possible smooth step 0.01440): worst sample-to-sample step
   **0.07162** at 2× and **0.09988** at 4× and 8×, swept over 16 start phases. After the change the
   worst step is exactly the smooth bound. Test 52 leg D.
-- **One behaviour change beyond latency, declared rather than discovered.** Both dry-fill gates
-  (`predictLatency(target) == dryDuckLat`) reduce to *"the swap keeps the oversampling factor"*. A
-  forced swap (A/B, preset, undo) that crosses the Drive threshold with a factor selected used to be
-  latency-crossing — dry-fill disabled, duck to silence — and is now latency-neutral, so it keeps its
-  dry fill. The fill is still always read at the correct offset, because the offset it is gated
-  against is now the thing that did not change.
+- **TWO behaviour changes beyond latency, in opposite directions, both declared.** Both dry-fill
+  gates (`predictLatency(target) == dryDuckLat`) reduce to *"the swap keeps the oversampling
+  factor"*, so the latency-crossing set does not shrink — it **moves**:
+  - *Gained.* A forced swap (A/B, preset, undo) that crosses the **Drive** threshold with a factor
+    selected used to be latency-crossing — dry-fill disabled, duck to silence — and is now
+    latency-neutral, so it keeps its dry fill. Same for the ordinary duck, by point 5 above.
+  - *Lost.* A forced swap that changes only the **oversampling factor** while Drive is 0 and the
+    algorithm is linear used to be latency-neutral (0 → 0) and dry-filled; it is now
+    latency-crossing (0 ↔ 6) and ducks to silence. Measured, Off → 4× at Drive 0 through a forced
+    duck: worst level after the swap **−2.1 dB** before, **−54.2 dB** after. This is **permitted by
+    the requirement** — it happens at the moment Oversampling is switched, which is the one moment
+    an interruption is allowed — and it makes the two routes to an Oversampling change consistent,
+    since the Settings menu itself has always been an ordinary duck-to-silence. It is recorded here
+    rather than left to be discovered, and it is a candidate for a later, separately-gated
+    improvement: latching the fill's read offset from the TARGET rather than the current state would
+    restore seamlessness, at the cost of a 4–6 sample crossfade misalignment.
+  The fill is otherwise still always read at the correct offset, because the offset it is gated
+  against is the thing that did not change.
 - **KI-027's remaining cost is retired.** The audio-thread re-report it describes still happens, but
   `setLatencySamples` now always finds the value unchanged and returns without notifying, so the
   lock / heap append / pipe write cannot be reached from a parameter move. **D-1's deferral
@@ -123,8 +148,8 @@ CPU saving that skips the wrap for a linear chain must be **kept**.
 
 Evidence [Verified]:
 - Source: `src/dsp/AnamorphEngine.cpp`, `src/dsp/AnamorphEngine.h`
-- Test: `tests/dsp_tests.cpp :: testOversamplingLatencyIsFactorOnly` (Test 52) — **9 of its 22 checks
-  fail against the pre-change engine and 0 after**; its Leg C rejects option A by 1.31–1.57 absolute
+- Test: `tests/dsp_tests.cpp :: testOversamplingLatencyIsFactorOnly` (Test 52) — **12 of its 26 checks
+  fail against the pre-change engine and 0 after** (leg E's three are what point 5 above fixes); its Leg C rejects option A by 1.31–1.57 absolute
   on a ±1 noise stream, measured by building that counterfactual
 - Probe: `AnamorphTests --os-latency-probe` (the matrix above)
 - Measurement: `AnamorphBench` §"Oversampling SELECTED but skipped, Drive 0"

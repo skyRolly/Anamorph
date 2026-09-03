@@ -42,6 +42,6 @@ latency never changes mid-block; an OS-path change is routed through the duck.
 - `src/dsp/ChorusEngine.cpp:14-19` (buffers sized for max rate)
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:24-35, 52-66, 365-401
+- Source: src/dsp/AnamorphEngine.cpp:24-35, 52-66, 374-448
 - Test: tests/dsp_tests.cpp :: testBypassNullAndLatency
 - History [Partially Verified]: docs/architecture/LATENCY_MODEL.md

@@ -5162,6 +5162,21 @@ static void testOversamplingLatencyIsFactorOnly()
     // real filter, not an integer shift. Multiband on so Mix parks in the
     // full-wet gate: the m=1 blend is then skipped and the output is the exact
     // wet, rather than a one-ULP re-blend against dry read at two different offsets.
+    //
+    // WHY BIT-EXACT IS THE RIGHT ASSERTION *HERE*, AND MUST NOT BE COPIED BLINDLY.
+    // The chain is shift-invariant in this configuration -- the widener is parked
+    // (`algoAmount` at its 0 default, so all three modules take their A7-9 fixpoint
+    // path), the multiband bank is LTI from zero state, and Width / Output are
+    // memoryless -- so feeding it the same samples `lat` later produces the same
+    // samples `lat` later, exactly. That is NOT a property of the engine at large:
+    // `HaasProcessor` computes `readPos = widx - delaySamps` with `delaySamps` a
+    // float, so its fractional interpolation coefficient depends on the ABSOLUTE
+    // write index and a shifted input can round differently (measured with
+    // `algoAmount = 0.7`: 6.5e-05 at 20 ms / 48 kHz, 6.4e-05 at the default 12 ms /
+    // 44.1 kHz, and exactly 0 at 12.3 ms / 48 kHz -- it depends where the value
+    // lands in the ULP grid). Any new leg that ENGAGES a widener must therefore use
+    // a bound, not equality. That non-shift-invariance is a pre-existing
+    // `HaasProcessor` property, unrelated to and untouched by ADR-0034.
     for (int o = 1; o < 4; ++o)
     {
         anamorph::EngineParameters a, b;
@@ -5269,6 +5284,111 @@ static void testOversamplingLatencyIsFactorOnly()
                "crossing the engagement threshold while true-bypassed no longer jumps the "
                "delay-aligned read position at full level");
     }
+
+    // ---- LEG E: the knob move must not INTERRUPT the sound either -------
+    // The reported number holding still (legs A / A2) is only half of what the
+    // report asked for. Crossing the Drive threshold with a factor selected is
+    // still a discrete PATH change, so it still opens the click-free duck -- and
+    // an ordinary duck fades to SILENCE. That is an interruption on an ordinary
+    // knob move, which is the thing being complained about, and it is invisible to
+    // every other leg here. Measured before the dry-fill branch existed: the output
+    // fell to -52.6 / -53.3 / -53.3 dB at 2x / 4x / 8x and spent 6.7 ms more than
+    // 20 dB down, inside a ~34 ms envelope.
+    //
+    // OVERSAMPLING OFF IS THE CONTROL, and it is what makes this leg honest: the
+    // identical knob move with no factor selected opens no duck at all, so its
+    // shallow dip (-0.6 dB, the drive blend itself easing out) is the floor any
+    // correct build must match. Asserting against a fixed dB number instead would
+    // have to guess how much of the dip belongs to the drive blend.
+    {
+        const double sineHz = 440.0, amp = 0.7;
+        const double inc = 2.0 * 3.14159265358979 * sineHz / sr;
+
+        auto worstDipRatio = [&] (anamorph::OversampleFactor f)
+        {
+            anamorph::EngineParameters p;
+            p.oversample = f;
+            p.algorithm  = anamorph::Algorithm::Haas;
+            p.algoAmount = 0.5f;
+            p.driveDb    = 0.4f;                 // just above the 0.01 dB threshold
+            anamorph::AnamorphEngine engine;
+            engine.primeParameters (p);
+            engine.prepare (sr, 64);
+            engine.setParameters (p);
+
+            juce::AudioBuffer<float> buf (2, 64);
+            double phase = 0.0, settled = 0.0, minRms = 1.0e9;
+            for (int n = 0; n < 200; ++n)
+            {
+                // a smooth knob move 0.4 -> 0 dB over ~27 ms, crossing at n ~= 59
+                if (n >= 40 && n <= 60) p.driveDb = 0.4f * (1.0f - (float) (n - 40) / 20.0f);
+                else if (n > 60)        p.driveDb = 0.0f;
+                for (int i = 0; i < 64; ++i)
+                {
+                    const float v = (float) (amp * std::sin (phase)); phase += inc;
+                    buf.setSample (0, i, v); buf.setSample (1, i, v);
+                }
+                engine.setParameters (p);
+                engine.process (buf);
+                double acc = 0.0;
+                for (int i = 0; i < 64; ++i) { const double sm = buf.getSample (0, i); acc += sm * sm; }
+                const double rms = std::sqrt (acc / 64.0);
+                if (n == 35) settled = rms;
+                if (n >= 40) minRms = juce::jmin (minRms, rms);
+            }
+            return minRms / juce::jmax (1.0e-12, settled);
+        };
+
+        const double control = worstDipRatio (anamorph::OversampleFactor::Off);
+        std::printf ("  drive 0.4 -> 0 dB: OS Off keeps %.4f of its settled level (the control)\n", control);
+        check (control > 0.5, "CONTROL: with no factor selected the same knob move does not dip");
+
+        for (int o = 1; o < 4; ++o)
+        {
+            const double r = worstDipRatio (osv[o]);
+            std::printf ("  drive 0.4 -> 0 dB at %s: keeps %.4f of settled (%+.1f dB)\n",
+                         osName[o], r, 20.0 * std::log10 (juce::jmax (1.0e-12, r)));
+            check (r > control * 0.8,
+                   "an ordinary Drive move through the engagement threshold no longer "
+                   "interrupts the sound (the duck dry-fills instead of muting)");
+        }
+    }
+}
+
+static int runForcedFactorSwapProbe()
+{
+    std::printf ("Forced swap (A/B, preset, undo) that changes ONLY the Oversampling factor, Drive 0\n");
+    constexpr double sr = 48000.0; constexpr int bs = 64;
+    anamorph::EngineParameters from;
+    from.algorithm = anamorph::Algorithm::Haas;
+    from.algoAmount = 0.7f; from.width = 1.4f; from.mix = 0.85f;
+    from.oversample = anamorph::OversampleFactor::Off; from.driveDb = 0.0f;
+    auto to = from; to.oversample = anamorph::OversampleFactor::x4;
+
+    anamorph::AnamorphEngine e;
+    e.primeParameters (from); e.prepare (sr, bs); e.setParameters (from);
+    juce::AudioBuffer<float> buf (2, bs);
+    double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * 440.0 / sr;
+    double settled = 0.0, minRms = 1.0e9;
+    for (int n = 0; n < 200; ++n)
+    {
+        for (int i = 0; i < bs; ++i)
+        {
+            const float v = (float) (0.7 * std::sin (phase)); phase += inc;
+            buf.setSample (0, i, v); buf.setSample (1, i, v);
+        }
+        if (n == 60) e.requestDuck();
+        e.setParameters (n >= 60 ? to : from);
+        e.process (buf);
+        double acc = 0.0;
+        for (int i = 0; i < bs; ++i) { const double s = buf.getSample (0, i); acc += s * s; }
+        const double rms = std::sqrt (acc / bs);
+        if (n == 55) settled = rms;
+        if (n >= 60) minRms = juce::jmin (minRms, rms);
+    }
+    std::printf ("  Off -> 4x at drive 0, forced duck: settled %.5f, min after %.5f (%+.1f dB)\n",
+                 settled, minRms, 20.0 * std::log10 (juce::jmax (1.0e-12, minRms / juce::jmax (1.0e-12, settled))));
+    return 0;
 }
 
 int main (int argc, char* argv[])
@@ -5278,6 +5398,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--os-latency-probe") == 0)
         return runOsLatencyProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--fswap-probe") == 0)
+        return runForcedFactorSwapProbe();
 
     std::printf ("=== Anamorph DSP self-tests ===\n");
 
