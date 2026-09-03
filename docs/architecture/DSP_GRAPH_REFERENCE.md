@@ -4,7 +4,7 @@ Node dependency topology of the serial DSP chain. Purpose: prevent unsafe reorde
 node may only be moved if **Can Reorder? = Yes** and the move preserves every invariant in
 `SIGNAL_FLOW.md`. Any "No" reorder requires an ADR + Architecture Review.
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:806-1561 (`process`).
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:819-1686 (`process`).
 
 ## Topology table
 
@@ -42,7 +42,14 @@ factor) but the stage's position in the chain is fixed.
   where the wrap is skipped a 2-channel integer ring (`osCompDelayBuffer`) occupies the wrap's own
   place in the graph and supplies its group delay. The ring is not a processing node — it performs
   no arithmetic — but it IS a graph element, and moving it out of the wrap's position would
-  mis-align the five `-lat` ring reads downstream.
+  mis-align the five `-lat` ring reads downstream. Since ADR-0035 it is written on EVERY block,
+  whichever path is audible, and read back only when the base-rate path is: a cold or cleared ring
+  hands back zeros at the handover, which is what used to reach the wideners' delay lines.
+- **The two paths are crossfaded, not swapped** (ADR-0035). `osBlend` mixes them over 12 ms; both
+  carry the same latency (ADR-0034), so they are sample-aligned and mixing them is well-defined.
+  During a crossfade both run, and the wrapped one takes an `envStride` equal to the factor so the
+  drive envelope advances at the same wall-clock rate on both sides; the mod algorithms run only on
+  the wrapped side, there being one `ChorusEngine`.
 - **Global Width before Multiband.** Width is a full-band MS side-gain; the Multiband then
   splits and applies per-band width. (Verified: :889-905.)
 

@@ -82,14 +82,27 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–27 + ADR-0034 · 2026-08-31 → 09-03</span>
+  <span>ROUNDS 1–27 + ADR-0034/0035 · 2026-08-31 → 09-03</span>
   <span>TREE: main @ e8f4422 → v0.9.7</span>
-  <span>STATUS: the reported latency no longer follows Drive; the Level-5 audition REOPENS for v0.9.7; D-2, RISK-008 and KI-015 remain open by decision</span>
+  <span>STATUS: the Drive crossing is now indistinguishable from Oversampling Off; the Level-5 audition REOPENS for v0.9.7; D-2, RISK-008 and KI-015 remain open by decision</span>
   <span>NEXT: Level-5 audition for v0.9.7, licence (KI-015), then tag v0.9.7</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
-<p class="lede"><strong>ADR-0034 (maintainer instruction, out of band from the review rounds): the
+<p class="lede"><strong>ADR-0035 (PR #135 pre-merge follow-up): the oversampling path swap becomes a
+crossfade, and the Drive crossing stops being audible at all.</strong> ADR-0034 fixed the reported
+latency; an interruption remained, and the maintainer named <em>Haas and Velvet Noise</em>
+specifically &mdash; which pointed away from latency and at the two delay-based wideners that sit
+AFTER the wrap.</p>
+<div class="grid">
+  <div class="v"><div class="k">The duck could not mask what it was covering</div><p>Its gain is applied at the output stage, <strong>downstream</strong> of Haas (12&ndash;35&nbsp;ms) and Velvet (~21&nbsp;ms). The handover's discontinuity entered their delay lines at full level and re-emerged one widener-delay later, with the ~28&nbsp;ms fade-in over. Measured as a multiple of the settled sample step: Haas <strong>2.62&times;</strong>, Velvet <strong>5.77&times;</strong>, arriving at <strong>duck bottom + the widener's own delay</strong> &mdash; +896&nbsp;smp = 320 + 576 exactly, and the offset does not move with the factor, which is what named the carrier.</p></div>
+  <div class="v"><div class="k">Why the suite had not seen it</div><p>Test&nbsp;52 leg&nbsp;E measures this exact gesture and passed throughout: it reads BLOCK RMS, and a few-sample event 19&ndash;28&nbsp;ms downstream does not move a block's RMS. <strong>Nothing inspected this transition at sample resolution.</strong> Test&nbsp;53 does, over all 24 combinations, against an Oversampling-Off control rather than a guessed threshold.</p></div>
+  <div class="v"><div class="k">Two sources, each isolated by counterfactual build</div><p>Leaving the wrap: the ADR-0034 stand-in ring was CLEARED at the bottom and handed back <code>lat</code> zeros &mdash; the previous round's own doing. Entering it: the wrap's IIR starts from zero state. <strong>Removing its <code>reset()</code> changed nothing</strong>, which ruled that hypothesis out and pointed at the cold start itself.</p></div>
+  <div class="v"><div class="k">The fix is the architecture the repo already uses</div><p>The two paths are <strong>crossfaded</strong> (12&nbsp;ms), as Bypass and Multiband Enable already are, and the crossing opens no duck at all. Available <em>only</em> because ADR-0034 gave both paths the same latency &mdash; before it they differed by 4&ndash;6 samples and a crossfade would have combed. The wrap starts under a ~0 gain and goes cold when the blend leaves it, so the CPU saving stands: 170.06 / 166.60 / 169.44 ns/sample at Drive&nbsp;0 against 159.19 for Off and 210&ndash;376 engaged.</p></div>
+  <div class="v"><div class="k">Three self-inflicted defects the data caught</div><p><code>processNonlinearRegion</code> ADVANCES the drive smoothers, so running both paths desynchronised them &mdash; 2.0&times;&thinsp;/&thinsp;4.0&times;&thinsp;/&thinsp;7.3&times;, <em>scaling with the factor</em>, which is the signature. The single chorus would have advanced twice. And a forced swap left the blend in flight across the silent bottom, mixing in from a base-rate path at full drive, <em>undersampled</em>. A first attempt at the last one was a measured no-op and <strong>was reverted rather than kept</strong>.</p></div>
+  <div class="v"><div class="k">A/B recall: investigated, deliberately unchanged</div><p>Measured on three engine versions, seven swap classes, reading level and SIDE energy separately. Ordinary swaps are byte-for-byte unaffected (&minus;3.5&nbsp;dB, &minus;14&nbsp;dB side) &mdash; the long-shipped dry fill, which is not "seamless" in the strict sense and is out of scope. One class <strong>improved</strong> (&minus;54.9&nbsp;dB &rarr; &minus;3.5&nbsp;dB). One <strong>regressed and stays so by decision</strong>: a FACTOR-only swap at Drive&nbsp;0, &minus;3.5 &rarr; &minus;56&nbsp;dB &mdash; restoring the fill there would trade the dip for a comb, which the rule forbids.</p></div>
+</div>
+<p class="lede"><strong>ADR-0034: the
 latency reported to the host stopped following Drive.</strong> With Oversampling selected, moving
 Drive across 0.01&nbsp;dB &mdash; or changing Algorithm into or out of Chorus / Dimension-D &mdash;
 flipped the reported PDC between 0 and the factor's latency, and a host answers a latency change by

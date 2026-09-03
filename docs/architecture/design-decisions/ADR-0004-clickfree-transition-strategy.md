@@ -1,6 +1,6 @@
 # ADR-0004 — Click-free transition strategy (duck / crossfade / warm monitor)
 
-**Status:** Accepted
+**Status:** Accepted — **amended by [ADR-0035](ADR-0035-oversampling-path-crossfade.md)** (2026-09-03): engaging or disengaging the oversampling **wrap** moves from the duck class to the crossfade class, on the evidence that a duck cannot mask it (the duck's gain is applied downstream of the wideners' delay lines). Every other transition keeps the mechanism assigned here; an oversampling **factor** change still ducks.
 
 ## Context
 Toggling discrete controls (algorithm, routing, band count, OS path) or jumping many params at
@@ -39,12 +39,12 @@ Bypass, Multiband Enable, and Band Solo are therefore deliberately **excluded** 
   instantaneous `mbEnable` reintroduced a click — fixed by always running it, mask-gated).
 
 ## Related code
-- `src/dsp/AnamorphEngine.cpp:223-250` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
+- `src/dsp/AnamorphEngine.cpp:239-266` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
 - `:819-829` (raised-cosine duck), `:872-888` (`bypassBlend`), `:655-707` (`mbEnableBlend`)
 - `:831-845` (SoloMonitor every-block); `src/dsp/SoloMonitor.cpp:59-109`
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:223-250, 1003-1104; src/dsp/SoloMonitor.cpp:59-109
+- Source: src/dsp/AnamorphEngine.cpp:239-266, 1030-1229; src/dsp/SoloMonitor.cpp:59-109
 - Tests: testNoClicksAcrossTransitions, testSoloNoGhostInSilence, testBypassCrossfadeClickFree,
   testMultibandEnableCrossfadeClickFree, testSoloMultibandEnableClickFree
 - History [Partially Verified]: CHANGELOG.md [0.8.1], [0.8.6], [0.8.7]

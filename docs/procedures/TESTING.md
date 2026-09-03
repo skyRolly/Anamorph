@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **51 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **52 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -177,7 +177,40 @@ removed, so the 50 % bound sits between two measured populations); and both defe
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
 `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
 
-The newest DSP test is the **oversampling latency-stability guard**
+The newest DSP test is the **oversampling path-swap guard**
+(`testDriveCrossingIsSeamlessWithOversampling`, Test 53, ADR-0035, v0.9.7). It pins that crossing the
+Drive threshold with a factor selected is **indistinguishable from crossing it with Oversampling
+Off** — 24 combinations of {2×, 4×, 8×} × {Haas, Velvet} × {0 → 6 dB, 6 → 0 dB} × {instantaneous
+step, 300 ms knob sweep}, each against its own Oversampling-Off control.
+
+**Why it exists, and why Test 52 could not have caught it.** Engaging or disengaging the wrap swaps
+the nonlinear region between two paths, and the click-free duck that used to cover the swap **cannot
+cover it**: the duck's gain is applied at the output stage, downstream of Haas (12–35 ms) and Velvet
+(~21 ms). The discontinuity entered their delay lines at full level and re-emerged one widener-delay
+later, with the ~28 ms fade-in over. Test 52 leg E measures the same gesture and passes throughout,
+because it reads BLOCK RMS and a few-sample discontinuity 19–28 ms downstream does not move a block's
+RMS. **Nothing in the suite inspected this transition at sample resolution**, which is why the defect
+survived the round that fixed the latency. Measured on the pre-change engine as a multiple of the
+settled sample-to-sample step, arriving at duck bottom + the widener's own delay: Haas 2.62× (0 → 6)
+and 1.16× (6 → 0), Velvet 5.77× and 2.42×, against Oversampling-Off controls of 2.00 / 0.96 / 1.89 /
+1.00 — and the arrival offset does not move with the factor, which is what identifies the widener's
+delay line rather than the latency as the carrier.
+
+**The control is Oversampling Off**, for the same reason Test 52 leg E's is: the same knob move with
+no factor selected engages no path swap, so whatever it measures is the Drive change itself, and
+requiring the oversampled runs to match it asks the only question worth asking — can you tell from
+the signal that the wrap was switched? **Both gestures**, because they fail differently: the
+instantaneous step is what automation and preset recall deliver, the sweep is what a knob delivers
+and is what was reported, and the step additionally caught a second defect the sweep does not — the
+drive envelope advanced `factor` times faster inside the wrap, so the two paths diverged mid-crossfade
+by 2.0× / 4.0× / 7.3× at 2×/4×/8×, scaling with the factor.
+
+**56 checks; 26 fail against the pre-change engine and 0 after.** A companion probe,
+`AnamorphTests --forced-swap-probe`, prints what an A/B swap, preset recall or undo actually does to
+the level, the stereo image and the sample continuity for seven swap classes; it asserts nothing and
+is the record behind the seamlessness investigation.
+
+Before it, the **oversampling latency-stability guard**
 (`testOversamplingLatencyIsFactorOnly`, Test 52, ADR-0034, v0.9.7). It pins that the latency reported
 to the host is a function of the **Oversampling factor alone** — the fix for a reported host-graph
 restart on an ordinary Drive or Algorithm move — and it is built so that the two wrong fixes fail it.

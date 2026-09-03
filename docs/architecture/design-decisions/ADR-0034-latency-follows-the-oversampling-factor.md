@@ -74,7 +74,12 @@ CPU saving that skips the wrap for a linear chain must be **kept**.
 4. The ring is flushed wherever the three oversamplers are: `prepare()`, `reset()`, the
    `osPathChanged` branch at the silent duck bottom, the forced-duck wholesale reset, and the
    NaN/Inf self-heal. It is allocated in `prepare()` only.
-5. **The duck around that crossing dry-fills instead of muting.** Holding the reported number still
+5. ~~**The duck around that crossing dry-fills instead of muting.**~~ **SUPERSEDED by
+   [ADR-0035](ADR-0035-oversampling-path-crossfade.md)**, which removed the duck around this
+   crossing altogether — so there is no longer a duck to dry-fill. The measurement below stands as
+   the record of why the plain duck-to-silence was wrong; what it did not reach, and ADR-0035 did,
+   is that the duck could not mask the handover at all, because its gain lands downstream of the
+   wideners' delay lines. Kept verbatim: Holding the reported number still
    is only half of what the report asked for: the crossing is still a discrete PATH change, so it
    still opens the click-free duck, and an ordinary duck fades to **silence**. Measured with points
    1–4 in place and this one absent: an ordinary Drive move 0.4 → 0 dB with a factor selected drove
@@ -93,8 +98,10 @@ CPU saving that skips the wrap for a linear chain must be **kept**.
 - **The reported number now moves only with the Oversampling selection**, which is a Settings
   control (ADR-0010) and therefore never automated. No APVTS parameter can move it.
 - **Selecting 2×/4×/8× now shows latency in the host even on a fully linear chain.** This is the
-  price of the requirement and is visible to users: the manual and the tooltip said the opposite and
-  are corrected in the same change.
+  price of the requirement and is visible to users: the user manual said the opposite in three
+  places and is corrected in the same change. The Settings tooltip was corrected too and then
+  **reverted on maintainer instruction** — tooltips were not in scope for this work — so it reads as
+  it did before, `Off (1x) = no latency`, which remains true.
 - **The CPU saving is intact and measured.** 48 kHz / 128 on the reference machine, the `working`
   chain with Drive 0 and a linear algorithm: OS Off 153.27, 2× 152.31, 4× 159.52, 8× 155.91
   ns/sample — inside the 6–11 % run-to-run spread of each other, and nowhere near the engaged rows
@@ -114,7 +121,9 @@ CPU saving that skips the wrap for a linear chain must be **kept**.
   factor"*, so the latency-crossing set does not shrink — it **moves**:
   - *Gained.* A forced swap (A/B, preset, undo) that crosses the **Drive** threshold with a factor
     selected used to be latency-crossing — dry-fill disabled, duck to silence — and is now
-    latency-neutral, so it keeps its dry fill. Same for the ordinary duck, by point 5 above.
+    latency-neutral, so it keeps its dry fill. Measured, Off-baseline swap through that crossing:
+    **−54.9 dB before, −3.5 dB after**. (The ordinary, non-forced duck this bullet also used to
+    claim is gone entirely under ADR-0035.)
   - *Lost.* A forced swap that changes only the **oversampling factor** while Drive is 0 and the
     algorithm is linear used to be latency-neutral (0 → 0) and dry-filled; it is now
     latency-crossing (0 ↔ 6) and ducks to silence. Measured, Off → 4× at Drive 0 through a forced

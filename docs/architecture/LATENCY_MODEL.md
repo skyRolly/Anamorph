@@ -11,7 +11,7 @@ Plugin delay compensation (PDC) model.
 
 The oversamplers are minimum-phase polyphase IIR half-band filters, constructed with the
 "integer latency" flag so PDC is exact.
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:52-66 (`latency2` — the three oversamplers built
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:57-71 (`latency2` — the three oversamplers built
 with the integer-latency flag, and their latencies stored).
 
 ## The reported latency is a function of the SELECTED FACTOR (ADR-0034)
@@ -59,7 +59,7 @@ they are computed at `prepare()` time, not hard-coded. Measured at 48 kHz on the
 **2× = 4, 4× = 6, 8× = 6** samples (Test 52 prints the row; Test 38's landing census records the
 same three numbers and notes that 4× and 8× are equal, so an x4 → x8 switch moves no latency).
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:64-66 (`latency2` / `latency4` / `latency8`, the
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:69-71 (`latency2` / `latency4` / `latency8`, the
 only writes, made at `prepare()` time).
 
 `TODO: tabulate the measured latency2/4/8 sample counts at 44.1/96/192 kHz from a built
@@ -134,11 +134,12 @@ binary (requires running the plugin; not statically provable here).`
   to a range endpoint (and re-reports for it), and `reassertParameters` then repairs it with
   `setValue()` plus a direct atomic store, notifying nobody by design. Regression coverage: State
   test 24.
-- The OS engagement is **latched** (changes only at `reset` or the silent duck bottom), and
-  `oversample` is itself a discrete control adopted at that same bottom — so the reported latency
-  can never change mid-block, and the wrap ⇄ stand-in-ring handover happens while the output is
-  silent. An OS-path change is still routed through the duck; since ADR-0034 that duck masks the
-  path swap only, not a latency change.
+- The OS engagement is **no longer latched** (ADR-0035): it is the live target of a 12 ms
+  crossfade, so the wrap ⇄ stand-in-ring handover happens while both paths are audible and mixed,
+  not at a silent duck bottom. That does not touch the reported number, which follows `oversample`
+  — a discrete control still adopted only at a duck bottom or a reset — so the reported latency
+  still cannot change mid-block. An oversampling FACTOR change is still routed through the duck,
+  because that one does move the number.
 - **A parameter move now re-derives the same number.** `parameterChanged` still requests a latency
   update on a Drive or Algorithm move, and `deliverLatency()` still recomputes — but the value is
   unchanged, and JUCE's `setLatencySamples` notifies the host only when the value actually differs,
@@ -147,7 +148,7 @@ binary (requires running the plugin; not statically provable here).`
   Oversampling Setting inside an off-thread `setStateInformation` (RISK-007) can still change the
   value from a non-message thread.
 
-Evidence [Verified]: src/PluginProcessor.cpp:169-193 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:261-266,
+Evidence [Verified]: src/PluginProcessor.cpp:169-193 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:277-282,
 :293-329, :494-509.
 
 ## INVARIANT (binding)

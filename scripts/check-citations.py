@@ -397,32 +397,48 @@ DELIBERATE_REAIMS = {
     # stores :54-56, and everything below :84 sits two lines lower.
     ("docs/architecture/LATENCY_MODEL.md",
      "src/dsp/AnamorphEngine.cpp:42-54",
-     "src/dsp/AnamorphEngine.cpp:52-66"): "latency2",
+     "src/dsp/AnamorphEngine.cpp:57-71"): "latency2",
     ("docs/architecture/LATENCY_MODEL.md",
      "src/dsp/AnamorphEngine.cpp:52-54",
-     "src/dsp/AnamorphEngine.cpp:64-66"): "latency2",
+     "src/dsp/AnamorphEngine.cpp:69-71"): "latency2",
     # 2026-09-04 (ADR-0034, the 0.9.7 latency change): the `osActiveFor` header
     # comment was rewritten in place -- it had to be, since it asserted the very
     # coupling ADR-0034 removes -- so ADR-0003's engagement anchor is one whose
     # CITED LINES were themselves edited and --fix reports it UNMAPPABLE. Re-derived
     # by reading: `isModAlgorithm` now opens at :26 and `osActiveFor` closes at :35,
     # with the (longer) comment's operative tail from :24; the oversampler block and
-    # its three stores moved +10 to :52-66 and :64-66; the beginForcedDuck span moved
-    # to :374-448, its end carried further by the dry-fill branch added in the same
-    # change set. Keyed on BOTH origin/main's spelling and HEAD's, because this
+    # its three stores moved to :57-71 and :69-71; the beginForcedDuck span moved to
+    # :385-426, both carried further by ADR-0035's crossfade landing in the same
+    # change set (the comment above `osActiveFor` grew, and the dry-fill branch the
+    # duck used was removed). Keyed on BOTH origin/main's spelling and HEAD's, because this
     # branch has already moved these anchors once. Retires on merge.
+    # 2026-09-03 (ADR-0035, same change set): the `osActiveFor` comment gained the
+    # crossfade paragraph and the duck's dry-fill branch went, moving these anchors
+    # a second time within the branch. Both spellings this branch has published are
+    # declared, so the transition matches from origin/main AND from the previous
+    # commit. Re-derived by reading: the predicate pair now closes at :40, the
+    # oversampler block and its stores are :57-71 and :69-71, beginForcedDuck :385-426.
+    ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
+     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 365-401",
+     "src/dsp/AnamorphEngine.cpp:29-40, 57-71, 385-426"): "isModAlgorithm",
+    ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
+     "src/dsp/AnamorphEngine.cpp:24-35",
+     "src/dsp/AnamorphEngine.cpp:29-40"): "isModAlgorithm",
+    ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
+     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 374-448",
+     "src/dsp/AnamorphEngine.cpp:29-40, 57-71, 385-426"): "isModAlgorithm",
     ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
      "src/dsp/AnamorphEngine.cpp:14-23",
-     "src/dsp/AnamorphEngine.cpp:24-35"): "isModAlgorithm",
+     "src/dsp/AnamorphEngine.cpp:29-40"): "isModAlgorithm",
     ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
      "src/dsp/AnamorphEngine.cpp:14-23, 42-56, 338-374",
-     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 374-448"): "isModAlgorithm",
+     "src/dsp/AnamorphEngine.cpp:29-40, 57-71, 385-426"): "isModAlgorithm",
     ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
      "src/dsp/AnamorphEngine.cpp:14-23, 42-54, 313-349",
-     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 374-448"): "isModAlgorithm",
+     "src/dsp/AnamorphEngine.cpp:29-40, 57-71, 385-426"): "isModAlgorithm",
     ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
      "src/dsp/AnamorphEngine.cpp:14-23,42-54,293-329",
-     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 374-448"): "isModAlgorithm",
+     "src/dsp/AnamorphEngine.cpp:29-40, 57-71, 385-426"): "isModAlgorithm",
     ("docs/architecture/LATENCY_MODEL.md",
      "src/PluginProcessor.cpp:105-108",
      "src/PluginProcessor.cpp:169-193"): "updateLatency",

@@ -27,20 +27,27 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   saving was measured to confirm it (2×/4×/8× with Drive at 0 cost the same as Oversampling Off,
   within run-to-run noise). While it is off, a plain delay of the same few samples holds the timing
   steady in its place, so the plug-in still delivers exactly the delay it declares.
-  The short dip that used to mask the moment Drive passes zero is gone with it: crossing that point
-  still switches the internal path, so the plug-in still eases the sound across it, but it now eases
-  through the *dry* signal instead of briefly muting. Measured on a steady tone with Oversampling on:
-  the output used to fall to about a five-hundredth of its level for 7 ms, and now keeps 96 % of it —
-  the same as with Oversampling off, which never dipped at all.
   **What changes for you:** selecting 2×/4×/8× now shows a few samples of latency in your DAW even on
   a fully linear chain, where it used to show none — that is the price of the sound no longer being
-  interrupted, and the delay is compensated as it always was. And one trade in the other direction:
-  an A/B, preset or undo switch **that changes the Oversampling setting itself** while Drive is at
-  zero now dips briefly, where it used to be seamless — the same short dip the Oversampling menu has
-  always had, so both ways of changing that setting now behave alike. Switching Oversampling is the
-  one moment a dip is expected. Sessions are unaffected — nothing in the saved file changed.
+  interrupted, and the delay is compensated as it always was. One trade in the other direction: an
+  A/B, preset or undo switch **that changes the Oversampling setting itself** while Drive is at zero
+  now dips briefly, where it used to be seamless — the same short dip the Oversampling menu has
+  always had, so both ways of changing that setting now behave alike, and switching Oversampling is
+  the one moment a dip is expected. Sessions are unaffected — nothing in the saved file changed.
   Decision: ADR-0034. Regression coverage: DSP test 52.
   Evidence: PR #135. [Verified]
+- **Turning Drive through zero with Oversampling on is now seamless, not merely un-interrupted.**
+  Crossing that point switches the plug-in between two internal paths, and the short dip that used to
+  cover the switch could not actually cover it: the dip is applied at the very end of the chain,
+  *after* Haas and Velvet Noise, whose delay lines are 12–35 ms long. The switch's discontinuity went
+  into those delay lines at full level and came back out one delay later, with the dip already over —
+  which is why the interruption was reported specifically for Haas and Velvet Noise. The two paths
+  are now **crossfaded** instead, so there is nothing to cover and no dip at all. Measured on a steady
+  tone across every combination of 2×/4×/8×, Haas and Velvet Noise, Drive rising through zero and
+  falling through it, as an instant jump and as a 300 ms knob turn: the result is now identical to
+  the same move with Oversampling switched off. The oversampler is still switched off when there is
+  no nonlinear work for it, so the CPU saving is unchanged. Decision: ADR-0035.
+  Regression coverage: DSP test 53. Evidence: PR #135. [Verified]
 
 ### Fixed
 - **A click when Drive crossed zero while the plug-in was bypassed, with Oversampling on.** The same

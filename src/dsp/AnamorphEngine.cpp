@@ -19,9 +19,14 @@ using juce::dsp::Oversampling;
 //  move changed the number reported to the host and the host restarted the graph
 //  for it. The delay now belongs to the SELECTED FACTOR: when this predicate is
 //  false but a factor is selected, `osCompDelayBuffer` stands in for the wrap's
-//  group delay, so the chain carries the same latency either way. This predicate
-//  keeps its other three jobs unchanged -- gating `currentOversampler()`, latching
-//  into `osEngaged`, and forcing a duck through `discreteDiffers`.
+//  group delay, so the chain carries the same latency either way.
+//
+//  AND IT NO LONGER FORCES A DUCK. It is now the TARGET of `osBlend`, a click-free
+//  crossfade between the two paths, so this predicate may flip live and mid-block:
+//  nothing is latched from it any more. The duck it used to force could not mask
+//  the swap anyway -- the duck's gain is applied downstream of Haas and Velvet, so
+//  the handover's discontinuity entered their 12-35 ms delay lines at full level
+//  and re-emerged after the fade had finished. See `osBlend` in the header.
 // ---------------------------------------------------------------------------
 static bool isModAlgorithm (Algorithm a) noexcept
 {
@@ -116,6 +121,14 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     osCompDelayBuffer.setSize (2, maxLat + maxBlock + 1);
     osCompDelayBuffer.clear();
     osCompDelayWrite = 0;
+
+    // OS-path crossfade: the wrapped path's working buffer, and the blend itself.
+    // 12 ms, the same sample-safe ramp Multiband Enable uses -- long enough to be
+    // inaudible on a path swap, short enough that the wrap goes cold promptly.
+    osPathScratch.setSize (2, maxBlock);
+    osBlend.reset (sr, 0.012);
+    osBlend.setCurrentAndTargetValue (osActiveFor (p) ? 1.0f : 0.0f);
+    osRunning = osActiveFor (p); // prepare() reset the oversamplers: warm iff engaged
     bypassBlend.reset (sr, 0.010); // ~10 ms sample-safe crossfade
     bypassBlend.setCurrentAndTargetValue (p.bypass ? 1.0f : 0.0f);
 
@@ -214,7 +227,10 @@ void AnamorphEngine::reset()
     bypassBlend.setCurrentAndTargetValue (p.bypass ? 1.0f : 0.0f); // settle the crossfade
     mbEnableBlend.setCurrentAndTargetValue (p.mbEnable ? 1.0f : 0.0f); // settle the multiband crossfade
     mbRunning = p.mbEnable; // reset() above cleaned the bank: warm iff multiband is on
-    osEngaged = osActiveFor (p); // re-latch the OS wrap for the settled state (#3)
+    // Settle the OS-path crossfade for the state we have just flushed to, exactly
+    // as the Bypass and Multiband Enable crossfades are settled above.
+    osBlend.setCurrentAndTargetValue (osActiveFor (p) ? 1.0f : 0.0f);
+    osRunning = osActiveFor (p); // reset() cleared the oversamplers: warm iff engaged
 }
 
 // ---------------------------------------------------------------------------
@@ -275,21 +291,6 @@ bool AnamorphEngine::sameParameters (const EngineParameters& a, const EnginePara
 
 bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EngineParameters& b) noexcept
 {
-    return discreteDiffersOther (a, b)
-        // Engaging / disengaging the OS wrap (Drive crossing 0 with OS selected)
-        // swaps the nonlinear region between the resampled and the base-rate path
-        // -- a discrete, duck-worthy change (#3). Since ADR-0034 it is no longer a
-        // LATENCY change: the stand-in ring carries the wrap's delay while the wrap
-        // is skipped, so the duck now masks only the path swap itself. The term
-        // stays for exactly that reason; dropping it would step the signal -- and
-        // it would strand `osEngaged`, which is written only from `osActiveFor`.
-        // It is the LAST term, and split out below, so that setParameters can ask
-        // "is this the ONLY thing that differs?" and dry-fill that duck.
-        || osActiveFor (a)    != osActiveFor (b);
-}
-
-bool AnamorphEngine::discreteDiffersOther (const EngineParameters& a, const EngineParameters& b) noexcept
-{
     return a.channelMode      != b.channelMode
         || a.monoSum          != b.monoSum
         || a.swapLR           != b.swapLR
@@ -312,6 +313,16 @@ bool AnamorphEngine::discreteDiffersOther (const EngineParameters& a, const Engi
         // Bypass is NOT listed: it is now a click-free OUTPUT crossfade (bypassBlend),
         // not a ducked switch -- the chain + analysis run regardless, so toggling it
         // never stops Level Match and never needs a duck (Issues 2/3).
+        // Engaging / disengaging the OS WRAP (Drive crossing 0.01 dB, or Algorithm
+        // crossing the mod boundary, with a factor selected) is NOT listed either,
+        // for the same reason and since 0.9.7: it is a click-free crossfade between
+        // the two paths (`osBlend`), which is a mechanism ADR-0034 made available by
+        // giving both paths the same latency. Ducking it was worse than useless --
+        // the duck's gain lands downstream of Haas and Velvet, so it masked the
+        // output while letting the handover's discontinuity into their delay lines
+        // at full level, to re-emerge 12-35 ms later with the fade already over.
+        // An OS FACTOR change (`oversample`) IS listed above and still ducks: that
+        // one moves the reported latency, so the two paths are not aligned.
         ;
 }
 
@@ -399,48 +410,15 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
         }
         else if (discreteDiffers (np, p))
         {
-            // THE ONE ORDINARY DUCK THAT DRY-FILLS, AND WHY IT MAY (ADR-0034).
-            // Every other discrete change still ducks to silence, unchanged. This
-            // one is the Drive knob crossing 0.01 dB (or Algorithm crossing the mod
-            // boundary) with an oversampling factor selected: `discreteDiffers` is
-            // true ONLY because `osActiveFor` flipped, so the sole thing being
-            // swapped is which path the nonlinear region runs on. Ducking that to
-            // SILENCE is what the user hears as an interruption on an ordinary knob
-            // move -- measured before this branch existed: the output fell to
-            // -53 dB for 6.7 ms inside a ~34 ms envelope at 2x/4x/8x, and not at
-            // all with oversampling Off, which is the whole tell.
-            //
-            // It could not dry-fill before ADR-0034 and it can now, for exactly one
-            // reason: the swap used to CHANGE the reported latency (0 <-> the
-            // factor's), so a fill read at one fixed offset would have stepped by
-            // the latency delta at full dry weight. The factor is part of
-            // `discreteDiffersOther`, so `osPathOnly` implies the factor did not
-            // move, which since ADR-0034 means the latency did not either -- the
-            // equality below is then a tautology, and it is kept because it is the
-            // invariant the fill's single read offset actually depends on. If a
-            // later change makes latency depend on something else again, this gate
-            // turns the fill off rather than reading at a wrong offset.
-            const bool osPathOnly = ! discreteDiffersOther (np, p);
-            if (osPathOnly && predictLatency (np) == getLatencySamples())
-            {
-                dryDuckLat = getLatencySamples();
-                dryDuck    = true;
-                // Latched exactly as beginForcedDuck latches them, and for the same
-                // reason: the smoothers snap at the silent bottom where the fill
-                // carries full weight, so a live gain would step there and the raw
-                // ring would otherwise play at unity under a non-unity Output Gain.
-                const float fg = p.autoGainMatch ? matchGainSmooth.getCurrentValue()
-                                                 : outGainSmooth.getCurrentValue();
-                const float fb = outBalanceSmooth.getCurrentValue();
-                dryDuckGainL = fg * ((fb > 0.0f) ? (1.0f - fb) : 1.0f);
-                dryDuckGainR = fg * ((fb < 0.0f) ? (1.0f + fb) : 1.0f);
-            }
-            else
-                dryDuck = false;             // every other discrete duck: to silence (unchanged)
-
+            // A Drive move across 0.01 dB no longer reaches here at all: the OS-path
+            // swap it causes is a crossfade in process(), not a discrete change, so
+            // an ordinary knob move opens no duck of any kind. What is left here is
+            // the genuinely discrete set -- routing, algorithm, band count, the OS
+            // FACTOR -- and it keeps its duck-to-silence behaviour unchanged.
             pendingP = np;
             pendingAlgoReset = (np.algorithm != p.algorithm);
             copyContinuous (p, np);          // knobs respond immediately
+            dryDuck = false;                 // ordinary discrete duck: duck-to-silence (unchanged)
             switchState = SwitchState::FadeOut;
             updateDerived();
         }
@@ -529,17 +507,22 @@ void AnamorphEngine::snapSmoothers() noexcept
     snap (bypassBlend);
     // Same for the Multiband Enable crossfade: a forced swap that flips it lands settled.
     snap (mbEnableBlend);
+    // The OS-path crossfade is deliberately NOT snapped here. snapSmoothers() runs
+    // from the duck bottom, which is BEFORE the OS stage sets `osBlend`'s target for
+    // the adopted state -- so snapping would land it on the outgoing target and the
+    // stage would immediately start a fresh blend anyway (measured: no change at
+    // all). The forced-swap branch settles it explicitly instead, where the new `p`
+    // is already in force.
     // matchGainSmooth is left to the injection / loudness re-measure (its own glide).
 }
 
-// The OS wrap follows the LATCHED engagement, not the live driveDb: the PATH may
-// only change at the silent duck bottom (#3). Its latency no longer travels with
-// it -- that is a function of `p.oversample` alone (ADR-0034), and `p.oversample`
-// is discrete, so it too moves only at that bottom.
+// The oversampler for the SELECTED FACTOR, or nullptr when no factor is selected.
+// It carries no engagement gate of its own since 0.9.7 -- whether the wrap RUNS
+// this block is `osRunning`, decided by the crossfade in process(), and the caller
+// applies it. `p.oversample` is discrete, so this can only change at a silent duck
+// bottom or a reset.
 juce::dsp::Oversampling<float>* AnamorphEngine::currentOversampler() noexcept
 {
-    if (! osEngaged) return nullptr;
-
     switch (p.oversample)
     {
         case OversampleFactor::x2: return os2.get();
@@ -738,7 +721,8 @@ static inline float driveTanh (float x) noexcept
     return juce::jlimit (-1.0f, 1.0f, x * (num / den));
 }
 
-void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double rate) noexcept
+void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double rate,
+                                             bool runMod, int envStride) noexcept
 {
     // Run the drive maths while Drive is engaged OR while the blend is still
     // gliding back to zero, so disengaging Drive fades out instead of stepping.
@@ -767,7 +751,7 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
                     ch[i] += blend * (s - ch[i]);
                 }
         }
-        else
+        else if (envStride <= 1)
         {
             for (int i = 0; i < n; ++i)
             {
@@ -780,9 +764,38 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
                 R[i] += blend * (sr2 - R[i]);
             }
         }
+        else
+        {
+            // OS-path crossfade only. One envelope step per BASE sample, held across
+            // the oversampled group: the ramp then advances at the same wall-clock
+            // rate as the base-rate path's, which is what makes the two paths
+            // mixable. Ticking per OVERSAMPLED sample -- what the loop above does,
+            // correctly, when it is the only path running -- would run the ramp
+            // `factor` times faster here, and the two paths would diverge by however
+            // far it had got. Measured before this branch, on an instantaneous
+            // 0 -> 6 dB step, as a multiple of the settled sample-to-sample step:
+            // 2.0x at 2x, 4.0x at 4x, 7.3x at 8x -- scaling with the factor.
+            float g = 1.0f, blend = 0.0f, c = 1.0f;
+            int hold = 0;
+            for (int i = 0; i < n; ++i)
+            {
+                if (hold == 0)
+                {
+                    g     = juce::jmax (1.0f, driveSmooth.getNextValue());
+                    blend = driveBlendSmooth.getNextValue();
+                    c     = 1.0f / driveTanh (g);
+                    hold  = envStride;
+                }
+                --hold;
+                const float sl  = driveTanh (g * L[i]) * c;
+                const float sr2 = driveTanh (g * R[i]) * c;
+                L[i] += blend * (sl  - L[i]);
+                R[i] += blend * (sr2 - R[i]);
+            }
+        }
     }
 
-    if (isModAlgorithm (p.algorithm))
+    if (runMod && isModAlgorithm (p.algorithm))
     {
         chorus.setWorkingRate (rate);
         chorus.processBlock (L, R, n);
@@ -846,10 +859,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         //  the chain always running, so there is never any stale bypass state to clear.)
         // Compare the incoming OS path against what was actually RUNNING (the
         // latch) -- p's driveDb was already overwritten by copyContinuous.
-        const bool osPathChanged = pendingP.oversample != p.oversample
-                                || osActiveFor (pendingP) != osEngaged;
+        // Only a FACTOR change now reaches this: engaging/disengaging the wrap is a
+        // crossfade and never opens a duck. A factor change moves the reported
+        // latency and swaps to a different filter, so both the oversamplers and the
+        // stand-in ring are restarted here, at silence.
+        const bool osPathChanged = pendingP.oversample != p.oversample;
         p = pendingP;
-        osEngaged = osActiveFor (p);
         if (pendingAlgoReset) { haas.reset(); velvet.reset(); chorus.reset(); pendingAlgoReset = false; }
         if (osPathChanged)
         {
@@ -906,6 +921,18 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
             // are emitted at switchPhase 0 with a ~28 ms fade-in ahead of them.
             osCompDelayBuffer.clear();
             osCompDelayWrite = 0;
+            // Land the OS-path crossfade on the adopted state, like every other
+            // control at this bottom. Without it the fade-in mixes IN from the
+            // base-rate path -- which, with the drive smoothers snapped to a large
+            // new value one line above, means ~12 ms of the nonlinear stage running
+            // UNDERSAMPLED, the one thing the wrap exists to avoid. The blend is a
+            // click-free mechanism for a LIVE flip; a forced swap already has
+            // silence, so it does not need one, and taking it makes the fade-in play
+            // a single settled path. Safe here for the usual reason: the wrap and
+            // the ring were both cleared two lines up, and every delay line
+            // downstream of them was emptied too.
+            osBlend.setCurrentAndTargetValue (osActiveFor (p) ? 1.0f : 0.0f);
+            osRunning = osActiveFor (p);
             pendingAlgoReset = false; // already handled by the wholesale reset above
             const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
             if (inj > kNoInject + 1.0f)
@@ -1050,38 +1077,67 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     dryScratch.copyFrom (1, 0, R, n);
 
     // -------- Oversampled nonlinear / modulation region ---------------------
-    if (auto* os = currentOversampler())
-    {
-        const double factor = (p.oversample == OversampleFactor::x2) ? 2.0
-                            : (p.oversample == OversampleFactor::x4) ? 4.0 : 8.0;
-        juce::dsp::AudioBlock<float> block (buffer);
-        auto osBlock = os->processSamplesUp (block);
-        processNonlinearRegion (osBlock.getChannelPointer (0),
-                                osBlock.getChannelPointer (1),
-                                (int) osBlock.getNumSamples(), sr * factor);
-        os->processSamplesDown (block);
-    }
-    else
-    {
-        processNonlinearRegion (L, R, n, sr);
+    //
+    // TWO PATHS, CROSSFADED, NOT SWAPPED (0.9.7). The wrap runs only when it has
+    // nonlinear/modulation work to do -- the largest CPU saving in the engine, and
+    // untouched here. What changed is the HANDOVER. It used to be a latched swap at
+    // the silent bottom of the switch duck, and the duck could not mask it: the
+    // duck's gain is applied at the output stage, DOWNSTREAM of Haas (12-35 ms) and
+    // Velvet (~21 ms), so the discontinuity went into their delay lines at full
+    // level and came back out after the ~28 ms fade-in was over. Measured at the
+    // Drive threshold with a 220 Hz tone, as a multiple of the settled
+    // sample-to-sample step: 2.6x (Haas) and 5.8x (Velvet), arriving at duck bottom
+    // + the widener's own delay, identically at 2x, 4x and 8x.
+    //
+    // So the two paths are mixed instead. Both are `lat` samples long -- the wrap's
+    // group delay on one side, `osCompDelayBuffer` on the other -- which is exactly
+    // what ADR-0034 established, and is what makes them sample-aligned and safe to
+    // mix. Before ADR-0034 they differed by 4-6 samples and this would have combed.
+    osBlend.setTargetValue (osActiveFor (p) ? 1.0f : 0.0f);
+    const bool osBlending  = osBlend.isSmoothing();
+    const bool wrapAudible = osBlending || osBlend.getCurrentValue() > 0.0f;
+    const bool baseAudible = osBlending || osBlend.getCurrentValue() < 1.0f;
 
-        // THE WRAP IS SKIPPED HERE, ITS DELAY IS NOT (ADR-0034). `lat` is non-zero
-        // in this branch exactly when a factor is selected but the wrap has no
-        // nonlinear/modulation work to do, which is the CPU saving `osActiveFor`
-        // exists for and which this does not disturb -- a 2-channel integer ring of
-        // 4-6 samples in place of a polyphase IIR round trip. Standing in for the
-        // delay AT THE WRAP'S OWN PLACE in the chain is what keeps every downstream
-        // stage's alignment identical between the two paths, and what lets the
-        // reported latency be a function of the selection alone. AFTER the region,
-        // not before: the output of this branch is then exactly what it was, `lat`
-        // samples later -- the drive-blend fade-out that runs here while Drive
-        // glides to 0 is delayed with the audio it shaped, not applied to already
-        // delayed audio.
-        if (lat > 0)
+    // Cold -> warm, the mbRunning pattern: the wrap's polyphase IIR state is stale
+    // (or zero) the instant it starts running again, and its settle is the OTHER
+    // half of the defect above -- removing the reset does not help, because a wrap
+    // that has not run is already at zero state and still ramps in over its group
+    // delay. Starting it HERE, while the blend is still ~0, is what masks that: by
+    // the time the blend has risen the filters are warm. The reset makes the start
+    // defined rather than a replay of whatever it last held (#3).
+    if (wrapAudible && ! osRunning)
+    {
+        if (os2) os2->reset();
+        if (os4) os4->reset();
+        if (os8) os8->reset();
+        chorus.reset();                 // runs at the OS rate, so it restarts with it
+    }
+    osRunning = wrapAudible;
+
+    // The wrapped path needs the UNDELAYED input, and the base-rate path overwrites
+    // it in place, so snapshot it while a crossfade is in flight.
+    if (osBlending)
+    {
+        osPathScratch.copyFrom (0, 0, L, n);
+        osPathScratch.copyFrom (1, 0, R, n);
+    }
+
+    // ---- base-rate path: the stand-in delay, then the region ----------------
+    // THE RING IS WRITTEN ON EVERY BLOCK, whichever path is audible, and read back
+    // only when the base-rate path is. That is what makes the handover continuous
+    // in this direction: a ring that were cleared (or left cold) at the swap would
+    // hand back `lat` samples of ZEROS, which is precisely the hole that used to
+    // reach Haas and Velvet. Write-only costs two vector copies, the same trade the
+    // true-bypass ring already makes. DELAY THEN REGION, not the reverse: the ring
+    // must carry the raw input so its history means the same thing whether or not
+    // the region ran, and at the crossing the region is identity anyway.
+    if (lat > 0)
+    {
+        float* cdL = osCompDelayBuffer.getWritePointer (0);
+        float* cdR = osCompDelayBuffer.getWritePointer (1);
+        const int cdSize = osCompDelayBuffer.getNumSamples();
+        if (baseAudible)
         {
-            float* cdL = osCompDelayBuffer.getWritePointer (0);
-            float* cdR = osCompDelayBuffer.getWritePointer (1);
-            const int cdSize = osCompDelayBuffer.getNumSamples();
             for (int i = 0; i < n; ++i)
             {
                 cdL[osCompDelayWrite] = L[i];
@@ -1095,6 +1151,75 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
                 L[i] = cdL[rp]; R[i] = cdR[rp];
                 if (++osCompDelayWrite >= cdSize) osCompDelayWrite = 0;
             }
+        }
+        else
+        {
+            // Write-only fill: identical ring bytes as the loop above, in at most
+            // two contiguous copies (the Wave 4 trade the bypass ring documents).
+            int i = 0;
+            while (i < n)
+            {
+                const int seg = juce::jmin (n - i, cdSize - osCompDelayWrite);
+                juce::FloatVectorOperations::copy (cdL + osCompDelayWrite, L + i, seg);
+                juce::FloatVectorOperations::copy (cdR + osCompDelayWrite, R + i, seg);
+                osCompDelayWrite += seg;
+                if (osCompDelayWrite >= cdSize) osCompDelayWrite = 0;
+                i += seg;
+            }
+        }
+    }
+    // BOTH PATHS MUST SEE THE SAME DRIVE ENVELOPE. `processNonlinearRegion` ADVANCES
+    // `driveSmooth` and `driveBlendSmooth` -- once per sample, so the wrapped call
+    // advances them `factor` times as far as the base-rate call over the same block.
+    // With only ever one path running that was invisible; running both in one block
+    // makes it a real desynchronisation, and the two paths then differ by however
+    // far the drive ramp has diverged. Measured before this save/restore, as a
+    // multiple of the settled sample-to-sample step at a 0 -> 6 dB Drive step:
+    // 2.84x at 2x, 4.05x at 4x, 8.69x at 8x -- scaling with the factor, which is
+    // the signature. Both paths therefore run from the SAME smoother state, and the
+    // state that survives the block is the one belonging to the path the blend is
+    // heading TO, since that is the path that will still be running when it settles.
+    const auto driveEntry = driveSmooth;
+    const auto blendEntry = driveBlendSmooth;
+
+    if (baseAudible)
+        processNonlinearRegion (L, R, n, sr, ! osBlending);
+
+    // ---- wrapped path -------------------------------------------------------
+    if (wrapAudible)
+    {
+        // Rewind to the same entry state the base-rate path started from. With
+        // `envStride` set to the factor below, the wrapped call then advances the
+        // envelope exactly `n` times too, so the two paths end the block in the same
+        // place and no end-state arbitration is needed.
+        if (osBlending) { driveSmooth = driveEntry; driveBlendSmooth = blendEntry; }
+        if (auto* os = currentOversampler())
+        {
+            const double factor = (p.oversample == OversampleFactor::x2) ? 2.0
+                                : (p.oversample == OversampleFactor::x4) ? 4.0 : 8.0;
+            float* wL = osBlending ? osPathScratch.getWritePointer (0) : L;
+            float* wR = osBlending ? osPathScratch.getWritePointer (1) : R;
+            float* wch[2] = { wL, wR };
+            juce::dsp::AudioBlock<float> block (wch, 2, (size_t) n);
+            auto osBlock = os->processSamplesUp (block);
+            processNonlinearRegion (osBlock.getChannelPointer (0),
+                                    osBlock.getChannelPointer (1),
+                                    (int) osBlock.getNumSamples(), sr * factor,
+                                    true, osBlending ? (int) factor : 1);
+            os->processSamplesDown (block);
+        }
+    }
+
+    // ---- mix them ----------------------------------------------------------
+    if (osBlending)
+    {
+        const float* wL = osPathScratch.getReadPointer (0);
+        const float* wR = osPathScratch.getReadPointer (1);
+        for (int i = 0; i < n; ++i)
+        {
+            const float b = osBlend.getNextValue();
+            L[i] += b * (wL[i] - L[i]);
+            R[i] += b * (wR[i] - R[i]);
         }
     }
 

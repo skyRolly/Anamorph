@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 #include <limits>
 #include <random>
 
@@ -5355,39 +5356,248 @@ static void testOversamplingLatencyIsFactorOnly()
     }
 }
 
-static int runForcedFactorSwapProbe()
+// A/B swap / preset recall / undo: what does the listener actually get?
+// ---------------------------------------------------------------------------
+//  Test 53 -- crossing the Drive threshold with Oversampling selected must be
+//  indistinguishable from crossing it with Oversampling Off (0.9.7).
+//
+//  WHAT WENT WRONG, AND WHY THE EARLIER TESTS DID NOT SEE IT. Engaging or
+//  disengaging the oversampling wrap swaps the whole nonlinear region between the
+//  resampled and the base-rate path. That used to be a latched swap at the silent
+//  bottom of the switch duck -- and THE DUCK COULD NOT MASK IT, because the duck's
+//  gain is applied at the output stage, DOWNSTREAM of Haas (12-35 ms) and Velvet
+//  (~21 ms). The handover's discontinuity went into their delay lines at full
+//  level and re-emerged after the ~28 ms fade-in was over, unmasked. Measured on a
+//  220 Hz tone as a multiple of the settled sample-to-sample step, arriving at
+//  duck bottom + the widener's own delay:
+//
+//      Haas   0 -> 6 dB   2.6x      Velvet 0 -> 6 dB   5.8x
+//      Haas   6 -> 0 dB   1.2x      Velvet 6 -> 0 dB   2.4x
+//
+//  Test 52 leg E measures the same gesture and passes throughout: it reads BLOCK
+//  RMS, and a few-sample discontinuity 19-28 ms downstream does not move a block's
+//  RMS. Nothing in the suite inspected the signal at sample resolution across this
+//  transition, which is why the defect survived the round that fixed the latency.
+//
+//  THE CONTROL IS OVERSAMPLING OFF, and that is what makes this test honest. The
+//  same knob move with no factor selected engages no path swap at all, so whatever
+//  it measures is the Drive change ITSELF -- the tanh shaping arriving, the drive
+//  blend easing in. Requiring the oversampled runs to match that control asks the
+//  only question worth asking: can you tell, from the signal, that the wrap was
+//  switched? Asserting a fixed threshold instead would have to guess how much of
+//  the number belongs to Drive.
+//
+//  BOTH GESTURES, because they fail differently. An instantaneous step is what
+//  automation and preset recall deliver; a 300 ms sweep is what a knob delivers,
+//  and it is what was reported. The instantaneous case additionally caught a second
+//  defect the sweep does not: the drive envelope advances once per sample, so the
+//  wrapped path ran it `factor` times faster than the base-rate path and the two
+//  diverged mid-crossfade -- 2.0x / 4.0x / 7.3x at 2x / 4x / 8x, scaling with the
+//  factor, which is the signature.
+// ---------------------------------------------------------------------------
+namespace
 {
-    std::printf ("Forced swap (A/B, preset, undo) that changes ONLY the Oversampling factor, Drive 0\n");
-    constexpr double sr = 48000.0; constexpr int bs = 64;
-    anamorph::EngineParameters from;
-    from.algorithm = anamorph::Algorithm::Haas;
-    from.algoAmount = 0.7f; from.width = 1.4f; from.mix = 0.85f;
-    from.oversample = anamorph::OversampleFactor::Off; from.driveDb = 0.0f;
-    auto to = from; to.oversample = anamorph::OversampleFactor::x4;
+    struct CrossResult { double stepRatio = 0.0, holeRatio = 0.0; };
 
-    anamorph::AnamorphEngine e;
-    e.primeParameters (from); e.prepare (sr, bs); e.setParameters (from);
-    juce::AudioBuffer<float> buf (2, bs);
-    double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * 440.0 / sr;
-    double settled = 0.0, minRms = 1.0e9;
-    for (int n = 0; n < 200; ++n)
+    // One Drive crossing, measured against its OWN settled window so the numbers
+    // are comparable across factors and algorithms.
+    static CrossResult measureDriveCrossing (anamorph::OversampleFactor f,
+                                             anamorph::Algorithm alg,
+                                             bool zeroToSix, int sweepBlocks)
     {
-        for (int i = 0; i < bs; ++i)
+        constexpr double sr = 48000.0; constexpr int bs = 64;
+        const int settle = 400, tail = 400, moveAt = 400;
+
+        anamorph::EngineParameters p;
+        p.algorithm  = alg;
+        p.algoAmount = 0.7f;
+        p.width      = 1.4f;
+        p.oversample = f;
+        p.driveDb    = zeroToSix ? 0.0f : 6.0f;
+        const float after = zeroToSix ? 6.0f : 0.0f;
+
+        anamorph::AnamorphEngine e;
+        e.primeParameters (p); e.prepare (sr, bs); e.setParameters (p);
+
+        std::vector<float> out; out.reserve ((size_t) (settle + tail) * bs);
+        juce::AudioBuffer<float> buf (2, bs);
+        double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * 220.0 / sr;
+        for (int nb = 0; nb < settle + tail; ++nb)
         {
-            const float v = (float) (0.7 * std::sin (phase)); phase += inc;
-            buf.setSample (0, i, v); buf.setSample (1, i, v);
+            if (sweepBlocks <= 0) { if (nb == moveAt) p.driveDb = after; }
+            else if (nb >= moveAt && nb <= moveAt + sweepBlocks)
+            {
+                const float t = (float) (nb - moveAt) / (float) sweepBlocks;
+                p.driveDb = zeroToSix ? 6.0f * t : 6.0f * (1.0f - t);
+            }
+            for (int i = 0; i < bs; ++i)
+            {
+                const float v = 0.5f * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, v); buf.setSample (1, i, v);
+            }
+            e.setParameters (p);
+            e.process (buf);
+            for (int i = 0; i < bs; ++i) out.push_back (buf.getSample (0, i));
         }
-        if (n == 60) e.requestDuck();
-        e.setParameters (n >= 60 ? to : from);
-        e.process (buf);
-        double acc = 0.0;
-        for (int i = 0; i < bs; ++i) { const double s = buf.getSample (0, i); acc += s * s; }
-        const double rms = std::sqrt (acc / bs);
-        if (n == 55) settled = rms;
-        if (n >= 60) minRms = juce::jmin (minRms, rms);
+
+        const int mv = moveAt * bs;
+        double refStep = 0.0, refSq = 0.0; int refN = 0;
+        for (int i = mv - 100 * bs + 1; i < mv; ++i)
+        {
+            refStep = juce::jmax (refStep, (double) std::abs (out[(size_t) i] - out[(size_t) i - 1]));
+            refSq += (double) out[(size_t) i] * out[(size_t) i]; ++refN;
+        }
+        const double refRms = std::sqrt (refSq / juce::jmax (1, refN));
+
+        CrossResult res;
+        double worstStep = 0.0;
+        for (int i = mv; i < (int) out.size(); ++i)
+            worstStep = juce::jmax (worstStep, (double) std::abs (out[(size_t) i] - out[(size_t) i - 1]));
+        res.stepRatio = worstStep / juce::jmax (1.0e-9, refStep);
+
+        double minRms = 1.0e9;
+        for (int i = mv; i + 32 < (int) out.size(); ++i)
+        {
+            double sq = 0.0;
+            for (int k = 0; k < 32; ++k) { const double v = out[(size_t) (i + k)]; sq += v * v; }
+            minRms = juce::jmin (minRms, std::sqrt (sq / 32.0));
+        }
+        res.holeRatio = minRms / juce::jmax (1.0e-12, refRms);
+        return res;
     }
-    std::printf ("  Off -> 4x at drive 0, forced duck: settled %.5f, min after %.5f (%+.1f dB)\n",
-                 settled, minRms, 20.0 * std::log10 (juce::jmax (1.0e-12, minRms / juce::jmax (1.0e-12, settled))));
+}
+
+static void testDriveCrossingIsSeamlessWithOversampling()
+{
+    std::printf ("Test 53: a Drive crossing with Oversampling on matches the Oversampling-Off control\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    const anamorph::OversampleFactor osv[3] = { anamorph::OversampleFactor::x2,
+                                                anamorph::OversampleFactor::x4,
+                                                anamorph::OversampleFactor::x8 };
+    const char* osName[3] = { "2x", "4x", "8x" };
+
+    for (int alg = 0; alg < 2; ++alg)
+        for (int dir = 0; dir < 2; ++dir)
+            for (int gesture = 0; gesture < 2; ++gesture)
+            {
+                const auto algorithm = alg == 0 ? anamorph::Algorithm::Haas
+                                                : anamorph::Algorithm::Velvet;
+                const bool zeroToSix = (dir == 0);
+                const int  sweep     = (gesture == 0) ? 0 : 225;   // 0 = step, 225 blocks = 300 ms
+                const char* algName  = alg == 0 ? "Haas  " : "Velvet";
+                const char* gName    = gesture == 0 ? "step " : "sweep";
+
+                const auto ctl = measureDriveCrossing (anamorph::OversampleFactor::Off,
+                                                       algorithm, zeroToSix, sweep);
+                // NON-VACUITY: the control must be a real measurement, not a
+                // degenerate one -- a settled window that measured no slope, or a
+                // run that fell silent, would make every comparison below free.
+                check (ctl.stepRatio > 0.1 && ctl.holeRatio > 0.05,
+                       "CONTROL: the Oversampling-Off run of this gesture is well-formed");
+
+                for (int o = 0; o < 3; ++o)
+                {
+                    const auto r = measureDriveCrossing (osv[o], algorithm, zeroToSix, sweep);
+                    std::printf ("  %s %s %s drive %s : step x%.2f (control x%.2f) | level %.4f (control %.4f)\n",
+                                 osName[o], algName, gName, zeroToSix ? "0->6" : "6->0",
+                                 r.stepRatio, ctl.stepRatio, r.holeRatio, ctl.holeRatio);
+                    // 1.25x and 0.75x: the measured margins are far outside them in
+                    // both directions -- a correct build matches the control to
+                    // ~1 % on the step and ~0.1 % on the level, while the defective
+                    // one ran 1.3x to 4.4x the control's step, and the build before
+                    // the latency work fell to a level ratio of 0.0000 (true digital
+                    // silence). Nothing sits near either bound.
+                    check (r.stepRatio <= ctl.stepRatio * 1.25,
+                           "no discontinuity beyond the Oversampling-Off control across the Drive crossing");
+                    check (r.holeRatio >= ctl.holeRatio * 0.75,
+                           "no level hole beyond the Oversampling-Off control across the Drive crossing");
+                }
+            }
+}
+
+static int runForcedSwapAuditProbe()
+{
+    std::printf ("Forced-swap audit (A/B, preset recall, undo). 220 Hz, block 64, 48 kHz.\n");
+    std::printf ("  level = min 128-smp RMS after the swap / settled RMS\n");
+    std::printf ("  side  = min 128-smp SIDE rms after the swap / settled side rms  (1.0 = image intact)\n");
+    std::printf ("  step  = worst |x[n]-x[n-1]| after / worst in a settled window\n\n");
+    constexpr double sr = 48000.0; constexpr int bs = 64;
+
+    struct Case { const char* name; anamorph::EngineParameters from, to; };
+    std::vector<Case> cases;
+    {
+        anamorph::EngineParameters base;
+        base.algorithm = anamorph::Algorithm::Haas; base.algoAmount = 0.7f;
+        base.width = 1.4f; base.mix = 0.85f;
+
+        auto mk = [&] (const char* nm, auto fromFn, auto toFn)
+        { Case c; c.name = nm; c.from = base; c.to = base; fromFn (c.from); toFn (c.to); cases.push_back (c); };
+
+        mk ("A/B sound only, OS Off",            [](auto&){},
+            [](auto& q){ q.width = 1.8f; q.algoAmount = 0.35f; q.mix = 0.6f; });
+        mk ("A/B sound only, OS 4x + drive 6",   [](auto& q){ q.oversample = anamorph::OversampleFactor::x4; q.driveDb = 6.0f; },
+            [](auto& q){ q.oversample = anamorph::OversampleFactor::x4; q.driveDb = 6.0f;
+                         q.width = 1.8f; q.algoAmount = 0.35f; q.mix = 0.6f; });
+        mk ("A/B sound only, OS 4x + drive 0",   [](auto& q){ q.oversample = anamorph::OversampleFactor::x4; },
+            [](auto& q){ q.oversample = anamorph::OversampleFactor::x4;
+                         q.width = 1.8f; q.algoAmount = 0.35f; q.mix = 0.6f; });
+        mk ("A/B crossing drive 0<->6, OS 4x",   [](auto& q){ q.oversample = anamorph::OversampleFactor::x4; q.driveDb = 0.0f; },
+            [](auto& q){ q.oversample = anamorph::OversampleFactor::x4; q.driveDb = 6.0f; });
+        mk ("A/B changing the FACTOR Off->4x",   [](auto&){},
+            [](auto& q){ q.oversample = anamorph::OversampleFactor::x4; });
+        mk ("A/B changing the FACTOR 2x->4x",    [](auto& q){ q.oversample = anamorph::OversampleFactor::x2; q.driveDb = 6.0f; },
+            [](auto& q){ q.oversample = anamorph::OversampleFactor::x4; q.driveDb = 6.0f; });
+        mk ("A/B changing the ALGORITHM",        [](auto&){},
+            [](auto& q){ q.algorithm = anamorph::Algorithm::Velvet; });
+    }
+
+    for (const auto& c : cases)
+    {
+        anamorph::AnamorphEngine e;
+        auto p = c.from;
+        e.primeParameters (p); e.prepare (sr, bs); e.setParameters (p);
+        std::vector<float> l, r; l.reserve (51200); r.reserve (51200);
+        juce::AudioBuffer<float> buf (2, bs);
+        double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * 220.0 / sr;
+        const int settle = 400, tail = 400, swapAt = 400;
+        for (int n = 0; n < settle + tail; ++n)
+        {
+            for (int i = 0; i < bs; ++i)
+            {   // a slightly decorrelated stereo source so SIDE energy exists to lose
+                const float a = 0.5f * (float) std::sin (phase);
+                const float b = 0.5f * (float) std::sin (phase * 1.5 + 0.7);
+                phase += inc;
+                buf.setSample (0, i, a); buf.setSample (1, i, b);
+            }
+            if (n == swapAt) { e.requestDuck(); p = c.to; }
+            e.setParameters (p); e.process (buf);
+            for (int i = 0; i < bs; ++i) { l.push_back (buf.getSample (0, i)); r.push_back (buf.getSample (1, i)); }
+        }
+        const int sw = swapAt * bs;
+        auto winRms = [&] (const std::vector<float>& v, int at, int w)
+        { double s = 0.0; for (int k = 0; k < w; ++k) { const double x = v[(size_t)(at + k)]; s += x * x; } return std::sqrt (s / w); };
+        auto winSide = [&] (int at, int w)
+        { double s = 0.0; for (int k = 0; k < w; ++k)
+          { const double d = 0.5 * (l[(size_t)(at + k)] - r[(size_t)(at + k)]); s += d * d; } return std::sqrt (s / w); };
+
+        double refRms = 0.0, refSide = 0.0, refStep = 0.0;
+        for (int i = sw - 100 * bs; i < sw - 128; i += 32)
+        { refRms = juce::jmax (refRms, winRms (l, i, 128)); refSide = juce::jmax (refSide, winSide (i, 128)); }
+        for (int i = sw - 100 * bs + 1; i < sw; ++i)
+            refStep = juce::jmax (refStep, (double) std::abs (l[(size_t) i] - l[(size_t) i - 1]));
+
+        double minRms = 1e9, minSide = 1e9, worstStep = 0.0;
+        for (int i = sw; i + 128 < (int) l.size(); ++i)
+        { minRms = juce::jmin (minRms, winRms (l, i, 128)); minSide = juce::jmin (minSide, winSide (i, 128)); }
+        for (int i = sw; i < (int) l.size(); ++i)
+            worstStep = juce::jmax (worstStep, (double) std::abs (l[(size_t) i] - l[(size_t) i - 1]));
+
+        std::printf ("  %-32s level %.4f (%+6.1f dB) | side %.4f (%+6.1f dB) | step x%.2f\n", c.name,
+                     minRms / refRms,  20.0 * std::log10 (juce::jmax (1e-12, minRms  / refRms)),
+                     minSide / refSide, 20.0 * std::log10 (juce::jmax (1e-12, minSide / refSide)),
+                     worstStep / juce::jmax (1e-9, refStep));
+    }
     return 0;
 }
 
@@ -5399,8 +5609,8 @@ int main (int argc, char* argv[])
     if (argc > 1 && std::strcmp (argv[1], "--os-latency-probe") == 0)
         return runOsLatencyProbe();
 
-    if (argc > 1 && std::strcmp (argv[1], "--fswap-probe") == 0)
-        return runForcedFactorSwapProbe();
+    if (argc > 1 && std::strcmp (argv[1], "--forced-swap-probe") == 0)
+        return runForcedSwapAuditProbe();
 
     std::printf ("=== Anamorph DSP self-tests ===\n");
 
@@ -5468,6 +5678,7 @@ int main (int argc, char* argv[])
     testResetClearsPendingForcedDuck();
     testPendingDuckDoesNotSurviveActivation();
     testOversamplingLatencyIsFactorOnly();
+    testDriveCrossingIsSeamlessWithOversampling();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
