@@ -158,14 +158,19 @@ bool PresetManager::isDirty() const
 
 // One signature of every SOUND parameter (same idea as the processor's undo
 // signature): cheap to compare, no float-tolerance surprises.
-juce::String PresetManager::soundSig() const
+juce::String PresetManager::soundSignatureFor (const juce::AudioProcessorValueTreeState& s)
 {
     juce::String sig;
-    for (auto* p : apvts.processor.getParameters())
+    for (auto* p : s.processor.getParameters())
         if (auto* wid = dynamic_cast<const juce::AudioProcessorParameterWithID*> (p))
             if (! pid::isPresetExcluded (wid->paramID))
                 sig << juce::String (p->getValue(), 5) << ',';
     return sig;
+}
+
+juce::String PresetManager::soundSig() const
+{
+    return soundSignatureFor (apvts);
 }
 
 // Presets always start with the per-band solo off (0.6.10 #9); undo still restores
@@ -330,6 +335,7 @@ void PresetManager::load (int index)
     sel = e.isFactory ? Selection { Selection::Kind::factory,  e.factoryId, {} }
                       : Selection { Selection::Kind::userFile, {},          e.file };
     sigAtLoad = soundSig();
+    if (onMetaChanged) onMetaChanged();
     if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
 }
 
@@ -348,6 +354,7 @@ bool PresetManager::loadFile (const juce::File& f)
     // leaves the menu unticked, which is what it should show (#4).
     sel = { Selection::Kind::userFile, {}, f };
     sigAtLoad = soundSig();
+    if (onMetaChanged) onMetaChanged();
     if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
     return true;
 }
@@ -389,6 +396,7 @@ bool PresetManager::saveUser (const juce::String& rawName)
     auto xml  = apvts.copyState().createXml();
     if (xml == nullptr || ! file.replaceWithText (xml->toString())) return false;
 
+    if (onAboutToSave) onAboutToSave(); // a pending host restore is adopted before this save lands on it (D-2)
     refresh();
     current = name;
     // Saving SELECTS what was just written, by file. This is the case the ID split
@@ -396,6 +404,7 @@ bool PresetManager::saveUser (const juce::String& rawName)
     // tick to the USER row instead of leaving it on the factory one (#4).
     sel = { Selection::Kind::userFile, {}, file };
     sigAtLoad = soundSig();
+    if (onMetaChanged) onMetaChanged();
     if (onSaved) onSaved(); // re-baseline the processor's undo snapshot onto the saved preset
     return true;
 }
@@ -411,6 +420,7 @@ void PresetManager::adoptRestoredState (const juce::String& name, const Selectio
     current = name;
     sel = restoredSel;      // unknown for a pre-0.9.2 session -> the name fallback, as before (#4)
     sigAtLoad = soundSig(); // restored state counts as the clean baseline
+    if (onMetaChanged) onMetaChanged();
 }
 
 // ----------------------------------------------------------------------------

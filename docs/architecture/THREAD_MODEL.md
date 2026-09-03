@@ -11,9 +11,11 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 | **Message / GUI** | JUCE message loop; editor `juce::Timer` (24 Hz) + editor `meterVBlank` + per-visualizer `FrameClock` (display-rate vblank, capped ~120 Hz) | Painting, parameter writes (APVTS + InternalState), Undo coalesce, FFT, meter/scope *consumption*. |
 | **OpenGL render** | `openGLContext.attachTo(*this)` — **macOS/Windows only** | GPU compositing of the editor's paint. Absent on Linux/BSD. |
 | **Worker / background** | none | No `std::thread`/`Thread`/`ThreadPool`. FFT runs on the GUI thread. |
+| **Host state thread** (external) | host → `getStateInformation` / `setStateInformation` on a thread that is not the message thread: macOS AU `SaveState`/`RestoreState` (autosave), pluginval's AU background-thread state test, an out-of-spec VST3 host, JUCE's Linux VST3 wrapper before the host registers an `IRunLoop` | Applies the sound (the APVTS, JUCE-locked) and the oversampling atomic synchronously; exchanges the program metadata with the message thread through the two D-2 cells below. Owns nothing of the program state (ADR-0036). |
+| **Host prepare thread** (external) | host → `prepareToPlay` off the message thread (JUCE Linux VST3 pre-`IRunLoop`, FL Studio's Patcher, an AU `Initialize` off main) | Engine prepare under the format contract that no `processBlock` runs concurrently; latency through the D-1 request (round 15). |
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:261-329 (`processBlock`), :240 `ScopedNoDenormals`
+- Source: src/PluginProcessor.cpp:296-364 (`processBlock`), :240 `ScopedNoDenormals`
 - Source: src/PluginEditor.cpp:687 (24 Hz timer), :686-692 (VBlank), :306-320 (OpenGL gate)
 - Source: src/gui/Vectorscope.h:22 ("Nothing is ever drawn on the audio thread")
 
@@ -75,6 +77,20 @@ Editor destructor order (matters): release VBlank → `stopTimer()` → `openGLC
 | View-param + InternalState change generations (Wave 2 / H15) | `std::atomic<uint32> viewParamGen` and `InternalState::gen` (both relaxed) — the **same generation-hint pattern as `soundParamGen`**: no payload, no ordering role. Together with `soundParamGen` they cover every path that can move an animated widget while the cursor is outside the editor, so the 60 Hz micro-anim poll re-arms on three counter loads instead of hashing every tracked widget value per frame. | `ViewGenWatcher::parameterValueChanged` (Bypass — the one view param; whichever thread automates it); `InternalState::valueTreePropertyChanged` (message thread, incl. session restore) | Editor `stepMicroAnims()` pre-gate | PluginProcessor.h `viewParamGen`/`ViewGenWatcher`; InternalState.h `gen` |
 | Latency re-report request (D-1, KI-027) | `std::atomic<int> latencyUpdateRequest` — release store / acquire `exchange`, an ordering pair like the scope ring: the flag publishes the parameter, oversampling or (round 15, ER-STATE-19) prepare write that raised it. The engine's `latency2/4/8` are relaxed `std::atomic<int>` whose ordering rides on that flag. | `requestLatencyUpdate()` from any non-message thread — the APVTS listener under host automation (audio), `setStateInformation`'s tail and an off-message-thread `prepareToPlay` (host thread); synchronous when the caller IS the message thread | processor-owned 20 Hz `timerCallback()` → `deliverLatency()` → `setLatencySamples` on the message thread | PluginProcessor.h `latencyUpdateRequest`; PluginProcessor.cpp `requestLatencyUpdate` / `timerCallback`; AnamorphEngine.h `latency2` |
 
+### Host state thread ↔ Message (D-2 / ADR-0036, lock-free)
+| Data | Mechanism | Writer | Reader | Source |
+|---|---|---|---|---|
+| A restore's decoded metadata tail (preset name/baseline/identity, the resolved Settings values, the A/B slot set and active index) | `ExchangeCell<RestoreDecode> pendingRestore` — one `std::atomic<T*>`, `exchange` acq_rel both sides; ownership transfers with the exchange, at most one object exists | off-message-thread `setStateInformation` (after applying the sound and the oversampling atomic on its own thread) | message thread `adoptPendingHostState()` — the processor's 20 Hz timer, `pollUndoCoalesce` (the editor's tick), and the top of every entry point that mutates program state | PluginProcessor.h `ExchangeCell` / `pendingRestore`; PluginProcessor.cpp `setStateInformation` / `adoptPendingHostState` |
+| The program snapshot (name, baseline, selection, a copy of the Settings tree, active index, both slots) | `ExchangeCell<ProgramSnapshot> programMailbox` (same cell); `restoreGen` / `adoptedGen` (`release` store, `acquire` load) select between the mailbox and the host side's own view of an unadopted restore | message thread `publishProgram()` after every metadata mutation (`PresetManager::onMetaChanged`, `InternalState::onChanged`, the A/B paths, the adoption) | off-message-thread `getStateInformation` → `writeState()` from its own view plus the JUCE-locked `copyState()` | PluginProcessor.cpp `publishProgram` / `getStateInformation` / `writeState` |
+| The engine-facing Settings atomics (`osAtomic`, `animFloat`) | relaxed atomic stores, from the resolved values | off-message-thread `setStateInformation` (`InternalState::publishEngineConfig`), and the message thread's tree listener when it adopts the same values (idempotent) | audio `oversampleIndex()`; `prepareToPlay`; the imager | InternalState.h `publishEngineConfig` / `syncAtomicsFrom` |
+
+**Ownership.** Everything in the "program metadata" set is written only on the message thread and read
+directly only there; the editor's reads (`canUndo`, `abActiveSlot`, `currentName`, `isDirty`, the
+Settings bindings) therefore never race a restore. The host side's two views (`hostProgramView`,
+`hostRestoreView`) are plain `unique_ptr`s replaced by the one caller the host contract implies
+(state calls are serialized). Lifetime: each cell frees on replacement or in the destructor; nothing is
+freed while another thread can reach it, because a pointer is reachable from exactly one side.
+
 ### GUI → Audio
 | Data | Mechanism | Writer | Reader | Source |
 |---|---|---|---|---|
@@ -88,7 +104,10 @@ Editor destructor order (matters): release VBlank → `stopTimer()` → `openGLC
 
 - No painting, allocation, locking, or file IO on the audio thread.
 - No direct cross-thread access to non-atomic shared state. The only synchronisers are the
-  `ScopeBuffer` release/acquire index and relaxed published atomics.
+  `ScopeBuffer` release/acquire index, the D-1 latency flag, the two D-2 exchange cells and their
+  generation pair, and relaxed published atomics.
+- No host thread reads or writes program metadata directly (ADR-0036): a restore off the message
+  thread hands its decoded tail over; a save off the message thread reads a published snapshot.
 - `ScopeBuffer` is single-producer / single-reader-thread: exactly one audio writer; all reads
   happen on the message thread as stateless peeks (`readLatest` copies, `writeCount` staleness
   probe) — the Vectorscope and the SpectrumImager are two such read sites, never concurrent.

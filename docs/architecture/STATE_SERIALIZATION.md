@@ -4,9 +4,9 @@ How session state is saved and restored. The field-level ledger is in
 `SERIALIZATION_REGISTRY.md`; binding rules are in
 `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:964-994 (`getStateInformation`), :605-744
-(`setStateInformation`), :550-571 (the `writeSelection` / `readSelection` helpers);
-src/PresetManager.cpp:420-473 (`encodeSelection` / `decodeSelection`).
+Evidence [Verified]: src/PluginProcessor.cpp:1180-1221 (`getStateInformation`), :1226-1485
+(`decodeRestore` + `setStateInformation`), :980-999 (the `writeSelection` / `readSelection` helpers);
+src/PresetManager.cpp:430-483 (`encodeSelection` / `decodeSelection`).
 
 ## On-disk schema (`getStateInformation`)
 
@@ -59,10 +59,28 @@ a factory id removed by a later version, a user preset deleted, renamed or moved
 rather than falling back to a same-named row. The field-level ledger, including the file-name vs
 absolute-path encoding rule, is in `SERIALIZATION_REGISTRY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:964-994 (`getStateInformation`).
+Evidence [Verified]: src/PluginProcessor.cpp:1180-1221 (`getStateInformation`).
+
+## Which thread (D-2 / ADR-0036)
+
+Both entry points may be called on any thread the host chooses. **On the message thread** — every
+in-spec VST3 host, the standalone, pluginval VST3, the state suite — the logic below runs inline,
+exactly as it always has, with one addition at the top of each call: a restore still pending from a
+host thread is adopted first, so two restores land in the order they arrived. **On any other
+thread** the split is: the SOUND half (`apvts.replaceState` + `reassertParameters`, JUCE-owned and
+thread-aware) and the oversampling atomic run on the caller's thread, synchronously; the METADATA
+half — everything from step 2's Settings restore onwards — is decoded on the caller's thread into an
+immutable value and adopted by the message thread (`adoptPendingHostState`) from the processor's
+20 Hz timer or the next message-thread entry point. A save on another thread serializes from an
+immutable snapshot the message thread republishes after every metadata mutation — or, while a
+restore that same host thread handed over is still unadopted, from the view it built from that
+restore, so a save right after a restore describes what was restored. The bytes are the same either
+way (State test 37 compares a host-thread save with the owner's save, inside and after the pending
+window). `docs/architecture/THREAD_MODEL.md` carries the cells and their ordering.
 
 ## `getStateInformation` logic
 
+0. A pending host-thread restore is adopted (message thread; no-op when nothing is pending).
 1. `abEnsureInit()` — lazily materialise both A/B slots.
 2. Build "AnamorphRoot"; attach preset name + baseline as properties, then the indicator
    identity via `writeSelection` (`presetSource` / `presetFactoryId` / `presetUserFile`,
@@ -80,12 +98,22 @@ Evidence [Verified]: src/PluginProcessor.cpp:964-994 (`getStateInformation`).
 
 1. `getXmlFromBinary` → root tree.
 2. **If `AnamorphRoot`:**
-   - `apvts.replaceState` from the `ANAMORPH` child, **then `reassertParameters(params)`** —
-     synchronously re-apply each parameter from the restored tree, preferring the exact `raw`
-     attribute (falling back to the denormalised `value` for legacy sessions). This makes a
-     wholesale `replaceState` deterministic + idempotent and round-trips discrete params exactly.
-   - Restore InternalState from `ANAMORPH_INTERNAL` **if present**, **else**
-     `migrateFromLegacyApvts(params)` (pre-0.8.4 sessions had these as APVTS params).
+   - **`repairSerializedValues`** on a private copy of the `ANAMORPH` child — every malformed
+     serialized value (`nan`, `inf`, `abc`, `""`, `0x10`, `1e39`, a usable number outside the
+     parameter's range) is rewritten in that copy to the parameter default or the nearest range
+     endpoint, `value` and `raw` both, BEFORE the tree is handed to JUCE (since D-2: the live tree is
+     only ever written under JUCE's lock, and the host is told the repaired value during
+     `replaceState` rather than the clamped garbage first); then `apvts.replaceState` of that copy,
+     **then `reassertParameters(copy)`** — synchronously re-apply each parameter from the restored
+     tree, preferring the exact `raw` attribute (falling back to the denormalised `value` for legacy
+     sessions). This makes a wholesale `replaceState` deterministic + idempotent and round-trips
+     discrete params exactly.
+   - Resolve InternalState from `ANAMORPH_INTERNAL` **if present** (`InternalState::resolveRestore`),
+     **else** from the legacy APVTS params (`resolveLegacy`; pre-0.8.4 sessions had these as APVTS
+     params). The six resolved values are written into the Settings tree by the message thread
+     (`applyResolved`); off the message thread the oversampling atomic is stored immediately
+     (`publishEngineConfig`) so a `prepareToPlay` that follows on the same thread primes the engine
+     from the restored Setting.
    - Restore preset name + baseline (dirty-star reproduced) and decode the indicator identity
      (`readSelection` → `PresetManager::decodeSelection`); absent or unrecognised yields `unknown`,
      i.e. the pre-0.9.2 name fallback.
@@ -103,14 +131,17 @@ Evidence [Verified]: src/PluginProcessor.cpp:964-994 (`getStateInformation`).
      own state when it is switched into — "no baseline recorded" is not "modified". Both rules are
      stated field-by-field in `SERIALIZATION_REGISTRY.md`, `AB` child.
 3. **Else if the root is the bare APVTS state type:** backward-compat path for v0.2 sessions
-   (`apvts.replaceState` + `reassertParameters`).
+   (the same repair → `apvts.replaceState` → `reassertParameters` sequence, `resolveLegacy`, and the
+   A/B defaults).
 4. **Else — neither shape:** a foreign or forward-version root. Nothing above ran, so the function
    **returns here**: no parameter, Settings value or A/B slot was touched, and step 5 must not run
    either. Everything in step 5 *adopts* — it would clear the undo history for a session that never
    loaded and write a preset name, identity and baseline describing it, relabelling the sound the
    user actually has. Same answer as the `getXmlFromBinary` guard in step 1: input we do not
    recognise is not a restore.
-5. Clear undo history; adopt preset metadata **including the decoded identity**
+5. (Message thread — inline, or the adoption of the handed-over decode.) Write the resolved
+   Settings; assign the slot set (both slots, the active index, the Level-Match memory reset);
+   clear undo history; adopt preset metadata **including the decoded identity**
    (`setMeta` / `adoptRestoredState`); `syncCommitted()`. The name is resolved here and only here,
    because only this scope can tell an **absent** `presetName` (a session predating the field →
    `PresetManager::defaultName()`) from a **present but empty** one (a real "no preset" state →
@@ -128,13 +159,13 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 | **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :700-705 |
 | **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :688-692 (within `readSlot`, :652-693) |
 | **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :628-631; InternalState.h:106-128 |
-| **pre-0.9.2**: no indicator identity in the session | `decodeSelection` yields `unknown` → name fallback | src/PresetManager.cpp:456-473; :128-131 |
+| **pre-0.9.2**: no indicator identity in the session | `decodeSelection` yields `unknown` → name fallback | src/PresetManager.cpp:466-483; :128-131 |
 
 ## View-parameter preservation on restore
 
 `applyStatePreservingView` restores a snapshot but **keeps the current** shared view params
 (`pid::viewParams` = `bypass`) so an A/B / undo / preset apply never flips the view state.
-Evidence [Verified]: src/PluginProcessor.cpp:400-415 (`applyStatePreservingView`).
+Evidence [Verified]: src/PluginProcessor.cpp:437-461 (`applyStatePreservingView`).
 
 ## Invariants
 

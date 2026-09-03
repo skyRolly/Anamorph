@@ -6,8 +6,10 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** (2026-09-03, matching the CHANGELOG heading) — ADR-0035,
-the oversampling path crossfade, whose entry is LAST in the body; before it ADR-0034,
+Last updated: for the **0.9.7 change set** (2026-09-03, matching the CHANGELOG heading) — **D-2 /
+RISK-007 resolved as ADR-0036** (program state is message-thread-owned; host threads exchange
+immutable snapshots; the `tsan` CI lane), whose entry is LAST in the body; before it ADR-0035,
+the oversampling path crossfade; before it ADR-0034,
 the maintainer-instructed latency change. Before it, for the
 **0.9.6 change set** — the
 **engineering-review programme, rounds 1 through 27**, newest last in the body: round 1 (the
@@ -7907,3 +7909,59 @@ than two).
 adds 32), counted from `main`'s registered test functions. The state suite is unchanged at **35
 tests / 1506 checks**. Measured, not inferred: `AnamorphTests` prints `396 checks, 0 failures` and
 `AnamorphStateTests` prints `1506 checks, 0 failure(s)`. [Verified]
+
+## D-2 / RISK-007 — the state race outside the latency fields, resolved by ownership (2026-09-03, the 0.9.7 change set)
+
+The dedicated v0.9.7 threading/state hardening task. Every piece of program metadata the processor
+owns is now message-thread state; a host thread that saves or restores off the message thread
+exchanges immutable snapshots with it through two lock-free single-object cells (ADR-0036). Nothing on
+the audio thread changed. The full evidence trail — the access map, the ThreadSanitizer baseline on
+the two register probes and the new stress probe, the architecture, the validation — is
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §D-2.
+
+**Documents added**
+- `docs/architecture/design-decisions/ADR-0036-program-state-ownership.md` — the decision: context,
+  the three properties that had to hold at once, the options (narrow mutex, per-field atomics,
+  ownership + handoffs, reference-counted snapshots), the seven decision points, consequences.
+  Indexed in `ADR_INDEX.md`.
+- `tests/tsan_canary.cpp` — the `tsan` lane's liveness proof (a seeded, unmistakable data race).
+
+**Documents updated (the `DOCUMENTATION_LIFECYCLE_POLICY` trigger map for a threading change plus
+new tests and a CI lane)**
+- `docs/policies/THREADING_POLICY.md` — two new rows in the allowed-paths table (the restore handoff
+  and the program snapshot), §Host state calls rewritten from "a documented assumption" to "a covered
+  path", the atomic-usage rules gain the two cells' ordering, the evidence block gains D-2.
+- `docs/architecture/THREAD_MODEL.md` — the host state and host prepare threads in the thread
+  table; a new "Host state thread ↔ Message" path table with the ownership statement; the forbidden
+  list gains the no-direct-host-access rule.
+- `docs/architecture/STATE_SERIALIZATION.md` — a "Which thread" section; the restore logic re-stated
+  with the repair-before-`replaceState` step and the resolve/apply split of the Settings.
+- `docs/FUTURE_RISKS.md` — the header re-synced to v0.9.7; RISK-007 marked RESOLVED in the table and
+  with a resolution bullet at the top of its entry, the measured record kept in full.
+- `docs/procedures/TESTING.md` — the four TSan probes and their expected silence, the `tsan` lane,
+  State tests 37–41 one by one, the re-shaped tests 22 and 27; the CI table row; 40 tests.
+- `docs/policies/TESTING_POLICY.md` — Level 1b gains ThreadSanitizer; the gate's test count.
+- `docs/procedures/CI_CD.md` — the `tsan` job in the matrix and the job inventory; `build-tsan`.
+- `docs/REPOSITORY_MAP.md` — the state-test row and the `tsan_canary.cpp` row.
+- `docs/architecture/API_REFERENCE.md` — `adoptPendingHostState`; InternalState's
+  `resolveRestore` / `resolveLegacy` / `applyResolved` / `publishEngineConfig` / `onChanged`.
+- `docs/HANDOVER.md` — the version and test-status rows.
+- `CHANGELOG.md` — one `[0.9.7]` Fixed entry, in user terms.
+- `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` + `ENGINEERING_REVIEW_REPORT.html`
+  — the round and the dashboard (status, executive summary, the D-2 decision card, the roadmap row).
+
+**Citation re-anchoring.** The restore functions were restructured (`setStateInformation` became
+`decodeRestore` + `adoptRestoreTail` + `setStateInformation`; `getStateInformation` gained
+`writeState`; `InternalState`'s restore split into resolve and apply), so `--fix` re-anchored the
+citations whose text merely moved and reported eighteen whose cited lines were themselves edited.
+Those were re-derived by reading the span of the symbol each document names, and
+`scripts/check-citations.py`'s `DELIBERATE_REAIMS` was **emptied of every completed transition** —
+all of them retired by PR #135's merge, which the tool itself reported as "not needed against
+origin/main" — and refilled with this change's eighteen, each with a token the aim check verifies.
+The gate reads clean against `origin/main` (398 anchors) and its self-test passes.
+
+**Drift found and corrected (C6).** `SERIALIZATION_REGISTRY.md` and `STATE_SERIALIZATION.md` named
+`abResetToDefaults()`, which the decode's defaults replace, and `apvts.state.getType()`, which the
+decode no longer reads (it uses `apvtsStateType`, captured at construction); both were re-worded in
+place with the reason.
+

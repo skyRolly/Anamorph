@@ -7,6 +7,8 @@
 #include "AbSlotIndex.h"          // anamorph::kNumAbSlots (single source of truth for A/B sizing)
 #include "dsp/AnamorphEngine.h"
 
+#include <memory>
+
 // ============================================================================
 //  AnamorphAudioProcessor
 //
@@ -65,6 +67,26 @@ public:
     bool canUndo() const noexcept { return ! abUndo[abActive].undo.empty(); }
     bool canRedo() const noexcept { return ! abUndo[abActive].redo.empty(); }
     void pollUndoCoalesce();
+
+    // D-2 (RISK-007), 2026-09-03. Every piece of PROGRAM state this class owns -- the
+    // preset name / identity / dirty baseline, the two A/B slots and the active index,
+    // the per-slot Level-Match memory, the undo history, the committed baseline and
+    // gesture bookkeeping, and InternalState's Settings tree -- is MESSAGE-THREAD
+    // state: only the message thread ever writes it, and the editor reads it there.
+    // A host that calls setStateInformation from some other thread (the macOS AU
+    // autosave shape, pluginval's AU background-thread state test, an out-of-spec
+    // VST3 host) therefore no longer writes any of it: the sound half of the restore
+    // (the APVTS, JUCE-owned and thread-aware) and the engine-facing Settings atomic
+    // are applied synchronously on the caller's thread, and the DECODED metadata tail
+    // is handed to the message thread as one immutable object that this method adopts.
+    // It is served by the processor's own 20 Hz timer (so it runs with no editor
+    // open) and drained at the top of every message-thread entry point that reads or
+    // mutates program state, so a user action after a restore always sees the
+    // restore. Public because the editor's tick is one of those entry points (it goes
+    // through pollUndoCoalesce) and because the state suite drains deterministically
+    // instead of waiting a timer period. Message thread only; a no-op when nothing
+    // is pending (one relaxed atomic load).
+    void adoptPendingHostState();
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.
     void applyAutoGain();
@@ -137,12 +159,6 @@ private:
     void abEnsureInit();
     void abApplySlot (int slot);
 
-    // The restore-side counterpart to abEnsureInit(): drop both slots and the
-    // active index back to their documented defaults, for a blob that carries no
-    // A/B data at all. See the definition for why this exists separately from
-    // readSlot's per-slot reset.
-    void abResetToDefaults() noexcept;
-
     // A complete "state set" (#6): the sound parameters PLUS the preset metadata
     // (base name + clean baseline signature) that determines the displayed name
     // and dirty-star. Every undo entry and every A/B slot stores one of these, so
@@ -211,10 +227,133 @@ private:
     StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;
     // Remembered Level-Match per A/B slot (#23). A runtime cache, never serialized --
-    // and therefore reset by abResetToDefaults() along with the slots themselves, or a
+    // and therefore reset by every restore along with the slots themselves, or a
     // restore with no A/B data would leak the previous project's gains into the first
     // switch (ER-STATE-20). 0 dB is both the initialiser and the fresh-instance value.
     float abMatchGain[anamorph::kNumAbSlots] = { 0.0f, 0.0f };
+
+    // ------------------------------------------------------------------------
+    //  D-2 (RISK-007): the program-state ownership boundary. ADR-0036.
+    //
+    //  THREADS. `M` is the JUCE message thread (the editor, this processor's timer,
+    //  every in-spec VST3 host call). `H` is any other thread a host uses for
+    //  getStateInformation / setStateInformation. The audio thread touches nothing
+    //  in this section: its inputs are the APVTS parameter atomics, InternalState's
+    //  oversampling atomic and `soloPreviewMask`, exactly as before.
+    //
+    //  OWNERSHIP. Everything above this comment that is not an atomic is owned by
+    //  M. Two immutable value types cross the M/H boundary, each through its own
+    //  single-object exchange cell whose ownership rule is: whichever side's
+    //  `exchange` returns the pointer owns it. No hazard pointers, no reader-side
+    //  lock, no reference-count race -- the same request/consume shape D-1 uses
+    //  for the latency flag, with a payload. The host contract that its state calls
+    //  are serialized (never two at once) is what makes H "one side"; it is the
+    //  same contract JUCE's AudioProcessor already relies on.
+    //
+    //    H -> M  `pendingRestore`: the DECODED tail of an off-message-thread
+    //            restore. H publishes it after applying the sound (APVTS) and the
+    //            engine-facing Settings atomics synchronously; M adopts it in
+    //            adoptPendingHostState() with the code that runs inline on M. A
+    //            restore superseded before adoption is freed by the H side that
+    //            supersedes it, so at most one object ever exists.
+    //    M -> H  `programMailbox`: an immutable snapshot of the program state M
+    //            owns, republished after every mutation of it. An off-message-thread
+    //            getStateInformation takes the latest into its own H-side view
+    //            (`hostProgramView`) and serializes from that plus the JUCE-locked
+    //            APVTS copy. M frees a snapshot H never took; H frees the view it
+    //            replaces.
+    //
+    //  THE PENDING WINDOW. Between H publishing a restore and M adopting it, an
+    //  H-side save must describe the sound H just applied, not the previous
+    //  program: H keeps the view it built from that restore (`hostRestoreView`) and
+    //  prefers it while `restoreGen` (H) is ahead of `adoptedGen` (M).
+    //
+    //  LIFETIME, in full: `pendingRestore` and `programMailbox` hold at most one
+    //  object each and free it on replacement or in the destructor; the two H-side
+    //  views are unique_ptrs replaced on H and destroyed with the processor. Nothing
+    //  is ever freed while another thread can still reach it, because a pointer is
+    //  reachable from exactly one side at a time.
+    // ------------------------------------------------------------------------
+
+    // The program metadata a save needs, as ONE immutable value. A slot whose
+    // params tree is INVALID means "lazily initialised from current"
+    // (SERIALIZATION_REGISTRY.md, `AB` child) and is resolved at serialization time
+    // from the live parameters plus this snapshot's own preset metadata -- which is
+    // what abEnsureInit() does on the message thread.
+    struct ProgramSnapshot
+    {
+        juce::String presetName, presetBaseline;
+        anamorph::PresetManager::Selection presetSelection;
+        juce::ValueTree internalState;                 // a private copy of the Settings tree
+        int abActive = 0;
+        StateSet abSlot[anamorph::kNumAbSlots];
+    };
+
+    // What a restore DECODES from the blob before anything but the sound is applied:
+    // the exact inputs of the adoption tail, thread-neutral. Built on the caller's
+    // thread; adopted on M (inline when the caller IS M, else through the cell).
+    struct RestoreDecode
+    {
+        juce::uint32 generation = 0;                   // set only for the H -> M handoff
+        juce::String restoredName, restoredBaseline;
+        bool haveName = false, haveBaseline = false;   // property PRESENT, as opposed to non-empty
+        anamorph::PresetManager::Selection restoredSelection;
+        juce::ValueTree internalResolved;              // the six typed Settings values to write
+        int abActive = 0;
+        StateSet abSlot[anamorph::kNumAbSlots];        // invalid params = the documented default
+    };
+
+    // A single-object handoff cell. `put` publishes and frees whatever the other side
+    // never took; `take` claims ownership. Both are one acq_rel exchange.
+    template <typename T>
+    struct ExchangeCell
+    {
+        ~ExchangeCell() { delete slot.load (std::memory_order_acquire); }
+        void put (T* fresh) noexcept { delete slot.exchange (fresh, std::memory_order_acq_rel); }
+        T*   take() noexcept         { return slot.exchange (nullptr, std::memory_order_acq_rel); }
+        bool empty() const noexcept  { return slot.load (std::memory_order_relaxed) == nullptr; }
+        std::atomic<T*> slot { nullptr };
+    };
+
+    ExchangeCell<RestoreDecode>   pendingRestore;    // H -> M
+    ExchangeCell<ProgramSnapshot> programMailbox;    // M -> H
+    std::unique_ptr<const ProgramSnapshot> hostProgramView, hostRestoreView; // H-side only
+    std::atomic<juce::uint32> restoreGen { 0 };      // H: the last restore it published
+    std::atomic<juce::uint32> adoptedGen { 0 };      // M: the last one it adopted
+    bool adoptingRestore = false;                    // M: suppress per-field publishes inside an adoption
+
+    // The APVTS root type, captured once at construction so no thread reads the live
+    // `apvts.state` handle to learn it (JUCE guards the tree's contents with its own
+    // lock; the handle itself is assigned under that lock by replaceState).
+    juce::Identifier apvtsStateType;
+
+    // True on the message thread, and when no MessageManager exists at all (a
+    // harness): the one predicate that decides "inline" versus "hand off", shared
+    // by the latency request (D-1) and the program-state handoff (D-2).
+    static bool onMessageThreadOrNoMessageManager() noexcept;
+
+    // Decode a blob into a RestoreDecode, applying the SOUND (the APVTS) on the
+    // caller's thread as a side effect -- that half is JUCE-owned and thread-aware
+    // and must be synchronous for the ordinary setState-then-prepareToPlay order.
+    // Returns false for input that is not a restore (nothing was touched).
+    bool decodeRestore (const void* data, int sizeInBytes, RestoreDecode& out);
+    // The adoption tail, message thread only: today's restore tail, verbatim.
+    void adoptRestoreTail (const RestoreDecode&);
+    // Serialize a program snapshot plus the live parameters. Any thread: the APVTS
+    // copy is JUCE-locked and the snapshot is immutable.
+    void writeState (const ProgramSnapshot&, juce::MemoryBlock& destData);
+    // The message thread's own program state as a snapshot value (M only).
+    ProgramSnapshot ownedProgram() const;
+    // Republish `ownedProgram()` into the mailbox (M only; skipped inside an adoption).
+    void publishProgram();
+    // The H-side view of a restore H just decoded: what M will own once it adopts it.
+    static std::unique_ptr<const ProgramSnapshot> viewOfRestore (const RestoreDecode&, const juce::String& liveSoundSig);
+    // The sound half of a restore on the caller's thread: repair on our copy, one
+    // locked replaceState, then reassert.
+    void applySoundTree (const juce::ValueTree& soundTree);
+    // The serialized-text half of the malformed-value repair, on a tree WE own and
+    // are about to hand to replaceState (see the .cpp for why it moved here).
+    void repairSerializedValues (juce::ValueTree& tree) const;
 
     juce::AudioProcessorValueTreeState apvts;
     ParamPointers params;

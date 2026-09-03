@@ -194,37 +194,54 @@ public:
 
     // --- state persistence ----------------------------------------------
     juce::ValueTree copyState() const { return tree.createCopy(); }
-    void restoreState (const juce::ValueTree& src)
-    {
-        if (! src.isValid()) return;
 
-        // EVERY field is written, present or not: an absent one takes its documented
-        // default (the registry's `ANAMORPH_INTERNAL` table), exactly as
-        // migrateFromLegacyApvts already does for the legacy shape. `tree` is a
-        // processor member and a host restores into ONE live instance repeatedly,
-        // so skipping an absent field does not mean "leave it alone" -- it means
-        // "keep the PREVIOUS project's value", which is not a state this session
-        // ever described. Measured before this loop wrote unconditionally
-        // (ER-STATE-18, --partial-settings-probe): a modern session omitting a
-        // single Setting inherited the previous project's value in 6 cases out of
-        // 6, while the legacy path inherited in 0 -- the reverse of where the
-        // review looked. A session that CARRIES the field is unaffected: it is
-        // written from `src` exactly as before.
-        // PRESENT values are REPAIRED to their domain rather than adopted verbatim,
-        // and the repaired value is what gets written -- so a later save persists it
-        // and a reload reads it back unchanged (the maintainer's Policy B, approved
-        // 2026-09-02, ER-STATE-21). Before it, a present-but-invalid value was kept
-        // exactly as the file spelled it: measured over nineteen malformed inputs,
-        // all nineteen survived into the next save, eight left an out-of-domain
-        // ComboBox id in the tree and three left a non-finite scope persistence.
-        // A VALID present value is returned unchanged by repairedValue(), so an
-        // ordinary session restores exactly as before.
+    // A restore is two things, and since D-2 (RISK-007, ADR-0036) they happen on
+    // two different threads when the host calls setStateInformation off the
+    // message thread: RESOLVING what the six fields should become (pure, any
+    // thread) and WRITING them into the tree the GUI binds to (message thread
+    // only -- the juce::Value bindings read this tree there). The two static
+    // resolvers below produce the exact values the former in-place loops wrote,
+    // typed as they wrote them; `applyResolved` is the former loop's write half;
+    // `publishEngineConfig` is the one part of a restore that must reach the
+    // engine SYNCHRONOUSLY on the caller's thread (the oversampling atomic the
+    // audio thread and prepareToPlay read), so the ordinary setState-then-activate
+    // host order still comes up at the restored oversampling from the first sample.
+    // restoreState / migrateFromLegacyApvts keep their message-thread meaning as
+    // resolve-then-apply, so every existing call site and test reads unchanged.
+    void restoreState (const juce::ValueTree& src)          { applyResolved (resolveRestore (src)); }
+    void migrateFromLegacyApvts (const juce::ValueTree& t)  { applyResolved (resolveLegacy (t)); }
+
+    // The six fields a MODERN session restores to, from its ANAMORPH_INTERNAL node.
+    // EVERY field is resolved, present or not: an absent one takes its documented
+    // default (the registry's `ANAMORPH_INTERNAL` table), exactly as the legacy
+    // resolver does for the legacy shape. `tree` is a processor member and a host
+    // restores into ONE live instance repeatedly, so skipping an absent field does
+    // not mean "leave it alone" -- it means "keep the PREVIOUS project's value",
+    // which is not a state this session ever described. Measured before this loop
+    // wrote unconditionally (ER-STATE-18, --partial-settings-probe): a modern
+    // session omitting a single Setting inherited the previous project's value in
+    // 6 cases out of 6, while the legacy path inherited in 0 -- the reverse of
+    // where the review looked. A session that CARRIES the field is unaffected.
+    // PRESENT values are REPAIRED to their domain rather than adopted verbatim, and
+    // the repaired value is what gets written -- so a later save persists it and a
+    // reload reads it back unchanged (the maintainer's Policy B, approved
+    // 2026-09-02, ER-STATE-21). Before it, a present-but-invalid value was kept
+    // exactly as the file spelled it: measured over nineteen malformed inputs, all
+    // nineteen survived into the next save, eight left an out-of-domain ComboBox id
+    // in the tree and three left a non-finite scope persistence. A VALID present
+    // value is returned unchanged by repairedValue(), so an ordinary session
+    // restores exactly as before. Returns an INVALID tree for invalid input, which
+    // applyResolved ignores -- the former early return.
+    static juce::ValueTree resolveRestore (const juce::ValueTree& src)
+    {
+        if (! src.isValid()) return {};
+        juce::ValueTree out ("ANAMORPH_INTERNAL");
         for (const auto& s : settings())
-            tree.setProperty (s.id,
-                              src.hasProperty (s.id) ? repairedValue (s, src.getProperty (s.id))
-                                                     : s.defaultValue,
-                              nullptr);
-        // (syncAtomics + onOversampleChanged run via the property-change callbacks above.)
+            out.setProperty (s.id,
+                             src.hasProperty (s.id) ? repairedValue (s, src.getProperty (s.id))
+                                                    : s.defaultValue,
+                             nullptr);
+        return out;
     }
 
     // One-time migration from a pre-0.8.4 session, where these were ordinary APVTS
@@ -232,9 +249,9 @@ public:
     // saved Oversampling / UI Scale / Persistence / Tooltips / Animations / Show Meters
     // would silently revert to defaults. Reads the legacy PARAM nodes (id/value) out of the
     // saved APVTS state and maps them onto the host-hidden InternalState.
-    void migrateFromLegacyApvts (const juce::ValueTree& apvtsState)
+    static juce::ValueTree resolveLegacy (const juce::ValueTree& apvtsState)
     {
-        if (! apvtsState.isValid()) return;
+        if (! apvtsState.isValid()) return {};
 
         // A legacy PARAM value is used only when it is a USABLE serialized number --
         // the same predicate the session and preset restore paths apply
@@ -277,13 +294,47 @@ public:
         {
             return (int) juce::jlimit (0.0, (double) (count - 1), index0) + 1;
         };
-        tree.setProperty (iid::oversample,   comboId (legacy ("oversample", 0.0), 4), nullptr); // ids 1..4
-        tree.setProperty (iid::uiScale,      comboId (legacy ("uiScale",    2.0), 5), nullptr); // ids 1..5
-        tree.setProperty (iid::scopePersist, juce::jlimit (0.0, 1.0, legacy ("scopePersist", 0.5)), nullptr);
-        tree.setProperty (iid::metersOn,     legacy ("metersOn",   0.0) > 0.5,     nullptr);
-        tree.setProperty (iid::tooltipsOn,   legacy ("tooltipsOn", 0.0) > 0.5,     nullptr);
-        tree.setProperty (iid::uiAnimations, legacy ("uiAnimations", 1.0) > 0.5,   nullptr);
+        juce::ValueTree out ("ANAMORPH_INTERNAL");
+        out.setProperty (iid::oversample,   comboId (legacy ("oversample", 0.0), 4), nullptr); // ids 1..4
+        out.setProperty (iid::uiScale,      comboId (legacy ("uiScale",    2.0), 5), nullptr); // ids 1..5
+        out.setProperty (iid::scopePersist, juce::jlimit (0.0, 1.0, legacy ("scopePersist", 0.5)), nullptr);
+        out.setProperty (iid::metersOn,     legacy ("metersOn",   0.0) > 0.5,     nullptr);
+        out.setProperty (iid::tooltipsOn,   legacy ("tooltipsOn", 0.0) > 0.5,     nullptr);
+        out.setProperty (iid::uiAnimations, legacy ("uiAnimations", 1.0) > 0.5,   nullptr);
+        return out;
     }
+
+    // Write a resolved set into the GUI-bound tree. MESSAGE THREAD ONLY: the
+    // juce::Value bindings and the editor's getters read `tree` there, and
+    // ValueTree is not a synchronised type. Every field is written, in the table's
+    // order, so the listener fires (syncAtomics + onOversampleChanged + onChanged)
+    // exactly as the in-place loops did. An invalid tree is a no-op (the former
+    // early returns for invalid input).
+    void applyResolved (const juce::ValueTree& resolved)
+    {
+        if (! resolved.isValid()) return;
+        for (const auto& s : settings())
+            tree.setProperty (s.id, resolved.getProperty (s.id), nullptr);
+        // (syncAtomics + onOversampleChanged + onChanged run via the property-change callbacks above.)
+    }
+
+    // The engine-facing half of a restore, for a caller that is NOT the message
+    // thread (D-2): the oversampling atomic the audio thread reads every block and
+    // prepareToPlay reads to prime the engine, and the animation flag the imager
+    // polls. Atomic stores only -- the tree is untouched, and the message thread's
+    // later applyResolved() stores the same values again (idempotent) when it
+    // adopts the restore. No callback fires here; the caller raises the latency
+    // request itself (setStateInformation always has, unconditionally).
+    void publishEngineConfig (const juce::ValueTree& resolved) noexcept
+    {
+        if (! resolved.isValid()) return;
+        syncAtomicsFrom (resolved);
+    }
+
+    // Fired (message thread) after ANY property of the tree changed -- a Settings
+    // edit through a juce::Value binding, or a restore's adoption. The processor
+    // republishes its program snapshot from it (D-2). Empty when nothing is wired.
+    std::function<void()> onChanged;
 
 private:
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier& id) override
@@ -291,11 +342,13 @@ private:
         gen.fetch_add (1, std::memory_order_relaxed); // H15 re-arm signal
         syncAtomics();
         if (id == iid::oversample && onOversampleChanged) onOversampleChanged();
+        if (onChanged) onChanged();
     }
-    void syncAtomics()
+    void syncAtomics() { syncAtomicsFrom (tree); }
+    void syncAtomicsFrom (const juce::ValueTree& t) noexcept
     {
-        osAtomic.store (juce::jlimit (0, 3, (int) tree[iid::oversample] - 1), std::memory_order_relaxed);
-        animFloat.store ((bool) tree[iid::uiAnimations] ? 1.0f : 0.0f, std::memory_order_relaxed);
+        osAtomic.store (juce::jlimit (0, 3, (int) t[iid::oversample] - 1), std::memory_order_relaxed);
+        animFloat.store ((bool) t[iid::uiAnimations] ? 1.0f : 0.0f, std::memory_order_relaxed);
     }
 
     juce::ValueTree tree;

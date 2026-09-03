@@ -89,6 +89,7 @@ jobs that guard classes the build matrix cannot see:
 | **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, then `check-citations.py --check`) | — |
 | **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, and a `-fsyntax-only` compile of the two opt-in instruments | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
+| **tsan** | `ubuntu-latest` | Clang ThreadSanitizer build of the state suite; the four cross-thread probes ×5 and the suite once, behind a seeded-race canary (D-2 / ADR-0036) | — |
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
@@ -275,6 +276,24 @@ edge above must not be read as release non-blocking.
   **allocation** detection switched off — lock and blocking-call interception survives, but
   allocation is the class this suite exists to police, and on a healthy tree the run exits 0 either
   way.
+- **tsan** — the state suite built with **`-fsanitize=thread`** (added 2026-09-03, ADR-0036), the
+  mechanical guard for D-2 / RISK-007: the plug-in's program state is message-thread-owned and a host
+  thread reaches it only through two lock-free exchange cells, and this is the one tool in the
+  pipeline that can see a torn read — ASan, UBSan, valgrind and RTSan all treat one as correct code.
+  It runs the four opt-in probes the suite never runs on its own (`--state-thread-probe`,
+  `--state-prepare-race-probe`, `--reprepare-race-probe`, `--d2-stress-probe`) **five times each**,
+  because a race that failed to reproduce is not one that was eliminated, and then the whole suite
+  once under the instrument. Its own job by driver restriction (clang rejects `thread` alongside
+  `address`, `undefined` or `realtime`), its own build directory and ccache lineage.
+  `TSAN_OPTIONS=halt_on_error=1:exitcode=66:report_bugs=1` is the gate: TSan reports and CONTINUES
+  by default, so halting makes a red run short and its first report the one at the top; the exit
+  code restates the default so a future change to it cannot turn a report into a green step. A
+  **liveness canary** (`tests/tsan_canary.cpp`, two threads writing one plain int) runs first and
+  the step fails unless it aborts *with* a `ThreadSanitizer: data race` report — both halves, for
+  the reason the RTSan canary records. `vm.mmap_rnd_bits` is lowered to 28 first: the sanitizer's
+  shadow-memory layout cannot cope with the 32-bit ASLR entropy newer runner images default to.
+  A report from inside JUCE would fail this lane too, deliberately: the boundary being measured is
+  the plug-in's, and a JUCE-internal report would be evidence that it is not where ADR-0036 says.
 - **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18),
   the **GCC-only first-party warning gate** (§The GCC warning baseline), and the liveness builds of
   the two committed instruments: `AnamorphBench` (built and smoke-run, no timing asserted) and, since
@@ -505,7 +524,7 @@ unit that reads it (`CMakeLists.txt`, `set_source_files_properties` beside the v
 `src/PluginEditor.cpp` already carried the `#ifndef … "0"` fallback). Nothing else ever read it.
 A second property is inherited rather than created: each job's build directory name is fixed
 (`build`, `build-san`, `build-vg`, `build-lto`, `build-bench`, `build-dump`, `build-rtsan`,
-`build-fuzz`), which matters because FetchContent puts JUCE
+`build-tsan`, `build-fuzz`), which matters because FetchContent puts JUCE
 *inside* the build directory, so its path is in the `-I` flags of every compile — the same tree
 built at two different directory names shares nothing.
 
@@ -1000,7 +1019,7 @@ not audited, and a clean run means none of them **moved**.
 
 **Since 2026-08-21 that hole is closed for the anchors that say what they point at.** A citation
 written in this repository's own convention carries the symbol beside the line number —
-`` src/PluginProcessor.cpp:183-193 (`updateLatency`) `` — and the checker now reads that gloss and
+`` src/PluginProcessor.cpp:202-212 (`updateLatency`) `` — and the checker now reads that gloss and
 asserts the token is in the cited lines. It needs no base revision, because it is not a question
 about drift: it asks whether an anchor lands on what its own document says it lands on, in the tree
 as it is now. Exactly two gloss shapes are claimed — one backticked identifier, or one double-quoted
@@ -1332,7 +1351,7 @@ lipo -archs build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/MacOS/A
 scripts/run-tests.sh                       # unprefixed: the binaries are native here
 ```
 
-The `sanitizers`, `realtime` and `fuzz` jobs use their own build trees so they never collide with the one
+The `sanitizers`, `realtime`, `tsan` and `fuzz` jobs use their own build trees so they never collide with the one
 above — `build-clang`, `build-san`, `build-vg`. All are covered by `.gitignore`'s `build*/`.
 
 ```bash

@@ -23,7 +23,14 @@ No production change; D-1 untouched. Prior:
 verification (a JUCE Linux VST3 wrapper behaviour, host prevalence unknown) — and RISK-007 gains a
 round-15 note recording that the same thread class reached `prepareToPlay`, is closed there, and
 that its pluginval argument is a VST3-only statement. Prior:
-Version-synced to **v0.9.6** (the round-1 engineering-review fixes — **one new entry, RISK-007**:
+Version-synced to **v0.9.7** (D-2 / ADR-0036, 2026-09-03 — **RISK-007 RESOLVED**: the off-message-thread
+state-call exposure is closed by making every piece of program metadata message-thread-owned and giving a
+host thread two lock-free exchange cells to reach it through; the entry is kept in full below, with its
+measurements, as the record of what was closed and how it was measured. **No new entry.** RISK-008 is
+unchanged: the D-2 handoff waits with the rest of the message queue in that host, and the entry's
+"no crash and no undefined behaviour" holds for it too — the sound and the oversampling atomic are live,
+and host saves are served from the host side's own view.)
+Prior sync: **v0.9.6** (the round-1 engineering-review fixes — **one new entry, RISK-007**:
 the off-main-thread state-call exposure, found by the review's thread-safety lens and recorded
 here because the guard that would close it is itself an Architecture-Review-Gate item. The same
 sync corrects two pieces of drift per `DOCUMENTATION_LIFECYCLE_POLICY` C6: this header **was
@@ -89,7 +96,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-004 | pluginval signal-only retry could mask a real future editor crash | Medium | Low |
 | RISK-005 | Manual-only audio/visual + host validation lets regressions ship green | Medium | Medium |
 | RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the commercial JUCE licence required by the closed-source model is not yet obtained | High | High (already true) |
-| RISK-007 | State calls on a non-main host thread race message-thread state (AU autosave; out-of-spec VST3 hosts) | Medium | Low |
+| RISK-007 | **RESOLVED 2026-09-03 (D-2, ADR-0036)** — State calls on a non-main host thread raced message-thread state (AU autosave; out-of-spec VST3 hosts); program metadata is now message-thread-owned and exchanged through two lock-free cells | — | — |
 | RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Low — real-host validated in REAPER; other Linux hosts unverified |
 
 ---
@@ -218,9 +225,31 @@ mitigation. Do not invent risks to fill the template.
   terms.
 
 ## RISK-007 — State calls on a non-main host thread (unguarded Anamorph-owned tail)
-- **Risk:** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
+- **RESOLVED 2026-09-03 — decision D-2, implemented as ADR-0036 (the 0.9.7 change set).** The
+  register entry below is kept in full as the measured record. What closed it: every piece of
+  program metadata this entry names — `internal.restoreState`'s tree, `abSlot`/`abActive`/`abUndo`,
+  `presets.setMeta`/`adoptRestoredState`, `syncCommitted` — is now **message-thread state** that only
+  the message thread writes and reads directly. An off-message-thread `setStateInformation` applies
+  the sound (the APVTS, JUCE-locked) and the oversampling atomic on its own thread and hands the
+  DECODED metadata tail to the message thread through one `std::atomic<T*>::exchange` cell (the D-1
+  shape with a payload), adopted by the processor's 20 Hz timer and at the top of every message-thread
+  entry point that mutates program state; an off-message-thread `getStateInformation` reads an
+  immutable snapshot the message thread republishes after every mutation, or — while a restore that
+  side handed over is still unadopted — the view it built from that restore. No mutex, no
+  `callAsync`, no wait; the audio thread and the message-thread path are unchanged. The four members
+  measured below no longer have a second thread touching them; the `juce::String` exchange has no
+  cross-thread reader left. **Measured:** `--state-thread-probe`, `--state-prepare-race-probe`,
+  `--reprepare-race-probe` and the new `--d2-stress-probe` (host restore + save, off-thread prepare,
+  the audio thread and an editor-shaped message thread, all at once) under ThreadSanitizer, repeated
+  — silent after, against a report in every pre-change run; State tests 37–41 pin the contract
+  deterministically and the `tsan` CI lane keeps it (`docs/procedures/TESTING.md`;
+  `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §D-2). The one behaviour nuance is
+  recorded in ADR-0036 §Consequences: on the off-message-thread path the metadata tail becomes visible
+  to the editor within one timer period (≤ 50 ms) rather than instantly, and a user action landing
+  inside that window is ordered after the restore.
+- **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`/`adoptRestoredState`, `syncCommitted` (src/PluginProcessor.cpp:1001-1256 read
+  `presets.setMeta`/`adoptRestoredState`, `syncCommitted` (src/PluginProcessor.cpp:1226-1485 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -298,7 +327,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:1001`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:1432`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -307,8 +336,8 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:1065`, against `canUndo()`; the `abUndo` vector's internals twice, via
-  `UndoStacks::operator=` (`src/PluginProcessor.h:184`) against the reader's iteration; and the
+  `src/PluginProcessor.cpp:1081`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `UndoStacks::operator=` (`src/PluginProcessor.h:200`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture
   change.

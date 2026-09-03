@@ -29,6 +29,162 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## D-2 / RISK-007 — 2026-09-03 — program state becomes message-thread-owned; host threads exchange immutable snapshots (ADR-0036)
+
+> *"State race remains outside latency fields. Atomic latency values do not synchronize concurrent
+> restore, prepare, A/B, preset, or engine state."* — the D-2 finding, re-raised as a dedicated
+> v0.9.7 threading/state hardening task with a fixed brief: evidence first, an explicit ownership
+> model, no lock on the audio thread, no behaviour change beyond what a demonstrated race requires.
+
+**An `ARCHITECTURE_REVIEW_GATE` "Thread Model change"** (a new cross-thread path and a new atomic
+ordering), discharged by the maintainer's instruction that opened the task and recorded as
+**ADR-0036**. D-2 was deferred in round 4 with its measurement complete; this is its implementation.
+
+### 1. The audit: who touches what, from where
+
+Every access to the raced members was mapped before a line changed (the full table is in
+ADR-0036 §Context and `docs/architecture/THREAD_MODEL.md`). The threads that actually occur:
+**A** (audio), **M** (JUCE's message thread — the editor, this processor's 20 Hz timer, the APVTS
+flush timer, every in-spec VST3 host call), **H** (a host's state thread that is not M — macOS AU
+`SaveState`/`RestoreState`, pluginval's AU `BackgroundThreadStateTest`, an out-of-spec VST3 host,
+JUCE's Linux VST3 wrapper before the host registers an `IRunLoop`) and **P** (a host's prepare
+thread that is not M — the round-15 class).
+
+| Shared object | Writers | Readers | Protection before | Race? |
+|---|---|---|---|---|
+| APVTS parameter values | M, H (restore), A (automation) | A, M, H | JUCE atomics; `ParameterAttachment` hops | no (JUCE-owned) |
+| `apvts.state` tree | H/M `replaceState` (JUCE lock); **the malformed-value repair write, unlocked** | M/H `copyState` (JUCE lock) | JUCE's private lock — except the repair | latent (malformed blob only) |
+| `InternalState::tree` | M (Value bindings), H (`restoreState`) | M (`Value::getValue`, getters), H (`copyState`) | none | **yes** — outside the register (the probes bound no `Value`) |
+| `abActive` | M, H | M, H | none | **register #1** |
+| `abSlot[2]` handles | M, H (`readSlot`, `abEnsureInit` inside getState) | M, H | none | yes (String/ValueTree handle assignment vs copy) |
+| `abUndo[2]` | M; H clears | M | none | **register #2, #3** |
+| `committed*`, gesture bookkeeping | M; H (`syncCommitted`) | M | none | yes (same class as #4) |
+| `PresetManager` name/identity/baseline/cache | M; H (`setMeta`/`adoptRestoredState`) | M, H | none | **register #4** |
+| everything the audio thread reads | — | A | per-parameter atomics, `osAtomic`, `soloPreviewMask`, engine plain state under the host's prepare/process contract | no |
+
+**The conclusion that shaped the design:** every race is between H and M on Anamorph-owned *program
+metadata*; the audio thread reads none of it, and its own inputs are published exactly as before.
+"Make the raced fields atomic" was rejected on the brief's own terms — `abActive` is logically atomic
+*with* the slots, the match memory and the undo clear (one restore), and a container or a string
+cannot be made atomic at all. The candidate fixes recorded at deferral were re-examined: a narrow
+mutex has to be released and re-taken around every `setValueNotifyingHost` inside an A/B apply,
+which is exactly where a torn view is possible, and a `callAsync` of the whole tail defers the
+oversampling atomic the ordinary setState-then-activate order reads.
+
+### 2. The baseline, measured before any change (ThreadSanitizer, clang 18, 4 cores)
+
+| probe | pre-change runs | reports |
+|---|---|---|
+| `--state-thread-probe` | 10 | a report in **10/10** — the `juce::String` refcount exchange (`PresetManager::setMeta` on H vs `currentName()` on M) |
+| `--state-prepare-race-probe` | 10 | a report in **10/10** — the same class |
+| `--reprepare-race-probe` | 10 | silent in 10/10 (ER-STATE-19 / D-1 stays closed) |
+| `--d2-stress-probe` (new; H restore+save, P prepare, A audio, an editor-shaped M) | 2 — **166 reports** (exit 66) and **54 before the 900 s wall** (the pre-change tree under TSan did not finish the probe): 208 data races and **12 heap-use-after-free** | **every register class and the three the audit predicted**: `abActive` (`setStateInformation` vs `pollUndoCoalesce` / `commitPresetSwitchUndoStep`), `abUndo` (`UndoStacks::operator=` vs `commitPresetSwitchUndoStep`), the `juce::String` class (`setMeta` vs `currentName` / `isDirty` / `baseline` / `soundSig` / `load`), the committed baseline (`syncCommitted` vs `pollUndoCoalesce` / `soundSignature`), the slot handles (`readSlot` vs `reassertParameters` in an A/B apply, `StateSet::operator=` vs `isValid`), the `Selection` (`operator=` vs copy), and `InternalState`'s tree (`restoreState` vs the `Value` binding read) |
+
+On this machine the two register probes interleave only the first restore's tail against the last
+editor ticks — the main loop finishes its 400 iterations before the host thread's second
+`setStateInformation` — which is why they reproduce one class where round 2's machine reproduced
+four; the stress probe's denser interleaving is what reproduces all of them. The first version of
+that probe reported 861 further `AnamorphEngine::prepare` vs `process` pairs, which were the probe
+breaking the format contract (no wrapper runs `prepareToPlay` concurrently with `processBlock`) and
+not a D-2 class; the probe now serialises those two calls with a host-side lock, as a host does, and
+nothing else.
+
+### 3. The architecture (ADR-0036)
+
+- **Ownership.** All program metadata is message-thread state. Only M writes it; only M reads it
+  directly.
+- **H → M, the restore handoff.** `setStateInformation` decodes the blob into a `RestoreDecode` on the
+  caller's thread; the *sound* (the APVTS) and the *engine-facing Settings atomic* are applied there,
+  synchronously, because a `prepareToPlay` that follows on the same host thread reads both. On M the
+  tail is adopted inline, exactly as before. On any other thread the decode goes through one
+  `std::atomic<T*>::exchange` cell — ownership transfers with the exchange; whichever side's
+  exchange returns the pointer frees it; at most one object exists — and M adopts it
+  (`adoptPendingHostState`) from its 20 Hz timer and at the top of every entry point that mutates
+  program state, so sequential order is preserved.
+- **M → H, the program snapshot.** After every metadata mutation M publishes an immutable
+  `ProgramSnapshot` through a second cell (`PresetManager::onMetaChanged`, `InternalState::onChanged`,
+  the A/B paths). An off-message-thread `getStateInformation` takes the latest into its own view and
+  serializes from it plus the JUCE-locked `copyState()`. While a restore H handed over is unadopted
+  (`restoreGen` ahead of `adoptedGen`), H serializes from the view it built from that restore.
+- **The repair write moves before `replaceState`.** The malformed-value text repair now lands on the
+  private copy the caller hands to `replaceState`, on both restore paths and the A/B/undo apply, so
+  the live tree is only ever written under JUCE's lock. The host is told the repaired value rather
+  than the clamped garbage first; end state and durability (ER-STATE-25) unchanged.
+- **Nothing on the audio thread changed**, and nothing waits anywhere: no mutex, no `callAsync`, no
+  `MessageManagerLock`. The lifetime model is closed by construction (a pointer is reachable from
+  exactly one side at a time).
+
+### 4. What changed, file by file
+
+- `src/PluginProcessor.h` — the ownership-boundary comment; `ProgramSnapshot`, `RestoreDecode`,
+  `ExchangeCell`; the two cells, the generation pair, the H-side views; `apvtsStateType`;
+  `adoptPendingHostState()` public.
+- `src/PluginProcessor.cpp` — `decodeRestore` / `adoptRestoreTail` / `setStateInformation` (the
+  thread split); `ownedProgram` / `publishProgram` / `writeState` / `getStateInformation`;
+  `viewOfRestore`; `applySoundTree` + `repairSerializedValues` (the repair on our copy;
+  `reassertParameters` loses its tree write); the drains at `timerCallback`, `pollUndoCoalesce`,
+  `applyAutoGain`, `abSwitchTo`, `abCopyToOther`, `createEditor` (and deliberately NOT the gesture
+  callback, see §5); `abEnsureInit`
+  publishes when it seeds; `abResetToDefaults` folds into the decode's defaults.
+- `src/InternalState.h` — `resolveRestore` / `resolveLegacy` (pure), `applyResolved` (M),
+  `publishEngineConfig` (the atomic half), `onChanged`; `restoreState` / `migrateFromLegacyApvts`
+  keep their meaning as wrappers.
+- `src/PresetManager.{h,cpp}` — `onMetaChanged`, `onAboutToSave`, `soundSignatureFor`.
+- `tests/state_tests.cpp` — State tests 37–41; `--d2-stress-probe`; tests 22 and 27 re-shaped to
+  the production off-thread path (their worker used to write a `juce::Value` off-thread, which after
+  D-2 models nothing the plug-in does; 27's first rewrite hung the suite on a join and is bounded).
+- `tests/tsan_canary.cpp`, `.github/workflows/build.yml` — the `tsan` lane.
+- Docs: ADR-0036, `THREADING_POLICY`, `THREAD_MODEL`, `STATE_SERIALIZATION`, `FUTURE_RISKS`
+  (RISK-007 resolved), `TESTING`, `TESTING_POLICY`, `CI_CD`, `REPOSITORY_MAP`, `API_REFERENCE`,
+  `HANDOVER`, `CHANGELOG`, this worklog and the dashboard; `scripts/check-citations.py`'s
+  `DELIBERATE_REAIMS` emptied of its completed transitions and refilled with this change's.
+
+### 5. Validation
+
+| gate | result |
+|---|---|
+| `--state-thread-probe` under TSan, after | silent in 10/10 |
+| `--state-prepare-race-probe` under TSan, after | silent in 10/10 |
+| `--reprepare-race-probe` under TSan, after | silent in 10/10 |
+| `--d2-stress-probe` under TSan, after | silent in 10/10 (against a report in every pre-change run) |
+| the state suite under TSan, after | 0 reports; 1701 checks, 0 failures (halt_on_error=0, so every report would have been counted) |
+| State tests 37–41 (plain build) | green; 1701 checks in the suite (1506 before), 40 tests |
+| the DSP suite | green (unchanged sources; `AnamorphTests` links the engine alone) |
+| `check-realtime.py` | 47 files, 0 violations — `processBlock` and its closure are byte-identical |
+| `check-docs.py`, `check-citations.py` (three bases) | clean; 398 anchors |
+| `preflight.sh` | exit 0 on the committed tree (docs / portability / realtime / citation gates on all three bases, both suites) |
+| first-party warnings | no new (path, flag) beyond `clang-warning-baseline.txt` / `gcc-warning-baseline.txt` on the local compilers (clang 18, gcc 13 — the pinned gates run in CI). The first cut had added six and they are gone: `-Wshadow` on `applySoundTree`'s parameter, `-Wunused-variable` on a lambda test 27's rewrite left behind, four `-Wmissing-prototypes` on the `d2` helpers (now internal linkage) |
+
+**Two things the first after-change run reported, both fixed before the figures above were taken.**
+(1) `--d2-stress-probe` reported a **lock-order inversion** in 8/10 runs — not a data race, a
+potential deadlock the change itself had introduced: the first cut drained the pending restore at a
+gesture start, inside `parameterGestureChanged`, which JUCE delivers under the parameter's
+`listenerLock`; the adoption's `syncCommitted()` takes the APVTS lock, the reverse of the order a
+host-thread `replaceState` takes the two (`setValueNotifyingHost` under the APVTS lock). The drain
+is gone from the gesture callback (a mid-gesture restore is adopted by the next poll, which zeroes
+the gesture count exactly as an inline restore always has) and the rule — nothing that takes the
+APVTS lock runs from a parameter listener callback — is in `THREADING_POLICY.md`. (2) The suite
+under TSan reported **one data race in State test 39**: the test's autosave thread and its
+sequenced host save overlapped, two host threads at once, which is outside the contract the design
+states (the host serializes its own state calls) — a test error, fixed by serialising the two with
+the host-side lock the stress probe already uses for prepare/process. Neither is a class the
+baseline recorded; both were found by the new probes doing their job.
+
+### 6. What is deliberately different, and what is not
+
+- **Unchanged:** the message-thread path (byte-identical serialization, State test 3 and the frozen
+  fixtures), every restore/migration rule, A/B, undo and preset semantics, the latency report, the
+  audio path.
+- **Different, by design:** on the off-message-thread path the metadata tail becomes visible to the
+  editor within one timer period (≤ 50 ms) instead of instantly, and a user action landing inside
+  that window is ordered after the restore. Both are inside the timing tolerance of a host restore
+  and replace undefined behaviour. A malformed value in a session is now reported to the host
+  repaired rather than clamped-then-repaired.
+
+### 7. Status
+
+**D-2 — RESOLVED, implemented as ADR-0036. RISK-007 — RESOLVED.** RISK-008 and KI-015 unchanged.
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can

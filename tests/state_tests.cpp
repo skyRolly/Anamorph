@@ -50,6 +50,7 @@
 #include <atomic>
 #include <cstring>
 #include <thread>
+#include <mutex>
 #include <random>
 #include <vector>
 #include <functional>
@@ -2883,12 +2884,15 @@ static int runPresetSemanticsProbe()
 //     ADR-0034 removed. The reported number is now a function of the Oversampling
 //     SELECTION alone, so no parameter can move it and Drive is no longer an
 //     instrument here. What still can move it off the message thread is a host
-//     restoring session state from its own thread (RISK-007), which writes this
-//     very Setting; the worker below performs exactly that write, through a
-//     juce::Value captured on the message thread so no listener is registered off
-//     it. The property write reaches InternalState's listener on the WORKER
-//     thread, which is the whole point: syncAtomics() then onOversampleChanged()
-//     -> requestLatencyUpdate(), off the message thread, in that order.
+//     restoring session state from its own thread (RISK-007), which carries this
+//     very Setting; the worker below performs exactly that restore, through the
+//     real setStateInformation. Since D-2 (ADR-0036) that restore writes no
+//     ValueTree off the message thread at all: it stores the engine-facing
+//     oversampling atomic synchronously and raises the latency request, and the
+//     Settings TREE is adopted by the message thread afterwards -- so the worker
+//     leg exercises exactly the production path, and the earlier shape of this
+//     leg (a juce::Value written from the worker) no longer models anything the
+//     plug-in does.
 static void testLatencyDeliveryIsDeferredOffMessageThread()
 {
     std::printf ("State test 22: an off-thread latency change is deferred, not delivered (D-1)\n");
@@ -2896,8 +2900,8 @@ static void testLatencyDeliveryIsDeferredOffMessageThread()
     AnamorphAudioProcessor proc;
     proc.prepareToPlay (48000.0, 256);
 
-    // Captured HERE, on the message thread: juce::Value construction attaches a
-    // ValueSource listener to the tree, and only the setValue() calls belong off it.
+    // The Setting is written through its binding on the message thread for the
+    // control leg; the off-thread leg restores a session that carries it.
     juce::Value osValue = proc.getInternal().oversampleValue();  // 1-based combo ids
     osValue.setValue (1);                                        // Off
     juce::Timer::callPendingTimersSynchronously();
@@ -2919,7 +2923,10 @@ static void testLatencyDeliveryIsDeferredOffMessageThread()
     const int loud = afterOnThread;
     check (loud != quiet, "the Oversampling Setting genuinely changes the reported latency");
 
-    // THE REAL CASE: the same listener chain, driven from another thread.
+    // THE REAL CASE: a host restore from another thread. Author the session that
+    // carries 2x while the Setting is still 2x, then reset.
+    juce::MemoryBlock sessionAt2x;
+    proc.getStateInformation (sessionAt2x);
     osValue.setValue (1);
     juce::Timer::callPendingTimersSynchronously();
     check (proc.getLatencySamples() == quiet, "reset to the quiet latency before the off-thread leg");
@@ -2927,13 +2934,15 @@ static void testLatencyDeliveryIsDeferredOffMessageThread()
     std::atomic<bool> done { false };
     std::thread automation ([&]
     {
-        // What a host restoring session state off its message thread does: write
-        // the latency-bearing Setting, whose listener fires on THIS thread.
-        osValue.setValue (2);
+        // What a host restoring session state off its message thread does (the
+        // macOS AU autosave shape): the real restore, on THIS thread.
+        proc.setStateInformation (sessionAt2x.getData(), (int) sessionAt2x.getSize());
         done.store (true, std::memory_order_release);
     });
     automation.join();
-    check (done.load (std::memory_order_acquire), "the off-thread Setting write completed");
+    check (done.load (std::memory_order_acquire), "the off-thread restore completed");
+    check (proc.getInternal().oversampleIndex() == 1,
+           "the engine-facing oversampling atomic is stored synchronously by the restoring thread (D-2)");
 
     const int immediatelyAfter = proc.getLatencySamples();
     std::printf ("  immediately after an OFF-thread change: %d (was %d)\n", immediatelyAfter, quiet);
@@ -3732,10 +3741,14 @@ static void testRestoreIntegrityGuards()
         {
             std::atomic<bool> armed { false }, inDelivery { false }, requested { false };
             std::atomic<int>  fired { 0 };
+            juce::AudioProcessor* owner = nullptr;
+            std::vector<int> delivered;   // every reported value, in order (message thread only)
             void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
             void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails& d) override
             {
-                if (! d.latencyChanged || ! armed.exchange (false)) return;
+                if (! d.latencyChanged) return;
+                if (owner != nullptr) delivered.push_back (owner->getLatencySamples());
+                if (! armed.exchange (false)) return;
                 fired.fetch_add (1);
                 inDelivery.store (true);                       // delivery has started...
                 while (! requested.load()) std::this_thread::yield();   // ...hold it open until the request lands
@@ -3747,57 +3760,76 @@ static void testRestoreIntegrityGuards()
         // The mover is the Oversampling SETTING, not Drive, since ADR-0034: the
         // reported latency is a function of that selection alone, so no parameter
         // can raise a value-CHANGING request any more. A host restoring session
-        // state off its own thread (RISK-007) writes this Setting, which is the
-        // reachable off-message-thread requester this leg stands in for. The
-        // juce::Value is captured on the message thread; only setValue() runs off it.
+        // state off its own thread (RISK-007) carries this Setting, which is the
+        // reachable off-message-thread requester this leg stands in for -- and
+        // since D-2 (ADR-0036) that restore is the ONLY production path that raises
+        // the request from a non-message thread with a changed Setting, so the two
+        // requests below are two real restores. Two sessions are authored on the
+        // message thread, one at each Setting.
         juce::Value osValue = p.getInternal().oversampleValue();  // 1-based combo ids
+        juce::MemoryBlock sessionLow, sessionHigh;
         osValue.setValue (1); p.prepareToPlay (48000.0, 512);     // Off
         const int lowLat  = p.getLatencySamples();
+        p.getStateInformation (sessionLow);
         osValue.setValue (2); p.prepareToPlay (48000.0, 512);     // 2x
         const int highLat = p.getLatencySamples();
+        p.getStateInformation (sessionHigh);
         osValue.setValue (1); p.prepareToPlay (48000.0, 512);     // back to low; host holds lowLat
         check (lowLat != highLat, "non-vacuity: the reported latency actually moves with the Setting here");
 
-        auto waitForReported = [&p] (int expected, int deadlineMs)
-        {
-            for (int elapsed = 0; elapsed < deadlineMs; elapsed += 5)
-            {
-                juce::Timer::callPendingTimersSynchronously();
-                if (p.getLatencySamples() == expected) return true;
-                std::this_thread::sleep_for (std::chrono::milliseconds (5));
-            }
-            return p.getLatencySamples() == expected;
-        };
-
         Barrier barrier;
+        barrier.owner = &p;
         p.addListener (&barrier);
         barrier.armed.store (true);
 
         std::thread worker ([&]
         {
-            // Request #1, off the message thread: Oversampling -> 2x raises the flag.
-            osValue.setValue (2);
-            // Wait until the timer's delivery of #1 has STARTED (the barrier holds it open)...
-            while (! barrier.inDelivery.load()) std::this_thread::yield();
-            // ...and make request #2 from inside that window: -> Off raises the flag again.
-            // The message thread is parked inside audioProcessorChanged for the whole
-            // of this write and touches no ValueTree, so the tree has one writer.
-            osValue.setValue (1);
+            // Request #1, off the message thread: a restore carrying 2x raises the flag.
+            p.setStateInformation (sessionHigh.getData(), (int) sessionHigh.getSize());
+            // Wait until the timer's delivery of #1 has STARTED (the barrier holds it
+            // open). Bounded, so a build that never delivers fails the checks below
+            // instead of hanging the suite on this join.
+            for (int waited = 0; waited < 20000 && ! barrier.inDelivery.load(); ++waited)
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            // ...and make request #2 from inside that window: a restore carrying Off
+            // raises the flag again. The message thread is parked inside
+            // audioProcessorChanged for the whole of this restore; the restore itself
+            // touches no message-thread state (D-2) -- it applies the sound, stores the
+            // oversampling atomic and hands the rest over.
+            p.setStateInformation (sessionLow.getData(), (int) sessionLow.getSize());
             barrier.requested.store (true);
         });
 
-        // Serve request #1 on the message thread. This is the delivery the barrier sits in.
-        const bool firstDelivered = waitForReported (highLat, 2000);
+        // Serve the requests on the message thread. Delivery #1 is the one the barrier
+        // sits in. Since D-2 the tick that adopts restore #1 delivers highLat from
+        // INSIDE the adoption (the adopted Setting fires onOversampleChanged on this
+        // thread) and may then serve request #2's flag in the SAME tick, so the wait is
+        // for the whole SEQUENCE -- both values reported, in order -- rather than for a
+        // tick boundary, and the observation is that order. (The host was left holding
+        // lowLat before the worker started, so "reported == lowLat" alone would be true
+        // before anything happened.)
+        auto sequenceDone = [&]
+        {
+            return barrier.fired.load() == 1
+                && barrier.delivered.size() >= 2
+                && barrier.delivered.back() == lowLat;
+        };
+        for (int elapsed = 0; elapsed < 4000 && ! sequenceDone(); elapsed += 5)
+        {
+            juce::Timer::callPendingTimersSynchronously();
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+        }
         worker.join();
         check (barrier.fired.load() == 1, "the barrier fired exactly once, inside delivery #1");
-        check (firstDelivered, "delivery #1 completed with the value it read (highLat)");
+        check (! barrier.delivered.empty() && barrier.delivered[0] == highLat,
+               "delivery #1 completed with the value it read (highLat)");
 
-        // Request #2 landed DURING delivery #1. It must still be pending, and the
-        // next tick must serve it -- nothing else on the message thread will.
-        const bool secondDelivered = waitForReported (lowLat, 2000);
-        std::printf ("  delivery #1 -> %d with request #2 made inside it; next tick -> %d (expected %d)\n",
-                     highLat, p.getLatencySamples(), lowLat);
-        check (secondDelivered, "a request made DURING a delivery survives it and is served by the next tick");
+        // Request #2 landed DURING delivery #1. It must survive it and be served --
+        // nothing else on the message thread will.
+        std::printf ("  delivery #1 -> %d with request #2 made inside it; then -> %d (expected %d); %d deliveries\n",
+                     highLat, p.getLatencySamples(), lowLat, (int) barrier.delivered.size());
+        check (sequenceDone() && p.getLatencySamples() == lowLat,
+               "a request made DURING a delivery survives it and is served afterwards");
         p.removeListener (&barrier);
     }
 
@@ -6660,6 +6692,683 @@ static int runStatePrepareRaceProbe()
     return 0;
 }
 
+// ===========================================================================
+//  D-2 / RISK-007 (ADR-0036): the program-state ownership contract.
+//
+//  Five deterministic tests and one stress probe, over one model of the host:
+//  the SOUND (the APVTS) is applied on whichever thread the host restores from,
+//  the PROGRAM METADATA (preset name / identity / baseline, the A/B slot set, the
+//  undo history, the committed baseline, the Settings tree) is message-thread
+//  state that an off-message-thread restore hands over as one immutable value,
+//  adopted at the next drain point -- the editor's tick (pollUndoCoalesce), the
+//  processor's 20 Hz timer, or any message-thread entry point that mutates it.
+//  These tests drain through pollUndoCoalesce() deliberately: it is the editor's
+//  own path, it is synchronous, and it is what the pre-D-2 probes already
+//  called, so this file measures the pre-fix tree with the same instruments.
+//
+//  What the audio thread sees is out of these tests' reach on purpose: its inputs
+//  are JUCE's per-parameter atomics, InternalState's oversampling atomic and the
+//  solo mask, published exactly as before D-2 and masked across a bulk change by
+//  ADR-0004's duck. The tests below assert the two halves D-2 adds -- the
+//  oversampling atomic stored synchronously by the restoring thread, and the
+//  audio path staying finite with restores landing under it -- and the probe
+//  puts the audio thread under ThreadSanitizer with everything else.
+// ===========================================================================
+namespace d2
+{
+    static juce::MemoryBlock saveOf (AnamorphAudioProcessor& p)
+    {
+        juce::MemoryBlock b;
+        p.getStateInformation (b);
+        return b;
+    }
+
+    static void restoreFrom (AnamorphAudioProcessor& p, const juce::MemoryBlock& b)
+    {
+        p.setStateInformation (b.getData(), (int) b.getSize());
+    }
+
+    // Run `f` on a thread that is not the message thread and wait for it -- the
+    // sequenced shape of a host that calls state functions from its own thread.
+    template <typename F>
+    void offMessageThread (F&& f)
+    {
+        std::thread t (std::forward<F> (f));
+        t.join();
+    }
+
+    // A session with two distinguishable A/B slots, its own preset name and a
+    // chosen Oversampling, authored on the message thread by an instance of its own.
+    struct Session
+    {
+        juce::MemoryBlock blob;
+        juce::String name;
+        float widthA = 0.0f, widthB = 0.0f;
+        int   active = 0;
+        int   oversampleId = 1;   // 1-based combo id
+    };
+
+    static Session author (const char* name, float widthA, float widthB, int active, int oversampleId)
+    {
+        AnamorphAudioProcessor a;
+        a.prepareToPlay (48000.0, 512);
+        a.getInternal().oversampleValue().setValue (oversampleId);
+        setRaw (a, "width", widthA);
+        a.abCopyToOther();            // B := A's sound for now
+        a.abSwitchTo (1);
+        setRaw (a, "width", widthB);  // B's own sound
+        a.abSwitchTo (0);             // stores B, applies A
+        if (active == 1) a.abSwitchTo (1);
+        a.getPresets().setMeta (name, "d2-baseline-" + juce::String (name),
+                                anamorph::PresetManager::Selection());
+        Session sn;
+        sn.blob = saveOf (a);
+        sn.name = name;
+        sn.widthA = widthA; sn.widthB = widthB; sn.active = active; sn.oversampleId = oversampleId;
+        return sn;
+    }
+
+    // Reads exactly what the editor's tick reads, as one coherent view.
+    struct View
+    {
+        int active; juce::String name; bool canUndo, canRedo;
+        static View of (AnamorphAudioProcessor& p)
+        {
+            return { p.abActiveSlot(), p.getPresets().currentName(), p.canUndo(), p.canRedo() };
+        }
+        bool matches (const Session& sn) const { return active == sn.active && name == sn.name; }
+    };
+
+    // Bounded poll for the processor's own 20 Hz timer (the same shape State tests
+    // 22/27/30 use: a tight callPendingTimersSynchronously() loop fires nothing).
+    template <typename Pred>
+    bool waitFor (Pred&& done, int deadlineMs = 2000)
+    {
+        for (int elapsed = 0; elapsed < deadlineMs; elapsed += 5)
+        {
+            juce::Timer::callPendingTimersSynchronously();
+            if (done()) return true;
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+        }
+        return done();
+    }
+
+    // A noise block the audio-thread loops feed, and a finiteness scan of the output.
+    static bool processStaysFinite (AnamorphAudioProcessor& p, int blocks, juce::AudioBuffer<float>& buf, std::mt19937& rng)
+    {
+        std::uniform_real_distribution<float> dist (-0.5f, 0.5f);
+        juce::MidiBuffer midi;
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+                for (int i = 0; i < buf.getNumSamples(); ++i)
+                    buf.setSample (ch, i, dist (rng));
+            p.processBlock (buf, midi);
+            for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+                for (int i = 0; i < buf.getNumSamples(); ++i)
+                    if (! std::isfinite (buf.getSample (ch, i))) return false;
+        }
+        return true;
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 37 -- A/B state under off-message-thread restores (D-2, contract A).
+//
+//  A host thread restores two sessions with different A/B slot sets, names and
+//  active indices, in turn; the message thread cycles A -> B -> A -> B between
+//  them and asserts that what it sees is always ONE session's slot set, never a
+//  mix. The load-bearing assertions:
+//    * BEFORE the drain the message thread still sees the PREVIOUS program whole
+//      (its active index, its name, its undo history) -- the ownership contract:
+//      an off-thread restore changes nothing this thread owns until this thread
+//      adopts it -- while the sound (the parameter atomics) has already moved;
+//    * AFTER the drain it sees the restored program whole, and both slots hold
+//      that session's two sounds;
+//    * a save from the host thread, taken inside the pending window, is byte-
+//      identical to the save the message thread writes after adopting -- the
+//      restoring thread's own view describes exactly what the owner will own;
+//    * a save from the host thread after the adoption is byte-identical to the
+//      owner's -- the published snapshot is current.
+//  On the pre-D-2 tree the first assertion fails (the restore wrote the owner's
+//  members from the host thread) and the byte comparisons are the data race
+//  --state-thread-probe reports.
+// ---------------------------------------------------------------------------
+static void testAbStateCoherentAcrossOffThreadRestores()
+{
+    std::printf ("State test 37: A/B state stays coherent across off-message-thread restores (D-2)\n");
+
+    const auto X = d2::author ("D2-X", 0.10f, 0.90f, 0, 1);
+    const auto Y = d2::author ("D2-Y", 0.20f, 0.80f, 1, 1);
+    check (X.blob != Y.blob, "non-vacuity: the two sessions differ");
+
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+
+    // Real undo history, so "cleared by the adoption" cannot pass vacuously.
+    {
+        auto* drive = p.getAPVTS().getParameter (pid::drive);
+        drive->beginChangeGesture(); drive->setValueNotifyingHost (0.42f); drive->endChangeGesture();
+        p.pollUndoCoalesce();
+        check (p.canUndo(), "gesture created undo history");
+    }
+
+    const d2::Session* previous = nullptr;
+    for (int i = 0; i < 6; ++i)
+    {
+        const auto& sn = (i & 1) ? Y : X;
+        const auto before = d2::View::of (p);
+
+        juce::MemoryBlock hostSaveInWindow;
+        d2::offMessageThread ([&]
+        {
+            d2::restoreFrom (p, sn.blob);
+            hostSaveInWindow = d2::saveOf (p);   // a save from the same host thread, BEFORE any drain
+        });
+
+        // The sound moved on the restoring thread; the program did not, yet.
+        const float liveWidth = sn.active == 0 ? sn.widthA : sn.widthB;
+        checkNear ((double) rawOf (p, "width"), (double) liveWidth, 1.0e-6,
+                   "the sound is applied synchronously on the restoring thread");
+        const auto pending = d2::View::of (p);
+        check (pending.active == before.active && pending.name == before.name
+               && pending.canUndo == before.canUndo && pending.canRedo == before.canRedo,
+               "before the drain the message thread still sees the PREVIOUS program, whole");
+        if (previous != nullptr)
+            check (pending.matches (*previous), "...and that previous program is the last adopted session");
+
+        p.pollUndoCoalesce();   // the editor's tick: the drain
+        const auto adopted = d2::View::of (p);
+        check (adopted.matches (sn), "after the drain the restored program is visible, whole");
+        check (! adopted.canUndo && ! adopted.canRedo, "the adoption cleared the undo history");
+
+        const auto ownerSave = d2::saveOf (p);
+        check (hostSaveInWindow == ownerSave,
+               "a host-thread save inside the pending window equals the owner's save after adoption");
+
+        juce::MemoryBlock hostSaveAfter;
+        d2::offMessageThread ([&] { hostSaveAfter = d2::saveOf (p); });
+        check (hostSaveAfter == ownerSave, "a host-thread save after adoption equals the owner's save");
+
+        // A -> B -> A -> B on the owner's thread: each leg shows that session's slot.
+        const int other = 1 - sn.active;
+        const float otherWidth = other == 0 ? sn.widthA : sn.widthB;
+        for (int leg = 0; leg < 2; ++leg)
+        {
+            p.abSwitchTo (other);
+            checkNear ((double) rawOf (p, "width"), (double) otherWidth, 1.0e-6, "A/B cycle: the other slot's sound");
+            p.abSwitchTo (sn.active);
+            checkNear ((double) rawOf (p, "width"), (double) liveWidth, 1.0e-6, "A/B cycle: back to the restored slot's sound");
+        }
+        check (p.abActiveSlot() == sn.active && p.getPresets().currentName() == sn.name,
+               "the cycle returns to the restored session's program");
+        previous = &sn;
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 38 -- restore B -> C -> B -> C with the audio thread running
+//  (D-2, contract B). The two sessions differ in Oversampling as well as in
+//  their sound, so the one part of a restore the AUDIO thread and prepareToPlay
+//  read -- InternalState's oversampling atomic -- is observable: it must be
+//  stored on the restoring thread, before setStateInformation returns, while the
+//  Settings TREE (the editor's binding) follows at the drain. The reported
+//  latency must end up at what a message-thread restore of the same session
+//  reports; the audio path must stay finite throughout; and a save after the
+//  final adoption must be byte-identical to the session restored (State test 3's
+//  fixed point, now reached through the off-thread path).
+// ---------------------------------------------------------------------------
+static void testRestoreCyclesUnderRunningAudio()
+{
+    std::printf ("State test 38: restore B -> C -> B -> C off the message thread with audio running (D-2)\n");
+
+    const auto B = d2::author ("D2-B", 0.30f, 0.70f, 0, 2);   // 2x
+    const auto C = d2::author ("D2-C", 0.60f, 0.40f, 1, 1);   // Off
+
+    // Truth: what a message-thread restore reports for each session.
+    auto truthFor = [] (const d2::Session& sn)
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (q, sn.blob);
+        q.prepareToPlay (48000.0, 512);
+        return q.getLatencySamples();
+    };
+    const int latB = truthFor (B), latC = truthFor (C);
+    check (latB != latC, "non-vacuity: the two sessions report different latencies");
+
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+
+    std::atomic<bool> stopAudio { false };
+    std::atomic<bool> audioFinite { true };
+    std::thread audio ([&]
+    {
+        juce::AudioBuffer<float> buf (2, 512);
+        std::mt19937 rng (0x0d2u);
+        while (! stopAudio.load (std::memory_order_acquire))
+            if (! d2::processStaysFinite (p, 4, buf, rng))
+                audioFinite.store (false, std::memory_order_relaxed);
+    });
+
+    for (int i = 0; i < 4; ++i)
+    {
+        const auto& sn = (i & 1) ? C : B;
+        d2::offMessageThread ([&] { d2::restoreFrom (p, sn.blob); });
+
+        check (p.getInternal().oversampleIndex() == sn.oversampleId - 1,
+               "the oversampling atomic is stored on the restoring thread, before the restore returns");
+
+        p.pollUndoCoalesce();
+        check ((int) p.getInternal().copyState()[anamorph::iid::oversample] == sn.oversampleId,
+               "the Settings tree carries the restored Oversampling after the drain");
+        check (p.abActiveSlot() == sn.active && p.getPresets().currentName() == sn.name,
+               "the restored program is visible after the drain");
+
+        const int want = (i & 1) ? latC : latB;
+        const bool served = d2::waitFor ([&] { return p.getLatencySamples() == want; });
+        check (served, "the reported latency reaches the message-thread truth for the restored session");
+    }
+
+    stopAudio.store (true, std::memory_order_release);
+    audio.join();
+    check (audioFinite.load(), "the audio path stayed finite with restores landing under it");
+
+    const auto resaved = d2::saveOf (p);
+    check (resaved == C.blob, "save after the final off-thread restore is byte-identical to the session restored");
+}
+
+// ---------------------------------------------------------------------------
+//  State test 39 -- preset transitions while audio runs and a host thread saves
+//  (D-2, contract C). The message thread loads every factory preset, twice
+//  round, with the audio thread processing and a host thread saving in a loop
+//  the whole time (reads only: that is what an autosave is; the host serialises
+//  its own state calls, as the AudioProcessor API requires, so the sequenced
+//  save below takes the same host-side lock). After each load a
+//  SEQUENCED host-thread save must equal the owner's save -- the published
+//  snapshot carries the loaded preset's name and identity -- and every
+//  parameter must equal what a control instance holds after the same load, so
+//  no old/new mix survives into the state a host would see.
+// ---------------------------------------------------------------------------
+static void testPresetTransitionsUnderConcurrentSaves()
+{
+    std::printf ("State test 39: preset transitions with audio running and a host thread saving (D-2)\n");
+
+    AnamorphAudioProcessor p, control;
+    p.prepareToPlay (48000.0, 512);
+    control.prepareToPlay (48000.0, 512);
+    const int factoryCount = [&]
+    {
+        int n = 0;
+        for (const auto& e : p.getPresets().entries()) if (e.isFactory) ++n;
+        return n;
+    }();
+    check (factoryCount >= 2, "non-vacuity: at least two factory presets to cycle through");
+
+    std::atomic<bool> stop { false };
+    std::atomic<bool> audioFinite { true };
+    std::atomic<int>  hostSaves { 0 };
+    std::mutex hostStateLock;   // the HOST's guarantee: its state calls never overlap each other
+    std::thread audio ([&]
+    {
+        juce::AudioBuffer<float> buf (2, 256);
+        std::mt19937 rng (0x0d2bu);
+        while (! stop.load (std::memory_order_acquire))
+            if (! d2::processStaysFinite (p, 2, buf, rng))
+                audioFinite.store (false, std::memory_order_relaxed);
+    });
+    std::thread autosave ([&]
+    {
+        while (! stop.load (std::memory_order_acquire))
+        {
+            juce::MemoryBlock out;
+            {
+                const std::lock_guard<std::mutex> hostSerialises (hostStateLock);
+                p.getStateInformation (out);
+            }
+            hostSaves.fetch_add (1, std::memory_order_relaxed);
+        }
+    });
+    check (d2::waitFor ([&] { return hostSaves.load (std::memory_order_relaxed) > 0; }),
+           "the host thread is saving before the first preset load");
+
+    for (int round = 0; round < 2 * factoryCount; ++round)
+    {
+        const int index = round % factoryCount;
+        p.getPresets().load (index);
+        control.getPresets().load (index);
+        p.pollUndoCoalesce();
+
+        check (p.getPresets().currentIndex() == index, "the loaded preset is the current one");
+        check (p.getPresets().currentName() == p.getPresets().entries()[index].name, "...by name");
+
+        bool allEqual = true;
+        auto pa = rangedParams (p), pc = rangedParams (control);
+        for (size_t i = 0; i < pa.size() && i < pc.size(); ++i)
+            if (! juce::exactlyEqual (pa[i]->getValue(), pc[i]->getValue())) allEqual = false;
+        check (allEqual, "every parameter equals the control instance's after the same load (no old/new mix)");
+
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&]
+        {
+            const std::lock_guard<std::mutex> hostSerialises (hostStateLock);   // one host state call at a time
+            hostSave = d2::saveOf (p);
+        });
+        check (hostSave == d2::saveOf (p), "a sequenced host-thread save equals the owner's save after the load");
+    }
+
+    stop.store (true, std::memory_order_release);
+    audio.join();
+    autosave.join();
+    check (audioFinite.load(), "the audio path stayed finite through the preset transitions");
+    check (hostSaves.load() > 0, "non-vacuity: the host thread saved while the presets changed");
+    std::printf ("  %d concurrent host-thread saves during %d preset loads\n", hostSaves.load(), 2 * factoryCount);
+}
+
+// ---------------------------------------------------------------------------
+//  State test 40 -- restore and re-prepare off the message thread (D-2,
+//  contract D). A host thread restores two sessions in turn while another
+//  activates the plug-in with alternating sample rates and block sizes, the
+//  editor-shaped message thread reading and draining in between. No latency
+//  report may run on either host thread (State test 30's invariant, kept), and
+//  when both have finished the timer must leave the host holding what a
+//  message-thread restore + prepare of the final session at the final rate
+//  reports, with the Settings tree and the oversampling atomic agreeing.
+// ---------------------------------------------------------------------------
+static void testRestoreAroundReprepare()
+{
+    std::printf ("State test 40: restore and re-prepare off the message thread, together (D-2)\n");
+
+    const auto B = d2::author ("D2-RB", 0.25f, 0.75f, 0, 3);   // 4x
+    const auto C = d2::author ("D2-RC", 0.55f, 0.45f, 1, 1);   // Off
+    constexpr int kIterations = 40;
+    const double finalRate = ((kIterations - 1) & 1) ? 44100.0 : 48000.0;
+    const int    finalBlock = ((kIterations - 1) & 1) ? 256 : 512;
+    const auto&  finalSession = ((kIterations - 1) & 1) ? C : B;
+
+    const int truth = [&]
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (q, finalSession.blob);
+        q.prepareToPlay (finalRate, finalBlock);
+        return q.getLatencySamples();
+    }();
+
+    struct ThreadRecorder final : public juce::AudioProcessorListener
+    {
+        std::atomic<int> offMessageThread { 0 };
+        void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails& d) override
+        {
+            if (d.latencyChanged && ! juce::MessageManager::existsAndIsCurrentThread())
+                offMessageThread.fetch_add (1);
+        }
+    };
+
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+    ThreadRecorder rec;
+    p.addListener (&rec);
+
+    std::atomic<bool> go { false }, done { false };
+    std::thread stateThread ([&]
+    {
+        while (! go.load (std::memory_order_acquire)) {}
+        for (int i = 0; i < kIterations; ++i)
+            d2::restoreFrom (p, ((i & 1) ? C : B).blob);
+    });
+    std::thread prepareThread ([&]
+    {
+        while (! go.load (std::memory_order_acquire)) {}
+        for (int i = 0; i < kIterations; ++i)
+            p.prepareToPlay ((i & 1) ? 44100.0 : 48000.0, (i & 1) ? 256 : 512);
+        done.store (true, std::memory_order_release);
+    });
+
+    go.store (true, std::memory_order_release);
+    while (! done.load (std::memory_order_acquire))
+    {
+        // The editor's tick, and the processor's timer.
+        const juce::String liveName = p.getPresets().currentName();
+        const bool dirty = p.getPresets().isDirty();
+        p.pollUndoCoalesce();
+        const bool u = p.canUndo(), r = p.canRedo();
+        const int slot = p.abActiveSlot();
+        if (liveName.isEmpty() && dirty && u && r && slot < 0) std::printf ("  (unreachable)\n");
+        juce::Timer::callPendingTimersSynchronously();
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    stateThread.join();
+    prepareThread.join();
+
+    // The last restore may have landed after the last prepare; a message-thread
+    // prepare at the final rate is what the host would do next, and then the truth
+    // is the only acceptable report.
+    p.pollUndoCoalesce();
+    p.prepareToPlay (finalRate, finalBlock);
+    const bool served = d2::waitFor ([&] { return p.getLatencySamples() == truth; });
+    check (served, "after the two host threads finish, the timer leaves the host holding the final session's truth");
+    check (rec.offMessageThread.load() == 0, "no latency report was delivered from either host thread");
+    check (p.getInternal().oversampleIndex() == finalSession.oversampleId - 1
+           && (int) p.getInternal().copyState()[anamorph::iid::oversample] == finalSession.oversampleId,
+           "the oversampling atomic and the Settings tree agree on the final session");
+    check (p.abActiveSlot() == finalSession.active && p.getPresets().currentName() == finalSession.name,
+           "the final session's program is the one adopted");
+    p.removeListener (&rec);
+}
+
+// ---------------------------------------------------------------------------
+//  State test 41 -- the undo history is message-thread state a host restore only
+//  CLEARS (D-2, contract E). A host thread restores while undo history exists:
+//  until the drain the history is still there, whole (the restore touched none
+//  of the owner's containers); at the drain it is gone. Then the owner builds new
+//  history and walks it -- undo, undo, redo, redo, and a Copy-to-other undone on
+//  the other slot -- while a host thread saves in a loop the whole time. Every
+//  step must land exactly. The host thread never touches the undo stacks; the
+//  stress probe proves that mechanically under ThreadSanitizer, this test proves
+//  the semantics.
+// ---------------------------------------------------------------------------
+static void testUndoHistoryIsOwnedByTheMessageThread()
+{
+    std::printf ("State test 41: undo history is message-thread state a host restore only clears (D-2)\n");
+
+    const auto X = d2::author ("D2-U", 0.15f, 0.85f, 0, 1);
+
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+
+    auto gestureEdit = [&] (const char* id, float raw)
+    {
+        auto* rp = p.getAPVTS().getParameter (id);
+        rp->beginChangeGesture(); rp->setValueNotifyingHost (raw); rp->endChangeGesture();
+        p.pollUndoCoalesce();
+    };
+
+    gestureEdit (pid::width, 0.33f);
+    gestureEdit (pid::width, 0.66f);
+    check (p.canUndo(), "two gesture edits created undo history");
+
+    d2::offMessageThread ([&] { d2::restoreFrom (p, X.blob); });
+    check (p.canUndo(), "before the drain the history is still whole (the restore did not touch it)");
+    p.undo();   // undo drains first: the restore is adopted, and there is nothing left to undo
+    check (! p.canUndo() && ! p.canRedo(), "at the drain the history is cleared, and the undo was a no-op");
+    checkNear ((double) rawOf (p, "width"), (double) X.widthA, 1.0e-6,
+               "the restored sound stands: the undo could not reach past the restore");
+
+    std::atomic<bool> stop { false };
+    std::atomic<int>  hostSaves { 0 };
+    std::thread autosave ([&]
+    {
+        while (! stop.load (std::memory_order_acquire))
+        {
+            juce::MemoryBlock out;
+            p.getStateInformation (out);
+            hostSaves.fetch_add (1, std::memory_order_relaxed);
+        }
+    });
+    // Non-vacuity, deterministically: the walk starts only once the host thread is
+    // actually saving (a Release build can finish the whole walk before a fresh
+    // thread is first scheduled).
+    check (d2::waitFor ([&] { return hostSaves.load (std::memory_order_relaxed) > 0; }),
+           "the host thread is saving before the undo walk starts");
+
+    gestureEdit (pid::width, 0.30f);
+    gestureEdit (pid::width, 0.60f);
+    p.undo();  checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6, "undo #1 -> 0.30");
+    p.undo();  checkNear ((double) rawOf (p, "width"), (double) X.widthA, 1.0e-6, "undo #2 -> the restored sound");
+    check (! p.canUndo() && p.canRedo(), "the history is exhausted downward and full upward");
+    p.redo();  checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6, "redo #1 -> 0.30");
+    p.redo();  checkNear ((double) rawOf (p, "width"), 0.60, 1.0e-6, "redo #2 -> 0.60");
+
+    p.abCopyToOther();                 // B := 0.60, recorded on B's history
+    p.abSwitchTo (1);
+    checkNear ((double) rawOf (p, "width"), 0.60, 1.0e-6, "the copy reached slot B");
+    p.undo();
+    checkNear ((double) rawOf (p, "width"), (double) X.widthB, 1.0e-6, "undoing on slot B reverts the copy to B's restored sound");
+    p.abSwitchTo (0);
+    checkNear ((double) rawOf (p, "width"), 0.60, 1.0e-6, "slot A's history and sound are undisturbed");
+
+    stop.store (true, std::memory_order_release);
+    autosave.join();
+    check (hostSaves.load() > 0, "non-vacuity: the host thread saved throughout");
+    std::printf ("  %d concurrent host-thread saves during the undo walk\n", hostSaves.load());
+}
+
+// ---------------------------------------------------------------------------
+//  D-2 stress probe (contract F): every thread the model names, at once, under
+//  ThreadSanitizer. NOT part of the suite, like the other three TSan probes:
+//  on the pre-D-2 tree its execution IS the undefined behaviour it measures.
+//      AnamorphStateTests --d2-stress-probe
+//
+//  Threads: H restores three sessions in turn and saves after each; P re-prepares
+//  with alternating rates; A processes noise blocks; the MAIN thread is the
+//  message thread and does what the editor and the processor's timer do -- the
+//  tick's reads, pollUndoCoalesce, the timer, a Settings binding read every
+//  iteration and a Settings edit, an A/B switch, an undo or redo and a factory
+//  preset load at their own cadences. The verdict is the sanitizer's report set;
+//  the counts printed are the plain-build symptom.
+//
+//  ONE PIECE OF SYNCHRONISATION IS THE HOST'S, NOT THE PLUG-IN'S, and it is here
+//  so the probe measures the plug-in and not a contract violation: every plug-in
+//  format guarantees that prepareToPlay never runs concurrently with processBlock
+//  (the engine's plain state relies on it, THREADING_POLICY §Host state calls),
+//  so P and A take `hostAudioLock` around those two calls exactly as a host
+//  serialises them. The first version of this probe did not, and its 900-odd
+//  reports were almost all `AnamorphEngine::prepare` against `process` -- the
+//  probe breaking the format contract, which is not what D-2 is about. Nothing
+//  else is synchronised: H's restores and saves run against A, P and M with no
+//  lock of any kind, which is the whole measurement.
+// ---------------------------------------------------------------------------
+static int runD2StressProbe()
+{
+    std::printf ("D-2 stress probe: restore + save (H), prepare (P), audio (A), editor + timer (M)\n");
+    std::printf ("  (run under ThreadSanitizer; a report here is the finding, silence with the five\n");
+    std::printf ("   deterministic tests green is the resolution)\n");
+
+    const d2::Session sessions[3] = {
+        d2::author ("D2-S1", 0.10f, 0.90f, 0, 1),
+        d2::author ("D2-S2", 0.30f, 0.70f, 1, 2),
+        d2::author ("D2-S3", 0.50f, 0.50f, 0, 3),
+    };
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    proc.getPresets().load (1);
+    setRaw (proc, "width", 0.42f);
+    proc.pollUndoCoalesce();
+    juce::Value animBinding = proc.getInternal().animationsValue();   // the editor's Settings binding
+
+    constexpr int kIterations = 300;
+    std::atomic<bool> go { false }, hostDone { false }, prepareDone { false }, stopAudio { false };
+    std::atomic<int>  hostSaves { 0 }, audioBlocks { 0 };
+    std::atomic<bool> audioFinite { true };
+    std::mutex hostAudioLock;   // the HOST's guarantee: prepareToPlay and processBlock never overlap
+
+    std::thread hostThread ([&]
+    {
+        while (! go.load (std::memory_order_acquire)) {}
+        for (int i = 0; i < kIterations; ++i)
+        {
+            d2::restoreFrom (proc, sessions[i % 3].blob);
+            juce::MemoryBlock out;
+            proc.getStateInformation (out);
+            hostSaves.fetch_add (1, std::memory_order_relaxed);
+        }
+        hostDone.store (true, std::memory_order_release);
+    });
+    std::thread prepareThread ([&]
+    {
+        while (! go.load (std::memory_order_acquire)) {}
+        for (int i = 0; i < kIterations; ++i)
+        {
+            const std::lock_guard<std::mutex> hostSerialises (hostAudioLock);
+            proc.prepareToPlay ((i & 1) ? 44100.0 : 48000.0, (i & 1) ? 256 : 512);
+        }
+        prepareDone.store (true, std::memory_order_release);
+    });
+    std::thread audioThread ([&]
+    {
+        juce::AudioBuffer<float> buf (2, 512);
+        std::mt19937 rng (0x0d25u);
+        while (! go.load (std::memory_order_acquire)) {}
+        while (! stopAudio.load (std::memory_order_acquire))
+        {
+            {
+                const std::lock_guard<std::mutex> hostSerialises (hostAudioLock);
+                if (! d2::processStaysFinite (proc, 1, buf, rng))
+                    audioFinite.store (false, std::memory_order_relaxed);
+            }
+            audioBlocks.fetch_add (1, std::memory_order_relaxed);
+        }
+    });
+
+    go.store (true, std::memory_order_release);
+    int ticks = 0;
+    while (! (hostDone.load (std::memory_order_acquire) && prepareDone.load (std::memory_order_acquire)))
+    {
+        ++ticks;
+        // The editor tick's reads, in the editor's order.
+        auto& pm = proc.getPresets();
+        const juce::String liveName = pm.currentName();
+        const bool liveDirty = pm.isDirty();
+        const bool animOn = (bool) animBinding.getValue();
+        proc.pollUndoCoalesce();
+        const bool u = proc.canUndo(), r = proc.canRedo();
+        const int  slot = proc.abActiveSlot();
+        if (liveName.isEmpty() && liveDirty && u && r && slot < 0 && animOn)
+            std::printf ("  (unreachable, keeps the reads live)\n");
+
+        // The user, at human-ish cadences.
+        if (ticks % 7 == 0)  proc.abSwitchTo (1 - proc.abActiveSlot());
+        if (ticks % 11 == 0) { if (proc.canUndo()) proc.undo(); else if (proc.canRedo()) proc.redo(); }
+        if (ticks % 13 == 0) proc.getPresets().load (ticks % 5);
+        if (ticks % 17 == 0) animBinding.setValue (! animOn);
+        if (ticks % 19 == 0) { auto* w = proc.getAPVTS().getParameter (pid::width);
+                               w->beginChangeGesture(); w->setValueNotifyingHost (0.5f + 0.001f * (float) (ticks % 100)); w->endChangeGesture(); }
+
+        // The processor's own timer.
+        juce::Timer::callPendingTimersSynchronously();
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    hostThread.join();
+    prepareThread.join();
+    stopAudio.store (true, std::memory_order_release);
+    audioThread.join();
+
+    // Everything pending is adopted; a final save from both sides must agree.
+    proc.pollUndoCoalesce();
+    juce::MemoryBlock ownerSave = d2::saveOf (proc), hostSave;
+    d2::offMessageThread ([&] { hostSave = d2::saveOf (proc); });
+
+    std::printf ("  probe finished: %d restores + %d host saves, %d prepares, %d audio blocks, %d editor ticks\n",
+                 kIterations, hostSaves.load(), kIterations, audioBlocks.load(), ticks);
+    std::printf ("  audio stayed finite: %s; final host-thread save == owner's save: %s\n",
+                 audioFinite.load() ? "yes" : "NO", hostSave == ownerSave ? "yes" : "NO");
+    std::printf ("  verdict comes from the sanitizer's report set, not from this exit code\n");
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -6706,6 +7415,9 @@ int main (int argc, char* argv[])
     if (argc > 1 && std::strcmp (argv[1], "--state-prepare-race-probe") == 0)
         return runStatePrepareRaceProbe();
 
+    if (argc > 1 && std::strcmp (argv[1], "--d2-stress-probe") == 0)
+        return runD2StressProbe();
+
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
     std::printf ("Anamorph state-compatibility self-tests\n");
@@ -6751,6 +7463,11 @@ int main (int argc, char* argv[])
     testDefaultValuedCorruptionIsRepairedInState();
     testModernSettingsAreRepairedOnRestore();
     testMalformedLegacySettingsResolveToValid();
+    testAbStateCoherentAcrossOffThreadRestores();
+    testRestoreCyclesUnderRunningAudio();
+    testPresetTransitionsUnderConcurrentSaves();
+    testRestoreAroundReprepare();
+    testUndoHistoryIsOwnedByTheMessageThread();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

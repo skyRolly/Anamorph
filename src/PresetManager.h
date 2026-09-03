@@ -152,7 +152,15 @@ public:
         current = name;
         sigAtLoad = baselineSig.isNotEmpty() ? baselineSig : soundSig();
         sel = sourceSel;
+        if (onMetaChanged) onMetaChanged();
     }
+
+    // The sound signature of an APVTS's parameters, as a pure function of the
+    // parameter values (each an atomic read), so any thread can compute it without
+    // touching this manager: an off-message-thread restore needs it for the
+    // "restored state counts as its own clean baseline" fallback (D-2). soundSig()
+    // is exactly this over the manager's own APVTS.
+    static juce::String soundSignatureFor (const juce::AudioProcessorValueTreeState&);
 
     void load (int index);                           // message thread only
     bool loadFile (const juce::File&);               // load an arbitrary .anamorph file (OS chooser, #3)
@@ -182,6 +190,22 @@ public:
     // before the save. Re-baselining here creates no undo step, which is right: saving is not a
     // sound change. Empty when no processor wires it up (safe to skip).
     std::function<void()> onSaved;
+
+    // D-2 (RISK-007). Fired by saveUser() AFTER the file is written and BEFORE any of
+    // this manager's metadata moves, so the processor can adopt a host restore that is
+    // still pending from another thread first: the save then lands on top of the
+    // restore, in the order the two events actually happened. (load()/loadFile() are
+    // covered by onAboutToLoad, which already fires before their first mutation.)
+    std::function<void()> onAboutToSave;
+
+    // D-2 (RISK-007). Fired on the message thread after ANY change to the metadata
+    // this manager owns -- the name, the identity and the clean baseline -- from
+    // every path that changes them: load, loadFile, saveUser, setMeta and
+    // adoptRestoredState. The processor republishes its program snapshot from here,
+    // so an off-message-thread save can never read a stale name or identity.
+    // Fired after the fields are set and before onLoaded / onSaved. Empty when no
+    // processor wires it up (safe to skip).
+    std::function<void()> onMetaChanged;
 
     // S10: set by the processor -- generation counter of the sound-parameter
     // values, bumped on every value change. Lets isDirty() reuse its last

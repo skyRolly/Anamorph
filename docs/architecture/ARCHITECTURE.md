@@ -39,7 +39,7 @@ parameter ID.
 
 Evidence [Verified]:
 - Source: src/PluginParameters.cpp:326-406 (`toEngine`)
-- Source: src/PluginProcessor.cpp:313-318 (per-block snapshot → `engine.setParameters` → `engine.process`)
+- Source: src/PluginProcessor.cpp:348-353 (per-block snapshot → `engine.setParameters` → `engine.process`)
 
 ## 3. Module inventory
 
@@ -74,7 +74,7 @@ Evidence [Verified]:
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:279-293 (OpenGL platform gate)
 - Source: src/dsp/ScopeBuffer.h:8-18 (lock-free SPSC)
-- Source: src/PluginProcessor.cpp:263 (`juce::ScopedNoDenormals`)
+- Source: src/PluginProcessor.cpp:298 (`juce::ScopedNoDenormals`)
 
 ## 5. I/O layouts
 
@@ -83,7 +83,7 @@ Evidence [Verified]:
 - Output is **always stereo**. **mono → mono is Not Supported** (deliberately rejected).
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:122-132 (`isBusesLayoutSupported`), :94-95 (mono→stereo upmix)
+- Source: src/PluginProcessor.cpp:141-151 (`isBusesLayoutSupported`), :94-95 (mono→stereo upmix)
 
 ## 6. Cross-references
 

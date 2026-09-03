@@ -640,7 +640,48 @@ twice, and a `juce::String` refcount exchange. Measured round 20: the same four 
 others, which is what classified ER-STATE-23 as already covered by D-2 rather than a new bug
 (`docs/FUTURE_RISKS.md` RISK-007).
 
-`tests/state_tests.cpp` (**35 tests**, own console target `AnamorphStateTests`) automates the
+**D-2 / ADR-0036 (2026-09-03) closed that class, and the three probes are now expected SILENT** —
+and are run to prove it rather than trusted: the **`tsan` CI job** builds this suite with
+`-fsanitize=thread`, proves the lane live with a seeded-race canary (`tests/tsan_canary.cpp`), then
+runs each of the four probes five times with `halt_on_error=1` and the whole suite once under the
+instrument. The fourth, **`AnamorphStateTests --d2-stress-probe`**, is the twelfth opt-in instrument:
+every thread the ownership model names at once — a host thread restoring three sessions in turn and
+saving after each, a second host thread re-preparing at alternating rates, the audio thread
+processing noise, and the main thread doing what the editor and the processor's timer do (the tick's
+reads, `pollUndoCoalesce`, a Settings binding read and written, A/B switches, undo/redo, factory
+preset loads, gesture edits, the timer). On the pre-D-2 tree it reports the register's classes and
+more (the Settings tree, the slot handles); after, silence, in every run.
+
+**State tests 37–41 pin the ownership contract deterministically**, one per contract the task set
+(`tests/state_tests.cpp` §D-2), each draining through `pollUndoCoalesce()` — the editor's own path —
+so the same file measures the pre-fix tree with the same instruments:
+
+- **37 (A/B)** — a host thread restores two sessions with different slot sets in turn while the
+  owner cycles A → B → A → B between them. Before the drain the owner still sees the *previous*
+  program whole (active index, name, undo history) while the sound has already moved; after it, the
+  restored one whole. A host-thread save taken *inside* the pending window is byte-identical to the
+  owner's save after the adoption, and one taken after it is too.
+- **38 (restore)** — B → C → B → C off the message thread with the audio thread running: the
+  oversampling atomic is stored before the restore returns, the Settings tree follows at the drain,
+  the reported latency reaches a message-thread restore's truth, the audio path stays finite, and a
+  save after the last restore is byte-identical to the session restored.
+- **39 (preset)** — every factory preset loaded twice round with the audio thread processing and a
+  host thread saving in a loop the whole time: identity by index and name, every parameter equal to a
+  control instance's after the same load, and a sequenced host-thread save equal to the owner's.
+- **40 (prepare / re-prepare)** — restores on one host thread and re-prepares at alternating rates
+  and block sizes on another, the editor-shaped main thread reading and draining: no latency report
+  from either host thread, and the timer leaves the host holding the final session's truth with the
+  atomic and the tree agreeing.
+- **41 (undo)** — history exists; a host restore leaves it whole until the drain and clears it at
+  the drain; the owner then walks new history — undo, undo, redo, redo, a Copy undone on the other
+  slot — while a host thread saves throughout, and every step lands exactly.
+
+State tests 22 and 27 were re-shaped in the same change: their off-thread requester used to be a
+`juce::Value` written from a worker, which after D-2 models nothing the plug-in does; both now drive
+the real `setStateInformation` from the worker, and 27 asserts the ORDER of reported values because
+the tick that adopts a restore delivers its latency from inside the adoption.
+
+`tests/state_tests.cpp` (**40 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):
@@ -905,7 +946,7 @@ still the universal bundle from the `macos` job. Its first step **fails** the jo
 not `x86_64` or `sysctl.proc_translated` is not `0`, so it can never report a green Intel result
 from somewhere that is not Intel.
 
-Six further jobs run beside the build jobs, none in a `needs:` chain in either direction, so a
+Seven further jobs run beside the build jobs, none in a `needs:` chain in either direction, so a
 finding in one never skips a binary that is otherwise fine. (`merge-check` is not among them: its
 `if:` is the exact complement of every other job's, so it runs only on the same-repo pull-request
 event — where it is the only job that runs at all.)
@@ -916,6 +957,7 @@ event — where it is the only job that runs at all.)
 | `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, `python3 scripts/check-realtime.py --self-test` then that lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
 | `sanitizers` | ASan+UBSan over both suites, then valgrind memcheck over both suites (the valgrind step sets `ANAMORPH_TESTS_NO_FTZ=1` — see below) |
 | `realtime` | `cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=realtime`, build `AnamorphTests`, run it with **no `RTSAN_OPTIONS`** (ADR-0029 — `halt_on_error=false` would make it report and pass) |
+| `tsan` | `cmake -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread -DANAMORPH_BUILD_STANDALONE=OFF`, build `AnamorphStateTests`, then with `TSAN_OPTIONS=halt_on_error=1:exitcode=66` run `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe` and `--d2-stress-probe` (five times each in CI) and the suite once; the canary first (`clang++ -fsanitize=thread tests/tsan_canary.cpp` must FAIL with a data-race report). Needs `libclang-rt-<major>-dev`; on a kernel with 32-bit ASLR entropy, `sysctl vm.mmap_rnd_bits=28` |
 | `linux-lto-tests` | `cmake -B build-lto -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF -DCMAKE_C_FLAGS=-flto -DCMAKE_CXX_FLAGS=-flto -DCMAKE_EXE_LINKER_FLAGS=-flto`, build both test targets, run both — the suites against the shipped optimization class (see `CI_CD.md`) |
 | `fuzz` | the `AnamorphFuzzState` recipe under §"Opt-in targets" above, verbatim — the CI step adds only `-seed=20260818 -rss_limit_mb=4096 -print_final_stats=1` and an `-artifact_prefix` for the reproducer it uploads on a finding |
 

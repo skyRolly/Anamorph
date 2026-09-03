@@ -73,6 +73,24 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   can no longer fade toward a path that is not there. Switching between 2×, 4× and 8×, and switching
   Oversampling on, are all unchanged. Regression coverage: DSP test 54.
   Evidence: PR #135. [Verified]
+- **A DAW that saves or restores the plug-in's state from a background thread can no longer corrupt
+  the preset name, the A/B slots or the undo history.** Some hosts do exactly that — Logic's and
+  GarageBand's autosave on the AU, and any host that ignores the VST3 rule that state calls belong on
+  its UI thread — and until now the plug-in's own bookkeeping (which preset is loaded and whether it
+  has been edited, the two A/B slots and which is live, the undo history, the Settings) was written by
+  that background restore at the same moment the open window was reading it: a data race, with a
+  crash or a mislabelled preset as the possible outcome, measured under ThreadSanitizer and tracked
+  since v0.9.6 as RISK-007. That bookkeeping now belongs to the window's own thread alone. A restore
+  from any other thread still applies the sound immediately, exactly as before — including the
+  Oversampling setting the engine reads, so a project comes up at its restored sound from the first
+  sample as it always has — and hands the bookkeeping over as one complete package that the plug-in
+  adopts within a twentieth of a second, whether or not the window is open; a save from that thread
+  describes the state it just restored. Nothing changes for the DAWs that already call from the UI
+  thread, and nothing changes in the saved file. One further correction rides along: a damaged
+  control value in a project file is now corrected *before* the DAW is told about it, where it used
+  to be reported at its clamped value first and then corrected. Decision: ADR-0036 (D-2).
+  Regression coverage: State tests 37–41 and the four ThreadSanitizer probes, now run on every push
+  in their own CI lane. [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

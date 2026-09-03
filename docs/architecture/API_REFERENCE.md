@@ -17,11 +17,12 @@ The VST3/Standalone wrapper (`: juce::AudioProcessor, private APVTS::Listener`).
 | `getBypassParameter` | `juce::AudioProcessorParameter* () const` | Returns the registered host bypass param. |
 | `getAPVTS` / `getEngine` / `getPresets` / `getInternal` | accessors | Editor access to subsystems. |
 | `undo` / `redo` / `canUndo` / `canRedo` / `pollUndoCoalesce` | Undo API | Custom per-A/B-slot undo (sound params only). |
+| `adoptPendingHostState` | `void ()` | Message thread only: adopts a restore an off-message-thread `setStateInformation` handed over (D-2, ADR-0036). Called by the processor's timer, by `pollUndoCoalesce` and at every state-mutating entry point; a no-op when nothing is pending. |
 | `applyAutoGain` | `void ()` | Locks measured Level-Match gain into Output Gain. |
 | `setSoloPreview` / `clearSoloPreview` | `void (int) / void ()` noexcept | Momentary solo audition (atomic, non-undoable). |
 | `abSwitchTo` / `abCopyToOther` / `abActiveSlot` | A/B API | A/B compare living in the processor (survives editor close). |
 
-Evidence [Verified]: src/PluginProcessor.h:20-80.
+Evidence [Verified]: src/PluginProcessor.h:22-102.
 
 ## `AnamorphEngine` — `src/dsp/AnamorphEngine.h`
 
@@ -63,9 +64,13 @@ Host-hidden session/view state (not in APVTS).
 | `oversampleIndex` | `int () const noexcept` | Lock-free audio-thread read (0..3). |
 | `copyState` / `restoreState` | `juce::ValueTree () const / void (const juce::ValueTree&)` | Persistence. |
 | `migrateFromLegacyApvts` | `void (const juce::ValueTree&)` | One-time pre-0.8.4 migration (legacy APVTS → InternalState). |
+| `resolveRestore` / `resolveLegacy` | `static juce::ValueTree (const juce::ValueTree&)` | The pure half of the two above: the six typed values a session resolves to. Any thread (D-2, ADR-0036). |
+| `applyResolved` | `void (const juce::ValueTree&)` | Writes a resolved set into the GUI-bound tree. **Message thread only.** |
+| `publishEngineConfig` | `void (const juce::ValueTree&) noexcept` | Stores the engine-facing atomics (oversampling, animations) from a resolved set — the part of an off-message-thread restore that must be synchronous. |
+| `onChanged` | `std::function<void()>` | Fires on the message thread after any property change; the processor republishes its program snapshot from it. |
 | `onOversampleChanged` | `std::function<void()>` | Fires on the message thread so the wrapper re-reports PDC. |
 
-Evidence [Verified]: src/InternalState.h:165-280.
+Evidence [Verified]: src/InternalState.h:165-337.
 
 ## `PresetManager` — `src/PresetManager.h`
 

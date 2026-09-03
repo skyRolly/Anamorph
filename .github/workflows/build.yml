@@ -3362,6 +3362,146 @@ jobs:
         run: ccache --show-stats --verbose || true
 
   # -------------------------------------------------------------------------
+  # ThreadSanitizer (Linux). The mechanical guard for D-2 / RISK-007 (ADR-0036):
+  # the plug-in's program state -- preset metadata, the A/B slot set, the undo
+  # history, the Settings tree -- is MESSAGE-THREAD state, and a host that calls
+  # getStateInformation / setStateInformation from some other thread (the macOS
+  # AU autosave shape, pluginval's AU background-thread state test) reaches it
+  # only through two lock-free single-object handoffs. Nothing else in this
+  # pipeline can see a data race: ASan, UBSan, valgrind and RTSan all treat a
+  # torn read as perfectly correct code.
+  #
+  # WHAT RUNS. The four opt-in probes the state suite carries and never runs on
+  # its own -- `--state-thread-probe`, `--state-prepare-race-probe`,
+  # `--reprepare-race-probe` and `--d2-stress-probe` -- each SEVERAL times,
+  # because a race that failed to reproduce is not a race that was eliminated
+  # (TESTING_POLICY rule 3a's spirit, applied to interleavings). The probes drive
+  # the exact host shapes the register recorded: state calls on a thread that is
+  # not the message thread, a re-prepare on another, the audio thread processing,
+  # the editor's tick and the processor's timer on the message thread. The five
+  # deterministic tests that pin the same contract (State tests 37-41) run in
+  # every job that runs the suite; this lane is the one that can see a torn read.
+  #
+  # ITS OWN JOB, by driver restriction: clang rejects `-fsanitize=thread`
+  # alongside `address`, `undefined` and `realtime`. Its own build directory and
+  # ccache lineage for the same reason the other sanitizer lanes have theirs.
+  #
+  # `halt_on_error=1` IS THE GATE. ThreadSanitizer reports and CONTINUES by
+  # default, exiting 66 at the end; halting on the first report makes the failing
+  # run short and its first report the one at the top of the log. `exitcode=66`
+  # restates the default so a future TSan that changes it cannot turn a report
+  # into a green step. A report from JUCE's own internals would fail this lane
+  # too, and that is intended: the plug-in's ownership boundary is what is being
+  # measured, and a report inside JUCE would be evidence that the boundary is not
+  # where ADR-0036 says it is.
+  #
+  # THE LIVENESS PROOF RUNS FIRST (TESTING_POLICY rule 4), and it asserts BOTH
+  # halves -- a non-zero exit AND the report signature -- for the reason the
+  # RTSan canary records: a canary that died for some unrelated reason must not
+  # pass for a live gate.
+  #
+  # `vm.mmap_rnd_bits` is lowered because ThreadSanitizer's shadow-memory layout
+  # cannot cope with the 32-bit ASLR entropy newer Ubuntu images default to
+  # ("FATAL: ThreadSanitizer: unexpected memory mapping"); 28 bits is the value
+  # the sanitizer's own documentation recommends and the runner is ephemeral.
+  #
+  # NOT in any `needs:` chain, matching `sanitizers`, `realtime` and `fuzz` --
+  # and, like them, still release-blocking through `release.yml`'s aggregate
+  # dependency on this workflow.
+  tsan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 400M
+      CCACHE_COMPILERCHECK: content
+      # The probes run with these; the canary runs with the same so the two
+      # cannot disagree about what a report looks like.
+      TSAN_OPTIONS: halt_on_error=1:exitcode=66:report_bugs=1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install build dependencies
+        uses: ./.github/actions/setup-linux-build
+        with:
+          clang-version: ${{ env.ANAMORPH_CLANG_VERSION }}
+
+      - name: Restore the compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-ubuntu-tsan-clang${{ env.ANAMORPH_CLANG_VERSION }}-${{ github.run_id }}
+          restore-keys: ccache-ubuntu-tsan-clang${{ env.ANAMORPH_CLANG_VERSION }}-
+
+      - name: Lower ASLR entropy for the sanitizer's shadow memory
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+
+      - name: ThreadSanitizer liveness canary (the lane must be able to fail)
+        run: |
+          clang++-${{ env.ANAMORPH_CLANG_VERSION }} -std=c++23 -O1 -g \
+            -fsanitize=thread tests/tsan_canary.cpp -o tsan-canary
+          if ./tsan-canary > tsan-canary.log 2>&1; then
+            echo "::error::the ThreadSanitizer canary exited 0 -- this lane is not instrumenting anything"
+            cat tsan-canary.log
+            exit 1
+          fi
+          if ! grep -q "WARNING: ThreadSanitizer: data race" tsan-canary.log; then
+            echo "::error::the canary failed, but not with a ThreadSanitizer data-race report"
+            cat tsan-canary.log
+            exit 1
+          fi
+          echo "canary reported its seeded race -- the lane is live"
+
+      - name: Configure (Clang, ThreadSanitizer)
+        run: >
+          ccache --zero-stats || true &&
+          cmake -B build-tsan -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=clang-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DCMAKE_CXX_COMPILER=clang++-${{ env.ANAMORPH_CLANG_VERSION }}
+          -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer"
+          -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+          -DCMAKE_C_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
+          -DCMAKE_CXX_COMPILER_LAUNCHER=${{ env.ANAMORPH_COMPILER_LAUNCHER }}
+          -DANAMORPH_BUILD_STANDALONE=OFF
+          -DANAMORPH_BUILD_NUMBER=${{ github.run_number }}
+
+      # Only the state suite: it is the target that compiles the plug-in sources
+      # and drives the real processor from real threads. The DSP suite has no
+      # cross-thread path of its own to instrument.
+      - name: Build the state suite (ThreadSanitizer)
+        run: cmake --build build-tsan --target AnamorphStateTests
+
+      - name: Compiler cache statistics
+        if: ${{ !cancelled() && env.ANAMORPH_COMPILER_LAUNCHER != '' }}
+        run: ccache --show-stats --verbose || true
+
+      # Repeated runs: the register's original measurement found four classes
+      # that this machine's scheduling may or may not interleave in a single
+      # 400-iteration run; five runs of each probe is what distinguishes "silent
+      # because eliminated" from "silent because it did not happen this time".
+      - name: The D-2 probes under ThreadSanitizer (x5 each)
+        run: |
+          BIN=./build-tsan/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests
+          for probe in --state-thread-probe --state-prepare-race-probe --reprepare-race-probe --d2-stress-probe; do
+            for run in 1 2 3 4 5; do
+              echo "== $probe, run $run"
+              "$BIN" "$probe"
+            done
+          done
+
+      # ...and the deterministic contract itself, once, under the instrument: the
+      # five D-2 tests spawn real host, prepare and audio threads against the
+      # real processor, so a torn read in one of them fails here even where the
+      # value-level assertion happened to pass.
+      - name: The state suite under ThreadSanitizer
+        run: ./build-tsan/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests
+
+  # -------------------------------------------------------------------------
   # State fuzzing (Linux). libFuzzer over `setStateInformation`, the one entry
   # point where the plug-in parses bytes it did not write: a session from an
   # older version, a preset from another machine, a host that truncated a chunk.
