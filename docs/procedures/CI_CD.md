@@ -1160,14 +1160,39 @@ Separate from the build/validate pipeline, four security workflows/configs run a
 
 | File | What it does | Triggers |
 |---|---|---|
-| `.github/workflows/codeql.yml` | CodeQL: `c-cpp` (manual build — VST3 + tests targets, Standalone off) + `actions`. Alerts filtered to repo-own code (`paths-ignore: build` excludes the FetchContent'd JUCE tree). Default query suite. | push/PR to `main` (docs-only changes skipped), weekly, dispatch |
-| `.github/workflows/msvc.yml` | MSVC `/analyze` (NativeRecommendedRules) → SARIF upload. Build step required (juceaide-generated files); JUCE under `build/_deps` treated as external. | push/PR to `main` path-filtered to `src/`, `tests/`, `CMakeLists.txt`; weekly; dispatch |
+| `.github/workflows/codeql.yml` | CodeQL: `c-cpp` (manual build — VST3 + tests targets, Standalone off) + `actions`. Alerts filtered to repo-own code (`paths-ignore: build` excludes the FetchContent'd JUCE tree). Default query suite. Uploads to Code Scanning **and** keeps the raw SARIF as an artifact. | push/PR to `main` (docs-only changes skipped), weekly, dispatch |
+| `.github/workflows/msvc.yml` | MSVC `/analyze` (NativeRecommendedRules) → SARIF upload. Build step required (juceaide-generated files); JUCE under `build/_deps` treated as external. Uploads to Code Scanning **and** keeps the raw SARIF as an artifact. | push/PR to `main` path-filtered to `src/`, `tests/`, `CMakeLists.txt`; weekly; dispatch |
 | `.github/workflows/dependency-review.yml` | Dependency Review on PRs (GitHub Actions deps only — the graph does not index CMake FetchContent). Comments only on failure. | PR to `main` |
 | `.github/dependabot.yml` | Weekly `github-actions` version bumps in **two groups split by semver impact** — minor/patch in one PR (most of the volume: the `github/codeql-action` trio releases every week or two, and since every ref became a SHA pin the `actions/*` point releases land here too), majors in another, so one major cannot block every safe bump behind it. Both groups keep `patterns: "*"`, which is what holds a multi-ref family (`codeql-action/{init,analyze,upload-sarif}` — three dependency names) together. `microsoft/msvc-code-analysis-action` is **ignored**: its SHA pin carries no tag, and an untagged pin is followed to the latest *commit*, not the latest release. `cooldown` is unset — Dependabot already withholds a new version for 3 days by default. Nothing else in this repository is a Dependabot ecosystem; `DEPENDENCY_POLICY.md` §Update mechanisms says what maintains each of the rest. | weekly |
 
 Both analysis workflows configure with `-DANAMORPH_BUILD_STANDALONE=OFF`: the Standalone format
 recompiles the same translation units as VST3, so analyzing it doubles cost for zero extra
 coverage. Evidence [Verified]: the four files above.
+
+### Raw scanner SARIF artifacts
+
+Both scanners also publish their SARIF as Actions artifacts — `codeql-sarif-<language>-<sha>` and
+`prefast-sarif-<sha>`. The Code Scanning alert and check-run annotation APIs are not reachable from
+every audit context; Actions artifacts are. The artifact is strictly richer than the dashboard for
+CodeQL: `paths-ignore: build` filters the fetched JUCE tree out of the ALERTS, but those results
+remain in the raw SARIF. Note the name carries `github.sha`, which on a `pull_request` event is the
+merge commit, not the head commit. Neither analysis runs a second time — each new step consumes the
+file the Code Scanning upload beside it already consumed.
+
+**The raw scanner SARIF is kept on the same `!cancelled()` principle** the artifact gating in
+§Pipeline uses — a report Code Scanning REJECTS is exactly when the raw SARIF is most worth having,
+and a success gate would discard it precisely then. The two scanners need different conditions
+because they are shaped differently: `msvc.yml` produces and uploads in SEPARATE steps, so its
+artifact gates exactly on `steps.run-analysis.outcome == 'success'` and keeps
+`if-no-files-found: error` unconditionally. `codeql.yml`'s `analyze` does BOTH, so its own outcome
+cannot separate "no SARIF" from "SARIF written, upload refused": it gates on
+`outcome != 'skipped'` and downgrades
+`if-no-files-found` to `warn` when the analysis itself failed — deliberately avoiding the trap
+§Pipeline step 7 describes against the `-debug` uploads, where a second failure on a missing file
+buries the real error. `warn` never publishes an empty artifact; upload-artifact skips the upload
+when nothing matches.
+
+Evidence [Verified]: `.github/workflows/codeql.yml`, `.github/workflows/msvc.yml`.
 
 ### The Linux ABI floor
 

@@ -6,8 +6,10 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** (2026-09-03, matching the CHANGELOG heading) — ADR-0035,
-the oversampling path crossfade, whose entry is LAST in the body; before it ADR-0034,
+Last updated: for the **scanner-SARIF artifact change** (2026-09-03) — `codeql.yml` and `msvc.yml`
+now also publish their raw SARIF as Actions artifacts, whose entry is LAST in the body. Before it,
+for the **0.9.7 change set** (2026-09-03, matching the CHANGELOG heading) — ADR-0035,
+the oversampling path crossfade; before it ADR-0034,
 the maintainer-instructed latency change. Before it, for the
 **0.9.6 change set** — the
 **engineering-review programme, rounds 1 through 27**, newest last in the body: round 1 (the
@@ -7907,3 +7909,50 @@ than two).
 adds 32), counted from `main`'s registered test functions. The state suite is unchanged at **35
 tests / 1506 checks**. Measured, not inferred: `AnamorphTests` prints `396 checks, 0 failures` and
 `AnamorphStateTests` prints `1506 checks, 0 failure(s)`. [Verified]
+## Scanner-SARIF artifacts — the raw report kept beside the Code Scanning upload (2026-09-03)
+
+Migrated from the sibling product **Anabasis**, PR #31 (`CI: persist the raw scanner SARIF as an
+Actions artifact`), under the cross-repository code-reuse route the two products already use for
+`scripts/check-docs.py`. The change is CI-only: no source file, test, parameter, serialization
+record or DSP behaviour is touched.
+
+**What changed.** Both Code Scanning analyzers already produced SARIF and already uploaded it;
+neither persisted it anywhere a later audit could read, because the Code Scanning alert and
+check-run annotation APIs are not reachable from every context. One `actions/upload-artifact` step
+per workflow now keeps the raw report — no analyzer, query suite, build mode, path filter, target,
+category, upload semantic or `/analyze` flag changed, and neither analysis runs twice. Artifact
+names are `codeql-sarif-<language>-<sha>` and `prefast-sarif-<sha>`.
+
+**The gate is `!cancelled()`, not the default `success()`** — the correction the source PR's own
+review round made, carried across rather than re-derived: the default would discard the SARIF in
+exactly the case it matters most, a report Code Scanning REJECTS. The two conditions are shaped to
+each workflow. `msvc.yml` separates produce from upload, so it gates exactly on
+`steps.run-analysis.outcome == 'success'` and keeps `if-no-files-found: error` unconditionally.
+`codeql.yml`'s `analyze` does both, so it gates on `outcome != 'skipped'` and softens
+`if-no-files-found` to `warn` when the analysis itself failed, to avoid burying the real error
+behind a missing-file failure — the trap `CI_CD.md` §Pipeline step 7 already documents against the
+`-debug` uploads.
+
+**Adaptations required for Anamorph, and nothing else.** The `github/codeql-action` pin stays this
+repository's own (v4.37.8, not the sibling's v4.37.9) — bumping it is a Dependabot decision, not
+part of this change; `actions/upload-artifact` was already pinned identically in both repositories.
+The CodeQL path comment cites the sibling's job log as the evidence for the action's `../results`
+default and states the workspace-relative Anamorph equivalent, rather than claiming a log this
+repository has never produced. The two documentation edits follow this repository's structure:
+Anabasis has a flat artifact-safety bullet list and a per-workflow notes table, Anamorph has neither,
+so both pieces land as one new `### Raw scanner SARIF artifacts` subsection under `CI_CD.md`
+§Security scanning, cross-referencing §Pipeline step 7 where the sibling cross-referenced its own
+bullet list. The sibling's "Drift reported, not corrected" paragraph has no counterpart here: its
+`Last updated` line was two versions stale, this file's was current with the CHANGELOG's `[0.9.7]`
+heading, so there was no drift to report.
+
+**`DOCUMENTATION_LIFECYCLE_POLICY.md` rows engaged:** **CI workflow** (`CI_CD.md`, `TESTING.md`).
+`TESTING_POLICY.md` is deliberately NOT edited — its Layer 1 row is conditioned on what a gate
+REQUIRES, and the scanners still require exactly what they required of the code; only where their
+output is kept changed. `REPOSITORY_MAP.md` likewise: no script was added or removed.
+
+**Verification.** `check-docs.py` self-test + full run clean; `check-citations.py` self-test +
+`--check` clean; both workflows parse as YAML with the new step resolving inside the `analyze` job.
+The steps themselves cannot be executed from a pull request that does not run on GitHub's runners,
+so their runtime behaviour is [Partially Verified] — inherited from the sibling, where the same
+steps are live. [Verified] for the file contents; [Partially Verified] for the runner behaviour.
