@@ -331,6 +331,18 @@ int main()
     { Cell c; c.label = std::string ("OS ") + osName (f); c.p = working;
       c.p.driveDb = 8.0f; c.p.oversample = f; row (c); }
 
+    // The state ADR-0034 created and the reason it is cheap. A factor SELECTED
+    // with the wrap SKIPPED (Drive 0, linear algorithm) now carries the factor's
+    // latency through `osCompDelayBuffer` instead of through the resampling round
+    // trip. These rows are what says the CPU saving survived the latency change:
+    // they belong beside the OS Off row above, not beside the engaged rows -- if
+    // they ever start tracking the engaged rows, the wrap has started running.
+    header ("Oversampling SELECTED but skipped, Drive 0 -- the ADR-0034 stand-in (48 kHz / 128)");
+    for (auto f : { OversampleFactor::Off, OversampleFactor::x2,
+                    OversampleFactor::x4,  OversampleFactor::x8 })
+    { Cell c; c.label = std::string ("OS ") + osName (f) + ", drive 0"; c.p = working;
+      c.p.driveDb = 0.0f; c.p.algorithm = Algorithm::Haas; c.p.oversample = f; row (c); }
+
     header ("Multiband, including the RISK-002 split drag (48 kHz / 128)");
     { Cell c; c.label = "multiband off";      c.p = working; c.p.mbEnable = false; row (c); }
     { Cell c; c.label = "4 bands, static";    c.p = working;                        row (c); }

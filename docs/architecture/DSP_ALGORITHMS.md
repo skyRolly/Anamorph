@@ -118,6 +118,36 @@ jumps land via the fade, click-free). Widths one-pole smoothed (~20 ms), shared 
 - Invariants: per-band `L+R = 2·Mid` (mono compatible); **solo-agnostic** (always sums every
   active band).
 
+## Oversampling latency stand-in — `osCompDelayBuffer` (`src/dsp/AnamorphEngine.{h,cpp}`)
+
+Not an algorithm: a 2-channel integer ring that occupies the oversampling wrap's place in the chain
+whenever a factor is **selected** but the wrap is **skipped** (Drive at 0 with a linear algorithm —
+`osActiveFor` false). It delays by exactly the factor's own `latency2/4/8`, so the chain carries the
+number `getLatencySamples()` reports whether or not the wrap is running, and the reported PDC stops
+moving with Drive and Algorithm (ADR-0034).
+
+- **No arithmetic.** It copies floats, so its output is bit-identical to its input delayed, it
+  cannot round differently on another architecture, and it needs no twin-dump scenario.
+- **Placement is load-bearing**, not incidental: it sits inside the `else` arm of the wrap, after
+  `processNonlinearRegion` and before the linear-algorithm dispatch. Five delay reads downstream
+  (clean dry, `A(dry)`, the Level-Match reference, the true-bypass crossfade, the dry-filled duck)
+  measure `-lat` from a point ABOVE the wrap, so an element supplying that `lat` anywhere else would
+  double-count or under-count against them and comb the Mix.
+- **Written on every block, read only when the base-rate path is audible** (ADR-0035). Keeping it
+  warm is what makes the wrap ⇄ ring handover continuous: a ring cleared at the handover hands back
+  `lat` samples of ZEROS, and those went straight into Haas's and Velvet's delay lines to re-emerge
+  12–35 ms later, after the masking fade was over. Write-only costs two vector copies.
+- **Flushed with the oversamplers** at the sites that are genuine restarts: `prepare()`, `reset()`,
+  the `osPathChanged` branch at a silent duck bottom (now only an oversampling FACTOR change), the
+  forced-duck wholesale reset, and the NaN/Inf self-heal — the last because it is a main-path delay
+  line written earlier in the same block, so a non-finite sample would otherwise be handed back
+  `lat` samples later. It is deliberately NOT flushed at a wrap engage/disengage, which is the
+  change ADR-0035 made.
+- **Cost**: below the bench's floor. 48 kHz / 128 on the `working` chain with Drive 0 —
+  OS Off 153.27 vs 2× 152.31, 4× 159.52, 8× 155.91 ns/sample.
+
+Regression coverage: Test 52 (`testOversamplingLatencyIsFactorOnly`).
+
 ## SoloMonitor — `src/dsp/SoloMonitor.{h,cpp}`
 
 POST-EVERYTHING audition: mirrors the Multiband split (same LR crossovers, same slew-limited

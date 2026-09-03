@@ -8,7 +8,7 @@ architecture docs, and the ADRs. These must hold across releases.
 1. **The signal chain is strictly serial, in this fixed order** (see `SIGNAL_FLOW.md`):
    Input conditioning → Effect engine (Drive → algorithm → global Width → Multiband) →
    Dry/Wet Mix → Mono Maker → Output stage → Band Solo monitor → metering.
-   Evidence [Verified]: src/dsp/AnamorphEngine.cpp:628-975.
+   Evidence [Verified]: src/dsp/AnamorphEngine.cpp:699-1265.
 
 2. **Mono Maker runs post-Mix, in place.** It collapses the lows of the *mixed* signal so the
    low end is mono at any Mix amount. (ADR-0006) Evidence: AnamorphEngine.cpp:761-766; test
@@ -30,8 +30,15 @@ architecture docs, and the ADRs. These must hold across releases.
    Evidence: MultibandWidth.h:29-32.
 
 5. **Oversampling wraps only the nonlinear/modulation stages** (Drive, Chorus, Dimension-D);
-   linear stages stay outside; OS off ⇒ 0 latency. (ADR-0003) Evidence:
-   AnamorphEngine.cpp:14-23.
+   linear stages stay outside; OS off ⇒ 0 latency. **Reported latency is a function of the
+   SELECTED FACTOR alone** — with a factor selected but the wrap skipped for want of nonlinear
+   work, `osCompDelayBuffer` supplies the wrap's group delay, so no parameter can move the number
+   and the chain always carries what it reports. **Engaging or disengaging the wrap is a click-free
+   CROSSFADE between the two paths, not a ducked switch** — a duck cannot mask it, its gain being
+   applied downstream of the wideners' delay lines. (ADR-0003, amended by ADR-0034 and ADR-0035)
+   The blend is settled, never carried, across a duck bottom that changed the factor, and it can
+   only weight a wrapped path that exists.
+   Evidence: AnamorphEngine.cpp `osActiveFor` / `osLatencyFor` / `osBlend`; Tests 52, 53 and 54.
 
 6. **Mono compatibility by construction.** Width/decorrelation modify only the Side; `L+R = 2·Mid`
    always. Band-split stages are Linkwitz-Riley applied identically to L and R (allpass-flat Mid).

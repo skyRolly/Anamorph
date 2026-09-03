@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **50 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **53 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -177,7 +177,131 @@ removed, so the 50 % bound sits between two measured populations); and both defe
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
 `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
 
-The newest DSP test is the **extreme-finite balance guard**
+The newest DSP test is the **Oversampling → Off handoff guard**
+(`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
+switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
+
+**Why it exists, and why Tests 52 and 53 could not have caught it.** The path crossfade `osBlend`
+is a mechanism for a LIVE flip of `osActiveFor` — a Drive move or an Algorithm change, which is
+exactly what Test 53 covers. A **factor** change is not that: it ducks, and it moves the reported
+latency, so the two paths are not sample-aligned and must not be mixed at all. The blend was
+nevertheless left in flight across that duck bottom, and in the `→ Off` direction the path it was
+still weighting did not exist — `currentOversampler()` is null for Off, so the wrapped buffer was
+never computed and the mix ran toward an `osPathScratch` holding the raw input. For the 12 ms of
+the ramp the Drive stage and the modulation algorithms were simply absent, at full level into the
+wideners' delay lines. Test 52 never leaves a factor selected across a switch and Test 53 never
+changes the factor, so neither gesture reaches this bottom.
+
+**The control is a factor→factor switch** (2× → 4×), not an Oversampling-Off run: it opens the
+identical duck, moves the reported latency the same way and performs the same oversampler, chorus
+and stand-in-ring resets, and differs in exactly one respect — the wrap runs on both sides of it,
+so the crossfade has nothing to hand over. Every threshold is therefore calibrated against a
+measurement rather than a constant, and the control's own dip (the chorus is reset at every duck
+bottom by design) is not mistaken for a defect.
+
+**The observable is the drive's third harmonic**, H3/H1 by Hann-windowed Goertzel on a 1 kHz mono
+probe — a ratio of two bins, so the duck's fade, which is a large time-varying gain sitting on top
+of everything in this window, cancels out of it. A waveform-difference or a bare level metric is
+dominated by that envelope exactly where the defect lives. The drive stage and the mod algorithms
+share the single wrapped buffer and stand or fall together, which is why one probe answers for
+both; the second scenario is Chorus **with** drive, so the mod path really is engaged. Modulation
+cannot be read directly during the handoff — the chorus is reset at the duck bottom in every run,
+so its side energy is 0.000 there on the control as well as on the legs.
+
+**32 checks; 12 fail against the pre-change engine and 0 after.** Measured at the duck bottom:
+H3/H1 0.103 before against 0.289 after and a 0.288 control, recovering over exactly the 12 ms of
+the blend; output level 0.014 before against 0.022 after and 0.022 on the control. A companion
+probe, `AnamorphTests --os-off-probe`, prints the H3/H1 and RMS traces for all seven switch
+directions — out of the wrap, into it, and between two factors — and asserts nothing.
+
+Before it, the **oversampling path-swap guard**
+(`testDriveCrossingIsSeamlessWithOversampling`, Test 53, ADR-0035, v0.9.7). It pins that crossing the
+Drive threshold with a factor selected is **indistinguishable from crossing it with Oversampling
+Off** — 24 combinations of {2×, 4×, 8×} × {Haas, Velvet} × {0 → 6 dB, 6 → 0 dB} × {instantaneous
+step, 300 ms knob sweep}, each against its own Oversampling-Off control.
+
+**Why it exists, and why Test 52 could not have caught it.** Engaging or disengaging the wrap swaps
+the nonlinear region between two paths, and the click-free duck that used to cover the swap **cannot
+cover it**: the duck's gain is applied at the output stage, downstream of Haas (12–35 ms) and Velvet
+(~21 ms). The discontinuity entered their delay lines at full level and re-emerged one widener-delay
+later, with the ~28 ms fade-in over. Test 52 leg E measures the same gesture and passes throughout,
+because it reads BLOCK RMS and a few-sample discontinuity 19–28 ms downstream does not move a block's
+RMS. **Nothing in the suite inspected this transition at sample resolution**, which is why the defect
+survived the round that fixed the latency. Measured on the pre-change engine as a multiple of the
+settled sample-to-sample step, arriving at duck bottom + the widener's own delay: Haas 2.62× (0 → 6)
+and 1.16× (6 → 0), Velvet 5.77× and 2.42×, against Oversampling-Off controls of 2.00 / 0.96 / 1.89 /
+1.00 — and the arrival offset does not move with the factor, which is what identifies the widener's
+delay line rather than the latency as the carrier.
+
+**The control is Oversampling Off**, for the same reason Test 52 leg E's is: the same knob move with
+no factor selected engages no path swap, so whatever it measures is the Drive change itself, and
+requiring the oversampled runs to match it asks the only question worth asking — can you tell from
+the signal that the wrap was switched? **Both gestures**, because they fail differently: the
+instantaneous step is what automation and preset recall deliver, the sweep is what a knob delivers
+and is what was reported, and the step additionally caught a second defect the sweep does not — the
+drive envelope advanced `factor` times faster inside the wrap, so the two paths diverged mid-crossfade
+by 2.0× / 4.0× / 7.3× at 2×/4×/8×, scaling with the factor.
+
+**56 checks; 26 fail against the pre-change engine and 0 after.** A companion probe,
+`AnamorphTests --forced-swap-probe`, prints what an A/B swap, preset recall or undo actually does to
+the level, the stereo image and the sample continuity for seven swap classes; it asserts nothing and
+is the record behind the seamlessness investigation.
+
+Before it, the **oversampling latency-stability guard**
+(`testOversamplingLatencyIsFactorOnly`, Test 52, ADR-0034, v0.9.7). It pins that the latency reported
+to the host is a function of the **Oversampling factor alone** — the fix for a reported host-graph
+restart on an ordinary Drive or Algorithm move — and it is built so that the two wrong fixes fail it.
+
+**Four legs, each rejecting a different wrong answer, plus a fifth that catches a click the change
+also removes.** *Leg A* walks the whole
+{factor}×{algorithm}×{drive} grid (80 combinations) and requires every cell of a factor to predict
+that factor's number; its non-vacuity check requires the factors not all to report the same number
+(they do not: 4, 6, 6 at 2×, 4×, 8×). *Leg A2* is the reported gesture — a live Drive sweep from 6 dB
+to 0 across the engagement threshold, 400 blocks with the duck running inside it — and requires the
+reported number never to move, which is a stronger statement than leg A's endpoints. *Leg B* is the
+state the suite had never covered at all: a factor **selected with the wrap skipped**, where the
+delay comes from the stand-in ring; it measures the impulse through the bypass path and requires the
+peak at exactly the reported sample, so a build that reported a latency the chain did not have would
+fail. *Leg C* keeps the CPU saving honest: twin instances on identical noise, one with oversampling
+Off and one with the factor selected at Drive 0, and the second must be the first **delayed by
+exactly `lat`, bit for bit**. A build that made the number constant by simply running the
+oversampler all the time passes A, A2 and B and fails C — measured on exactly that counterfactual at
+**1.31–1.57 absolute** on a ±1 stream, because a half-band IIR round trip is not an integer shift.
+
+*Leg D* is the fifth, and it was found by auditing the change rather than by the report: in true
+bypass the output is the raw input read from a ring at `-lat`, and the Bypass crossfade is applied
+AFTER the switch duck's gain — so while fully bypassed the duck attenuates nothing and a `lat` that
+moved on the Drive threshold jumped the read position by 4–6 samples at full level. It sweeps the
+threshold crossing while bypassed and requires the worst sample-to-sample step not to exceed a smooth
+signal's own bound. **Its start phase is swept over 16 offsets, and that is load-bearing**: the jump
+steps the output by |x(t) − x(t+lat)|, which is near zero at a peak of the sine and maximal at a zero
+crossing, so a single fixed phase measures whatever the block arithmetic lines up. The first draft
+ran at one phase and **passed against the defective engine**; the same code at a different block size
+measured 0.068 / 0.094. Swept, the pre-change engine measures **0.07162** (2×) and **0.09988** (4×,
+8×) against a 0.01440 bound, and the post-change engine measures exactly the bound.
+
+*Leg E* is the one that keeps the whole test honest about what was actually reported. Holding the
+NUMBER still is only half of it: the crossing is still a discrete path change, so it still opens the
+click-free duck, and an ordinary duck fades to **silence** — an interruption on an ordinary knob
+move, invisible to every other leg here. Measured with the latency fix in place and the dry-fill
+branch absent: **−52.6 / −53.3 / −53.3 dB** at 2×/4×/8× with **6.7 ms** more than 20 dB down. The leg
+uses **Oversampling Off as its control** rather than a fixed dB threshold, because the same knob move
+with no factor selected opens no duck at all and its shallow dip (the drive blend easing out) is the
+floor any correct build must match; asserting a number would have to guess how much of the dip
+belongs to the blend.
+
+**26 checks; 12 fail against the pre-change engine and 0 after.** Note which: six are in legs A and
+A2, three in leg D, three in leg E. Legs B and C pass on the pre-change build too — trivially,
+because there the skipped state reports 0 and delays by 0 — so they are there to catch a bad *fix*,
+not the original defect, and the test says so rather than implying twenty-six discriminating checks.
+Leg C asserts BIT-exactness and its comment records why that is legitimate in its configuration and
+must not be copied to one that engages a widener: `HaasProcessor` is not shift-invariant (its
+fractional read coefficient depends on the absolute write index), a pre-existing property unrelated
+to this change. The companion probe `AnamorphTests --os-latency-probe` prints the full matrix; on the
+pre-change build its `predict` column read 0 → 4 (2×) and 0 → 6 (4×, 8×) for a Drive move of
+0.005 dB → 6 dB.
+
+Before it, the **extreme-finite balance guard**
 (`testCorrelationBalanceExtremeFiniteInput`, Test 51, ER-DSP-11, round 23). It is the sibling of
 Test 50 and is deliberately kept independent of it: that one owns the phase meter's `ll * rr`
 **product**, this one the balance's `ll + rr` **sum**, and fixing the product did nothing for the

@@ -16,8 +16,15 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // an AudioParameterBool -- take the base pointer directly for getBypassParameter().
     bypassParam = apvts.getParameter (pid::bypass);
 
-    // Parameters that change the reported PDC latency. Oversampling is no longer an APVTS
-    // parameter (it lives in InternalState), so its PDC update is driven by a callback.
+    // Parameters that used to change the reported PDC latency. Since ADR-0034 the
+    // reported number is a function of the Oversampling SELECTION alone, so neither
+    // of these can move it any more; they are kept as the defensive re-derivation
+    // path -- `deliverLatency()` recomputes from the live state and JUCE's
+    // setLatencySamples notifies the host only when the value actually differs, so
+    // a Drive or Algorithm move now costs one predicate and returns. Removing them
+    // would be a further (real) simplification and is deliberately NOT part of the
+    // latency change. Oversampling is not an APVTS parameter (it lives in
+    // InternalState), so its PDC update is driven by a callback instead.
     apvts.addParameterListener (pid::drive,      this);
     apvts.addParameterListener (pid::algorithm,  this);
     // Same route as parameterChanged, for the same reason: this fires from
@@ -242,9 +249,12 @@ void AnamorphAudioProcessor::timerCallback()
 
 void AnamorphAudioProcessor::parameterChanged (const juce::String&, float)
 {
-    // Drive / Algorithm move the reported PDC. This is the call that used to run
-    // setLatencySamples on whatever thread moved the parameter -- see
-    // requestLatencyUpdate for why that mattered and what replaced it.
+    // Drive / Algorithm used to move the reported PDC; since ADR-0034 they cannot,
+    // so this is a re-derivation that finds the same number and delivers nothing.
+    // It is the call that used to run setLatencySamples on whatever thread moved
+    // the parameter -- see requestLatencyUpdate for why that mattered and what
+    // replaced it. Kept: it is the single re-derivation point, and its cost is now
+    // one predicate on a value that no longer changes.
     requestLatencyUpdate();
 }
 

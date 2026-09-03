@@ -19,7 +19,7 @@ marked NOT RECORDED rather than inferred.
 | 3 | Presets migrated | **PASS** (audible half via the Level-5 audition) |
 | 4 | Pluginval passed (both modes) | **PASS** — run here, not inferred from CI |
 | 5 | Host matrix verified | **PASS** — attested by the maintainer, 2026-09-01 (hosts not recorded) |
-| 6 | Latency reporting verified | **PASS** |
+| 6 | Latency reporting verified | **PASS — re-verified for v0.9.7** (ADR-0034 changed the reported value; the box is re-run, not carried) |
 | 7 | Automation playback verified | **PASS** — attested by the maintainer, 2026-09-01 (host / lanes not recorded) |
 | 8 | Session reload verified | **PASS** — real v0.9.5 field capture |
 
@@ -57,9 +57,16 @@ human sign-off the item is defined as.
 - [x] **Host matrix verified** — **PASS (v0.9.6, 2026-09-01, attested by the maintainer; hosts NOT RECORDED).** — load in the target hosts and confirm load + automation + state.
       (Currently Unverified in-repo; this requires manual DAW testing —
       `docs/architecture/COMPATIBILITY_MATRIX.md`.)
-- [x] **Latency reporting verified** — **PASS (v0.9.6, 2026-09-01).** — reported PDC matches the actual chain delay across the
-      oversampling settings; OS-off reports 0. Ref: `docs/architecture/LATENCY_MODEL.md`; test
-      `testBypassNullAndLatency`.
+- [x] **Latency reporting verified** — **PASS (v0.9.7, 2026-09-03; re-run because ADR-0034 changed the
+      reported value, so v0.9.6's PASS does not carry).** — reported PDC matches the actual chain
+      delay across the oversampling settings; OS-off reports 0; and the number is now a function of
+      the Oversampling setting alone, so no parameter move can change it. Ref:
+      `docs/architecture/LATENCY_MODEL.md`; tests `testBypassNullAndLatency` (Test 3+4) and
+      `testOversamplingLatencyIsFactorOnly` (Test 52). **This box's compatibility meaning changed and
+      the change is deliberate**: a session saved in 0.9.6 with Oversampling selected and Drive at 0
+      reopens in 0.9.7 with the host compensating a few samples where it previously compensated none.
+      Nothing in the session file changed — the schema is untouched and item 2 is unaffected — and the
+      audio is the same audio, arriving at the position the plug-in now correctly declares.
 - [x] **Automation playback verified** — **PASS (v0.9.6, 2026-09-01, attested by the maintainer; host and lanes NOT RECORDED).** — recorded automation on host-visible parameters plays back
       with unchanged meaning. Ref: `docs/policies/PARAMETER_COMPATIBILITY_POLICY.md`.
 - [x] **Session reload verified** — **PASS (v0.9.6, 2026-09-01).** — save a session in the previous version, load it in the new
@@ -112,11 +119,16 @@ Recorded 2026-09-01 against the working tree at the head of
    completed and verified. Not performed in this environment (headless; see
    `COMPATIBILITY_MATRIX.md`). Hosts, operating systems and plug-in formats exercised: NOT RECORDED
    — not supplied, and not inferred from the matrix.
-6. **Latency reporting verified — PASS.** `AnamorphTests` Test 3+4 (true-bypass null + latency
-   reporting) passes, covering reported PDC against the actual chain delay with OS off reporting 0.
-   Two v0.9.6 additions extend it: State test 22 (an off-message-thread change is deferred to the
-   processor timer and delivers the CORRECT value) and State test 24 (a restore reports the
-   RESTORED state's latency, not a rejected value's).
+6. **Latency reporting verified — PASS, re-run for v0.9.7.** `AnamorphTests` Test 3+4 (true-bypass
+   null + latency reporting) passes, covering reported PDC against the actual chain delay with OS off
+   reporting 0. **Test 52** (v0.9.7, ADR-0034) adds the state the suite had never covered — a factor
+   selected with the oversampling wrap skipped — and pins reported == actual there by impulse, the
+   whole {factor}×{algorithm}×{drive} grid, a live Drive sweep through the engagement threshold, and
+   the bit-exactness that proves the wrap is still genuinely skipped. Two v0.9.6 additions extend it:
+   State test 22 (an off-message-thread change is deferred to the processor timer and delivers the
+   CORRECT value) and State test 24 (a restore reports the RESTORED state's latency, not a rejected
+   value's) — both re-instrumented in v0.9.7 onto the Oversampling Setting, since no parameter bears
+   latency any more.
 7. **Automation playback verified — PASS, attested.** Confirmed by the maintainer on 2026-09-01
    as completed and verified. Parameter *meaning* is pinned structurally by item 1's registry
    snapshot; playback in a host is the maintainer's attestation. Host and automation lanes

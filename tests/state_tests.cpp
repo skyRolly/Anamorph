@@ -2164,6 +2164,13 @@ static int runStateThreadProbe()
 // the probe turns oversampling on first; it also holds oversampling EQUAL
 // across the two states, because a changed oversampling fires InternalState's
 // own callback and would mask the gap.
+//
+// SINCE ADR-0034 THIS PROBE MEASURES A CONSTANT, and it is kept for the record
+// rather than repaired. The reported latency is now a function of the
+// Oversampling SELECTION alone, so a drive move cannot change it: every column
+// below reads the same number, and the "does setValue re-report?" question the
+// probe was written to answer is no longer answerable through drive -- there is
+// nothing left for a missed re-report to get wrong. Read its output as history.
 static int runLatencyRestoreProbe()
 {
     std::printf ("ER-STATE-07 probe: reported latency after an absent-node restore\n");
@@ -2868,52 +2875,65 @@ static int runPresetSemanticsProbe()
 //     there and lands later. It does not prove the absence of a lock inside
 //     JUCE's chain -- that is what the RTSan lane and the allocation guard are
 //     for. Deferral is the property this change is responsible for.
+//
+//     THE MOVER IS THE OVERSAMPLING SETTING, NOT DRIVE, SINCE ADR-0034. Until
+//     0.9.7 this test moved Drive at 2x oversampling, because the reported
+//     latency then depended on whether the oversampling wrap was ENGAGED -- which
+//     is what made an ordinary knob move restart the host's graph, and what
+//     ADR-0034 removed. The reported number is now a function of the Oversampling
+//     SELECTION alone, so no parameter can move it and Drive is no longer an
+//     instrument here. What still can move it off the message thread is a host
+//     restoring session state from its own thread (RISK-007), which writes this
+//     very Setting; the worker below performs exactly that write, through a
+//     juce::Value captured on the message thread so no listener is registered off
+//     it. The property write reaches InternalState's listener on the WORKER
+//     thread, which is the whole point: syncAtomics() then onOversampleChanged()
+//     -> requestLatencyUpdate(), off the message thread, in that order.
 static void testLatencyDeliveryIsDeferredOffMessageThread()
 {
     std::printf ("State test 22: an off-thread latency change is deferred, not delivered (D-1)\n");
 
     AnamorphAudioProcessor proc;
-    // Oversampling ON: predictLatency short-circuits to 0 when it is Off, so
-    // without this every measurement below would be 0 == 0 and vacuous.
-    proc.getInternal().oversampleValue().setValue (2);   // 1-based combo id: 2x
     proc.prepareToPlay (48000.0, 256);
 
-    auto* drive = proc.getAPVTS().getParameter (pid::drive);
-    check (drive != nullptr, "the drive parameter exists");
-    if (drive == nullptr) return;
+    // Captured HERE, on the message thread: juce::Value construction attaches a
+    // ValueSource listener to the tree, and only the setValue() calls belong off it.
+    juce::Value osValue = proc.getInternal().oversampleValue();  // 1-based combo ids
+    osValue.setValue (1);                                        // Off
+    juce::Timer::callPendingTimersSynchronously();
 
     const int quiet = proc.getLatencySamples();
-    std::printf ("  latency at drive 0: %d\n", quiet);
+    std::printf ("  latency with oversampling Off: %d\n", quiet);
 
     // CONTROL LEG -- the message thread stays synchronous. If this regressed to
     // deferred, every UI edit would lag a timer tick and the test below would
     // still pass, so the control is what keeps it honest.
-    drive->setValueNotifyingHost (0.6f);
+    osValue.setValue (2);                                        // 2x
     const int afterOnThread = proc.getLatencySamples();
     std::printf ("  after a message-thread change: %d (expected immediate)\n", afterOnThread);
     check (afterOnThread != quiet, "a message-thread change still reports latency SYNCHRONOUSLY");
 
-    // ...and the non-vacuity gate for the whole test: drive must actually move
-    // the reported latency, or "deferred" below is indistinguishable from
+    // ...and the non-vacuity gate for the whole test: the Setting must actually
+    // move the reported latency, or "deferred" below is indistinguishable from
     // "nothing ever happens".
     const int loud = afterOnThread;
-    check (loud != quiet, "drive genuinely changes the reported latency at 2x oversampling");
+    check (loud != quiet, "the Oversampling Setting genuinely changes the reported latency");
 
-    // THE REAL CASE: the same listener, driven from another thread.
-    drive->setValueNotifyingHost (0.0f);
+    // THE REAL CASE: the same listener chain, driven from another thread.
+    osValue.setValue (1);
     juce::Timer::callPendingTimersSynchronously();
     check (proc.getLatencySamples() == quiet, "reset to the quiet latency before the off-thread leg");
 
     std::atomic<bool> done { false };
     std::thread automation ([&]
     {
-        // Exactly what a VST3 host's automation does on the audio thread: move the
-        // parameter, which fires the APVTS listener on THIS thread.
-        drive->setValueNotifyingHost (0.6f);
+        // What a host restoring session state off its message thread does: write
+        // the latency-bearing Setting, whose listener fires on THIS thread.
+        osValue.setValue (2);
         done.store (true, std::memory_order_release);
     });
     automation.join();
-    check (done.load (std::memory_order_acquire), "the off-thread parameter write completed");
+    check (done.load (std::memory_order_acquire), "the off-thread Setting write completed");
 
     const int immediatelyAfter = proc.getLatencySamples();
     std::printf ("  immediately after an OFF-thread change: %d (was %d)\n", immediatelyAfter, quiet);
@@ -3297,24 +3317,36 @@ static int runValueBoxGestureProbe()
 // ---------------------------------------------------------------------------
 // 24. A restore must leave the host holding the RESTORED state's latency.
 //
-//     Two things in setStateInformation move a latency-bearing parameter without
-//     the latency listener hearing the final value. apvts.replaceState adopts
-//     whatever @value says -- and it CONVERTS BY CLAMPING, so a poisoned
-//     value="inf" for drive lands at the range maximum and re-reports a latency
-//     for it. reassertParameters then repairs that value with setValue() plus a
-//     direct atomic store, notifying nobody on purpose.
+//     WHAT MOVES THE LATENCY CHANGED UNDER THIS TEST, AND THE TEST SAYS SO. Until
+//     0.9.7 the reported number depended on whether the oversampling wrap was
+//     ENGAGED, so a Drive parameter bore latency and this test poisoned Drive:
+//     apvts.replaceState adopts whatever @value says -- it CONVERTS BY CLAMPING,
+//     so value="inf" landed at the range maximum and re-reported a latency for
+//     it -- and reassertParameters then repaired that value with setValue() plus
+//     a direct atomic store, notifying nobody on purpose. ADR-0034 made the
+//     reported number a function of the Oversampling SELECTION alone, so no
+//     parameter can bear latency any more and THAT VARIANT OF THE HAZARD IS
+//     UNREACHABLE, not merely unexercised. The blob is still poisoned exactly as
+//     before, so the restore still travels the replaceState-then-repair path; what
+//     it can no longer do is move the report, and this test no longer pretends it
+//     does.
 //
-//     THE SECOND RESTORE IS THE ONE THAT MATTERS, and this is why the test looks
-//     the way it does. On a FIRST restore the answer comes out right by accident:
-//     the live InternalState holds an int where the round-tripped blob holds a
-//     string, ValueTree::setProperty sees a difference, fires
-//     onOversampleChanged, and recomputes the latency after the repair -- the
-//     same var-type coincidence recorded for ER-STATE-07. Restoring twice settles
-//     the types, removes the coincidence, and exposes the defect. A test that
-//     only did one restore would have reported this as refuted; the round-4 probe
-//     did exactly that, twice, before the second-restore leg was added.
+//     WHAT THE TEST STILL PINS, and it is the invariant its title always named:
+//     after a restore the host holds the RESTORED state's latency, not the one it
+//     held going in. The restore under test crosses the Oversampling Setting
+//     (live 2x -> restored Off), so a build that failed to re-derive the report
+//     leaves 4 where 0 is due. setStateInformation's trailing latency request is
+//     what makes it 0.
 //
-//     Measured before the fix: reported 4, restored state predicts 0.
+//     THE SECOND RESTORE IS STILL THE ONE THAT MATTERS. On a FIRST restore the
+//     answer can come out right by accident: the live InternalState holds an int
+//     where the round-tripped blob holds a string, ValueTree::setProperty sees a
+//     difference and fires onOversampleChanged -- the var-type coincidence
+//     recorded for ER-STATE-07. Restoring twice settles the types; the round-4
+//     probe restored once, twice, and reported the original defect as refuted
+//     before this leg was added.
+//
+//     Measured before the round-4 fix: reported 4, restored state predicts 0.
 static void testRestoreReportsTheRestoredLatency()
 {
     std::printf ("State test 24: a restore reports the RESTORED state's latency\n");
@@ -3322,9 +3354,9 @@ static void testRestoreReportsTheRestoredLatency()
     juce::MemoryBlock poisoned;
     {
         AnamorphAudioProcessor authoring;
-        // Oversampling on: predictLatency short-circuits to 0 when it is Off, so
-        // without this every number below is 0 and the test proves nothing.
-        authoring.getInternal().oversampleValue().setValue (2);
+        // Oversampling OFF in the authored session: this is the field the restore
+        // has to move the report with, and the live instance below sits at 2x.
+        authoring.getInternal().oversampleValue().setValue (1);
         authoring.prepareToPlay (48000.0, 256);
         juce::MemoryBlock clean;
         authoring.getStateInformation (clean);
@@ -3344,18 +3376,18 @@ static void testRestoreReportsTheRestoredLatency()
     }
 
     AnamorphAudioProcessor proc;
-    proc.getInternal().oversampleValue().setValue (2);
+    juce::Value osValue = proc.getInternal().oversampleValue();
+    osValue.setValue (2);                                  // live: 2x
     proc.prepareToPlay (48000.0, 256);
 
-    // NON-VACUITY: drive must actually be able to move the reported latency here,
-    // or "reported == predicted" below is 0 == 0 and means nothing.
-    proc.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f);
+    // NON-VACUITY: the two states must report DIFFERENT latencies, or
+    // "reported == predicted" below is 0 == 0 and means nothing.
     juce::Timer::callPendingTimersSynchronously();
     const int loud = proc.getLatencySamples();
-    check (loud != 0, "drive at maximum reports a non-zero latency at 2x oversampling");
+    check (loud != 0, "the live instance reports a non-zero latency at 2x oversampling");
 
     proc.setStateInformation (poisoned.getData(), (int) poisoned.getSize()); // settle property types
-    proc.getAPVTS().getParameter (pid::drive)->setValueNotifyingHost (1.0f); // back to latency-bearing
+    osValue.setValue (2);                                                    // back to latency-bearing
     juce::Timer::callPendingTimersSynchronously();
     check (proc.getLatencySamples() == loud, "re-armed at the latency-bearing state");
 
@@ -3369,9 +3401,12 @@ static void testRestoreReportsTheRestoredLatency()
     proc.prepareToPlay (48000.0, 256);
     const int predicted = proc.getLatencySamples();
 
-    std::printf ("  second restore: reported %d, restored state predicts %d\n", reported, predicted);
+    std::printf ("  second restore: reported %d, restored state predicts %d (was %d going in)\n",
+                 reported, predicted, loud);
     check (reported == predicted,
-           "the host is not left holding the poisoned value's latency after a repair");
+           "the host is not left holding the pre-restore latency after a restore");
+    check (predicted != loud,
+           "non-vacuity: the restore genuinely crossed a reported-latency boundary");
 }
 
 // Round-4 probe: does a malformed restore leave a STALE reported latency?
@@ -3383,6 +3418,12 @@ static int runRestoreLatencyProbe()
     // replaceState adopts it BEFORE reassertParameters gets a chance to repair,
     // and replaceState notifies -- so the host hears a latency for a state the
     // plug-in is about to reject.
+    //
+    // SINCE ADR-0034 THIS PROBE ALSO MEASURES A CONSTANT: no parameter bears
+    // latency any more, so the poisoned drive cannot move the report and every
+    // number it prints is the selected factor's. Kept as the record of the
+    // round-4 measurement, not as a live instrument. State test 24 carries the
+    // surviving invariant, re-instrumented on the Oversampling Setting.
     juce::MemoryBlock poisoned;
     {
         AnamorphAudioProcessor authoring;
@@ -3702,15 +3743,20 @@ static void testRestoreIntegrityGuards()
         };
 
         AnamorphAudioProcessor p;
-        p.getInternal().oversampleValue().setValue (2);        // 1-based combo id: 2x -- latency moves with drive
         p.prepareToPlay (48000.0, 512);
-        auto* drive = p.getAPVTS().getParameter (pid::drive);
-        drive->setValueNotifyingHost (0.0f); p.prepareToPlay (48000.0, 512);
+        // The mover is the Oversampling SETTING, not Drive, since ADR-0034: the
+        // reported latency is a function of that selection alone, so no parameter
+        // can raise a value-CHANGING request any more. A host restoring session
+        // state off its own thread (RISK-007) writes this Setting, which is the
+        // reachable off-message-thread requester this leg stands in for. The
+        // juce::Value is captured on the message thread; only setValue() runs off it.
+        juce::Value osValue = p.getInternal().oversampleValue();  // 1-based combo ids
+        osValue.setValue (1); p.prepareToPlay (48000.0, 512);     // Off
         const int lowLat  = p.getLatencySamples();
-        drive->setValueNotifyingHost (1.0f); p.prepareToPlay (48000.0, 512);
+        osValue.setValue (2); p.prepareToPlay (48000.0, 512);     // 2x
         const int highLat = p.getLatencySamples();
-        drive->setValueNotifyingHost (0.0f); p.prepareToPlay (48000.0, 512);   // back to low; host holds lowLat
-        check (lowLat != highLat, "non-vacuity: the reported latency actually moves with drive here");
+        osValue.setValue (1); p.prepareToPlay (48000.0, 512);     // back to low; host holds lowLat
+        check (lowLat != highLat, "non-vacuity: the reported latency actually moves with the Setting here");
 
         auto waitForReported = [&p] (int expected, int deadlineMs)
         {
@@ -3729,12 +3775,14 @@ static void testRestoreIntegrityGuards()
 
         std::thread worker ([&]
         {
-            // Request #1, off the message thread: drive -> 1 raises the flag.
-            drive->setValueNotifyingHost (1.0f);
+            // Request #1, off the message thread: Oversampling -> 2x raises the flag.
+            osValue.setValue (2);
             // Wait until the timer's delivery of #1 has STARTED (the barrier holds it open)...
             while (! barrier.inDelivery.load()) std::this_thread::yield();
-            // ...and make request #2 from inside that window: drive -> 0 raises the flag again.
-            drive->setValueNotifyingHost (0.0f);
+            // ...and make request #2 from inside that window: -> Off raises the flag again.
+            // The message thread is parked inside audioProcessorChanged for the whole
+            // of this write and touches no ValueTree, so the tree has one writer.
+            osValue.setValue (1);
             barrier.requested.store (true);
         });
 

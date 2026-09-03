@@ -76,6 +76,14 @@ public:
     // widener's side energy collapses to 0.003 of the settled level for 24 blocks
     // -- Test 48, the ER-DSP-06 activation residual). forceDuck short-circuits the
     // discreteDiffers test, so np == p does not save us.
+    //
+    // COUPLED TO prepare(), AND ONLY SAFE BECAUSE OF IT (ADR-0034). Writing `p`
+    // writes `p.oversample`, which is what `getLatencySamples()` now reads -- so
+    // this moves the read offset of every delay ring without clearing any of them
+    // and without re-latching `osEngaged`. Its one caller (`prepareToPlay`) calls
+    // `prepare()` on the very next line, which resizes and clears all four rings
+    // and ends in `reset()`, which re-latches. A future mid-stream call would read
+    // stale history at a new offset; if one is ever wanted, it has to clear too.
     void primeParameters (const EngineParameters& np) noexcept
     {
         p = np;
@@ -105,10 +113,15 @@ public:
     void process (juce::AudioBuffer<float>& buffer) noexcept ANAMORPH_NONBLOCKING;
 
     // PDC: latency added by the chain (oversampling only). Integer samples.
+    // A function of the OVERSAMPLING SELECTION ALONE -- see `osCompDelayBuffer`
+    // and ADR-0034. Latched with `p.oversample`, so it can only move at a silent
+    // duck bottom or a reset, never mid-block and never on a Drive/Algorithm move.
     int getLatencySamples() const noexcept;
 
     // Latency predicted for an arbitrary parameter snapshot (message thread can
     // call this to update host PDC without racing the audio thread's state).
+    // Reads e.oversample and nothing else, so it agrees with getLatencySamples()
+    // for any snapshot carrying the same factor.
     int predictLatency (const EngineParameters& e) const noexcept;
 
     // --- shared with the editor (GUI thread reads) -----------------------
@@ -131,7 +144,19 @@ public:
 private:
     void updateDerived();
     void applyInputConditioning (float* L, float* R, int n) noexcept;
-    void processNonlinearRegion (float* L, float* R, int n, double rate) noexcept;
+    // `runMod` is false only for the base-rate call while an OS-path crossfade is in
+    // flight: the mod algorithms (Chorus / Dimension-D) belong to the wrapped path
+    // whenever a factor is selected, and running the ONE chorus instance from both
+    // paths in the same block would advance its LFO and delay state twice.
+    //
+    // `envStride` > 1 advances the drive envelope once per THAT MANY samples,
+    // holding it in between, and is passed the oversampling factor for the wrapped
+    // path while a crossfade is in flight. The envelope is then advanced the same
+    // number of times per BLOCK by either path, so the two carry the same drive ramp
+    // at the same wall-clock instant and can be mixed. At 1 (every other caller) the
+    // loop is the original one, unchanged and bit-identical.
+    void processNonlinearRegion (float* L, float* R, int n, double rate,
+                                 bool runMod = true, int envStride = 1) noexcept;
     juce::dsp::Oversampling<float>* currentOversampler() noexcept;
 
     // True when two snapshots differ in a control that would click if applied
@@ -274,6 +299,22 @@ private:
     int bypassDelayWrite = 0;
     juce::SmoothedValue<float> bypassBlend;
 
+    // Oversampling latency STAND-IN (ADR-0034). The OS wrap is skipped whenever it
+    // has no nonlinear/modulation work to do -- Drive at 0 with a linear algorithm --
+    // and that CPU saving is deliberate and kept. What used to travel with it was the
+    // wrap's LATENCY: the plug-in reported 0 in the skipped state and the factor's
+    // latency in the engaged one, so Drive crossing 0.01 dB (or Algorithm crossing
+    // into/out of a mod algorithm) changed the reported PDC underneath the host and
+    // the host answered with a graph restart the user hears as a dropout. This ring
+    // stands in for the wrap's delay in exactly the skipped state, so the delay
+    // through the chain -- and therefore the number reported to the host -- depends
+    // on the OVERSAMPLING SELECTION ALONE and moves only when that selection does.
+    // It occupies the wrap's own place in the chain (same stage, same relative
+    // alignment for everything downstream), and its read offset is the same
+    // getLatencySamples() every other delay ring in this block reads.
+    juce::AudioBuffer<float> osCompDelayBuffer;
+    int osCompDelayWrite = 0;
+
     // Multiband Enable crossfade: toggling the multiband module is a short click-free
     // OUTPUT crossfade, NOT a duck-to-silence. The crossover bank stays WARM across the
     // toggle (it keeps running while the blend is non-zero, so there is no cold-start
@@ -295,12 +336,35 @@ private:
     // host never ran the plugin while paused (click-free -- the prior block was silent).
     bool prevInputSilent = true;
 
-    // Whether the oversampling wrap is ENGAGED, latched only at safe points
-    // (reset / the silent duck bottom). Engaging the oversampler inserts its
-    // group delay, so doing it live -- e.g. Drive crossing 0 with OS selected --
-    // jump-cuts the timeline; latching routes every OS-path change through the
-    // duck instead (#3).
-    bool osEngaged = false;
+    // OS-PATH CROSSFADE (0.9.7, the ADR-0034 follow-up). Engaging or disengaging the
+    // oversampling wrap swaps the whole nonlinear region between the resampled and
+    // the base-rate path. That used to be LATCHED and routed through the switch
+    // duck (#3) -- and the duck could not actually mask it, because the duck's gain
+    // is applied at the OUTPUT stage, downstream of Haas and Velvet, whose delay
+    // lines are 12-35 ms and 21 ms long. The handover's discontinuity was written
+    // into those lines at full level and RE-EMERGED after the ~28 ms fade-in had
+    // finished, unmasked. Measured at the Drive threshold with a 220 Hz tone: a
+    // discontinuity 2.6x (Haas) and 5.8x (Velvet) the settled sample-to-sample step,
+    // arriving at duck bottom + the widener's own delay, at 2x, 4x and 8x alike.
+    //
+    // So the swap is now a CLICK-FREE CROSSFADE at the point of the change, exactly
+    // as Bypass and Multiband Enable already are -- 0 = base-rate path, 1 = wrapped
+    // path -- and the Drive crossing no longer ducks at all. THIS IS ONLY POSSIBLE
+    // BECAUSE OF ADR-0034: the two paths now carry the SAME latency (the wrap's
+    // group delay on one side, `osCompDelayBuffer` on the other), so they are
+    // sample-aligned and can be mixed. Before it they differed by 4-6 samples and
+    // crossfading them would have combed.
+    juce::SmoothedValue<float> osBlend;
+    // Is the wrap being RUN this block? It stays running while the blend is
+    // non-zero, so it goes cold only once the crossfade has fully left it -- which
+    // is what preserves the CPU saving in the settled base-rate state. Going cold
+    // -> warm resets it while the blend is still ~0, so its filters settle from
+    // zero state under a ~0 gain: the mbRunning pattern, for the same reason.
+    bool osRunning = false;
+    // The wrapped path's working buffer while a crossfade is in flight (the
+    // base-rate path is computed in place). Sized in prepare(), never on the audio
+    // thread.
+    juce::AudioBuffer<float> osPathScratch;
 };
 
 } // namespace anamorph

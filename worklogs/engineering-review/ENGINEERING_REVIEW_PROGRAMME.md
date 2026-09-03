@@ -29,6 +29,323 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
+
+> *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can
+> retain wrapped-path weight even though the wrapped path is no longer running."*
+
+**A `ARCHITECTURE_REVIEW_GATE` "Signal Flow change"**, discharged by the instruction plus ADR-0035,
+**amended in place rather than superseded**: the crossfade decision stands; points 8 and 9 state its
+boundary. Nothing in the latency contract (ADR-0034), the Drive-crossing fix (ADR-0035 points 1-7),
+the Haas/Velvet behaviour or the `osActiveFor` CPU saving is touched.
+
+### Root cause
+
+`osBlend` mixes two paths that ADR-0034 made **sample-aligned**. A **factor** change is the one OS
+transition that breaks that alignment -- it moves the reported latency -- which is exactly why it
+ducks instead of crossfading (ADR-0035 point 7). The blend was nevertheless carried across that
+duck's bottom, while everything else stateful there was being reset (`os2/os4/os8`, `chorus`,
+`osCompDelayBuffer`) and the forced-duck branch two blocks below was already landing the blend
+explicitly. In the `-> Off` direction that is not merely a misaligned mix:
+
+1. `p = pendingP` adopts `oversample = Off` at the silent bottom.
+2. `osActiveFor(p)` is false for Off, so the blend's TARGET becomes 0 while its CURRENT value is
+   still 1 -- `osBlending` and `wrapAudible` both true.
+3. `osPathScratch` is snapshotted with the **raw, unprocessed input**.
+4. `currentOversampler()` returns **nullptr** for Off, so the wrapped path is **never computed** and
+   the scratch still holds that raw input.
+5. The mix runs `L[i] += b * (scratch[i] - L[i])` with `b` starting at 1 -- so for the 12 ms of the
+   ramp the output IS the raw input, fading back to the base path. Drive and the mod algorithms are
+   both absent, at full level into Haas's and Velvet's delay lines, under a fade-in barely started.
+
+### Measurement: the instrument had to be gain-invariant, and the first one was not
+
+The duck's fade is a large **time-varying** gain sitting on top of exactly the window in question. A
+first attempt -- a best-fit residual `rms(out - g*in) / rms(out)` -- is invariant only to a CONSTANT
+gain and showed nothing. The working instrument is the drive's third-harmonic ratio **H3/H1** by
+Hann-windowed Goertzel on a 1 kHz mono probe, in a 256-sample (5.3 ms) window short enough to sit
+INSIDE the 12 ms blend rather than straddle it. A ratio of two bins cancels any gain, constant or not.
+
+**The control is a factor->factor switch** (2x -> 4x): the identical duck, the identical
+reported-latency step, the identical resets -- differing in one respect only, that the wrap runs on
+both sides of it so the crossfade has nothing to hand over. Anything the duck itself costs shows up
+on the control too, which is what attributes the collapse to the handover.
+
+| ms from the duck bottom | -4 | 0 | +4 | +8 | +12 | +16 | +20 |
+|---|---|---|---|---|---|---|---|
+| 2x/4x/8x -> Off, before | 0.288 | **0.103** | 0.195 | 0.261 | 0.288 | 0.289 | 0.288 |
+| 2x/4x/8x -> Off, after | 0.288 | 0.289 | 0.289 | 0.289 | 0.289 | 0.289 | 0.288 |
+| 2x -> 4x control | 0.288 | 0.288 | 0.288 | 0.288 | 0.288 | 0.288 | 0.288 |
+
+Output level at the bottom: **0.014 before, 0.022 after, 0.022 on the control**.
+
+**What modulation could NOT be measured by.** A mono probe through Chorus makes side energy the
+obvious modulation observable, and it does not work here: the chorus is reset at every duck bottom by
+design (stale audio would replay as the fade lifts), so its side ratio reads **0.000** there on the
+control exactly as on the legs. Drive and the mod algorithms share the single wrapped buffer and
+stand or fall with it, so the second scenario runs Chorus **with** drive on the same H3/H1 observable.
+
+### The fix — two edits, `src/dsp/AnamorphEngine.cpp`
+
+1. **The `osPathChanged` branch at the silent duck bottom lands the blend**, beside the resets
+   already there and mirroring the forced-duck branch:
+   `osBlend.setCurrentAndTargetValue (osActiveFor (p) ? 1.0f : 0.0f); osRunning = osActiveFor (p);`
+2. **The OS stage reads `currentOversampler()` once, at the top, and forces the blend to agree with
+   it.** The pointer, not the blend, is the authority on whether a wrapped buffer exists, so
+   `wrapAudible` implies a live oversampler and a stale weight can only ever degrade the output to
+   the correctly-processed **base-rate** path -- never to unprocessed audio. `p.oversample` is
+   discrete, so this can only fire at a silent duck bottom.
+
+Edit (1) is the root cause; edit (2) makes the failure mode unrepresentable rather than merely
+unreached. Neither bypasses the crossfade: it remains in full force for the LIVE `osActiveFor` flip
+(Drive, Algorithm) that ADR-0035 exists for, which is the transition Test 53 pins.
+
+### Validation
+
+* **DSP Test 54** (`testOversamplingOffHandoffKeepsProcessing`), 32 checks: 2 scenarios
+  {Haas + drive, Chorus + drive} x 3 factors -> Off, each against its own factor->factor control.
+  **12 fail against the pre-change engine, 0 after.** Asserts: processing survives (>= 0.85 of the
+  control; 0.358/0.371 before, 0.950/0.998 after), the level does not fall below what the same duck
+  costs (0.547/0.558 before, 0.969/0.991 after), no step beyond the control's, and the reported
+  latency holds only the two selections' own values and moves exactly once.
+* **`--os-off-probe`** extended to all seven switch directions. Off -> 2x and Off -> 8x are identical
+  before and after on both traces and on the worst step (x1.04); both controls likewise.
+* **`--forced-swap-probe`** reproduces to four decimal places on all seven rows -- the forced path
+  always did settle its blend.
+* **`--os-latency-probe`** unchanged: predict == report across the whole grid (ADR-0034 intact).
+* Suites: DSP **396 / 0** (was 364), state **1506 / 0** -- under GCC 13 and again under the clean
+  gcc-16 `-flto` build. Preflight exit 0; `check-docs` 119 files clean; realtime lint 47 files /
+  0 violations; the citation gate clean on all three bases with its 179-case self-test passing;
+  Clang-22 (15 accepted sites) and GCC-16 (3 accepted sites) gates green on CLEAN rebuilds with
+  **both baselines unchanged**.
+* CPU: the change touches only the duck bottom and moves one already-existing `currentOversampler()`
+  call out of a branch, so no steady-state effect is expected and none is measured -- OS Off 263.78
+  against 266.71 / 266.57 / 265.61 ns/sample at 2x/4x/8x with Drive 0, inside 1.1 %. The absolute
+  figures are higher than ADR-0035's recorded run (159.19 / 170.06 / 166.60 / 169.44) because this
+  machine was more loaded; the RELATION those figures exist to assert -- wrap skipped costs what Off
+  costs -- is what reproduces, and it does.
+
+---
+
+## ADR-0035 — 2026-09-03 — the oversampling path swap becomes a crossfade (PR #135 pre-merge follow-up)
+
+Three maintainer-named items before merge. **A `ARCHITECTURE_REVIEW_GATE` "Signal Flow change"**,
+discharged by the instruction plus ADR-0035, which depends on ADR-0034, supersedes its Decision
+point 5 and amends ADR-0004.
+
+### Item 2 — the interruption that survived the latency fix
+
+> *"There is still an audible interruption / momentary silence when Oversampling is enabled (2x, 4x
+> or 8x), the Widen algorithm is Haas or Velvet Noise, and Drive is changed from 0 to non-zero, or
+> from non-zero to 0."*
+
+**The naming of Haas and Velvet Noise was the clue, and it pointed away from latency.** Those are the
+two DELAY-BASED linear algorithms, and they sit AFTER the wrap. The duck that covered the wrap
+engage/disengage could not cover it: **the duck's gain is applied at the output stage, downstream of
+them**, so the handover's discontinuity entered their 12-35 ms delay lines at full level and
+re-emerged one widener-delay later, with the ~28 ms fade-in over.
+
+Reproduced at sample resolution on a 220 Hz tone, as a multiple of the settled sample-to-sample step:
+
+| | Haas | Velvet | OS Off control |
+|---|---|---|---|
+| Drive 0 -> 6 dB | **2.62x** at +896 smp | **5.77x** at +1330 smp | 2.00x / 1.89x |
+| Drive 6 -> 0 dB | **1.16x** at +896 smp | **2.42x** at +1330 smp | 0.96x / 1.00x |
+
++896 is **320 (the duck bottom on the block grid) + 576 (Haas's 12 ms)**, exactly. The offset does
+not move with the oversampling factor -- which is what identifies the widener's delay line, not the
+latency, as the carrier. **Test 52 leg E measures the same gesture and passes throughout**: it reads
+BLOCK RMS, and a few-sample event 19-28 ms downstream does not move a block's RMS. Nothing in the
+suite inspected this transition at sample resolution, which is why it survived the previous round.
+
+### Two sources, one per direction, each isolated by a counterfactual build
+
+* **Leaving the wrap:** ADR-0034's stand-in ring was CLEARED at the duck bottom and handed back `lat`
+  ZEROS. Introduced by the previous round. Keeping the ring warm removed the +896/+1330 event in that
+  direction outright (step 1.16x -> 0.90x against a 0.96x control).
+* **Entering it:** the wrap's polyphase IIR starts from zero state and ramps in. Pre-existing.
+  **Removing its `reset()` was measured to change nothing** -- a wrap that has not run is already at
+  zero -- which is what ruled that hypothesis out and pointed at the cold start itself.
+
+### The fix, and why it is the architecture rather than a patch
+
+The two paths are **crossfaded** (`osBlend`, 12 ms), exactly as Bypass and Multiband Enable already
+are, and `osActiveFor` leaves `discreteDiffers` so the crossing opens no duck at all. **This is only
+available because of ADR-0034**: it gave the two paths the same latency, so they are sample-aligned
+and mixable; before it they differed by 4-6 samples and a crossfade would have combed. The wrap
+starts running while the blend is still ~0 (the `mbRunning` pattern) so its cold start is masked, and
+goes cold once the blend has left it, which is what keeps the CPU saving.
+
+**Two implementation defects the measurement caught, both self-inflicted and both found by the data
+rather than by reading.** `processNonlinearRegion` ADVANCES the drive smoothers, so running both
+paths in one block desynchronised them -- 2.0x / 4.0x / 7.3x at 2x/4x/8x, **scaling with the factor**,
+which is the signature; fixed with a shared entry state plus an `envStride` equal to the factor, so
+each path advances the envelope exactly `n` times. And the single `ChorusEngine` would have been
+advanced twice per block, fixed with a `runMod` gate. A third, found the same way: a forced swap that
+also crosses the threshold left the blend in flight across the silent bottom, so the fade-in mixed in
+from a base-rate path running FULL drive undersampled (step 2.70x); settling the blend at that bottom
+returns it to 2.03x, the pre-ADR-0034 figure. **A first attempt to fix that by adding `snap(osBlend)`
+to `snapSmoothers()` changed nothing and was reverted** -- that function runs before the OS stage sets
+the target -- rather than kept as a plausible-looking no-op.
+
+**Result: all 24 combinations** of {2x, 4x, 8x} x {Haas, Velvet} x {0 -> 6, 6 -> 0} x {instant step,
+300 ms knob sweep} now match their Oversampling-Off control to two decimal places on the
+discontinuity and ~0.1 % on the level. Test 53, 56 checks, **26 failing pre-change**.
+
+### Item 3 — A/B and preset recall: investigated, deliberately NOT changed
+
+Measured on three engine versions across seven swap classes with `--forced-swap-probe`, reading
+level, SIDE energy and sample continuity separately -- because "no dip" and "seamless" are not the
+same claim.
+
+* The ordinary classes are **byte-for-byte unaffected** by this PR: -3.5 dB level, **-14 dB side**,
+  no click. That is the long-shipped dry fill, and it is worth saying plainly that it is not seamless
+  in the strict sense -- the image collapses toward the dry input for ~34 ms. Out of scope to redesign.
+* **One class improved markedly**: an A/B crossing the Drive threshold with a factor selected was
+  **-54.9 dB (silence)** before ADR-0034 and is **-3.5 dB** now.
+* **One class regressed and stays regressed by decision**: a swap changing only the FACTOR at Drive 0,
+  -3.5 dB -> -56.0 dB. No safe fix exists: the two states differ in latency by 4-6 samples, so
+  restoring the dry fill there trades the dip for a comb during the crossfade -- which the
+  maintainer's own rule forbids. It happens only at an Oversampling switch, the one moment an
+  interruption is permitted, and it matches what the Oversampling menu itself has always done.
+
+### Item 1 — tooltips
+
+The Oversampling tooltip was the ONLY tooltip this PR touched (measured over `src/PluginEditor.cpp`
+and `src/gui/` against origin/main), and it is restored byte-for-byte. ADR-0034's claim that the
+tooltip was corrected is corrected in turn.
+
+### Validation
+
+Preflight exit 0, every stage. DSP **364 / 0** (was 308; Test 53 adds 56, of which 26 fail
+pre-change), state **1506 / 0**, under GCC 13 and again under the clean gcc-16 `-flto` build.
+`check-docs` 119 files clean; realtime lint 47 files / 0 violations; citation self-test 179 cases,
+clean against all three bases after four `DELIBERATE_REAIMS` retargets and three new declared
+transitions. Clang-22 and GCC-16 warning gates green on clean builds, **both baselines unchanged**.
+CPU re-measured: OS Off 159.19 vs 2x/4x/8x at Drive 0 170.06 / 166.60 / 169.44 ns/sample, against the
+engaged 210.44 / 266.13 / 375.85. Latency invariants re-verified: one predicted value per factor
+across the whole grid. No workflow and no CMake change.
+
+---
+
+## ADR-0034 — 2026-09-03 — the reported latency stops following Drive (a maintainer instruction, not a review round)
+
+Out of band from the review programme and recorded here because this worklog is what a later round
+reconciles against. **A hard-stop category** — `ARCHITECTURE_REVIEW_GATE.md`: *"Latency change —
+sources, engagement condition, or reported value"*, plus a signal-flow change (a new delay element)
+— **discharged by the maintainer's own instruction and by ADR-0034**, which is Accepted and amends
+ADR-0003's latency clause.
+
+### The report
+
+> *"when Drive is at zero, the latency reported to the host is zero; then, when it is turned up
+> slightly, it will report a latency value. During this adjustment, the plugin's own latency
+> changes, causing an interruption / glitch in the sound."*
+
+with the requirement stated exactly: a latency change is allowed **only** at the moment Oversampling
+itself is switched, and the existing CPU optimisations — naming the Drive-0 oversampling skip —
+must be **kept**.
+
+### Reproduced before any change
+
+`AnamorphTests --os-latency-probe` on the pre-change build, 48 kHz, linear algorithm:
+
+| factor | Drive 0.005 dB | Drive 6 dB |
+|---|---|---|
+| 2x | 0 | **4** |
+| 4x | 0 | **6** |
+| 8x | 0 | **6** |
+
+The same step on an Algorithm change at Drive 0. `osActiveFor` was answering four questions with one
+bit — does the wrap RUN, what is latched into `osEngaged`, does the change need a duck, and how much
+latency is reported. Only the fourth was an accident.
+
+### The fix, and the two wrong ones it is built to exclude
+
+Both accessors read the oversampling **selection** and nothing else, through one helper so they
+cannot drift apart. Where the wrap is skipped but a factor is selected, `osCompDelayBuffer` — a
+2-channel integer ring, no arithmetic — supplies the wrap's group delay **in the wrap's own place in
+the chain**, which is what keeps the five downstream `-lat` reads measuring from an unchanged point.
+`osActiveFor`, `osEngaged`, `currentOversampler()` and the `discreteDiffers` term are untouched.
+
+* **Always running the wrap** would make the number constant and delete the optimisation. Measured
+  cost of the round trip alone at 48 kHz/128: 211.12 / 265.46 / 380.00 ns/sample at 2x/4x/8x against
+  152–160 with it skipped. Test 52 leg C rejects such a build by requiring the skipped state's
+  output to be the OS-off output delayed **bit for bit** — measured on that exact counterfactual at
+  **1.31–1.57 absolute** on a ±1 stream.
+* **Reporting a latency the chain does not have** would leave every other track early by 4–6
+  samples. Test 52 leg B measures the impulse through the bypass path and requires it at exactly the
+  reported sample.
+
+### A second click, found by auditing the change and measured before being claimed
+
+In true bypass the output IS the raw-input ring read at `-lat`, and the Bypass crossfade is applied
+AFTER the switch duck's gain — so while bypassed the duck attenuates nothing and a moving `lat`
+jumped the read position at full level. On a 220 Hz / 0.5 sine (largest smooth step 0.01440), worst
+sample-to-sample step **0.07162** at 2x and **0.09988** at 4x and 8x. After the change: exactly the
+bound. Its first draft ran at ONE start phase and **passed against the defective engine** — the jump
+is invisible when it lands on a peak of the sine — so leg D sweeps 16 phases and takes the worst.
+
+### The first pass fixed the number and left the interruption
+
+Caught by the round's own adversarial pass, then reproduced independently before acting. Holding the
+reported PDC still does not, on its own, stop the sound being interrupted: crossing the threshold is
+still a discrete PATH change, so it still opens the click-free duck, and an ordinary duck fades to
+**silence**. Measured with the latency fix in and this remedy out, 440 Hz / 64-sample blocks, a
+smooth 0.4 → 0 dB knob move: **−52.6 / −53.3 / −53.3 dB** at 2x/4x/8x, **6.7 ms** more than 20 dB
+down inside a ~34 ms envelope — and **nothing at all with Oversampling Off**, which is the tell that
+it is the duck and not the drive blend.
+
+`discreteDiffers` is split so its `osActiveFor` term is separable (`discreteDiffersOther`), and the
+ordinary discrete branch dry-fills when the OS path is the SOLE difference and the swap keeps the
+reported latency. Every other discrete duck is untouched. **This is legal only because of the
+latency fix**: before it, the crossing genuinely changed the reported latency, so a fill read at one
+fixed offset would have stepped by the delta. Post-fix the same move keeps **0.9556 / 0.9616 /
+0.9616** of settled against a **0.9337** Oversampling-Off control. Test 52 leg E uses that control
+rather than a guessed dB threshold, because the Off case's own shallow dip is the floor a correct
+build must match and asserting a number would have to guess how much of it belongs to the blend.
+
+### What it cost, stated rather than discovered later
+
+* Selecting 2x/4x/8x now shows latency in the host on a fully linear chain. Three places in the
+  user manual and the Settings tooltip promised the opposite and are corrected.
+* The latency-crossing set **moves** rather than shrinking, and both halves are on record. **Gained:**
+  a forced swap (A/B, preset, undo) crossing the Drive threshold with a factor selected is now
+  latency-NEUTRAL, so it keeps its dry fill. **Lost:** a forced swap that changes only the
+  oversampling FACTOR at Drive 0 with a linear algorithm was latency-neutral (0 -> 0) and dry-filled,
+  and is now latency-crossing (0 <-> 6) and ducks to silence — measured Off -> 4x through a forced
+  duck, **-2.1 dB before, -54.2 dB after**. Permitted (it happens at an Oversampling switch) and
+  consistent with the Settings menu, which has always been an ordinary duck-to-silence. Filed in
+  ADR-0034 as a candidate for a later, separately-gated improvement — latching the fill's offset from
+  the TARGET would restore seamlessness for a 4-6 sample crossfade misalignment — not folded in here.
+* **RELEASE_POLICY precondition 7 reopens for v0.9.7** — the Level-5 audition is per-version and
+  this build changes audible behaviour. The compatibility checklist's latency box was **re-run**.
+
+### Three state tests re-instrumented, one of which would have HUNG
+
+22, 24 and 27 drove the latency through Drive because it was the only automatable latency-bearing
+control; they now drive the Oversampling Setting through a `juce::Value` captured on the message
+thread. State test 27's ER-STATE-14 barrier is JUCE's **change-only** listener notification, so
+after the fix a Drive move produces no callback, its worker spins on `inDelivery` forever and
+`worker.join()` never returns — a CI job would burn its whole timeout. Caught locally by a suite run
+that stopped producing output; diagnosed from a live backtrace, not from the test's source.
+State test 24 keeps its invariant but **loses its discrimination** for the original ER-STATE-07
+defect, because no parameter bears latency any anymore; the test says so rather than implying otherwise.
+
+### Validation
+
+Preflight exit 0 with every stage run (the citation gate first exited 1 on anchors this change
+shifted; re-anchored on both bases, six `DELIBERATE_REAIMS` targets retargeted and two new
+transitions declared for ADR-0003, whose cited lines were themselves rewritten). DSP **308 checks /
+0** (was 282; Test 52 adds 26, of which 12 fail pre-change), state **1506 / 0**, both under GCC 13
+and again under the clean gcc-16 `-flto` build. `check-docs` 118 files clean; realtime lint 47 files
+/ 0 violations; citation self-test 176 cases. Clang-22 and GCC-16 warning gates green on clean
+builds — and the **Clang baseline SHRANK 3 → 1** for `-Wswitch-enum` in `AnamorphEngine.cpp`, since
+folding the two latency switches into `osLatencyFor` with every enumerator named removed two
+accepted sites. No workflow, no CMake structure and no GCC baseline changed.
+
+---
+
 ## Round 27 — 2026-09-03 — a repair that changed nothing on screen was not written to the file
 
 One fix. It completes ER-STATE-21's durability contract for the APVTS parameter family rather than

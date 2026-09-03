@@ -24,7 +24,7 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
    audition," not final. **Scope, per-item checks and the record format are in
    `LEVEL5_AUDITION.md`**, which also states when a previous audition stops counting (a machine-code
    or audible-behaviour change invalidates it — the 2026-08-15 v0.9.4 audition does not carry over
-   to v0.9.6). It requires a human; no CI job and no automated agent can supply it.
+   to v0.9.7). It requires a human; no CI job and no automated agent can supply it.
 
 ## Build the release artifacts
 
@@ -58,12 +58,12 @@ itself (`PACKAGING.md`).
 **Tag convention:** an **annotated** tag `vMAJOR.MINOR.PATCH` on the release commit on `main`,
 created AFTER pre-release steps 1–7 above are complete. The tag must equal the `CMakeLists.txt`
 `project VERSION` exactly — `release.yml` fails closed on any mismatch. **The next tag is
-`v0.9.6`** (none of 0.9.0 through 0.9.5 was tagged; each was written up and superseded
+`v0.9.7`** (none of 0.9.0 through 0.9.6 was tagged; each was written up and superseded
 before a tag was cut):
 
 ```bash
-git tag -a v0.9.6 -m "Anamorph 0.9.6"
-git push origin v0.9.6
+git tag -a v0.9.7 -m "Anamorph 0.9.7"
+git push origin v0.9.7
 ```
 
 **Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`
@@ -112,7 +112,7 @@ ship unsigned, with the user-facing consequences documented in `docs/user/INSTAL
 A pipeline **rehearsal** without a tag: run `release.yml` via `workflow_dispatch`
 (validate + full build; no release is created).
 
-No release tag exists yet — the first will be cut at the **v0.9.6** release (none of 0.9.0 through 0.9.5 was tagged). Historical
+No release tag exists yet — the first will be cut at the **v0.9.7** release (none of 0.9.0 through 0.9.6 was tagged). Historical
 CHANGELOG entries keep their commit-SHA evidence; entries from the first tag onward cite the
 tag (upgrades CHANGELOG evidence per `CHANGELOG_POLICY.md`; closes RISK-003 when practiced).
 Evidence [Verified]: .github/workflows/release.yml; .github/workflows/build.yml (`workflow_call`).
