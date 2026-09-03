@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **52 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **53 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -177,7 +177,44 @@ removed, so the 50 % bound sits between two measured populations); and both defe
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
 `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
 
-The newest DSP test is the **oversampling path-swap guard**
+The newest DSP test is the **Oversampling → Off handoff guard**
+(`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
+switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
+
+**Why it exists, and why Tests 52 and 53 could not have caught it.** The path crossfade `osBlend`
+is a mechanism for a LIVE flip of `osActiveFor` — a Drive move or an Algorithm change, which is
+exactly what Test 53 covers. A **factor** change is not that: it ducks, and it moves the reported
+latency, so the two paths are not sample-aligned and must not be mixed at all. The blend was
+nevertheless left in flight across that duck bottom, and in the `→ Off` direction the path it was
+still weighting did not exist — `currentOversampler()` is null for Off, so the wrapped buffer was
+never computed and the mix ran toward an `osPathScratch` holding the raw input. For the 12 ms of
+the ramp the Drive stage and the modulation algorithms were simply absent, at full level into the
+wideners' delay lines. Test 52 never leaves a factor selected across a switch and Test 53 never
+changes the factor, so neither gesture reaches this bottom.
+
+**The control is a factor→factor switch** (2× → 4×), not an Oversampling-Off run: it opens the
+identical duck, moves the reported latency the same way and performs the same oversampler, chorus
+and stand-in-ring resets, and differs in exactly one respect — the wrap runs on both sides of it,
+so the crossfade has nothing to hand over. Every threshold is therefore calibrated against a
+measurement rather than a constant, and the control's own dip (the chorus is reset at every duck
+bottom by design) is not mistaken for a defect.
+
+**The observable is the drive's third harmonic**, H3/H1 by Hann-windowed Goertzel on a 1 kHz mono
+probe — a ratio of two bins, so the duck's fade, which is a large time-varying gain sitting on top
+of everything in this window, cancels out of it. A waveform-difference or a bare level metric is
+dominated by that envelope exactly where the defect lives. The drive stage and the mod algorithms
+share the single wrapped buffer and stand or fall together, which is why one probe answers for
+both; the second scenario is Chorus **with** drive, so the mod path really is engaged. Modulation
+cannot be read directly during the handoff — the chorus is reset at the duck bottom in every run,
+so its side energy is 0.000 there on the control as well as on the legs.
+
+**32 checks; 12 fail against the pre-change engine and 0 after.** Measured at the duck bottom:
+H3/H1 0.103 before against 0.289 after and a 0.288 control, recovering over exactly the 12 ms of
+the blend; output level 0.014 before against 0.022 after and 0.022 on the control. A companion
+probe, `AnamorphTests --os-off-probe`, prints the H3/H1 and RMS traces for all seven switch
+directions — out of the wrap, into it, and between two factors — and asserts nothing.
+
+Before it, the **oversampling path-swap guard**
 (`testDriveCrossingIsSeamlessWithOversampling`, Test 53, ADR-0035, v0.9.7). It pins that crossing the
 Drive threshold with a factor selected is **indistinguishable from crossing it with Oversampling
 Off** — 24 combinations of {2×, 4×, 8×} × {Haas, Velvet} × {0 → 6 dB, 6 → 0 dB} × {instantaneous

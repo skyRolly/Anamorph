@@ -59,6 +59,20 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   smooth signal. With the reported latency no longer moving, the jump cannot happen; the measured
   worst step is now exactly the smooth signal's own. Regression coverage: DSP test 52.
   Evidence: PR #135. [Verified]
+- **Switching Oversampling from 2×, 4× or 8× to Off briefly dropped Drive and the modulation
+  algorithms out of the sound.** The crossfade that hands the sound between the oversampled path and
+  the normal one was left running across the Oversampling switch itself — and with Oversampling set
+  to Off there is no oversampled path for it to fade from, so for about 12 ms after the switch the
+  output was the plain, unprocessed input: no Drive, and no Chorus or Dimension-D. It arrived just as
+  the switch's short dip was lifting, and it went into Haas's and Velvet Noise's delay lines at full
+  level, so it came back out again a moment later. Measured with a 1 kHz tone and Drive at 18 dB, as
+  the strength of the distortion the Drive stage produces: it fell to about a third of its settled
+  value and took the full 12 ms to come back, against a switch between two oversampling factors —
+  the same dip, the same everything, but with the oversampler running on both sides of it — which
+  held perfectly steady. The crossfade now finishes at the switch instead of surviving it, and it
+  can no longer fade toward a path that is not there. Switching between 2×, 4× and 8×, and switching
+  Oversampling on, are all unchanged. Regression coverage: DSP test 54.
+  Evidence: PR #135. [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

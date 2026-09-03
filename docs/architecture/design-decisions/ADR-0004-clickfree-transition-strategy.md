@@ -44,7 +44,7 @@ Bypass, Multiband Enable, and Band Solo are therefore deliberately **excluded** 
 - `:831-845` (SoloMonitor every-block); `src/dsp/SoloMonitor.cpp:59-109`
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:239-266, 1030-1229; src/dsp/SoloMonitor.cpp:59-109
+- Source: src/dsp/AnamorphEngine.cpp:239-266, 1046-1257; src/dsp/SoloMonitor.cpp:59-109
 - Tests: testNoClicksAcrossTransitions, testSoloNoGhostInSilence, testBypassCrossfadeClickFree,
   testMultibandEnableCrossfadeClickFree, testSoloMultibandEnableClickFree
 - History [Partially Verified]: CHANGELOG.md [0.8.1], [0.8.6], [0.8.7]

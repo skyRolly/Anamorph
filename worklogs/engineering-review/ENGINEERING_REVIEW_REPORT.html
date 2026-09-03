@@ -84,11 +84,24 @@ round reconciles against.</p>
 <div class="meta">
   <span>ROUNDS 1–27 + ADR-0034/0035 · 2026-08-31 → 09-03</span>
   <span>TREE: main @ e8f4422 → v0.9.7</span>
-  <span>STATUS: the Drive crossing is now indistinguishable from Oversampling Off; the Level-5 audition REOPENS for v0.9.7; D-2, RISK-008 and KI-015 remain open by decision</span>
+  <span>STATUS: the Drive crossing is indistinguishable from Oversampling Off, and the Oversampling&rarr;Off handoff no longer drops the processing; the Level-5 audition REOPENS for v0.9.7; D-2, RISK-008 and KI-015 remain open by decision</span>
   <span>NEXT: Level-5 audition for v0.9.7, licence (KI-015), then tag v0.9.7</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
+<p class="lede"><strong>ADR-0035 points 8&ndash;9 (PR #135 final review): the crossfade outlived the
+path it was fading from.</strong> Switching Oversampling from 2&times;/4&times;/8&times; to
+<em>Off</em> left <code>osBlend</code> in flight across the switch's own duck bottom &mdash; and at
+Off there is no wrapped path, so for the 12&nbsp;ms of the ramp the output was the <em>raw input</em>
+and Drive and the mod algorithms were absent, at full level into the wideners' delay lines.</p>
+<div class="grid">
+  <div class="v"><div class="k">The blend was valid for the wrong transition</div><p><code>osBlend</code> mixes two paths ADR-0034 made <strong>sample-aligned</strong>. A FACTOR change is the one OS transition that breaks that alignment &mdash; it moves the reported latency &mdash; which is why it ducks rather than crossfading. Carrying the blend across that bottom spans two states it was never valid for; <code>currentOversampler()</code> being null at Off made it worse than misaligned, since the wrapped buffer was <strong>never computed</strong>.</p></div>
+  <div class="v"><div class="k">The instrument had to be gain-invariant &mdash; the first one was not</div><p>The duck's fade is a large <em>time-varying</em> gain over exactly the window in question. A best-fit residual <code>rms(out&nbsp;&minus;&nbsp;g&middot;in)/rms(out)</code> is invariant only to a CONSTANT gain and showed nothing. The working probe is the drive's third-harmonic ratio <strong>H3/H1</strong> by Hann-windowed Goertzel, in a 256-sample window short enough to sit <em>inside</em> the 12&nbsp;ms blend.</p></div>
+  <div class="v"><div class="k">The control is the same duck, not a constant</div><p>A <strong>factor&rarr;factor</strong> switch (2&times;&nbsp;&rarr;&nbsp;4&times;): identical duck, identical latency step, identical resets &mdash; differing only in that the wrap runs on both sides, so the crossfade has nothing to hand over. At the bottom: <strong>0.103 before, 0.289 after, 0.288 control</strong>, recovering over exactly the blend's 12&nbsp;ms; level 0.014 &rarr; 0.022 against 0.022.</p></div>
+  <div class="v"><div class="k">Two edits: the cause, and the invariant</div><p>The <code>osPathChanged</code> bottom now <strong>lands</strong> the blend beside the resets already there, mirroring the forced-duck branch. And the stage reads <code>currentOversampler()</code> once and forces the blend to agree: the pointer, not the weight, is the authority on whether a wrapped path exists, so a stale weight can only ever degrade to the <em>correctly-processed base-rate path</em>. The crossfade itself is untouched for the live flip it exists for.</p></div>
+  <div class="v"><div class="k">Modulation could not be read directly, and that is recorded</div><p>Side energy from a mono probe is the obvious mod observable and it does not work here: the chorus is <strong>reset at every duck bottom by design</strong>, so it reads 0.000 there on the control exactly as on the legs. Drive and the mod algorithms share the one wrapped buffer and stand or fall with it, so the second scenario is Chorus <em>with</em> drive on the same H3/H1 observable.</p></div>
+  <div class="v"><div class="k">Every other direction measured, not assumed</div><p>Off&nbsp;&rarr;&nbsp;2&times; and Off&nbsp;&rarr;&nbsp;8&times; are identical before and after on both traces and the worst step (&times;1.04); both factor&rarr;factor controls likewise; <code>--forced-swap-probe</code> reproduces to four decimals on all seven rows. <strong>Test&nbsp;54</strong>: 32 checks, <strong>12 fail pre-change, 0 after</strong>. Suites 396&thinsp;/&thinsp;0 and 1506&thinsp;/&thinsp;0.</p></div>
+</div>
 <p class="lede"><strong>ADR-0035 (PR #135 pre-merge follow-up): the oversampling path swap becomes a
 crossfade, and the Drive crossing stops being audible at all.</strong> ADR-0034 fixed the reported
 latency; an interruption remained, and the maintainer named <em>Haas and Velvet Noise</em>

@@ -33,6 +33,6 @@ code reference "Known Issue #1" — a *closed* design constraint, not an open bu
 - `src/dsp/AnamorphEngine.cpp:801-872` (A(dry) production), `:726-759` (smoothstep Mix)
 
 Evidence [Verified]:
-- Source: src/dsp/MultibandWidth.cpp:154-168; src/dsp/AnamorphEngine.cpp:915-968
+- Source: src/dsp/MultibandWidth.cpp:154-168; src/dsp/AnamorphEngine.cpp:931-984
 - Tests: testMultibandMonoCompat, testMultibandUnityMatch
 - History [Partially Verified]: CHANGELOG.md [0.7.5]-[0.7.0] (0.7.2)

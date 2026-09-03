@@ -413,7 +413,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:986-992` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:1002-1008` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1907,7 +1907,7 @@ No other approval is claimed by this entry.
 (`src/dsp/AnamorphEngine.cpp:208-215`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:851-955`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:851-971`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2014,7 +2014,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:1597-1647` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:1625-1675` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -7826,3 +7826,84 @@ adds 56), counted from `main`'s registered test functions. The state suite is un
 / 1506 checks**. Measured, not inferred: `AnamorphTests` prints `364 checks, 0 failures` and
 `AnamorphStateTests` prints `1506 checks, 0 failure(s)`, under GCC 13 and again under the clean
 gcc-16 `-flto` build. [Verified]
+
+---
+
+## ADR-0035 points 8-9 — the blend that outlived its path (2026-09-03, the 0.9.7 change set)
+
+**What the change is.** The final-review item on PR #135: *"When changing from an active Oversampling
+factor: 2×, 4×, 8× to Off, the `osBlend` transition can retain wrapped-path weight even though the
+wrapped path is no longer running."* Records: ADR-0035 Decision points 8-9 and its new consequence
+table, the programme worklog and the dashboard.
+
+**Root cause.** `osBlend` is a crossfade between two paths that ADR-0034 made sample-aligned. A
+**factor** change is the one OS transition that breaks that alignment — it moves the reported
+latency — which is why it ducks rather than crossfading. The blend was nevertheless left in flight
+across that duck's bottom, while every other stateful thing there (the three oversamplers, the
+chorus, the stand-in ring) was being reset and the forced-duck branch two blocks below was already
+landing the blend explicitly. In the `→ Off` direction the consequence was not merely a misaligned
+mix: `osActiveFor` is false for Off, so the target became 0 with the current value still 1, and
+`currentOversampler()` is null for Off, so the wrapped path was **never computed**. The mix at the
+end of the stage therefore ran toward an `osPathScratch` holding nothing but the raw input, and for
+the 12 ms of the ramp the Drive stage and the modulation algorithms were absent from the output — at
+full level into Haas's and Velvet's delay lines, under a fade-in that had barely started.
+
+**Why the suite had not caught it.** Test 53 covers a LIVE flip of `osActiveFor` (Drive, Algorithm)
+and never changes the factor; Test 52 never leaves a factor selected across a switch. Neither
+gesture reaches this duck bottom.
+
+**How it was measured.** The instrument had to be gain-invariant, because the duck's fade is a large
+time-varying gain sitting on top of exactly the window in question — a first attempt using a
+best-fit residual `rms(out − g·in)/rms(out)` was invariant only to a CONSTANT gain and showed
+nothing. The working instrument is the drive's third-harmonic ratio **H3/H1** by Hann-windowed
+Goertzel on a 1 kHz mono probe, in a 256-sample window short enough to sit inside the 12 ms blend
+rather than straddle it. The control is a **factor→factor** switch (2× → 4×): the identical duck,
+the identical latency step, the identical resets, differing only in that the wrap runs on both sides
+of it. At the duck bottom: **0.103 before, 0.289 after, 0.288 on the control**, recovering over
+exactly the 12 ms of the blend; output level **0.014 before, 0.022 after, 0.022 on the control**.
+The control being flat is what attributes the collapse to the handover rather than to the duck.
+
+**What modulation could and could not be measured by.** A mono probe through Chorus makes side
+energy the obvious modulation observable, and it does not work here: the chorus is reset at every
+duck bottom by design, so its side ratio reads **0.000** there on the control exactly as on the
+legs. The drive stage and the mod algorithms share the single wrapped buffer and stand or fall with
+it, so the second scenario runs Chorus **with** drive and is asserted on the same H3/H1 observable.
+
+**Gate.** `ARCHITECTURE_REVIEW_GATE.md` "Signal Flow change" — discharged by the maintainer's
+instruction plus ADR-0035, amended in place rather than superseded: the crossfade decision stands,
+points 8 and 9 state its boundary. No parameter ID, serialization schema, threading model or
+reported-latency behaviour is touched.
+
+**Code (one file).** `src/dsp/AnamorphEngine.cpp` — two edits. (1) The `osPathChanged` branch at the
+silent duck bottom now lands `osBlend`/`osRunning` on the state it adopts, beside the resets already
+there and mirroring the forced-duck branch. (2) The OS stage reads `currentOversampler()` once, at
+the top, and forces the blend to agree with it, so `wrapAudible` implies a live oversampler and a
+stale weight can only ever degrade the output to the correctly-processed base-rate path.
+
+**Tests.** DSP **Test 54** (`testOversamplingOffHandoffKeepsProcessing`, 32 checks, **12 failing
+pre-change**): 2 scenarios {Haas + drive, Chorus + drive} × 3 factors {2×, 4×, 8×} → Off, each
+against its own factor→factor control, asserting that the processing survives, that the level does
+not fall below what the same duck costs anyway, that no step exceeds the control's, and that the
+reported latency holds only the two selections' own values and moves exactly once. Plus
+`--os-off-probe`, the print-only trace over all seven switch directions.
+
+**The other directions, measured rather than assumed.** Off → 2× and Off → 8× are identical before
+and after on the H3/H1 trace, the RMS trace and the worst step (×1.04); both factor→factor controls
+likewise; the `--forced-swap-probe` table reproduces to four decimal places on all seven rows, the
+forced path having always settled its blend. What point 8 does change in the Off → factor direction
+is invisible on the probe and worth having: the fade-in no longer plays ~12 ms of the nonlinear
+stage running at the base rate.
+
+**Documents touched:** ADR-0035 (points 8-9, a consequence block with the measurement table, the
+evidence list), `SIGNAL_FLOW.md`, `DSP_GRAPH_REFERENCE.md`, `LATENCY_MODEL.md`,
+`docs/policies/DSP_POLICY.md` (invariant 5), `docs/procedures/TESTING.md`, `docs/HANDOVER.md`,
+`RELEASE_HARDENING_PLAN.md`, `README.md`, `CHANGELOG.md`, this file, the worklog and the dashboard.
+**Unchanged:** every workflow, both warning baselines, the parameter and serialization registries,
+`CMakeLists.txt`, `PERFORMANCE_BUDGET.md` (the wrap's duty cycle is unchanged — the blend still
+runs the wrap for ~12 ms per LIVE crossing, and a ducked factor change now runs one path rather
+than two).
+
+**Counts.** The DSP suite is **53 tests + the A/B clamp guard / 396 checks** (was 52 / 364; Test 54
+adds 32), counted from `main`'s registered test functions. The state suite is unchanged at **35
+tests / 1506 checks**. Measured, not inferred: `AnamorphTests` prints `396 checks, 0 failures` and
+`AnamorphStateTests` prints `1506 checks, 0 failure(s)`. [Verified]

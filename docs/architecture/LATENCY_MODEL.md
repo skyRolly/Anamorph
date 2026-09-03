@@ -139,7 +139,8 @@ binary (requires running the plugin; not statically provable here).`
   not at a silent duck bottom. That does not touch the reported number, which follows `oversample`
   — a discrete control still adopted only at a duck bottom or a reset — so the reported latency
   still cannot change mid-block. An oversampling FACTOR change is still routed through the duck,
-  because that one does move the number.
+  because that one does move the number — and that duck settles the blend on the state it adopts,
+  since two paths of different latency are not alignable and so not mixable (Test 54).
 - **A parameter move now re-derives the same number.** `parameterChanged` still requests a latency
   update on a Drive or Algorithm move, and `deliverLatency()` still recomputes — but the value is
   unchanged, and JUCE's `setLatencySamples` notifies the host only when the value actually differs,

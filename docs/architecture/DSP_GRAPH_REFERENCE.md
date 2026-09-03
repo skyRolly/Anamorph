@@ -4,7 +4,7 @@ Node dependency topology of the serial DSP chain. Purpose: prevent unsafe reorde
 node may only be moved if **Can Reorder? = Yes** and the move preserves every invariant in
 `SIGNAL_FLOW.md`. Any "No" reorder requires an ADR + Architecture Review.
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:819-1686 (`process`).
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:819-1714 (`process`).
 
 ## Topology table
 
@@ -49,7 +49,11 @@ factor) but the stage's position in the chain is fixed.
   carry the same latency (ADR-0034), so they are sample-aligned and mixing them is well-defined.
   During a crossfade both run, and the wrapped one takes an `envStride` equal to the factor so the
   drive envelope advances at the same wall-clock rate on both sides; the mod algorithms run only on
-  the wrapped side, there being one `ChorusEngine`.
+  the wrapped side, there being one `ChorusEngine`. The blend is a mechanism for a LIVE flip of
+  `osActiveFor`; a duck bottom that changed the FACTOR lands it on the state it adopts instead,
+  because a factor change moves the latency and the two paths are then not aligned. `Off` has no
+  wrapped path at all, so the mix takes its existence from `currentOversampler()` rather than from
+  the blend's weight — the blend can never reference a buffer that was not computed.
 - **Global Width before Multiband.** Width is a full-band MS side-gain; the Multiband then
   splits and applies per-band width. (Verified: :889-905.)
 

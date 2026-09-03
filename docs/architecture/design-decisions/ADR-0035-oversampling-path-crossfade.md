@@ -89,7 +89,21 @@ Two independent sources fed it, one in each direction:
 7. **`osActiveFor` leaves `discreteDiffers`.** A Drive crossing no longer opens a duck of any kind.
    An oversampling **FACTOR** change still does — that one moves the reported latency, so the two
    paths are not aligned and cannot be crossfaded.
-8. **A forced swap settles the blend at its silent bottom**, where every other control is already
+8. **A duck bottom that changed the OS path SETTLES the blend, it does not carry it across.** Both
+   ducked routes into this stage — the ordinary factor change and the forced bulk swap — land
+   `osBlend` (and `osRunning`) on the state they have just adopted, next to the oversampler, chorus
+   and stand-in-ring resets that already happen there. A blend left in flight across that bottom
+   spans two states it was never valid for: point 2 above only licenses mixing the paths **while
+   they are sample-aligned**, and a factor change is precisely the transition that breaks the
+   alignment. In the `-> Off` direction it is worse than misaligned — see point 9.
+9. **The blend may never weight a path that does not exist.** `currentOversampler()` returns null
+   for exactly one state, Oversampling **Off**, and the pointer — not the blend — is the authority
+   on whether a wrapped buffer exists. It is read once at the top of the stage and the blend is
+   forced to agree with it, so `wrapAudible` implies a live oversampler and a stale weight can only
+   ever degrade the output to the correctly-processed **base-rate** path, never to unprocessed
+   audio. `p.oversample` is discrete, so this can only fire at a silent duck bottom — the same
+   instant point 8 lands the blend deliberately.
+10. **A forced swap settles the blend at its silent bottom**, where every other control is already
    snapped. Without it the fade-in mixes in from the base-rate path with the drive smoothers snapped
    to a large new value — ~12 ms of the nonlinear stage running **undersampled**, the one thing the
    wrap exists to avoid. Measured: worst step 2.70× without the settle, 2.03× with it, which is
@@ -116,6 +130,33 @@ Two independent sources fed it, one in each direction:
   same as the Oversampling-Off baseline for that swap.
 - **`osEngaged` is gone**, replaced by `osRunning` (does the wrap run this block) plus the blend.
   Nothing else read it.
+- **Points 8 and 9 answer a defect this ADR's first implementation shipped with, in the one
+  direction it had not been measured: 2×/4×/8× → Off.** The factor change ducks, so the new state
+  is adopted at the silent bottom; `osActiveFor` is false for Off, so the blend's target became 0
+  while its current value was still 1; and `currentOversampler()` is null for Off, so the wrapped
+  path was never computed. The mix therefore ran toward an `osPathScratch` holding nothing but the
+  raw input, and for the 12 ms of the ramp the Drive stage and the modulation algorithms were
+  absent from the output — at full level into Haas's and Velvet's delay lines, under a fade-in that
+  had barely started. Measured with a 1 kHz mono probe at Drive 18 dB, Haas, as the third-harmonic
+  ratio H3/H1 (a ratio of two bins, so the duck's fade cancels out of it), relative to the duck's
+  silent bottom:
+
+  | ms from bottom | −4 | 0 | +4 | +8 | +12 | +16 | +20 |
+  |---|---|---|---|---|---|---|---|
+  | 2×/4×/8× → Off, before | 0.288 | **0.103** | 0.195 | 0.261 | 0.288 | 0.289 | 0.288 |
+  | 2×/4×/8× → Off, after | 0.288 | 0.289 | 0.289 | 0.289 | 0.289 | 0.289 | 0.288 |
+  | 2× → 4× control | 0.288 | 0.288 | 0.288 | 0.288 | 0.288 | 0.288 | 0.288 |
+
+  The **control is the same duck** — a factor→factor switch, with the same reported-latency step and
+  the same resets, differing only in that the wrap runs on both sides of it — and it is flat, which
+  is what attributes the collapse to the handover rather than to the duck. The output level tells
+  the same story: 0.014 at the bottom before, 0.022 after, against the control's 0.022.
+- **The other three directions are unchanged, measured rather than assumed.** Off → 2× and Off → 8×
+  are byte-identical before and after on both traces and on the worst step (×1.04), and the two
+  factor→factor controls likewise; the forced-swap table above reproduces to four decimal places on
+  every one of its seven rows. What point 8 does change in the Off → factor direction is invisible
+  on this probe and worth having anyway: the fade-in no longer plays ~12 ms of the nonlinear stage
+  running at the base rate, which is the same argument point 10 makes for the forced swap.
 
 ## Related code
 
@@ -126,5 +167,11 @@ Two independent sources fed it, one in each direction:
 Evidence [Verified]:
 - Test: `tests/dsp_tests.cpp :: testDriveCrossingIsSeamlessWithOversampling` (Test 53) — **26 of its
   56 checks fail against the pre-change engine and 0 after**
+- Test: `tests/dsp_tests.cpp :: testOversamplingOffHandoffKeepsProcessing` (Test 54) — points 8/9;
+  **12 of its 32 checks fail against the engine before those points and 0 after**. Its thresholds are
+  calibrated against a factor→factor control run rather than against constants, and it covers both a
+  linear widener (Haas) and a mod algorithm (Chorus), each with Drive, since the drive stage and the
+  mod algorithms share the one wrapped buffer and stand or fall with it
+- Probe: `AnamorphTests --os-off-probe` (the H3/H1 table above, all seven switch directions)
 - Probe: `AnamorphTests --forced-swap-probe` (the A/B table above, measured on three engine versions)
 - Measurement: `AnamorphBench` §"Oversampling SELECTED but skipped, Drive 0"

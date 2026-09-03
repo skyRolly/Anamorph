@@ -29,6 +29,104 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
+
+> *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can
+> retain wrapped-path weight even though the wrapped path is no longer running."*
+
+**A `ARCHITECTURE_REVIEW_GATE` "Signal Flow change"**, discharged by the instruction plus ADR-0035,
+**amended in place rather than superseded**: the crossfade decision stands; points 8 and 9 state its
+boundary. Nothing in the latency contract (ADR-0034), the Drive-crossing fix (ADR-0035 points 1-7),
+the Haas/Velvet behaviour or the `osActiveFor` CPU saving is touched.
+
+### Root cause
+
+`osBlend` mixes two paths that ADR-0034 made **sample-aligned**. A **factor** change is the one OS
+transition that breaks that alignment -- it moves the reported latency -- which is exactly why it
+ducks instead of crossfading (ADR-0035 point 7). The blend was nevertheless carried across that
+duck's bottom, while everything else stateful there was being reset (`os2/os4/os8`, `chorus`,
+`osCompDelayBuffer`) and the forced-duck branch two blocks below was already landing the blend
+explicitly. In the `-> Off` direction that is not merely a misaligned mix:
+
+1. `p = pendingP` adopts `oversample = Off` at the silent bottom.
+2. `osActiveFor(p)` is false for Off, so the blend's TARGET becomes 0 while its CURRENT value is
+   still 1 -- `osBlending` and `wrapAudible` both true.
+3. `osPathScratch` is snapshotted with the **raw, unprocessed input**.
+4. `currentOversampler()` returns **nullptr** for Off, so the wrapped path is **never computed** and
+   the scratch still holds that raw input.
+5. The mix runs `L[i] += b * (scratch[i] - L[i])` with `b` starting at 1 -- so for the 12 ms of the
+   ramp the output IS the raw input, fading back to the base path. Drive and the mod algorithms are
+   both absent, at full level into Haas's and Velvet's delay lines, under a fade-in barely started.
+
+### Measurement: the instrument had to be gain-invariant, and the first one was not
+
+The duck's fade is a large **time-varying** gain sitting on top of exactly the window in question. A
+first attempt -- a best-fit residual `rms(out - g*in) / rms(out)` -- is invariant only to a CONSTANT
+gain and showed nothing. The working instrument is the drive's third-harmonic ratio **H3/H1** by
+Hann-windowed Goertzel on a 1 kHz mono probe, in a 256-sample (5.3 ms) window short enough to sit
+INSIDE the 12 ms blend rather than straddle it. A ratio of two bins cancels any gain, constant or not.
+
+**The control is a factor->factor switch** (2x -> 4x): the identical duck, the identical
+reported-latency step, the identical resets -- differing in one respect only, that the wrap runs on
+both sides of it so the crossfade has nothing to hand over. Anything the duck itself costs shows up
+on the control too, which is what attributes the collapse to the handover.
+
+| ms from the duck bottom | -4 | 0 | +4 | +8 | +12 | +16 | +20 |
+|---|---|---|---|---|---|---|---|
+| 2x/4x/8x -> Off, before | 0.288 | **0.103** | 0.195 | 0.261 | 0.288 | 0.289 | 0.288 |
+| 2x/4x/8x -> Off, after | 0.288 | 0.289 | 0.289 | 0.289 | 0.289 | 0.289 | 0.288 |
+| 2x -> 4x control | 0.288 | 0.288 | 0.288 | 0.288 | 0.288 | 0.288 | 0.288 |
+
+Output level at the bottom: **0.014 before, 0.022 after, 0.022 on the control**.
+
+**What modulation could NOT be measured by.** A mono probe through Chorus makes side energy the
+obvious modulation observable, and it does not work here: the chorus is reset at every duck bottom by
+design (stale audio would replay as the fade lifts), so its side ratio reads **0.000** there on the
+control exactly as on the legs. Drive and the mod algorithms share the single wrapped buffer and
+stand or fall with it, so the second scenario runs Chorus **with** drive on the same H3/H1 observable.
+
+### The fix — two edits, `src/dsp/AnamorphEngine.cpp`
+
+1. **The `osPathChanged` branch at the silent duck bottom lands the blend**, beside the resets
+   already there and mirroring the forced-duck branch:
+   `osBlend.setCurrentAndTargetValue (osActiveFor (p) ? 1.0f : 0.0f); osRunning = osActiveFor (p);`
+2. **The OS stage reads `currentOversampler()` once, at the top, and forces the blend to agree with
+   it.** The pointer, not the blend, is the authority on whether a wrapped buffer exists, so
+   `wrapAudible` implies a live oversampler and a stale weight can only ever degrade the output to
+   the correctly-processed **base-rate** path -- never to unprocessed audio. `p.oversample` is
+   discrete, so this can only fire at a silent duck bottom.
+
+Edit (1) is the root cause; edit (2) makes the failure mode unrepresentable rather than merely
+unreached. Neither bypasses the crossfade: it remains in full force for the LIVE `osActiveFor` flip
+(Drive, Algorithm) that ADR-0035 exists for, which is the transition Test 53 pins.
+
+### Validation
+
+* **DSP Test 54** (`testOversamplingOffHandoffKeepsProcessing`), 32 checks: 2 scenarios
+  {Haas + drive, Chorus + drive} x 3 factors -> Off, each against its own factor->factor control.
+  **12 fail against the pre-change engine, 0 after.** Asserts: processing survives (>= 0.85 of the
+  control; 0.358/0.371 before, 0.950/0.998 after), the level does not fall below what the same duck
+  costs (0.547/0.558 before, 0.969/0.991 after), no step beyond the control's, and the reported
+  latency holds only the two selections' own values and moves exactly once.
+* **`--os-off-probe`** extended to all seven switch directions. Off -> 2x and Off -> 8x are identical
+  before and after on both traces and on the worst step (x1.04); both controls likewise.
+* **`--forced-swap-probe`** reproduces to four decimal places on all seven rows -- the forced path
+  always did settle its blend.
+* **`--os-latency-probe`** unchanged: predict == report across the whole grid (ADR-0034 intact).
+* Suites: DSP **396 / 0** (was 364), state **1506 / 0** -- under GCC 13 and again under the clean
+  gcc-16 `-flto` build. Preflight exit 0; `check-docs` 119 files clean; realtime lint 47 files /
+  0 violations; the citation gate clean on all three bases with its 179-case self-test passing;
+  Clang-22 (15 accepted sites) and GCC-16 (3 accepted sites) gates green on CLEAN rebuilds with
+  **both baselines unchanged**.
+* CPU: the change touches only the duck bottom and moves one already-existing `currentOversampler()`
+  call out of a branch, so no steady-state effect is expected and none is measured -- OS Off 263.78
+  against 266.71 / 266.57 / 265.61 ns/sample at 2x/4x/8x with Drive 0, inside 1.1 %. The absolute
+  figures are higher than ADR-0035's recorded run (159.19 / 170.06 / 166.60 / 169.44) because this
+  machine was more loaded; the RELATION those figures exist to assert -- wrap skipped costs what Off
+  costs -- is what reproduces, and it does.
+
+---
+
 ## ADR-0035 — 2026-09-03 — the oversampling path swap becomes a crossfade (PR #135 pre-merge follow-up)
 
 Three maintainer-named items before merge. **A `ARCHITECTURE_REVIEW_GATE` "Signal Flow change"**,

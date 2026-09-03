@@ -883,6 +883,22 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
             // refills within `lat` samples (4-6), far inside the ~28 ms fade-in.
             osCompDelayBuffer.clear();
             osCompDelayWrite = 0;
+            // AND LAND THE PATH CROSSFADE ON THE STATE JUST ADOPTED. `osBlend` is a
+            // crossfade between two paths that ADR-0034 made sample-aligned; a FACTOR
+            // change is the one OS transition that breaks that alignment (it moves the
+            // reported latency), which is why it ducks instead. A blend left in flight
+            // across this bottom therefore spans two states it was never valid for --
+            // and in the ->Off direction it weights a wrapped path that no longer
+            // exists at all, so the mix hands back the RAW input and Drive and the mod
+            // algorithms vanish for the 12 ms of the ramp, at full level into Haas's
+            // and Velvet's delay lines. Measured with a 1 kHz probe, third-harmonic
+            // ratio H3/H1 (gain-invariant, so the duck cannot move it): 0.289 settled,
+            // 0.103 at the bottom, 12 ms to recover -- against a flat 0.288 through
+            // the identical duck on the 2x->4x control (Test 54). The duck already gives us
+            // silence and every path was just reset two lines up, so the correct
+            // handover here is the same one the forced swap below takes: land it.
+            osBlend.setCurrentAndTargetValue (osActiveFor (p) ? 1.0f : 0.0f);
+            osRunning = osActiveFor (p);
         }
         // Re-arm the loudness match ONLY when the processing actually changed (A/B
         // swap, algorithm, ...). Toggling Level Match / Bypass must NOT re-measure,
@@ -1093,6 +1109,18 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     // group delay on one side, `osCompDelayBuffer` on the other -- which is exactly
     // what ADR-0034 established, and is what makes them sample-aligned and safe to
     // mix. Before ADR-0034 they differed by 4-6 samples and this would have combed.
+    //
+    // THE POINTER IS THE AUTHORITY ON WHETHER A WRAPPED PATH EXISTS, NOT THE BLEND.
+    // `currentOversampler()` is null for exactly one state -- Oversampling Off -- and
+    // in that state there is no wrapped buffer to fade from, so a non-zero blend
+    // weight would mix toward `osPathScratch` holding nothing but the raw input.
+    // Forcing the blend to agree makes that unrepresentable rather than merely
+    // unreached: below, `wrapAudible` implies `os != nullptr`, and if the weight were
+    // ever stale the output degrades to the correctly-processed base-rate path, never
+    // to unprocessed audio. `p.oversample` is discrete, so this can only ever fire at
+    // a silent duck bottom -- the same instant the branch above lands it deliberately.
+    auto* const os = currentOversampler();
+    if (os == nullptr) osBlend.setCurrentAndTargetValue (0.0f);
     osBlend.setTargetValue (osActiveFor (p) ? 1.0f : 0.0f);
     const bool osBlending  = osBlend.isSmoothing();
     const bool wrapAudible = osBlending || osBlend.getCurrentValue() > 0.0f;
@@ -1193,7 +1221,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         // envelope exactly `n` times too, so the two paths end the block in the same
         // place and no end-state arbitration is needed.
         if (osBlending) { driveSmooth = driveEntry; driveBlendSmooth = blendEntry; }
-        if (auto* os = currentOversampler())
+        // Non-null whenever `wrapAudible` is -- the invariant established above.
         {
             const double factor = (p.oversample == OversampleFactor::x2) ? 2.0
                                 : (p.oversample == OversampleFactor::x4) ? 4.0 : 8.0;

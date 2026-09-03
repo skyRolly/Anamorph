@@ -5516,6 +5516,258 @@ static void testDriveCrossingIsSeamlessWithOversampling()
             }
 }
 
+// ---------------------------------------------------------------------------
+// Shared instrument for the Oversampling SWITCH (a factor change, which ducks).
+//
+// The observable is **H3/H1**, the third-harmonic ratio at a 1 kHz probe, by
+// Hann-windowed Goertzel. Drive is an odd nonlinearity, so this is its signature:
+// drive present -> the settled value, drive replaced by the raw input -> collapse.
+// It is a RATIO of two bins measured in the same window, which is what makes it
+// usable here at all -- the switch duck's fade is a large, TIME-VARYING gain
+// sitting on top of everything in this window, so a waveform-difference or a bare
+// level metric is dominated by the envelope exactly where the defect lives. (A
+// first attempt using a best-fit residual `rms(out - g*in)/rms(out)` is invariant
+// only to a CONSTANT gain and showed nothing.)
+//
+// Modulation cannot be read directly across this transition and is not tried: the
+// chorus is reset at every duck bottom by design, so with a mono probe its side/mid
+// ratio reads 0.000 there on a factor->factor CONTROL exactly as it does on the
+// legs. The drive stage and the mod algorithms share the single wrapped buffer and
+// stand or fall with it, so a mod scenario is run WITH drive and read the same way.
+namespace
+{
+    struct OsSwitchTrace
+    {
+        std::vector<float> l, r;
+        int bottom = 0;      // index of the duck's silent bottom (min-RMS after the change)
+        int change = 0;      // index of the parameter change
+        int latMoves = 0;    // how many times the reported latency changed during the run
+        bool latValuesOk = true; // ... and whether it only ever held the two expected values
+    };
+
+    static OsSwitchTrace runOsSwitch (anamorph::OversampleFactor from,
+                                      anamorph::OversampleFactor to,
+                                      anamorph::Algorithm alg, float driveDb)
+    {
+        constexpr double sr = 48000.0; constexpr int bs = 64;
+        constexpr int settle = 400, tail = 400;
+        anamorph::EngineParameters p;
+        p.algorithm  = alg;
+        p.algoAmount = 0.7f;
+        p.driveDb    = driveDb;
+        p.oversample = from;
+        anamorph::AnamorphEngine e;
+        e.primeParameters (p); e.prepare (sr, bs); e.setParameters (p);
+
+        anamorph::EngineParameters probeTo = p; probeTo.oversample = to;
+        const int latFrom = e.predictLatency (p);
+        const int latTo   = e.predictLatency (probeTo);
+
+        OsSwitchTrace t;
+        t.l.reserve ((size_t) (settle + tail) * bs);
+        t.r.reserve ((size_t) (settle + tail) * bs);
+        juce::AudioBuffer<float> buf (2, bs);
+        double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * 1000.0 / sr;
+        int lastLat = e.getLatencySamples();
+        for (int nb = 0; nb < settle + tail; ++nb)
+        {
+            if (nb == settle) p.oversample = to;
+            for (int i = 0; i < bs; ++i)
+            {   // MONO on purpose: every bit of L-R below was made by the engine
+                const float v = 0.6f * (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, v); buf.setSample (1, i, v);
+            }
+            e.setParameters (p); e.process (buf);
+            const int lat = e.getLatencySamples();
+            if (lat != lastLat) { ++t.latMoves; lastLat = lat; }
+            if (lat != latFrom && lat != latTo) t.latValuesOk = false;
+            for (int i = 0; i < bs; ++i) { t.l.push_back (buf.getSample (0, i)); t.r.push_back (buf.getSample (1, i)); }
+        }
+        t.change = settle * bs;
+
+        // The duck's bottom, found rather than assumed: the quietest 128-sample
+        // window after the change. Everything the blend does happens from here on,
+        // because this is where the deferred discrete state is adopted.
+        double best = 1.0e30;
+        for (int i = t.change; i + 128 < (int) t.l.size() && i < t.change + (int) (0.05 * sr); i += 8)
+        {
+            double sq = 0.0;
+            for (int k = 0; k < 128; ++k) { const double v = t.l[(size_t) (i + k)]; sq += v * v; }
+            if (sq < best) { best = sq; t.bottom = i; }
+        }
+        return t;
+    }
+
+    // Hann-windowed Goertzel magnitude at `hz` over `w` samples from `at`.
+    static double goertzelMag (const std::vector<float>& v, int at, int w, double hz, double sr)
+    {
+        const double k = 2.0 * std::cos (2.0 * 3.14159265358979 * hz / sr);
+        double s1 = 0.0, s2 = 0.0;
+        for (int i = 0; i < w; ++i)
+        {
+            const double win = 0.5 - 0.5 * std::cos (2.0 * 3.14159265358979 * i / (w - 1));
+            const double s0 = win * v[(size_t) (at + i)] + k * s1 - s2;
+            s2 = s1; s1 = s0;
+        }
+        return std::sqrt (s1 * s1 + s2 * s2 - k * s1 * s2);
+    }
+
+    // H3/H1 of a 1 kHz probe in a 256-sample (5.3 ms) window -- short enough to sit
+    // INSIDE the 12 ms blend rather than straddle it, long enough for 5.3 cycles.
+    static double h3Over1 (const OsSwitchTrace& t, int at)
+    {
+        const double h1 = goertzelMag (t.l, at, 256, 1000.0, 48000.0);
+        const double h3 = goertzelMag (t.l, at, 256, 3000.0, 48000.0);
+        return h1 > 1.0e-12 ? h3 / h1 : 0.0;
+    }
+
+    static double blockRms (const std::vector<float>& v, int at, int w)
+    { double s = 0.0; for (int i = 0; i < w; ++i) { const double x = v[(size_t) (at + i)]; s += x * x; } return std::sqrt (s / w); }
+
+    // `metric` averaged over the settled tail. A modulating algorithm makes any
+    // spectral observable breathe, so a SINGLE settled window is not a reference;
+    // 32 of them are. The chorus is reset at the duck bottom in every run here, so
+    // its LFO phase is aligned across leg and control and the breathing cancels.
+    template <typename Fn>
+    static double settledMean (const OsSwitchTrace& t, Fn metric)
+    {
+        double acc = 0.0; int cnt = 0;
+        for (int at = (int) t.l.size() - 8192; at + 512 < (int) t.l.size(); at += 256)
+        { acc += metric (t, at); ++cnt; }
+        return cnt > 0 ? acc / cnt : 0.0;
+    }
+
+    // How much of the processing survived the handoff, as a fraction of what the
+    // SAME duck keeps on the control -- worst window over the blend's own span
+    // (the duck bottom, where the new discrete state is adopted, to +20 ms, which
+    // covers the 12 ms ramp with room to spare). Each side is normalised by its own
+    // settled level first, so a legitimate steady-state difference between the two
+    // end states does not read as a loss. 1.0 = the leg gave up nothing the control
+    // did not give up too.
+    template <typename Fn>
+    static double blendKeepVsControl (const OsSwitchTrace& leg, const OsSwitchTrace& ctl, Fn metric)
+    {
+        const double legS = settledMean (leg, metric), ctlS = settledMean (ctl, metric);
+        if (legS <= 1.0e-9 || ctlS <= 1.0e-9) return 0.0;
+        double worst = 1.0e30;
+        for (int off = 0; off <= 960; off += 32)
+        {
+            const double a = metric (leg, leg.bottom + off) / legS;
+            const double b = metric (ctl, ctl.bottom + off) / ctlS;
+            if (b > 1.0e-3) worst = juce::jmin (worst, a / b);
+        }
+        return worst;
+    }
+}
+
+static void testOversamplingOffHandoffKeepsProcessing()
+{
+    std::printf ("Test 54: switching Oversampling to Off does not lose the processing during the handoff\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    const anamorph::OversampleFactor osv[3] = { anamorph::OversampleFactor::x2,
+                                                anamorph::OversampleFactor::x4,
+                                                anamorph::OversampleFactor::x8 };
+    const char* osName[3] = { "2x", "4x", "8x" };
+
+    // TWO SCENARIOS, ONE OBSERVABLE. The oversampled region holds the drive stage
+    // AND the modulation algorithms in a single buffer: if that buffer is not
+    // computed, everything in it is gone together, which is why one probe answers
+    // for both. The probe is the drive's third harmonic, because it is the only
+    // one of the two that can be read WHILE the handoff is happening: the chorus
+    // is deliberately reset at every duck bottom (stale audio would otherwise
+    // replay as the fade lifts), so its output is dry for its own delay length
+    // afterwards no matter which path ran -- measured, the side/mid ratio reads
+    // 0.000 there on the factor->factor control exactly as it does on the legs.
+    // Scenario B therefore runs Chorus WITH drive: `osActiveFor` is then true
+    // through both of its predicates, the mod algorithm really is inside the
+    // wrapped buffer, and H3/H1 still reports whether that buffer was computed.
+    struct Scenario { const char* name; anamorph::Algorithm alg; float drive; };
+    const Scenario scen[2] = { { "Haas  +drive", anamorph::Algorithm::Haas,   18.0f },
+                               { "Chorus+drive", anamorph::Algorithm::Chorus, 18.0f } };
+
+    auto h3 = [] (const OsSwitchTrace& t, int at) { return h3Over1 (t, at); };
+
+    auto stepRatio = [] (const OsSwitchTrace& t)
+    {
+        double ref = 0.0, worst = 0.0;
+        for (int i = t.change - 6400 + 1; i < t.change; ++i)
+            ref = juce::jmax (ref, (double) std::abs (t.l[(size_t) i] - t.l[(size_t) (i - 1)]));
+        for (int i = t.change + 1; i < (int) t.l.size(); ++i)
+            worst = juce::jmax (worst, (double) std::abs (t.l[(size_t) i] - t.l[(size_t) (i - 1)]));
+        return worst / juce::jmax (1.0e-9, ref);
+    };
+
+    for (const auto& sc : scen)
+    {
+        // THE CONTROL IS THE SAME DUCK. A factor->factor switch (2x -> 4x) opens the
+        // identical click-free duck, moves the reported latency the same way, and
+        // resets the same oversamplers, the same chorus and the same stand-in ring
+        // -- it differs from the legs below in ONE respect: the wrap runs on both
+        // sides of it, so the path crossfade has nothing to hand over. Whatever the
+        // duck itself costs therefore shows up here too, and every threshold below
+        // is calibrated against a measurement instead of a guessed constant.
+        const auto ctl = runOsSwitch (anamorph::OversampleFactor::x2,
+                                      anamorph::OversampleFactor::x4, sc.alg, sc.drive);
+        const double ctlSettled = settledMean (ctl, h3);
+        const double ctlStep    = stepRatio (ctl);
+        const double ctlSettledRms = blockRms (ctl.l, (int) ctl.l.size() - 4096, 2048);
+        double ctlFloor = 1.0e30;
+        for (int off = 0; off <= 960; off += 32) ctlFloor = juce::jmin (ctlFloor, h3 (ctl, ctl.bottom + off));
+        std::printf ("  CONTROL %s 2x -> 4x (wrap runs throughout) : settled H3/H1 %.3f | worst in window %.3f | step x%.2f\n",
+                     sc.name, ctlSettled, ctlFloor, ctlStep);
+        // NON-VACUITY: the control has to be a real measurement -- a probe that saw
+        // no drive at all, or a denominator at the numerical floor, would make every
+        // comparison below free. (The control's OWN dip is not disqualifying and is
+        // not asserted against: the chorus is reset at every duck bottom, so with a
+        // mod algorithm the control dips there too, which is exactly why the legs
+        // are measured AGAINST it rather than against a constant.)
+        check (ctlSettled > 0.05 && ctlFloor > 0.01 && ctlStep > 0.1,
+               "CONTROL: the factor->factor switch is a well-formed measurement");
+
+        for (int o = 0; o < 3; ++o)
+        {
+            const auto d = runOsSwitch (osv[o], anamorph::OversampleFactor::Off, sc.alg, sc.drive);
+            const double keep = blendKeepVsControl (d, ctl, h3);
+
+            // Level: each run is normalised by its own settled RMS first, then
+            // compared window-for-window against the control's envelope, so this
+            // asks "did the output dip below what this very duck costs anyway".
+            const double dSettledRms = blockRms (d.l, (int) d.l.size() - 4096, 2048);
+            double levelKeep = 1.0e30;
+            for (int off = 0; off <= 960; off += 32)
+            {
+                const double x = blockRms (d.l,   d.bottom   + off, 128) / dSettledRms;
+                const double y = blockRms (ctl.l, ctl.bottom + off, 128) / ctlSettledRms;
+                if (y > 1.0e-4) levelKeep = juce::jmin (levelKeep, x / y);
+            }
+            const double dStep = stepRatio (d);
+
+            std::printf ("  %s %s -> Off : processing %.3f | level %.3f | step x%.2f (control x%.2f)\n",
+                         sc.name, osName[o], keep, levelKeep, dStep, ctlStep);
+
+            // 0.85 of the control, on both. The margins are not close: against the
+            // DEFECTIVE engine these read 0.358 / 0.558 (Haas) and 0.371 / 0.547
+            // (Chorus), against the FIXED one 0.998 / 0.991 and 0.950 / 0.969.
+            // Nothing sits near the bound from either side.
+            check (keep >= 0.85,
+                   "the oversampled region keeps processing through the Oversampling -> Off handoff");
+            check (levelKeep >= 0.85,
+                   "the output does not collapse below what the same duck costs anyway");
+            check (dStep <= ctlStep * 1.25,
+                   "no click or transient beyond the factor->factor control");
+
+            // ADR-0034 is untouched by this: the reported number is a function of
+            // the Oversampling SELECTION, so it moves exactly once here -- at the
+            // switch -- and only ever holds the two values that selection implies.
+            check (d.latValuesOk,
+                   "the reported latency only ever holds the two selections' own values");
+            check (d.latMoves == 1,
+                   "the reported latency moves exactly once, at the Oversampling switch");
+        }
+    }
+}
+
 static int runForcedSwapAuditProbe()
 {
     std::printf ("Forced-swap audit (A/B, preset recall, undo). 220 Hz, block 64, 48 kHz.\n");
@@ -5601,6 +5853,66 @@ static int runForcedSwapAuditProbe()
     return 0;
 }
 
+// Oversampling 2x/4x/8x -> Off: does the PROCESSING survive the handoff?
+// The human-readable trace behind Test 54, on the same instrument (see the notes
+// on OsSwitchTrace / h3Over1 above). The last two rows are CONTROLS: the identical
+// switch duck, with the identical reported-latency step and the identical resets,
+// between two states that BOTH run the wrap -- so anything the duck itself costs
+// appears on them too.
+static int runOsOffHandoffProbe()
+{
+    std::printf ("Oversampling -> Off handoff: is the DRIVE still processing?\n");
+    std::printf ("  H3/H1 by Hann-windowed Goertzel (256 smp) -- a ratio, so the duck's fade cancels.\n");
+    std::printf ("  1 kHz mono sine at 0.6, Drive 18 dB, Haas. ms is relative to the duck's silent bottom.\n\n");
+    constexpr double sr = 48000.0;
+    // Every direction the OS path can be switched in, not only the reported one:
+    // out of the wrap, INTO it, and between two factors (the controls).
+    const anamorph::OversampleFactor from[7] = { anamorph::OversampleFactor::x2,
+                                                 anamorph::OversampleFactor::x4,
+                                                 anamorph::OversampleFactor::x8,
+                                                 anamorph::OversampleFactor::Off,
+                                                 anamorph::OversampleFactor::Off,
+                                                 anamorph::OversampleFactor::x2,
+                                                 anamorph::OversampleFactor::x4 };
+    const anamorph::OversampleFactor to[7]   = { anamorph::OversampleFactor::Off,
+                                                 anamorph::OversampleFactor::Off,
+                                                 anamorph::OversampleFactor::Off,
+                                                 anamorph::OversampleFactor::x2,
+                                                 anamorph::OversampleFactor::x8,
+                                                 anamorph::OversampleFactor::x4,
+                                                 anamorph::OversampleFactor::x2 };
+    const char* name[7] = { "2x -> Off", "4x -> Off", "8x -> Off",
+                            "Off -> 2x", "Off -> 8x",
+                            "2x -> 4x  (control)", "4x -> 2x  (control)" };
+
+    std::printf ("      %-20s", "ms from bottom");
+    for (int ms = -4; ms <= 24; ms += 2) std::printf (" %+5d", ms);
+    std::printf ("\n");
+    for (int o = 0; o < 7; ++o)
+    {
+        const auto t = runOsSwitch (from[o], to[o], anamorph::Algorithm::Haas, 18.0f);
+        double ref = 0.0, worst = 0.0;
+        for (int i = t.change - 6400 + 1; i < t.change; ++i)
+            ref = juce::jmax (ref, (double) std::abs (t.l[(size_t) i] - t.l[(size_t) (i - 1)]));
+        for (int i = t.change + 1; i < (int) t.l.size(); ++i)
+            worst = juce::jmax (worst, (double) std::abs (t.l[(size_t) i] - t.l[(size_t) (i - 1)]));
+        std::printf ("  H3/H1 %-20s", name[o]);
+        for (int ms = -4; ms <= 24; ms += 2)
+        {
+            const int at = t.bottom + (int) (ms * sr / 1000.0);
+            std::printf (" %5.3f", (at >= 0 && at + 256 < (int) t.l.size()) ? h3Over1 (t, at) : 0.0);
+        }
+        std::printf ("\n  rms   %-20s", "");
+        for (int ms = -4; ms <= 24; ms += 2)
+        {
+            const int at = t.bottom + (int) (ms * sr / 1000.0);
+            std::printf (" %5.3f", (at >= 0 && at + 256 < (int) t.l.size()) ? blockRms (t.l, at, 256) : 0.0);
+        }
+        std::printf ("   worst step x%.2f\n", worst / juce::jmax (1.0e-9, ref));
+    }
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     if (argc > 1 && std::strcmp (argv[1], "--match-inject-probe") == 0)
@@ -5611,6 +5923,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--forced-swap-probe") == 0)
         return runForcedSwapAuditProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--os-off-probe") == 0)
+        return runOsOffHandoffProbe();
 
     std::printf ("=== Anamorph DSP self-tests ===\n");
 
@@ -5679,6 +5994,7 @@ int main (int argc, char* argv[])
     testPendingDuckDoesNotSurviveActivation();
     testOversamplingLatencyIsFactorOnly();
     testDriveCrossingIsSeamlessWithOversampling();
+    testOversamplingOffHandoffKeepsProcessing();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
