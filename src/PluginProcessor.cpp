@@ -1007,7 +1007,7 @@ namespace
 //  message thread it is used directly and on any other thread it goes through an
 //  immutable value -- a snapshot to read from, a decoded restore to hand over.
 //  What the audio thread sees is unchanged either way: the parameter atomics,
-//  InternalState's oversampling atomic (written synchronously on a restore, below)
+//  InternalState's engine-config word (published synchronously on a restore, below)
 //  and nothing in this section.
 // ----------------------------------------------------------------------------
 
@@ -1015,6 +1015,7 @@ AnamorphAudioProcessor::ProgramSnapshot AnamorphAudioProcessor::ownedProgram() c
 {
     // Message thread: every field is owned here and read here.
     ProgramSnapshot s;
+    s.generation      = adoptedGeneration;
     s.presetName      = presets.currentName();
     s.presetBaseline  = presets.baseline();
     s.presetSelection = presets.selection();
@@ -1044,15 +1045,20 @@ void AnamorphAudioProcessor::adoptPendingHostState()
 
     std::unique_ptr<const RestoreDecode> r (pendingRestore.take());
     if (r == nullptr) return;   // only this thread takes, but the answer is exact either way
+    if (seams.afterRestoreTake) seams.afterRestoreTake();
 
+    // The generation FIRST. It tags every tree write the tail makes, so the
+    // oversampling this adoption republishes lands only if no newer host restore has
+    // published since (InternalState::publishEngineConfig); and it stamps the
+    // snapshot published below, which is how a host-side save learns that the
+    // program it describes is this restore's or later.
+    adoptedGeneration = r->generation;
+    internal.noteAdoptedGeneration (adoptedGeneration);
     {
         const juce::ScopedValueSetter<bool> adopting (adoptingRestore, true);
         adoptRestoreTail (*r);
     }
     publishProgram();
-    // Published AFTER the snapshot, so a host-side save that sees this generation
-    // adopted also sees the mailbox that carries it (release; the save acquires).
-    adoptedGen.store (r->generation, std::memory_order_release);
 }
 
 // The restore TAIL: everything a restore changes that is not the sound. Message
@@ -1064,8 +1070,11 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
 {
     // The host-hidden Settings. A changed Oversampling fires InternalState's callback
     // -> requestLatencyUpdate(), synchronous on this thread; prepareToPlay re-asserts
-    // it anyway. (The engine-facing atomic was already stored on the restoring
-    // thread when that was not this one; storing it again from the tree is idempotent.)
+    // it anyway. (The engine-config word was already published on the restoring
+    // thread when that was not this one; the tree write republishes it with this
+    // restore's generation, which is idempotent -- or yields, if a newer restore has
+    // published since. The tree's value then trails that newer restore's by at most
+    // one timer period, until its own tail lands.)
     internal.applyResolved (d.internalResolved);
 
     // The slot set as a WHOLE -- both slots, the active index and the per-slot
@@ -1191,18 +1200,22 @@ void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     }
 
     // Any other thread: the latest snapshot the message thread published, taken
-    // into this side's own view -- unless a restore THIS side handed over is still
-    // waiting to be adopted, in which case the program to describe is that
-    // restore's, not the one the message thread still owns. `hostRestoreView` is
-    // set before `restoreGen` advances, and the mailbox is refilled before
-    // `adoptedGen` advances, so whichever generation wins here has its view ready.
+    // into this side's own view -- unless a restore THIS side handed over is not
+    // described by it yet, in which case the program to describe is that restore's,
+    // from the view built when it was decoded, not the one the message thread still
+    // owns. ONE comparison, between two values this side alone holds: the generation
+    // the snapshot in hand carries (part of the immutable object, so it cannot be
+    // about a different snapshot than the one taken) and this side's own last restore
+    // generation. Reading generations separately from the take, as this once did,
+    // let an adoption that completed between the two pair the OLD snapshot with a
+    // "nothing pending" answer -- the restored sound with the previous program.
     if (auto* fresh = programMailbox.take())
         hostProgramView.reset (fresh);
+    if (seams.afterHostSaveTake) seams.afterHostSaveTake();
 
-    const bool restorePending = (juce::int32) (restoreGen.load (std::memory_order_acquire)
-                                               - adoptedGen.load (std::memory_order_acquire)) > 0;
-    const ProgramSnapshot* view = (restorePending && hostRestoreView != nullptr) ? hostRestoreView.get()
-                                                                                 : hostProgramView.get();
+    const bool covered = hostProgramView != nullptr
+                      && (juce::int32) (hostProgramView->generation - hostRestoreGen) >= 0;
+    const ProgramSnapshot* view = covered ? hostProgramView.get() : hostRestoreView.get();
     if (view == nullptr)
     {
         // Unreachable: the constructor publishes before any host call can arrive and
@@ -1453,15 +1466,17 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         // thread state test, an out-of-spec VST3 host): the sound is already applied
         // above. Two things happen HERE, synchronously, because a prepareToPlay that
         // follows on this same thread -- the ordinary setState-then-activate order --
-        // reads them: the engine-facing Settings atomics, and the latency request at
+        // reads them: the engine-config word (the oversampling), and the latency request at
         // the bottom. Everything else is handed to the message thread as one immutable
         // value, and this side keeps its own view of it for a save that arrives
         // before the adoption.
-        internal.publishEngineConfig (d.internalResolved);
-
-        const auto generation = restoreGen.load (std::memory_order_relaxed) + 1;
+        // This restore's generation: this side's own count, monotonic. It tags the
+        // engine-config publication (so no older restore's completion can overwrite
+        // it), rides inside the decode to the message thread, and is what this
+        // side's next save compares the published snapshot's generation against.
+        const auto generation = ++hostRestoreGen;
+        internal.publishEngineConfig (d.internalResolved, generation);
         hostRestoreView = viewOfRestore (d, anamorph::PresetManager::soundSignatureFor (apvts));
-        restoreGen.store (generation, std::memory_order_release);
 
         auto* handoff = new RestoreDecode (d);
         handoff->generation = generation;
@@ -1480,7 +1495,7 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
     // the var-type coincidence recorded for ER-STATE-07); the text repair now runs
     // before replaceState, so that path no longer exists, and this stays as the
     // restore's own re-report. Off the message thread it is a request the 20 Hz
-    // timer serves (D-1), reading the oversampling atomic stored above.
+    // timer serves (D-1), reading the engine-config word published above.
     requestLatencyUpdate();
 }
 

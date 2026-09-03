@@ -8,6 +8,7 @@
 #include "dsp/AnamorphEngine.h"
 
 #include <memory>
+#include <functional>
 
 // ============================================================================
 //  AnamorphAudioProcessor
@@ -76,8 +77,8 @@ public:
     // A host that calls setStateInformation from some other thread (the macOS AU
     // autosave shape, pluginval's AU background-thread state test, an out-of-spec
     // VST3 host) therefore no longer writes any of it: the sound half of the restore
-    // (the APVTS, JUCE-owned and thread-aware) and the engine-facing Settings atomic
-    // are applied synchronously on the caller's thread, and the DECODED metadata tail
+    // (the APVTS, JUCE-owned and thread-aware) and the engine-config word (the
+    // oversampling) are applied synchronously on the caller's thread, and the DECODED metadata tail
     // is handed to the message thread as one immutable object that this method adopts.
     // It is served by the processor's own 20 Hz timer (so it runs with no editor
     // open) and drained at the top of every message-thread entry point that reads or
@@ -87,6 +88,15 @@ public:
     // instead of waiting a timer period. Message thread only; a no-op when nothing
     // is pending (one relaxed atomic load).
     void adoptPendingHostState();
+
+    // Test seams (D-2): EMPTY in production, so each costs one null check on a
+    // non-audio path. A harness installs one to run code at an ownership boundary
+    // -- after the host side's mailbox take inside an off-thread save, after the
+    // message thread's take inside an adoption -- which is the only way to
+    // reproduce a reviewed interleaving deterministically rather than by timing.
+    // Installed and cleared on the main thread while no other thread can reach them.
+    struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake; };
+    Seams seams;
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.
     void applyAutoGain();
@@ -239,12 +249,13 @@ private:
     //  every in-spec VST3 host call). `H` is any other thread a host uses for
     //  getStateInformation / setStateInformation. The audio thread touches nothing
     //  in this section: its inputs are the APVTS parameter atomics, InternalState's
-    //  oversampling atomic and `soloPreviewMask`, exactly as before.
+    //  engine-config word (the oversampling index, one relaxed load) and
+    //  `soloPreviewMask`, exactly as before.
     //
     //  OWNERSHIP. Everything above this comment that is not an atomic is owned by
     //  M. Two immutable value types cross the M/H boundary, each through its own
     //  single-object exchange cell whose ownership rule is: whichever side's
-    //  `exchange` returns the pointer owns it. No hazard pointers, no reader-side
+    //  `exchange` returns the pointer owns it. Each carries its own generation. No hazard pointers, no reader-side
     //  lock, no reference-count race -- the same request/consume shape D-1 uses
     //  for the latency flag, with a payload. The host contract that its state calls
     //  are serialized (never two at once) is what makes H "one side"; it is the
@@ -252,7 +263,7 @@ private:
     //
     //    H -> M  `pendingRestore`: the DECODED tail of an off-message-thread
     //            restore. H publishes it after applying the sound (APVTS) and the
-    //            engine-facing Settings atomics synchronously; M adopts it in
+    //            engine-config word synchronously; M adopts it in
     //            adoptPendingHostState() with the code that runs inline on M. A
     //            restore superseded before adoption is freed by the H side that
     //            supersedes it, so at most one object ever exists.
@@ -266,7 +277,18 @@ private:
     //  THE PENDING WINDOW. Between H publishing a restore and M adopting it, an
     //  H-side save must describe the sound H just applied, not the previous
     //  program: H keeps the view it built from that restore (`hostRestoreView`) and
-    //  prefers it while `restoreGen` (H) is ahead of `adoptedGen` (M).
+    //  uses it whenever the newest snapshot it holds carries a generation OLDER than
+    //  its own last restore. The generation travels inside the snapshot, so the
+    //  decision and the object it is about are one thing: a snapshot published
+    //  after the adoption says so itself, whichever moment H took it.
+    //
+    //  THE ENGINE-CONFIG WORD. The one thing a restore publishes for the AUDIO side
+    //  -- the oversampling index -- is stored synchronously by whichever thread
+    //  restores, as one word tagged with the restore's generation, and lands only if
+    //  no newer restore has published (InternalState::publishEngineConfig, a CAS).
+    //  M's later adoption of that restore republishes with the same generation
+    //  (idempotent), and the adoption of a restore a newer one has superseded yields
+    //  to the newer one's value: an older restore never overwrites a newer one.
     //
     //  LIFETIME, in full: `pendingRestore` and `programMailbox` hold at most one
     //  object each and free it on replacement or in the destructor; the two H-side
@@ -282,6 +304,10 @@ private:
     // what abEnsureInit() does on the message thread.
     struct ProgramSnapshot
     {
+        // The generation of the last host restore the message thread had adopted when
+        // it published this snapshot: PART of the immutable object, so the host side
+        // can decide "does this describe my restore?" from the snapshot in hand alone.
+        juce::uint32 generation = 0;
         juce::String presetName, presetBaseline;
         anamorph::PresetManager::Selection presetSelection;
         juce::ValueTree internalState;                 // a private copy of the Settings tree
@@ -318,8 +344,14 @@ private:
     ExchangeCell<RestoreDecode>   pendingRestore;    // H -> M
     ExchangeCell<ProgramSnapshot> programMailbox;    // M -> H
     std::unique_ptr<const ProgramSnapshot> hostProgramView, hostRestoreView; // H-side only
-    std::atomic<juce::uint32> restoreGen { 0 };      // H: the last restore it published
-    std::atomic<juce::uint32> adoptedGen { 0 };      // M: the last one it adopted
+    // The two generation counters are each ONE side's plain state: H counts the
+    // restores it hands over (monotonic; 0 = none yet) and M records the last one it
+    // adopted. They cross the boundary only INSIDE the immutable objects -- a
+    // RestoreDecode carries the generation H gave it, a ProgramSnapshot the generation
+    // M had adopted when it published -- so neither side ever pairs a decision with
+    // a generation read at a different moment than the object it decides about.
+    juce::uint32 hostRestoreGen    = 0;              // H only
+    juce::uint32 adoptedGeneration = 0;              // M only
     bool adoptingRestore = false;                    // M: suppress per-field publishes inside an adoption
 
     // The APVTS root type, captured once at construction so no thread reads the live

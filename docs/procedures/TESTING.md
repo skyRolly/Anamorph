@@ -652,7 +652,7 @@ reads, `pollUndoCoalesce`, a Settings binding read and written, A/B switches, un
 preset loads, gesture edits, the timer). On the pre-D-2 tree it reports the register's classes and
 more (the Settings tree, the slot handles); after, silence, in every run.
 
-**State tests 37–41 pin the ownership contract deterministically**, one per contract the task set
+**State tests 37–41 pin the ownership contract deterministically** (42–43, below, its round-2 closures), one per contract the task set
 (`tests/state_tests.cpp` §D-2), each draining through `pollUndoCoalesce()` — the editor's own path —
 so the same file measures the pre-fix tree with the same instruments:
 
@@ -676,12 +676,31 @@ so the same file measures the pre-fix tree with the same instruments:
   the drain; the owner then walks new history — undo, undo, redo, redo, a Copy undone on the other
   slot — while a host thread saves throughout, and every step lands exactly.
 
+**State tests 42–43 (round 2, the PR review's two findings) reproduce a reviewed interleaving
+deterministically** rather than by timing, through the two seams `AnamorphAudioProcessor::seams`
+exposes for exactly that (empty in production: one null check each, on non-audio paths). Each was
+mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37's window check:
+
+- **42 (first-save consistency)** — the host thread is inside its save and has TAKEN the mailbox
+  (the previous program's snapshot); the seam holds it there while the owner adopts the restore and
+  republishes; the host side then decides. Its save must equal the owner's save after the adoption.
+  The round-1 tree read two generation atomics after the take, saw "adopted", and wrote the old
+  snapshot's name, slots and Settings around the restored sound; the generation now travels inside
+  the snapshot (ADR-0036 §5).
+- **43 (overlapping restores)** — two layers. On an `InternalState` alone: restore A (generation 1),
+  restore B (generation 2), then A's delayed completion, an edit inside the window, B's completion, an
+  edit after it, a late republication of A, a newer C — the engine-config word holds the latest
+  arrival's oversampling throughout (ADR-0036 §8). On the processor: the owner has taken A from the
+  cell, B lands from a host thread before A's tail runs (the adoption seam), and A's tail must not
+  overwrite B's oversampling — an activation in the window primes the engine at B's setting and
+  reports B's latency; B's adoption then brings the tree to B and a save equals B's session.
+
 State tests 22 and 27 were re-shaped in the same change: their off-thread requester used to be a
 `juce::Value` written from a worker, which after D-2 models nothing the plug-in does; both now drive
 the real `setStateInformation` from the worker, and 27 asserts the ORDER of reported values because
 the tick that adopts a restore delivers its latency from inside the adoption.
 
-`tests/state_tests.cpp` (**40 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**42 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

@@ -156,7 +156,7 @@ public:
         for (const auto& s : settings())
             tree.setProperty (s.id, s.defaultValue, nullptr);
         tree.addListener (this);
-        syncAtomics();
+        publishFromTree();
     }
 
     ~InternalState() override { tree.removeListener (this); }
@@ -170,7 +170,9 @@ public:
     juce::Value animationsValue()   { return tree.getPropertyAsValue (iid::uiAnimations, nullptr); }
 
     // --- DSP read (audio thread, lock-free) ------------------------------
-    int oversampleIndex() const noexcept { return osAtomic.load (std::memory_order_relaxed); } // 0..3
+    // The low byte of the engine-config word (see publishEngineConfig): one relaxed
+    // 64-bit load, lock-free on every target (asserted below), no ordering role.
+    int oversampleIndex() const noexcept { return (int) (engineConfig.load (std::memory_order_relaxed) & kOversampleMask); } // 0..3
 
     // The SpectrumImager polls UI-animation state through a float atomic (legacy shape):
     // 1.0 == on, 0.0 == off. Mirrors the uiAnimations property.
@@ -203,9 +205,10 @@ public:
     // resolvers below produce the exact values the former in-place loops wrote,
     // typed as they wrote them; `applyResolved` is the former loop's write half;
     // `publishEngineConfig` is the one part of a restore that must reach the
-    // engine SYNCHRONOUSLY on the caller's thread (the oversampling atomic the
-    // audio thread and prepareToPlay read), so the ordinary setState-then-activate
-    // host order still comes up at the restored oversampling from the first sample.
+    // engine SYNCHRONOUSLY on the caller's thread (the oversampling index the
+    // audio thread and prepareToPlay read, in the generation-tagged engine-config
+    // word), so the ordinary setState-then-activate host order still comes up at
+    // the restored oversampling from the first sample -- the LATEST restore's.
     // restoreState / migrateFromLegacyApvts keep their message-thread meaning as
     // resolve-then-apply, so every existing call site and test reads unchanged.
     void restoreState (const juce::ValueTree& src)          { applyResolved (resolveRestore (src)); }
@@ -307,7 +310,7 @@ public:
     // Write a resolved set into the GUI-bound tree. MESSAGE THREAD ONLY: the
     // juce::Value bindings and the editor's getters read `tree` there, and
     // ValueTree is not a synchronised type. Every field is written, in the table's
-    // order, so the listener fires (syncAtomics + onOversampleChanged + onChanged)
+    // order, so the listener fires (publishFromTree + onOversampleChanged + onChanged)
     // exactly as the in-place loops did. An invalid tree is a no-op (the former
     // early returns for invalid input).
     void applyResolved (const juce::ValueTree& resolved)
@@ -315,20 +318,41 @@ public:
         if (! resolved.isValid()) return;
         for (const auto& s : settings())
             tree.setProperty (s.id, resolved.getProperty (s.id), nullptr);
-        // (syncAtomics + onOversampleChanged + onChanged run via the property-change callbacks above.)
+        // (publishFromTree + onOversampleChanged + onChanged run via the property-change callbacks
+        // above. On an ADOPTION the oversampling publication carries the adopted restore's
+        // generation -- noteAdoptedGeneration() -- and lands only if no newer host restore has
+        // published: an older restore's completion never overwrites a newer restore's value.)
     }
 
-    // The engine-facing half of a restore, for a caller that is NOT the message
-    // thread (D-2): the oversampling atomic the audio thread reads every block and
-    // prepareToPlay reads to prime the engine, and the animation flag the imager
-    // polls. Atomic stores only -- the tree is untouched, and the message thread's
-    // later applyResolved() stores the same values again (idempotent) when it
-    // adopts the restore. No callback fires here; the caller raises the latency
-    // request itself (setStateInformation always has, unconditionally).
-    void publishEngineConfig (const juce::ValueTree& resolved) noexcept
+    // The engine-facing half of a restore (D-2): the oversampling index the audio
+    // thread reads every block and prepareToPlay reads to prime the engine, published
+    // as ONE tagged word -- the index in the low byte, the generation of the ARRIVAL
+    // publishing it in the high 32 bits. The rule is "latest arrival wins": the
+    // store lands only if no arrival with a HIGHER generation has published, and the
+    // compare-exchange decides that and stores in the same operation, so there is no
+    // check-then-store window in which an OLDER restore's completion (its adoption
+    // on the message thread, generation g) could overwrite a NEWER restore's value
+    // (generation h > g, already published from the host thread). An older arrival
+    // publishing the SAME generation again is idempotent (the message thread
+    // adopting exactly the restore the host thread published). Returns whether it
+    // landed. The tree is untouched; no callback fires; the caller raises the
+    // latency request itself. Any thread but the audio thread.
+    bool publishEngineConfig (const juce::ValueTree& resolved, juce::uint32 generation) noexcept
     {
-        if (! resolved.isValid()) return;
-        syncAtomicsFrom (resolved);
+        if (! resolved.isValid()) return false;
+        return publishOversample (juce::jlimit (0, 3, (int) resolved[iid::oversample] - 1), generation);
+    }
+
+    // Message thread: the generation of the last host restore it adopted, which tags
+    // every publication the TREE makes from here on -- a Settings edit, an inline
+    // restore, an adoption. Set BEFORE an adoption writes the tree, so the tail's
+    // own writes carry that restore's generation and yield to a newer one.
+    void noteAdoptedGeneration (juce::uint32 g) noexcept { messageGeneration = g; }
+
+    // The generation that published the current engine config (any thread).
+    juce::uint32 engineConfigGeneration() const noexcept
+    {
+        return (juce::uint32) (engineConfig.load (std::memory_order_acquire) >> 32);
     }
 
     // Fired (message thread) after ANY property of the tree changed -- a Settings
@@ -340,20 +364,52 @@ private:
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier& id) override
     {
         gen.fetch_add (1, std::memory_order_relaxed); // H15 re-arm signal
-        syncAtomics();
+        publishFromTree();
         if (id == iid::oversample && onOversampleChanged) onOversampleChanged();
         if (onChanged) onChanged();
     }
-    void syncAtomics() { syncAtomicsFrom (tree); }
-    void syncAtomicsFrom (const juce::ValueTree& t) noexcept
+
+    // Message thread, from the tree: the animation flag the imager (message thread)
+    // polls -- message-thread state on both ends, so a plain mirror the host thread
+    // never writes -- and the oversampling index through the tagged word with THIS
+    // thread's generation. A tree write made while a newer host restore stands
+    // (a Settings edit inside the pending window, or the adoption of the restore
+    // that newer one superseded) therefore yields at the word, and the newer
+    // restore's own adoption rewrites the tree to its value within a timer period.
+    void publishFromTree() noexcept
     {
-        osAtomic.store (juce::jlimit (0, 3, (int) t[iid::oversample] - 1), std::memory_order_relaxed);
-        animFloat.store ((bool) t[iid::uiAnimations] ? 1.0f : 0.0f, std::memory_order_relaxed);
+        animFloat.store ((bool) tree[iid::uiAnimations] ? 1.0f : 0.0f, std::memory_order_relaxed);
+        publishOversample (juce::jlimit (0, 3, (int) tree[iid::oversample] - 1), messageGeneration);
     }
 
+    // The one writer of the engine-config word. Lands iff no arrival with a higher
+    // generation has published; the comparison and the store are one CAS.
+    bool publishOversample (int index, juce::uint32 generation) noexcept
+    {
+        const auto fresh = ((juce::uint64) generation << 32) | ((juce::uint64) index & kOversampleMask);
+        auto current = engineConfig.load (std::memory_order_acquire);
+        do
+        {
+            if ((juce::int32) ((juce::uint32) (current >> 32) - generation) > 0)
+                return false;   // a newer arrival's config stands
+        }
+        while (! engineConfig.compare_exchange_weak (current, fresh,
+                                                     std::memory_order_acq_rel, std::memory_order_acquire));
+        return true;
+    }
+
+    static constexpr juce::uint64 kOversampleMask = 0xff;
+
     juce::ValueTree tree;
-    std::atomic<int>   osAtomic  { 0 };
-    std::atomic<float> animFloat { 1.0f };
+    // The engine-config word: oversampling index (low byte) tagged with the
+    // generation of the arrival that published it (high 32 bits). Audio reads the
+    // low byte; the host thread (a restore) and the message thread (the tree) write
+    // it through publishOversample. Generation 0 is the constructor's publication.
+    std::atomic<juce::uint64> engineConfig { 0 };
+    static_assert (std::atomic<juce::uint64>::is_always_lock_free,
+                   "the audio thread reads the engine-config word every block");
+    juce::uint32 messageGeneration = 0;      // message thread only
+    std::atomic<float> animFloat { 1.0f };   // written on the message thread only; polled there
     std::atomic<juce::uint32> gen { 1 };
 };
 

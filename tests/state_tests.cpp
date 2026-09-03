@@ -7236,6 +7236,206 @@ static void testUndoHistoryIsOwnedByTheMessageThread()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 42 -- a host-thread save never pairs the restored sound with an
+//  OLDER program (D-2 round 2, review finding 1).
+//
+//  The reviewed interleaving, reproduced deterministically through the seam
+//  the processor exposes for exactly this purpose: the host thread is inside its
+//  save and has taken the mailbox -- which holds the PREVIOUS program's snapshot,
+//  published before the restore -- and the message thread adopts the restore and
+//  republishes BEFORE the host side decides which program to describe. The save
+//  it then writes must be byte-identical to the owner's save after the adoption.
+//  On the round-1 tree it is not: the host side read the two generation atomics
+//  AFTER its take, saw "adopted", and wrote the old snapshot's name, slots and
+//  Settings around the restored sound -- the mixed state the review named. The
+//  fix carries the generation INSIDE the snapshot, so the decision is about the
+//  object in hand; mutation-tested by forcing the mailbox choice (the test fails).
+//  The plain sequence (save after adoption, with nothing paused) is kept as the
+//  control, and the run alternates two sessions so "previous program" is never
+//  the fresh-instance program.
+// ---------------------------------------------------------------------------
+static void testHostSaveNeverPairsRestoredSoundWithOlderProgram()
+{
+    std::printf ("State test 42: a host-thread save never pairs the restored sound with an older program (D-2 r2)\n");
+
+    const auto X = d2::author ("D2-F1X", 0.11f, 0.89f, 0, 1);
+    const auto Y = d2::author ("D2-F1Y", 0.22f, 0.78f, 1, 1);
+    check (X.blob != Y.blob, "non-vacuity: the two sessions differ");
+
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+
+    for (int i = 0; i < 6; ++i)
+    {
+        const auto& sn = (i & 1) ? Y : X;
+        const auto before = d2::View::of (p);
+
+        d2::offMessageThread ([&] { d2::restoreFrom (p, sn.blob); });   // pending: the owner has not adopted
+        check (d2::View::of (p).active == before.active && d2::View::of (p).name == before.name,
+               "before the drain the owner still holds the previous program");
+
+        // Handshake: 1 = the host thread has taken the mailbox and waits; 2 = the
+        // owner has adopted and republished; the host thread may decide.
+        std::atomic<int> phase { 0 };
+        p.seams.afterHostSaveTake = [&]
+        {
+            phase.store (1, std::memory_order_release);
+            for (int spins = 0; phase.load (std::memory_order_acquire) != 2 && spins < 4000000; ++spins)
+                std::this_thread::yield();
+        };
+        juce::MemoryBlock hostSave;
+        std::thread host ([&] { hostSave = d2::saveOf (p); });
+        for (int spins = 0; phase.load (std::memory_order_acquire) != 1 && spins < 4000000; ++spins)
+            std::this_thread::yield();
+        check (phase.load() == 1, "the host thread reached the boundary (took the mailbox) and is waiting");
+
+        p.pollUndoCoalesce();                       // the adoption completes and republishes, owner's thread
+        const auto adopted = d2::View::of (p);
+        check (adopted.matches (sn), "the owner adopted the restored program while the host save is paused");
+        const auto ownerSave = d2::saveOf (p);      // the owner's own bytes, after adoption
+
+        phase.store (2, std::memory_order_release); // now the host side decides
+        host.join();
+        p.seams.afterHostSaveTake = nullptr;
+
+        check (hostSave == ownerSave,
+               "the host save decided AFTER the adoption equals the owner's save: no restored sound around the previous program");
+
+        // Control: the plain sequence, nothing paused.
+        juce::MemoryBlock hostSaveAfter;
+        d2::offMessageThread ([&] { hostSaveAfter = d2::saveOf (p); });
+        check (hostSaveAfter == ownerSave, "a host save with nothing paused equals the owner's save");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 43 -- an older restore's completion cannot overwrite a newer
+//  restore's oversampling (D-2 round 2, review finding 2).
+//
+//  Two layers. (1) The publication rule itself, on an InternalState alone: the
+//  engine-config word carries the generation of the arrival that published it,
+//  and a publication lands only if no higher generation stands. Restore A
+//  (generation 1), restore B (generation 2), then A's DELAYED completion -- its
+//  adoption writing the tree with generation 1 -- must leave B's oversampling
+//  in place; a Settings edit made inside that window yields too; B's own
+//  completion lands (idempotent), and an edit after it lands. (2) The reviewed
+//  interleaving on the processor, deterministically through the adoption seam:
+//  the message thread has TAKEN restore A from the cell, restore B lands from a
+//  host thread before A's tail runs, and A's tail must not overwrite B's
+//  oversampling -- so an activation (prepareToPlay) in the window primes the
+//  engine at B's setting and reports B's latency, and B's own adoption then
+//  brings the tree to B. On the round-1 tree A's tail stored A's value over B's
+//  (its adoption republished the atomic unconditionally) and the activation ran
+//  at A's oversampling until B's adoption.
+// ---------------------------------------------------------------------------
+static void testOlderRestoreCannotOverwriteNewerOversampling()
+{
+    std::printf ("State test 43: an older restore's completion cannot overwrite a newer restore's oversampling (D-2 r2)\n");
+
+    // --- (1) the rule, on the word alone --------------------------------
+    {
+        auto resolvedWithOversample = [] (int comboId)
+        {
+            juce::ValueTree src ("ANAMORPH_INTERNAL");
+            src.setProperty (anamorph::iid::oversample, comboId, nullptr);
+            return anamorph::InternalState::resolveRestore (src);
+        };
+        const auto A = resolvedWithOversample (2);   // 2x  -> index 1
+        const auto B = resolvedWithOversample (3);   // 4x  -> index 2
+        const auto C = resolvedWithOversample (4);   // 8x  -> index 3
+
+        anamorph::InternalState st;
+        check (st.oversampleIndex() == 0 && st.engineConfigGeneration() == 0, "fresh: Off, generation 0");
+
+        check (st.publishEngineConfig (A, 1) && st.oversampleIndex() == 1, "restore A (generation 1) publishes 2x");
+        check (st.publishEngineConfig (B, 2) && st.oversampleIndex() == 2, "restore B (generation 2) publishes 4x");
+
+        st.noteAdoptedGeneration (1);
+        st.applyResolved (A);                        // A's delayed completion, on the owner's thread
+        check (st.oversampleIndex() == 2 && st.engineConfigGeneration() == 2,
+               "A's completion (generation 1) yields: B's 4x stands");
+        check ((int) st.oversampleValue().getValue() == 2, "...while the tree holds A's value until B's tail lands");
+
+        st.oversampleValue().setValue (4);           // a Settings edit inside the window (generation 1)
+        check (st.oversampleIndex() == 2, "an edit made while a newer restore stands yields at the word");
+
+        st.noteAdoptedGeneration (2);
+        st.applyResolved (B);                        // B's completion
+        check (st.oversampleIndex() == 2 && (int) st.oversampleValue().getValue() == 3,
+               "B's completion lands (idempotent) and the tree agrees with the word");
+
+        st.oversampleValue().setValue (4);           // an edit after the latest restore landed
+        check (st.oversampleIndex() == 3, "an edit after the latest restore lands (generation 2 <= 2)");
+
+        check (! st.publishEngineConfig (A, 1) && st.oversampleIndex() == 3,
+               "a late republication of A (generation 1) is refused");
+        check (st.publishEngineConfig (C, 3) && st.oversampleIndex() == 3 && st.engineConfigGeneration() == 3,
+               "a newer restore C (generation 3) lands");
+        st.noteAdoptedGeneration (3);
+        st.applyResolved (C);
+        check (st.oversampleIndex() == 3 && st.engineConfigGeneration() == 3, "C's completion is idempotent");
+    }
+
+    // --- (2) the interleaving, on the processor -------------------------
+    const auto A = d2::author ("D2-F2A", 0.30f, 0.70f, 0, 2);   // 2x
+    const auto B = d2::author ("D2-F2B", 0.60f, 0.40f, 1, 3);   // 4x
+
+    // Truth: what a message-thread restore + prepare of B reports.
+    const int latencyB = [&]
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (q, B.blob);
+        q.prepareToPlay (48000.0, 512);
+        return q.getLatencySamples();
+    }();
+    const int latencyA = [&]
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (q, A.blob);
+        q.prepareToPlay (48000.0, 512);
+        return q.getLatencySamples();
+    }();
+    check (latencyA != latencyB, "non-vacuity: the two sessions report different latencies");
+
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+
+    d2::offMessageThread ([&] { d2::restoreFrom (p, A.blob); });      // A pending
+    check (p.getInternal().oversampleIndex() == 1, "restore A published 2x synchronously");
+
+    // Restore B lands from a host thread AFTER the owner has taken A from the cell
+    // and BEFORE A's tail runs -- the reviewed overlap.
+    int seamRuns = 0;
+    p.seams.afterRestoreTake = [&]
+    {
+        ++seamRuns;
+        d2::offMessageThread ([&] { d2::restoreFrom (p, B.blob); });
+    };
+    p.pollUndoCoalesce();                                             // adopts A; B is now pending
+    p.seams.afterRestoreTake = nullptr;
+    check (seamRuns == 1, "the overlap was produced exactly once");
+
+    check (d2::View::of (p).matches (A), "the owner adopted A's program (B's tail is still pending)");
+    check (p.getInternal().oversampleIndex() == 2,
+           "A's tail did not overwrite B's oversampling: the word holds the newer restore's 4x");
+
+    p.prepareToPlay (48000.0, 512);                                   // activation inside the window
+    check (p.getLatencySamples() == latencyB, "an activation in the window primes the engine at B's setting");
+
+    p.pollUndoCoalesce();                                             // adopts B
+    check (d2::View::of (p).matches (B), "B's program is adopted");
+    check (p.getInternal().oversampleIndex() == 2 && (int) p.getInternal().oversampleValue().getValue() == 3,
+           "after B's adoption the tree and the word agree on 4x");
+    check (d2::saveOf (p) == B.blob, "a save after the final adoption is byte-identical to the session restored");
+
+    juce::MemoryBlock hostSave;
+    d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+    check (hostSave == B.blob, "...and so is a host-thread save");
+}
+
+// ---------------------------------------------------------------------------
 //  D-2 stress probe (contract F): every thread the model names, at once, under
 //  ThreadSanitizer. NOT part of the suite, like the other three TSan probes:
 //  on the pre-D-2 tree its execution IS the undefined behaviour it measures.
@@ -7468,6 +7668,8 @@ int main (int argc, char* argv[])
     testPresetTransitionsUnderConcurrentSaves();
     testRestoreAroundReprepare();
     testUndoHistoryIsOwnedByTheMessageThread();
+    testHostSaveNeverPairsRestoredSoundWithOlderProgram();
+    testOlderRestoreCannotOverwriteNewerOversampling();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

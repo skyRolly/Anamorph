@@ -90,7 +90,12 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   control value in a project file is now corrected *before* the DAW is told about it, where it used
   to be reported at its clamped value first and then corrected. Decision: ADR-0036 (D-2).
   Regression coverage: State tests 37–41 and the four ThreadSanitizer probes, now run on every push
-  in their own CI lane. [Verified]
+  in their own CI lane. A second pass (the PR review) closed two narrow ordering windows in that
+  hand-over: a save issued from the restoring thread could, in one interleaving, describe the
+  previous project's bookkeeping around the newly restored sound, and when two restores overlapped
+  the older one's bookkeeping could briefly reinstate its Oversampling over the newer one's. Both
+  are gone — the newer restore always wins, and a save always describes one project — with State
+  tests 42–43 reproducing each interleaving deterministically. [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

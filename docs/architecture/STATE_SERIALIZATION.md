@@ -4,7 +4,7 @@ How session state is saved and restored. The field-level ledger is in
 `SERIALIZATION_REGISTRY.md`; binding rules are in
 `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:1180-1221 (`getStateInformation`), :1226-1485
+Evidence [Verified]: src/PluginProcessor.cpp:1189-1234 (`getStateInformation`), :1226-1485
 (`decodeRestore` + `setStateInformation`), :980-999 (the `writeSelection` / `readSelection` helpers);
 src/PresetManager.cpp:430-483 (`encodeSelection` / `decodeSelection`).
 
@@ -59,7 +59,7 @@ a factory id removed by a later version, a user preset deleted, renamed or moved
 rather than falling back to a same-named row. The field-level ledger, including the file-name vs
 absolute-path encoding rule, is in `SERIALIZATION_REGISTRY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:1180-1221 (`getStateInformation`).
+Evidence [Verified]: src/PluginProcessor.cpp:1189-1234 (`getStateInformation`).
 
 ## Which thread (D-2 / ADR-0036)
 
@@ -68,7 +68,8 @@ in-spec VST3 host, the standalone, pluginval VST3, the state suite — the logic
 exactly as it always has, with one addition at the top of each call: a restore still pending from a
 host thread is adopted first, so two restores land in the order they arrived. **On any other
 thread** the split is: the SOUND half (`apvts.replaceState` + `reassertParameters`, JUCE-owned and
-thread-aware) and the oversampling atomic run on the caller's thread, synchronously; the METADATA
+thread-aware) and the engine-config word (the oversampling, tagged with the restore's generation so
+an older restore's completion can never overwrite a newer one's) run on the caller's thread, synchronously; the METADATA
 half — everything from step 2's Settings restore onwards — is decoded on the caller's thread into an
 immutable value and adopted by the message thread (`adoptPendingHostState`) from the processor's
 20 Hz timer or the next message-thread entry point. A save on another thread serializes from an
@@ -111,9 +112,9 @@ window). `docs/architecture/THREAD_MODEL.md` carries the cells and their orderin
    - Resolve InternalState from `ANAMORPH_INTERNAL` **if present** (`InternalState::resolveRestore`),
      **else** from the legacy APVTS params (`resolveLegacy`; pre-0.8.4 sessions had these as APVTS
      params). The six resolved values are written into the Settings tree by the message thread
-     (`applyResolved`); off the message thread the oversampling atomic is stored immediately
-     (`publishEngineConfig`) so a `prepareToPlay` that follows on the same thread primes the engine
-     from the restored Setting.
+     (`applyResolved`); off the message thread the engine-config word is published immediately
+     (`publishEngineConfig`, with the restore's generation) so a `prepareToPlay` that follows on the
+     same thread primes the engine from the restored Setting — the latest restore's, if two overlap.
    - Restore preset name + baseline (dirty-star reproduced) and decode the indicator identity
      (`readSelection` → `PresetManager::decodeSelection`); absent or unrecognised yields `unknown`,
      i.e. the pre-0.9.2 name fallback.

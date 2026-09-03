@@ -1,6 +1,9 @@
 # ADR-0036 — Program state is message-thread-owned; host threads exchange immutable snapshots
 
-**Status:** Accepted (Thread Model change — maintainer instruction 2026-09-03: resolve D-2 / RISK-007)
+**Status:** Accepted (Thread Model change — maintainer instruction 2026-09-03: resolve D-2 / RISK-007).
+**Amended 2026-09-03, round 2** (the PR review's two findings): decisions 5 and 8 — the generation
+travels *inside* the snapshot, and the engine-facing oversampling is a generation-tagged word where
+the latest restore wins.
 
 **Resolves decision D-2** (`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, deferred in
 round 4) and **closes RISK-007** (`docs/FUTURE_RISKS.md`). **Amends `THREADING_POLICY.md`** §Host state
@@ -106,11 +109,20 @@ turn late) and leaves a save issued on the host thread right after its restore d
    resolved at save time from the live parameters and the snapshot's own metadata, which is what
    `abEnsureInit()` does on the message thread.
 
-5. **The pending window.** Between the host thread publishing a restore and the message thread
-   adopting it, a host-thread save must describe the sound it just applied: the host side keeps the
-   view it built from that restore and prefers it while `restoreGen` (host) is ahead of `adoptedGen`
-   (message thread). New tests pin that a save taken inside the window is byte-identical to the
-   owner's save after the adoption.
+5. **The pending window, decided from the snapshot in hand (amended, round 2).** Between the host
+   thread publishing a restore and the message thread adopting it, a host-thread save must describe
+   the sound it just applied: the host side keeps the view it built from that restore, and uses it
+   whenever the newest snapshot it holds carries a generation **older than its own last restore**.
+   The generation is *part of the immutable snapshot* (`ProgramSnapshot::generation`: the last host
+   restore the message thread had adopted when it published), so the decision is about the object
+   the save is holding, whichever moment it took it. Round 1 read two generation atomics *after*
+   taking the mailbox, and an adoption that completed between the take and the reads paired the
+   pre-restore snapshot with a "nothing pending" answer — the restored sound serialized around the
+   previous program's name, slots and Settings. The two counters are now each one side's plain
+   state (`hostRestoreGen` on the host side, `adoptedGeneration` on the message thread) and cross
+   the boundary only inside the objects (`RestoreDecode::generation`, `ProgramSnapshot::generation`).
+   State test 37 pins the window; State test 42 reproduces the review's interleaving through a seam
+   and pins that the save then equals the owner's.
 
 6. **The serialized-text repair moves before `replaceState`.** A malformed value's repaired text used
    to be written into the live `apvts.state` after `replaceState`, outside JUCE's private lock — a
@@ -125,13 +137,37 @@ turn late) and leaves a save issued on the host thread right after its restore d
    reads the live `apvts.state` handle, which `replaceState` reassigns under a lock the reader does
    not hold.
 
+8. **The engine-config word: the latest restore wins (round 2).** The one thing a restore publishes
+   for the audio side — the oversampling index `processBlock` and `prepareToPlay` read — is one
+   `std::atomic<uint64>` carrying the index in its low byte and, in its high 32 bits, the generation
+   of the *arrival* that published it. A publication lands only if no higher generation stands, and
+   the comparison and the store are one compare-exchange (`InternalState::publishEngineConfig`), so
+   there is no check-then-store window. A host-thread restore publishes with its own generation; the
+   message thread's tree writes (`applyResolved`, a Settings edit) publish with the last generation
+   it adopted (`noteAdoptedGeneration`). Round 1's overwrite — the adoption of restore A storing A's
+   oversampling over restore B's, published from the host thread while A's tail was in flight, so
+   an activation in that window primed the engine at A's setting — is therefore not representable:
+   A's adoption carries A's generation and yields. The semantics chosen are **the latest restore
+   supersedes an older one completely**: the sound already did (the APVTS holds the last
+   `replaceState`), the cell already did (a superseded decode is freed by the `put` that supersedes
+   it), and the word now does. A Settings edit made inside a pending window yields the same way;
+   the restore's own adoption rewrites the tree within a timer period, which is the order the
+   message thread sees anyway. The animation flag stays a plain message-thread mirror — its one
+   reader is the imager on that thread — and the host thread no longer writes it. State test 43 pins
+   the rule on the word alone (generations 1, 2, a delayed completion of 1, an edit in the window,
+   a late republication) and the interleaving on the processor through the adoption seam.
+
 ## Consequences
 
-- **Realtime.** `processBlock`, `toEngine`, `setParameters` and `process` are byte-identical; no new
-  atomic, cell, allocation or branch is reachable from the audio thread. `check-realtime.py`, RTSan
-  and the allocation guard see exactly what they saw.
+- **Realtime.** `processBlock`, `toEngine`, `setParameters` and `process` are unchanged. The one
+  audio-thread read D-2 touches, `InternalState::oversampleIndex()`, is a relaxed 64-bit load masked
+  to its low byte (round 2) where it was a relaxed `int` load — lock-free on every target, asserted
+  at compile time; no cell, allocation, wait or branch is reachable from the audio thread.
+  `check-realtime.py`, RTSan and the allocation guard see exactly what they saw.
 - **No mutex, no `callAsync`, no `MessageManagerLock`, no wait**, on any thread. The two cells are
-  `std::atomic<T*>::exchange`; the H-side views are plain `unique_ptr`s a single serialized caller
+  `std::atomic<T*>::exchange`; the engine-config word is one compare-exchange on its writers (the
+  host thread on a restore, the message thread on a tree write — never the audio thread) and a
+  relaxed load on its reader; the H-side views are plain `unique_ptr`s a single serialized caller
   replaces. Lifetime is closed: each cell frees on replacement or in the destructor; nothing is freed
   while another thread can still reach it, because a pointer is reachable from exactly one side.
 - **The message-thread path is unchanged** apart from one relaxed load at each entry point and one
@@ -139,8 +175,17 @@ turn late) and leaves a save issued on the host thread right after its restore d
 - **The off-message-thread path defers the metadata tail by at most one timer period (≤ 50 ms)**, and
   a user action landing inside that window is ordered after the restore. Both are inside the timing
   tolerance of a host restore and replace undefined behaviour. With the editor closed and a starved
-  message queue (RISK-008's Linux case) the tail waits, the sound and the oversampling atomic are
+  message queue (RISK-008's Linux case) the tail waits, the sound and the engine-config word are
   live, and host saves are served from the host side's own view.
+- **A host-thread save describes ONE published program plus the live sound.** The metadata comes
+  from one immutable snapshot and the parameters from one JUCE-locked `copyState()`, read one after
+  the other; a message-thread action that mutates both between the two (an A/B switch: its parameter
+  burst, then its index) can leave a save with the earlier program's index around the later sound.
+  That is the host-timing class every non-blocking design has — the same as a save taken during a
+  parameter burst on the message thread itself, or during host automation — and not the ordering
+  class rounds 1 and 2 closed (two programs mixed, or an older restore standing over a newer one).
+  Recorded, not fixed: a bounded retry would narrow it without closing it, and a lock would put the
+  message thread's A/B path behind a host save.
 - **The host contract that state calls are serialized is load-bearing** for the host-side views, as it
   already was for the whole `AudioProcessor` state API. It is stated in the header and asserted where
   it can be.
@@ -150,16 +195,19 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 ## Related code
 
-- `src/PluginProcessor.h` — the ownership boundary comment, `ProgramSnapshot`, `RestoreDecode`,
-  `ExchangeCell`, the cells, generations and views.
+- `src/PluginProcessor.h` — the ownership boundary comment, `ProgramSnapshot` (with its
+  `generation`), `RestoreDecode`, `ExchangeCell`, the cells, the two per-side generation counters
+  (`hostRestoreGen`, `adoptedGeneration`), the views, the two test seams.
 - `src/PluginProcessor.cpp` — `adoptPendingHostState`, `adoptRestoreTail`, `decodeRestore`,
   `applySoundTree`, `repairSerializedValues`, `viewOfRestore`, `writeState`, `ownedProgram`,
   `publishProgram`; the drains at each entry point.
 - `src/InternalState.h` — `resolveRestore` / `resolveLegacy` (any thread), `applyResolved` (message
-  thread), `publishEngineConfig` (the atomic half), `onChanged`.
+  thread), `publishEngineConfig` / `noteAdoptedGeneration` / `engineConfigGeneration` (the
+  generation-tagged engine-config word), `onChanged`.
 - `src/PresetManager.{h,cpp}` — `onMetaChanged`, `onAboutToSave`, `soundSignatureFor`.
 - `tests/state_tests.cpp` — State tests 37–41 and `--d2-stress-probe`; tests 22 and 27 re-shaped to
-  the production off-thread path.
+  the production off-thread path; State tests 42–43 (round 2), each reproducing its reviewed
+  interleaving deterministically through a seam.
 
 Evidence [Verified]:
 - Baseline: `--state-thread-probe` and `--state-prepare-race-probe` under ThreadSanitizer on the
@@ -170,3 +218,7 @@ Evidence [Verified]:
 - After: the four probes under ThreadSanitizer, repeated — silent; State tests 37–41 green; the
   full state and DSP suites green; `check-realtime.py` green; `preflight.sh` exit 0. Figures in
   `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §D-2.
+- Round 2: State tests 42 and 43 fail on the round-1 tree with each fix reverted in isolation
+  (mutation-tested: the mailbox chosen regardless of generation; the word stored regardless of
+  generation) and pass with it; the four probes and the suite under ThreadSanitizer stay silent.
+  Figures in the worklog's §D-2 round 2.

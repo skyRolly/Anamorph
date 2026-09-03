@@ -7965,3 +7965,28 @@ The gate reads clean against `origin/main` (398 anchors) and its self-test passe
 decode no longer reads (it uses `apvtsStateType`, captured at construction); both were re-worded in
 place with the reason.
 
+
+## D-2 round 2 (2026-09-03) — the PR review's two findings closed (ADR-0036 §5 amended, §8 added)
+
+**Code changed:** `src/InternalState.h` (the engine-config word: the oversampling index tagged with
+the generation of the arrival, published by one compare-exchange — the latest restore wins;
+`noteAdoptedGeneration`; the animation flag a message-thread mirror), `src/PluginProcessor.{h,cpp}`
+(`ProgramSnapshot::generation`; the two generation atomics replaced by per-side plain counters
+that cross the boundary only inside the objects; the host side's selection made from the snapshot
+in hand; two test seams), `tests/state_tests.cpp` (State tests 42–43, each reproducing its reviewed
+interleaving deterministically and mutation-tested).
+
+**Documents updated:** `ADR-0036` (status line, decisions 5 and 8, consequences — realtime, the
+CAS, the recorded host-timing residual — related code, evidence); `THREADING_POLICY.md` (the
+GUI → Audio row, the two D-2 rows, the atomic-usage rules: the generations ride inside the
+objects, the word's CAS); `THREAD_MODEL.md` (the D-2 path table: the word's row and the
+animation flag's, the snapshot row); `STATE_SERIALIZATION.md` (the two "oversampling atomic"
+sentences); `API_REFERENCE.md` (`publishEngineConfig`'s new signature, `noteAdoptedGeneration`,
+`engineConfigGeneration`); `TESTING.md` (tests 42–43, the seams, 42 tests); `CHANGELOG.md`
+(the `[0.9.7]` D-2 entry gains the second pass); `HANDOVER.md` and `README.md` (42 tests / 1753
+checks); the worklog (§8 of the D-2 round: the two interleaving proofs, the audit, validation) and
+the dashboard.
+
+**Drift.** None found: every document that named `restoreGen` / `adoptedGen` or the "oversampling
+atomic" as a plain store was on the trigger list above and re-worded; `FUTURE_RISKS.md`'s RISK-007
+record keeps its round-1 wording as the measured history it is.

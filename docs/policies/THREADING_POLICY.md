@@ -12,7 +12,7 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 | Direction | Mechanism | Rule |
 |---|---|---|
 | GUI → Audio (automatable params) | APVTS `std::atomic<float>*` | Read once per block into `EngineParameters`. |
-| GUI → Audio (host-hidden) | `InternalState` ValueTree + atomic mirror | Only Oversampling crosses to audio (via `osAtomic`). |
+| GUI → Audio (host-hidden) | `InternalState` ValueTree + the engine-config word | Only Oversampling crosses to audio, read as the low byte of one `std::atomic<uint64>` (`oversampleIndex()`, relaxed). Its writers — the message thread from the tree, a host-thread restore (D-2) — publish through one compare-exchange tagged with the generation of the arrival, and a publication lands only if no higher generation stands: the latest restore wins, an older restore's completion never overwrites it (ADR-0036 §8). |
 | GUI → Audio (momentary solo) | `std::atomic<int> soloPreviewMask` | −1 = use the param; relaxed. |
 | GUI → Audio (meter reset) | `std::atomic<int> resetReq` | `exchange` consumed on the audio thread. |
 | Audio → GUI (scope) | `ScopeBuffer` SPSC ring | Exactly one producer + one reader **thread** (message thread; stateless read sites: Vectorscope, SpectrumImager, read-only `writeCount`); release/acquire on the write index. |
@@ -20,8 +20,8 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 | Audio → GUI (sound-param change generation) | `std::atomic<uint32> soundParamGen` (relaxed) | A monotonic staleness hint, **not** payload sync: bumped on any sound-param value change (the per-parameter listener, on whichever thread changes the value) and on host restore; the GUI compares it to skip rebuilding its 24 Hz signature caches. Carries no payload — the values themselves cross via the APVTS atomics above — so relaxed is sufficient (no ordering/publication role). |
 | Audio/host → Message (latency re-report request, D-1) | `std::atomic<int> latencyUpdateRequest` — **release** store, **acquire** `exchange` — plus the engine's `latency2/4/8` (relaxed `std::atomic<int>`) | The one ordering-critical pair besides the scope ring: the flag PUBLISHES the parameter, oversampling or (round 15) prepare write that raised it, and a processor-owned 20 Hz timer delivers `setLatencySamples` on the message thread. Raised by `requestLatencyUpdate()` from any non-message thread — the APVTS listener under host automation, `setStateInformation`'s tail, an off-message-thread `prepareToPlay` — and served synchronously when the caller IS the message thread. |
 | Audio → GUI (view-param / InternalState generations, Wave 2 / H15) | `std::atomic<uint32> viewParamGen`; `InternalState::gen` (relaxed) | The identical staleness-hint pattern, extended so the editor's 60 Hz micro-anim poll re-arms on counter loads instead of hashing every animated widget per frame: `viewParamGen` is bumped by a dedicated no-gesture listener on the view params (Bypass), `InternalState::gen` by its property-change callback (Settings values, incl. session restore). No payload, no ordering role. |
-| Host state thread → Message (a restore's metadata tail, D-2 / ADR-0036) | `ExchangeCell<RestoreDecode> pendingRestore` — one `std::atomic<T*>`, `exchange` with **acq_rel** on both sides | An off-message-thread `setStateInformation` applies the sound (the APVTS, JUCE-locked) and the engine-facing oversampling atomic on the caller's thread, then publishes the DECODED metadata tail as one immutable object; the message thread adopts it (`adoptPendingHostState`) from the processor's 20 Hz timer and at the top of every entry point that mutates program state. Ownership transfers with the exchange — whichever side's exchange returns the pointer frees it — so at most one object exists and nothing is freed while reachable elsewhere. On the message thread the tail is adopted inline; nothing is deferred. |
-| Message → Host state thread (the program snapshot, D-2 / ADR-0036) | `ExchangeCell<ProgramSnapshot> programMailbox` (same cell), plus `restoreGen` / `adoptedGen` (`release` store, `acquire` load) | The message thread republishes an immutable snapshot of the program state it owns after every mutation (`PresetManager::onMetaChanged`, `InternalState::onChanged`, the A/B paths); an off-message-thread `getStateInformation` takes the latest into its own view and serializes from it plus the JUCE-locked `copyState()`. While a restore that side handed over is unadopted (`restoreGen` ahead of `adoptedGen`) it serializes from the view it built from that restore, so a save after a restore on the same host thread describes the sound it applied. |
+| Host state thread → Message (a restore's metadata tail, D-2 / ADR-0036) | `ExchangeCell<RestoreDecode> pendingRestore` — one `std::atomic<T*>`, `exchange` with **acq_rel** on both sides | An off-message-thread `setStateInformation` applies the sound (the APVTS, JUCE-locked) and the engine-config word (tagged with this restore's generation) on the caller's thread, then publishes the DECODED metadata tail as one immutable object carrying that generation; the message thread adopts it (`adoptPendingHostState`) from the processor's 20 Hz timer and at the top of every entry point that mutates program state. Ownership transfers with the exchange — whichever side's exchange returns the pointer frees it — so at most one object exists and nothing is freed while reachable elsewhere. On the message thread the tail is adopted inline; nothing is deferred. |
+| Message → Host state thread (the program snapshot, D-2 / ADR-0036) | `ExchangeCell<ProgramSnapshot> programMailbox` (same cell); the snapshot carries the generation of the last restore the message thread had adopted when it published | The message thread republishes an immutable snapshot of the program state it owns after every mutation (`PresetManager::onMetaChanged`, `InternalState::onChanged`, the A/B paths); an off-message-thread `getStateInformation` takes the latest into its own view and serializes from it plus the JUCE-locked `copyState()`. While the newest snapshot it holds carries a generation older than its own last restore, it serializes from the view it built from that restore, so a save after a restore on the same host thread describes the sound it applied — and because the generation is part of the snapshot, the decision is about the object in hand, never about a generation read at another moment (round 2, review finding 1). |
 
 ## Forbidden cross-thread access
 
@@ -100,16 +100,20 @@ relies on.
   that flag, and they carry no ordering of their own.
 - The two D-2 cells (`pendingRestore`, `programMailbox`): `exchange` with `acq_rel` on both sides —
   the third ordering-critical pair. The exchange PUBLISHES the immutable object's contents to the
-  side that takes it and TRANSFERS ownership in the same operation. `restoreGen` / `adoptedGen`:
-  `release` on the store, `acquire` on the load, so a save that sees a generation adopted also sees
-  the mailbox that carries it. The one relaxed load is the empty-check fast path, which only decides
+  side that takes it and TRANSFERS ownership in the same operation. The generations ride INSIDE
+  the objects (a decode's, a snapshot's), so no separate atomic pair is read at a different moment
+  than the object it is about. The one relaxed load is the empty-check fast path, which only decides
   whether to attempt the exchange.
+- The engine-config word (`InternalState::engineConfig`): `compare_exchange` with `acq_rel` on
+  the writers (a host-thread restore, the message thread's tree writes), `relaxed` on the audio
+  reader — a value with no payload behind it. The tag is the generation of the arrival, and the
+  CAS refuses a lower one: "latest arrival wins" is decided and stored in one operation.
 - The OpenGL context is attached only on macOS/Windows; all Linux/BSD rendering is on the
   message thread (`docs/architecture/design-decisions/ADR-0011`).
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-190;
-  src/PluginProcessor.cpp:94-116, 307; src/InternalState.h:173, 340-352
+  src/PluginProcessor.cpp:94-116, 307; src/InternalState.h:175, 387-410
 - D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
   generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,
   `getStateInformation`); ADR-0036; State tests 37–41; the `tsan` job in

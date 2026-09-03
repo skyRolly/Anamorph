@@ -185,6 +185,72 @@ baseline recorded; both were found by the new probes doing their job.
 
 **D-2 — RESOLVED, implemented as ADR-0036. RISK-007 — RESOLVED.** RISK-008 and KI-015 unchanged.
 
+### 8. Round 2 — the PR review's two findings, closed (2026-09-03)
+
+Two ordering windows inside the round-1 machinery, both real on the committed tree, both closed by
+an explicit invariant rather than by a wider read. Neither is a ThreadSanitizer class — every access
+was already race-free — which is why the proof for each is the interleaving, not a silent probe.
+
+**Finding 1 — a host-thread save could pair the restored sound with the previous program.**
+
+| | |
+|---|---|
+| actors | H (the host's state thread: restore, then save); M (the owner: the adoption) |
+| state | `programMailbox` (M → H), `hostProgramView` (H), `hostRestoreView` (H), and round 1's two atomics `restoreGen` (H) / `adoptedGen` (M) |
+| old order | H save: (1) `take()` the mailbox → `hostProgramView`; (2) load `restoreGen`, `adoptedGen`; (3) pending? → `hostRestoreView` : `hostProgramView`; (4) serialize with `copyState()`. M adoption: (a) `take()` the decode; (b) the tail; (c) `publishProgram()`; (d) `adoptedGen = g` |
+| window | H(1) returns the PRE-restore snapshot (or nothing, leaving the previous one in the view); M runs (b)(c)(d) in full; H(2)(3) then see `restoreGen == adoptedGen` — "nothing pending" — and choose `hostProgramView` |
+| observable | a save carrying the restored sound (H applied it synchronously) around the previous program's name, baseline, slots and Settings: two programs in one file, and the DAW's next reload puts the wrong label and slot set on the restored sound |
+| new invariant | the generation is PART of the snapshot (`ProgramSnapshot::generation`, the last restore M had adopted when it published); H uses the snapshot in hand iff its generation ≥ H's own last restore generation, else the view it built from that restore. `restoreGen`/`adoptedGen` are gone; each side's counter is its own plain state and crosses only inside the objects |
+| why unrepresentable | the decision and the object it is about are one immutable value: a snapshot that says "generation ≥ g" was published AFTER adopting g, whichever moment H took it; one that says less was published before, and H's own view of g is coherent by construction. No read happens at a different moment than the take |
+
+**Finding 2 — an older restore's completion could overwrite a newer restore's oversampling.**
+
+| | |
+|---|---|
+| actors | H (two restores, A then B); M (the adoption of A); the activation (`prepareToPlay`, on H or M) and the audio thread |
+| state | `InternalState`'s oversampling atomic (round 1: a plain `std::atomic<int>` any writer stored), the Settings tree (M), `pendingRestore` |
+| old order | H restore A: store atomic = A, put(A). M: take(A), begin the tail. H restore B: store atomic = B, put(B). M: `applyResolved(A)` → the tree listener stores atomic = A |
+| window | between M's take of A and M's tree write of A's Oversampling, any H restore |
+| observable | the atomic holds A's setting while the sound is B's; a `prepareToPlay` in that window primes the engine at A's oversampling and reports A's latency; the audio thread runs A's factor over B's sound until B's adoption (≤ 50 ms), then the engine switches — the restored-session glide the synchronous publication exists to prevent |
+| new invariant | the atomic is a 64-bit word: the index tagged with the generation of the ARRIVAL that publishes it; a publication lands only if no higher generation stands, decided and stored by one compare-exchange. H publishes with its restore's generation; M's tree writes publish with the last generation M adopted (`noteAdoptedGeneration`, set before the tail). "Latest restore wins" — the semantics the sound (last `replaceState`) and the cell (a superseded decode is freed) already had |
+| why unrepresentable | there is no check-then-store: A's completion carries generation 1 and the CAS refuses it while generation 2 stands, in the same operation that would have stored it. A Settings edit inside the window yields the same way and the restore's own adoption rewrites the tree ≤ 50 ms later; a completion of the LATEST restore is idempotent |
+
+**Related audit (the same pattern elsewhere).** The remaining two-phase reads in the machinery were
+each examined for "a decision taken from a value read at a different moment than the object it
+decides about": the host side's `take()` then `copyState()` (one program plus the live sound — the
+host-timing class every non-blocking design has, recorded in ADR-0036's consequences, not this
+class); M's `adoptPendingHostState` fast path (`empty()` then `take()`: the exact answer comes from
+the exchange, the relaxed load only decides whether to try); H's `hostRestoreView` then `put()`
+(single serialized caller); `viewOfRestore`'s `soundSignatureFor` read after the sound was applied
+on the same thread. No further actionable instance.
+
+**What changed.** `src/InternalState.h` — the tagged word (`engineConfig`, `publishOversample`,
+`publishEngineConfig(resolved, generation)`, `noteAdoptedGeneration`, `engineConfigGeneration`;
+`animFloat` a message-thread mirror). `src/PluginProcessor.{h,cpp}` — `ProgramSnapshot::generation`,
+`hostRestoreGen` / `adoptedGeneration` as per-side plain state, the H-side selection, the two seams.
+`tests/state_tests.cpp` — State tests 42 and 43. Docs: ADR-0036 §5/§8 and consequences,
+`THREADING_POLICY`, `THREAD_MODEL`, `STATE_SERIALIZATION`, `API_REFERENCE`, `TESTING`, `CHANGELOG`,
+`HANDOVER`, `README`, coverage, this section, the dashboard.
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 42 with fix 1 reverted (the mailbox chosen regardless of generation) | FAILS (6 checks; 37's window check fails alongside) |
+| State test 43 with fix 2 reverted (the word stored regardless of generation) | FAILS (5 checks, both layers) |
+| State tests 42–43 on the tree | green; suite 1753 checks / 0 failures, 42 tests |
+| the four probes under TSan, after (round-2 tree) | silent in 10/10 runs each |
+| the state suite under TSan, after | 0 reports; 1753 checks, 0 failures |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations — the one audio-thread read that moved is a relaxed 64-bit load |
+| `check-docs.py`, `check-citations.py` | clean; 398 anchors against origin/main AND against the round-1 commit (the push predecessor), the two content-changed ranges declared |
+| `preflight.sh` | exit 0 on the committed round-2 tree (all gates, both suites) |
+| first-party warnings | none new in the touched files on clang 18 / gcc 13 (the pinned gates run in CI) |
+
+**Residual, non-actionable.** A host-thread save reads one snapshot then one `copyState()`; a
+message-thread A/B switch between the two leaves the earlier index around the later sound (the
+host-timing class; ADR-0036 consequences). **D-2 / RISK-007 — RESOLVED, round 2 closed.**
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can
