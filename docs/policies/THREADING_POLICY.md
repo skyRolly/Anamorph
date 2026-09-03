@@ -12,7 +12,7 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 | Direction | Mechanism | Rule |
 |---|---|---|
 | GUI → Audio (automatable params) | APVTS `std::atomic<float>*` | Read once per block into `EngineParameters`. |
-| GUI → Audio (host-hidden) | `InternalState` ValueTree + the engine-config word | Only Oversampling crosses to audio, read as the low byte of one `std::atomic<uint64>` (`oversampleIndex()`, relaxed). Its writers — the message thread from the tree, a host-thread restore (D-2) — publish through one compare-exchange tagged with the generation of the arrival, and a publication lands only if no higher generation stands: the latest restore wins, an older restore's completion never overwrites it (ADR-0036 §8). A Settings edit is an arrival too: it publishes under the generation of the latest restore that had arrived, lands over it, and its field survives that restore's adoption (ADR-0036 §9). The same generation decides whether an adoption re-installs its own restore's SOUND (ADR-0036 §10). |
+| GUI → Audio (host-hidden) | `InternalState` ValueTree + the engine-config word | Only Oversampling crosses to audio, read as the low byte of one `std::atomic<uint64>` (`oversampleIndex()`, relaxed). Its writers — the message thread from the tree, a host-thread restore (D-2) — publish through one compare-exchange tagged with the generation of the arrival, and a publication lands only if no higher generation stands: the latest restore wins, an older restore's completion never overwrites it (ADR-0036 §8). A Settings edit is an arrival too: it publishes under the generation of the latest restore that had arrived, lands over it, and its field survives that restore's adoption (ADR-0036 §9). The same generation decides whether an adoption re-installs its own restore's SOUND (ADR-0036 §10), which a separate relaxed counter (`soundSetGen`, wholesale sound replacements only) narrows to the case that needs it, so a user's sound edit made while a restore is pending survives its adoption (§12). |
 | GUI → Audio (momentary solo) | `std::atomic<int> soloPreviewMask` | −1 = use the param; relaxed. |
 | GUI → Audio (meter reset) | `std::atomic<int> resetReq` | `exchange` consumed on the audio thread. |
 | Audio → GUI (scope) | `ScopeBuffer` SPSC ring | Exactly one producer + one reader **thread** (message thread; stateless read sites: Vectorscope, SpectrumImager, read-only `writeCount`); release/acquire on the write index. |
@@ -82,13 +82,20 @@ lock runs from a parameter listener callback.** A restore landing mid-gesture is
 poll, which zeroes the gesture count exactly as an inline restore always has.
 
 One contract is load-bearing and is stated rather than assumed: **the host serializes its own state
-calls** (never two at once). Round 4 verified it against every wrapper this repository builds at the
-pinned JUCE 9.0.1 (ADR-0036 §11): the VST3 wrapper asserts the message thread for `setState` and
-passes `getState` through on the caller's thread; the AU wrapper passes `SaveState`/`RestoreState`
-straight through, taking neither `getCallbackLock()` nor a `MessageManagerLock`; the standalone
-makes both calls on the message thread. **No wrapper serializes save against restore for the
+calls** (never two at once). Rounds 4–5 verified it against every wrapper this repository builds at the
+pinned JUCE 9.0.1, from primary evidence (ADR-0036 §11). **VST3: the SDK header itself pins both
+halves to the host's UI thread** — `IComponent::setState` and `IComponent::getState` each carry
+*"\note [UI-thread & (Initialized | Connected | Setup Done | Activated | Processing)]"*
+(`format_types/VST3_SDK/pluginterfaces/vst/ivstcomponent.h`), and two calls pinned to one thread
+cannot overlap, so there the ordering is contractual rather than conventional; JUCE additionally
+asserts the thread for `setState`. **AU:** no clause pins them and the wrapper adds nothing —
+`SaveState`/`RestoreState` pass straight through on the caller's thread, taking neither
+`getCallbackLock()` nor a `MessageManagerLock` — so serialization is the host's practice. **Standalone:**
+both on the message thread. **No wrapper serializes save against restore for the
 plug-in — none can, the guarantee is the host's — so Anamorph relies on exactly what JUCE relies on
-and nothing stronger.** The two off-message-thread branches count themselves in
+and nothing stronger. The support boundary, stated rather than implied: concurrent host state calls
+are OUTSIDE supported operation** (on VST3 they are a spec violation outright), and the disposition
+is ADR-0036 §11's D — not a defect to synchronise against, but a contract to state and detect. The two off-message-thread branches count themselves in
 (`offThreadStateCalls`) and a debug build asserts if a second one overlaps: a tripwire that never
 blocks and never changes a result, so a host that breaks the contract is found where it breaks it
 rather than through a silent race. The host-side views of the two cells are read and replaced by the
@@ -122,7 +129,7 @@ relies on.
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-190;
-  src/PluginProcessor.cpp:94-116, 307; src/InternalState.h:175, 441-464
+  src/PluginProcessor.cpp:99-121, 312; src/InternalState.h:175, 441-464
 - D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
   generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,
   `getStateInformation`); ADR-0036; State tests 37–41; the `tsan` job in

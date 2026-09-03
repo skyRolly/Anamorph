@@ -428,6 +428,96 @@ work cannot supply for itself. Non-actionable residual, unchanged: a host save's
 `copyState()` straddling a message-thread A/B switch (the host-timing class), and the ≤ 50 ms
 adoption latency for the metadata tail.
 
+*(Round 5 update: that approval was granted — see §11.)*
+
+### 11. Round 5 — the sound-edit precedence §10 got wrong, and the gate approved (2026-09-03)
+
+**The Architecture Review Gate is APPROVED.** Human architecture review of the ADR-0036
+threading/state model was granted on 2026-09-03. What was approved is the model the ADR records:
+message-thread ownership of the program metadata; the two single-object exchange cells with
+ownership transferring on the exchange; the generation carried inside each immutable object rather
+than in a separate atomic; the generation-tagged engine-config word with its latest-arrival-wins
+compare-exchange; and the precedence rules for a user action overlapping a restore. **This round
+stays inside that boundary** — it re-keys an existing guard onto a new *relaxed* counter with no
+payload and no ordering role (the same class as `soundParamGen`, which predates D-2), and adds no
+thread, no cross-thread path and no ordering-critical atomic. Nothing here is a new gated change.
+
+**Finding — pending sound edits are erased.** A regression from round 4's own fix, and the review
+caught it at the line that introduced it.
+
+| | |
+|---|---|
+| actors | H (a restore R, handed over); M (the user, turning a knob) |
+| state | the live APVTS parameters; `pendingRestore`; `soundParamGen` (bumped by every parameter change); the round-4 re-install guard |
+| old order | H: decode installs R's sound, records `soundParamGen`, puts the handoff. M: the user edits a sound parameter — `soundParamGen` moves. M: the adoption reads "something touched the parameters since the decode" and re-installs R's sound |
+| window | the whole pending window, from the handoff to the next drain (≤ 50 ms with the timer, longer with a starved queue). No seam is needed to hit it: a knob turn is the one message-thread mutation that does not drain — every entry point that drains would adopt first and land on top |
+| observable | the user's edit is silently reverted to the restored value on adoption. A save taken afterwards carries the restored value, so the edit is not merely invisible, it is gone |
+| root cause | §10's guard asked "has anything touched the parameters", read from a counter that every knob turn bumps. It needed to ask "has another STATE SET been installed" |
+| semantics decided | a **wholesale replacement** (an A/B apply, an undo/redo, a preset load) means the live sound is some other session's, and the adoption re-installs its own (§10, unchanged). An **edit** means the restored session is live with a newer mutation in it — the parameters the user turned are the ones the decode had just installed — so the edit is an edit *of the restored session* and stands, which is the rule the rest of the design already follows (§9 for the Settings; adopt-before-use everywhere that can drain) |
+| new invariant | `soundSetGen` counts wholesale replacements only — bumped at `applyStatePreservingView`, at `applySoundTree` and at the preset-load hook (a preset installs its session one parameter at a time rather than through `replaceState`, so it needs the explicit bump) — and never by an individual parameter change. The decode records it immediately after installing its sound; the adoption re-installs only if it has moved |
+| why the two differ | the A/B slots and the preset identity **are** the session, so a restore replaces them by definition and an A/B navigation of the outgoing session means nothing in the incoming one. A parameter value is not session identity; after the decode, the thing the user is editing *is* the restored session |
+
+**Focused audit of the restore tail's other writes.** Every field `adoptRestoreTail` writes was
+re-examined for the same "older restore overwrites a newer user mutation" shape:
+
+| field | represents | can a newer user mutation exist before adoption? | verdict |
+|---|---|---|---|
+| the live sound (§12, new) | the session's parameters | yes — a knob turn does not drain | **was defective**; fixed above |
+| `internal` (the six Settings) | orthogonal preferences | yes — a Settings binding write does not drain | already correct (§9, round 3): per-field arrival generations |
+| `abSlot[]`, `abActive`, `abMatchGain[]` | the session itself | only through entry points that drain first, plus the handoff window | correct by §10: superseded deliberately, and the sound re-install stops the split |
+| `abUndo[]` | history of the outgoing session | same | correct: a restore clears it, which is the documented fresh-session rule |
+| preset name / baseline / selection | the session's identity | same | correct by §10 |
+| `committed*`, gesture bookkeeping | the undo baseline, derived | recomputed by `syncCommitted()` from the state the tail just installed | correct by construction — it is derived, not carried |
+
+The one field with an un-draining mutation path other than the Settings was the sound, and it is
+the one that was wrong. **No sibling defect.**
+
+**Finding — host serialization, re-derived from primary evidence.** The concern was raised again,
+so it was re-answered from the headers rather than from the previous round's conclusion. The
+**pinned VST3 SDK annotates both halves of the pair on the host's UI thread**:
+`IComponent::setState` carries *"\note [UI-thread & (Initialized | Connected | Setup Done |
+Activated | Processing)]"* and `IComponent::getState` carries the identical note
+(`format_types/VST3_SDK/pluginterfaces/vst/ivstcomponent.h`). Two calls pinned to one thread cannot
+overlap, so on VST3 the ordering Anamorph relies on is **contractual**, not conventional — and JUCE
+additionally asserts the thread for `setState`. On **AU** no clause pins them and the wrapper adds
+nothing (`SaveState`/`RestoreState` pass straight through on the caller's thread, taking neither
+`getCallbackLock()` nor a `MessageManagerLock`), so serialization there is the host's practice.
+**Standalone** uses the message thread for both.
+
+**Disposition D — unsupported host concurrency.** Not A, because the AU half rests on practice
+rather than a citable clause; not B, because no wrapper provides the serialization and none can —
+the guarantee is the host's, and JUCE's whole `AudioProcessor` state API already rests on it; not C,
+because nothing in supported operation produces the concurrency, and synchronising against it would
+mean paying for a broken host on every save. The support boundary is now stated in the header
+beside the members it protects, in `THREADING_POLICY.md` and in ADR-0036 §11, with the SDK quotation
+inline so it is not re-litigated from memory; the debug tripwire added in round 4 names a host that
+crosses it. **No code change was warranted and none was made.**
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 47 with the guard keyed on `soundParamGen` again (round 4's) | FAILS (4 checks: every pending edit reverted to the restored value, and the save with it) |
+| State tests 37–47 on the tree | green; suite 1882 checks / 0 failures, 46 tests |
+| the four probes under TSan, after (round-5 tree) | silent in 10/10 runs each |
+| the state suite under TSan, after | 0 reports; 1882 checks, 0 failures |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | clean; 398 anchors against origin/main AND against the round-4 commit; self-test 160 cases |
+| `preflight.sh` | exit 0 on the committed round-5 tree (all gates, both suites) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: first-save
+consistency (State test 42), overlapping restore ordering (43), Settings precedence (44), the
+handoff-window split and inline coherence (45, 46) all pass unchanged — 45 in particular still
+proves that a *wholesale* replacement in the window IS superseded, which is the half of §10 this
+round deliberately kept.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains. **Architecture Review Gate:
+APPROVED**, and this round is inside the approved boundary. Host serialization: **disposition D**,
+evidence-backed. Non-actionable residuals, unchanged: a host save's snapshot and `copyState()`
+straddling a message-thread A/B switch, and the ≤ 50 ms adoption latency for the metadata tail.
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can

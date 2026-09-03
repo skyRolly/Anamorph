@@ -65,7 +65,12 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // (the menu, Load Preset..., and the prev/next buttons via step()), cannot drift between the
     // two loaders, and keeps the ordering the duck depends on: still raised before any
     // setValueNotifyingHost, so the swap is still heard only at the silent bottom.
-    presets.onAboutToLoad = [this] { adoptPendingHostState(); pollUndoCoalesce(); engine.requestDuck(); };
+    // noteWholeSoundReplaced: a preset load installs another session's sound one
+    // parameter at a time (PresetManager::applySoundTree) rather than through
+    // replaceState, so the counter is bumped here instead -- it is a whole-sound
+    // replacement like the A/B and undo paths, and a restore adopted after it must
+    // re-install its own sound rather than wear the preset's (D-2 §12).
+    presets.onAboutToLoad = [this] { adoptPendingHostState(); pollUndoCoalesce(); noteWholeSoundReplaced(); engine.requestDuck(); };
     presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
     // A save changes no parameter, so nothing else would ever refresh `committed` off the
     // pre-save preset -- and the next undo would restore that stale name/identity/baseline.
@@ -453,6 +458,7 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
     // as a session can, and the repaired text has to reach the LIVE tree through
     // JUCE's lock here too -- an unlocked write into `apvts.state` would race an
     // off-message-thread save's locked copyState (D-2, ADR-0036).
+    noteWholeSoundReplaced();   // a state set replaces the live sound (D-2 §12)
     auto copy = target.createCopy();
     repairSerializedValues (copy);
     apvts.replaceState (copy);
@@ -738,6 +744,7 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
 // Repair on our copy, one locked replaceState, then the exact raw values.
 void AnamorphAudioProcessor::applySoundTree (const juce::ValueTree& soundTree)
 {
+    noteWholeSoundReplaced();   // a state set replaces the live sound (D-2 §12)
     auto copy = soundTree.createCopy();
     repairSerializedValues (copy);
     apvts.replaceState (copy);
@@ -1078,9 +1085,17 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
     // two. Re-installing the decode's own sound makes the adoption commit sound and
     // metadata together, which is what "adopting a restore" has to mean.
     //
-    // Both guards matter. `soundGen` unchanged means nothing has touched the parameters
-    // since the decode installed them, which is every ordinary restore -- re-installing
-    // would be a redundant burst of setValueNotifyingHost to no effect, so it is skipped.
+    // Both guards matter, and the first is the one round 5 sharpened (ADR-0036 §12).
+    // What must trigger a re-install is another STATE SET having been installed since
+    // the decode -- an A/B apply, an undo/redo, a preset load -- because then the live
+    // sound is some other session's and this restore's metadata would sit over it.
+    // What must NOT trigger one is the user having EDITED the restored sound: the
+    // parameters are the restored session's, with a newer mutation in them, and
+    // re-installing would erase that edit. `soundSetGen` counts only the wholesale
+    // replacements, so it separates the two; keying this on `soundParamGen`, which
+    // every knob turn bumps, is what erased pending sound edits in round 4. When
+    // nothing has been replaced the re-install is skipped, so an ordinary restore also
+    // costs no redundant burst of setValueNotifyingHost, as before.
     // And the engine-config word's generation identifies the LATEST restore that has
     // arrived: when a newer one has already published its sound, this older restore's
     // adoption must not resurrect its own (ADR-0036 §8's rule, applied to the sound).
@@ -1088,7 +1103,7 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
     // able to run in between, so it never needs this.
     if (d.generation != 0
         && internal.engineConfigGeneration() == d.generation
-        && soundParamGen.load (std::memory_order_relaxed) != d.soundGen
+        && soundSetGen.load (std::memory_order_relaxed) != d.soundSetGen
         && d.soundParams.isValid())
     {
         applySoundTree (d.soundParams);
@@ -1301,8 +1316,8 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
         }
 
         applySoundTree (params);
-        d.soundParams = params;
-        d.soundGen    = soundParamGen.load (std::memory_order_relaxed);
+        d.soundParams  = params;
+        d.soundSetGen  = soundSetGen.load (std::memory_order_relaxed);
 
         // The host-hidden Settings / view state (Oversampling, UI Scale, Persistence,
         // Tooltips, Animations, Show Meters), RESOLVED here and written by the message
@@ -1438,8 +1453,8 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
     {
         auto legacy = juce::ValueTree::fromXml (*xml);
         applySoundTree (legacy);
-        d.soundParams = legacy;
-        d.soundGen    = soundParamGen.load (std::memory_order_relaxed);
+        d.soundParams  = legacy;
+        d.soundSetGen  = soundSetGen.load (std::memory_order_relaxed);
 
         // A v0.2 session is older than 0.8.4, so it can only carry the host-hidden Settings the
         // way pre-0.8.4 sessions do: as APVTS params, or not at all. Same resolver the AnamorphRoot

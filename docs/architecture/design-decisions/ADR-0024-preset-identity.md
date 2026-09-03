@@ -118,7 +118,7 @@ folder) are not disjoint.
   `:202-250` (`load`), `:252-266` (`loadFile`), `:278-314` (`saveUser`), `:316-327`
   (`adoptRestoredState`), `:333-386` (`encodeSelection`/`decodeSelection`)
 - `src/PluginProcessor.h:176-188` (`StateSet::selection`)
-- `src/PluginProcessor.cpp:68-90` (the hooks, incl. `onSaved`), `:256-272`
+- `src/PluginProcessor.cpp:68-95` (the hooks, incl. `onSaved`), `:256-272`
   (`currentStateSet`/`applyStateSet`), `:430-462` (`commitPresetSwitchUndoStep`, incl. the
   identity-moved guard on redo), `:563-584` (`writeSelection`/`readSelection`), `:665-706`
   (`readSlot`)

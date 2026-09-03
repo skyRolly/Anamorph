@@ -7807,6 +7807,129 @@ static void testInlineRestoreAdoptsPendingAgainstItsOwnSound()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 47 -- a sound edit made while a restore is pending survives its
+//  adoption (D-2 round 5, review finding "pending sound edits are erased").
+//
+//  Round 4 made the adoption re-install the restored SOUND, so that an action
+//  which had replaced the live parameters with another session's could not be
+//  left half-applied under the restored session's identity (§10). Its guard was
+//  "has anything touched the parameters since the decode", read from
+//  `soundParamGen` -- which every knob turn bumps. So an ordinary sound edit made
+//  in the pending window was treated as another session's sound and erased.
+//
+//  The two cases are genuinely different and the rule now names the difference
+//  (§12): a WHOLESALE replacement (an A/B apply, an undo/redo, a preset load)
+//  means the live sound is some other session's, and the adoption re-installs its
+//  own; an EDIT means the restored session is live with a newer mutation in it,
+//  which is the same "a user action inside the pending window lands on top of the
+//  restore" the rest of the design has, and the adoption leaves it alone.
+//  `soundSetGen` counts only the wholesale replacements, which is what separates
+//  them.
+//
+//  The window here needs no seam: after the handoff returns, the restore sits in
+//  the cell until the next drain, and a knob turn is the one message-thread
+//  mutation that does not drain (every entry point that does would adopt first
+//  and land on top anyway). The §10 half -- a replacement in the window IS
+//  superseded -- is State test 45's, and is not repeated here.
+// ---------------------------------------------------------------------------
+static void testSoundEditWhilePendingSurvivesAdoption()
+{
+    std::printf ("State test 47: a sound edit made while a restore is pending survives its adoption (D-2 r5)\n");
+
+    const auto P = d2::author ("D2-R5-P", 0.15f, 0.85f, 0, 1);   // the outgoing session
+    const auto R = d2::author ("D2-R5-R", 0.35f, 0.65f, 1, 2);   // the restore that arrives
+    const float restoredWidth = R.active == 0 ? R.widthA : R.widthB;
+
+    // A plain user edit, through the path the editor uses: a gesture around
+    // setValueNotifyingHost. It bumps `soundParamGen` (one parameter changed) and
+    // NOT `soundSetGen` (no state set was installed), which is the distinction the
+    // adoption reads. Values are normalised, as `rawOf`/`setRaw` and the Session
+    // widths are.
+    auto editParam = [] (AnamorphAudioProcessor& p, const char* id, float norm)
+    {
+        auto* rp = p.getAPVTS().getParameter (id);
+        rp->beginChangeGesture();
+        rp->setValueNotifyingHost (norm);
+        rp->endChangeGesture();
+    };
+
+    // --- (a) one edit, one parameter ---------------------------------------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+
+        d2::offMessageThread ([&] { d2::restoreFrom (p, R.blob); });   // pending: sound live, metadata not
+        checkNear ((double) rawOf (p, "width"), (double) restoredWidth, 1.0e-6,
+                   "the restore's sound is live while its metadata is pending");
+        check (d2::View::of (p).matches (P), "...and the message thread still owns the outgoing program");
+
+        const float edited = restoredWidth < 0.5f ? restoredWidth + 0.25f : restoredWidth - 0.25f;
+        check (! juce::exactlyEqual (edited, restoredWidth) && edited >= 0.0f && edited <= 1.0f,
+               "non-vacuity: the edit moves the value, and stays in range");
+        editParam (p, "width", edited);
+        checkNear ((double) rawOf (p, "width"), (double) edited, 1.0e-6, "the edit took effect");
+
+        p.pollUndoCoalesce();   // the adoption
+
+        checkNear ((double) rawOf (p, "width"), (double) edited, 1.0e-6,
+                   "the edit made while the restore was pending SURVIVES its adoption");
+        check (d2::View::of (p).matches (R), "...and the restored session's program is adopted");
+        check (p.getInternal().oversampleIndex() == R.oversampleId - 1,
+               "...and the restored session's Oversampling is in force");
+
+        // The published state is that one session plus the newer edit -- a save carries
+        // the edited value, and a host-thread save agrees with the owner's.
+        AnamorphAudioProcessor control;
+        control.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (control, R.blob);
+        editParam (control, "width", edited);
+        check (d2::saveOf (p) == d2::saveOf (control),
+               "a save equals a message-thread restore of the same session with the same edit");
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+        check (hostSave == d2::saveOf (p), "...and a host-thread save agrees with the owner's");
+    }
+
+    // --- (b) several edits, two parameters ----------------------------------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, R.blob); });
+
+        const float w1 = 0.20f, w2 = 0.80f;
+        const float driveBefore = rawOf (p, "drive");
+        const float driveEdited = driveBefore < 0.5f ? 0.90f : 0.10f;
+        check (! juce::exactlyEqual (driveEdited, driveBefore), "non-vacuity: the drive edit moves the value");
+
+        editParam (p, "width", w1);          // three edits, two parameters, all before the adoption
+        editParam (p, "drive", driveEdited);
+        editParam (p, "width", w2);
+
+        p.pollUndoCoalesce();
+
+        checkNear ((double) rawOf (p, "width"), (double) w2, 1.0e-6, "the last width edit survives");
+        checkNear ((double) rawOf (p, "drive"), (double) driveEdited, 1.0e-6, "the drive edit survives too");
+        check (d2::View::of (p).matches (R), "the restored session's program is still what was adopted");
+        check (p.getPresets().currentName() == R.name, "...by name");
+    }
+
+    // --- (c) the restored sound stands where nothing was edited --------------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, R.blob); });
+        editParam (p, "drive", rawOf (p, "drive") < 0.5f ? 0.90f : 0.10f);   // edit ONE parameter only
+        p.pollUndoCoalesce();
+        checkNear ((double) rawOf (p, "width"), (double) restoredWidth, 1.0e-6,
+                   "a parameter the user did not touch still holds the restored session's value");
+        check (d2::saveOf (p) == d2::saveOf (p), "the save is stable");
+    }
+}
+
+// ---------------------------------------------------------------------------
 //  D-2 stress probe (contract F): every thread the model names, at once, under
 //  ThreadSanitizer. NOT part of the suite, like the other three TSan probes:
 //  on the pre-D-2 tree its execution IS the undefined behaviour it measures.
@@ -8044,6 +8167,7 @@ int main (int argc, char* argv[])
     testSettingsEditAfterRestoreArrivalSurvivesAdoption();
     testActionInHandoffWindowCannotSplitTheSession();
     testInlineRestoreAdoptsPendingAgainstItsOwnSound();
+    testSoundEditWhilePendingSurvivesAdoption();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

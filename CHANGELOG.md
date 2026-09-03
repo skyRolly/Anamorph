@@ -101,7 +101,9 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   that arrives *after* the change replaces it (State test 44). A fourth pass made the adoption
   install the restored *sound* as well as its bookkeeping, so an A/B switch or Copy made in that
   same brief moment can no longer leave a project labelled as one session while it sounds like
-  another (State tests 45–46). [Verified]
+  another (State tests 45–46). A fifth pass drew the line that pass had drawn too widely: a knob
+  moved in that same moment is an edit *of* the arriving project, not a different project's sound,
+  so it now survives the load instead of being reverted (State test 47). [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

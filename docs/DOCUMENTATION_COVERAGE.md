@@ -8034,3 +8034,24 @@ tree and is superseded by decision 10 rather than corrected.
 **Gate.** `ARCHITECTURE_REVIEW_GATE.md` is **not** discharged by this documentation and is not
 marked as such anywhere: a Thread Model change requires a human reviewer, and only the pull
 request's approval clears it.
+
+## D-2 round 5 (2026-09-03) — pending sound-edit precedence, and the gate approved (ADR-0036 §12)
+
+**Code changed:** `src/PluginProcessor.h` (`soundSetGen` + `noteWholeSoundReplaced()`, the
+wholesale-sound-replacement counter; `RestoreDecode::soundGen` becomes `soundSetGen`; the ownership
+comment records the GRANTED Architecture Review Gate approval and carries the VST3 SDK thread
+annotation inline beside the members it justifies), `src/PluginProcessor.cpp` (the adoption's sound
+re-install is re-keyed from `soundParamGen` — which every knob turn bumps — onto `soundSetGen`; the
+counter is bumped at `applyStatePreservingView`, `applySoundTree` and the preset-load hook),
+`tests/state_tests.cpp` (State test 47, mutation-tested).
+
+**Documents updated:** `ADR-0036` (the status block now records the approval and states exactly what
+architecture it covers and that round 5 is inside it; new §12; §11 gains the SDK quotation and the
+explicit A/B/C/D disposition); `THREADING_POLICY.md` (the primary evidence and the support
+boundary); `THREAD_MODEL.md`; `API_REFERENCE.md`; `TESTING.md` (test 47, 46 tests);
+`TESTING_POLICY.md`, `HANDOVER.md`, `README.md` (46 tests / 1882 checks); `CHANGELOG.md`; the
+worklog (§11: the interleaving, the restore-tail field audit, the re-derived host-serialization
+evidence and disposition) and the dashboard.
+
+**Drift.** None. Round 4's §10 text described a guard that was correct in intent and too wide in
+practice; §12 narrows it rather than contradicting it, and the round-4 record stands as written.

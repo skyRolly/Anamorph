@@ -212,6 +212,19 @@ private:
     StateSet committed;
     juce::String committedSig, lastPolledSig;
     std::atomic<juce::uint32> soundParamGen { 1 }; // bumped by parameterValueChanged (S10)
+    // D-2 round 5 (ADR-0036 §12). Bumped once every time the live parameters are REPLACED
+    // WHOLESALE by another state set -- an A/B apply, an undo/redo, a preset load, a
+    // restore's own sound install -- and NOT by an individual parameter edit, which is
+    // what `soundParamGen` counts. That is exactly the distinction the restore adoption
+    // needs: a state set installed after the restore's sound means the live sound is
+    // some other session's and the adoption must re-install its own, while a knob the
+    // user turned means the restored session is still live with a newer edit in it,
+    // which the adoption must not erase. Written by whichever thread performs the
+    // replacement (a decode runs on the host's), read on the message thread; relaxed,
+    // because it carries no payload -- the value that matters travels inside the
+    // RestoreDecode, whose cell provides the ordering.
+    std::atomic<juce::uint32> soundSetGen { 1 };
+    void noteWholeSoundReplaced() noexcept { soundSetGen.fetch_add (1, std::memory_order_relaxed); }
     juce::uint32 polledGen = 0;                    // generation the poll last built a signature for
 
     // H15: the view params (only Bypass now) are deliberately NOT listened to by
@@ -245,15 +258,16 @@ private:
     // ------------------------------------------------------------------------
     //  D-2 (RISK-007): the program-state ownership boundary. ADR-0036.
     //
-    //  ARCHITECTURE REVIEW GATE. This section is a Thread Model change -- new
-    //  cross-thread paths and new atomic ordering -- which
-    //  `docs/policies/ARCHITECTURE_REVIEW_GATE.md` gates and `AI_AGENT_POLICY.md`
-    //  makes an agent Hard Stop: "a passing build/test/pluginval does NOT clear a
-    //  Hard Stop -- only human review does". The decision is recorded as ADR-0036
-    //  and the evidence package is assembled (the ADR, the worklog's D-2 rounds,
-    //  State tests 37-46 and the four ThreadSanitizer probes), but the gate itself
-    //  is discharged by a human architecture reviewer approving the change, not by
-    //  anything in this file. Treat it as OPEN until that approval exists.
+    //  ARCHITECTURE REVIEW GATE: APPROVED (human architecture review, 2026-09-03).
+    //  This section is a Thread Model change -- new cross-thread paths and new atomic
+    //  ordering -- which `docs/policies/ARCHITECTURE_REVIEW_GATE.md` gates and
+    //  `AI_AGENT_POLICY.md` makes an agent Hard Stop that only human review clears.
+    //  The architecture a reviewer approved is the one ADR-0036 records: message-thread
+    //  ownership of the program metadata, the two single-object exchange cells, the
+    //  generation-tagged engine-config word, and the precedence rules for a user action
+    //  overlapping a restore. Work that stays inside those decisions is covered; a
+    //  change that adds a thread, a cross-thread path or an ordering-critical atomic
+    //  beyond them is a new gated change and must say so.
     //
     //  THREADS. `M` is the JUCE message thread (the editor, this processor's timer,
     //  every in-spec VST3 host call). `H` is any other thread a host uses for
@@ -338,14 +352,15 @@ private:
         int abActive = 0;
         StateSet abSlot[anamorph::kNumAbSlots];        // invalid params = the documented default
         // The SOUND this restore installed, kept so the adoption can re-install it
-        // (D-2 round 4, ADR-0036 §10): a message-thread action that changed the live
+        // (D-2 round 4, ADR-0036 §10): a message-thread action that REPLACED the live
         // parameters between the decode and the adoption would otherwise leave this
-        // restore's metadata over that action's sound. `soundGen` is `soundParamGen`
-        // as it stood immediately after the decode applied the sound, so the adoption
-        // can tell "nothing has touched the sound since" (the overwhelmingly common
-        // case, which re-installs nothing) from "something did".
+        // restore's metadata over that action's sound. `soundSetGen` is the whole-sound
+        // replacement counter as it stood immediately after the decode installed its
+        // sound, so the adoption can tell "another state set has been installed since"
+        // (re-install) from "the restored sound is still the one live, whatever the
+        // user has since edited in it" (leave it alone -- ADR-0036 §12).
         juce::ValueTree soundParams;
-        juce::uint32    soundGen = 0;
+        juce::uint32    soundSetGen = 0;
     };
 
     // A single-object handoff cell. `put` publishes and frees whatever the other side
@@ -372,14 +387,30 @@ private:
     juce::uint32 hostRestoreGen    = 0;              // H only
     juce::uint32 adoptedGeneration = 0;              // M only
     // The host-serialization contract, made detectable instead of merely assumed
-    // (D-2 round 4). The three members above this line that H owns -- `hostRestoreGen`
-    // and the two views -- are plain, which is correct exactly as long as the host
-    // never runs two OFF-MESSAGE-THREAD state calls at once. Every wrapper this
-    // repository builds relies on that already (ADR-0036 §11), so rather than adding
-    // synchronisation for a case the format forbids, the two off-thread branches
-    // count themselves in and a debug build asserts if a second one ever overlaps.
-    // Never blocks, never affects the result, and same-thread nesting cannot occur
-    // (no state call re-enters another off the message thread).
+    // (D-2 rounds 4-5, ADR-0036 §11). The three members above this line that H owns --
+    // `hostRestoreGen` and the two views -- are plain, which is correct exactly as long
+    // as the host never runs two OFF-MESSAGE-THREAD state calls at once.
+    //
+    // THE PRIMARY EVIDENCE, so the assumption is not re-litigated from memory. The
+    // pinned VST3 SDK annotates BOTH halves of the pair on the host's UI thread --
+    // `IComponent::setState`: "\note [UI-thread & (Initialized | Connected | Setup Done
+    // | Activated | Processing)]", and `IComponent::getState` identically
+    // (`format_types/VST3_SDK/pluginterfaces/vst/ivstcomponent.h`) -- so on VST3 the
+    // two cannot overlap without the host violating the spec, and JUCE asserts the
+    // thread for `setState`. On AU nothing pins them: the wrapper's `SaveState` /
+    // `RestoreState` pass straight through on the caller's thread, taking neither
+    // `getCallbackLock()` nor a `MessageManagerLock`, so serialization there is the
+    // host's practice rather than a citable clause. Standalone uses the message thread
+    // for both. No wrapper serializes save against restore FOR the plug-in and none
+    // can: the guarantee is the host's, and JUCE's whole AudioProcessor state API
+    // already rests on it.
+    //
+    // So the support boundary, stated rather than implied: concurrent host state calls
+    // are OUTSIDE supported operation, Anamorph assumes nothing stronger than JUCE
+    // itself, and rather than paying for a broken host on every save the two off-thread
+    // branches count themselves in and a debug build asserts if a second one ever
+    // overlaps. Never blocks, never affects the result, and same-thread nesting cannot
+    // occur (no state call re-enters another off the message thread).
     std::atomic<int> offThreadStateCalls { 0 };
     struct OffThreadStateCall
     {

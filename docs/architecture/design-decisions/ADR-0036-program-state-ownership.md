@@ -10,14 +10,20 @@ the handoff window can never be left half-applied under the new session's identi
 — the host-serialization contract this design rests on, verified against every wrapper this
 repository builds.
 
-> **Architecture Review Gate: OPEN.** This ADR records a **Thread Model change**
-> (`ARCHITECTURE_REVIEW_GATE.md`), which that policy forbids merging on a green build and
-> `AI_AGENT_POLICY.md` classes as an agent Hard Stop that "only human review" clears. The
-> maintainer instruction of 2026-09-03 authorised the *work*; it is not the gate's human
-> architecture review of the *result*. The review package is this ADR, the D-2 rounds in
-> `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, State tests 37–46 and the four
-> ThreadSanitizer probes. The gate is discharged when a human reviewer with DSP/audio context
-> approves the pull request — not before, and nothing in this repository may mark it otherwise.
+> **Architecture Review Gate: APPROVED** (human architecture review, 2026-09-03). This ADR records
+> a **Thread Model change** (`ARCHITECTURE_REVIEW_GATE.md`), which that policy forbids merging on a
+> green build and `AI_AGENT_POLICY.md` classes as an agent Hard Stop that only human review clears.
+> That review has been given for the architecture below. **What was approved** is the model these
+> decisions define: message-thread ownership of all program metadata; the two single-object
+> exchange cells (`pendingRestore`, `programMailbox`) with ownership transferring on the exchange;
+> the generation carried inside each immutable object rather than in a separate atomic; the
+> generation-tagged engine-config word with its latest-arrival-wins compare-exchange; and the
+> precedence rules for a user action that overlaps a restore (§9, §10, §12). Later work stays
+> covered while it stays inside those decisions; anything that adds a thread, a cross-thread path
+> or an ordering-critical atomic beyond them is a new gated change and must be flagged as one
+> rather than treated as covered. Round 5 (§12) is inside the boundary: it re-keys an existing
+> guard onto a new *relaxed* counter that carries no payload and no ordering role — the same class
+> as `soundParamGen`, which predates D-2 — and adds no path and no ordering.
 
 **Resolves decision D-2** (`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, deferred in
 round 4) and **closes RISK-007** (`docs/FUTURE_RISKS.md`). **Amends `THREADING_POLICY.md`** §Host state
@@ -228,7 +234,8 @@ turn late) and leaves a save issued on the host thread right after its restore d
    afterwards published the older session's metadata while the newer session's parameters were
    already live. State tests 45 and 46 pin both halves.
 
-11. **The host serializes its own state calls — verified, not assumed (round 4).** The host-side
+11. **The host serializes its own state calls — disposition D, "unsupported host concurrency"
+   (rounds 4–5).** The host-side
    members (`hostRestoreGen` and the two views) are plain because only `getStateInformation` and
    `setStateInformation` touch them, and a host runs at most one of those at a time. That is the
    contract JUCE's whole `AudioProcessor` state API already rests on, and it was checked against
@@ -245,12 +252,54 @@ turn late) and leaves a save issued on the host thread right after its restore d
      `kAudioUnitProperty_ClassInfo` property mechanism — the real-world autosave case, and what
      pluginval's `BackgroundThreadStateTest` exercises.
    - **Standalone** — both calls are made from `StandaloneFilterWindow` on the message thread.
+   The **primary evidence** for the VST3 half is the pinned SDK header itself, which annotates both
+   halves of the pair on the host's UI thread — `IComponent::setState`: *"\note [UI-thread &
+   (Initialized | Connected | Setup Done | Activated | Processing)]"*, and `IComponent::getState`
+   identically (`format_types/VST3_SDK/pluginterfaces/vst/ivstcomponent.h`). Two calls both pinned
+   to one thread cannot overlap, so on VST3 the ordering is contractual, not conventional. On AU no
+   clause pins them and the wrapper adds nothing, so serialization there is the host's practice.
    No wrapper serializes save against restore *for* the plug-in, and none of them can: the guarantee
    is the host's. Anamorph therefore relies on **exactly** what JUCE relies on and nothing stronger.
+   **The disposition is therefore D — concurrent host state calls are possible only from a host that
+   is already violating its format's contract, and supported operation excludes them.** Not A,
+   because the AU half rests on practice rather than a citable clause; not B, because no wrapper
+   provides the serialization; not C, because nothing in supported operation produces the
+   concurrency, and adding synchronisation would mean paying for a broken host on every save.
    Rather than synchronise a case the formats forbid, the two off-message-thread branches count
    themselves in (`offThreadStateCalls`) and a debug build asserts if a second one ever overlaps —
    a tripwire, never a lock, never blocking, with no effect on the result. A host that trips it is
    broken in a way that breaks every JUCE plug-in, and the assertion says so where it happens.
+
+12. **A sound edit made while a restore is pending survives it (round 5).** §10 made the adoption
+   re-install the restored sound, so that an action which had replaced the live parameters with
+   another session's could not be left half-applied under the restored identity. Its guard asked
+   "has anything touched the parameters since the decode", read from `soundParamGen` — which every
+   knob turn bumps. So an ordinary sound edit made in the pending window was treated as another
+   session's sound and erased on adoption.
+   Those two are different things and the rule now names the difference. A **wholesale replacement**
+   — an A/B apply, an undo or redo, a preset load — means the live sound is some *other* session's,
+   and the adoption re-installs its own (§10, unchanged). An **edit** means the restored session is
+   live with a newer mutation in it: the parameters the user turned are the ones the decode had
+   just installed, so the edit is an edit *of the restored session*, and keeping it is the same
+   rule the rest of the design already follows — a user action inside the pending window lands on
+   top of the restore, never under it (§9 for the Settings, adopt-before-use for every entry point
+   that can drain). The adoption leaves it alone.
+   **The discriminator** is `soundSetGen`, bumped once per wholesale replacement of the live
+   parameters — at `applyStatePreservingView` (A/B, undo/redo), at `applySoundTree` (a restore's
+   own install) and at the preset load hook, which installs its session one parameter at a time
+   rather than through `replaceState` — and *not* by an individual parameter change. The decode
+   records it immediately after installing its sound; the adoption re-installs only if it has
+   moved. It is a relaxed staleness counter with no payload and no ordering role, exactly like
+   `soundParamGen`: the value that matters travels inside the `RestoreDecode`, whose cell provides
+   the ordering.
+   **Why sound parameters differ from the A/B slots and the preset identity**, which §10 supersedes:
+   those *are* the session — a restore replaces them by definition, and an A/B navigation of the
+   outgoing session means nothing in the incoming one. A parameter value is not session identity;
+   it is the thing the user is currently editing, and after the decode the thing they are editing
+   is the restored session. The Settings (§9) reach the same answer by the same reasoning.
+   State test 47 pins it: one edit, several edits across two parameters, and an untouched parameter
+   still holding the restored value. Mutation-tested — with the guard keyed on `soundParamGen`
+   again, all of it is erased.
 
 ## Consequences
 
