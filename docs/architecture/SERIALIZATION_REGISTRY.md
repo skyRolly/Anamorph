@@ -9,7 +9,7 @@ Field-level ledger of everything written to session state. Companion to
 > migration support (a read path for the old field). Adding a field is allowed only if absence
 > is handled (a default), so older sessions still load.
 
-Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:1027-1030 (pre-0.8.4 `migrateFromLegacyApvts`), :652-693 (pre-0.6.4 `readSlot`), :700-705 (v0.2 bare APVTS);
+Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:1037-1040 (pre-0.8.4 `migrateFromLegacyApvts`), :652-693 (pre-0.6.4 `readSlot`), :700-705 (v0.2 bare APVTS);
 src/InternalState.h:197-286.
 
 ## `AnamorphRoot` properties
@@ -19,7 +19,7 @@ src/InternalState.h:197-286.
 | `presetName` | String | ≥0.6 (Unverified exact) | No | No | `PresetManager::defaultName()` — **absent ≠ empty**, see below |
 | `presetBaseline` | String | 0.6.x (#6) [Partially Verified] | No | No | `adoptRestoredState` clean baseline |
 
-Source: src/PluginProcessor.cpp:958-959 (write), :633-642 (read), :727-741 (adoption).
+Source: src/PluginProcessor.cpp:968-969 (write), :633-642 (read), :727-741 (adoption).
 
 **`presetName`: absent and empty are different answers.** The property is *absent* only in a session
 that predates it (< 0.6); it resolves to `PresetManager::defaultName()`, whose name-fallback tick is
@@ -44,7 +44,7 @@ moved — "metadata describing a session that was never loaded", which is the sa
 paragraph exists to prevent. `getStateInformation` appends the child unconditionally, so no session
 this plug-in has ever written reaches that branch and no valid session changes behaviour; what
 reaches it is a truncated, hand-edited or forward-version blob. Source:
-src/PluginProcessor.cpp:989-1008; State test 27.
+src/PluginProcessor.cpp:999-1018; State test 27.
 
 **A chunk of neither recognised shape is not a restore at all.** `setStateInformation` handles two
 root shapes — `AnamorphRoot` and the bare v0.2 APVTS tree. Anything else (a foreign or
@@ -52,7 +52,7 @@ forward-version root) matches neither, so no parameter, Settings value or A/B sl
 the function **returns before the adoption block**: preset name, identity, checkmark and dirty
 baseline all stay exactly as they were. That is the same answer the guard at the top already gives a
 blob `getXmlFromBinary` cannot parse — input we do not recognise never becomes state. Source:
-src/PluginProcessor.cpp:1160-1194 (the else-branch), :607 (the unparsable-blob guard).
+src/PluginProcessor.cpp:1170-1204 (the else-branch), :607 (the unparsable-blob guard).
 
 ### The preset **indicator identity** (0.9.2, ADR-0024 as amended)
 
@@ -93,7 +93,7 @@ a removed factory id, a deleted or moved user preset — ticks **nothing**; it n
 same-named preset. Source: src/PresetManager.h:54-76 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
 src/PresetManager.cpp:420-473 (`encodeSelection` / `decodeSelection`);
-src/PluginProcessor.cpp:931-952 (`writeSelection`/`readSelection`), :585 (root write),
+src/PluginProcessor.cpp:941-962 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
 ## `ANAMORPH` child (APVTS)
@@ -303,7 +303,7 @@ switch recalled the previous project's sound underneath the restored one. `abRes
 now applies the documented defaults (`active` → 0, both slots → invalid, i.e. "lazily initialised
 from current") on those two paths, and the existing `abEnsureInit()` re-seeds from the state that
 was just restored. A blob that DOES carry an `AB` node is unaffected: its slots restore as before.
-Source: src/PluginProcessor.cpp:864-894 (`abResetToDefaults`, beside `abEnsureInit`), :1027 (the
+Source: src/PluginProcessor.cpp:874-904 (`abResetToDefaults`, beside `abEnsureInit`), :1027 (the
 v0.2 branch) and :955 (the `AB`-absent branch); State test 26.
 
 **The per-slot Level-Match gain is part of the slot, and resets with it** (2026-09-02,
@@ -332,7 +332,7 @@ path that runs every time — construction, where both slots are invalid — the
 indistinguishable, since slot A has just been seeded from the same live state. They diverged only
 when slot A was valid and slot B was not, i.e. an `AB` node whose `slotBParams` alone was missing or
 unparsable: slot B came back as a **duplicate of slot A** rather than as the state just restored, and
-a later save wrote that duplicate out. Source: src/PluginProcessor.cpp:1056-1143
+a later save wrote that duplicate out. Source: src/PluginProcessor.cpp:1066-1153
 (`readSlot`), :752-770 (`abEnsureInit`); src/PluginProcessor.h:150-163 (`StateSet::isValid`).
 
 An empty `slotABase` / `slotBBase` means **"no baseline was recorded"**, which is *not* the same as
@@ -345,7 +345,7 @@ the top bar would render a bare ` *` — a modified-marker against a preset the 
 src/PresetManager.cpp:403-414 (`adoptRestoredState`, the root-side rule).
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
-Evidence [Verified]: src/PluginProcessor.cpp:1121-1122 (the legacy-key fallback inside `readSlot`, :991-1078);
+Evidence [Verified]: src/PluginProcessor.cpp:1131-1132 (the legacy-key fallback inside `readSlot`, :991-1078);
 the per-slot identity is written at :831 / :835 and read at :918.
 
 ## Legacy root formats (read-only compatibility)
@@ -354,7 +354,7 @@ the per-slot identity is written at :831 / :835 and read at :918.
 |---|---|---|
 | v0.2 bare APVTS tree | `xml->hasTagName(apvts.state.getType())` | `apvts.replaceState` |
 
-Source: src/PluginProcessor.cpp:1145-1159.
+Source: src/PluginProcessor.cpp:1155-1169.
 
 ## Notes
 

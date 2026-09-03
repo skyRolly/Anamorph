@@ -13,7 +13,7 @@ only — it configures and builds entirely from the command line on a headless L
 - Diamond **vectorscope**, correlation + L/R Peak/RMS meters; click-free transitions throughout.
 
 ## Project status
-- **Version 0.9.6** (pre-1.0), in the **internal-testing phase** — builds go to testers for
+- **Version 0.9.7** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
 - **0.9.5 is a performance release, and it changes nothing you can hear.** With Velvet Noise
@@ -61,7 +61,7 @@ only — it configures and builds entirely from the command line on a headless L
   build report Anamorph as missing** — re-insert the plug-in and re-load the preset. Audio,
   parameters and presets are unchanged. ADR-0023 · [`KI-016`](docs/KNOWN_ISSUES.md).
 - Active development on a feature-branch → PR → `main` workflow.
-- Validation gate: **50 DSP self-tests** + the **35-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
+- Validation gate: **51 DSP self-tests** + the **35-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
   quality needs a DAW — see `docs/procedures/TESTING.md`).
 

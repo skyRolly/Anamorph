@@ -3,6 +3,17 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
+**Version-synced to v0.9.7 (2026-09-03): the ADR-0034 latency change.** No new entry and none
+closed. RISK-008 (the reported latency can reach a Linux host late, or not until the editor opens,
+in a wrapper configuration that hands over its run loop only through `IPlugFrame`) **narrows
+sharply without closing**: the reported number is now a function of the Oversampling Setting alone,
+so the only way to raise a value-changing latency request at all is to change that Setting or to
+restore session state — and a Setting change made in the editor is by construction made with the
+editor open, which is the configuration where the residual does not bite. What keeps the entry open
+is the other requester: a host calling `setStateInformation` from its own thread with the editor
+closed (RISK-007's thread class) can still leave the report late. RISK-007 itself is unchanged in
+kind, but the Oversampling Setting is now the only state field whose off-thread restore can move
+the reported latency, which is what State tests 22 and 27 were re-instrumented onto. Prior:
 **Round 19 (2026-09-02): RISK-008 gains its real-host evidence** — the maintainer ran the
 predicted-failure workflow on Linux in REAPER with the real Anamorph VST3 and the reported latency
 updated with the editor both open and closed, so the entry moves from "mechanism confirmed, no host
@@ -121,7 +132,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   for — the **instance count on a named machine** — because instruction counts cannot answer it and a
   shared runner is not a wall-clock datum. **This risk therefore stays open**, and the audit says so
   in its own §4.5 rather than claiming otherwise.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1333 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1423 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
   Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs);
   `worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md` §3.1, §4.5.
 - **Mitigation:** Formal profiling (PERFORMANCE_BUDGET numeric budgets remain TODO — the harness and
@@ -141,7 +152,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Mitigation:** **Infrastructure shipped (RH-PR-8, v0.8.13 cycle):** annotated `vX.Y.Z` tag
   convention + tag-triggered `release.yml` (fail-closed tag⇄version⇄CHANGELOG validation →
   reused `build.yml` gates → draft GitHub Release with versioned artifacts + SHA-256 sums +
-  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.6** — 0.9.0 through 0.9.5 were each written up but never tagged); until
+  manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.7** — 0.9.0 through 0.9.6 were each written up but never tagged); until
   then, cite commit SHAs. Historical entries keep SHA evidence permanently.
 
 ## RISK-004 — pluginval signal-only retry masking a real crash
@@ -209,7 +220,7 @@ mitigation. Do not invent risks to fill the template.
 ## RISK-007 — State calls on a non-main host thread (unguarded Anamorph-owned tail)
 - **Risk:** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`/`adoptRestoredState`, `syncCommitted` (src/PluginProcessor.cpp:991-1246 read
+  `presets.setMeta`/`adoptRestoredState`, `syncCommitted` (src/PluginProcessor.cpp:1001-1256 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -287,7 +298,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:991`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:1001`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -296,7 +307,7 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:1055`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `src/PluginProcessor.cpp:1065`, against `canUndo()`; the `abUndo` vector's internals twice, via
   `UndoStacks::operator=` (`src/PluginProcessor.h:184`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture

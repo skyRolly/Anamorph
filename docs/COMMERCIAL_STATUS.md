@@ -9,7 +9,7 @@ restating them; where this file and the record it cites disagree, the cited reco
 
 Last reviewed: **2026-07-26** (substance unchanged since). The release then in preparation was
 v0.9.0; none of v0.9.0 through v0.9.5 was tagged, and the release in preparation is now
-**v0.9.6** (the engineering-review fixes on top of the 0.9.5 A7 performance programme). Nothing in this document — the product model, the
+**v0.9.7** (the ADR-0034 latency change on top of the 0.9.6 engineering-review fixes). Nothing in this document — the product model, the
 distribution model, or the open owner/legal decisions — is affected by that renumbering, so the
 review date stands and moves only when the substance does.
 
@@ -27,7 +27,7 @@ review date stands and moves only when the substance does.
 
 ## 2. Current phase — internal testing
 
-The current pre-1.0 build (**v0.9.6**; see `docs/HANDOVER.md`) is being prepared for
+The current pre-1.0 build (**v0.9.7**; see `docs/HANDOVER.md`) is being prepared for
 **internal / beta testing**, not for sale.
 
 - Builds reach testers as per-push CI artifacts today; the **GitHub Release** route is implemented
@@ -112,18 +112,24 @@ Both lists must be empty:
 
 **Owner/legal** — §4 items 1, 2, 3, 4 (and 6, 7 for the markets concerned).
 
-**Engineering / process** — **empty for v0.9.6 as of 2026-09-01.** `RELEASE_POLICY.md` precondition 2, the
+**Engineering / process** — **one item, as of 2026-09-03: the Level-5 audition, reopened for v0.9.7.**
+`RELEASE_POLICY.md` precondition 2, the
 compatibility gate, is satisfied: `RELEASE_COMPATIBILITY_CHECKLIST.md` stands at **eight of eight boxes** —
-six with measured evidence (that file's §Completion record and §Evidence name what was run for each), and
+six with measured evidence (that file's §Completion record and §Evidence name what was run for each; box 6,
+latency reporting, was **re-run for v0.9.7** because ADR-0034 changed the reported value), and
 **Host matrix** and **Automation playback** on the **maintainer's attestation** of 2026-09-01, recorded the way
 precondition 7 was: verdict, date and performer, with the hosts, operating systems, plug-in formats and
-automation lanes exercised marked NOT RECORDED because they were not supplied. Nothing on the engineering side
-blocks the tag; the remaining blocker is KI-015 (§4), an owner/legal action. The **Level-5 manual audition is CLOSED**: the 2026-08-15 audition covered the
+automation lanes exercised marked NOT RECORDED because they were not supplied. The **Level-5 manual audition
+is OPEN for v0.9.7**: the 2026-08-15 audition covered the
 then-shipping v0.9.4 / JUCE 9.0.1 build and did not carry over (the machine code changed on every
 x86-64 platform under ADR-0031/0032, and the engine gained the 0.9.6 fixes — ER-DOC-01), so it was
 re-run, and **the maintainer performed it against the final v0.9.6 build and it PASSED** (recorded
 2026-09-01; `docs/procedures/LEVEL5_AUDITION.md` §Recorded auditions, where the fields the report
-did not supply are marked NOT RECORDED rather than inferred). Every ADR remains `Accepted`. Signing and notarization
+did not supply are marked NOT RECORDED rather than inferred) — and **that verdict likewise does not carry
+to v0.9.7**, which changes what the plug-in reports to the host and changes one audible behaviour beyond
+latency (a forced swap crossing the Drive engagement threshold with oversampling selected now dry-fills
+instead of dipping to silence). So the tag is blocked by two things, not one: KI-015 (§4), an owner/legal
+action, and this audition. Every ADR remains `Accepted`. Signing and notarization
 (`RH-PR-3`/`RH-PR-5`) are not release-blocking but are user-visible.
 
 ---

@@ -34,13 +34,13 @@ Format-agnostic DSP orchestrator. Driven only by `EngineParameters`.
 | `setParameters` | `void (const EngineParameters&) noexcept` | Adopts a snapshot; continuous live, discrete ducked. |
 | `setTransportPlaying` | `void (bool) noexcept` | Feeds transport edge (Velvet tail kill). |
 | `process` | `void (juce::AudioBuffer<float>&) noexcept` | Runs the full serial chain in place. |
-| `getLatencySamples` | `int () const noexcept` | Current PDC latency (integer; OS only). |
-| `predictLatency` | `int (const EngineParameters&) const noexcept` | Latency for an arbitrary snapshot (message-thread safe). |
+| `getLatencySamples` | `int () const noexcept` | Current PDC latency (integer). A function of `p.oversample` alone since ADR-0034 — not of whether the wrap is engaged. |
+| `predictLatency` | `int (const EngineParameters&) const noexcept` | Latency for an arbitrary snapshot (message-thread safe). Reads `e.oversample` and nothing else, so it agrees with `getLatencySamples()` for any snapshot carrying the same factor. |
 | `getScopeBuffer` / `getCorrelation` / `getLevels` / `getMatchGainDb` | accessors | GUI read access to analysis. |
 | `injectMatchGainDb` | `void (float) noexcept` | A/B per-slot Level-Match restore (atomic). |
 | `requestDuck` | `void () noexcept` | Force a masking duck around a bulk param swap (atomic). |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.h:46-129.
+Evidence [Verified]: src/dsp/AnamorphEngine.h:46-142.
 
 ## `ParamPointers` / layout — `src/PluginParameters.h`
 

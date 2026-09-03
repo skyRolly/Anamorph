@@ -272,7 +272,7 @@ presets, and are invisible to host automation:
 
 | Setting | Options | Notes |
 |---|---|---|
-| **Oversampling** | Off (1×) / 2× / 4× / 8× | For the nonlinear stages (Drive, Chorus, Dim-D). **Off adds no latency.** Higher factors reduce aliasing at higher CPU cost and add a small, host-compensated latency — but only while a nonlinear stage is actually active (§5). |
+| **Oversampling** | Off (1×) / 2× / 4× / 8× | For the nonlinear stages (Drive, Chorus, Dim-D). **Off adds no latency.** Choosing 2×/4×/8× adds a small, host-compensated latency **for as long as it is selected** — a few samples, and it never changes again until you change the setting. The extra CPU is still only spent when there is nonlinear work to do (§5). |
 | **UI Scale** | XS / S / M / L / XL | Scales the whole window (75 % … 150 %); M is the original size. (Labelled *Window Size* before 0.9.2.) |
 | **Vectorscope Persist** | 0 … 100 % | Afterglow length. While you drag it, the Settings panel becomes see-through so you can watch the scope behind it. |
 | **Tooltips** | on/off | Default off. |
@@ -318,10 +318,12 @@ input → input conditioning (channel/Mono/Swap/Balance/ø/M-S decode)
 
 Points worth knowing:
 
-- **Latency**: only oversampling adds any, and only while a nonlinear stage (Drive > 0,
-  or the Chorus/Dim-D algorithms) is active. The plug-in reports its latency to the host
-  (full plugin-delay compensation), and engagement is latched at safe moments so the
-  latency never jumps mid-note.
+- **Latency**: only oversampling adds any, and only for as long as a factor is selected.
+  The plug-in reports its latency to the host (full plugin-delay compensation). The number
+  depends on the Oversampling setting and on nothing else — turning Drive up or changing
+  algorithm never moves it — so once you have chosen a factor, the audio is not interrupted
+  again by a latency change. Changing the Oversampling setting itself does change it, and
+  that one moment may be briefly audible while the host re-aligns.
 - **Multiband** splits into up to 4 bands with cascaded Linkwitz-Riley crossovers plus
   allpass compensation, so with all widths at 100 % the bands recombine flat. Each band's
   width is an independent Mid/Side scale; per-band processing stays mono-compatible.
@@ -536,15 +538,22 @@ all of it; hiding the meters helps too. The Linux build renders the graphics on 
 design.
 
 **Does Anamorph add latency?**
-Almost always **zero**. Reported latency is non-zero *only* when the oversampler is
-actually running, and it only runs when there is nonlinear or modulation work for it to
-do — that is: Oversampling set to 2×/4×/8× **and** either Drive above zero **or** the
-Chorus / Dim-D algorithm selected. Choose Oversampling with Drive at 0 and Haas or Velvet
-Noise, and the oversampler stays bypassed at zero latency. When it does engage, the
-plug-in **reports** its filter latency to the host, so delay compensation keeps everything
-in time automatically. The Haas algorithm's delay is part of the effect, not reported
-latency — that is the point of it. So if your DAW shows a plug-in delay, oversampling is
-engaged.
+Only if you select Oversampling. With Oversampling **Off** the reported latency is **zero**,
+always. Choose 2×, 4× or 8× and the plug-in reports that factor's filter latency — a handful
+of samples — and keeps reporting it for as long as that factor is selected, whatever else you
+do. The plug-in **reports** the number to the host, so delay compensation keeps everything in
+time automatically.
+
+**Why it is reported even when nothing nonlinear is running.** Up to 0.9.6 the number followed
+the oversampler's *engagement*, so turning Drive up from zero (or switching to Chorus /
+Dimension-D) made the reported latency jump — and hosts answer a latency change by restarting
+their processing graph, which you hear as a dropout in the middle of a knob move. Since 0.9.7
+the number is fixed by the Oversampling setting alone, so that can no longer happen. The
+oversampler itself is still switched off when there is no nonlinear work for it, so the CPU
+saving is unchanged; the delay is simply held steady in its place.
+
+The Haas algorithm's delay is part of the effect, not reported latency — that is the point of
+it. So if your DAW shows a plug-in delay, Oversampling is set to something other than Off.
 
 **Clicks or level jumps when switching presets or A/B?**
 A brief dip to the dry signal is deliberate — it masks the parameter jump. If A and B sit

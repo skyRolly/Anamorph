@@ -29,6 +29,98 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## ADR-0034 — 2026-09-03 — the reported latency stops following Drive (a maintainer instruction, not a review round)
+
+Out of band from the review programme and recorded here because this worklog is what a later round
+reconciles against. **A hard-stop category** — `ARCHITECTURE_REVIEW_GATE.md`: *"Latency change —
+sources, engagement condition, or reported value"*, plus a signal-flow change (a new delay element)
+— **discharged by the maintainer's own instruction and by ADR-0034**, which is Accepted and amends
+ADR-0003's latency clause.
+
+### The report
+
+> *"when Drive is at zero, the latency reported to the host is zero; then, when it is turned up
+> slightly, it will report a latency value. During this adjustment, the plugin's own latency
+> changes, causing an interruption / glitch in the sound."*
+
+with the requirement stated exactly: a latency change is allowed **only** at the moment Oversampling
+itself is switched, and the existing CPU optimisations — naming the Drive-0 oversampling skip —
+must be **kept**.
+
+### Reproduced before any change
+
+`AnamorphTests --os-latency-probe` on the pre-change build, 48 kHz, linear algorithm:
+
+| factor | Drive 0.005 dB | Drive 6 dB |
+|---|---|---|
+| 2x | 0 | **4** |
+| 4x | 0 | **6** |
+| 8x | 0 | **6** |
+
+The same step on an Algorithm change at Drive 0. `osActiveFor` was answering four questions with one
+bit — does the wrap RUN, what is latched into `osEngaged`, does the change need a duck, and how much
+latency is reported. Only the fourth was an accident.
+
+### The fix, and the two wrong ones it is built to exclude
+
+Both accessors read the oversampling **selection** and nothing else, through one helper so they
+cannot drift apart. Where the wrap is skipped but a factor is selected, `osCompDelayBuffer` — a
+2-channel integer ring, no arithmetic — supplies the wrap's group delay **in the wrap's own place in
+the chain**, which is what keeps the five downstream `-lat` reads measuring from an unchanged point.
+`osActiveFor`, `osEngaged`, `currentOversampler()` and the `discreteDiffers` term are untouched.
+
+* **Always running the wrap** would make the number constant and delete the optimisation. Measured
+  cost of the round trip alone at 48 kHz/128: 211.12 / 265.46 / 380.00 ns/sample at 2x/4x/8x against
+  152–160 with it skipped. Test 52 leg C rejects such a build by requiring the skipped state's
+  output to be the OS-off output delayed **bit for bit** — measured on that exact counterfactual at
+  **1.31–1.57 absolute** on a ±1 stream.
+* **Reporting a latency the chain does not have** would leave every other track early by 4–6
+  samples. Test 52 leg B measures the impulse through the bypass path and requires it at exactly the
+  reported sample.
+
+### A second click, found by auditing the change and measured before being claimed
+
+In true bypass the output IS the raw-input ring read at `-lat`, and the Bypass crossfade is applied
+AFTER the switch duck's gain — so while bypassed the duck attenuates nothing and a moving `lat`
+jumped the read position at full level. On a 220 Hz / 0.5 sine (largest smooth step 0.01440), worst
+sample-to-sample step **0.07162** at 2x and **0.09988** at 4x and 8x. After the change: exactly the
+bound. Its first draft ran at ONE start phase and **passed against the defective engine** — the jump
+is invisible when it lands on a peak of the sine — so leg D sweeps 16 phases and takes the worst.
+
+### What it cost, stated rather than discovered later
+
+* Selecting 2x/4x/8x now shows latency in the host on a fully linear chain. Three places in the
+  user manual and the Settings tooltip promised the opposite and are corrected.
+* A forced swap (A/B, preset, undo) crossing the Drive threshold with a factor selected is now
+  latency-NEUTRAL, so it keeps its dry fill instead of dipping to silence. Correct, audible, declared.
+* **RELEASE_POLICY precondition 7 reopens for v0.9.7** — the Level-5 audition is per-version and
+  this build changes audible behaviour. The compatibility checklist's latency box was **re-run**.
+
+### Three state tests re-instrumented, one of which would have HUNG
+
+22, 24 and 27 drove the latency through Drive because it was the only automatable latency-bearing
+control; they now drive the Oversampling Setting through a `juce::Value` captured on the message
+thread. State test 27's ER-STATE-14 barrier is JUCE's **change-only** listener notification, so
+after the fix a Drive move produces no callback, its worker spins on `inDelivery` forever and
+`worker.join()` never returns — a CI job would burn its whole timeout. Caught locally by a suite run
+that stopped producing output; diagnosed from a live backtrace, not from the test's source.
+State test 24 keeps its invariant but **loses its discrimination** for the original ER-STATE-07
+defect, because no parameter bears latency any anymore; the test says so rather than implying otherwise.
+
+### Validation
+
+Preflight exit 0 with every stage run (the citation gate first exited 1 on anchors this change
+shifted; re-anchored on both bases, six `DELIBERATE_REAIMS` targets retargeted and two new
+transitions declared for ADR-0003, whose cited lines were themselves rewritten). DSP **304 checks /
+0** (was 282; Test 52 adds 22, of which 9 fail pre-change), state **1506 / 0**, both under GCC 13
+and again under the clean gcc-16 `-flto` build. `check-docs` 118 files clean; realtime lint 47 files
+/ 0 violations; citation self-test 176 cases. Clang-22 and GCC-16 warning gates green on clean
+builds — and the **Clang baseline SHRANK 3 → 1** for `-Wswitch-enum` in `AnamorphEngine.cpp`, since
+folding the two latency switches into `osLatencyFor` with every enumerator named removed two
+accepted sites. No workflow, no CMake structure and no GCC baseline changed.
+
+---
+
 ## Round 27 — 2026-09-03 — a repair that changed nothing on screen was not written to the file
 
 One fix. It completes ER-STATE-21's durability contract for the APVTS parameter family rather than

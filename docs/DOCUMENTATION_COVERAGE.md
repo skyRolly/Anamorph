@@ -6,7 +6,9 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.6 change set** (2026-09-01, matching the CHANGELOG heading) — the
+Last updated: for the **0.9.7 change set** (2026-09-03, matching the CHANGELOG heading) — ADR-0034,
+the maintainer-instructed latency change, whose entry is LAST in the body. Before it, for the
+**0.9.6 change set** — the
 **engineering-review programme, rounds 1 through 27**, newest last in the body: round 1 (the
 programme's first sweep: six engine/state/GUI fixes with Tests 43–46 and two state regressions,
 the engaged Test 2/38 matrices, the KI-027 and RISK-007 filings, the v0.9.6 renumbering sweep, the
@@ -410,7 +412,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:856-862` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:912-918` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -940,7 +942,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:885-894`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2253-2278`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2254-2279`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1411,7 +1413,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1606-1614`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1607-1615`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -1450,7 +1452,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1563` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1564` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -1460,7 +1462,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2077"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2078"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -1901,10 +1903,10 @@ No other approval is claimed by this entry.
 
 **Test 38 never armed a parameter CHANGE.** The per-configuration `setParameters (p); reset();` ran
 *before* the block loop, and `reset()` flushes an in-flight duck straight to its target
-(`src/dsp/AnamorphEngine.cpp:175-182`) — so by the time the counters were armed the switch was over,
+(`src/dsp/AnamorphEngine.cpp:195-202`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:750-825`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:791-881`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2011,7 +2013,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:1335-1379` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:1425-1475` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -7653,3 +7655,78 @@ counted from `main`'s registered test functions. The DSP suite is unchanged at *
 clamp guard / 282 checks**. The `[0.9.6]` Fixed count is **32**. Measured, not inferred:
 `AnamorphStateTests` prints `1506 checks, 0 failure(s)` and `AnamorphTests` prints
 `282 checks, 0 failures`. [Verified]
+
+---
+
+## ADR-0034 — the reported latency stops following Drive (2026-09-03, the 0.9.7 change set)
+
+**What the change is.** A maintainer-instructed **latency change**, not an engineering-review round:
+*"when Drive is at zero, the latency reported to the host is zero; then, when it is turned up
+slightly, it will report a latency value … causing an interruption / glitch in the sound."* The
+reported PDC followed whether the oversampling wrap was ENGAGED, which is a function of Drive and
+Algorithm, so an ordinary knob move changed the number and the host restarted its graph. The number
+is now a function of the Oversampling **selection** alone; where the wrap is skipped for want of
+nonlinear work — the CPU saving the instruction explicitly protects, and which is untouched — a
+2-channel integer ring supplies the wrap's group delay in the wrap's own place in the chain.
+Records: `docs/architecture/design-decisions/ADR-0034-latency-follows-the-oversampling-factor.md`,
+the programme worklog and the dashboard.
+
+**Gate.** `ARCHITECTURE_REVIEW_GATE.md` names *"Latency change — sources, engagement condition, or
+reported value"* and `LATENCY_MODEL.md` carries the binding invariant; the change is also a
+signal-flow change (a new delay element). Both are discharged by the maintainer's instruction plus
+**ADR-0034**, which is `Accepted` and **amends ADR-0003**'s latency clause (its engagement rule and
+filter choice stand). `RELEASE_COMPATIBILITY_CHECKLIST` box 6 was **re-run**, not carried, and
+`RELEASE_POLICY` precondition 7 — the Level-5 audition — **reopens for v0.9.7** on the same
+per-version rule that reopened it for v0.9.6.
+
+**Code (four files).** `src/dsp/AnamorphEngine.{h,cpp}` — `osLatencyFor` behind both accessors, the
+`osCompDelayBuffer` ring plus its five flush sites, and five in-code comments that asserted the
+removed coupling; `src/PluginProcessor.cpp` — comments only (the two APVTS listeners are kept as the
+defensive re-derivation path and say so); `src/PluginEditor.cpp` — the Oversampling tooltip.
+
+**Tests.** DSP **Test 52** (`testOversamplingLatencyIsFactorOnly`, 22 checks, 9 failing pre-change)
+in four legs, three of which reject a different *wrong* answer rather than the original defect; plus
+the opt-in `--os-latency-probe`. **Three state tests were re-instrumented, not weakened** — 22, 24
+and 27 drove latency through Drive, the only automatable latency-bearing control, and now drive the
+Oversampling Setting. State test 27's ER-STATE-14 leg would otherwise have **hung** rather than
+failed: its barrier is JUCE's change-only listener notification, which a Drive move no longer
+produces. The two print-only latency probes now measure a constant and say so instead of being
+repaired. `tests/bench.cpp` gained the selected-but-skipped rows that keep the CPU saving visible.
+
+**A second defect found by auditing the change, measured before it was claimed.** In true bypass the
+output is the raw input read at `-lat` and the Bypass crossfade is applied AFTER the switch duck's
+gain, so a moving `lat` jumped the read position at full level: worst sample-to-sample step 0.07162
+(2×) and 0.09988 (4×, 8×) against a 0.01440 smooth-signal bound, swept over 16 start phases. Test 52
+leg D; a `[0.9.7]` **Fixed** entry beside the **Changed** one.
+
+**Documents touched:** `CHANGELOG.md` (a new `[0.9.7]` section — one Changed, one Fixed),
+ADR-0034 (new) + `ADR_INDEX.md` + ADR-0003 (amended), `docs/architecture/LATENCY_MODEL.md` (the
+model rewritten and its binding invariant extended with the two things a future change must not
+do), `SIGNAL_FLOW.md`, `DSP_GRAPH_REFERENCE.md`, `DSP_ALGORITHMS.md` (a section for the stand-in
+ring), `API_REFERENCE.md`, `PERFORMANCE_BUDGET.md` (the measured rows and the matrix), `docs/
+policies/DSP_POLICY.md` (invariant 5), `docs/KNOWN_ISSUES.md` (KI-027's trigger is now unreachable;
+D-1 is kept and why), `docs/FUTURE_RISKS.md` (RISK-008 narrows without closing),
+`docs/user/USER_MANUAL.md` (three places promised zero latency in a state that now reports some),
+`docs/procedures/TESTING.md`, `RELEASE_COMPATIBILITY_CHECKLIST.md`, `RELEASE_PROCESS.md`,
+`docs/HANDOVER.md`, `docs/COMMERCIAL_STATUS.md`, `docs/architecture/RELEASE_HARDENING_PLAN.md`,
+`docs/policies/CHANGELOG_POLICY.md`, `README.md`, `CMakeLists.txt`, `docs/REPOSITORY_MAP.md`, this
+file, the programme worklog and the dashboard. **Unchanged:** every workflow, the parameter and
+serialization registries, and the GCC warning baseline.
+
+**Drift found and corrected (C6, reported not silently fixed):** `REPOSITORY_MAP.md` said **45** DSP
+tests and **33** state tests where `main` registers 51 and 35 — both carried from earlier rounds that
+updated the count in `TESTING.md` and `README.md` but not here. Corrected with the counting method
+recorded, alongside the row's new mention of the two opt-in probes.
+
+**Baseline shrunk, not widened:** `scripts/clang-warning-baseline.txt`'s `-Wswitch-enum` entry for
+`src/dsp/AnamorphEngine.cpp` goes **3 → 1**. Folding the two latency switches into `osLatencyFor`
+with every enumerator named removed two accepted sites; the gate reported the surplus as a
+`::notice::` on the full build and the baseline follows the code down.
+
+**Counts.** The DSP suite is **51 tests + the A/B clamp guard / 304 checks** (was 50 / 282; Test 52
+adds 22), counted from `main`'s registered test functions. The state suite is unchanged at **35
+tests / 1506 checks** — State tests 22, 24 and 27 were re-instrumented, and the one check removed
+from 22 is balanced by the one added to 24. The `[0.9.7]` section has **1 Changed + 1 Fixed**.
+Measured, not inferred: `AnamorphTests` prints `304 checks, 0 failures` and `AnamorphStateTests`
+prints `1506 checks, 0 failure(s)`, under GCC 13 and again under the clean gcc-16 `-flto` build.
+[Verified]

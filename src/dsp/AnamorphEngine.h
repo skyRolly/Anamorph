@@ -76,6 +76,14 @@ public:
     // widener's side energy collapses to 0.003 of the settled level for 24 blocks
     // -- Test 48, the ER-DSP-06 activation residual). forceDuck short-circuits the
     // discreteDiffers test, so np == p does not save us.
+    //
+    // COUPLED TO prepare(), AND ONLY SAFE BECAUSE OF IT (ADR-0034). Writing `p`
+    // writes `p.oversample`, which is what `getLatencySamples()` now reads -- so
+    // this moves the read offset of every delay ring without clearing any of them
+    // and without re-latching `osEngaged`. Its one caller (`prepareToPlay`) calls
+    // `prepare()` on the very next line, which resizes and clears all four rings
+    // and ends in `reset()`, which re-latches. A future mid-stream call would read
+    // stale history at a new offset; if one is ever wanted, it has to clear too.
     void primeParameters (const EngineParameters& np) noexcept
     {
         p = np;
@@ -105,10 +113,15 @@ public:
     void process (juce::AudioBuffer<float>& buffer) noexcept ANAMORPH_NONBLOCKING;
 
     // PDC: latency added by the chain (oversampling only). Integer samples.
+    // A function of the OVERSAMPLING SELECTION ALONE -- see `osCompDelayBuffer`
+    // and ADR-0034. Latched with `p.oversample`, so it can only move at a silent
+    // duck bottom or a reset, never mid-block and never on a Drive/Algorithm move.
     int getLatencySamples() const noexcept;
 
     // Latency predicted for an arbitrary parameter snapshot (message thread can
     // call this to update host PDC without racing the audio thread's state).
+    // Reads e.oversample and nothing else, so it agrees with getLatencySamples()
+    // for any snapshot carrying the same factor.
     int predictLatency (const EngineParameters& e) const noexcept;
 
     // --- shared with the editor (GUI thread reads) -----------------------
@@ -274,6 +287,22 @@ private:
     int bypassDelayWrite = 0;
     juce::SmoothedValue<float> bypassBlend;
 
+    // Oversampling latency STAND-IN (ADR-0034). The OS wrap is skipped whenever it
+    // has no nonlinear/modulation work to do -- Drive at 0 with a linear algorithm --
+    // and that CPU saving is deliberate and kept. What used to travel with it was the
+    // wrap's LATENCY: the plug-in reported 0 in the skipped state and the factor's
+    // latency in the engaged one, so Drive crossing 0.01 dB (or Algorithm crossing
+    // into/out of a mod algorithm) changed the reported PDC underneath the host and
+    // the host answered with a graph restart the user hears as a dropout. This ring
+    // stands in for the wrap's delay in exactly the skipped state, so the delay
+    // through the chain -- and therefore the number reported to the host -- depends
+    // on the OVERSAMPLING SELECTION ALONE and moves only when that selection does.
+    // It occupies the wrap's own place in the chain (same stage, same relative
+    // alignment for everything downstream), and its read offset is the same
+    // getLatencySamples() every other delay ring in this block reads.
+    juce::AudioBuffer<float> osCompDelayBuffer;
+    int osCompDelayWrite = 0;
+
     // Multiband Enable crossfade: toggling the multiband module is a short click-free
     // OUTPUT crossfade, NOT a duck-to-silence. The crossover bank stays WARM across the
     // toggle (it keeps running while the blend is non-zero, so there is no cold-start
@@ -296,10 +325,13 @@ private:
     bool prevInputSilent = true;
 
     // Whether the oversampling wrap is ENGAGED, latched only at safe points
-    // (reset / the silent duck bottom). Engaging the oversampler inserts its
-    // group delay, so doing it live -- e.g. Drive crossing 0 with OS selected --
-    // jump-cuts the timeline; latching routes every OS-path change through the
-    // duck instead (#3).
+    // (reset / the silent duck bottom). Engaging the oversampler swaps the whole
+    // nonlinear region between the resampled and the base-rate path, so doing it
+    // live -- e.g. Drive crossing 0 with OS selected -- steps the signal; latching
+    // routes every OS-path change through the duck instead (#3). It no longer
+    // decides the LATENCY (ADR-0034): the delay stays with the selected factor,
+    // supplied by the wrap when this is true and by `osCompDelayBuffer` when it is
+    // false, so the number reported to the host does not move with this flag.
     bool osEngaged = false;
 };
 

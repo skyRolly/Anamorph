@@ -82,13 +82,27 @@ ruled out, fixed, deferred — and what should happen next. A rendered <em>view<
 <code>ENGINEERING_REVIEW_PROGRAMME.md</code> beside it; the worklog is the source of truth a later
 round reconciles against.</p>
 <div class="meta">
-  <span>ROUNDS 1–27 · 2026-08-31 → 09-03</span>
-  <span>TREE: main @ e8f4422 → v0.9.6</span>
-  <span>STATUS: malformed state is now repaired durably even when the repair changes nothing; D-2, RISK-008 and KI-015 remain open by decision</span>
-  <span>NEXT: licence (KI-015), then tag v0.9.6</span>
+  <span>ROUNDS 1–27 + ADR-0034 · 2026-08-31 → 09-03</span>
+  <span>TREE: main @ e8f4422 → v0.9.7</span>
+  <span>STATUS: the reported latency no longer follows Drive; the Level-5 audition REOPENS for v0.9.7; D-2, RISK-008 and KI-015 remain open by decision</span>
+  <span>NEXT: Level-5 audition for v0.9.7, licence (KI-015), then tag v0.9.7</span>
 </div>
 
 <h2><span class="no">§1</span>Executive status</h2>
+<p class="lede"><strong>ADR-0034 (maintainer instruction, out of band from the review rounds): the
+latency reported to the host stopped following Drive.</strong> With Oversampling selected, moving
+Drive across 0.01&nbsp;dB &mdash; or changing Algorithm into or out of Chorus / Dimension-D &mdash;
+flipped the reported PDC between 0 and the factor's latency, and a host answers a latency change by
+restarting its graph. An ordinary knob move was a dropout. The number is now a function of the
+Oversampling <em>selection</em> alone.</p>
+<div class="grid">
+  <div class="v"><div class="k">The predicate answered four questions; only one was wrong</div><p><code>osActiveFor</code> decided whether the wrap RUNS, what latched into <code>osEngaged</code>, whether a change needs a duck &mdash; and how much latency was reported. The first three are load-bearing and are untouched. Measured pre-change with <code>--os-latency-probe</code>: a 0.005&nbsp;&rarr;&nbsp;6&nbsp;dB Drive move reported <strong>0&nbsp;&rarr;&nbsp;4</strong> at 2&times; and <strong>0&nbsp;&rarr;&nbsp;6</strong> at 4&times; and 8&times;.</p></div>
+  <div class="v"><div class="k">A stand-in, not an always-on oversampler</div><p>The wrap is still skipped when it has no nonlinear work &mdash; the largest single CPU saving in the engine, and the thing the instruction explicitly protects. A 2-channel integer ring supplies its group delay <strong>in the wrap's own place in the chain</strong>, so the five downstream <code>-lat</code> reads still measure from an unchanged point. Measured at 48&nbsp;kHz/128: 2&times;/4&times;/8&times; at Drive&nbsp;0 cost <strong>152.31 / 159.52 / 155.91</strong> ns/sample against <strong>153.27</strong> for OS&nbsp;Off &mdash; inside each other's spread, and nowhere near the engaged 211.12 / 265.46 / 380.00.</p></div>
+  <div class="v"><div class="k">Test 52 is built to reject the WRONG fixes</div><p>Leg&nbsp;C requires the skipped state's output to be the OS-off output delayed <strong>bit for bit</strong>, which an always-run-the-wrap build cannot satisfy &mdash; measured on that counterfactual at <strong>1.31&ndash;1.57</strong> absolute. Leg&nbsp;B requires the impulse at exactly the reported sample, so a number the chain does not carry fails. <strong>9 of 22 checks fail pre-change, 0 after.</strong></p></div>
+  <div class="v"><div class="k">A second click, found by audit and measured first</div><p>While TRUE-BYPASSED the output is the raw input read at <code>-lat</code> and the Bypass crossfade is applied AFTER the duck's gain &mdash; so a moving <code>lat</code> jumped the read position at full level. On a 220&nbsp;Hz sine whose largest smooth step is 0.01440: worst step <strong>0.07162</strong> (2&times;) and <strong>0.09988</strong> (4&times;, 8&times;). Leg&nbsp;D's first draft used ONE start phase and passed against the defective engine; it now sweeps 16.</p></div>
+  <div class="v"><div class="k">What it costs, declared not discovered</div><p>Selecting 2&times;/4&times;/8&times; now shows latency on a linear chain &mdash; the manual and tooltip promised otherwise and are corrected. A forced swap crossing the Drive threshold is now latency-neutral, so it keeps its dry fill instead of dipping to silence. <strong>RELEASE_POLICY precondition 7 reopens for v0.9.7</strong>; the compatibility checklist's latency box was re-run, not carried.</p></div>
+  <div class="v"><div class="k">Three state tests re-instrumented; one would have HUNG</div><p>22, 24 and 27 drove latency through Drive, the only automatable latency-bearing control. State test 27's barrier is JUCE's <em>change-only</em> notification, so after the fix its worker spins forever and <code>join()</code> never returns &mdash; a CI job would burn its whole timeout. Diagnosed from a live backtrace after a suite run stopped producing output. State test 24 keeps its invariant and honestly records that it has lost its discrimination.</p></div>
+</div>
 <p class="lede"><strong>Round 27: a repair that changed nothing on screen was never written to the
 file.</strong> The live value was always correct &mdash; which is why "restore &rarr; parameter == default"
 passes on the broken build and cannot be the assertion a test rests on. The damage stayed in the

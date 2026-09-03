@@ -6,12 +6,45 @@ their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG
 The annotated-tag convention and the tag-triggered release pipeline exist
 (`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
 written as a release entry and then superseded before it was tagged, so the first annotated
-`vX.Y.Z` tag will be **v0.9.6** (0.9.0 through 0.9.5 were each written up and superseded
+`vX.Y.Z` tag will be **v0.9.7** (0.9.0 through 0.9.6 were each written up and superseded
 before tagging),
 and from that tag onward the tag is also a citable Evidence
 Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
+
+## [0.9.7] — 2026-09-03
+### Changed
+- **Turning up Drive, or changing algorithm, no longer interrupts the sound when Oversampling is
+  on.** The latency the plug-in reports to your DAW used to depend on whether the oversampler was
+  actually running, and it only runs when it has something to do — so with Oversampling set to 2×,
+  4× or 8×, nudging Drive off zero (or switching to Chorus / Dimension-D) switched it on and changed
+  the reported latency mid-move. DAWs answer a latency change by restarting their audio graph, which
+  you hear as a dropout in the middle of an ordinary knob move. The reported latency now depends on
+  the **Oversampling setting and nothing else**, so it changes when you change that setting and at
+  no other time. Everything else about oversampling is unchanged, including the part that matters
+  for CPU: the oversampler is still switched off whenever there is no nonlinear work for it, and the
+  saving was measured to confirm it (2×/4×/8× with Drive at 0 cost the same as Oversampling Off,
+  within run-to-run noise). While it is off, a plain delay of the same few samples holds the timing
+  steady in its place, so the plug-in still delivers exactly the delay it declares.
+  **What changes for you:** selecting 2×/4×/8× now shows a few samples of latency in your DAW even on
+  a fully linear chain, where it used to show none — that is the price of the sound no longer being
+  interrupted, and the delay is compensated as it always was. One other behaviour follows from it:
+  an A/B, preset or undo switch that crosses Drive's zero point with Oversampling on now stays on
+  the dry signal through the switch instead of dipping briefly to silence. Sessions are unaffected —
+  nothing in the saved file changed. Decision: ADR-0034. Regression coverage: DSP test 52.
+  Evidence: PR #134. [Verified]
+
+### Fixed
+- **A click when Drive crossed zero while the plug-in was bypassed, with Oversampling on.** The same
+  moving latency had a second effect nobody had reported: with Bypass engaged the output is the
+  untouched input, held back by exactly the amount the plug-in declares — so when that amount changed
+  the held-back signal jumped a few samples at full level, and the short dip that hides such changes
+  does not apply while bypassed. Measured on a 220 Hz tone whose largest natural step between two
+  samples is 0.0144: the jump stepped 0.0716 at 2× and 0.0999 at 4× and 8×, five to seven times a
+  smooth signal. With the reported latency no longer moving, the jump cannot happen; the measured
+  worst step is now exactly the smooth signal's own. Regression coverage: DSP test 52.
+  Evidence: PR #134. [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

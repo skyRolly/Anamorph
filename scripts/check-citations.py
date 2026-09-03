@@ -337,10 +337,10 @@ DELIBERATE_REAIMS = {
     # before (round 4's D-1 timer base, :36-47 -> :43-54).
     ("docs/architecture/design-decisions/ADR-0024-preset-identity.md",
      "src/PluginProcessor.cpp:36-47",
-     "src/PluginProcessor.cpp:56-67"): "onSaved",
+     "src/PluginProcessor.cpp:63-74"): "onSaved",
     ("docs/architecture/design-decisions/ADR-0024-preset-identity.md",
      "src/PluginProcessor.cpp:43-54",
-     "src/PluginProcessor.cpp:56-67"): "onSaved",
+     "src/PluginProcessor.cpp:63-74"): "onSaved",
     # no entry added or retired.
     # EMPTY IS THE EXPECTED RESTING STATE, and this table reached it on
     # 2026-08-30 when the key became a TRANSITION. It held 40 entries the moment
@@ -397,25 +397,40 @@ DELIBERATE_REAIMS = {
     # stores :54-56, and everything below :84 sits two lines lower.
     ("docs/architecture/LATENCY_MODEL.md",
      "src/dsp/AnamorphEngine.cpp:42-54",
-     "src/dsp/AnamorphEngine.cpp:42-56"): "latency2",
+     "src/dsp/AnamorphEngine.cpp:52-66"): "latency2",
     ("docs/architecture/LATENCY_MODEL.md",
      "src/dsp/AnamorphEngine.cpp:52-54",
-     "src/dsp/AnamorphEngine.cpp:54-56"): "latency2",
+     "src/dsp/AnamorphEngine.cpp:64-66"): "latency2",
+    # 2026-09-04 (ADR-0034, the 0.9.7 latency change): the `osActiveFor` header
+    # comment was rewritten in place -- it had to be, since it asserted the very
+    # coupling ADR-0034 removes -- so ADR-0003's engagement anchor is one whose
+    # CITED LINES were themselves edited and --fix reports it UNMAPPABLE. Re-derived
+    # by reading: `isModAlgorithm` now opens at :26 and `osActiveFor` closes at :35,
+    # with the (longer) comment's operative tail from :24; the oversampler block and
+    # its three stores moved +10 to :52-66 and :64-66; the beginForcedDuck span moved
+    # +27 to :365-401. Keyed on BOTH origin/main's spelling and HEAD's, because this
+    # branch has already moved these anchors once. Retires on merge.
+    ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
+     "src/dsp/AnamorphEngine.cpp:14-23",
+     "src/dsp/AnamorphEngine.cpp:24-35"): "isModAlgorithm",
+    ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
+     "src/dsp/AnamorphEngine.cpp:14-23, 42-56, 338-374",
+     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 365-401"): "isModAlgorithm",
     ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
      "src/dsp/AnamorphEngine.cpp:14-23, 42-54, 313-349",
-     "src/dsp/AnamorphEngine.cpp:14-23, 42-56, 338-374"): "isModAlgorithm",
+     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 365-401"): "isModAlgorithm",
     ("docs/architecture/design-decisions/ADR-0003-oversampling-strategy.md",
      "src/dsp/AnamorphEngine.cpp:14-23,42-54,293-329",
-     "src/dsp/AnamorphEngine.cpp:14-23, 42-56, 338-374"): "isModAlgorithm",
+     "src/dsp/AnamorphEngine.cpp:24-35, 52-66, 365-401"): "isModAlgorithm",
     ("docs/architecture/LATENCY_MODEL.md",
      "src/PluginProcessor.cpp:105-108",
-     "src/PluginProcessor.cpp:162-186"): "updateLatency",
+     "src/PluginProcessor.cpp:169-193"): "updateLatency",
     ("docs/architecture/LATENCY_MODEL.md",
      "src/PluginProcessor.cpp:131-137",
-     "src/PluginProcessor.cpp:162-186"): "updateLatency",
+     "src/PluginProcessor.cpp:169-193"): "updateLatency",
     ("docs/architecture/LATENCY_MODEL.md",
      "src/PluginProcessor.cpp:131-154",
-     "src/PluginProcessor.cpp:162-186"): "updateLatency",
+     "src/PluginProcessor.cpp:169-193"): "updateLatency",
     # 2026-09-01 (round 12): the ER-STATE-17 guard EDITED the cited lines inside
     # migrateFromLegacyApvts, so --fix reports these UNMAPPABLE rather than moving
     # them. Each end was re-derived by reading the span: origin/main's :60
@@ -483,22 +498,22 @@ DELIBERATE_REAIMS = {
      "CMakeLists.txt:14, 467-492"): "ANAMORPH_BUILD_NUMBER",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:688-692",
-     "src/PluginProcessor.cpp:1121-1122"): "legacyKey",
+     "src/PluginProcessor.cpp:1131-1132"): "legacyKey",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:1009-1010",
-     "src/PluginProcessor.cpp:1121-1122"): "legacyKey",
+     "src/PluginProcessor.cpp:1131-1132"): "legacyKey",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:986-987",
-     "src/PluginProcessor.cpp:1121-1122"): "legacyKey",
+     "src/PluginProcessor.cpp:1131-1132"): "legacyKey",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:327-396",
-     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+     "src/PluginProcessor.cpp:1001-1256"): "setStateInformation",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:901-1134",
-     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+     "src/PluginProcessor.cpp:1001-1256"): "setStateInformation",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:878-1111",
-     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+     "src/PluginProcessor.cpp:1001-1256"): "setStateInformation",
     # 2026-08-31 (round 2): prepareToPlay grew by the priming call, shifting every
     # line below it. RISK-007's read-side citation names setStateInformation, so it was
     # re-derived from that symbol rather than mapped mechanically -- the mechanical
@@ -510,31 +525,31 @@ DELIBERATE_REAIMS = {
     # same re-derivation; both bases are declared until this branch merges.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:328, 390-393",
-     "src/PluginProcessor.cpp:535,712-715"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:545, 722-725"): "setValueNotifyingHost",
     ("docs/architecture/SERIALIZATION_REGISTRY.md",
      "src/PluginProcessor.cpp:743-744",
-     "src/PluginProcessor.cpp:1121-1122"): "legacyKey",
+     "src/PluginProcessor.cpp:1131-1132"): "legacyKey",
     ("docs/policies/COMPATIBILITY_POLICY.md",
      "src/PluginProcessor.cpp:645-796",
-     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+     "src/PluginProcessor.cpp:1001-1256"): "setStateInformation",
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:318, 380-383",
-     "src/PluginProcessor.cpp:535,712-715"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:545, 722-725"): "setValueNotifyingHost",
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:489,624-627",
-     "src/PluginProcessor.cpp:535,712-715"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:545, 722-725"): "setValueNotifyingHost",
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:311,345-348",
-     "src/PluginProcessor.cpp:535,712-715"): "setValueNotifyingHost",
+     "src/PluginProcessor.cpp:545, 722-725"): "setValueNotifyingHost",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:901-1134",
-     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+     "src/PluginProcessor.cpp:1001-1256"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:878-1111",
-     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+     "src/PluginProcessor.cpp:1001-1256"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:610-749",
-     "src/PluginProcessor.cpp:991-1246"): "setStateInformation",
+     "src/PluginProcessor.cpp:1001-1256"): "setStateInformation",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

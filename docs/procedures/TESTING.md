@@ -15,7 +15,7 @@ exits non-zero on any failed `check` or missing binary. Evidence [Verified]: scr
 
 ### What the tests cover
 
-`tests/dsp_tests.cpp` has **50 DSP tests** using a `check(cond, "what")` harness, covering: MS
+`tests/dsp_tests.cpp` has **51 DSP tests** using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
@@ -177,7 +177,47 @@ removed, so the 50 % bound sits between two measured populations); and both defe
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
 `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
 
-The newest DSP test is the **extreme-finite balance guard**
+The newest DSP test is the **oversampling latency-stability guard**
+(`testOversamplingLatencyIsFactorOnly`, Test 52, ADR-0034, v0.9.7). It pins that the latency reported
+to the host is a function of the **Oversampling factor alone** — the fix for a reported host-graph
+restart on an ordinary Drive or Algorithm move — and it is built so that the two wrong fixes fail it.
+
+**Four legs, each rejecting a different wrong answer, plus a fifth that catches a click the change
+also removes.** *Leg A* walks the whole
+{factor}×{algorithm}×{drive} grid (80 combinations) and requires every cell of a factor to predict
+that factor's number; its non-vacuity check requires the factors not all to report the same number
+(they do not: 4, 6, 6 at 2×, 4×, 8×). *Leg A2* is the reported gesture — a live Drive sweep from 6 dB
+to 0 across the engagement threshold, 400 blocks with the duck running inside it — and requires the
+reported number never to move, which is a stronger statement than leg A's endpoints. *Leg B* is the
+state the suite had never covered at all: a factor **selected with the wrap skipped**, where the
+delay comes from the stand-in ring; it measures the impulse through the bypass path and requires the
+peak at exactly the reported sample, so a build that reported a latency the chain did not have would
+fail. *Leg C* keeps the CPU saving honest: twin instances on identical noise, one with oversampling
+Off and one with the factor selected at Drive 0, and the second must be the first **delayed by
+exactly `lat`, bit for bit**. A build that made the number constant by simply running the
+oversampler all the time passes A, A2 and B and fails C — measured on exactly that counterfactual at
+**1.31–1.57 absolute** on a ±1 stream, because a half-band IIR round trip is not an integer shift.
+
+*Leg D* is the fifth, and it was found by auditing the change rather than by the report: in true
+bypass the output is the raw input read from a ring at `-lat`, and the Bypass crossfade is applied
+AFTER the switch duck's gain — so while fully bypassed the duck attenuates nothing and a `lat` that
+moved on the Drive threshold jumped the read position by 4–6 samples at full level. It sweeps the
+threshold crossing while bypassed and requires the worst sample-to-sample step not to exceed a smooth
+signal's own bound. **Its start phase is swept over 16 offsets, and that is load-bearing**: the jump
+steps the output by |x(t) − x(t+lat)|, which is near zero at a peak of the sine and maximal at a zero
+crossing, so a single fixed phase measures whatever the block arithmetic lines up. The first draft
+ran at one phase and **passed against the defective engine**; the same code at a different block size
+measured 0.068 / 0.094. Swept, the pre-change engine measures **0.07162** (2×) and **0.09988** (4×,
+8×) against a 0.01440 bound, and the post-change engine measures exactly the bound.
+
+**22 checks; 9 fail against the pre-change engine and 0 after.** Note which: six are in legs A and
+A2, three in leg D. Legs B and C pass on the pre-change build too — trivially, because there the
+skipped state reports 0 and delays by 0 — so they are there to catch a bad *fix*, not the original
+defect, and the test says so rather than implying twenty-two discriminating checks. The companion
+probe `AnamorphTests --os-latency-probe` prints the full matrix; on the pre-change build its
+`predict` column read 0 → 4 (2×) and 0 → 6 (4×, 8×) for a Drive move of 0.005 dB → 6 dB.
+
+Before it, the **extreme-finite balance guard**
 (`testCorrelationBalanceExtremeFiniteInput`, Test 51, ER-DSP-11, round 23). It is the sibling of
 Test 50 and is deliberately kept independent of it: that one owns the phase meter's `ll * rr`
 **product**, this one the balance's `ll + rr` **sum**, and fixing the product did nothing for the

@@ -9,9 +9,19 @@ namespace anamorph
 using juce::dsp::Oversampling;
 
 // ---------------------------------------------------------------------------
-//  Is oversampling actually doing work? Only when wrapping a nonlinear /
+//  Is oversampling actually doing WORK? Only when wrapping a nonlinear /
 //  modulation stage (Drive, or Chorus / Dimension-D). Linear-only chains skip
-//  oversampling entirely so they add ZERO latency (spec section 2.2 / 9).
+//  the whole resampling round trip -- the CPU saving this predicate exists for,
+//  and the largest single one in the engine (spec section 2.2 / 9).
+//
+//  IT NO LONGER DECIDES THE LATENCY (ADR-0034). It used to answer both "does the
+//  wrap run?" and "does the chain have delay?" with one bit, so an ordinary Drive
+//  move changed the number reported to the host and the host restarted the graph
+//  for it. The delay now belongs to the SELECTED FACTOR: when this predicate is
+//  false but a factor is selected, `osCompDelayBuffer` stands in for the wrap's
+//  group delay, so the chain carries the same latency either way. This predicate
+//  keeps its other three jobs unchanged -- gating `currentOversampler()`, latching
+//  into `osEngaged`, and forcing a duck through `discreteDiffers`.
 // ---------------------------------------------------------------------------
 static bool isModAlgorithm (Algorithm a) noexcept
 {
@@ -98,6 +108,14 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     bypassDelayBuffer.clear();
     bypassDryScratch.setSize (2, maxBlock);
     bypassDelayWrite = 0;
+
+    // Oversampling latency stand-in, sized like the rest: the read offset is the
+    // same `maxLat` at most, and a block may write up to `maxBlock` before the
+    // oldest sample it needs is read back. Allocated HERE, on the host's prepare
+    // thread -- the audio path only ever reads and writes it (REALTIME_AUDIO_POLICY).
+    osCompDelayBuffer.setSize (2, maxLat + maxBlock + 1);
+    osCompDelayBuffer.clear();
+    osCompDelayWrite = 0;
     bypassBlend.reset (sr, 0.010); // ~10 ms sample-safe crossfade
     bypassBlend.setCurrentAndTargetValue (p.bypass ? 1.0f : 0.0f);
 
@@ -168,6 +186,8 @@ void AnamorphEngine::reset()
     dryDelayWrite = 0;
     bypassDelayBuffer.clear();
     bypassDelayWrite = 0;
+    osCompDelayBuffer.clear();
+    osCompDelayWrite = 0;
     prevInputSilent = true;
 
     // Flush any in-flight switch duck straight to its target so a host reset
@@ -278,7 +298,11 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // not a ducked switch -- the chain + analysis run regardless, so toggling it
         // never stops Level Match and never needs a duck (Issues 2/3).
         // Engaging / disengaging the OS wrap (Drive crossing 0 with OS selected)
-        // inserts/removes its group delay -- a discrete, duck-worthy change (#3).
+        // swaps the nonlinear region between the resampled and the base-rate path
+        // -- a discrete, duck-worthy change (#3). Since ADR-0034 it is no longer a
+        // LATENCY change: the stand-in ring carries the wrap's delay while the wrap
+        // is skipped, so the duck now masks only the path swap itself. The term
+        // stays for exactly that reason; dropping it would step the signal.
         || osActiveFor (a)    != osActiveFor (b);
 }
 
@@ -325,7 +349,10 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
 
     // Begin (or re-begin) a forced duck: mark it forced and latch the dry-fill
     // decision against the state being heard RIGHT NOW (getLatencySamples() tracks
-    // the latched osEngaged). dryDuckLat is fixed for this duck -- the state heard
+    // the latched p.oversample; since ADR-0034 that -- not the wrap's engagement --
+    // is what the number follows, so a swap that merely crosses the Drive threshold
+    // with a factor selected is latency-NEUTRAL and now KEEPS its dry fill where it
+    // used to dip to silence). dryDuckLat is fixed for this duck -- the state heard
     // through its fade-out equals the one heard through its fade-in, so a single
     // read offset is valid and can never jump mid-fade. Dry-fill is engaged only
     // when the swap keeps the reported latency (else the offset would step by the
@@ -458,8 +485,10 @@ void AnamorphEngine::snapSmoothers() noexcept
     // matchGainSmooth is left to the injection / loudness re-measure (its own glide).
 }
 
-// The OS wrap follows the LATCHED engagement, not the live driveDb: both the
-// path and its latency may only change at the silent duck bottom (#3).
+// The OS wrap follows the LATCHED engagement, not the live driveDb: the PATH may
+// only change at the silent duck bottom (#3). Its latency no longer travels with
+// it -- that is a function of `p.oversample` alone (ADR-0034), and `p.oversample`
+// is discrete, so it too moves only at that bottom.
 juce::dsp::Oversampling<float>* AnamorphEngine::currentOversampler() noexcept
 {
     if (! osEngaged) return nullptr;
@@ -473,29 +502,41 @@ juce::dsp::Oversampling<float>* AnamorphEngine::currentOversampler() noexcept
     }
 }
 
-int AnamorphEngine::getLatencySamples() const noexcept
+// THE LATENCY OF A FACTOR, NOT OF A PARAMETER STATE (ADR-0034). Both accessors
+// read the oversampling SELECTION and nothing else -- deliberately NOT
+// `osEngaged` / `osActiveFor`, which say whether the wrap is RUNNING. Those two
+// questions used to share one answer, and that is precisely the defect: with a
+// factor selected, Drive crossing 0.01 dB or Algorithm crossing into a mod
+// algorithm moved the reported PDC between 0 and the factor's latency, and hosts
+// answer a latency change by restarting the graph -- heard as a dropout on an
+// ordinary knob move. The wrap is still skipped in that state (the CPU saving is
+// untouched); `osCompDelayBuffer` supplies its delay instead, so the chain really
+// does carry this number whenever the factor is selected. Latched, because
+// `oversample` is a discrete control: it changes only at a silent duck bottom or
+// in reset(), never mid-block.
+static int osLatencyFor (OversampleFactor f,
+                         const std::atomic<int>& l2,
+                         const std::atomic<int>& l4,
+                         const std::atomic<int>& l8) noexcept
 {
-    if (! osEngaged) return 0;
-    switch (p.oversample)
+    switch (f)
     {
-        case OversampleFactor::x2: return latency2.load (std::memory_order_relaxed);
-        case OversampleFactor::x4: return latency4.load (std::memory_order_relaxed);
-        case OversampleFactor::x8: return latency8.load (std::memory_order_relaxed);
+        case OversampleFactor::x2: return l2.load (std::memory_order_relaxed);
+        case OversampleFactor::x4: return l4.load (std::memory_order_relaxed);
+        case OversampleFactor::x8: return l8.load (std::memory_order_relaxed);
+        case OversampleFactor::Off:
         default:                   return 0;
     }
 }
 
+int AnamorphEngine::getLatencySamples() const noexcept
+{
+    return osLatencyFor (p.oversample, latency2, latency4, latency8);
+}
+
 int AnamorphEngine::predictLatency (const EngineParameters& e) const noexcept
 {
-    if (e.oversample == OversampleFactor::Off) return 0;
-    if (! (e.driveDb > 0.01f || isModAlgorithm (e.algorithm))) return 0;
-    switch (e.oversample)
-    {
-        case OversampleFactor::x2: return latency2.load (std::memory_order_relaxed);
-        case OversampleFactor::x4: return latency4.load (std::memory_order_relaxed);
-        case OversampleFactor::x8: return latency8.load (std::memory_order_relaxed);
-        default:                   return 0;
-    }
+    return osLatencyFor (e.oversample, latency2, latency4, latency8);
 }
 
 void AnamorphEngine::updateDerived()
@@ -773,6 +814,13 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
             if (os4) os4->reset();
             if (os8) os8->reset();
             chorus.reset();
+            // The stand-in ring is the other half of this swap -- the delay moves
+            // between the wrap and the ring here -- so it holds audio from the last
+            // time IT ran for exactly the same reason, and would replay it as the
+            // duck lifts. Clearing at the silent bottom is inaudible, and the ring
+            // refills within `lat` samples (4-6), far inside the ~28 ms fade-in.
+            osCompDelayBuffer.clear();
+            osCompDelayWrite = 0;
         }
         // Re-arm the loudness match ONLY when the processing actually changed (A/B
         // swap, algorithm, ...). Toggling Level Match / Bypass must NOT re-measure,
@@ -803,6 +851,14 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
             if (os2) os2->reset();
             if (os4) os4->reset();
             if (os8) os8->reset();
+            // The stand-in ring belongs to this list for the same reason the three
+            // oversamplers do -- it is stateful and holds pre-swap audio. Unlike the
+            // osPathChanged clear above this one runs on EVERY forced duck, including
+            // ones where the ring keeps running; that is deliberate and matches the
+            // oversamplers beside it, and the resulting `lat` samples of zeros (4-6)
+            // are emitted at switchPhase 0 with a ~28 ms fade-in ahead of them.
+            osCompDelayBuffer.clear();
+            osCompDelayWrite = 0;
             pendingAlgoReset = false; // already handled by the wholesale reset above
             const float inj = matchInject.exchange (kNoInject, std::memory_order_relaxed);
             if (inj > kNoInject + 1.0f)
@@ -878,7 +934,9 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         // latched above for the whole block.
         // Read offset: a dry-filled duck reads at the offset latched when the duck
         // began (dryDuckLat). Dry-fill is engaged ONLY when the swap keeps the
-        // reported latency (setParameters gates dryDuck on predictLatency(target)
+        // reported latency -- since ADR-0034 that test reduces to "the swap keeps
+        // the oversampling FACTOR", which is the honest statement of it
+        // (setParameters gates dryDuck on predictLatency(target)
         // == getLatencySamples(), and a same-duck retarget that turns the swap
         // latency-crossing ANDs dryDuck back to false -- it is never re-enabled
         // mid-fade). So whenever duckDry is true here, the heard latency has not
@@ -959,6 +1017,38 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
     else
     {
         processNonlinearRegion (L, R, n, sr);
+
+        // THE WRAP IS SKIPPED HERE, ITS DELAY IS NOT (ADR-0034). `lat` is non-zero
+        // in this branch exactly when a factor is selected but the wrap has no
+        // nonlinear/modulation work to do, which is the CPU saving `osActiveFor`
+        // exists for and which this does not disturb -- a 2-channel integer ring of
+        // 4-6 samples in place of a polyphase IIR round trip. Standing in for the
+        // delay AT THE WRAP'S OWN PLACE in the chain is what keeps every downstream
+        // stage's alignment identical between the two paths, and what lets the
+        // reported latency be a function of the selection alone. AFTER the region,
+        // not before: the output of this branch is then exactly what it was, `lat`
+        // samples later -- the drive-blend fade-out that runs here while Drive
+        // glides to 0 is delayed with the audio it shaped, not applied to already
+        // delayed audio.
+        if (lat > 0)
+        {
+            float* cdL = osCompDelayBuffer.getWritePointer (0);
+            float* cdR = osCompDelayBuffer.getWritePointer (1);
+            const int cdSize = osCompDelayBuffer.getNumSamples();
+            for (int i = 0; i < n; ++i)
+            {
+                cdL[osCompDelayWrite] = L[i];
+                cdR[osCompDelayWrite] = R[i];
+                // lat >= 1 here, so the read index is never the one just written:
+                // correct in place, no scratch copy. Wrap by branch, not % (S6b,
+                // see the bypass ring): the index advances by exactly 1 from
+                // within [0, size), so this is integer-identical and avoids a
+                // hardware division per sample.
+                int rp = osCompDelayWrite - lat; if (rp < 0) rp += cdSize;
+                L[i] = cdL[rp]; R[i] = cdR[rp];
+                if (++osCompDelayWrite >= cdSize) osCompDelayWrite = 0;
+            }
+        }
     }
 
     // -------- Linear algorithm at base rate ---------------------------------
@@ -1373,6 +1463,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
         loudness.reset();
         dryDelayBuffer.clear(); dryAlignDelayBuffer.clear(); bypassDelayBuffer.clear();
+        // The oversampling latency stand-in is a delay line on the MAIN path and was
+        // written further up this very block, so a non-finite sample is already
+        // inside it and would be handed back `lat` samples later -- exactly the
+        // re-entry the three rings above are cleared to prevent. Contents only, like
+        // them: the write index may keep advancing, since every read now returns 0.
+        osCompDelayBuffer.clear();
         // Also flush this block's delay-aligned dry scratch, so the Bypass crossfade
         // below can't re-introduce a non-finite sample from pathological host input.
         bypassDryScratch.clear();

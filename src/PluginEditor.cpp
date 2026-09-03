@@ -592,7 +592,8 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     settingsBackdrop.addAndMakeVisible (settingsTitle);
 
     setupComboInternal (oversampleBox, { "Off (1x)", "2x", "4x", "8x" },
-                        "Oversampling for the nonlinear stages - Off (1x) = no latency",
+                        "Oversampling for the nonlinear stages - Off (1x) = no latency; "
+                        "2x/4x/8x report a fixed latency for as long as they are selected",
                         processor.getInternal().oversampleValue()); // host-hidden engine config
     oversampleLabel.setText ("Oversampling", juce::dontSendNotification);
     oversampleLabel.setColour (juce::Label::textColourId, colours::textDim);

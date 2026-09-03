@@ -143,7 +143,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-022 | **macOS**: components are non-relocatable since 0.9.3 (INC-012), so a bundle the user deliberately moved — to `~/Applications`, or a plug-in kept under `~/Library/Audio/Plug-Ins/…` — is left where it is and a fresh copy is installed at the standard location, leaving two copies with the same bundle identifier | Low | Confirmed, **deliberate trade** for INC-012: following a moved copy is exactly the behaviour that let an install silently write nowhere useful. Documented in the installer's `INSTALL.txt`; removal is manual |
 | KI-023 | **Linux**: the shipped binaries record the CI image's glibc/libstdc++ floor (measured GLIBC_2.38 / GLIBCXX_3.4.31), so they do not load at all on older distributions — Ubuntu 22.04 LTS included | Medium | Confirmed, **measured**; the floor was never chosen and is now asserted on every push so it cannot rise unnoticed. Lowering it is a release-topology decision, not taken |
 | KI-028 | ~~A value-box drag whose mouse RELEASE is never delivered leaves the host change gesture OPEN~~ | — | **RESOLVED 2026-09-01 (round 4).** Linux/Windows were fixed in round 3 by the `anamorph::gui::DragGestureOwner` sweep; the macOS residual was never the sweep but its TRIGGER, which asked JUCE for the button state and got a cached copy (KI-013). `anamorph::gui::anyPhysicalMouseButtonDown()` now calls `+[NSEvent pressedMouseButtons]` on macOS and forwards to JUCE elsewhere. State tests 21 and 23; the macOS-discriminating assertion is `#if JUCE_MAC` and is verified by the macOS CI job, which runs this suite |
-| KI-027 | ~~Host **automation** of Drive or Algorithm delivers the APVTS parameter callback on the **audio thread**, and when the reported latency actually changes (oversampling engaged and the drive engage-threshold crossed, or the algorithm class switched) the `setLatencySamples` notification chain takes multiple locks and, in the JUCE Linux wrapper, appends to a heap array and `write()`s the message-queue fd — inside `processBlock`. A concurrent GUI edit of the same parameter adds a priority-inversion window (the message thread holds the parameter's listener lock through the host's synchronous `restartComponent`)~~ | — | **RESOLVED 2026-09-01 (round 4, decision D-1 — APPROVED by the maintainer and implemented).** The chain was confirmed as filed (ER-RT-01, two independent verifications) and the fix is the one the gate was asked to approve: `requestLatencyUpdate()` keeps delivery synchronous on the message thread and, from any other thread, does one atomic store that a **processor-owned** 20 Hz timer serves on the message thread — no editor polling, no `AsyncUpdater`. Round 11 closed a double-clear window in that path (ER-STATE-14) and round 12 added a deterministic barrier test for requests landing mid-delivery. State tests 22 and 27; `docs/architecture/LATENCY_MODEL.md`. Round 15 routed `prepareToPlay` through the same request (ER-STATE-19; State test 30). This row had gone stale — it still read "fix gated … awaiting maintainer sign-off" for three rounds after the approval landed; corrected in round 12 |
+| KI-027 | ~~Host **automation** of Drive or Algorithm delivers the APVTS parameter callback on the **audio thread**, and when the reported latency actually changes (oversampling engaged and the drive engage-threshold crossed, or the algorithm class switched — a condition ADR-0034 has since made unreachable) the `setLatencySamples` notification chain takes multiple locks and, in the JUCE Linux wrapper, appends to a heap array and `write()`s the message-queue fd — inside `processBlock`. A concurrent GUI edit of the same parameter adds a priority-inversion window (the message thread holds the parameter's listener lock through the host's synchronous `restartComponent`)~~ | — | **RESOLVED 2026-09-01 (round 4, decision D-1 — APPROVED by the maintainer and implemented).** The chain was confirmed as filed (ER-RT-01, two independent verifications) and the fix is the one the gate was asked to approve: `requestLatencyUpdate()` keeps delivery synchronous on the message thread and, from any other thread, does one atomic store that a **processor-owned** 20 Hz timer serves on the message thread — no editor polling, no `AsyncUpdater`. Round 11 closed a double-clear window in that path (ER-STATE-14) and round 12 added a deterministic barrier test for requests landing mid-delivery. State tests 22 and 27; `docs/architecture/LATENCY_MODEL.md`. Round 15 routed `prepareToPlay` through the same request (ER-STATE-19; State test 30). This row had gone stale — it still read "fix gated … awaiting maintainer sign-off" for three rounds after the approval landed; corrected in round 12 |
 | KI-026 | **Pre-2013 Intel / pre-2015 AMD CPUs**: every shipped x86-64 binary is compiled for AVX2 — Linux and the macOS `x86_64` slice at `-march=haswell` (ADR-0031, 0.9.5), Windows at `/arch:AVX2` (ADR-0032) — so on an older CPU the plug-in raises an illegal-instruction fault **inside the host** (`SIGILL`; `STATUS_ILLEGAL_INSTRUCTION` on Windows). The DAW reports a crash, not an incompatible plug-in | Medium | Confirmed, **deliberate** (ADR-0031/0032; output bit-identical **for the twin dump's 32-scenario engaged steady-state matrix**, verified per push on Windows by the blocking A/B gate — the instrument's coverage boundary is recorded in `docs/procedures/TESTING.md` §Gaps). Only Apple Silicon is unaffected. No in-product diagnosis is possible; the requirement is documented in the user guides |
 
 ---
@@ -155,7 +155,7 @@ is deferred to the silent duck bottom, where `mbStructuralChange` (which still i
 the fade-in instead of staying warm, partially defeating the 0.8.6 warm-bank design for that
 specific case. The reset is **masked by the duck (inaudible)**, so there is no user-visible defect;
 a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:755 (`mbStructuralChange` includes
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:796 (`mbStructuralChange` includes
   `pendingP.mbEnable != p.mbEnable`), :743 (reset on it). Raised in Devin review of PR #50
   (unresolved thread). See FUTURE_RISKS / ADR-0004 (warm-bank intent).
 - **Possible resolution:** remove `mbEnable` from `mbStructuralChange` so a concurrent toggle fades
@@ -324,13 +324,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2147-2155; declared src/PluginEditor.h:258). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2148-2156; declared src/PluginEditor.h:258). This shipped in
   the v0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are src/PluginEditor.cpp:2116 (the on-open call) / src/PluginEditor.cpp:2147-2155 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
+  the only focus calls are src/PluginEditor.cpp:2117 (the on-open call) / src/PluginEditor.cpp:2148-2156 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -607,7 +607,7 @@ keys fine":
   (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
-  src/PluginEditor.cpp:378-388 (the field), src/PluginEditor.cpp:2105-2155 (show + focus);
+  src/PluginEditor.cpp:378-388 (the field), src/PluginEditor.cpp:2106-2156 (show + focus);
   `juce_NSViewComponentPeer_mac.mm:1655-1668, 2396-2435`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,
@@ -849,12 +849,22 @@ a single output bit.
 > (`LATENCY_MODEL.md` §delivery thread) and this banner (`THREADING_POLICY.md` rule, round 12).
 > Round 15 (2026-09-02, ER-STATE-19) routed `prepareToPlay` through the same request, closing the one
 > caller that still delivered from the host's thread (State test 30; `--reprepare-race-probe`).
+>
+> **The trigger described below no longer exists (0.9.7, ADR-0034).** The reported latency is now a
+> function of the Oversampling SELECTION alone, so the "when it fires" condition — a Drive or
+> Algorithm automation lane crossing the engagement threshold — cannot change the value. The audio
+> thread still reaches `parameterChanged` and still requests an update, but `setLatencySamples` finds
+> the number unchanged and returns without notifying, which is the "when it costs nothing" bullet
+> below for every automation lane rather than for most of them. **The D-1 mechanism is kept in full**
+> and is not now redundant: a host that restores session state from its own thread (RISK-007) writes
+> the Oversampling Setting, which IS value-changing, and that is the requester State tests 22 and 27
+> were re-instrumented onto in the same change.
 
 **Filed 2026-08-31 (engineering-review round 1, finding ER-RT-01; confirmed by two independent
 adversarial verifications against the pinned JUCE 9.0.1 tree).**
 
 The processor registers itself as the APVTS listener for `pid::drive` and `pid::algorithm`
-(`src/PluginProcessor.cpp:21-22`), and `parameterChanged` → `updateLatency()` →
+(`src/PluginProcessor.cpp:28-29`), and `parameterChanged` → `updateLatency()` →
 `setLatencySamples()` runs **synchronously on whatever thread changes the parameter**. Under VST3
 host automation that thread is the audio thread (`JuceVST3Component::process` →
 `processParameterChanges` → `setValueAndNotifyIfChanged`), and JUCE dispatches parameter listeners
@@ -908,7 +918,7 @@ APVTS `LockedListeners` mutex).
   in `setParameters`' own body either — `check-realtime.py` now seeds `setParameters`/`toEngine`
   (with self-test liveness), closing the static half; RTSan still enforces only from the
   `process` annotation down.
-- **Evidence [Verified]:** src/PluginProcessor.cpp:21-22, :117-134; pinned JUCE
+- **Evidence [Verified]:** src/PluginProcessor.cpp:28-29, :117-134; pinned JUCE
   `juce_audio_plugin_client_VST3.cpp:3563/:3591/:3537`, `juce_AudioProcessorParameter.cpp:110-121`,
   `juce_AudioProcessorValueTreeState.cpp:148-203`, `juce_AudioProcessor.cpp:415-436`,
   `juce_VST3Common.h:1642-1653`, `juce_Messaging_linux.cpp:79-96`.

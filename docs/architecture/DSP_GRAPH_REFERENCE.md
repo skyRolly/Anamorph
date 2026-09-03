@@ -4,7 +4,7 @@ Node dependency topology of the serial DSP chain. Purpose: prevent unsafe reorde
 node may only be moved if **Can Reorder? = Yes** and the move preserves every invariant in
 `SIGNAL_FLOW.md`. Any "No" reorder requires an ADR + Architecture Review.
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:718-1418 (`process`).
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:759-1514 (`process`).
 
 ## Topology table
 
@@ -36,8 +36,13 @@ factor) but the stage's position in the chain is fixed.
   `018dcdd` "rebuild the signal flow as a strict serial chain".)
 - **Band Solo must stay post-everything and monitoring-only.** Weaving solo into the
   Multiband DSP caused the same bug class. (Partially Verified: CHANGELOG.md [0.8.0]; commit `018dcdd`.)
-- **Oversampling must wrap only Drive + Chorus/Dim-D.** Wrapping linear stages adds needless
-  latency/CPU and changes PDC. (Verified: src/dsp/AnamorphEngine.cpp:21-25.)
+- **Oversampling must wrap only Drive + Chorus/Dim-D.** Wrapping linear stages adds needless CPU
+  and changes their sound. (Verified: src/dsp/AnamorphEngine.cpp, `osActiveFor`.) It no longer
+  changes the reported PDC either way: since ADR-0034 that number follows the selected FACTOR, and
+  where the wrap is skipped a 2-channel integer ring (`osCompDelayBuffer`) occupies the wrap's own
+  place in the graph and supplies its group delay. The ring is not a processing node — it performs
+  no arithmetic — but it IS a graph element, and moving it out of the wrap's position would
+  mis-align the five `-lat` ring reads downstream.
 - **Global Width before Multiband.** Width is a full-band MS side-gain; the Multiband then
   splits and applies per-band width. (Verified: :889-905.)
 
