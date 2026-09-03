@@ -941,6 +941,35 @@ landed on its own turns the gate red on the commit that fixed it.
 
 See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
 
+## Raw scanner output (SARIF artifacts)
+
+Level 1 of `TESTING_POLICY.md` (static analysis) runs two SARIF-producing scanners in CI, and both
+publish their findings twice: to GitHub Code Scanning, and — since this change — as an Actions
+artifact carrying the scanner's own raw SARIF.
+
+| Analyzer | Workflow | Artifact | SARIF on the runner |
+|---|---|---|---|
+| CodeQL | `codeql.yml` | `codeql-sarif-<language>-<sha>` | `${{ runner.workspace }}/results/<database-language>.sarif` |
+| PREfast (MSVC `/analyze`) | `msvc.yml` | `prefast-sarif-<sha>` | `build\results.sarif` |
+
+**Why the artifact exists.** The Code Scanning alert and check-run annotation APIs are not reachable
+from every audit context, so the dashboard could not always be read back. The artifact is the raw
+scanner report, retrievable through the ordinary Actions artifact interface.
+
+**Two things to know before reading one.**
+
+- The CodeQL artifact is **strictly richer than the dashboard**. `paths-ignore: build` filters the
+  fetched JUCE tree out of the *alerts*, but those results are still present in the raw SARIF — so a
+  non-zero result count here does not mean a first-party finding. Check the `uri` of each location:
+  anything under `build/_deps/` is third-party JUCE.
+- The CodeQL filename is the **database** language, not the matrix language — the `c-cpp` entry
+  writes `cpp.sarif`, the `actions` entry `actions.sarif`. The workflow globs `*.sarif` rather than
+  hard-coding that mapping.
+
+Retention and failure behaviour are documented under "Raw scanner SARIF artifacts" in `CI_CD.md`:
+the upload is gated on `!cancelled()`, not on success, because a report Code Scanning rejects is
+exactly when the raw SARIF is most worth keeping.
+
 ## Failure analysis
 
 | Symptom | Likely cause | Where to look |
