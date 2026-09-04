@@ -127,7 +127,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   focus choosers, the on/off switches) a preset can only store the step, so a value set part-way
   between steps — which only a host's automation can produce — was remembered as itself and the
   preset went modified the instant you loaded it back. Both now compare what a preset file can
-  actually hold (State test 52). [Verified]
+  actually hold (State test 52). A tenth pass closed three more. The A/B button decided which slot to
+  go to from what it had been showing, before the plug-in had taken on a project that was arriving
+  at that same moment — so when that project put you on the other slot, the button did nothing; the
+  plug-in now decides after taking the project on (State test 53). Changing an unrelated Setting —
+  Meters, say — while such a project was arriving could briefly put the *previous* project's
+  Oversampling back into the engine until the new one finished arriving; a Setting now only ever
+  publishes itself (State test 54). And the case the ninth pass left open is closed: loading a preset
+  while automation moved a control could mark it unchanged against a sound its file does not hold;
+  the mark is now taken from what the preset actually contains, with no cost in spurious modified
+  dots (State test 55). The same pass's audit found the preset Prev/Next buttons had the A/B button's
+  problem — stepping from the row you had been on rather than the one an arriving project put you
+  on — and fixed it the same way (State test 56). [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

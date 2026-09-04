@@ -324,13 +324,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2147-2155; declared src/PluginEditor.h:258). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2150-2158; declared src/PluginEditor.h:258). This shipped in
   the v0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are src/PluginEditor.cpp:2116 (the on-open call) / src/PluginEditor.cpp:2147-2155 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
+  the only focus calls are src/PluginEditor.cpp:2119 (the on-open call) / src/PluginEditor.cpp:2150-2158 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -607,7 +607,7 @@ keys fine":
   (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
-  src/PluginEditor.cpp:378-388 (the field), src/PluginEditor.cpp:2105-2155 (show + focus);
+  src/PluginEditor.cpp:381-391 (the field), src/PluginEditor.cpp:2108-2158 (show + focus);
   `juce_NSViewComponentPeer_mac.mm:1655-1668, 2396-2435`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,
@@ -982,39 +982,3 @@ it, and the notification is an RAII member.
   (`parameterGestureChanged` counting `openGestures`, `pollUndoCoalesce`'s mid-gesture guard);
   pinned JUCE `juce_Slider.cpp` (`ScopedDragNotification` sends drag start/end from its
   constructor/destructor).
-
-## KI-029 — a preset loaded while automation is moving a control can read "unmodified" against the wrong sound
-
-**Found 2026-09-03**, by the adversarial review of the D-2 round-9 save-path fix, in the sibling audit
-that fix required. Confirmed against the code; **not fixed**, deliberately, because every remedy
-examined costs more than it saves and the choice wants numbers rather than a reflex.
-
-**What happens.** `PresetManager::load` and `PresetManager::loadFile` apply the preset's sound from
-its file and then take the clean baseline from a **second, live read** of the parameters
-(`sigAtLoad = soundSig()`, `src/PresetManager.cpp`). Between those two steps the host's automation
-can write a sound parameter from the audio thread. The baseline then describes the automated value
-rather than the preset's, and because a modified-marker is `live != baseline`, the preset reads
-**unmodified** every time the automation returns to that value — while reloading it would move the
-sound. It is durable: the baseline survives until the next load, save or session restore, and it
-travels into A/B slots, undo snapshots and the session file.
-
-**Why it is not the same as the defect round 9 closed.** That one was `saveUser`, where both the
-bytes and the baseline are derived from state the plug-in itself captures, so one capture fixes it.
-Here the artifact (the file) is fixed and the *live* state is what moves, so the baseline can be
-exact only if it is read back after the apply — which is what creates the window.
-
-**Why it is open rather than fixed.** Three remedies were examined and measured:
-
-| remedy | closes the window | cost |
-|---|---|---|
-| baseline from the tree (`soundSignatureForSavedTree`), the symmetry with the save | yes, entirely | the preset reads **modified immediately after being loaded** at a measured 2 in 3000 round trips — of order **1 preset load in 1500**. A load applies `convertTo0to1(plain)` and the parameter then reports what it *stores*, one range mapping deeper than the baseline, and that pass is not idempotent for the four custom-mapped frequency ranges |
-| re-read each parameter inside the apply loop | no — shrinks it by roughly the length of the loop | a smaller lie rather than a true statement |
-| a generation check across the two reads | no — narrows it | this is round 8's retry, deleted in round 9 for giving up silently under sustained automation |
-
-Trading a rare false *clean* for a frequent false *dirty* on the most common preset action is a
-product decision. ADR-0036 §17 carries the analysis; the measurement is State test 52 leg (i).
-
-**Scope.** Requires host automation writing a sound parameter during the few instructions between the
-apply and the baseline read. No sound is lost or altered — the preset's sound is applied correctly;
-only the modified-marker is wrong, and only until the next load, save or session restore.
-

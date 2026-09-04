@@ -929,6 +929,136 @@ message-thread edit, the ≤ 50 ms adoption latency for the tail, and the preset
 denormalised round trip (a re-saved preset can differ from the original in the last bits — measured
 347 in 3000 — which predates this round, moves no marker and changes no sound).
 
+### 16. Round 10 — one rule seen three times: derive at commit, publish only what is authoritative, baseline from what is written (2026-09-03)
+
+**Architecture Review Gate: APPROVED, and this round is inside it.** One derivation moves across a
+drain the processor already performs; one publication narrows from a whole tree to its one changed
+field; one read-back becomes a computation from values already being written. No thread, no lock, no
+wait, no audio-path allocation, no new cross-thread reader, no serialization or parameter change.
+
+**The bounded ordering audit that opened the round.** Every generation and the pending-restore state
+were traced through restore arrival → publication → synchronous sound/config application → handoff →
+adoption → A/B action → Settings mutation → preset load/save → snapshot publication → host save.
+Findings 1 and 2 are the same rule violated at two sites — *a value derived from state read before the
+drain or adoption that made it authoritative, then committed after it* — and finding 4 (KI-029) is the
+same rule on the load path. Finding 3 is not a fourth instance but the *definition* the tag mechanism
+already implements, made explicit. No shared lower boundary existed at which to fix them once: each
+is a caller getting the rule wrong at its own site. The round's own entry-point audit (below) found
+a **fourth** instance — the preset prev/next step — and it is fixed the same way; the publication-path
+audit found none.
+
+**Finding 1 — the A/B toggle used a stale selection.**
+
+| | |
+|---|---|
+| actors | M (the editor's toggle → `abSwitchTo`); H (a restore that flips the active slot) |
+| old order | editor reads `abActiveSlot()` → computes `1 - that` → `abSwitchTo (target)` → **its drain adopts the restore, moving `abActive`** → `slot == abActive` → return |
+| observable | with the restore flipping the active slot, the toggle is a silent no-op, for either parity |
+| root cause | the destination was derived by a caller from a read taken before the drain, then committed after it |
+| decision | **an A/B action chooses its target from the session the plug-in is on once every arrived restore has been adopted.** `abToggle()` on the processor: drain, then derive the other slot of the post-drain `abActive`. `abSwitchTo (int)` stays as the explicit-target primitive — "go to B" after a restore onto B is correctly a no-op |
+| audit of the other entry points | `abCopyToOther`, `undo`, `redo` drain and then use `abActive`; the editor's `getActive` is the display read (≤ 50 ms lag, a recorded residual); no other caller passes a *derived* target |
+
+**The audit's fourth instance — `PresetManager::step` (the prev/next buttons).** It computed "the
+row after this one" from `currentIndex()` and then called `load`, whose drain (through
+`onAboutToLoad`) adopts a pending restore — *after* the index was chosen. A restore that moved the
+selection had Next land on the row after the **old** selection. Same shape as finding 1, same fix: a
+new `adoptPending` hook, wired to `adoptPendingHostState`, is fired before the index is read.
+`onAboutToSave` is the save path's instance of the same hook. State test 56 pins Next and Prev across
+a restore that moves the selection; deriving the row before the drain fails 4 checks.
+
+**Findings 2 and 3 — Settings publication, one mechanism.**
+
+| | |
+|---|---|
+| actors | H (a pending restore, its Oversampling already in the engine-config word under g_R); M (an unrelated Settings edit) |
+| old order | edit → `valueTreePropertyChanged` → `arrival = engineConfigGeneration()` (= g_R) → `publishFromTree (g_R)` republishes the **whole tree**, whose Oversampling is still the outgoing value → CAS accepts an equal generation → the engine drops to the old factor until the adoption |
+| root cause | a publication borrowed a generation for a value that was not that generation's: the tree is only partly authoritative while a restore is pending |
+| the publication invariant | **a publication carries exactly the fields whose values are authoritative at the generation it is tagged with.** A single property change publishes its one field (`publishField`); the whole tree only where it has just been made coherent — the end of `writeResolved`, the constructor |
+| finding 3 | "when an edit happened", for ordering against restores, is **defined** as the instant its callback reads the word's generation. Both observable orderings are exact and pinned: a restore published before the callback is superseded at the adoption; one published after replaces it. The boundary — a restore landing between the binding's tree write and the callback's read is observed as *before* the edit, so the edit stands — is the user-favouring resolution of an instant the message thread cannot observe more finely without a lock, and is now stated at the site and in §18. With the invariant in force its only consequence is the edited field itself |
+| what was NOT closed and is said so | the adoption's own field-by-field write cannot expose a stale Oversampling under this rule either, but with the current table (Oversampling first) that was never observable; the mutation that would show it is not caught, and the test does not pretend to |
+
+**Finding 4 — KI-029, the load-side baseline: MUST FIX, fixed.** Re-investigated from the current
+tree: the race existed exactly as filed (apply, then `sigAtLoad = soundSig()`), durable, user-visible,
+and the 2-in-3000 cost of the symmetric fix was still representative — *of the save-side formula*.
+The cost had a cause: a load's live state is written from the tree and read back through the
+parameter's own store/report pair, one range mapping deeper than a save's capture, and not idempotent
+in float for the four log-mapped frequency ranges. `soundSignatureAfterLoading` models that pass
+(`normalisedAsRendered` twice) and is the same arithmetic as the post-load live signature: on the
+reference Release build, 0 mismatches over 3000 random round trips where the save-side formula gives
+2. **The first version trusted that prediction bare and the ThreadSanitizer build refuted it** — the
+same arithmetic is bit-exact only if the compiler emits it identically at both sites, and under the
+sanitizer's RelWithDebInfo build (fused multiply-add contraction differing between an inlined chain
+and a value routed through `std::atomic<float>`) it disagreed at ≥ 1 point and failed State test 55.
+The load paths therefore **reconcile** the prediction against one read-back per parameter at the
+signature's own resolution (`loadBaselineFromTree`): the live form where the two agree within ~10
+ulps — five hundred times below the smallest real step — and the predicted value where a foreign
+write moved the parameter, so the read-back has no window to lose. A just-loaded preset is exactly
+clean on both builds (0 in 3000), and automation landing during the load still leaves it dirty. The
+factory path does the same over its override table. The invariant is now uniform: *the clean
+baseline is derived from the artifact, and a mutation landing during the operation leaves the preset
+dirty rather than being absorbed.* KI-029 removed; INC-013 records the two-round history.
+
+**Finding 5 — host serialization, disposition D, no new evidence** (mechanical check on this tree:
+two declarations, two definitions, no caller; two message-thread timers, nothing else; the host-side
+members at the same four sites; the tripwire read by a `jassert` only; the round's three additions
+message-thread-only and unreachable from either state function).
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 53 vs the target derived before the drain | FAILS 8 checks (both parities) |
+| State test 54 vs the user-edit branch republishing the whole tree | FAILS 1 check (the engine reverts to the outgoing Oversampling) |
+| State test 54 vs the adoption branch republishing the whole tree | not caught — deliberately unasserted, see above |
+| State test 55 vs a read-back baseline in `load`/`loadFile` | FAILS 4 checks |
+| State test 55 vs the save-side formula on the load side | FAILS 3 checks (the 2-in-3000 false dirty reappears) |
+| State test 56 vs the step's row derived before the drain | FAILS 4 checks (Next and Prev each land relative to the outgoing row) |
+| State tests 37–56 on the tree | green; suite 2079 checks / 0 failures, 55 tests |
+| the four probes under TSan, after (round-10 tree) | `--d2-stress-probe`, `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe`, 10 runs each, across four lanes on this round's trees: 0 runs with reports, 0 reports in total. No suppressions |
+| the state suite under TSan, after | 2079 checks, 0 failures, 0 TSan reports — on the final tree, run alone. (Two earlier lanes reported one non-race failure each: the first the bare load-side prediction the reconciliation replaced; the second and third the shared-folder collision with a plain suite running beside them, root-caused above) |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | 120 files clean; 398 anchors still point at the same text as both `efe46a5` (the round-9 commit) and `origin/main`; self-test 161 cases |
+| `preflight.sh` | exit 0 on the committed round-10 tree (all gates, both suites; `check-portability` 57 files / 0 violations, `check-realtime` 47 files / 0 violations, both warning-gate self-tests green) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: 42–52 all pass
+unchanged, including 44 (Settings precedence — the field-level publication changes what an edit
+publishes, not what the adoption keeps) and 52 (the save's single capture is untouched).
+
+**What adversarial review changed in this round.** Four lenses, all sound-with-caveats, no blocking
+finding: a wrong justification in `abToggle`'s comment (the two drains are separated by a window a
+restore can land in; the outcome is a legal serialization, the stated reason was not what makes it
+so — rewritten); a stale save-side signature comment that still described the load's behaviour
+(rewritten); a transient where a restore landing between an edit's generation read and its
+compare-exchange leaves tree and word disagreeing until the next adoption (recorded in §18); and
+three test hardenings (a pending-restore guard in 53, a cross-reference to 44's generation
+comparison in 54, the save-side mismatch count asserted rather than printed in 55). The entry-point
+audit found the fourth instance above; the publication-path audit found none. **And the TSan lane,
+not a reviewer, found the toolchain dependence** in the bare load-side prediction (above) — the
+reason "do not treat TSan silence as sufficient proof" has a converse: a TSan *failure* that is not a
+race is still evidence, and it was.
+
+**A flake, root-caused rather than re-run.** Two validation runs in this round each reported one
+failure in State test 52 leg (i) — "the reloaded sound is the saved sound at every swept value" — a
+deterministic sweep on a fixed binary, so a real nondeterminism. Fifteen quiet runs did not
+reproduce it. The two failing runs had one thing in common: the `tsan` lane's own suite run was
+alive at the same time. The suite writes probe presets to fixed paths in the temp folder and
+harness presets into the real user preset folder, and asserts that folder's listing; two instances
+read each other's files. Confirmed by running two plain suites deliberately side by side: 2 and 8
+failures across tests 10, 12, 13, 24, 28 and 52 — none of them this round's, all of them the
+folder. A per-process tag on the probe and harness names was tried and reverted: it fixes 52's
+probe file and leaves the listing assertions colliding, a half-measure that would read as a
+guarantee. The constraint is instead recorded where it belongs (`TESTING.md`: one instance at a
+time, as CI already gives it), and the TSan lane below was re-run with nothing else on the
+machine. Operator error in how the lanes were overlapped, not a defect in the product or the tests.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains; KI-029 closed. Architecture Review
+Gate: **APPROVED**, this round inside it. Host serialization: **disposition D**, no new evidence.
+Non-actionable residuals: a host save's snapshot and `copyState()` straddling a message-thread edit,
+the ≤ 50 ms adoption latency for the tail, the preset format's own denormalised round trip, and the
+edit-ordering boundary stated in §18 (user-favouring, by definition).
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can

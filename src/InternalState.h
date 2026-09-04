@@ -394,40 +394,86 @@ private:
         if (publishFromTree (generation) && onOversampleChanged) onOversampleChanged();
     }
 
+    // THE PUBLICATION INVARIANT (D-2 round 10, ADR-0036 §18): a publication to the
+    // engine carries exactly the fields whose values are AUTHORITATIVE at the
+    // generation it is tagged with. A single property change is authoritative for
+    // that one property and nothing else, so it publishes that one field. The whole
+    // tree is published only at the one point where the whole tree has just been made
+    // coherent for a generation -- the end of writeResolved, and the constructor.
+    //
+    // WHY. While a host restore is PENDING (arrived on its thread, not yet adopted
+    // here) the tree is only partly authoritative: the restore has already published
+    // its Oversampling into the engine-config word, tagged with its generation, but
+    // the tree still holds the outgoing session's value until the adoption writes it.
+    // This callback used to republish the WHOLE tree on every property change, tagged
+    // with the latest arrival's generation. So an unrelated Settings edit -- Meters
+    // on, say -- re-published the tree's STALE Oversampling under the pending restore's
+    // own generation, which the compare-exchange accepts as "the same arrival again":
+    // the engine dropped back to the old factor until the adoption put the restored one
+    // back. A publication borrowed a generation for a value that was not that
+    // generation's. Publishing only the changed field makes that impossible: an edit
+    // to Meters cannot say anything about Oversampling, because it does not carry it.
+    // The same rule makes a restore's own field-by-field write independent of the
+    // table's order: no field's write can republish another's value. (With the current
+    // table that was never observable -- Oversampling is written first -- so this is a
+    // property the rule guarantees, not a defect it closed; State test 54 says so.)
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier& id) override
     {
         gen.fetch_add (1, std::memory_order_relaxed); // H15 re-arm signal
         if (applyingResolved)
         {
-            // A restore's write (inline, or an adoption): the word carries the
-            // generation the write is for -- noteAdoptedGeneration() for an
-            // adoption -- and lands only if no newer host restore has published.
-            publishFromTree (messageGeneration);
+            // A restore's write (inline, or an adoption): this field, tagged with the
+            // generation the write is for -- noteAdoptedGeneration() for an adoption --
+            // and it lands only if no newer host restore has published.
+            publishField (id, messageGeneration);
         }
         else
         {
             // A user edit -- the editor's juce::Value bindings are the only other
-            // writer. It is newer than every restore that has arrived so far: the
-            // latest of those is the generation the word carries, so the edit is
-            // recorded against its field at that generation (adoptResolved keeps
-            // it against that restore and every older one) and the word is
-            // published with it, so the edit lands over the restore it follows.
-            // A restore that arrives LATER carries a higher generation, wins the
-            // word, and replaces the field at its adoption -- the newer arrival.
+            // writer. WHEN an edit happens, for ordering against restores, is defined as
+            // the instant this callback reads the engine-config word's generation: that
+            // is the latest restore that had ARRIVED as far as this thread can observe,
+            // and the edit is ordered after it. The edit is recorded against its field
+            // at that generation (adoptResolved keeps a field edited at the adopted
+            // restore's generation or later), and if the field is engine-facing it is
+            // published with it, so it lands over the restore it follows. A restore that
+            // arrives later carries a higher generation, wins the word, and replaces the
+            // field at its adoption -- the newer arrival.
+            //
+            // THE BOUNDARY, stated rather than hidden: the binding's tree write precedes
+            // this read by JUCE's listener dispatch, and a restore landing inside that
+            // gap is observed here as having arrived BEFORE the edit, so the edit stands
+            // at the adoption. That is the user-favouring resolution of an instant the
+            // message thread cannot observe more finely without a lock: the user's
+            // explicit action is never silently undone by a restore that landed within
+            // microseconds of it. The other orderings are exact -- a restore published
+            // before the edit is superseded by it, one published after replaces it.
             const auto arrival = engineConfigGeneration();
             const auto& table = settings();
             for (size_t i = 0; i < table.size(); ++i)
                 if (table[i].id == id) editGeneration[i] = arrival;
-            publishFromTree (arrival);
+            publishField (id, arrival);
         }
         if (id == iid::oversample && onOversampleChanged) onOversampleChanged();
         if (onChanged) onChanged();
     }
 
-    // Message thread, from the tree: the animation flag the imager (message thread)
-    // polls -- message-thread state on both ends, so a plain mirror the host thread
-    // never writes -- and the oversampling index through the tagged word with the
-    // given generation. Returns whether the word's INDEX moved.
+    // Message thread: publish ONE property's engine-facing mirror, if it has one --
+    // the animation flag the imager polls (message-thread state on both ends, a plain
+    // mirror the host thread never writes), or the oversampling index through the
+    // tagged word with the given generation. Every other Setting is GUI-only and lives
+    // in the tree. Publishes nothing for a field the engine does not read.
+    void publishField (const juce::Identifier& id, juce::uint32 generation) noexcept
+    {
+        if (id == iid::uiAnimations)
+            animFloat.store ((bool) tree[iid::uiAnimations] ? 1.0f : 0.0f, std::memory_order_relaxed);
+        else if (id == iid::oversample)
+            publishOversample (juce::jlimit (0, 3, (int) tree[iid::oversample] - 1), generation);
+    }
+
+    // Message thread, from the WHOLE tree: both engine-facing mirrors at once. Only for
+    // the points at which the whole tree is coherent for `generation` -- the end of a
+    // writeResolved, and the constructor. Returns whether the word's INDEX moved.
     bool publishFromTree (juce::uint32 generation) noexcept
     {
         animFloat.store ((bool) tree[iid::uiAnimations] ? 1.0f : 0.0f, std::memory_order_relaxed);

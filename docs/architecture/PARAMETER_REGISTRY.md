@@ -111,7 +111,7 @@ way to hide a parameter). Serialized in `ANAMORPH_INTERNAL`; never in A/B/Undo/p
 - **※** Display label renamed `Window Size` → `UI Scale` in 0.9.2; the identifier `int_uiScale` is
   **unchanged**, as is the pre-0.8.4 legacy APVTS id `uiScale` its migration reads (the immutability
   invariant in action, same shape as the `Haas Side` → `Haas Focus` rename above). Evidence
-  [Verified]: src/PluginEditor.cpp:577; src/InternalState.h:37,:123.
+  [Verified]: src/PluginEditor.cpp:580; src/InternalState.h:37,:123.
 
 Evidence [Verified]: src/InternalState.h:34-160.
 
@@ -123,7 +123,7 @@ Evidence [Verified]: src/InternalState.h:34-160.
 
 This is the one precedent for a parameter-surface change. It was done **with a migration path**
 (the model the compatibility policy requires). Evidence [Partially Verified]: CHANGELOG.md [0.8.4];
-src/InternalState.h:255-309; src/PluginProcessor.cpp:1373-1376.
+src/InternalState.h:255-309; src/PluginProcessor.cpp:1385-1388.
 
 ## Introduced / Deprecated columns
 

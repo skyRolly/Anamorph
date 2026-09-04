@@ -15,8 +15,8 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 | **Host prepare thread** (external) | host → `prepareToPlay` off the message thread (JUCE Linux VST3 pre-`IRunLoop`, FL Studio's Patcher, an AU `Initialize` off main) | Engine prepare under the format contract that no `processBlock` runs concurrently; latency through the D-1 request (round 15). |
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:305-373 (`processBlock`), :240 `ScopedNoDenormals`
-- Source: src/PluginEditor.cpp:687 (24 Hz timer), :686-692 (VBlank), :306-320 (OpenGL gate)
+- Source: src/PluginProcessor.cpp:306-374 (`processBlock`), :240 `ScopedNoDenormals`
+- Source: src/PluginEditor.cpp:690 (24 Hz timer), :686-692 (VBlank), :306-320 (OpenGL gate)
 - Source: src/gui/Vectorscope.h:22 ("Nothing is ever drawn on the audio thread")
 
 ## OpenGL platform gate (0.8.5)
@@ -37,7 +37,7 @@ path — visually identical. macOS/Windows keep GPU compositing.
 
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:307-321 (gate + rationale comment)
-- Source: src/PluginEditor.cpp:1855-1856 (`triggerRepaint` guarded by `isAttached()`)
+- Source: src/PluginEditor.cpp:1858-1859 (`triggerRepaint` guarded by `isAttached()`)
 - Partially Verified (history): CHANGELOG.md [0.8.5]; commit c924ff8
 - See `design-decisions/ADR-0011-linux-x11-cpu-render.md` for the decision record.
 
@@ -45,8 +45,8 @@ Evidence [Verified]:
 
 | Mechanism | Rate | Work | Source |
 |---|---|---|---|
-| `VBlankAttachment meterVBlank` | per display frame (dt clamped ≤ 0.05 s) | meter-reveal + micro-anims easing | src/PluginEditor.cpp:690-696 |
-| Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | src/PluginEditor.cpp:687, 1388-1551 |
+| `VBlankAttachment meterVBlank` | per display frame (dt clamped ≤ 0.05 s) | meter-reveal + micro-anims easing | src/PluginEditor.cpp:693-699 |
+| Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | src/PluginEditor.cpp:690, 1391-1554 |
 | `Vectorscope` `FrameClock` | display-rate, capped ~120 Hz | `repaint()` | Vectorscope.cpp; FrameClock.h |
 | `LevelMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | `repaint()` | LevelMeter.cpp; FrameClock.h |
 | `StereoMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | dt-corrected smooth + `repaint()` | CorrelationMeter.cpp; FrameClock.h |
@@ -62,7 +62,7 @@ re-expressed in `dt` form so its time constant is display-independent. The idle
 gates (S1/S2/S3, H15) and the once-per-block audio-side ballistics are unchanged.
 
 Editor destructor order (matters): release VBlank → `stopTimer()` → `openGLContext.detach()`
-(the VBlank lambda captures `this`). Source: src/PluginEditor.cpp:704-706.
+(the VBlank lambda captures `this`). Source: src/PluginEditor.cpp:707-709.
 
 ## Legal cross-thread data paths (lock-free)
 

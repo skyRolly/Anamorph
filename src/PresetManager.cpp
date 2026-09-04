@@ -306,17 +306,18 @@ void PresetManager::applySoundTree (const juce::ValueTree& state)
     resetSolo();
 }
 
-// THE SIGNATURE A SAVED SOUND TREE WILL PRODUCE ONCE IT IS LOADED (D-2 round 9,
+// THE SIGNATURE OF THE LIVE STATE A SAVED TREE WAS CAPTURED FROM (D-2 round 9,
 // ADR-0036 §17). This is the clean baseline of a preset that was just written, and it
 // is derived from the BYTES rather than from a second read of the live parameters --
 // which is the whole point: no mutation, however busy, can separate a baseline from
 // the file it describes when the baseline is computed FROM that file.
 //
-// It mirrors applySoundTree parameter for parameter, through the same
-// normalisedFromSavedTree, so the equality "this is what soundSignatureFor returns
-// after applySoundTree(t)" is true by construction rather than by argument. State
-// test 52 pins it by measurement across the whole parameter set as well, because a
-// construction argument is only as good as the two functions staying in step.
+// It resolves each parameter through the same normalisedFromSavedTree the loader uses,
+// and equals soundSignatureFor of the captured live state bit for bit (State test 52
+// measures it over the whole parameter set). It is deliberately NOT the signature the
+// parameters will report once the tree is LOADED -- a load stores and reports through
+// the parameter's own pass, one range mapping deeper; that is
+// soundSignatureAfterLoading, and State test 55 measures why the two must differ.
 //
 // THE NON-RANGED BRANCH IS UNREACHABLE IN THIS PLUG-IN and is a fallback, not a claim.
 // Every parameter `createAnamorphLayout` builds is a RangedAudioParameter (stock
@@ -326,6 +327,88 @@ void PresetManager::applySoundTree (const juce::ValueTree& state)
 // defensible contribution -- but it is then the live value AT SAVE TIME, which is the one
 // place this function's "what the file will restore" contract is approximate. Nothing in
 // the tree can make it exact, because the tree holds nothing for such a parameter.
+// THE SIGNATURE THE LIVE PARAMETERS WILL PRODUCE AFTER A LOAD, from the values the
+// load is about to write (D-2 round 10, ADR-0036 §18). `resolve` answers "what
+// normalised value will this parameter be SET to" -- from a saved tree for a user
+// preset, from the override table for a factory one -- and the signature models
+// what `soundSignatureFor` then reads back: the parameter stores convertFrom0to1(x)
+// and reports convertTo0to1 of it (one `normalisedAsRendered`), and the signature
+// itself renders that once more. Same arithmetic, same inputs, so the post-load live
+// signature equals this bit for bit, for every parameter kind: for the custom
+// RawChoice / RawBool the value is on-grid and both passes are the identity, for an
+// interval-snapped float the first pass is a projection and the second is idempotent
+// on it, and for the four log-mapped frequency ranges -- where the pass is NOT
+// idempotent -- both sides apply it exactly twice. This is what lets a load fix its
+// baseline WITHOUT reading the parameters back, which is the whole point: a
+// read-back has a window that host automation can land in (KI-029).
+//
+// TOOLCHAIN-ROBUST, NOT BIT-EXACT. "The same arithmetic on the same inputs" holds only if the
+// compiler emits the same float operations at both sites, and it need not: the prediction is
+// one inlined expression chain, the live value passes through a store to std::atomic<float>
+// and a later read, and contraction (fused multiply-add is GCC's default outside strict ISO
+// mode) can differ between the two. Measured: the Release build agrees at all 3000 sweep
+// points; the ThreadSanitizer RelWithDebInfo build does not. So the prediction is
+// RECONCILED against one read-back, per parameter, at the signature's own resolution:
+//   * where predicted and live agree to within kSameValue -- a few float ulps, five hundred
+//     times below the smallest real parameter step -- they are the same value, and the LIVE
+//     form is taken, because it is what soundSignatureFor will keep producing;
+//   * where they differ by more, something other than this load wrote the parameter, and the
+//     PREDICTED value stands -- the preset then reads dirty rather than absorbing the write.
+// The read-back therefore has no window to lose: a foreign write inside it is detected by
+// magnitude and rejected. `reconcile == false` gives the pure prediction, for measurement.
+namespace
+{
+    constexpr float kSameValue = 1.0e-6f;   // ~10 ulps at 1.0; the smallest real step is 5e-4
+
+    template <typename Resolve>
+    juce::String signatureAfterApplying (const juce::AudioProcessorValueTreeState& s, Resolve&& resolve,
+                                         bool reconcile)
+    {
+        juce::String sig;
+        for (auto* p : s.processor.getParameters())
+            if (auto* wid = dynamic_cast<const juce::AudioProcessorParameterWithID*> (p))
+                if (! pid::isPresetExcluded (wid->paramID))
+                {
+                    const auto* rp = dynamic_cast<const juce::RangedAudioParameter*> (p);
+                    float v = p->getValue();
+                    if (rp != nullptr)
+                    {
+                        const float predicted = normalisedAsRendered (*rp, normalisedAsRendered (*rp, resolve (*rp, wid->paramID)));
+                        if (reconcile)
+                        {
+                            const float live = normalisedAsRendered (*rp, rp->getValue());
+                            v = std::abs (live - predicted) <= kSameValue ? live : predicted;
+                        }
+                        else
+                            v = predicted;
+                    }
+                    sig << juce::String (v, 5) << ',';
+                }
+        return sig;
+    }
+
+    // The reconciled form for the load paths: the baseline a preset just applied from
+    // `savedSound` will be judged against.
+    juce::String loadBaselineFromTree (const juce::AudioProcessorValueTreeState& s, const juce::ValueTree& savedSound)
+    {
+        return signatureAfterApplying (s, [&] (const juce::RangedAudioParameter& rp, const juce::String& id)
+        {
+            return normalisedFromSavedTree (rp, savedSound, id);
+        }, true);
+    }
+}
+
+juce::String PresetManager::soundSignatureAfterLoading (const juce::AudioProcessorValueTreeState& s,
+                                                        const juce::ValueTree& savedSound)
+{
+    // The PURE prediction, from the tree alone -- exact on the reference toolchain, within
+    // float tail on any other. The load paths use the reconciled form (loadBaselineFromTree).
+    return signatureAfterApplying (s, [&] (const juce::RangedAudioParameter& rp, const juce::String& id)
+    {
+        return normalisedFromSavedTree (rp, savedSound, id);
+    }, false);
+}
+
 juce::String PresetManager::soundSignatureForSavedTree (const juce::AudioProcessorValueTreeState& s,
                                                         const juce::ValueTree& savedSound)
 {
@@ -385,6 +468,15 @@ void PresetManager::load (int index)
 
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
 
+    // THE BASELINE IS FIXED FROM WHAT THE LOAD WRITES, NOT FROM A READ-BACK (D-2 round
+    // 10, ADR-0036 §18; this closes KI-029). It used to be `sigAtLoad = soundSig()` after
+    // the apply -- the same two-read shape round 9 removed from the save: host automation
+    // writing a sound parameter between the apply and that read made the baseline
+    // describe the automated value, so the preset read CLEAN whenever the automation
+    // returned to it while reloading it would move the sound. The signature is now
+    // computed from the values being applied, through the same arithmetic the parameters
+    // will report them by, so nothing live is read and there is no window.
+    juce::String applied;
     if (e.isFactory)
     {
         applyDefaults();
@@ -393,16 +485,29 @@ void PresetManager::load (int index)
         for (const auto& o : factory->set)
             if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (o.id)))
                 rp->setValueNotifyingHost (rp->convertTo0to1 (o.value));
+        // The resolver mirrors the two writes above: an override's value where the table
+        // names the parameter, the default applyDefaults() wrote everywhere else. (The
+        // signature only ever asks about preset-carried parameters, so an override on a
+        // preset-EXCLUDED id -- none exists in the table -- would be applied above yet
+        // never signed here, which is the correct answer for an excluded field.)
+        applied = signatureAfterApplying (apvts, [&] (const juce::RangedAudioParameter& rp, const juce::String& id)
+        {
+            for (const auto& o : factory->set)
+                if (id == o.id) return rp.convertTo0to1 (o.value);
+            return rp.getDefaultValue();   // applyDefaults() wrote exactly this
+        }, true);
     }
     else
     {
         applySoundTree (userSound);
+        applied = loadBaselineFromTree (apvts, userSound);
     }
+    if (beforeStateCapture) beforeStateCapture();   // test seam: the instant before the baseline is fixed
 
     current = e.name;
     sel = e.isFactory ? Selection { Selection::Kind::factory,  e.factoryId, {} }
                       : Selection { Selection::Kind::userFile, {},          e.file };
-    sigAtLoad = soundSig();
+    sigAtLoad = applied;
     if (onMetaChanged) onMetaChanged();
     if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
 }
@@ -416,12 +521,13 @@ bool PresetManager::loadFile (const juce::File& f)
     if (! sound.isValid()) return false;
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
     applySoundTree (sound);
+    if (beforeStateCapture) beforeStateCapture();   // test seam: the instant before the baseline is fixed
     current = f.getFileNameWithoutExtension();
     // The chooser can point ANYWHERE, so the file is the identity whether or not it
     // lives in the preset folder; a file from outside simply matches no list row and
     // leaves the menu unticked, which is what it should show (#4).
     sel = { Selection::Kind::userFile, {}, f };
-    sigAtLoad = soundSig();
+    sigAtLoad = loadBaselineFromTree (apvts, sound);   // predicted from the bytes, reconciled at signature resolution (§18, KI-029)
     if (onMetaChanged) onMetaChanged();
     if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
     return true;
@@ -430,6 +536,11 @@ bool PresetManager::loadFile (const juce::File& f)
 void PresetManager::step (int delta)
 {
     if (list.isEmpty()) return;
+    // The step is RELATIVE to the current row, so the current row must be the authoritative
+    // one: a pending host restore that moves the selection is adopted before it is read (D-2
+    // round 10, §18). Without this, "next" from a session that had just been replaced landed
+    // on the row after the OLD selection -- the same stale-derivation shape as the A/B toggle.
+    if (adoptPending) adoptPending();
     const int cur = currentIndex();
     const int n   = list.size();
     // Unknown current name steps from "Default"; otherwise wrap around the list.

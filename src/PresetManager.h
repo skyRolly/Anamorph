@@ -162,15 +162,35 @@ public:
     // is exactly this over the manager's own APVTS.
     static juce::String soundSignatureFor (const juce::AudioProcessorValueTreeState&);
 
-    // The signature `soundSignatureFor` will return once `savedSound` has been LOADED --
-    // i.e. the clean baseline of a preset whose file holds that tree (D-2 round 9,
-    // ADR-0036 §17). Derived from the tree alone, so it describes the BYTES rather than a
-    // second read of the live parameters, which is what makes "clean" mean "loading the
-    // selected preset would change nothing" no matter what automation does during a save.
-    // It resolves every parameter through the same rule the loader applies, so the two
-    // cannot disagree about what a file means; State test 52 pins the equality by
-    // measurement over the whole parameter set as well as by construction.
+    // The signature of the LIVE state `savedSound` was just captured FROM -- the clean
+    // baseline of a preset saveUser has just written (D-2 round 9, ADR-0036 §17). Derived
+    // from the tree alone, so it describes the BYTES rather than a second read of the live
+    // parameters, and it equals `soundSignatureFor` of that live state bit for bit: the
+    // tree holds the denormalised value, so resolving it back IS the one rendering pass
+    // the live side applies. It resolves every parameter through the same rule the loader
+    // applies, so a file cannot mean one thing to the apply path and another here; State
+    // test 52 pins the equality by measurement over the whole parameter set. It is NOT the
+    // signature the parameters will report after that tree is LOADED -- that is one
+    // store/report pass deeper and is soundSignatureAfterLoading's job (§18).
     static juce::String soundSignatureForSavedTree (const juce::AudioProcessorValueTreeState&,
+                                                    const juce::ValueTree& savedSound);
+
+    // The signature `soundSignatureFor` will return once `savedSound` has been LOADED
+    // through applySoundTree -- the clean baseline of a preset the plug-in has just
+    // loaded (D-2 round 10, ADR-0036 §18, closing KI-029). Derived from the tree alone,
+    // like the save-side one, so no live read and no window for automation to land in.
+    //
+    // WHY IT IS NOT soundSignatureForSavedTree. A save's baseline describes live state
+    // the tree was captured FROM; a load's describes live state that was written from the
+    // tree and then read back through the parameter's own store/report pair. That pair
+    // is one range mapping deeper -- setValue stores convertFrom0to1(x), getValue reports
+    // convertTo0to1 of it -- and for the four frequency ranges built from custom log/exp
+    // lambdas that extra pass is not idempotent in float. Modelling it here is what makes
+    // the post-load live signature equal this one BIT FOR BIT for every parameter kind:
+    // the same arithmetic on the same inputs. State test 55 pins the equality by
+    // measurement (3000 random round trips, 0 mismatches) and shows the save-side
+    // signature would NOT do (2 in 3000), which is why the two exist.
+    static juce::String soundSignatureAfterLoading (const juce::AudioProcessorValueTreeState&,
                                                     const juce::ValueTree& savedSound);
 
     void load (int index);                           // message thread only
@@ -202,6 +222,16 @@ public:
     // sound change. Empty when no processor wires it up (safe to skip).
     std::function<void()> onSaved;
 
+    // D-2 round 10 (ADR-0036 §18). Fired before this manager DERIVES a decision from its
+    // own current selection -- step()'s "the row after this one" -- so the processor can
+    // adopt a host restore that is still pending from another thread first. The same rule
+    // as the A/B toggle's: a relative target computed from a selection a pending restore
+    // is about to replace is a decision about the wrong session, and load()'s own drain
+    // (through onAboutToLoad) comes AFTER the index has been chosen, too late to help.
+    // onAboutToSave below is the save path's instance of the same rule. Empty when no
+    // processor wires it up (safe to skip: the manager then has no restores to adopt).
+    std::function<void()> adoptPending;
+
     // D-2 (RISK-007). Fired by saveUser() AFTER the file is written and BEFORE any of
     // this manager's metadata moves, so the processor can adopt a host restore that is
     // still pending from another thread first: the save then lands on top of the
@@ -209,9 +239,11 @@ public:
     // covered by onAboutToLoad, which already fires before their first mutation.)
     std::function<void()> onAboutToSave;
 
-    // TEST SEAM (D-2 round 9). Fired by saveUser() immediately before the ONE state
-    // capture the file and its baseline are both derived from. Empty in production: one
-    // null check, on a non-audio path, exactly like the processor's own seams.
+    // TEST SEAM (D-2 round 9, widened in round 10). Fired immediately before a clean
+    // BASELINE is fixed: by saveUser() before the ONE state capture the file and its
+    // baseline are both derived from, and by load()/loadFile() after the preset's sound
+    // has been applied and before its baseline is set. Empty in production: one null
+    // check, on a non-audio path, exactly like the processor's own seams.
     //
     // It exists because the defect this round closed lived in the gap between two reads,
     // and a test that can only hope to land a mutation in that gap is a race to lose.

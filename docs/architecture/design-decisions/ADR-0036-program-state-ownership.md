@@ -39,6 +39,12 @@ repository builds.
 > already hold. No thread, no lock, no wait, no allocation on any audio path, no new cross-thread
 > reader, no serialization-format change and no parameter or latency change. Everything it touches
 > runs on the message thread. There is no architectural delta to review.
+> **Round 10 (§18) as well**: it moves an existing derivation (the A/B toggle's destination) from the
+> editor to the processor, after the drain the processor already performs; narrows an existing
+> publication from the whole Settings tree to the one field that changed; and replaces a read-back
+> with a computation from the values already being written. No thread, no lock, no wait, no
+> allocation on any audio path, no new cross-thread reader, no serialization-format change, no
+> parameter or latency change. There is no architectural delta to review.
 
 **Resolves decision D-2** (`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, deferred in
 round 4) and **closes RISK-007** (`docs/FUTURE_RISKS.md`). **Amends `THREADING_POLICY.md`** §Host state
@@ -605,6 +611,127 @@ turn late) and leaves a save issued on the host thread right after its restore d
    **freshly-saved-preset-reads-clean** leg at a custom-mapped frequency value, the same property as
    a user meets it; and a **coherence** leg proving a sub-step move on a discrete parameter moves
    neither the modified-marker nor the undo history.
+
+18. **A decision is derived from the authoritative session at the moment it commits; a publication
+   carries only what is authoritative at its generation; a baseline is computed from what is written
+   (round 10).** Three review findings, one rule seen three times: a value was derived from state
+   read *before* the drain or adoption that made the state authoritative, and then committed *after*
+   it. The bounded ordering audit this round opened with (§13 of the worklog) found no fourth
+   shared mechanism to fix at a lower boundary — each is a caller getting the rule wrong at its own
+   site, so each is fixed at its own site and the rule is what this section records. The round's
+   own entry-point audit then found a **fourth** instance, fixed the same way (below).
+
+   **The A/B toggle (finding 1).** The editor computed the toggle's destination itself —
+   `abSwitchTo (abActiveSlot() == 0 ? 1 : 0)` — from a read taken before `abSwitchTo`'s own drain
+   adopted a pending restore. A restore that flipped the active slot made the computed target the
+   slot the restore had just made active, `slot == abActive` held, and the switch returned without
+   switching: the toggle did nothing, silently. **The rule:** an A/B action chooses its target from
+   the session the plug-in is on once every arrived restore has been adopted — never from a slot a
+   caller observed earlier. `abToggle()` implements it on the processor: drain, then derive the
+   other slot of the post-drain `abActive`; the editor calls that. `abSwitchTo (int)` remains the
+   primitive for an **explicit** target, which is intent rather than a stale derivation: "go to B"
+   after a restore that already put the session on B is correctly a no-op. Nothing about the slot
+   contents, §10's precedence or rounds 4–7 changes; the round moves one derivation across a
+   drain. State test 53 pins both flips and the explicit-target distinction.
+   **The preset prev/next step (the audit's fourth instance).** `PresetManager::step` computed
+   "the row after this one" from `currentIndex()` and then called `load`, whose drain (through
+   `onAboutToLoad`) adopts a pending restore — *after* the index was chosen. A restore that moved
+   the selection had Next land on the row after the **old** selection. Same shape, same fix: a new
+   `adoptPending` hook (wired to `adoptPendingHostState`) is fired before the index is read, so the
+   step is relative to the authoritative row. `onAboutToSave` is the save path's instance of the
+   same hook; the two are documented as one rule at two sites. State test 56 pins Next and Prev
+   across a restore that moves the selection.
+
+   **Settings publication (findings 2 and 3, one mechanism).** While a host restore is *pending* —
+   arrived on its thread, not yet adopted — the Settings tree is only partly authoritative: the
+   restore has already published its Oversampling into the engine-config word under its own
+   generation (§8), and the tree still holds the outgoing value until the adoption writes it.
+   `valueTreePropertyChanged` republished the **whole tree** on every property change, tagged with
+   the latest arrival's generation. So an unrelated Settings edit — Meters on — re-published the
+   tree's *stale* Oversampling under the pending restore's own generation, which the
+   compare-exchange accepts as "that arrival again": the engine dropped back to the old factor
+   until the adoption put the restored one back. A publication borrowed a generation for a value
+   that was not that generation's.
+   **The publication invariant:** *a publication to the engine carries exactly the fields whose
+   values are authoritative at the generation it is tagged with.* A single property change is
+   authoritative for that property and nothing else, so it publishes that one field
+   (`publishField`: the animation mirror for `uiAnimations`, the tagged word for `oversample`,
+   nothing for the GUI-only fields). The whole tree is published only where the whole tree has just
+   been made coherent for a generation — the end of `writeResolved`, and the constructor. An edit to
+   Meters can no longer say anything about Oversampling because it does not carry it. The same rule
+   makes a restore's field-by-field write independent of the table's order; with the current table
+   (Oversampling first) that was never observable, so it is a guarantee, not a closed defect.
+   **When an edit happens, for ordering against restores** (finding 3), is defined as the instant
+   its callback reads the engine-config word's generation: the latest restore that had *arrived* as
+   far as the message thread can observe, and the edit is ordered after it — recorded against its
+   field at that generation, so `adoptResolved` keeps it against that restore and every older one
+   (§9), and a restore that arrives later carries a higher generation and replaces it. Both
+   observable orderings are exact and State test 54 pins them: a restore published *before* the
+   edit's callback is superseded by the edit at its adoption; one published *after* replaces it.
+   **The boundary, stated rather than hidden:** the binding's tree write precedes the callback's
+   read by JUCE's listener dispatch, and a restore landing inside that gap is observed as having
+   arrived *before* the edit, so the edit stands. That is the user-favouring resolution of an
+   instant the message thread cannot observe more finely without a lock — the user's explicit
+   action is never silently undone by a restore that landed within microseconds of it — and with
+   the publication invariant in force its only consequence is the edited field itself. The review's
+   framing of that boundary as "the earlier edit defeats the later restore" is the same observation
+   from the other side; nothing this ADR promises is violated by it, and this section makes the
+   choice explicit. One more interleaving is a transient rather than a boundary: a restore whose
+   `publishEngineConfig` lands between the edit callback's generation read and `publishField`'s
+   compare-exchange leaves the tree holding the edit's Oversampling and the word the restore's
+   until the next adoption — a few instructions to at most one timer period, after which the
+   adoption writes the tree and the whole-tree publish is idempotent. Nothing is lost and nothing
+   persists; recorded so it is not re-raised as new.
+
+   **The load-side baseline (finding 4, KI-029 — closed).** `load` and `loadFile` applied the
+   preset's sound and then took `sigAtLoad` from a second, live read — the two-read shape §17
+   removed from the save. Host automation writing a sound parameter between the apply and that read
+   made the baseline describe the automated value, so the preset read clean whenever the automation
+   returned to it while reloading it would move the sound. §17 left it open because the symmetric
+   remedy (the save-side `soundSignatureForSavedTree`) made a just-loaded preset read *modified* at
+   a measured 2 in 3000. **The reason was found and removed:** a save's baseline describes live
+   state the tree was captured *from*, but a load's describes live state written *from* the tree
+   and then read back through the parameter's own store/report pair — `setValue` stores
+   `convertFrom0to1(x)` and `getValue` reports `convertTo0to1` of it — which is one range mapping
+   deeper, and not idempotent in float for the four log-mapped frequency ranges. Modelling that pass
+   — `soundSignatureAfterLoading` applies `normalisedAsRendered` **twice** to the resolved value —
+   is the same arithmetic as the post-load `soundSignatureFor`, and on the reference Release build
+   the two agree at all 3000 sweep points where the save-side formula misses 2. **But "the same
+   arithmetic" is only bit-exact if the compiler emits it identically at both sites, and it need
+   not**: the prediction is one inlined expression chain, the live value passes through a store to
+   `std::atomic<float>`, and fused-multiply-add contraction can differ between them. The
+   ThreadSanitizer build disagreed at ≥ 1 of 3000 points and failed the first version of State test
+   55. So the load paths **reconcile** the prediction against one read-back, per parameter, at the
+   signature's own resolution (`loadBaselineFromTree`): where predicted and live agree to within a
+   few float ulps — five hundred times below the smallest real parameter step — they are the same
+   value and the *live* form is taken, because it is what `soundSignatureFor` will keep producing;
+   where they differ by more, something other than this load wrote the parameter and the
+   *predicted* value stands, so the preset reads dirty rather than absorbing the write. The
+   read-back therefore has no window to lose: a foreign write inside it is detected by magnitude
+   and rejected. The factory path does the same over its override table. The result holds on any
+   toolchain: the baseline a load sets equals what the parameters report (a just-loaded preset is
+   exactly clean — measured 0 in 3000 on both builds), and automation landing during the load leaves
+   the preset dirty. The pure prediction is kept as a public function for measurement and is
+   asserted to be within float tail of the live value everywhere; its exact string agreement is
+   printed, not asserted, because it is the toolchain-dependent quantity the reconciliation exists
+   to absorb.
+   **KI-029 is resolved as MUST FIX, fixed**, and the invariant is now uniform across save and load:
+   *the clean baseline is derived from the artifact — the bytes written or the bytes applied — and
+   a mutation that lands during the operation leaves the preset dirty rather than being absorbed
+   into its baseline.* The load side reaches it through a prediction reconciled at signature
+   resolution rather than a bare prediction, for the reason above.
+
+   **Where the seam sits.** `beforeStateCapture` fires immediately before a baseline is fixed: before
+   the save's one capture, and after a load's apply. State tests 52 and 55 mutate a parameter there;
+   in the fixed code the mutation leaves the preset dirty, in the read-back code it was absorbed.
+
+   **Host serialization**, re-checked for new evidence on this tree and found none: the two state
+   functions still appear in `src/` only as two declarations and two definitions with no Anamorph
+   call site; the only timers are the editor's 24 Hz and the processor's 20 Hz, both message-thread;
+   `hostRestoreGen` and the two host views are touched at the same four sites inside the two
+   off-message-thread branches; the tripwire is read only by a `jassert`; and the four additions of
+   this round (`abToggle`, `publishField`, `soundSignatureAfterLoading`, the `adoptPending` hook)
+   are message-thread-only and unreachable from either state function. Disposition D stands.
 
 ## Consequences
 

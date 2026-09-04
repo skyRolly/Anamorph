@@ -8,7 +8,7 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.7 change set** (2026-09-03, matching the CHANGELOG heading) — **D-2 /
 RISK-007 resolved as ADR-0036** (program state is message-thread-owned; host threads exchange
-immutable snapshots; the `tsan` CI lane), whose round-9 entry is LAST in the body; before it the
+immutable snapshots; the `tsan` CI lane), whose round-10 entry is LAST in the body; before it the
 **scanner-SARIF artifact change** (2026-09-03) — `codeql.yml` and `msvc.yml` now also publish
 their raw SARIF as Actions artifacts; before it ADR-0035,
 the oversampling path crossfade; before it ADR-0034,
@@ -947,7 +947,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:885-894`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2253-2278`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2256-2281`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1418,7 +1418,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1606-1614`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1609-1617`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -1457,7 +1457,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1563` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1566` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -1467,7 +1467,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2077"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2080"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -1544,7 +1544,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:583`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:586`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
@@ -8205,3 +8205,32 @@ the safe direction". That was wrong — a baseline naming an earlier sound reads
 the sound returns to it — and §16 now says so at the point the claim was made, instead of leaving a
 refuted argument standing next to its replacement. §16's first bullet (the drain runs before the
 capture) is unchanged and still required.
+
+## D-2 round 10 (2026-09-03) — decisions derive from the adopted session; publications carry only their field; the load baseline comes from what is written (ADR-0036 §18)
+
+**Code changed:** `src/PluginProcessor.h/.cpp` (`abToggle()` — drain, then derive the destination from
+the post-drain active slot), `src/PluginEditor.cpp` (the toggle calls it instead of computing
+`abSwitchTo (abActiveSlot() == 0 ? 1 : 0)` from a pre-drain read), `src/InternalState.h`
+(`valueTreePropertyChanged` publishes only the changed field through the new `publishField`; the
+whole-tree `publishFromTree` is reserved for the two points where the whole tree is coherent for a
+generation; the edit-ordering definition and its boundary are documented at the site),
+`src/PresetManager.h/.cpp` (`soundSignatureAfterLoading` and the shared `signatureAfterApplying`
+builder; `load`/`loadFile` fix their baseline from the values being written — a prediction reconciled
+against one read-back at signature resolution, because the ThreadSanitizer build showed the bare
+prediction is not bit-exact across toolchains — the factory path from its override table; the `beforeStateCapture` seam also fires after a load's apply; a new `adoptPending`
+hook fired by `step()` before it reads the current row — the round's own entry-point audit found the
+prev/next step to be a fourth instance of the rule), `tests/state_tests.cpp` (State tests 53, 54, 55,
+56 — mutation-tested six ways; one mutation deliberately not caught and said so).
+
+**Documents updated:** `ADR-0036` (new §18 — the rule seen three times, the publication invariant,
+the edit-ordering definition with its boundary stated, KI-029 closed with the measurement that closed
+it, host serialization re-checked; the approval-boundary paragraph records round 10);
+`KNOWN_ISSUES.md` (KI-029 removed — fixed); `POSTMORTEMS.md` (INC-013, the two-round history);
+`API_REFERENCE.md`; `TESTING.md` (tests 53–56, 55 tests); `TESTING_POLICY.md`, `HANDOVER.md`,
+`README.md` (55 tests / 2079 checks); `CHANGELOG.md`; the worklog (§16) and the dashboard.
+
+**Drift.** One correction: §17 said the symmetric load fix "costs ~1 in 1500 false dirty" as a standing
+product trade-off. The cost had a removable cause (the load's extra store/report pass) and §18 records
+it as removed rather than leaving §17's framing to read as permanent. §17's own text is unchanged; it
+was true of the save-side formula it examined.
+

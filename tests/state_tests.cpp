@@ -8774,6 +8774,410 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
 
 
 // ---------------------------------------------------------------------------
+//  State test 53 -- an A/B toggle chooses its destination from the session the
+//  plug-in is ON, after any pending restore has been adopted (D-2 round 10,
+//  review finding "A/B toggle uses stale selection").
+//
+//  The editor computed the destination itself -- `abSwitchTo (abActiveSlot() == 0
+//  ? 1 : 0)` -- from a read taken BEFORE abSwitchTo's own drain adopted the
+//  pending restore. When that restore flipped the active slot, the computed target
+//  was the slot the restore had just made active, `slot == abActive` held, and the
+//  switch returned without switching: the user's toggle did nothing, and did
+//  nothing silently. The destination is now derived by the processor after the
+//  drain (abToggle), so the decision and the state it is about are the same
+//  session. Both flips are covered so a fix that happened to work for one parity
+//  cannot pass.
+// ---------------------------------------------------------------------------
+static void testAbToggleDerivesItsTargetAfterTheDrain()
+{
+    std::printf ("State test 53: an A/B toggle derives its target from the adopted session (D-2 r10)\n");
+
+    for (int restoredActive = 0; restoredActive < 2; ++restoredActive)
+    {
+        const int outgoingActive = 1 - restoredActive;
+        const auto P = d2::author ("D2-R10-P", 0.21f, 0.79f, outgoingActive, 1);
+        const auto R = d2::author ("D2-R10-R", 0.41f, 0.59f, restoredActive, 2);
+        check (P.active != R.active, "non-vacuity: the restore flips the active slot");
+
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);                                   // inline: the outgoing session
+        check (p.abActiveSlot() == outgoingActive, "the outgoing session's slot is active");
+
+        d2::offMessageThread ([&] { d2::restoreFrom (p, R.blob); });   // pending: flips the active slot at adoption
+        // The leg means nothing unless R is still PENDING here -- a harness whose restore
+        // took the inline path would adopt it before the toggle and pass while testing
+        // nothing. R's sound is live (§10 applies it at decode); R's program is not.
+        check (p.abActiveSlot() == outgoingActive && d2::View::of (p).matches (P),
+               "non-vacuity: the restore is pending -- its program has not been adopted yet");
+
+        // ONE user action: the toggle. It must land on the other slot of R's session.
+        p.abToggle();
+
+        const int expected = 1 - restoredActive;
+        check (p.abActiveSlot() == expected,
+               "the toggle switched to the OTHER slot of the restored session, not to the slot it had just made active");
+        const float expectedWidth = expected == 0 ? R.widthA : R.widthB;
+        checkNear ((double) rawOf (p, "width"), (double) expectedWidth, 1.0e-6,
+                   "...and the live sound is that slot's sound from the restored session");
+        // (No name check: each A/B slot carries its own preset name, so the switch shows
+        // the other slot's, exactly as State test 45 records. The sound is the evidence.)
+
+        // The toggle is its own inverse on the same session: a second one returns.
+        p.abToggle();
+        check (p.abActiveSlot() == restoredActive, "a second toggle returns to the restored active slot");
+        checkNear ((double) rawOf (p, "width"), (double) (restoredActive == 0 ? R.widthA : R.widthB), 1.0e-6,
+                   "...with that slot's sound");
+        std::printf ("  restore flips active %d -> %d: toggle lands on %d, returns to %d\n",
+                     outgoingActive, restoredActive, expected, restoredActive);
+    }
+
+    // An EXPLICIT target is intent, not a stale derivation: "go to B" after a restore
+    // that already put the session on B is correctly a no-op, and "go to A" moves.
+    {
+        const auto P = d2::author ("D2-R10-P2", 0.21f, 0.79f, 0, 1);
+        const auto R = d2::author ("D2-R10-R2", 0.41f, 0.59f, 1, 2);
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, R.blob); });
+        p.abSwitchTo (1);
+        check (p.abActiveSlot() == 1, "an explicit 'switch to B' after a restore onto B is a no-op on B");
+        checkNear ((double) rawOf (p, "width"), (double) R.widthB, 1.0e-6, "...and B's restored sound stands");
+        p.abSwitchTo (0);
+        check (p.abActiveSlot() == 0, "an explicit 'switch to A' moves");
+        checkNear ((double) rawOf (p, "width"), (double) R.widthA, 1.0e-6, "...to A's restored sound");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 54 -- a Settings publication carries only the field that changed,
+//  and an edit is ordered against restores by the instant its callback observes
+//  (D-2 round 10, review findings "unrelated edits revert restored oversampling"
+//  and "later restores preserve earlier edits").
+//
+//  (B) A pending restore has already published its Oversampling into the
+//  engine-config word, tagged with its generation; the tree still holds the
+//  outgoing value until the adoption writes it. Every property change used to
+//  republish the WHOLE tree under the latest arrival's generation, so an
+//  unrelated edit -- Meters on -- re-published the tree's STALE Oversampling under
+//  the pending restore's own generation, which the compare-exchange accepts as
+//  "that arrival again": the engine dropped to the old factor until the adoption.
+//  A publication now carries only the field that changed. (The adoption's own
+//  field-by-field write cannot expose a stale Oversampling either, but with the
+//  current table order -- Oversampling first -- that was never observable, so it is
+//  not asserted: a check that cannot fail proves nothing. The field-level rule
+//  guarantees it for any order.)
+//
+//  (C) WHEN an edit happens, for ordering against restores, is the instant its
+//  callback reads the word's generation. Both observable orderings are pinned: a
+//  restore published BEFORE the edit is superseded by it at the adoption; one
+//  published AFTER the edit replaces it. For the Oversampling field itself both
+//  the tree and the engine word must agree with that answer. These legs pin the
+//  single-restore ORDER; that the tag is a GENERATION compared across two restores
+//  (an edit after R1 but before R2 survives R1 and is replaced by R2) is State
+//  test 44's fourth leg, which this test relies on rather than repeats.
+// ---------------------------------------------------------------------------
+static void testSettingsPublicationIsFieldLevelAndOrderedByObservation()
+{
+    std::printf ("State test 54: a Settings publication carries only its field; edits order by observation (D-2 r10)\n");
+    using r3::SettingsSet;
+    const SettingsSet P { 1, 3, 0.50, false, false, true };   // outgoing: Oversampling Off
+    const SettingsSet R { 3, 4, 0.25, false, false, true };   // restore: Oversampling 4x
+    check (P.oversample != R.oversample, "non-vacuity: the restore changes Oversampling");
+    const auto blobP = r3::authorSession ("D2-R10-SP", P);
+    const auto blobR = r3::authorSession ("D2-R10-SR", R);
+
+    // --- (B) an unrelated edit while the restore is pending ------------------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, blobP);
+        check (p.getInternal().oversampleIndex() == P.oversample - 1, "the outgoing Oversampling is in force");
+
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // pending: word published, tree not
+        check (p.getInternal().oversampleIndex() == R.oversample - 1,
+               "the restore published its Oversampling synchronously on its own thread");
+        check (r3::read (p.getInternal()).oversample == P.oversample,
+               "...while the tree still holds the outgoing value (the tail is pending)");
+
+        // The UNRELATED edit. It must not touch the engine word at all.
+        r3::setField (p.getInternal(), 3, SettingsSet { 0, 0, 0.0, true, false, false });   // Meters on
+        check (p.getInternal().metersOn(), "the edit took effect");
+        check (p.getInternal().oversampleIndex() == R.oversample - 1,
+               "an unrelated Settings edit does NOT revert the restored Oversampling in the engine");
+
+        p.pollUndoCoalesce();   // the adoption
+
+        const auto got = r3::read (p.getInternal());
+        check (got.oversample == R.oversample, "the adoption installed the restored Oversampling in the tree");
+        check (got.metersOn, "...and kept the unrelated edit made after the restore arrived (§9)");
+        check (p.getInternal().oversampleIndex() == R.oversample - 1, "the engine word agrees with the tree");
+        check (r3::settingsOf (d2::saveOf (p)).oversample == R.oversample, "...and a save carries it");
+    }
+
+    // --- (C.i) edit, THEN a restore arrives: the restore replaces it ----------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, blobP);
+        r3::setField (p.getInternal(), 1, SettingsSet { 0, 5, 0.0, false, false, false });   // UI Scale 5
+        check (r3::read (p.getInternal()).uiScale == 5, "the edit took effect");
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // arrives AFTER the edit's callback
+        p.pollUndoCoalesce();
+        check (r3::read (p.getInternal()).uiScale == R.uiScale,
+               "a restore published AFTER an edit replaces the edit at its adoption -- the newer arrival wins");
+    }
+
+    // --- (C.ii) a restore arrives, THEN the edit: the edit survives -----------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, blobP);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
+        r3::setField (p.getInternal(), 1, SettingsSet { 0, 5, 0.0, false, false, false });
+        p.pollUndoCoalesce();
+        check (r3::read (p.getInternal()).uiScale == 5,
+               "an edit whose callback observes the restore's arrival survives its adoption (§9)");
+        check (r3::read (p.getInternal()).oversample == R.oversample, "...while every other field is the restore's");
+    }
+
+    // --- (C.iii) the Oversampling field itself, both orders, tree AND word ----
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, blobP);
+        p.getInternal().oversampleValue().setValue (2);                 // edit: 2x
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // then the restore
+        check (p.getInternal().oversampleIndex() == R.oversample - 1, "the later restore's Oversampling wins the word");
+        p.pollUndoCoalesce();
+        check (r3::read (p.getInternal()).oversample == R.oversample && p.getInternal().oversampleIndex() == R.oversample - 1,
+               "edit then restore: the restore's Oversampling stands in the tree and the word");
+    }
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, blobP);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // the restore first
+        p.getInternal().oversampleValue().setValue (2);                 // then the edit
+        check (p.getInternal().oversampleIndex() == 1, "the edit's Oversampling lands over the arrived restore's in the word");
+        p.pollUndoCoalesce();
+        check (r3::read (p.getInternal()).oversample == 2 && p.getInternal().oversampleIndex() == 1,
+               "restore then edit: the edit's Oversampling stands in the tree and the word through the adoption");
+        check (r3::read (p.getInternal()).uiScale == R.uiScale, "...and the untouched fields are the restore's");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 55 -- a loaded preset's clean baseline is fixed from what the load
+//  wrote, not from a read-back (D-2 round 10, ADR-0036 §18; closes KI-029).
+//
+//  load() and loadFile() applied the preset's sound and then took `sigAtLoad` from
+//  a second, live read -- the same two-read shape round 9 removed from the save.
+//  Host automation writing a sound parameter between the apply and that read made
+//  the baseline describe the automated value, so the preset read CLEAN whenever
+//  the automation returned to it while reloading it would move the sound. The
+//  baseline now comes from the values being applied, through the same arithmetic
+//  the parameters report them by (soundSignatureAfterLoading), so nothing live is
+//  read and there is no window. The `beforeStateCapture` seam fires after the apply
+//  and before the baseline, exactly where the read-back used to be.
+//
+//  The load-side signature must model the parameter's own store/report pass, which
+//  the save-side one must NOT: leg (c) measures both against 3000 random round
+//  trips so the reason the two flavours exist is a number rather than a claim.
+// ---------------------------------------------------------------------------
+static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
+{
+    std::printf ("State test 55: a loaded preset's baseline is fixed from what the load wrote (D-2 r10, KI-029)\n");
+
+    const juce::String name ("AnamorphHarness-D2R10");
+    auto presetFile = anamorph::PresetManager::presetDirectory()
+                          .getChildFile (name + anamorph::PresetManager::fileSuffix());
+    struct ParkedPreset
+    {
+        explicit ParkedPreset (juce::File f)
+            : live (std::move (f)),
+              parked (juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getChildFile ("AnamorphStateHarness.d2r10.parked")),
+              had (live.existsAsFile())
+        { if (had) { parked.deleteFile(); live.moveFileTo (parked); } }
+        ~ParkedPreset() { live.deleteFile(); if (had) { parked.moveFileTo (live); parked.deleteFile(); } }
+        juce::File live, parked; bool had;
+    };
+    const ParkedPreset guard { presetFile };
+
+    const float A = 0.24f, B = 0.76f;
+
+    // --- (a) automation lands between the apply and the baseline ---------------
+    // Both cycled values are checked so a baseline naming either is caught: the file
+    // holds A, so A must read clean and reload as a no-op; B must read DIRTY.
+    for (int viaFile = 0; viaFile < 2; ++viaFile)
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "width", A);
+        check (p.getPresets().saveUser (name), "the preset (width A) is on disk");
+        setRaw (p, "width", 0.5f);                                     // leave the file's sound
+        int fires = 0;
+        p.getPresets().beforeStateCapture = [&] { ++fires; setRaw (p, "width", B); };   // automation, in the window
+        if (viaFile) check (p.getPresets().loadFile (presetFile), "loadFile succeeds");
+        else       { p.getPresets().refresh(); const int idx = [&] { int i = 0; for (const auto& e : p.getPresets().entries()) { if (! e.isFactory && e.name == name) return i; ++i; } return -1; }();
+                     check (idx >= 0, "the saved preset is listed"); p.getPresets().load (idx); }
+        p.getPresets().beforeStateCapture = nullptr;
+        p.pollUndoCoalesce();
+        check (fires == 1, "the seam fired once, after the apply and before the baseline");
+        checkNear ((double) rawOf (p, "width"), (double) B, 1.0e-6, "the automation write landed after the apply");
+
+        check (p.getPresets().isDirty(), "the preset reads DIRTY at the automated value, because its file holds another");
+        setRaw (p, "width", A);
+        check (! p.getPresets().isDirty(), "...and CLEAN at the file's value");
+        const auto before = anamorph::PresetManager::soundSignatureFor (p.getAPVTS());
+        check (p.getPresets().loadFile (presetFile), "reloading the clean preset");
+        p.pollUndoCoalesce();
+        checkStr (anamorph::PresetManager::soundSignatureFor (p.getAPVTS()), before,
+                  "a preset that reads CLEAN reloads without changing the sound");
+        std::printf ("  %s: automation in the window leaves the preset dirty; the file's value reads clean\n",
+                     viaFile ? "loadFile" : "load");
+    }
+
+    // --- (b) every FACTORY preset is exactly clean after loading -----------------
+    // The factory path fixes its baseline from the override table by the same formula;
+    // exactness there is asserted, not assumed.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        int factories = 0;
+        const auto entries = p.getPresets().entries();
+        for (int i = 0; i < entries.size(); ++i)
+            if (entries.getReference (i).isFactory)
+            {
+                ++factories;
+                p.getPresets().load (i);
+                p.pollUndoCoalesce();
+                checkStr (p.getPresets().baseline(), anamorph::PresetManager::soundSignatureFor (p.getAPVTS()),
+                          ("factory preset '" + entries.getReference (i).name + "' is exactly clean after loading").toRawUTF8());
+            }
+        check (factories >= 5, "non-vacuity: the factory table was walked");
+    }
+
+    // --- (c) the load-side equality, MEASURED, against the save-side one --------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        auto& apvts = p.getAPVTS();
+        std::vector<juce::RangedAudioParameter*> ranged;
+        for (auto* q : p.getParameters())
+            if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (q))
+                if (! pid::isPresetExcluded (wid->paramID))
+                    if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (q)) ranged.push_back (rp);
+
+        auto probe = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                         .getChildFile ("AnamorphStateHarness.d2r10.probe" + anamorph::PresetManager::fileSuffix());
+        juce::uint32 lcg = 0x5EED1234u;
+        int afterLoadingMismatch = 0, savedTreeMismatch = 0, dirtyAfterLoad = 0, loadsFailed = 0, beyondTail = 0;
+        const int points = 3000;
+        for (int i = 0; i < points; ++i)
+        {
+            lcg = lcg * 1664525u + 1013904223u;
+            const float v = (float) ((lcg >> 8) * (1.0 / 16777216.0));
+            for (auto* rp : ranged) rp->setValueNotifyingHost (v);
+            const auto tree = apvts.copyState();
+            const auto sigAfter = anamorph::PresetManager::soundSignatureAfterLoading (apvts, tree);
+            const auto sigSaved = anamorph::PresetManager::soundSignatureForSavedTree (apvts, tree);
+            auto xml = tree.createXml();
+            if (xml == nullptr || ! probe.replaceWithText (xml->toString()) || ! p.getPresets().loadFile (probe)) { ++loadsFailed; continue; }
+            const auto live = anamorph::PresetManager::soundSignatureFor (apvts);
+            if (live != sigAfter) ++afterLoadingMismatch;
+            if (live != sigSaved) ++savedTreeMismatch;
+            if (p.getPresets().isDirty()) ++dirtyAfterLoad;
+            // The pure prediction may differ from live only by float tail, never by a value:
+            // compare the two field by field as numbers.
+            auto a = juce::StringArray::fromTokens (sigAfter, ",", ""), b = juce::StringArray::fromTokens (live, ",", "");
+            for (int k = 0; k < juce::jmin (a.size(), b.size()); ++k)
+                if (std::abs (a[k].getFloatValue() - b[k].getFloatValue()) > 2.0e-5f) { ++beyondTail; break; }
+        }
+        probe.deleteFile();
+        check (loadsFailed == 0, "every probe preset loaded back");
+        // What the load path GUARANTEES on any toolchain: the baseline it set is what the
+        // parameters report, so a just-loaded preset is exactly clean.
+        check (dirtyAfterLoad == 0, "a just-loaded preset never reads modified, across the whole sweep");
+        // What the pure prediction guarantees: never wrong by more than float tail. Its exact
+        // string agreement is toolchain-dependent (0 of 3000 on the reference Release build;
+        // not 0 under the ThreadSanitizer build), which is precisely why the load path
+        // RECONCILES rather than trusts it -- so that count is printed, not asserted.
+        check (beyondTail == 0, "the pure load-side prediction never differs from the post-load live value by more than float tail");
+        check (savedTreeMismatch >= 1,
+               "the save-side signature measurably differs from the post-load live signature, so a"
+               " separate load-side flavour is needed");
+        std::printf ("  load-side sweep over %d round trips: dirty after load %d, pure-prediction string mismatches %d"
+                     " (toolchain-dependent, reconciled away), save-side signature mismatches %d (the reason the two flavours exist)\n",
+                     points, dirtyAfterLoad, afterLoadingMismatch, savedTreeMismatch);
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 56 -- the preset prev/next step derives its target from the adopted
+//  selection (D-2 round 10; found by the round's own entry-point audit, the fourth
+//  instance of the rule §18 records).
+//
+//  step() computed "the row after this one" from currentIndex() and then called
+//  load(), whose drain adopts a pending restore -- after the index was chosen. A
+//  restore that moved the selection therefore had the user's Next land on the row
+//  after the OLD selection, not after the one the plug-in was actually on. Same
+//  shape as the A/B toggle; same fix: adopt, then derive.
+// ---------------------------------------------------------------------------
+static void testPresetStepDerivesItsTargetAfterTheDrain()
+{
+    std::printf ("State test 56: a preset step derives its target from the adopted selection (D-2 r10)\n");
+
+    // Two sessions on two different FACTORY rows, far enough apart that "next from the
+    // old row" and "next from the restored row" cannot coincide.
+    auto sessionOnFactoryRow = [] (int row)
+    {
+        AnamorphAudioProcessor a;
+        a.prepareToPlay (48000.0, 512);
+        a.getPresets().load (row);
+        a.pollUndoCoalesce();
+        return d2::saveOf (a);
+    };
+    AnamorphAudioProcessor probe;
+    const int factories = [&] { int n = 0; for (const auto& e : probe.getPresets().entries()) if (e.isFactory) ++n; return n; }();
+    check (factories >= 5, "non-vacuity: enough factory rows to step among");
+    const int rowP = 1, rowR = 4;
+    const auto blobP = sessionOnFactoryRow (rowP);
+    const auto blobR = sessionOnFactoryRow (rowR);
+
+    for (int delta = +1; delta >= -1; delta -= 2)
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, blobP);
+        check (p.getPresets().currentIndex() == rowP, "the outgoing session's row is selected");
+
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // pending: moves the selection at adoption
+        check (p.getPresets().currentIndex() == rowP,
+               "non-vacuity: the restore is pending -- the selection has not moved yet");
+
+        p.getPresets().step (delta);                                    // ONE user action
+        p.pollUndoCoalesce();
+
+        const int n = p.getPresets().entries().size();
+        const int expected = ((rowR + delta) % n + n) % n;
+        check (p.getPresets().currentIndex() == expected,
+               delta > 0 ? "Next lands on the row after the RESTORED selection, not after the outgoing one"
+                         : "Prev lands on the row before the RESTORED selection, not before the outgoing one");
+        // The sound is that row's: load the same factory row on a fresh instance and compare.
+        AnamorphAudioProcessor control;
+        control.prepareToPlay (48000.0, 512);
+        control.getPresets().load (expected);
+        checkStr (anamorph::PresetManager::soundSignatureFor (p.getAPVTS()),
+                  anamorph::PresetManager::soundSignatureFor (control.getAPVTS()),
+                  "...and the live sound is that row's factory sound");
+        check (! p.getPresets().isDirty(), "...read clean");
+    }
+}
+
+// ---------------------------------------------------------------------------
 //  D-2 stress probe (contract F): every thread the model names, at once, under
 //  ThreadSanitizer. NOT part of the suite, like the other three TSan probes:
 //  on the pre-D-2 tree its execution IS the undefined behaviour it measures.
@@ -9017,6 +9421,10 @@ int main (int argc, char* argv[])
     testDrainReachesFixedPointBeforeTheCallerActs();
     testPresetSavedDuringRestoreIsCleanAgainstItsOwnFile();
     testSaveBaselineDescribesTheBytesUnderAutomation();
+    testAbToggleDerivesItsTargetAfterTheDrain();
+    testSettingsPublicationIsFieldLevelAndOrderedByObservation();
+    testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote();
+    testPresetStepDerivesItsTargetAfterTheDrain();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

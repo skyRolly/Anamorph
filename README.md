@@ -61,7 +61,7 @@ only — it configures and builds entirely from the command line on a headless L
   build report Anamorph as missing** — re-insert the plug-in and re-load the preset. Audio,
   parameters and presets are unchanged. ADR-0023 · [`KI-016`](docs/KNOWN_ISSUES.md).
 - Active development on a feature-branch → PR → `main` workflow.
-- Validation gate: **53 DSP self-tests** + the **51-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
+- Validation gate: **53 DSP self-tests** + the **55-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
   quality needs a DAW — see `docs/procedures/TESTING.md`).
 

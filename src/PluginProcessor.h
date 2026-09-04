@@ -112,6 +112,17 @@ public:
     // recall. Switching A/B never touches the shared view/Settings params (#13).
     int  abActiveSlot() const noexcept { return abActive; }
     void abSwitchTo (int slot);
+    // THE TOGGLE, as its own operation (D-2 round 10, ADR-0036 §18). "Go to the other
+    // slot" is a decision about the session the plug-in is ON, and only the processor
+    // knows that at the moment the action commits: a pending host restore is adopted at
+    // the top of every state-mutating entry point, and it can move the active slot. The
+    // editor used to compute the destination itself -- `abSwitchTo (abActiveSlot() == 0
+    // ? 1 : 0)` -- from a read taken BEFORE that adoption, so with a restore pending that
+    // flipped the active slot the computed target was the slot the restore had just made
+    // active and the switch was a no-op. The destination is now derived here, after the
+    // drain, from the authoritative slot. abSwitchTo(int) remains the primitive for an
+    // EXPLICIT target ("switch to B"), which is intent rather than a stale derivation.
+    void abToggle();
     void abCopyToOther();
 
     // H15 (Wave 2): change generations for the editor's micro-anim re-arm gate.

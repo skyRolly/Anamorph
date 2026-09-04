@@ -676,10 +676,10 @@ so the same file measures the pre-fix tree with the same instruments:
   the drain; the owner then walks new history — undo, undo, redo, redo, a Copy undone on the other
   slot — while a host thread saves throughout, and every step lands exactly.
 
-**State tests 42–52 (rounds 2–9, the PR review's findings) reproduce a reviewed interleaving
+**State tests 42–56 (rounds 2–10, the PR review's findings) reproduce a reviewed interleaving
 deterministically** rather than by timing, through the seams `AnamorphAudioProcessor::seams` exposes
-for exactly that, plus `PresetManager::beforeStateCapture` for the save path (all empty in production:
-one null check each, on non-audio paths). Each was
+for exactly that, plus `PresetManager::beforeStateCapture` for the save and load paths (all empty in
+production: one null check each, on non-audio paths). Each was
 mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37's window check
 (44 uses no seam for its first three legs, the adoption seam for the fourth):
 
@@ -781,13 +781,56 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   observations (the preset format's own denormalised round trip, which predates this round and moves
   no marker). Mutation-tested: canonicalising the file side a *second* time fails (f) and (g) —
   4 sweep points in 20001 — and reverting the undo signature fails (h).
+- **53 (the A/B toggle derives its target after the drain, round 10)** — a pending restore that flips
+  the active slot; one `abToggle()` must land on the *other* slot of the **restored** session, for both
+  flips, and a second toggle must return. The explicit `abSwitchTo (int)` is pinned as intent: "go to
+  B" after a restore onto B is a no-op, "go to A" moves. Mutation-tested — deriving the target before
+  the drain (the editor's old expression) fails 8 checks (ADR-0036 §18).
+- **54 (a Settings publication carries only its field; edits order by observation, round 10)** —
+  (B) a pending restore has published its Oversampling; an unrelated edit (Meters) must leave the
+  engine word on the restored value, and the adoption must keep the edit and install the rest.
+  (C) both observable orderings of an edit against a restore: published *before* the edit's callback
+  → superseded at the adoption; published *after* → replaces it; and the Oversampling field itself
+  both ways, tree and word. Mutation-tested — the user-edit branch republishing the whole tree fails
+  (B). Making the *adoption* branch republish the whole tree is **not** caught, and deliberately not
+  asserted: Oversampling is the first field in the table, so no stale republish is observable there.
+- **55 (a loaded preset's baseline is fixed from what the load wrote, round 10 — KI-029)** — the
+  `beforeStateCapture` seam mutates `width` after the apply and before the baseline, through both
+  `load` and `loadFile`: the preset must read **dirty** at the automated value and **clean** at the
+  file's, and clean must reload as a no-op. Every factory preset must be exactly clean after loading.
+  A 3000-point sweep asserts what the load path guarantees on any toolchain — a just-loaded preset is
+  **never** dirty, and the pure prediction is never off by more than float tail — and *prints* the
+  pure prediction's exact string agreement (0 of 3000 on the reference Release build; not 0 under the
+  ThreadSanitizer build, which is why the load path reconciles the prediction against a read-back at
+  signature resolution rather than trusting it bare) alongside the save-side formula's count (**2**),
+  the measured reason the two flavours exist. Mutation-tested — a read-back baseline fails 4 checks;
+  the save-side formula fails 3. The first version asserted exact string agreement and failed under
+  TSan; that failure is what produced the reconciliation.
+- **56 (the preset step derives its target after the drain, round 10)** — found by the round's own
+  entry-point audit, the fourth instance of §18's rule: `step()` computed "the row after this one"
+  from `currentIndex()` and then called `load`, whose drain adopts the pending restore *after* the
+  index was chosen. Two sessions on two factory rows; the restore that moves the selection is pending;
+  one Next (and, separately, one Prev) must land relative to the **restored** row, with that row's
+  factory sound and reading clean. Mutation-tested — deriving the row before the new `adoptPending`
+  drain fails 4 checks (ADR-0036 §18).
 
 State tests 22 and 27 were re-shaped in the same change: their off-thread requester used to be a
 `juce::Value` written from a worker, which after D-2 models nothing the plug-in does; both now drive
 the real `setStateInformation` from the worker, and 27 asserts the ORDER of reported values because
 the tick that adopts a restore delivers its latency from inside the adoption.
 
-`tests/state_tests.cpp` (**51 tests**, own console target `AnamorphStateTests`) automates the
+**One instance at a time.** The state suite writes into the REAL user preset folder (the production
+path — that is the point of it), parks and restores any genuine preset that shares a harness name,
+and several tests assert the folder's *listing* (row order, a deleted preset ticking nothing, a
+foreign file's position). Two instances running concurrently therefore read each other's files:
+measured in round 10, a plain run overlapping the `tsan` lane's own suite run failed State test 52
+leg (i) about 1 run in 9 — a probe preset reloaded with the other process's bytes — and two
+deliberately concurrent plain runs failed 2 and 8 checks across tests 10, 12, 13, 24 and 28. Nothing
+is wrong with any of those tests; the harness assumes exclusive use of the folder, as the CI jobs
+give it (one suite per runner). Locally: never run the suite beside a sanitizer lane or a second
+copy of itself.
+
+`tests/state_tests.cpp` (**55 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

@@ -96,6 +96,7 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // the two land in the order they happened.
     presets.onMetaChanged = [this] { publishProgram(); };
     presets.onAboutToSave = [this] { adoptPendingHostState(); };
+    presets.adoptPending  = [this] { adoptPendingHostState(); }; // step() decides after the drain (§18)
     internal.onChanged    = [this] { publishProgram(); };
 
     syncCommitted(); // establish the undo baseline
@@ -981,6 +982,17 @@ void AnamorphAudioProcessor::abSwitchTo (int slot)
     abApplySlot (slot);                                // ...whose setMeta republishes the snapshot (D-2)
     engine.injectMatchGainDb (abMatchGain[slot]);      // restore the new slot's match (#23)
     syncCommitted();                                   // the switch itself isn't undoable (#11)
+}
+
+void AnamorphAudioProcessor::abToggle()
+{
+    // Drain FIRST, then decide: the target is the other slot of the session that is
+    // authoritative once every arrived restore has been adopted (§15), never of the
+    // one a caller happened to observe earlier. abSwitchTo drains again; a restore
+    // that lands between the two drains is adopted there and the toggle applies to
+    // THAT session -- a legal serialization, since it arrived before the switch.
+    adoptPendingHostState();
+    abSwitchTo (abActive == 0 ? 1 : 0);
 }
 
 void AnamorphAudioProcessor::abCopyToOther()
