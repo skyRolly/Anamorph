@@ -87,7 +87,7 @@ jobs that guard classes the build matrix cannot see:
 | **merge-check** | `ubuntu-latest` + **pinned `clang`** | VST3 + Standalone + tests, from `refs/pull/N/merge` — **same-repo PRs only**, no packaging, no artifacts | — |
 | **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint) | — |
 | **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, then `check-citations.py --check`) | — |
-| **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, and a `-fsyntax-only` compile of the two opt-in instruments | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
+| **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, a `-fsyntax-only` compile of the two opt-in instruments, and the **Windows-parity stack guard** (the state suite re-run under `ulimit -s 1024`, blocking — see below) | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
 | **tsan** | `ubuntu-latest` | Clang ThreadSanitizer build of the state suite; the four cross-thread probes ×5 and the suite once, behind a seeded-race canary (D-2 / ADR-0036) | — |
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
@@ -1213,6 +1213,22 @@ skips the upload when nothing matches.
 Evidence [Verified]: `.github/workflows/codeql.yml`, `.github/workflows/msvc.yml`.
 
 ### The Linux ABI floor
+
+### The Windows-parity stack guard (`linux`)
+
+Linux and macOS give the main thread **8 MB**; a Windows console EXE gets **1 MB**.
+`AnamorphAudioProcessor` is ~138 kB and a compiler gives each of a function's sibling-scope locals
+its own frame slot, so a test holding several of them overflows **on Windows alone** — and does it on
+entry to the function, before its first statement. That is exactly how round 12's State test 59
+failed: the suite died before printing anything, the Windows CRT's fully-buffered pipe took the log
+with it, and CI reported one truncated line and no summary from the slowest job in the matrix.
+
+The `linux` job therefore re-runs the state suite under `ulimit -s 1024` as a blocking step, right
+after the ordinary self-tests and re-using the same binary. It is a **proxy** — MSVC lays out frames
+its own way — but it reproduces the failure it exists for, on the platform the suite is developed on,
+in about a minute. The fix it points at is never "raise the limit": it is to put the processors on the
+heap (`docs/procedures/TESTING.md`). Both suites additionally run with `stdout` **unbuffered**, so a
+crash can no longer take the log with it on any platform.
 
 The `linux` job asserts, on the **stripped** binaries and as its **last step**, that the shipped VST3
 and Standalone stay within a declared glibc/libstdc++ floor. This is a compatibility claim the

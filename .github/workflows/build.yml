@@ -772,6 +772,32 @@ jobs:
           MALLOC_PERTURB_: 1
         run: ./scripts/run-tests.sh
 
+      # WINDOWS-PARITY STACK GUARD (D-2 round 13). Linux and macOS give the main
+      # thread 8 MB; Windows gives a console EXE 1 MB. `AnamorphAudioProcessor` is
+      # ~138 kB, and a compiler gives each of a function's sibling-scope locals its
+      # own frame slot, so a test holding several of them overflows on Windows ALONE
+      # -- as State test 59 did, killing the whole suite before its first line and
+      # taking the buffered log with it. Nothing off Windows could see it, and the
+      # Windows job is the slowest in the matrix, so the feedback arrived last.
+      #
+      # `ulimit -s 1024` is a PROXY, not an equivalence: MSVC's frame layout is its
+      # own. It is a good proxy -- it reproduces the failure this exists for -- and
+      # it is the only way to keep the constraint visible where the suite is
+      # actually developed. Runs the state suite only (the DSP suite holds no
+      # processors) and re-uses the binary the step above just built.
+      - name: State suite under a 1 MB stack (Windows parity)
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
+        run: |
+          BIN="$(find build -maxdepth 8 -name AnamorphStateTests -type f)"
+          test "$(printf '%s' "$BIN" | grep -c .)" -eq 1
+          ( ulimit -s 1024 && "$BIN" > /dev/null ) || {
+            echo "::error::the state suite does not survive a 1 MB stack -- the Windows main-thread"\
+                 " default. A test is holding too many ~138 kB AnamorphAudioProcessor objects in one"\
+                 " frame; put them on the heap (see State test 59) rather than raising this limit."
+            exit 1
+          }
+          echo "state suite green under a 1 MB stack"
+
       - name: pluginval (deterministic x3 -- release gate)
         # Explicit condition rather than relying on "no `if:`, so it self-skips".
         # Both pluginval steps carry the SAME condition, naming exactly what must

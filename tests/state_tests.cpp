@@ -9715,6 +9715,43 @@ static void testARestoreIsAFixedPoint()
     }
 }
 
+// ---------------------------------------------------------------------------
+//  State test 59 -- a host save taken inside the pending-restore window carries
+//  the Settings edits made after that restore arrived (D-2 round 12, review
+//  finding "pending Settings edits vanish from saves").
+//
+//  A restore has TWO generations. Its ARRIVAL is the engine-config word's CAS on the
+//  restoring thread -- the one instant the message thread can see a restore before
+//  adopting it, and what a Settings edit records against its field (ADR-0036 §9). Its
+//  ADOPTION is `adoptedGeneration`, which moves only inside the drain and is what stamps
+//  the published snapshot. `getStateInformation`'s `covered` test is written against the
+//  second, so a Settings edit can never raise the generation of the snapshot it
+//  publishes: inside the pending window that snapshot is GUARANTEED rejected, however
+//  many edits it carries, and the save fell back to `hostRestoreView` -- whose Settings
+//  were frozen at decode time, before the edit existed.
+//
+//  Rejecting that snapshot is RIGHT for every field that IS the session (§5, State test
+//  42). The Settings are not: they are per-field, arrival-ordered state, and the save now
+//  decides them per field through the predicate the adoption uses (§21).
+//
+//  THE ORACLE IS THE RULE, not another production merge: each leg builds the expected
+//  Settings from §9 directly -- the restore's values, with the fields edited at or after
+//  its arrival taking the edit's.
+// ---------------------------------------------------------------------------
+// THE PROCESSORS ARE ON THE HEAP, AND THAT IS LOAD-BEARING (D-2 round 13).
+// `AnamorphAudioProcessor` is ~138 kB, and a compiler gives each of a function's
+// sibling-scope locals its own frame slot rather than reusing one. Written as a single
+// function with a processor per leg, this test's frame came to ~1.4 MB and overflowed the
+// stack the moment it was ENTERED -- before its first `printf` ran. Linux and macOS give
+// the main thread 8 MB and never noticed; Windows gives it 1 MB, so the whole suite died
+// there, taking its buffered log with it.
+//
+// Splitting the legs into separate functions is NOT sufficient, and was measured not to
+// be: the compiler inlines them back into one frame and the overflow returns. Only the
+// heap allocation is guaranteed by the language, so that is what the legs use; the split
+// stays because it reads better and makes each leg's fixture explicit.
+//
+// Reproduce the Windows stack locally with `ulimit -s 1024` (docs/procedures/TESTING.md).
 namespace r12
 {
     // The preset name a saved blob carries, read straight out of the bytes.
@@ -9724,30 +9761,14 @@ namespace r12
             return juce::ValueTree::fromXml (*xml).getProperty ("presetName").toString();
         return "<unreadable>";
     }
-}
 
-// ---------------------------------------------------------------------------
-//  State test 59 -- a host save taken inside the pending-restore window carries
-//  the Settings edits made after that restore arrived (D-2 round 12, review
-//  finding "pending Settings edits vanish from saves").
-//
-//  PLACEHOLDER HEADER -- rewritten once the mechanism is proved.
-// ---------------------------------------------------------------------------
-static void testHostSaveInsideThePendingWindowCarriesTheEdit()
-{
-    std::printf ("State test 59: a host save inside the pending window carries the edit (D-2 r12)\n");
-
-    const r3::SettingsSet P  { 1, 3, 0.50, true,  true,  false };
-    const r3::SettingsSet R  { 2, 4, 0.25, true,  true,  false };
-    const r3::SettingsSet U  { 3, 5, 0.75, false, false, true  };
-    const auto blobR = r3::authorSession ("D2-R12-R", R);
-
-    // The intended logical state, built from the RULE (section 9) rather than from any
-    // production merge: the restore's Settings, with the fields edited after its
+    // The intended logical state, built from the RULE (ADR-0036 section 9) rather than
+    // from any production merge: `restored`'s Settings, with the fields edited after its
     // arrival taking the edit's value.
-    auto expectedWith = [&] (std::initializer_list<int> edited)
+    static r3::SettingsSet expectedWith (const r3::SettingsSet& restored, const r3::SettingsSet& U,
+                                         std::initializer_list<int> edited)
     {
-        r3::SettingsSet e = R;
+        r3::SettingsSet e = restored;
         for (int i : edited)
             switch (i)
             {
@@ -9759,135 +9780,138 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
                 default: e.uiAnimations = U.uiAnimations; break;
             }
         return e;
+    }
+
+    struct Fixture
+    {
+        r3::SettingsSet P, R, U, R2;
+        juce::MemoryBlock blobR, blobR2;
     };
 
     // --- (a) THE REPORTED CASE: restore pending, one Settings edit, host save ----
-    for (int i = 0; i < 6; ++i)
+    static void legPendingEditReachesTheSave (const Fixture& f, int i)
     {
-        AnamorphAudioProcessor p;
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: see the note above
+        auto& p = *owned;
         p.prepareToPlay (48000.0, 512);
-        r3::apply (p.getInternal(), P);
-        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // arrived; PENDING
-        r3::setField (p.getInternal(), i, U);                          // the edit, after the arrival
+        r3::apply (p.getInternal(), f.P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, f.blobR); });  // arrived; PENDING
+        r3::setField (p.getInternal(), i, f.U);                        // the edit, after the arrival
 
         juce::MemoryBlock hostSave;
         d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });     // the host saves INSIDE the window
 
-        check (r3::same (r3::settingsOf (hostSave), expectedWith ({ i })),
+        check (r3::same (r3::settingsOf (hostSave), expectedWith (f.R, f.U, { i })),
                (juce::String (r3::fieldNames[i]) + ": a host save inside the pending window carries the edit").toRawUTF8());
-        check (r12::presetNameOf (hostSave) == "D2-R12-R",
+        check (presetNameOf (hostSave) == "D2-R12-R",
                "...and still describes the RESTORE's program, not the outgoing session's");
     }
 
     // --- (b) several edits in one pending window ------------------------------
+    static void legSixEditsInOneWindow (const Fixture& f)
     {
-        AnamorphAudioProcessor p;
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: see the note above
+        auto& p = *owned;
         p.prepareToPlay (48000.0, 512);
-        r3::apply (p.getInternal(), P);
-        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
-        r3::apply (p.getInternal(), U);                                // all six, after the arrival
+        r3::apply (p.getInternal(), f.P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, f.blobR); });
+        r3::apply (p.getInternal(), f.U);                              // all six, after the arrival
         juce::MemoryBlock hostSave;
         d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
-        check (r3::same (r3::settingsOf (hostSave), U), "six edits in one pending window all reach a host save");
+        check (r3::same (r3::settingsOf (hostSave), f.U), "six edits in one pending window all reach a host save");
     }
 
     // --- (c) the edit was made BEFORE the restore arrived ----------------------
     // The restore is the newer arrival, so the save must carry the RESTORE's values:
     // the fix must not let a stale edit override a genuinely newer restore.
-    for (int i = 0; i < 6; ++i)
+    static void legEditBeforeTheArrivalIsReplaced (const Fixture& f, int i)
     {
-        AnamorphAudioProcessor p;
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: see the note above
+        auto& p = *owned;
         p.prepareToPlay (48000.0, 512);
-        r3::apply (p.getInternal(), P);
-        r3::setField (p.getInternal(), i, U);                          // the edit, BEFORE the arrival
-        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
+        r3::apply (p.getInternal(), f.P);
+        r3::setField (p.getInternal(), i, f.U);                        // the edit, BEFORE the arrival
+        d2::offMessageThread ([&] { d2::restoreFrom (p, f.blobR); });
         juce::MemoryBlock hostSave;
         d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
-        check (r3::same (r3::settingsOf (hostSave), R),
+        check (r3::same (r3::settingsOf (hostSave), f.R),
                (juce::String (r3::fieldNames[i]) + ": an edit made before the arrival is replaced by the restore, in the save too").toRawUTF8());
     }
 
     // --- (d) the same save, taken after the adoption --------------------------
-    for (int i = 0; i < 6; ++i)
+    static void legSaveAfterTheAdoption (const Fixture& f, int i)
     {
-        AnamorphAudioProcessor p;
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: see the note above
+        auto& p = *owned;
         p.prepareToPlay (48000.0, 512);
-        r3::apply (p.getInternal(), P);
-        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
-        r3::setField (p.getInternal(), i, U);
+        r3::apply (p.getInternal(), f.P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, f.blobR); });
+        r3::setField (p.getInternal(), i, f.U);
         p.pollUndoCoalesce();                                          // the adoption
         juce::MemoryBlock hostSave, ownerSave = d2::saveOf (p);
         d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
-        check (r3::same (r3::settingsOf (hostSave), expectedWith ({ i })),
+        check (r3::same (r3::settingsOf (hostSave), expectedWith (f.R, f.U, { i })),
                "a host save after the adoption carries the same answer");
         check (hostSave == ownerSave, "...and equals the owner's own save");
     }
 
     // --- (e) an edit made after the adoption ----------------------------------
+    static void legEditAfterTheAdoption (const Fixture& f)
     {
-        AnamorphAudioProcessor p;
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: see the note above
+        auto& p = *owned;
         p.prepareToPlay (48000.0, 512);
-        r3::apply (p.getInternal(), P);
-        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
+        r3::apply (p.getInternal(), f.P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, f.blobR); });
         p.pollUndoCoalesce();                                          // adopt first
-        r3::apply (p.getInternal(), U);                                // then edit
+        r3::apply (p.getInternal(), f.U);                              // then edit
         juce::MemoryBlock hostSave;
         d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
-        check (r3::same (r3::settingsOf (hostSave), U), "an edit made after the adoption reaches a host save");
+        check (r3::same (r3::settingsOf (hostSave), f.U), "an edit made after the adoption reaches a host save");
     }
 
     // --- (f) two restores, the edit after BOTH -------------------------------
     // The edit follows the latest arrival, so it survives both adoptions and must be in
     // the save. This is the leg that makes the fix key on the RECORDED per-field
     // generation rather than on "was there an edit at all".
+    static void legEditAfterTwoArrivals (const Fixture& f, int i)
     {
-        const r3::SettingsSet R2 { 4, 2, 0.90, false, true, false };
-        const auto blobR2 = r3::authorSession ("D2-R12-R2", R2);
-        for (int i = 0; i < 6; ++i)
-        {
-            AnamorphAudioProcessor p;
-            p.prepareToPlay (48000.0, 512);
-            r3::apply (p.getInternal(), P);
-            d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });    // R1 arrives
-            d2::offMessageThread ([&] { d2::restoreFrom (p, blobR2); });   // R2 arrives
-            r3::setField (p.getInternal(), i, U);                          // the edit, after BOTH
-            juce::MemoryBlock hostSave;
-            d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
-            r3::SettingsSet e = R2;
-            switch (i)
-            {
-                case 0: e.oversample   = U.oversample;   break;
-                case 1: e.uiScale      = U.uiScale;      break;
-                case 2: e.scopePersist = U.scopePersist; break;
-                case 3: e.metersOn     = U.metersOn;     break;
-                case 4: e.tooltipsOn   = U.tooltipsOn;   break;
-                default: e.uiAnimations = U.uiAnimations; break;
-            }
-            check (r3::same (r3::settingsOf (hostSave), e),
-                   (juce::String (r3::fieldNames[i]) + ": an edit after two arrivals is in the save, over the LATER restore").toRawUTF8());
-            p.pollUndoCoalesce();
-            check (r3::same (r3::read (p.getInternal()), e),
-                   "...and the adoption produces exactly what that save described");
-        }
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: see the note above
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), f.P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, f.blobR); });   // R1 arrives
+        d2::offMessageThread ([&] { d2::restoreFrom (p, f.blobR2); });  // R2 arrives
+        r3::setField (p.getInternal(), i, f.U);                         // the edit, after BOTH
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
 
-        // --- (g) two restores, the edit BETWEEN them --------------------------
-        // R2 is a strictly later arrival, so it replaces the edit. The save must carry
-        // R2's values: the overlay must not resurrect an edit a newer restore supersedes.
-        for (int i = 0; i < 6; ++i)
-        {
-            AnamorphAudioProcessor p;
-            p.prepareToPlay (48000.0, 512);
-            r3::apply (p.getInternal(), P);
-            d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
-            r3::setField (p.getInternal(), i, U);                          // between the two
-            d2::offMessageThread ([&] { d2::restoreFrom (p, blobR2); });
-            juce::MemoryBlock hostSave;
-            d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
-            check (r3::same (r3::settingsOf (hostSave), R2),
-                   (juce::String (r3::fieldNames[i]) + ": an edit a LATER restore supersedes is not resurrected by the overlay").toRawUTF8());
-            p.pollUndoCoalesce();
-            check (r3::same (r3::read (p.getInternal()), R2), "...and the adoption agrees");
-        }
+        const auto e = expectedWith (f.R2, f.U, { i });
+        check (r3::same (r3::settingsOf (hostSave), e),
+               (juce::String (r3::fieldNames[i]) + ": an edit after two arrivals is in the save, over the LATER restore").toRawUTF8());
+        p.pollUndoCoalesce();
+        check (r3::same (r3::read (p.getInternal()), e),
+               "...and the adoption produces exactly what that save described");
+    }
+
+    // --- (g) two restores, the edit BETWEEN them --------------------------
+    // R2 is a strictly later arrival, so it replaces the edit. The save must carry
+    // R2's values: the overlay must not resurrect an edit a newer restore supersedes.
+    static void legEditBetweenTwoArrivals (const Fixture& f, int i)
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: see the note above
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), f.P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, f.blobR); });
+        r3::setField (p.getInternal(), i, f.U);                        // between the two
+        d2::offMessageThread ([&] { d2::restoreFrom (p, f.blobR2); });
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+        check (r3::same (r3::settingsOf (hostSave), f.R2),
+               (juce::String (r3::fieldNames[i]) + ": an edit a LATER restore supersedes is not resurrected by the overlay").toRawUTF8());
+        p.pollUndoCoalesce();
+        check (r3::same (r3::read (p.getInternal()), f.R2), "...and the adoption agrees");
     }
 
     // --- (h) the overlay applies to an edit that happened, and to nothing else ----
@@ -9897,47 +9921,84 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
     // is the "a save reflects every edit it observed and none it did not" half of the
     // invariant, expressed without writing message-thread state from a host thread (which
     // is the very rule the test is about).
+    static void legNoEditNoOverlay (const Fixture& f)
     {
-        AnamorphAudioProcessor p;
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: see the note above
+        auto& p = *owned;
         p.prepareToPlay (48000.0, 512);
-        r3::apply (p.getInternal(), P);
-        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
+        r3::apply (p.getInternal(), f.P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, f.blobR); });
 
         juce::MemoryBlock before;
         d2::offMessageThread ([&] { before = d2::saveOf (p); });
-        check (r3::same (r3::settingsOf (before), R),
+        check (r3::same (r3::settingsOf (before), f.R),
                "a save inside the window with no edit behind it carries the restore's values, untouched");
 
-        r3::setField (p.getInternal(), 3, U);                          // the edit, on the message thread
+        r3::setField (p.getInternal(), 3, f.U);                        // the edit, on the message thread
         juce::MemoryBlock after;
         d2::offMessageThread ([&] { after = d2::saveOf (p); });
-        check (r3::settingsOf (after).metersOn == U.metersOn,
+        check (r3::settingsOf (after).metersOn == f.U.metersOn,
                "...and the next save, which does follow the edit, carries it");
-        check (r3::same (r3::settingsOf (after), expectedWith ({ 3 })),
+        check (r3::same (r3::settingsOf (after), expectedWith (f.R, f.U, { 3 })),
                "...with the restore's values still standing in every field the edit did not touch");
     }
 
     // --- (i) the identity half is untouched by the overlay --------------------
     // The fix must change the Settings and nothing else: the save inside the window still
     // describes the RESTORE's session, never the outgoing one (section 5, State test 42).
+    static void legIdentityStaysTheRestores (const Fixture& f)
     {
-        AnamorphAudioProcessor outgoing;
-        outgoing.prepareToPlay (48000.0, 512);
-        outgoing.getPresets().setMeta ("D2-R12-OUTGOING", "r12-outgoing", anamorph::PresetManager::Selection());
-        r3::apply (outgoing.getInternal(), P);
-
-        AnamorphAudioProcessor p;
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: see the note above
+        auto& p = *owned;
         p.prepareToPlay (48000.0, 512);
         p.getPresets().setMeta ("D2-R12-OUTGOING", "r12-outgoing", anamorph::PresetManager::Selection());
-        r3::apply (p.getInternal(), P);
-        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
-        r3::apply (p.getInternal(), U);
+        r3::apply (p.getInternal(), f.P);
+        check (p.getPresets().currentName() == "D2-R12-OUTGOING",
+               "non-vacuity: the message thread holds the OUTGOING session before the restore arrives");
+        d2::offMessageThread ([&] { d2::restoreFrom (p, f.blobR); });
+        r3::apply (p.getInternal(), f.U);
         juce::MemoryBlock hostSave;
         d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
-        checkStr (r12::presetNameOf (hostSave), "D2-R12-R",
+        checkStr (presetNameOf (hostSave), "D2-R12-R",
                   "the overlaid save still names the RESTORE's session, not the outgoing one");
-        check (r3::same (r3::settingsOf (hostSave), U), "...with the edited Settings on top of it");
+        check (r3::same (r3::settingsOf (hostSave), f.U), "...with the edited Settings on top of it");
     }
+}
+
+static void testHostSaveInsideThePendingWindowCarriesTheEdit()
+{
+    std::printf ("State test 59: a host save inside the pending window carries the edit (D-2 r12)\n");
+
+    r12::Fixture f { { 1, 3, 0.50, true,  true,  false },   // P: what the editor shows first
+                     { 2, 4, 0.25, true,  true,  false },   // R: the restore
+                     { 3, 5, 0.75, false, false, true  },   // U: the user's edits
+                     { 4, 2, 0.90, true,  true,  false },   // R2: a second, later restore
+                     {}, {} };
+    f.blobR  = r3::authorSession ("D2-R12-R",  f.R);
+    f.blobR2 = r3::authorSession ("D2-R12-R2", f.R2);
+    // Every leg's answer must be readable: in each field the EDIT differs from what the
+    // editor showed, from the restore, and from the second restore, so "the edit stands"
+    // and "the restore stands" are never the same string. The two RESTORES can only be
+    // told apart in the three fields that have more than two values -- three booleans
+    // cannot be pairwise distinct across four sets -- so that half is asserted exactly
+    // where it is achievable and legs (f)/(g) rest on the edit distinction everywhere.
+    for (int i = 0; i < 6; ++i)
+        check (! r3::fieldEquals (f.R, f.U, i) && ! r3::fieldEquals (f.P, f.U, i)
+                 && ! r3::fieldEquals (f.R2, f.U, i),
+               "non-vacuity: in every field the edit differs from the editor's value and from both restores");
+    for (int i = 0; i < 3; ++i)
+        check (! r3::fieldEquals (f.R, f.R2, i),
+               "non-vacuity: the two restores differ in every field that has more than two values");
+
+    for (int i = 0; i < 6; ++i) r12::legPendingEditReachesTheSave (f, i);
+    r12::legSixEditsInOneWindow (f);
+    for (int i = 0; i < 6; ++i) r12::legEditBeforeTheArrivalIsReplaced (f, i);
+    for (int i = 0; i < 6; ++i) r12::legSaveAfterTheAdoption (f, i);
+    r12::legEditAfterTheAdoption (f);
+    for (int i = 0; i < 6; ++i) r12::legEditAfterTwoArrivals (f, i);
+    for (int i = 0; i < 6; ++i) r12::legEditBetweenTwoArrivals (f, i);
+    r12::legNoEditNoOverlay (f);
+    r12::legIdentityStaysTheRestores (f);
 }
 
 // ---------------------------------------------------------------------------
@@ -10077,6 +10138,16 @@ static int runD2StressProbe()
 
 int main (int argc, char* argv[])
 {
+    // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
+    // stdout fully when it is a pipe -- which every CI runner is -- so a suite that
+    // dies mid-run loses everything written since the last flush. That is exactly how
+    // a round-12 Windows failure arrived: one truncated line, no summary, and no way
+    // to tell which test had been running. Unbuffered output costs nothing measurable
+    // for a few thousand short lines and makes every future failure readable at the
+    // point it happened, on every platform, without a `stdbuf` wrapper the Windows job
+    // cannot use anyway.
+    std::setvbuf (stdout, nullptr, _IONBF, 0);
+
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
 
     if (argc > 1 && std::strcmp (argv[1], "--state-thread-probe") == 0)

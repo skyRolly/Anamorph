@@ -858,12 +858,34 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   both sides of the adoption, the in-window one required to equal the owner's own; and the identity
   half, where the overlaid save must still name the **restore's** session and never the outgoing one
   (§5, State test 42). The oracle is built from §9's rule rather than from any production merge.
-  Mutation-tested — writing the restore's Settings as decoded fails **14** checks.
+  Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
+  separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
 State tests 22 and 27 were re-shaped in the same change: their off-thread requester used to be a
 `juce::Value` written from a worker, which after D-2 models nothing the plug-in does; both now drive
 the real `setStateInformation` from the worker, and 27 asserts the ORDER of reported values because
 the tick that adopts a restore delivers its latency from inside the adoption.
+
+**Windows has a 1 MB stack, and the suite must fit in it.** Linux and macOS give the main thread
+8 MB; a Windows console EXE gets **1 MB**. `AnamorphAudioProcessor` is ~138 kB, and a compiler gives
+each of a function's sibling-scope locals its own frame slot rather than reusing one — so a test that
+declares several of them overflows on Windows ALONE, and does it on ENTRY to the function, before its
+first line runs. State test 59 did exactly that in round 12: the whole suite died there, the buffered
+log went with it, and CI reported one truncated line and no summary. **A test needing more than a
+couple of processors must take them from the heap** (`std::make_unique`) — splitting the legs into
+separate functions is not enough, because the compiler inlines them back into one frame. Reproduce
+the Windows stack locally:
+
+```bash
+( ulimit -s 1024 && ./build/AnamorphStateTests_artefacts/Release/AnamorphStateTests )
+```
+
+The `linux` job runs exactly that as a blocking step (*State suite under a 1 MB stack (Windows
+parity)*), so the constraint is checked on every push where the suite is actually developed rather
+than only by the slowest job in the matrix. It is a proxy — MSVC's frame layout is its own — but it
+reproduces the failure it exists for. **Both suites also run with `stdout` unbuffered**
+(`setvbuf(..., _IONBF, ...)`), so a crash can no longer take the log with it: on Windows the CRT
+buffers a pipe fully, which is why the round-12 failure arrived unreadable.
 
 **One instance at a time.** The state suite writes into the REAL user preset folder (the production
 path — that is the point of it), parks and restores any genuine preset that shares a harness name,

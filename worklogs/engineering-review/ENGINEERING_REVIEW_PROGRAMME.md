@@ -1249,9 +1249,9 @@ never triggers the adoption's sound re-install (§12).
 |---|---|
 | State test 59 against the round-11 tree | FAILS 7 checks (six fields + the all-six leg) |
 | the fix vs writing the restore's Settings as decoded | FAILS 14 checks |
-| State tests 37–59 on the tree | green; suite 2261 checks / 0 failures, 58 tests |
+| State tests 37–59 on the tree | green; suite 2271 checks / 0 failures, 58 tests |
 | the four probes under TSan, after | `--d2-stress-probe`, `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe`, 10 runs each: 0 runs with reports, 0 reports. No suppressions |
-| the state suite under TSan, after | 2261 checks, 0 failures, 0 reports — run alone |
+| the state suite under TSan, after | 2271 checks, 0 failures, 0 reports — run alone |
 | the DSP suite | 396 checks, 0 failures (unchanged sources) |
 | `check-realtime.py` | 47 files, 0 violations |
 | `check-docs.py`, `check-citations.py` | 120 files clean; 398 anchors clean against both `8b348f6` and `origin/main` |
@@ -1269,6 +1269,61 @@ Same assertion, no weakening — and the same class of fragility round 11 remove
 no new evidence (the round's source change touches `getStateInformation`'s Settings selection,
 `ownedProgram`, `writeState`'s signature and `InternalState`; it adds no caller, no thread, no timer
 and no concurrent path, and leaves the host-side members and the off-thread tripwire untouched).
+
+### 19. Round 13 — CI closure: the Windows stack, and a log that survives a crash (2026-09-04)
+
+**No product change.** The D-2 state model, ADR-0036 §21's decision and every invariant rounds 2–12
+established are untouched: this round is a test-frame fix, a CI guard and a diagnostics fix.
+
+**macOS: green, no further change.** The round-12 fix to State test 57's snap-boundary leg holds. On
+the round-12 head the `macos` job passes end to end, including *DSP + state self-tests, x86_64 slice
+under Rosetta* — the step that failed in round 11 — alongside `macos-intel` (native x86-64) and
+`macos-crossslice`.
+
+**Windows: a stack overflow, found and fixed.** The `windows` job's *DSP + state self-tests* step
+exited non-zero having printed one truncated line and no summary. Root cause, reproduced locally
+rather than inferred: `AnamorphAudioProcessor` is **~138 kB**, a compiler gives each of a function's
+sibling-scope locals its own frame slot rather than reusing one, and State test 59 was written as a
+single function holding **ten** of them — a ~1.4 MB frame. Linux and macOS give the main thread 8 MB
+and never noticed; **Windows gives a console EXE 1 MB**, so the suite died on ENTRY to that function,
+before its first `printf`.
+
+| measurement | result |
+|---|---|
+| `sizeof (AnamorphAudioProcessor)` | 141 216 bytes |
+| the round-12 suite under `ulimit -s 1024` | **SIGSEGV** entering State test 59, exactly as on Windows |
+| the same suite after the fix, `ulimit -s 1024` | 2271 checks / 0 failures |
+| the same suite, default 8 MB stack | 2271 checks / 0 failures |
+
+**The fix is the heap, and only the heap.** State test 59's legs are now separate functions, and each
+takes its processor from `std::make_unique`. Splitting into functions alone was tried first and
+**measured insufficient** — the compiler inlines them back into one frame and the overflow returns —
+so the split is kept for readability while the heap allocation is what carries the guarantee. Not one
+assertion was weakened; the restructure ADDED the fixture's non-vacuity checks, and the round-12
+mutation (writing the restore's Settings as decoded) now fails **16** checks rather than 14.
+
+**Two durable guards, because the failure was invisible where the suite is developed.**
+
+* **`stdout` is unbuffered in both suites.** Windows' CRT buffers a pipe fully, so a suite that dies
+  mid-run loses everything since the last flush — which is why round 12's failure arrived as one
+  truncated line with no summary and no way to tell which test was running. `setvbuf(_IONBF)` costs
+  nothing measurable for a few thousand short lines and makes every future failure readable at the
+  point it happened, on every platform, without a `stdbuf` wrapper the Windows job cannot use.
+* **The `linux` job re-runs the state suite under `ulimit -s 1024`**, blocking. A proxy, not an
+  equivalence — MSVC lays out frames its own way — but it reproduces this failure, on the platform the
+  suite is developed on, about twenty minutes earlier than the Windows job can. The error it prints
+  names the fix (put the processors on the heap) and rules out the wrong one (raising the limit).
+
+**Bounded regression audit of the changed area.** The round touches `tests/state_tests.cpp`,
+`tests/dsp_tests.cpp` (the `setvbuf` line) and one added CI step. No `src/` file changed, so state
+publication, generation ordering, host save, restore, A/B, preset and realtime behaviour are
+untouched by construction; the suites re-assert them and are green. The state suite's own numbers
+moved only by the added non-vacuity checks (2261 → 2271).
+
+**Host serialization: disposition D, unchanged, no new evidence.** The finding moved line (now
+`src/PluginProcessor.h:430`) because round 12 added six lines above it. That is not evidence. This
+round adds no caller, no thread, no timer, no async or background path, and touches neither the
+host-side members nor the off-thread tripwire — `src/` is not modified at all.
 
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 

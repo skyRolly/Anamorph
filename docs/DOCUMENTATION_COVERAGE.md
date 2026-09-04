@@ -1834,7 +1834,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3209` and `.github/workflows/build.yml:3294`, this round being
+`.github/workflows/build.yml:3235` and `.github/workflows/build.yml:3320`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -8234,6 +8234,28 @@ product trade-off. The cost had a removable cause (the load's extra store/report
 it as removed rather than leaving §17's framing to read as permanent. §17's own text is unchanged; it
 was true of the save-side formula it examined.
 
+## D-2 round 13 (2026-09-04) — CI closure: the Windows stack, and a log that survives a crash
+
+**Code changed:** `tests/state_tests.cpp` — State test 59's legs become separate functions that take
+their processor from the HEAP (`AnamorphAudioProcessor` is ~138 kB; ten of them in one frame is
+~1.4 MB, which overflows Windows' 1 MB main-thread stack on ENTRY to the function), plus the fixture's
+non-vacuity checks; `tests/dsp_tests.cpp` and `tests/state_tests.cpp` — `setvbuf(stdout, _IONBF)`, so a
+crash cannot take the buffered log with it; `.github/workflows/build.yml` — the `linux` job re-runs the
+state suite under `ulimit -s 1024` as a blocking Windows-parity guard. **No `src/` change.**
+
+**Why.** The `windows` job failed with one truncated line and no summary. Reproduced locally with
+`ulimit -s 1024`: SIGSEGV entering State test 59, exactly as on Windows; the same suite passes at both
+1 MB and 8 MB after the fix. Splitting the legs into functions was tried first and measured
+insufficient — the compiler inlines them back into one frame — so the heap allocation is what carries
+the guarantee.
+
+**Documents updated:** `TESTING.md` (the 1 MB-stack rule, how to reproduce it, the unbuffered-output
+note, test 59's mutation count 14 → 16); `CI_CD.md` (the `linux` row and a section on the parity
+guard); `HANDOVER.md`, `DOCUMENTATION_COVERAGE.md` and the worklog (§19) for the 2271-check count.
+
+**Drift.** None. No product behaviour, no ADR decision and no invariant changed; ADR-0036 is untouched
+because the round asserts nothing new about the state model.
+
 ## D-2 round 12 (2026-09-04) — a save describes the session the adoption will produce (ADR-0036 §21)
 
 **Code changed:** `src/InternalState.h` — the per-field precedence test of §9 is named
@@ -8256,7 +8278,7 @@ sound with the outgoing session's identity (§5, State test 42).
 
 **Documents updated:** `ADR-0036` (new §21 and the approval-boundary paragraph); `API_REFERENCE.md`
 (the three new InternalState entries); `TESTING.md` (test 59, 58 tests); `TESTING_POLICY.md`,
-`HANDOVER.md`, `README.md` (58 tests / 2261 checks); `CHANGELOG.md`; the worklog (§18) and the
+`HANDOVER.md`, `README.md` (58 tests / 2271 checks); `CHANGELOG.md`; the worklog (§18) and the
 dashboard.
 
 **Drift.** None: §21 extends §9's rule to the save path rather than changing it, and §18's
