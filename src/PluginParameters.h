@@ -107,12 +107,24 @@ namespace pid
 //  the DSP input changed by it (ADR-0036 §17).
 //
 //  It is a no-op for every stock `juce::AudioParameterFloat`, which already stores the
-//  denormalised value and reports `convertTo0to1` of it. APPLY IT EXACTLY ONCE per
-//  value: for the frequency ranges built from custom log/exp conversion lambdas it is
-//  the identity in real arithmetic but NOT idempotent in float, so a second application
-//  moves the last bits and can cross a decimal rounding boundary in a signature. A value
-//  resolved out of a saved tree has already had it applied, because the tree holds the
-//  denormalised number -- see PresetManager::soundSignatureForSavedTree.
+//  denormalised value and reports `convertTo0to1` of it. APPLY IT ONCE PER PASS THE VALUE
+//  ACTUALLY MAKES, and count those passes: for the frequency ranges built from custom
+//  log/exp conversion lambdas it is the identity in real arithmetic but NOT idempotent in
+//  float, so an extra application moves the last bits and can cross a decimal rounding
+//  boundary in a signature. A value resolved out of a saved tree has already had one pass,
+//  because the tree holds the denormalised number (PresetManager::soundSignatureForSavedTree);
+//  a value the load is about to WRITE will make two more -- the parameter's own store/report
+//  pair, then the signature's -- which is why PresetManager::soundSignatureAfterLoading
+//  applies it exactly twice. Matching the count is what makes a prediction bit-equal to the
+//  live read-back, so a baseline never needs a tolerance (ADR-0036 §19).
+//
+//  IT IS A GRID, AND THE SIGNATURE'S FIVE DECIMALS ARE A SECOND ONE. 29 of the 33
+//  preset-carried parameters snap onto a range interval here, and the smallest such cell in
+//  the set (8.08e-5, Chorus Rate at the top of its skewed range) is 8.08 times the
+//  signature's own 1e-5 quantum, so no two legal settings can share a signature -- State
+//  test 57 asserts that margin rather than quoting it. The four log-mapped frequency ranges
+//  pass `jlimit` as their snap function and have no cell at all, so there the quantum is the
+//  only resolution there is (worst case 1.38 Hz at 20 kHz).
 // ---------------------------------------------------------------------------
 inline float normalisedAsRendered (const juce::RangedAudioParameter& rp, float normalised) noexcept
 {

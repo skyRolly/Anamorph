@@ -8,7 +8,7 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.7 change set** (2026-09-03, matching the CHANGELOG heading) — **D-2 /
 RISK-007 resolved as ADR-0036** (program state is message-thread-owned; host threads exchange
-immutable snapshots; the `tsan` CI lane), whose round-10 entry is LAST in the body; before it the
+immutable snapshots; the `tsan` CI lane), whose round-11 entry is LAST in the body; before it the
 **scanner-SARIF artifact change** (2026-09-03) — `codeql.yml` and `msvc.yml` now also publish
 their raw SARIF as Actions artifacts; before it ADR-0035,
 the oversampling path crossfade; before it ADR-0034,
@@ -8233,4 +8233,40 @@ it, host serialization re-checked; the approval-boundary paragraph records round
 product trade-off. The cost had a removable cause (the load's extra store/report pass) and §18 records
 it as removed rather than leaving §17's framing to read as permanent. §17's own text is unchanged; it
 was true of the save-side formula it examined.
+
+## D-2 round 11 (2026-09-03) — one equivalence, and nothing layered on top of it (ADR-0036 §19, §20)
+
+**Code changed:** `src/PresetManager.cpp` and `.h` — the `1e-6` reconciliation round 10 added to
+`signatureAfterApplying` is deleted along with its `kSameValue` constant and the
+`loadBaselineFromTree` wrapper, leaving one tolerance-free signature definition that `load`,
+`loadFile` and the factory path all use directly, and the two loaders now fire the
+`beforeStateCapture` seam at the same instant; `src/PluginProcessor.cpp` — the sibling `1e-6` in
+`reassertParameters`'s per-parameter write gate is exact (§20); `tests/state_tests.cpp` — State test
+57 (a banded deterministic boundary search with an independent oracle, the asserted grid margin,
+both parameter domains including the snap boundary, both loaders, accumulation), State test 58 (the
+restore fixed point and the clean project reopen), State test 55's equality assertion restored from
+"within float tail" to exact string equality, and every fixed shared temp path in the suite replaced
+with `juce::File::createTempFile`.
+
+**Why.** A tolerance cannot distinguish compiler noise from a real automation write of the same
+size, so a write landing in the load window was absorbed into the clean baseline. Round 10's
+premise — that the prediction is not bit-exact across toolchains — was re-measured over 20 000
+values and 3 000 full save/XML/load round trips in both the Release and the ThreadSanitizer build
+and found false (zero differences everywhere), and its named mechanism (FMA contraction) is refuted
+outright by the build flags that build is compiled with (ADR-0031, `-ffp-contract=off`, 0 FMA
+emitted). What produced the red run is recorded as a **candidate, not a finding**: a shared probe
+path reproduces the same shape of failure on demand, but round 10's own reproduction did not fail
+this test.
+
+**Documents updated:** `ADR-0036` (new §19 — the equivalence stated once, what the quantisation
+itself absorbs with the measured margins, the two parameter domains, the corrected diagnosis — and
+new §20 for the restore write gate; the approval-boundary paragraph records round 11);
+`API_REFERENCE.md` (both signature rows and `normalisedAsRendered`); `TESTING.md` (tests 57–58,
+57 tests); `TESTING_POLICY.md`, `HANDOVER.md`, `README.md` (57 tests / 2198 checks); `CHANGELOG.md`;
+the worklog (§17) and the dashboard.
+
+**Drift.** One correction rather than an addition: §18 recorded the reconciliation and its
+toolchain rationale as settled. §19 says plainly that the rationale was wrong and removes the
+mechanism; §18's own text is left as written, since it was an accurate record of what round 10 did
+and believed, and §19 names it as superseded on that one point.
 

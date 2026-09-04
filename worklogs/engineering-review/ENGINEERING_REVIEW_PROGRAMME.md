@@ -1059,6 +1059,136 @@ Non-actionable residuals: a host save's snapshot and `copyState()` straddling a 
 the ≤ 50 ms adoption latency for the tail, the preset format's own denormalised round trip, and the
 edit-ordering boundary stated in §18 (user-favouring, by definition).
 
+### 17. Round 11 — one equivalence, and nothing layered on top of it (2026-09-03)
+
+**Architecture Review Gate: APPROVED, and this round is inside it — it removes machinery.** A
+tolerance and the comparison that used it are deleted from one signature builder, and a second
+tolerance of the same shape from the restore path's per-parameter write gate. No thread, no lock, no
+wait, no audio-path allocation, no new cross-thread reader, no serialization or parameter change.
+
+**The finding — a tolerance absorbed real automation writes.** §18 closed KI-029 by deriving the
+load's clean baseline from the values the load writes rather than reading the parameters back, and
+then reconciled that prediction against one live read-back: where the two agreed to within `1e-6`,
+the **live** value was taken. A tolerance cannot tell compiler noise from a real automation write of
+the same size, so a write landing in the load window was folded into the baseline and the preset
+read *clean* against a sound its own file does not hold — the failure §17 and §18 exist to prevent,
+reintroduced by the mechanism meant to protect §18.
+
+**The premise was measured and does not hold.** Round 10 justified the reconciliation by a
+ThreadSanitizer build failing State test 55's exact-equality assertion, concluding the prediction was
+not bit-exact across toolchains. Re-measured with a temporary probe:
+
+| measurement | Release | ThreadSanitizer |
+|---|---|---|
+| 20 000 values × 33 params: prediction vs live signature, float level | 0 differences | 0 differences |
+| the same, at the five-decimal string level | 0 | 0 |
+| 3 000 save → `copyState` → XML → re-parse → `loadFile` round trips: XML value fidelity | 0 differences | 0 differences |
+| the same: prediction vs post-load live, from the in-memory tree and from the re-parsed file | 0 / 0 | 0 / 0 |
+
+**Round 10's named mechanism is refuted outright.** It was fused-multiply-add contraction differing
+between the inlined prediction chain and the value routed through the parameter. Every x86-64 target
+in this project — the ThreadSanitizer build among them — is compiled under ADR-0031 with
+`-march=haswell -ffp-contract=off`, measured there at **0 FMA instructions emitted**. No interleaving
+of that build could have exhibited the mechanism it was blamed on.
+
+**What produced the red run is a candidate, not a finding, and is recorded as one.** Two instances of
+that probe run concurrently — they share a fixed temp-file path — produce hundreds of mismatches,
+with value differences up to **~1.9e4**, i.e. one process reading the other's file. Round 10
+root-caused exactly that collision later in the same round, for a different test, and recorded the
+one-instance rule in `TESTING.md`. But round 10's own reproduction listed failures in tests 10, 12,
+13, 24, 28 and 52 — **not 55**, the test that actually failed under TSan. So the collision is
+available as a mechanism and is **not** claimed as the measured cause. What is established is enough
+to decide: the arithmetic is exonerated in the build that failed, and the tolerance bought with that
+failure was unjustified. **The lesson is procedural, not numerical**: a failure explained by a
+hypothesis is not the same as a failure whose hypothesis was tested — which applies to this round's
+own first draft, which asserted the collision as fact. Round 11 also removes the fixed shared temp
+paths from the suite (`juce::File::createTempFile`) so the mechanism cannot recur; the preset
+**folder** is still shared, which is what the one-instance rule covers.
+
+**The decision — equivalence model B, stated once.** The signature has exactly one equivalence, and
+every producer applies it identically:
+
+> Two sounds are the same when their **rendered normalised values agree to five decimal places**.
+
+"Rendered" is `normalisedAsRendered` (§17), the value the plug-in actually renders and stores.
+Nothing is layered on it.
+
+**What the quantisation itself absorbs, stated rather than implied.** One signature bucket is `1e-5`
+of normalised range, so the margin has to be measured against the parameter set:
+
+| domain | count | smallest step | vs one `1e-5` bucket |
+|---|---|---|---|
+| on a grid (interval-snapped) | 29 | 8.08e-5 (Chorus Rate, top of range) | 8.08 × |
+| gridless (log-mapped frequency) | 4 | — | no grid at all |
+
+The binding case is **Chorus Rate** — `{0.05, 5.0, interval 0.001, skew 0.4}`, the set's only skewed
+range. The margin is **~8 ×, not the ~50 × this round's first draft recorded**; 50 × is the Width
+family alone, and a future range change checked against that number could narrow a cell below one
+bucket. State test 57 now **asserts** the margin over the whole parameter set instead of quoting it.
+For the four gridless ranges the bucket is the only resolution there is: at worst **1.38 Hz** at the
+20 kHz end of the three multiband splits and **0.013 Hz** on Mono Maker Freq. Such a move does not
+hide indefinitely — successive sub-bucket writes cross a boundary and the preset then reads dirty and
+stays dirty.
+
+**The two parameter domains, asserted rather than assumed.** A grid parameter absorbs movement
+*inside one cell* — §17's deliberate rule, since such a move changes neither the DSP input nor
+anything a file can hold — and reports movement across a cell boundary, which is a whole step. It is
+**not** true that a tiny write can only reach the signature on the gridless ranges, as the first
+draft claimed: `snapToLegalValue` rounds, so a sub-`1e-6` write straddling a snap boundary moves a
+whole step and is correctly an edit. State test 57 asserts all of it, for Amount *and* for Chorus
+Rate.
+
+**Related signature audit, and the sibling it found.** Every producer and consumer of a sound
+signature was examined — `soundSignatureFor`, `soundSig`, `soundSignatureForSavedTree`,
+`soundSignatureAfterLoading`, `signatureAfterApplying` and its factory lambda,
+`normalisedFromSavedTree`, `isDirty` and its memo, `setMeta`, `adoptRestoredState`, `saveUser`,
+`load`, `loadFile`, the constructor, and `AnamorphAudioProcessor::soundSignature` with its
+`committedSig` comparisons. No float tolerance remains on any of them.
+
+The audit then found one more comparison of the deleted shape **off** the signature paths, on the
+restore path that a baseline travels through: `reassertParameters`'s per-parameter write gate,
+`! (std::abs (norm - rp->getValue()) <= 1.0e-6f)`. The value it declined to write is the value the
+**session** stored, while the baseline travelling with that session is adopted verbatim — "live value
+from before, baseline from the file", the shape that lights the modified star on an untouched preset.
+It is exact now (ADR-0036 §20), which is safe because a restore is a **fixed point**: measured with
+the gate exact, 2 000 sounds × 20 re-applications of their own chunk move **no parameter at all**
+(worst delta 0.0), and 3 000 project save/reopen round trips reopen clean. The tolerance had been
+declining 23 writes per 198 000, all float tails on the gridless ranges. **Stated honestly:** no test
+discriminates the two gates, because they agree on every observable measured; State test 58 guards
+the property that makes the exact form safe, and the change is justified as removing an epsilon with
+no argument behind it, not as fixing a reproduced failure.
+
+**Recorded, not changed.** Two live reads survive inside otherwise tree-derived signatures: the
+non-ranged fallbacks in `soundSignatureAfterLoading` and `soundSignatureForSavedTree`, unreachable
+here (State test 52 asserts every parameter is ranged) but the one construct that would reopen the
+KI-029 window for a future non-ranged parameter. `lastPolledSig` is assigned on every poll and read
+nowhere — dead state, left for a cleanup outside this round.
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State tests 55/57 vs round 10's `1e-6` reconciliation restored | FAILS 10 checks (all four boundary legs and the `load(index)` leg, plus State test 55's equality) |
+| State tests 37–58 on the tree | green; suite 2198 checks / 0 failures, 57 tests |
+| the four probes under TSan, after (round-11 tree) | `--d2-stress-probe`, `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe`, 10 runs each: 0 runs with reports, 0 reports in total. No suppressions |
+| the state suite under TSan, after | 2198 checks, 0 failures, 0 TSan reports — run alone. **This is the direct confirmation**: State test 55's exact-equality assertion, the one whose ThreadSanitizer failure motivated round 10's tolerance, now passes under that same build |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | 120 files clean; 398 anchors still point at the same text as both `a00f39d` (the round-10 commit) and `origin/main`; self-test 161 cases |
+| `preflight.sh` | exit 0 on the committed round-11 tree (all gates, both suites; `check-portability` 57 files / 0 violations, `check-realtime` 47 files / 0 violations, both warning-gate self-tests green) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: 42–56 all pass
+unchanged. State test 55's equality assertion, which round 10 had weakened to "within float tail"
+with the count merely printed, is **restored to exact string equality** — which is what it measures,
+in both builds, when the suite is run alone.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains. Architecture Review Gate:
+**APPROVED**, this round inside it. Host serialization: **disposition D**, no new evidence.
+Non-actionable residuals: a host save's snapshot and `copyState()` straddling a message-thread edit,
+the ≤ 50 ms adoption latency for the tail, the preset format's own denormalised round trip, and the
+edit-ordering boundary and read-then-CAS transient stated in §18.
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can

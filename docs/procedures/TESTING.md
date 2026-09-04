@@ -676,7 +676,7 @@ so the same file measures the pre-fix tree with the same instruments:
   the drain; the owner then walks new history — undo, undo, redo, redo, a Copy undone on the other
   slot — while a host thread saves throughout, and every step lands exactly.
 
-**State tests 42–56 (rounds 2–10, the PR review's findings) reproduce a reviewed interleaving
+**State tests 42–57 (rounds 2–11, the PR review's findings) reproduce a reviewed interleaving
 deterministically** rather than by timing, through the seams `AnamorphAudioProcessor::seams` exposes
 for exactly that, plus `PresetManager::beforeStateCapture` for the save and load paths (all empty in
 production: one null check each, on non-audio paths). Each was
@@ -813,6 +813,35 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   one Next (and, separately, one Prev) must land relative to the **restored** row, with that row's
   factory sound and reading clean. Mutation-tested — deriving the row before the new `adoptPending`
   drain fails 4 checks (ADR-0036 §18).
+- **57 (no tolerance absorbs an automation write, round 11)** — round 10 reconciled the load's
+  predicted baseline against a live read-back within `1e-6`, which absorbed a real automation write
+  landing in the load window and let the preset read clean against a sound its file does not hold.
+  The tolerance is deleted (ADR-0036 §19). A tolerance finer than the signature's own five-decimal
+  resolution can only change the answer at a rounding boundary, so the test **searches** a
+  deterministic grid for a value whose rendered form sits just under one together with a sub-`1e-6`
+  nudge that crosses it, asserts it found one, and then requires the preset to read **dirty**. Each
+  of the four boundary legs — two log mappings (`monoMakerFreq` centred, `mbFreqLow` plain) × both
+  directions — is **confined to its own band** of the normalised range and asserts its witness came
+  from that band: an unconstrained search always terminates within a few steps of zero, and four
+  legs then measure one neighbourhood. The baseline oracle is an **undisturbed load of the same
+  file**, not the function under test. Further legs: the **grid margin**, asserting over the whole
+  parameter set that every grid parameter's smallest step (8.08e-5, Chorus Rate) stays larger than
+  the signature's `1e-5` quantum, so a future range change cannot silently make one full step of a
+  real control read clean; the **grid domain** for Amount *and* Chorus Rate, where movement inside a
+  cell is correctly not an edit (§17), one whole cell is, and a sub-`1e-6` write **across a snap
+  boundary** is (so "only the gridless ranges can see a tiny write" is not claimed); the same tiny
+  write through the **`load(index)`** path as well as `loadFile`; and **accumulation**, which first
+  asserts one nudge alone changes nothing and then that repeated nudges become visible and stay so.
+  Mutation-tested — restoring the `1e-6` reconciliation fails 10 checks across State tests 55 and 57.
+- **58 (a restore is a fixed point, round 11)** — the sibling audit found one more `1e-6` comparison
+  of the same shape, on the restore path: `reassertParameters` declined to write a restored value
+  within `1e-6` of the live one, while the baseline travelling with that session is adopted verbatim
+  — "live value from before, baseline from the file", the shape that lights the modified star on an
+  untouched preset. It is exact now (ADR-0036 §20), which is only safe because a restore is a fixed
+  point: 300 sounds × 10 re-applications of their own chunk must move no parameter, no signature and
+  no serialized byte, and 300 project save/reopen round trips must reopen clean on a **fresh**
+  instance. Honest scope: no test discriminates the two gates, because the two agree on every
+  observable measured; 58 guards the property that makes the exact form safe.
 
 State tests 22 and 27 were re-shaped in the same change: their off-thread requester used to be a
 `juce::Value` written from a worker, which after D-2 models nothing the plug-in does; both now drive
@@ -830,7 +859,7 @@ is wrong with any of those tests; the harness assumes exclusive use of the folde
 give it (one suite per runner). Locally: never run the suite beside a sanitizer lane or a second
 copy of itself.
 
-`tests/state_tests.cpp` (**55 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**57 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

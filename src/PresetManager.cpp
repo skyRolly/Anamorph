@@ -342,27 +342,58 @@ void PresetManager::applySoundTree (const juce::ValueTree& state)
 // baseline WITHOUT reading the parameters back, which is the whole point: a
 // read-back has a window that host automation can land in (KI-029).
 //
-// TOOLCHAIN-ROBUST, NOT BIT-EXACT. "The same arithmetic on the same inputs" holds only if the
-// compiler emits the same float operations at both sites, and it need not: the prediction is
-// one inlined expression chain, the live value passes through a store to std::atomic<float>
-// and a later read, and contraction (fused multiply-add is GCC's default outside strict ISO
-// mode) can differ between the two. Measured: the Release build agrees at all 3000 sweep
-// points; the ThreadSanitizer RelWithDebInfo build does not. So the prediction is
-// RECONCILED against one read-back, per parameter, at the signature's own resolution:
-//   * where predicted and live agree to within kSameValue -- a few float ulps, five hundred
-//     times below the smallest real parameter step -- they are the same value, and the LIVE
-//     form is taken, because it is what soundSignatureFor will keep producing;
-//   * where they differ by more, something other than this load wrote the parameter, and the
-//     PREDICTED value stands -- the preset then reads dirty rather than absorbing the write.
-// The read-back therefore has no window to lose: a foreign write inside it is detected by
-// magnitude and rejected. `reconcile == false` gives the pure prediction, for measurement.
+// NO TOLERANCE, AND NONE IS NEEDED (D-2 round 11, ADR-0036 §19). Round 10 added a
+// reconciliation here: it compared this prediction against one live read-back and took the
+// LIVE value where the two agreed to within 1e-6, on the belief that the prediction was not
+// bit-exact across toolchains (the ThreadSanitizer build had failed the equality). That
+// tolerance was a hole: a tolerance cannot tell compiler noise from a real automation write
+// of the same size, so an automation write inside the load window was ABSORBED INTO THE
+// BASELINE and the preset read clean against a sound it does not hold.
+//
+// WHAT ROUND 11 ESTABLISHED, and what it did not. Round 10's stated mechanism was
+// fused-multiply-add contraction differing between the inlined prediction chain and the
+// value routed through the parameter. That mechanism is REFUTED for the build in which the
+// equality failed: ADR-0031 compiles every x86-64 target, this suite included, with
+// `-march=haswell -ffp-contract=off`, measured at 0 FMA instructions emitted, and the
+// ThreadSanitizer build is one of them. Re-measured in round 11, 20000 random values x 33
+// parameters and 3000 full save/XML/load round trips, in BOTH the Release and the
+// ThreadSanitizer build: the prediction equals the post-load live signature at every point,
+// bit for bit, and the XML text round-trips every value exactly.
+//
+// The CAUSE of round 10's failure is a candidate, not a measured fact, and is recorded as
+// one: two suite instances sharing a fixed probe path in the temp folder reproduce hundreds
+// of mismatches on demand, with value differences up to ~1.9e4 -- one process reading the
+// other's file -- and round 10 itself later root-caused exactly that collision for a
+// different test (docs/procedures/TESTING.md: one instance at a time). Round 10's own
+// reproduction, though, listed failures in tests 10, 12, 13, 24, 28 and 52, not 55. So: the
+// arithmetic is exonerated, the tolerance it bought was unjustified, and the specific
+// interleaving that produced the red run is not claimed to be known.
+//
+// So the signature has ONE equivalence, stated once: two sounds are the same when their
+// rendered normalised values agree to five decimal places. That quantisation is explicit,
+// symmetric and applied identically on every path -- nothing is layered on top of it, here
+// or anywhere else (State test 57 pins the parameter-set margin; the restore path's own
+// 1e-6 write gate went with it, see reassertParameters).
+//
+// WHAT THE QUANTISATION ITSELF ABSORBS, stated rather than implied, because it is a
+// resolution and not a proof of nothing. One signature bucket is 1e-5 of normalised range.
+// For a parameter whose rendering lands on a GRID -- 29 of the 33 preset-carried parameters
+// -- one bucket is far finer than one grid cell, so no two legal settings can share a
+// bucket: measured, the smallest cell in the whole set is 8.08e-5 on Chorus Rate (the only
+// skewed range: {0.05, 5.0, interval 0.001, skew 0.4}, at the top of its range), i.e. 8.08
+// buckets, and every other grid parameter is wider. State test 57 asserts that margin over
+// the whole parameter set rather than quoting it, so a future range change that narrowed a
+// cell below one bucket fails the suite instead of silently making one full step of a real
+// control read clean. For the four GRIDLESS log-mapped frequency ranges there is no cell,
+// and the bucket is the only resolution there is: at worst 1.38 Hz at the 20 kHz end of the
+// three multiband splits and 0.013 Hz on Mono Maker Freq. Movement smaller than that, at a
+// value that does not straddle a bucket boundary, is not reported -- and it does not
+// accumulate away either: successive sub-bucket writes cross a boundary and the preset then
+// reads dirty and stays dirty, which State test 57's accumulation leg drives.
 namespace
 {
-    constexpr float kSameValue = 1.0e-6f;   // ~10 ulps at 1.0; the smallest real step is 5e-4
-
     template <typename Resolve>
-    juce::String signatureAfterApplying (const juce::AudioProcessorValueTreeState& s, Resolve&& resolve,
-                                         bool reconcile)
+    juce::String signatureAfterApplying (const juce::AudioProcessorValueTreeState& s, Resolve&& resolve)
     {
         juce::String sig;
         for (auto* p : s.processor.getParameters())
@@ -370,43 +401,23 @@ namespace
                 if (! pid::isPresetExcluded (wid->paramID))
                 {
                     const auto* rp = dynamic_cast<const juce::RangedAudioParameter*> (p);
-                    float v = p->getValue();
-                    if (rp != nullptr)
-                    {
-                        const float predicted = normalisedAsRendered (*rp, normalisedAsRendered (*rp, resolve (*rp, wid->paramID)));
-                        if (reconcile)
-                        {
-                            const float live = normalisedAsRendered (*rp, rp->getValue());
-                            v = std::abs (live - predicted) <= kSameValue ? live : predicted;
-                        }
-                        else
-                            v = predicted;
-                    }
-                    sig << juce::String (v, 5) << ',';
+                    sig << juce::String (rp != nullptr
+                                           ? normalisedAsRendered (*rp, normalisedAsRendered (*rp, resolve (*rp, wid->paramID)))
+                                           : p->getValue(), 5) << ',';
                 }
         return sig;
-    }
-
-    // The reconciled form for the load paths: the baseline a preset just applied from
-    // `savedSound` will be judged against.
-    juce::String loadBaselineFromTree (const juce::AudioProcessorValueTreeState& s, const juce::ValueTree& savedSound)
-    {
-        return signatureAfterApplying (s, [&] (const juce::RangedAudioParameter& rp, const juce::String& id)
-        {
-            return normalisedFromSavedTree (rp, savedSound, id);
-        }, true);
     }
 }
 
 juce::String PresetManager::soundSignatureAfterLoading (const juce::AudioProcessorValueTreeState& s,
                                                         const juce::ValueTree& savedSound)
 {
-    // The PURE prediction, from the tree alone -- exact on the reference toolchain, within
-    // float tail on any other. The load paths use the reconciled form (loadBaselineFromTree).
+    // From the tree alone. Nothing live is read, so there is no window for automation to
+    // land in and nothing to reconcile: this IS the baseline the load paths set.
     return signatureAfterApplying (s, [&] (const juce::RangedAudioParameter& rp, const juce::String& id)
     {
         return normalisedFromSavedTree (rp, savedSound, id);
-    }, false);
+    });
 }
 
 juce::String PresetManager::soundSignatureForSavedTree (const juce::AudioProcessorValueTreeState& s,
@@ -490,19 +501,20 @@ void PresetManager::load (int index)
         // signature only ever asks about preset-carried parameters, so an override on a
         // preset-EXCLUDED id -- none exists in the table -- would be applied above yet
         // never signed here, which is the correct answer for an excluded field.)
+        if (beforeStateCapture) beforeStateCapture();   // test seam: after the apply, before the baseline
         applied = signatureAfterApplying (apvts, [&] (const juce::RangedAudioParameter& rp, const juce::String& id)
         {
             for (const auto& o : factory->set)
                 if (id == o.id) return rp.convertTo0to1 (o.value);
             return rp.getDefaultValue();   // applyDefaults() wrote exactly this
-        }, true);
+        });
     }
     else
     {
         applySoundTree (userSound);
-        applied = loadBaselineFromTree (apvts, userSound);
+        if (beforeStateCapture) beforeStateCapture();   // test seam: after the apply, before the baseline
+        applied = soundSignatureAfterLoading (apvts, userSound);
     }
-    if (beforeStateCapture) beforeStateCapture();   // test seam: the instant before the baseline is fixed
 
     current = e.name;
     sel = e.isFactory ? Selection { Selection::Kind::factory,  e.factoryId, {} }
@@ -521,13 +533,13 @@ bool PresetManager::loadFile (const juce::File& f)
     if (! sound.isValid()) return false;
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
     applySoundTree (sound);
-    if (beforeStateCapture) beforeStateCapture();   // test seam: the instant before the baseline is fixed
+    if (beforeStateCapture) beforeStateCapture();   // test seam: after the apply, before the baseline
     current = f.getFileNameWithoutExtension();
     // The chooser can point ANYWHERE, so the file is the identity whether or not it
     // lives in the preset folder; a file from outside simply matches no list row and
     // leaves the menu unticked, which is what it should show (#4).
     sel = { Selection::Kind::userFile, {}, f };
-    sigAtLoad = loadBaselineFromTree (apvts, sound);   // predicted from the bytes, reconciled at signature resolution (§18, KI-029)
+    sigAtLoad = soundSignatureAfterLoading (apvts, sound);   // from the bytes, no live read (§18, KI-029; §19)
     if (onMetaChanged) onMetaChanged();
     if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
     return true;
@@ -625,10 +637,18 @@ bool PresetManager::saveUser (const juce::String& rawName)
     // tick to the USER row instead of leaving it on the factory one (#4).
     sel = { Selection::Kind::userFile, {}, file };
     // The baseline is the sound THIS FILE RESTORES, computed from the tree that was just
-    // written (§17) -- never a second read of the live parameters. So "clean" means
-    // exactly "loading the selected preset would change nothing", and a mutation that
-    // lands during the save leaves the preset DIRTY, correctly and immediately, because
-    // the live sound has moved away from what the file holds.
+    // written (§17) -- never a second read of the live parameters. So "clean" means exactly
+    // "the live sound is the sound this file holds", and a mutation that lands during the
+    // save leaves the preset DIRTY, correctly and immediately, because the live sound has
+    // moved away from what the file holds.
+    //
+    // It deliberately does NOT mean "reloading this preset would change nothing". A reload
+    // drives every value through the parameter's own store/report pass once more, and for
+    // the four gridless log-mapped frequency ranges that pass is not idempotent in float,
+    // so the reloaded value can differ in its last bits -- State test 55 measures the two
+    // signature flavours differing at 2 points in 3000, which is precisely why both
+    // flavours exist. The marker is unmoved by it: each side is compared against the
+    // baseline built for its own path.
     sigAtLoad = soundSignatureForSavedTree (apvts, savedSound);
     if (onMetaChanged) onMetaChanged();
     if (onSaved) onSaved(); // re-baseline the processor's undo snapshot onto the saved preset

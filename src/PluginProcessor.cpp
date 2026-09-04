@@ -677,11 +677,32 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
         if (! std::isfinite (norm))
             norm = rp->getDefaultValue();
 
-        // Written as a negated <= so that a NaN on EITHER side counts as
-        // "differs" and gets repaired. The plain `> 1e-6` this replaced is
-        // false when either operand is NaN, which is exactly how a poisoned
+        // EXACTLY EQUAL, OR IT IS WRITTEN (D-2 round 11, ADR-0036 section 19). Written as
+        // a negated == so that a NaN on EITHER side still counts as "differs" and gets
+        // repaired -- the plain `!=` reads the same but a plain `>` comparison does not:
+        // it is false when either operand is NaN, which is exactly how a poisoned
         // parameter used to survive the pass meant to fix it.
-        const bool valueMoves = ! (std::abs (norm - rp->getValue()) <= 1.0e-6f);
+        //
+        // This gate carried a 1e-6 tolerance until round 11. It is the same shape as the
+        // one deleted from the preset baseline in the same round and it sat on the same
+        // coherence path: the value it declined to write is the value the SESSION stored,
+        // while the baseline travelling with that session is adopted verbatim
+        // (adoptRestoredState). Keeping the live value and the restored baseline is the
+        // combination that makes an untouched preset show the modified star -- and, as
+        // there, a tolerance cannot tell a float tail from a real difference of the same
+        // size, so the only defensible answer is "restore what was stored".
+        //
+        // The tolerance was NOT load-bearing, which is the part that had to be measured
+        // rather than assumed, because a restore must be a FIXED POINT: a host may apply
+        // one chunk any number of times, and if each application nudged a value by a float
+        // tail the sound would walk. Measured on the round-11 tree with this comparison
+        // exact: 2000 random sounds x 20 re-applications of their own chunk move no
+        // parameter at all (worst delta 0.0) and move no signature; 3000 project
+        // save/reopen round trips leave the preset marker clean on both a fresh instance
+        // and the same one. The tolerance had been declining 23 writes per 198000 -- all
+        // of them float tails on the four gridless log-mapped frequency ranges, none of
+        // them needed to reach the fixed point.
+        const bool valueMoves = ! juce::exactlyEqual (norm, rp->getValue());
 
         if (valueMoves)
         {

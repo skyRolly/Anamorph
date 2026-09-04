@@ -187,9 +187,25 @@ public:
     // convertTo0to1 of it -- and for the four frequency ranges built from custom log/exp
     // lambdas that extra pass is not idempotent in float. Modelling it here is what makes
     // the post-load live signature equal this one BIT FOR BIT for every parameter kind:
-    // the same arithmetic on the same inputs. State test 55 pins the equality by
-    // measurement (3000 random round trips, 0 mismatches) and shows the save-side
-    // signature would NOT do (2 in 3000), which is why the two exist.
+    // the same arithmetic on the same inputs. Measured in round 11 over 20000 values x 33
+    // parameters and 3000 full save/XML/load round trips, in BOTH the Release and the
+    // ThreadSanitizer build, with no exceptions -- so there is no tolerance anywhere on this
+    // path.
+    //
+    // Round 10 briefly reconciled this against a live read-back within 1e-6, believing the
+    // equality toolchain-dependent, and that window absorbed real automation writes into the
+    // baseline (ADR-0036 §19). Its stated mechanism -- FMA contraction differing between the
+    // two chains -- cannot have applied in the build where the equality failed, which
+    // ADR-0031 compiles with `-ffp-contract=off` at 0 FMA instructions emitted. What round
+    // 11 does NOT claim is the cause of that red run: a fixed shared probe path reproduces
+    // the same kind of mismatch on demand, but round 10's own reproduction did not fail this
+    // test. The equality is asserted because it is the product invariant -- a just-loaded
+    // preset must read clean -- so a toolchain that broke it would be reporting a real defect
+    // on that toolchain, to be fixed by making the two sides agree, never by widening the
+    // comparison.
+    //
+    // State test 55 measures the equality and shows the save-side signature would NOT do here
+    // (2 in 3000), which is why the two exist; State test 57 pins the boundary behaviour.
     static juce::String soundSignatureAfterLoading (const juce::AudioProcessorValueTreeState&,
                                                     const juce::ValueTree& savedSound);
 

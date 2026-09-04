@@ -138,7 +138,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   the mark is now taken from what the preset actually contains, with no cost in spurious modified
   dots (State test 55). The same pass's audit found the preset Prev/Next buttons had the A/B button's
   problem — stepping from the row you had been on rather than the one an arriving project put you
-  on — and fixed it the same way (State test 56). [Verified]
+  on — and fixed it the same way (State test 56). An eleventh pass removed a tolerance that had
+  crept into the previous one: while a preset was loading, an automation move too small to see was
+  being folded into the "unchanged" mark, so a frequency control nudged by a hair during the load
+  left the preset looking untouched when it was not. Nothing is folded in any more — a change either
+  registers or is smaller than the plug-in can store, with no grey area in between (State test 57).
+  The same pass found the identical grey area on the reopening side, where a restored value within a
+  hair of the one already in force was left alone rather than restored; that too is gone, and
+  reopening a project is now measurably a no-op you can repeat (State test 58). [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

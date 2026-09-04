@@ -848,8 +848,7 @@ static void testPresetSaveReloadRoundTrip()
     // The test writes into the REAL user preset folder (the production path).
     // If a genuine user preset with the harness name exists, park it and put it
     // back afterwards — the test must never destroy user data on a dev machine.
-    auto parked = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                      .getChildFile ("AnamorphStateHarness.parked");
+    auto parked = juce::File::createTempFile (".parked");
     const bool hadUserFile = presetFile.existsAsFile();
     if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
 
@@ -902,8 +901,7 @@ static void testPresetSaveReloadRoundTrip()
     check (! presets.isDirty(), "reloaded preset is clean");
 
     // The OS-chooser path (loadFile) on a copy of the same file.
-    auto tempCopy = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                        .getChildFile ("AnamorphStateHarnessCopy" + anamorph::PresetManager::fileSuffix());
+    auto tempCopy = juce::File::createTempFile (anamorph::PresetManager::fileSuffix());
     if (presetFile.copyFileTo (tempCopy))
     {
         setRaw (p, "drive", 0.9f);
@@ -8286,8 +8284,7 @@ static void testPresetSavedDuringRestoreIsCleanAgainstItsOwnFile()
                           .getChildFile (name + anamorph::PresetManager::fileSuffix());
     // The test writes into the REAL user preset folder (the production path), so a
     // genuine user preset with the harness name is parked and put back afterwards.
-    auto parked = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                      .getChildFile ("AnamorphStateHarness.d2r8.parked");
+    auto parked = juce::File::createTempFile (".d2r8parked");
     const bool hadUserFile = presetFile.existsAsFile();
     if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
 
@@ -8411,8 +8408,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
     {
         explicit ParkedPreset (juce::File f)
             : live (std::move (f)),
-              parked (juce::File::getSpecialLocation (juce::File::tempDirectory)
-                          .getChildFile ("AnamorphStateHarness.d2r9.parked")),
+              parked (juce::File::createTempFile (".d2r9parked")),
               had (live.existsAsFile())
         {
             if (had) { parked.deleteFile(); live.moveFileTo (parked); }
@@ -8729,8 +8725,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
                     if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (q))
                         ranged.push_back (rp);
 
-        auto probe = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                         .getChildFile ("AnamorphStateHarness.d2r9.probe" + anamorph::PresetManager::fileSuffix());
+        auto probe = juce::File::createTempFile (anamorph::PresetManager::fileSuffix());
         juce::uint32 lcg = 0x5EED1234u;
         int sigDrift = 0, byteDrift = 0, markerWrong = 0, soundMoved = 0, loadsFailed = 0;
         const int points = 3000;
@@ -8997,8 +8992,7 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
     {
         explicit ParkedPreset (juce::File f)
             : live (std::move (f)),
-              parked (juce::File::getSpecialLocation (juce::File::tempDirectory)
-                          .getChildFile ("AnamorphStateHarness.d2r10.parked")),
+              parked (juce::File::createTempFile (".d2r10parked")),
               had (live.existsAsFile())
         { if (had) { parked.deleteFile(); live.moveFileTo (parked); } }
         ~ParkedPreset() { live.deleteFile(); if (had) { parked.moveFileTo (live); parked.deleteFile(); } }
@@ -9071,10 +9065,10 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
                 if (! pid::isPresetExcluded (wid->paramID))
                     if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (q)) ranged.push_back (rp);
 
-        auto probe = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                         .getChildFile ("AnamorphStateHarness.d2r10.probe" + anamorph::PresetManager::fileSuffix());
+        auto probe = juce::File::createTempFile (anamorph::PresetManager::fileSuffix());
         juce::uint32 lcg = 0x5EED1234u;
-        int afterLoadingMismatch = 0, savedTreeMismatch = 0, dirtyAfterLoad = 0, loadsFailed = 0, beyondTail = 0;
+        int afterLoadingMismatch = 0, savedTreeMismatch = 0, dirtyAfterLoad = 0, loadsFailed = 0;
+        double worstFieldDelta = 0.0;
         const int points = 3000;
         for (int i = 0; i < points; ++i)
         {
@@ -9090,28 +9084,40 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
             if (live != sigAfter) ++afterLoadingMismatch;
             if (live != sigSaved) ++savedTreeMismatch;
             if (p.getPresets().isDirty()) ++dirtyAfterLoad;
-            // The pure prediction may differ from live only by float tail, never by a value:
-            // compare the two field by field as numbers.
+            // Diagnostic, not an assertion: if the exact check below ever fails on some
+            // toolchain, the SIZE of the disagreement is what tells a triager whether it is
+            // a last-bit difference in the arithmetic or a real value taking the wrong path.
+            // (It cannot fire while the strings are identical, which is why it is not a check.)
             auto a = juce::StringArray::fromTokens (sigAfter, ",", ""), b = juce::StringArray::fromTokens (live, ",", "");
+            if (a.size() != b.size()) worstFieldDelta = 1.0e30;
             for (int k = 0; k < juce::jmin (a.size(), b.size()); ++k)
-                if (std::abs (a[k].getFloatValue() - b[k].getFloatValue()) > 2.0e-5f) { ++beyondTail; break; }
+                worstFieldDelta = juce::jmax (worstFieldDelta,
+                                              std::abs ((double) a[k].getFloatValue() - (double) b[k].getFloatValue()));
         }
         probe.deleteFile();
         check (loadsFailed == 0, "every probe preset loaded back");
-        // What the load path GUARANTEES on any toolchain: the baseline it set is what the
-        // parameters report, so a just-loaded preset is exactly clean.
+        // THE PRODUCT INVARIANT: a just-loaded preset reads clean. Since round 11 the baseline
+        // is a pure prediction from the tree, so this is no longer true by construction the way
+        // it was while the load reconciled its prediction against a live read-back -- it holds
+        // exactly when the prediction and the post-load live signature agree, which is the
+        // assertion below. That is the point: the two must agree, and if a toolchain ever makes
+        // them disagree it is reporting a real defect on that toolchain, to be fixed by making
+        // the two sides agree rather than by widening the comparison (which is what round 10
+        // did, and what let an automation write hide in the window).
         check (dirtyAfterLoad == 0, "a just-loaded preset never reads modified, across the whole sweep");
-        // What the pure prediction guarantees: never wrong by more than float tail. Its exact
-        // string agreement is toolchain-dependent (0 of 3000 on the reference Release build;
-        // not 0 under the ThreadSanitizer build), which is precisely why the load path
-        // RECONCILES rather than trusts it -- so that count is printed, not asserted.
-        check (beyondTail == 0, "the pure load-side prediction never differs from the post-load live value by more than float tail");
+        // EXACT, and asserted as such (D-2 round 11). Round 10 weakened this to "within float
+        // tail" and merely printed the string count, believing the equality toolchain-dependent
+        // because of an FMA-contraction mechanism that could not have been operating in the
+        // build where it failed (ADR-0031 compiles it with -ffp-contract=off, 0 FMA emitted).
+        // Re-measured alone in both the Release and the ThreadSanitizer build: zero.
+        check (afterLoadingMismatch == 0,
+               "the load-side signature equals the post-load live signature at EVERY swept value");
         check (savedTreeMismatch >= 1,
                "the save-side signature measurably differs from the post-load live signature, so a"
                " separate load-side flavour is needed");
-        std::printf ("  load-side sweep over %d round trips: dirty after load %d, pure-prediction string mismatches %d"
-                     " (toolchain-dependent, reconciled away), save-side signature mismatches %d (the reason the two flavours exist)\n",
-                     points, dirtyAfterLoad, afterLoadingMismatch, savedTreeMismatch);
+        std::printf ("  load-side sweep over %d round trips: dirty after load %d, load-side signature mismatches %d"
+                     " (worst field delta %.3g), save-side signature mismatches %d (the reason the two flavours exist)\n",
+                     points, dirtyAfterLoad, afterLoadingMismatch, worstFieldDelta, savedTreeMismatch);
     }
 }
 
@@ -9174,6 +9180,532 @@ static void testPresetStepDerivesItsTargetAfterTheDrain()
                   anamorph::PresetManager::soundSignatureFor (control.getAPVTS()),
                   "...and the live sound is that row's factory sound");
         check (! p.getPresets().isDirty(), "...read clean");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 57 -- no tolerance can absorb an automation write into a preset's
+//  clean baseline (D-2 round 11, review finding "tiny automation changes hide
+//  preset edits").
+//
+//  Round 10's load path compared its predicted baseline against a live read-back
+//  and took the LIVE value where the two agreed to within 1e-6. A tolerance cannot
+//  tell compiler noise from a real automation write of the same size, so a write
+//  landing in the load window was ABSORBED INTO THE BASELINE: the preset then read
+//  clean against a sound its file does not hold. The tolerance is gone (section 19)
+//  and the signature has exactly one equivalence -- rendered normalised values equal
+//  to five decimal places -- applied identically on every path.
+//
+//  THE DISCRIMINATOR IS A ROUNDING BOUNDARY, and it has to be: a tolerance smaller
+//  than the signature's own resolution can only change the answer where the two
+//  values straddle a boundary of that resolution. The test therefore SEARCHES a
+//  deterministic grid for a value whose rendered form sits just under a 5-decimal
+//  boundary, together with a nudge under 1e-6 that crosses it, and asserts it found
+//  one before using it.
+//
+//  WHERE IT SEARCHES IS PART OF THE TEST. An unconstrained search from zero always
+//  terminates in its first few steps, on the 5e-6 rounding tie at the very bottom of
+//  the range -- one numeric neighbourhood, dressed up as four legs. Each leg is
+//  therefore confined to its own BAND of the normalised range and asserts that its
+//  witness came from that band, so the four legs are four different neighbourhoods
+//  spanning the range. The two parameters are the plug-in's two different log
+//  mappings: `monoMakerFreq` is a CENTRED log range (20..500 with 120 at the middle)
+//  and `mbFreqLow` a plain one (20..20000).
+// ---------------------------------------------------------------------------
+namespace r11
+{
+    struct Boundary { bool found = false; float base = 0.0f, nudged = 0.0f, delta = 0.0f; };
+
+    // The signature's own quantum: juce::String(v, 5) resolves 1e-5 of normalised range.
+    inline constexpr float kSignatureQuantum = 1.0e-5f;
+
+    static juce::String rendered5 (const juce::RangedAudioParameter& rp, float normalised)
+    {
+        return juce::String (normalisedAsRendered (rp, normalisedAsRendered (rp, normalised)), 5);
+    }
+
+    // A normalised value INSIDE [lo, hi) whose RENDERED form is within `maxDelta` of a
+    // 5-decimal rounding boundary, and the nudge that crosses it. Deterministic: a fixed
+    // grid, no RNG, no clock, bounded by construction.
+    static Boundary findBoundary (juce::RangedAudioParameter& rp, float maxDelta, int sign,
+                                  float lo, float hi)
+    {
+        const int steps = 200000;
+        for (int i = 0; i < steps; ++i)
+        {
+            const float base = lo + (hi - lo) * ((float) i / (float) steps);
+            const float r    = normalisedAsRendered (rp, normalisedAsRendered (rp, base));
+            for (float d = 1.0e-7f; d <= maxDelta; d *= 2.0f)
+            {
+                const float nudged = base + (float) sign * d;
+                if (nudged <= 0.0f || nudged >= 1.0f) continue;
+                const float rn = normalisedAsRendered (rp, normalisedAsRendered (rp, nudged));
+                if (std::abs (rn - r) <= maxDelta && juce::String (rn, 5) != juce::String (r, 5))
+                    return { true, base, nudged, std::abs (rn - r) };
+            }
+        }
+        return {};
+    }
+
+    // The smallest distinct step this parameter's rendering can take, measured rather than
+    // read off the range: `RangedAudioParameter::convertFrom0to1` snaps through
+    // `snapToLegalValue`, which prefers a snapToLegalValueFunction and IGNORES `interval`
+    // when one is set -- so `interval > 0` is not the question, and the four log-mapped
+    // frequency ranges (which pass jlimit as that function) have no grid despite the field.
+    // The grid cell AROUND a given on-grid value: the offset at which the rendering first
+    // changes (half a cell) found by bisection, and the full cell that is twice it. A skewed
+    // range's cell width varies along the range, so a leg that wants "one whole step HERE"
+    // has to measure it here rather than reuse the parameter's smallest step, which for
+    // chorusRate lives at the opposite end of the range.
+    struct Cell { bool found = false; float half = 0.0f, step = 0.0f; };
+
+    static Cell cellAround (const juce::RangedAudioParameter& rp, float base)
+    {
+        const float r0 = normalisedAsRendered (rp, base);
+        float hi = 1.0e-7f;
+        while (hi < 0.25f && juce::exactlyEqual (normalisedAsRendered (rp, base + hi), r0)) hi *= 2.0f;
+        if (juce::exactlyEqual (normalisedAsRendered (rp, base + hi), r0)) return {};
+        float lo = 0.0f;
+        for (int i = 0; i < 80; ++i)
+        {
+            const float mid = (lo + hi) * 0.5f;
+            if (juce::exactlyEqual (mid, lo) || juce::exactlyEqual (mid, hi)) break;
+            if (juce::exactlyEqual (normalisedAsRendered (rp, base + mid), r0)) lo = mid; else hi = mid;
+        }
+        return { true, hi, hi * 2.0f };
+    }
+
+    // Returns 0 for a parameter with no grid: (almost) every sample renders differently.
+    static double smallestRenderedStep (const juce::RangedAudioParameter& rp)
+    {
+        const int N = 400001;
+        double minGap = 1.0e30;
+        int distinct = 1;
+        float prev = normalisedAsRendered (rp, 0.0f);
+        for (int i = 1; i < N; ++i)
+        {
+            const float r = normalisedAsRendered (rp, (float) ((double) i / (double) (N - 1)));
+            if (! juce::exactlyEqual (r, prev))
+            {
+                if (const double gap = (double) r - (double) prev; gap > 0.0) minGap = juce::jmin (minGap, gap);
+                prev = r;
+                ++distinct;
+            }
+        }
+        return distinct > N / 2 ? 0.0 : minGap;   // a new value at (almost) every sample: no grid
+    }
+}
+
+static void testNoToleranceAbsorbsAnAutomationWrite()
+{
+    std::printf ("State test 57: no tolerance absorbs an automation write into a preset baseline (D-2 r11)\n");
+
+    const juce::String name ("AnamorphHarness-D2R11");
+    auto presetFile = anamorph::PresetManager::presetDirectory()
+                          .getChildFile (name + anamorph::PresetManager::fileSuffix());
+
+    // The harness writes into the REAL user preset folder, so a developer's own preset of
+    // this name is moved aside and put back. The park path is a UNIQUE temp file, not a
+    // fixed one: a fixed shared path is what produced round 10's misdiagnosis, and this
+    // round is not adding another. (The folder itself is still shared -- docs/procedures/
+    // TESTING.md's one-instance-at-a-time rule is what covers that, and it still applies.)
+    struct ParkedPreset
+    {
+        explicit ParkedPreset (juce::File f)
+            : live (std::move (f)),
+              parked (juce::File::createTempFile (".d2r11parked")),
+              had (live.existsAsFile())
+        {
+            if (! had) { ok = true; return; }
+            parked.deleteFile();
+            ok = live.moveFileTo (parked);      // could NOT park it: touch nothing at all
+        }
+        ~ParkedPreset()
+        {
+            if (! ok) return;                   // the user's own preset is still where it was
+            live.deleteFile();
+            if (had) { parked.moveFileTo (live); parked.deleteFile(); }
+        }
+        juce::File live, parked; bool had = false, ok = false;
+    };
+    const ParkedPreset guard { presetFile };
+    check (guard.ok, "the harness could park any same-named user preset before writing one");
+    if (! guard.ok) return;
+
+    // --- THE TWO PARAMETER DOMAINS, measured rather than assumed --------------------
+    // A parameter whose rendering lands on a GRID absorbs movement inside one grid cell --
+    // and that absorption is section 17's deliberate rule, not a tolerance: within a cell
+    // nothing the DSP reads or the file holds changes, and crossing a cell boundary moves a
+    // whole step, which is far larger than the signature's own 1e-5 quantum. A parameter
+    // with NO grid keeps full float resolution, and there the signature's quantum is the
+    // only thing between two values.
+    //
+    // The margin that makes the first half safe is asserted here rather than quoted: the
+    // smallest step any grid parameter can take must stay larger than the quantum, or two
+    // adjacent legal settings would print the same signature and one full step of a real
+    // control would read clean.
+    {
+        AnamorphAudioProcessor p;
+        double smallest = 1.0e30; juce::String smallestId; int grids = 0, continuous = 0;
+        for (auto* q : p.getParameters())
+        {
+            auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (q);
+            auto* rp  = dynamic_cast<juce::RangedAudioParameter*> (q);
+            if (wid == nullptr || rp == nullptr || pid::isPresetExcluded (wid->paramID)) continue;
+            const double step = r11::smallestRenderedStep (*rp);
+            if (step <= 0.0) { ++continuous; continue; }
+            ++grids;
+            if (step < smallest) { smallest = step; smallestId = wid->paramID; }
+        }
+        check (grids > 20 && continuous == 4,
+               "non-vacuity: the parameter set splits into a grid domain and exactly four gridless ranges");
+        check (smallest > (double) r11::kSignatureQuantum,
+               "every grid parameter's smallest step is larger than the signature's 1e-5 quantum");
+        std::printf ("  parameter grid: %d grid + %d gridless; smallest step %.4e on %s (%.2f quanta)\n",
+                     grids, continuous, smallest, smallestId.toRawUTF8(),
+                     smallest / (double) r11::kSignatureQuantum);
+    }
+
+    // --- the gridless domain: nothing absorbs a sub-1e-6 write, in four bands --------
+    struct Leg { const char* id; int sign; float lo, hi; };
+    const Leg legs[] = { { "monoMakerFreq", +1, 0.10f, 0.25f },
+                         { "monoMakerFreq", -1, 0.35f, 0.50f },
+                         { "mbFreqLow",     +1, 0.60f, 0.75f },
+                         { "mbFreqLow",     -1, 0.85f, 0.98f } };
+    for (const auto& leg : legs)
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter (leg.id));
+        check (rp != nullptr, "the parameter under test is ranged");
+        if (rp == nullptr) continue;
+
+        check (juce::exactlyEqual (r11::smallestRenderedStep (*rp), 0.0),
+               "non-vacuity: the parameter under test really has no grid to absorb the write");
+
+        const auto b = r11::findBoundary (*rp, 1.0e-6f, leg.sign, leg.lo, leg.hi);
+        check (b.found, (juce::String ("non-vacuity: a sub-1e-6 nudge crossing a signature boundary exists for ")
+                             + leg.id + (leg.sign > 0 ? " (+)" : " (-)")).toRawUTF8());
+        if (! b.found) continue;
+        check (b.base >= leg.lo && b.base < leg.hi,
+               "...and it was found in this leg's own band, not at the range floor");
+
+        // 1. The preset is written at `base`, and loaded ONCE UNDISTURBED so the test holds
+        //    an oracle for the baseline that does not come from the function under test.
+        rp->setValueNotifyingHost (b.base);
+        check (p.getPresets().saveUser (name), "the preset is written at the base value");
+        rp->setValueNotifyingHost (0.5f);                       // leave the preset's sound
+        check (p.getPresets().loadFile (presetFile), "the preset loads undisturbed");
+        p.pollUndoCoalesce();
+        check (! p.getPresets().isDirty(), "an undisturbed load reads clean");
+        const auto oracle = anamorph::PresetManager::soundSignatureFor (p.getAPVTS());
+
+        // 2. The same load, with an automation write landing INSIDE the load window.
+        rp->setValueNotifyingHost (0.5f);
+        int fires = 0;
+        p.getPresets().beforeStateCapture = [&] { ++fires; rp->setValueNotifyingHost (b.nudged); };
+        check (p.getPresets().loadFile (presetFile), "the preset loads");
+        p.getPresets().beforeStateCapture = nullptr;
+        p.pollUndoCoalesce();
+        check (fires == 1, "the seam fired once, after the apply and before the baseline");
+
+        // The write really stands, and it really is smaller than round 10's tolerance --
+        // measured on the LIVE value, not on the pair the search constructed.
+        check (! juce::exactlyEqual (rp->getValue(), b.base), "the automation write stands");
+        check (std::abs (rp->getValue() - b.base) <= 1.0e-6f,
+               "non-vacuity: and it is inside the tolerance round 10 applied");
+        check (r11::rendered5 (*rp, rp->getValue()) != r11::rendered5 (*rp, b.base),
+               "non-vacuity: the write crosses a signature boundary");
+
+        // THE INVARIANT: the baseline describes the FILE -- it equals the signature that
+        // same file produces when nothing interferes -- and the automated sound is DIRTY.
+        checkStr (p.getPresets().baseline(), oracle,
+                  "the baseline is the signature of the sound the FILE restores, undisturbed");
+        check (p.getPresets().isDirty(),
+               "a sub-1e-6 automation write inside the load window leaves the preset DIRTY, not absorbed");
+
+        // ...and reloading it, undisturbed, is clean again at the file's own value.
+        check (p.getPresets().loadFile (presetFile), "the preset reloads");
+        p.pollUndoCoalesce();
+        check (! p.getPresets().isDirty(), "a reload reads clean");
+        checkNear ((double) rp->getValue(), (double) normalisedAsRendered (*rp, b.base), 1.0e-7,
+                   "...at the file's own value");
+        std::printf ("  %-14s %s band [%.2f,%.2f): base %.9f nudged %.9f (delta %.3g) -> dirty\n",
+                     leg.id, leg.sign > 0 ? "+" : "-", leg.lo, leg.hi, b.base, b.nudged, b.delta);
+    }
+
+    // --- the same tiny write through the OTHER loader, load(index) ------------------
+    // The two loaders put the seam on opposite sides of nothing now -- both build the
+    // baseline from the tree and read no live value -- but only loadFile was covered
+    // above, and it is the ordering, not the arithmetic, that a future edit could break.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("mbFreqLow"));
+        check (rp != nullptr, "the parameter under test is ranged");
+        if (rp != nullptr)
+        {
+            const auto b = r11::findBoundary (*rp, 1.0e-6f, +1, 0.30f, 0.45f);
+            check (b.found, "non-vacuity: a boundary witness exists for the load(index) leg");
+            if (b.found)
+            {
+                rp->setValueNotifyingHost (b.base);
+                check (p.getPresets().saveUser (name), "the preset is written");
+                const int idx = p.getPresets().currentIndex();
+                check (idx >= 0, "the freshly saved preset is the selected list entry");
+                if (idx >= 0)
+                {
+                    rp->setValueNotifyingHost (0.5f);
+                    int fires = 0;
+                    p.getPresets().beforeStateCapture = [&] { ++fires; rp->setValueNotifyingHost (b.nudged); };
+                    p.getPresets().load (idx);
+                    p.getPresets().beforeStateCapture = nullptr;
+                    p.pollUndoCoalesce();
+                    check (fires == 1, "the seam fired once on the menu-load path too");
+                    check (p.getPresets().isDirty(),
+                           "the menu-load path is dirty after the same sub-1e-6 write");
+                }
+            }
+        }
+    }
+
+    // --- the grid domain: absorbed INSIDE a cell, and a whole step across a boundary ---
+    // Both halves matter. A sub-step move inside a cell is correctly not an edit; a
+    // sub-1e-6 move that happens to straddle a snap boundary moves a WHOLE step, changes
+    // what the DSP reads and what the file holds, and is correctly an edit. "A tiny write
+    // cannot reach the signature on a grid parameter" would be false, so it is not claimed.
+    for (const char* id : { "amount", "chorusRate" })
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter (id));
+        check (rp != nullptr, "the grid parameter under test is ranged");
+        if (rp == nullptr) continue;
+        const double step = r11::smallestRenderedStep (*rp);
+        check (step > 0.0, "non-vacuity: the parameter under test has a grid");
+        if (! (step > 0.0)) continue;
+
+        // A base that is exactly ON the grid, found rather than assumed: the rendering of a
+        // grid point is that point.
+        float base = 0.0f; bool onGrid = false;
+        for (int i = 0; i < 20000 && ! onGrid; ++i)
+        {
+            const float c = 0.40f + (float) i * 1.0e-5f;
+            if (juce::exactlyEqual (normalisedAsRendered (*rp, c), c)) { base = c; onGrid = true; }
+        }
+        check (onGrid, "non-vacuity: a value that is exactly on the parameter's grid was found");
+        if (! onGrid) continue;
+
+        const auto cell = r11::cellAround (*rp, base);
+        check (cell.found, "non-vacuity: the grid cell around the chosen value was measured");
+        if (! cell.found) continue;
+
+        rp->setValueNotifyingHost (base);
+        check (p.getPresets().saveUser (name), "the preset is written");
+        check (! p.getPresets().isDirty(), "freshly saved reads clean");
+
+        rp->setValueNotifyingHost (base + cell.step * 0.2f);             // a fifth of THIS cell
+        check (! p.getPresets().isDirty(),
+               "movement inside one grid cell is not an edit (section 17) -- absorbed by the SNAP, not a tolerance");
+        rp->setValueNotifyingHost (base + cell.step);                    // one whole cell
+        check (p.getPresets().isDirty(), "...and one whole step is a real edit");
+        rp->setValueNotifyingHost (base);
+        check (! p.getPresets().isDirty(), "...and returning to the saved value reads clean again");
+
+        // The snap boundary: a nudge far below 1e-6 that crosses it moves a whole step, so a
+        // tiny write CAN reach the signature on a grid parameter -- correctly, because at a
+        // boundary it really does move the DSP input and the file by a full step.
+        const float boundary = base + cell.half;
+        float tiny = 0.0f; bool crossed = false;
+        for (float d = 1.0e-8f; d <= 1.0e-6f && ! crossed; d *= 2.0f)
+            if (! juce::exactlyEqual (normalisedAsRendered (*rp, boundary + d), normalisedAsRendered (*rp, boundary - d)))
+                { tiny = d; crossed = true; }
+        check (crossed, "non-vacuity: a snap boundary is reachable by a sub-1e-6 move");
+        if (crossed)
+        {
+            rp->setValueNotifyingHost (boundary - tiny);
+            check (p.getPresets().saveUser (name), "the preset is written at the boundary");
+            check (! p.getPresets().isDirty(), "...and reads clean there");
+            rp->setValueNotifyingHost (boundary + tiny);
+            check (p.getPresets().isDirty(),
+                   "a sub-1e-6 write ACROSS a snap boundary is a whole step, and reads dirty");
+        }
+        std::printf ("  %-11s (grid): smallest step %.6g (%.1f quanta), cell here %.6g --"
+                     " inside a cell is not an edit, a step is, and a %.1e write across a boundary is\n",
+                     id, step, step / (double) r11::kSignatureQuantum, (double) cell.step, (double) tiny);
+    }
+
+    // --- accumulation: many sub-resolution nudges must still become visible -----
+    // Nothing absorbs them, so once the accumulated move crosses the signature's own
+    // resolution the preset reads dirty and stays dirty. The base is chosen to sit in the
+    // MIDDLE of its signature bucket, so the first nudge cannot cross on its own -- without
+    // that, a leg labelled "accumulate" can pass having measured a single crossing.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("monoMakerFreq"));
+        check (rp != nullptr, "the accumulation parameter is ranged");
+        if (rp != nullptr)
+        {
+            const float nudge = 1.0e-7f;
+            float base = 0.0f; bool midBucket = false;
+            for (int i = 0; i < 20000 && ! midBucket; ++i)
+            {
+                const float c = 0.50f + (float) i * 1.0e-6f;
+                // mid-bucket: neither one nudge up nor one nudge down changes the signature
+                if (r11::rendered5 (*rp, c + nudge) == r11::rendered5 (*rp, c)
+                    && r11::rendered5 (*rp, c - nudge) == r11::rendered5 (*rp, c)) { base = c; midBucket = true; }
+            }
+            check (midBucket, "non-vacuity: a base in the middle of its signature bucket was found");
+            if (midBucket)
+            {
+                rp->setValueNotifyingHost (base);
+                check (p.getPresets().saveUser (name), "the preset is written");
+                check (! p.getPresets().isDirty(), "freshly saved reads clean");
+                float v = rp->getValue();
+                v += nudge; rp->setValueNotifyingHost (v);
+                check (! p.getPresets().isDirty(),
+                       "one sub-resolution nudge alone does not move the signature (so the leg is about accumulation)");
+                int steps = 1;
+                bool wentDirty = false;
+                for (int i = 0; i < 400 && ! wentDirty; ++i)
+                {
+                    v += nudge;                     // each step far below the signature's resolution
+                    rp->setValueNotifyingHost (v);
+                    ++steps;
+                    wentDirty = p.getPresets().isDirty();
+                }
+                check (wentDirty, "repeated sub-resolution nudges accumulate into a visible edit rather than hiding");
+                check (steps > 1, "...and it took more than one of them, which is what accumulation means");
+                for (int i = 0; i < 50; ++i) { v += nudge; rp->setValueNotifyingHost (v); }
+                check (p.getPresets().isDirty(), "...and it stays dirty as they continue");
+                std::printf ("  accumulation: %d nudges of %.1e crossed the 1e-5 quantum\n", steps, (double) nudge);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 58 -- a restore is a FIXED POINT, and it restores what the session
+//  stored (D-2 round 11, ADR-0036 section 19).
+//
+//  reassertParameters gated its per-parameter write on |written - live| <= 1e-6 --
+//  the same shape as the baseline tolerance round 11 deleted, on the same coherence
+//  path. What it declined to write is the value the SESSION stored, while the
+//  baseline travelling with that session is adopted verbatim, so the combination
+//  that the gate protects is "live value from before, baseline from the file" --
+//  the one that makes an untouched preset show the modified star after an A/B
+//  toggle, an undo, or a project reopen.
+//
+//  The gate is exact now. That is only safe if a restore is a FIXED POINT: a host
+//  may apply one chunk any number of times, and a per-application float-tail nudge
+//  would walk the sound. Both halves are asserted here, because the fixed point is
+//  what the tolerance was silently buying.
+// ---------------------------------------------------------------------------
+static void testARestoreIsAFixedPoint()
+{
+    std::printf ("State test 58: a restore is a fixed point and restores what was stored (D-2 r11)\n");
+
+    // --- (a) one chunk, applied many times, moves nothing ---------------------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        auto& apvts = p.getAPVTS();
+        std::vector<juce::RangedAudioParameter*> ranged;
+        for (auto* q : p.getParameters())
+            if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (q))
+                if (! pid::isPresetExcluded (wid->paramID))
+                    if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (q)) ranged.push_back (rp);
+        check (ranged.size() > 20, "non-vacuity: the sweep covers the parameter set");
+
+        juce::uint32 lcg = 0x0BADC0DEu;
+        int notFixedPoint = 0, sigMoved = 0, blobMoved = 0;
+        double worstDelta = 0.0;
+        const int points = 300, reapplications = 10;
+        for (int i = 0; i < points; ++i)
+        {
+            lcg = lcg * 1664525u + 1013904223u;
+            const float v = (float) ((lcg >> 8) * (1.0 / 16777216.0));
+            for (auto* rp : ranged) rp->setValueNotifyingHost (v);
+
+            juce::MemoryBlock blob;
+            p.getStateInformation (blob);
+            std::vector<float> before;
+            for (auto* rp : ranged) before.push_back (rp->getValue());
+            const auto sig0 = anamorph::PresetManager::soundSignatureFor (apvts);
+
+            for (int k = 0; k < reapplications; ++k)
+            {
+                p.setStateInformation (blob.getData(), (int) blob.getSize());
+                p.pollUndoCoalesce();
+            }
+
+            bool moved = false;
+            for (size_t k = 0; k < ranged.size(); ++k)
+                if (const double d = std::abs ((double) ranged[k]->getValue() - (double) before[k]); d > 0.0)
+                    { moved = true; worstDelta = juce::jmax (worstDelta, d); }
+            if (moved) ++notFixedPoint;
+            if (anamorph::PresetManager::soundSignatureFor (apvts) != sig0) ++sigMoved;
+
+            juce::MemoryBlock again;
+            p.getStateInformation (again);
+            if (again != blob) ++blobMoved;
+        }
+        check (notFixedPoint == 0, "re-applying one host chunk moves no parameter, however many times");
+        check (sigMoved == 0, "...and moves no signature");
+        check (blobMoved == 0, "...and the state it writes back out is byte-identical to the chunk it read");
+        std::printf ("  %d sounds x %d re-applications: values moved %d (worst %.3e), signatures %d, blobs %d\n",
+                     points, reapplications, notFixedPoint, worstDelta, sigMoved, blobMoved);
+    }
+
+    // --- (b) a project saved clean reopens clean, on a fresh instance ----------
+    // The user-visible half: the preset marker a project carries must survive the
+    // round trip, in a NEW processor, which is what reopening a session is.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        auto& apvts = p.getAPVTS();
+        std::vector<juce::RangedAudioParameter*> ranged;
+        for (auto* q : p.getParameters())
+            if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (q))
+                if (! pid::isPresetExcluded (wid->paramID))
+                    if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (q)) ranged.push_back (rp);
+
+        auto probe = juce::File::createTempFile (anamorph::PresetManager::fileSuffix());
+        juce::uint32 lcg = 0x1234ABCDu;
+        int dirtyBeforeSave = 0, dirtyAfterReopen = 0, sigMoved = 0, loadsFailed = 0;
+        const int points = 300;
+        for (int i = 0; i < points; ++i)
+        {
+            lcg = lcg * 1664525u + 1013904223u;
+            const float v = (float) ((lcg >> 8) * (1.0 / 16777216.0));
+            for (auto* rp : ranged) rp->setValueNotifyingHost (v);
+
+            // Make the project CLEAN against a preset holding exactly this sound.
+            auto xml = apvts.copyState().createXml();
+            if (xml == nullptr || ! probe.replaceWithText (xml->toString())
+                || ! p.getPresets().loadFile (probe)) { ++loadsFailed; continue; }
+            p.pollUndoCoalesce();
+            if (p.getPresets().isDirty()) ++dirtyBeforeSave;
+            const auto sigBefore = anamorph::PresetManager::soundSignatureFor (apvts);
+
+            juce::MemoryBlock blob;
+            p.getStateInformation (blob);
+
+            AnamorphAudioProcessor q;
+            q.prepareToPlay (48000.0, 512);
+            q.setStateInformation (blob.getData(), (int) blob.getSize());
+            q.pollUndoCoalesce();
+            if (q.getPresets().isDirty()) ++dirtyAfterReopen;
+            if (anamorph::PresetManager::soundSignatureFor (q.getAPVTS()) != sigBefore) ++sigMoved;
+        }
+        probe.deleteFile();
+        check (loadsFailed == 0, "every probe project was written and loaded");
+        check (dirtyBeforeSave == 0, "non-vacuity: the project was clean before it was saved");
+        check (dirtyAfterReopen == 0, "a project saved with a clean preset marker reopens clean");
+        check (sigMoved == 0, "...and reopens at the same sound");
+        std::printf ("  %d project save/reopen round trips: dirty on reopen %d, sound moved %d\n",
+                     points, dirtyAfterReopen, sigMoved);
     }
 }
 
@@ -9311,6 +9843,7 @@ static int runD2StressProbe()
     return 0;
 }
 
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
@@ -9425,6 +9958,8 @@ int main (int argc, char* argv[])
     testSettingsPublicationIsFieldLevelAndOrderedByObservation();
     testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote();
     testPresetStepDerivesItsTargetAfterTheDrain();
+    testNoToleranceAbsorbsAnAutomationWrite();
+    testARestoreIsAFixedPoint();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

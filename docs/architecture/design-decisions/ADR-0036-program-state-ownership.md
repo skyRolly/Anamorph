@@ -39,6 +39,12 @@ repository builds.
 > already hold. No thread, no lock, no wait, no allocation on any audio path, no new cross-thread
 > reader, no serialization-format change and no parameter or latency change. Everything it touches
 > runs on the message thread. There is no architectural delta to review.
+> **Round 11 (§19, §20) as well, and it too removes machinery**: it deletes a tolerance and the
+> comparison that used it from one signature builder, and deletes a second tolerance of the same
+> shape from the restore path's per-parameter write gate, leaving a single tolerance-free
+> definition and a restore that writes what the session stored. No thread, no lock, no wait, no
+> allocation on any audio path, no new cross-thread reader, no serialization-format change, no
+> parameter or latency change. There is no architectural delta.
 > **Round 10 (§18) as well**: it moves an existing derivation (the A/B toggle's destination) from the
 > editor to the processor, after the drain the processor already performs; narrows an existing
 > publication from the whole Settings tree to the one field that changed; and replaces a read-back
@@ -732,6 +738,140 @@ turn late) and leaves a save issued on the host thread right after its restore d
    off-message-thread branches; the tripwire is read only by a `jassert`; and the four additions of
    this round (`abToggle`, `publishField`, `soundSignatureAfterLoading`, the `adoptPending` hook)
    are message-thread-only and unreachable from either state function. Disposition D stands.
+
+19. **One equivalence, no tolerance layered on it (round 11).** §18 closed KI-029 by deriving the
+   load's clean baseline from the values the load writes rather than reading the parameters back.
+   It then added a **reconciliation** on top: the predicted baseline was compared against one live
+   read-back, and where the two agreed to within `1e-6` the *live* value was taken. The
+   justification was that the prediction is not bit-exact across toolchains — the ThreadSanitizer
+   build had failed the exact-equality assertion in State test 55.
+
+   **That justification was wrong, and the tolerance it bought was a hole.** A tolerance cannot
+   distinguish compiler noise from a real automation write of the same magnitude. So an automation
+   write landing in the load window, if smaller than `1e-6`, was **absorbed into the baseline**: the
+   preset then read *clean* against a sound its own file does not hold — the exact failure §17 and
+   §18 exist to prevent, reintroduced by the mechanism meant to protect §18.
+
+   **Re-measured, and the premise does not hold.** With a temporary probe: 20 000 random normalised
+   values × 33 parameters comparing the prediction against the live signature after
+   `setValueNotifyingHost`, and 3 000 complete save → `copyState` → XML text → re-parse → `loadFile`
+   round trips — **zero** differences, at float level and at the five-decimal string level, in **both**
+   the Release and the ThreadSanitizer build. The XML text round-trips every value exactly.
+
+   **Round 10's named mechanism is refuted outright.** It was fused-multiply-add contraction
+   differing between the inlined prediction chain and the value routed through the parameter. Every
+   x86-64 target in this project — the ThreadSanitizer build among them — is compiled under ADR-0031
+   with `-march=haswell -ffp-contract=off`, measured there at **0 FMA instructions emitted**. No
+   interleaving of that build could have exhibited the mechanism it was blamed on.
+
+   **What produced the red run is a candidate, not a finding, and is recorded as one.** Two suite
+   instances sharing a fixed probe path in the temp folder reproduce the same shape of failure on
+   demand: run concurrently, this comparison shows hundreds of mismatches with value differences up
+   to ~1.9e4 — one process reading the other's file — and round 10 itself root-caused exactly that
+   collision later in the same round, for a different test, recording the one-instance-at-a-time rule
+   in `TESTING.md`. But round 10's own reproduction listed failures in tests 10, 12, 13, 24, 28 and
+   52, **not** 55. So the collision is available as a mechanism and is not claimed as the measured
+   cause. What *is* established is enough to decide: the arithmetic is exonerated in the build that
+   failed, and the tolerance bought with that failure was unjustified. Round 11 removes the fixed
+   shared temp paths from the suite so the mechanism cannot recur (`juce::File::createTempFile`); the
+   preset **folder** is still shared, which is what the one-instance rule covers.
+
+   **The reconciliation and its constant are deleted.** The signature has exactly one equivalence,
+   stated once and applied identically by every producer:
+
+   > Two sounds are the same when their **rendered normalised values agree to five decimal places**.
+
+   "Rendered" is `normalisedAsRendered` (§17): the value the plug-in actually renders and stores —
+   the DSP reads the denormalised, interval-snapped value, and both the preset format and the session
+   tree keep that same number. Nothing is layered on top of it, and no comparison anywhere in the
+   preset/undo/A-B signature machinery uses a tolerance.
+
+   **What the quantisation itself absorbs — stated, not implied.** One signature bucket is `1e-5` of
+   normalised range. That is a *resolution*, so it must be measured against the parameter set rather
+   than asserted to be harmless:
+
+   | domain | count | smallest step | vs one `1e-5` bucket |
+   |---|---|---|---|
+   | on a grid (interval-snapped) | 29 | 8.08e-5 (Chorus Rate, top of range) | 8.08 × |
+   | gridless (log-mapped frequency) | 4 | — | no grid at all |
+
+   For a **grid** parameter no two legal settings can share a bucket, so a real edit always shows.
+   The binding case is Chorus Rate — `{0.05, 5.0, interval 0.001, skew 0.4}`, the set's only skewed
+   range — whose top-of-range step is 8.08e-5; every other grid parameter is wider (Output Gain
+   2.08e-4, Haas Delay 2.94e-4, Drive 4.17e-4, the 0.001-interval controls 5e-4 to 1e-3). The margin
+   is **~8 ×, not the ~50 × an earlier draft of this section recorded** — 50 × is the Width family
+   alone, and a future range change checked against that number could narrow a cell below one bucket.
+   State test 57 therefore *asserts* the margin over the whole parameter set instead of quoting it.
+
+   For the four **gridless** ranges the bucket is the only resolution there is: at worst **1.38 Hz**
+   at the 20 kHz end of the three multiband splits and **0.013 Hz** on Mono Maker Freq. A move
+   smaller than that, at a value that does not straddle a bucket boundary, is not reported. It does
+   not hide indefinitely either — successive sub-bucket writes cross a boundary, after which the
+   preset reads dirty and stays dirty (State test 57's accumulation leg drives exactly that, and
+   asserts that more than one nudge was needed, so the leg is about accumulation and not about a
+   single lucky crossing).
+
+   **The two parameter domains, and why they differ on purpose.** A grid parameter absorbs movement
+   *inside one cell* — §17's deliberate rule, since such a move changes neither the DSP input nor
+   anything a file can hold — and reports movement across a cell boundary, which is a whole step. It
+   is **not** true that a tiny write can only reach the signature on the gridless ranges: `snapToLegalValue`
+   rounds, so a sub-`1e-6` write that straddles a snap boundary moves a whole step and is correctly an
+   edit. State test 57 asserts all of it — inside a cell is not an edit, one cell is, a sub-`1e-6`
+   write across a snap boundary is — for Amount *and* for Chorus Rate, the tightest margin in the set.
+
+   **Why a boundary is the only place the tolerance could ever have shown.** A tolerance finer than
+   the signature's own resolution can change the answer only where the two values straddle a
+   five-decimal rounding boundary. State test 57 therefore *searches* a deterministic grid for such a
+   value and its sub-`1e-6` nudge, and asserts it found one before using it — in both directions, on
+   both log mappings, and each leg **confined to its own band** of the normalised range, because an
+   unconstrained search always terminates within a few steps of zero and four legs then measure one
+   neighbourhood. Its baseline oracle is an undisturbed load of the same file, not the function under
+   test. Restoring the reconciliation fails **ten** checks across State tests 55 and 57.
+
+   **Nothing else moves.** §17's single-capture save is untouched; §18's load baseline is still
+   derived from the tree with no live read — in fact more purely, since the read-back is now gone
+   entirely. The two loaders now fire the `beforeStateCapture` seam at the same instant (after the
+   apply, before the baseline), so they are interchangeable fixtures, and State test 57 covers the
+   sub-`1e-6` write through both. State test 55's equality assertion, which round 10 had weakened to
+   "within float tail" with the count merely printed, is restored to exact string equality — asserted
+   because it *is* the product invariant (a just-loaded preset must read clean), so a toolchain that
+   broke it would be reporting a real defect on that toolchain, to be fixed by making the two sides
+   agree and never by widening the comparison.
+
+   **Recorded, not changed.** Two live reads survive inside otherwise tree-derived signatures: the
+   non-ranged fallbacks in `soundSignatureAfterLoading` and `soundSignatureForSavedTree`. They are
+   unreachable in this plug-in — every parameter `createAnamorphLayout` builds is a
+   `RangedAudioParameter`, which State test 52 asserts rather than assumes — but a future non-ranged
+   preset-carried parameter would reopen the KI-029 load window for it, not merely approximate it.
+   Separately, `lastPolledSig` (`PluginProcessor.h`) is assigned on every poll and read nowhere; it is
+   dead state, not a comparison, and is left for a cleanup outside this round.
+
+20. **A restore writes what the session stored, and is a fixed point (round 11).** The sibling audit
+   §19 called for found one more comparison of the deleted shape, on the restore path rather than a
+   signature path: `reassertParameters`'s per-parameter write gate was
+   `! (std::abs (norm - rp->getValue()) <= 1.0e-6f)`. The value it declined to write is the value the
+   **session** stored, while the baseline travelling with that session is adopted verbatim by
+   `adoptRestoredState` — so the combination the gate protected is "live value from before, baseline
+   from the file", which is the shape that makes an untouched preset show the modified star after a
+   project reopen, an A/B toggle or an undo. Round 11's own argument applies verbatim: a tolerance
+   cannot tell a float tail from a real difference of the same size.
+
+   **It is exact now**, written as a negated `==` so a NaN on either side still counts as "differs"
+   and gets repaired, exactly as the negated `<=` did.
+
+   **The property that had to be measured first** is that a restore is a **fixed point** — a host may
+   apply one chunk any number of times, and a per-application float-tail nudge would walk the sound,
+   which is what the tolerance was silently buying. Measured with the gate exact: 2 000 random sounds
+   × 20 re-applications of their own chunk move **no parameter at all** (worst delta 0.0) and move no
+   signature; 3 000 project save/reopen round trips leave the preset marker clean on a fresh instance
+   and on the same one. The tolerance had been declining 23 writes per 198 000 — all float tails on
+   the four gridless ranges, none of them needed to reach the fixed point. State test 58 asserts the
+   fixed point (values, signature, and byte-identical re-serialization) and the clean reopen.
+
+   **Stated honestly:** no test discriminates the two gates, because none can — the two agree on every
+   observable in that measurement space. The change is justified as removing an epsilon that had no
+   argument behind it and sat on a coherence path, not as fixing a reproduced failure. State test 58
+   guards the property that makes the exact form safe.
 
 ## Consequences
 
