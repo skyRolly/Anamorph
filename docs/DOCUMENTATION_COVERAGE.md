@@ -8234,6 +8234,36 @@ product trade-off. The cost had a removable cause (the load's extra store/report
 it as removed rather than leaving §17's framing to read as permanent. §17's own text is unchanged; it
 was true of the save-side formula it examined.
 
+## D-2 round 12 (2026-09-04) — a save describes the session the adoption will produce (ADR-0036 §21)
+
+**Code changed:** `src/InternalState.h` — the per-field precedence test of §9 is named
+(`editIsNewerThan`) and used by both callers; `editGenerations()` publishes the array;
+`resolvedWithEdits` returns the Settings an adoption will produce, for a reader that owns neither
+tree. `src/PluginProcessor.h` / `.cpp` — `ProgramSnapshot` carries `settingsEditGen` alongside the
+tree it describes; `ownedProgram` fills it; `writeState` takes the Settings tree to write; the
+off-message-thread `getStateInformation` decides the Settings per field instead of with the session.
+`tests/state_tests.cpp` — State test 59 (nine legs), and State test 57's snap-boundary leg rebuilt on
+the pair its own bisection straddles rather than on a guessed epsilon.
+
+**Why.** A restore has an ARRIVAL generation (the engine-config CAS, which §9's per-field Settings
+rule is written against) and an ADOPTION generation (`adoptedGeneration`, which stamps the published
+snapshot and which `covered` is written against). A Settings edit can never raise the second, so
+inside the pending window the snapshot is guaranteed rejected and the save fell back to
+`hostRestoreView` — whose Settings model `applyResolved` (write every field) rather than the
+`adoptResolved` that will actually run. A Setting the user had already changed vanished from the
+project. `covered` itself is right and unchanged: accepting that snapshot would pair the restored
+sound with the outgoing session's identity (§5, State test 42).
+
+**Documents updated:** `ADR-0036` (new §21 and the approval-boundary paragraph); `API_REFERENCE.md`
+(the three new InternalState entries); `TESTING.md` (test 59, 58 tests); `TESTING_POLICY.md`,
+`HANDOVER.md`, `README.md` (58 tests / 2261 checks); `CHANGELOG.md`; the worklog (§18) and the
+dashboard.
+
+**Drift.** None: §21 extends §9's rule to the save path rather than changing it, and §18's
+publication invariant is unchanged — a publication still carries exactly what is authoritative at its
+generation, now stated per field. The one correction is to `viewOfRestore`'s own contract comment,
+which claimed to model the adoption for every field and modelled the wrong function for one.
+
 ## D-2 round 11 (2026-09-03) — one equivalence, and nothing layered on top of it (ADR-0036 §19, §20)
 
 **Code changed:** `src/PresetManager.cpp` and `.h` — the `1e-6` reconciliation round 10 added to

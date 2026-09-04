@@ -383,6 +383,13 @@ private:
         juce::String presetName, presetBaseline;
         anamorph::PresetManager::Selection presetSelection;
         juce::ValueTree internalState;                 // a private copy of the Settings tree
+        // Per Settings field, the generation of the latest restore that had ARRIVED when the
+        // message thread last edited it (D-2 round 12, ADR-0036 §21). Published WITH the tree
+        // it describes, in the same immutable object, so a host thread reading both reads one
+        // consistent pair. It is what lets a save inside the pending window apply §9's
+        // per-field precedence -- the object-wide `generation` above answers only the
+        // whole-session question, and a Settings edit can never move it.
+        anamorph::InternalState::EditGenerations settingsEditGen {};
         int abActive = 0;
         StateSet abSlot[anamorph::kNumAbSlots];
     };
@@ -508,7 +515,10 @@ private:
     void adoptRestoreTail (const RestoreDecode&);
     // Serialize a program snapshot plus the live parameters. Any thread: the APVTS
     // copy is JUCE-locked and the snapshot is immutable.
-    void writeState (const ProgramSnapshot&, juce::MemoryBlock& destData);
+    // `settings` is the Settings tree to write, passed separately because a save inside the
+    // pending window writes the restore's program with the message thread's post-arrival
+    // edits overlaid, which is neither snapshot's own tree (ADR-0036 §21).
+    void writeState (const ProgramSnapshot&, const juce::ValueTree& settings, juce::MemoryBlock& destData);
     // The message thread's own program state as a snapshot value (M only).
     ProgramSnapshot ownedProgram() const;
     // Republish `ownedProgram()` into the mailbox (M only; skipped inside an adoption).

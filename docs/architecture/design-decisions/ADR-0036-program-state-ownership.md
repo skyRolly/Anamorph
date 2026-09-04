@@ -39,6 +39,12 @@ repository builds.
 > already hold. No thread, no lock, no wait, no allocation on any audio path, no new cross-thread
 > reader, no serialization-format change and no parameter or latency change. Everything it touches
 > runs on the message thread. There is no architectural delta to review.
+> **Round 12 (§21) as well**: it publishes one more message-thread fact inside the snapshot that
+> already crosses — the per-field Settings edit generations — so a host-thread save can apply §9's
+> existing per-field rule instead of a whole-object one. No new thread, cell, lock, wait or
+> allocation on any audio path, no new cross-thread reader (the same single object crosses the same
+> single cell), no serialization-format change, no parameter or latency change. There is no
+> architectural delta to review.
 > **Round 11 (§19, §20) as well, and it too removes machinery**: it deletes a tolerance and the
 > comparison that used it from one signature builder, and deletes a second tolerance of the same
 > shape from the restore path's per-parameter write gate, leaving a single tolerance-free
@@ -872,6 +878,96 @@ turn late) and leaves a save issued on the host thread right after its restore d
    observable in that measurement space. The change is justified as removing an epsilon that had no
    argument behind it and sat on a coherence path, not as fixing a reproduced failure. State test 58
    guards the property that makes the exact form safe.
+
+21. **A save describes the session the adoption will produce, field by field (round 12).** A host
+   save taken while a restore was pending wrote the restore's Settings **as decoded**, so a Setting
+   the user had already changed inside that window vanished from the project. Reproduced
+   deterministically: State test 59 fails 7 checks against the round-11 tree, one per Settings field
+   plus the all-six leg.
+
+   **The mechanism is two counters that do not move together.** A restore has two generations. Its
+   **arrival** is the engine-config word's CAS on the restoring thread — the one instant the message
+   thread can see a restore before adopting it — and that is what a Settings edit records against its
+   field (§9) and what `adoptResolved` compares against. Its **adoption** is `adoptedGeneration`,
+   which moves at exactly one site inside the drain, and that is what stamps
+   `ProgramSnapshot::generation` and what `covered` compares against. A Settings edit can therefore
+   *never* raise the generation of the snapshot it publishes: inside the pending window that snapshot
+   is guaranteed to be rejected, however many edits it carries.
+
+   **`covered` is right, and stays.** In that window the message thread still holds the OUTGOING
+   project's preset name, baseline, selection and A/B slots while the live parameters already hold
+   the restored sound. Accepting the snapshot would rebuild exactly the mixed state §5 forbids and
+   State test 42 pins. Raising the snapshot's generation on an edit is the same mistake wearing a
+   different hat, and is not the fix.
+
+   **The defect is one field of the other branch.** `viewOfRestore` is documented as *what the
+   message thread will own once it adopts this restore*, and every field honours that — the name's
+   absent-vs-empty rule, the baseline fallback, invalid slots left for save-time resolution. Except
+   one: it takes the Settings as `d.internalResolved`, which models `applyResolved` — the inline
+   restore's *write every field* rule — while the adoption that will actually run is `adoptResolved`,
+   which **keeps** a field edited at or after this restore arrived. Since round 3 those have been two
+   different functions and the host-side view was never moved onto the second. The view is also
+   immutable and built before the edit exists, so nothing can repair it in place.
+
+   **The invariant.**
+
+   > A host save must describe the session the plug-in **will hold once every restore that has
+   > arrived has been adopted**: the restore's program, with each Settings field carrying the value
+   > that field will hold after the adoption. Equivalently — a save taken inside the pending window
+   > must equal the save the owner takes immediately after it.
+
+   Its falsifiable form: **a completed Settings edit is absent from a save only if a strictly later
+   restore has arrived, or the save never observed the edit's publication.** The second clause is not
+   a new boundary — it is §18's, restated for the save: a save reflects every edit whose publication
+   it observed and none it did not.
+
+   **Whole-session precedence and per-field precedence are different rules, and one comparison cannot
+   serve both.** Preset name, baseline, selection, the A/B slot set and the active index are the
+   session: a newer arrival replaces them wholesale, which is what `covered` implements. The six
+   Settings are orthogonal preferences the session carries, and since §9 they are per-field,
+   arrival-ordered state. The save now decides them separately, per field.
+
+   **The mechanism, and why it is the existing one.** The snapshot carries the per-field edit
+   generations **alongside the tree they describe** — `ProgramSnapshot::settingsEditGen`, published
+   by `ownedProgram()` from `InternalState::editGenerations()`. The host side reads both out of the
+   one immutable object in hand, so a publication landing between two reads can never pair a tree
+   with someone else's generations: the same rule round 2 established for the object-wide generation,
+   applied to the field-wise ones. The merge is `InternalState::resolvedWithEdits`, which is
+   `adoptResolved`'s own predicate — `editIsNewerThan`, now named and used by both — applied to
+   values instead of in place. There is no second notion of "the current Settings": there is one
+   predicate, called from the adoption and from the save.
+
+   No new thread, cell, lock, wait or allocation on any audio path; no serialization-format change
+   (the blob's Settings child is written exactly as before, from a tree resolved one step later);
+   no parameter or latency change. §18's publication invariant is intact — a publication still
+   carries exactly what is authoritative at its generation; it now says so per field rather than for
+   the object as a whole.
+
+   **Why "drain in the edit path" is not the fix**, though it looks smaller. An edit can land between
+   the restoring thread's engine-config CAS and its `pendingRestore.put`: the word already carries
+   the new generation, so the edit records it and will survive the adoption, yet the cell is still
+   empty and there is nothing for any drain to adopt. That sub-case is immune to draining, and it is
+   inside the reported window. Draining would also move a full restore adoption — a sound re-install,
+   an undo-history clear, a preset-metadata swap — into a `ValueTree` property-changed callback
+   raised by an editor binding.
+
+   **The bounded audit of the same family found no sibling.** Every other message-thread mutation of
+   program state drains first, by construction (`adoptPendingHostState` at the top of the A/B switch,
+   the A/B copy, `step`, the preset load and save hooks, the undo poll, the editor's construction,
+   Level-Match apply, and both message-thread state calls), so by the time it publishes,
+   `adoptedGeneration` already equals the arrival and `covered` is true. The Settings edit path is the
+   only message-thread mutation that deliberately does **not** drain — §9 exists because it cannot —
+   and it is the only one that needed this. The sound needs nothing: `writeState` reads the live APVTS,
+   so a knob turned inside the window is already in the blob, and `adoptRestoreTail` re-installs the
+   decode's sound only for a wholesale replacement, never for an edit (§12).
+
+   State test 59 pins all of it: the reported case per field and all six at once; an edit before the
+   arrival, which the restore correctly replaces; an edit after two arrivals, which stands over the
+   later restore; an edit between two arrivals, which the later restore supersedes and the overlay
+   must not resurrect; a save whose snapshot was taken before the edit published, which correctly
+   carries the restore's values while the very next save carries the edit; saves on both sides of the
+   adoption; and the identity half — the overlaid save still names the restore's session, never the
+   outgoing one. Reverting the merge fails **14** checks.
 
 ## Consequences
 

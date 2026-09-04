@@ -141,7 +141,7 @@ relies on.
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-190;
-  src/PluginProcessor.cpp:104-126, 317; src/InternalState.h:175, 487-510
+  src/PluginProcessor.cpp:104-126, 317; src/InternalState.h:175, 530-553
 - D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
   generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,
   `getStateInformation`); ADR-0036; State tests 37–41; the `tsan` job in

@@ -842,6 +842,23 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   no serialized byte, and 300 project save/reopen round trips must reopen clean on a **fresh**
   instance. Honest scope: no test discriminates the two gates, because the two agree on every
   observable measured; 58 guards the property that makes the exact form safe.
+- **59 (a host save inside the pending window carries the edit, round 12)** — a Setting changed while
+  an off-message-thread restore was pending vanished from an immediate host save. A restore has two
+  generations — its **arrival** (the engine-config word's CAS, which is what a Settings edit records
+  against its field) and its **adoption** (`adoptedGeneration`, which stamps the published snapshot) —
+  and `covered` is written against the second, so a Settings edit can never raise the generation of
+  the snapshot it publishes and that snapshot is *guaranteed* rejected inside the window. Rejecting it
+  is right for the session fields; the Settings are per-field, arrival-ordered state and now travel
+  with the per-field generations that decide them (ADR-0036 §21). Nine legs: the reported case for
+  each of the six fields and all six at once; an edit made *before* the arrival, which the restore
+  correctly replaces; an edit after **two** arrivals, which stands over the later restore; an edit
+  *between* two arrivals, which that restore supersedes and the overlay must not resurrect; a save
+  whose snapshot was taken before the edit published — driven through the `afterHostSaveTake` seam —
+  which correctly carries the restore's values while the very next save carries the edit; saves on
+  both sides of the adoption, the in-window one required to equal the owner's own; and the identity
+  half, where the overlaid save must still name the **restore's** session and never the outgoing one
+  (§5, State test 42). The oracle is built from §9's rule rather than from any production merge.
+  Mutation-tested — writing the restore's Settings as decoded fails **14** checks.
 
 State tests 22 and 27 were re-shaped in the same change: their off-thread requester used to be a
 `juce::Value` written from a worker, which after D-2 models nothing the plug-in does; both now drive
@@ -859,7 +876,7 @@ is wrong with any of those tests; the harness assumes exclusive use of the folde
 give it (one suite per runner). Locally: never run the suite beside a sanitizer lane or a second
 copy of itself.
 
-`tests/state_tests.cpp` (**57 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**58 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

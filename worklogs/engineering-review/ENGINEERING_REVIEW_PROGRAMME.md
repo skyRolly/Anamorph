@@ -1189,6 +1189,87 @@ Non-actionable residuals: a host save's snapshot and `copyState()` straddling a 
 the ≤ 50 ms adoption latency for the tail, the preset format's own denormalised round trip, and the
 edit-ordering boundary and read-then-CAS transient stated in §18.
 
+### 18. Round 12 — a save describes the session the adoption will produce (2026-09-04)
+
+**Architecture Review Gate: APPROVED, and this round is inside it.** One more message-thread fact is
+published inside the snapshot that already crosses. No new thread, cell, lock, wait, audio-path
+allocation or cross-thread reader; no serialization-format, parameter or latency change.
+
+**The finding — a Setting changed during pending adoption vanished from an immediate host save.**
+Reproduced deterministically before anything was changed: State test 59 fails **7 checks** against
+the round-11 tree, one per Settings field plus the all-six leg.
+
+**The mechanism — two counters that do not move together.** A restore has an ARRIVAL generation (the
+engine-config word's CAS on the restoring thread, the one instant the message thread can see a
+restore before adopting it) and an ADOPTION generation (`adoptedGeneration`, moved at exactly one
+site inside the drain). §9's per-field Settings rule is written against the first; `covered` is
+written against the second, because `ProgramSnapshot::generation` is stamped from it. A Settings edit
+can therefore never raise the generation of the snapshot it publishes: inside the window that
+snapshot is *guaranteed* rejected, however many edits it carries.
+
+**`covered` is right and stays.** In that window the message thread still holds the OUTGOING
+project's preset name, baseline, selection and A/B slots while the live parameters already hold the
+restored sound; accepting the snapshot would rebuild the mixed state §5 forbids and State test 42
+pins. Raising the snapshot's generation on an edit is that same mistake in another hat.
+
+**The defect is one field of the other branch.** `viewOfRestore` is documented as *what the message
+thread will own once it adopts this restore*, and every field honours that except its Settings, which
+model `applyResolved` (write every field) while the adoption that actually runs is `adoptResolved`
+(keep a field edited at or after this restore arrived). Those have been two different functions since
+round 3; the host-side view was never moved onto the second, and it is immutable and built before the
+edit exists, so nothing can repair it in place.
+
+**The decision — whole-session precedence and per-field precedence are different rules.** The save
+now decides the Settings separately, per field, from the per-field edit generations published
+alongside the tree they describe (`ProgramSnapshot::settingsEditGen`). Both are read out of the one
+immutable object, so a publication landing between two reads cannot pair a tree with someone else's
+generations — round 2's rule for the object-wide generation, applied field-wise. The merge is
+`InternalState::resolvedWithEdits`, which is `adoptResolved`'s own predicate (`editIsNewerThan`, now
+named and used by both) applied to values instead of in place: one predicate, two callers, no second
+notion of "the current Settings".
+
+**Why "drain in the edit path" is not the fix**, though it looks smaller: an edit can land between the
+restoring thread's engine-config CAS and its `pendingRestore.put`, where the word already carries the
+new generation — so the edit records it and will survive the adoption — while the cell is still empty
+and there is nothing for any drain to adopt. That sub-case is inside the reported window and immune to
+draining. It would also move a full adoption (a sound re-install, an undo-history clear, a preset
+metadata swap) into a `ValueTree` property-changed callback raised by an editor binding.
+
+**Bounded audit of the same ordering family — no sibling.** Every other message-thread mutation of
+program state drains first by construction (the A/B switch and copy, `step`, the preset load/save
+hooks, the undo poll, the editor's construction, Level-Match apply, both message-thread state calls),
+so its publish carries the arrival's generation and `covered` is true. The Settings edit path is the
+only message-thread mutation that deliberately does not drain — §9 exists because it cannot — and the
+only one that needed this. The sound needs nothing: `writeState` reads the live APVTS, and an edit
+never triggers the adoption's sound re-install (§12).
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 59 against the round-11 tree | FAILS 7 checks (six fields + the all-six leg) |
+| the fix vs writing the restore's Settings as decoded | FAILS 14 checks |
+| State tests 37–59 on the tree | green; suite 2261 checks / 0 failures, 58 tests |
+| the four probes under TSan, after | `--d2-stress-probe`, `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe`, 10 runs each: 0 runs with reports, 0 reports. No suppressions |
+| the state suite under TSan, after | 2261 checks, 0 failures, 0 reports — run alone |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | 120 files clean; 398 anchors clean against both `8b348f6` and `origin/main` |
+| `preflight.sh` | exit 0 |
+
+**macOS CI, fixed in the same round.** The `macos` job's step *DSP + state self-tests, x86_64 slice
+under Rosetta* failed 2 checks on the round-11 commit: State test 57's snap-boundary leg probed
+`boundary ± d` for a doubling `d` and found no crossing under Rosetta, while native x86-64
+(`macos-intel`) and arm64 both found one at 2.0e-08 with an identical base and cell width. The probe
+is gone: the leg now asserts on the pair the bisection itself established straddles the boundary, so
+the property is proved by the search on whatever platform runs it rather than by a guessed epsilon.
+Same assertion, no weakening — and the same class of fragility round 11 removed from the product.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains. Host serialization: **disposition D**,
+no new evidence (the round's source change touches `getStateInformation`'s Settings selection,
+`ownedProgram`, `writeState`'s signature and `InternalState`; it adds no caller, no thread, no timer
+and no concurrent path, and leaves the host-side members and the off-thread tripwire untouched).
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can

@@ -1078,6 +1078,7 @@ AnamorphAudioProcessor::ProgramSnapshot AnamorphAudioProcessor::ownedProgram() c
     // Message thread: every field is owned here and read here.
     ProgramSnapshot s;
     s.generation      = adoptedGeneration;
+    s.settingsEditGen = internal.editGenerations();   // WITH the tree below, in one object (§21)
     s.presetName      = presets.currentName();
     s.presetBaseline  = presets.baseline();
     s.presetSelection = presets.selection();
@@ -1251,6 +1252,12 @@ AnamorphAudioProcessor::viewOfRestore (const RestoreDecode& d, const juce::Strin
     v->presetBaseline  = (d.haveBaseline && d.restoredBaseline.isNotEmpty()) ? d.restoredBaseline
                                                                              : liveSoundSig;
     v->presetSelection = d.restoredSelection;
+    // The restore's own resolved Settings. Since round 12 this is NOT the whole answer for a
+    // save taken before the adoption: a field the message thread edits after this restore
+    // ARRIVES is the newer arrival and the adoption will keep it, so `getStateInformation`
+    // overlays those fields from the published snapshot (ADR-0036 §21). `settingsEditGen` is
+    // left at zero here and is never read from this view -- the generations that matter are
+    // the message thread's, and they travel in the snapshot, not in this prediction.
     v->internalState   = d.internalResolved;   // built by the resolver, never edited again
     v->abActive        = d.abActive;
     for (int i = 0; i < anamorph::kNumAbSlots; ++i)
@@ -1258,7 +1265,7 @@ AnamorphAudioProcessor::viewOfRestore (const RestoreDecode& d, const juce::Strin
     return v;
 }
 
-void AnamorphAudioProcessor::writeState (const ProgramSnapshot& s, juce::MemoryBlock& destData)
+void AnamorphAudioProcessor::writeState (const ProgramSnapshot& s, const juce::ValueTree& settings, juce::MemoryBlock& destData)
 {
     juce::ValueTree root ("AnamorphRoot");
     root.setProperty ("presetName", s.presetName, nullptr);       // remembered across sessions (F2)
@@ -1273,7 +1280,7 @@ void AnamorphAudioProcessor::writeState (const ProgramSnapshot& s, juce::MemoryB
     root.appendChild (copyStateWithRawValues(), nullptr); // APVTS state + exact "raw" values per PARAM
     // A fresh copy, because appending re-parents a tree and the snapshot's must stay
     // free for the next save.
-    root.appendChild (s.internalState.createCopy(), nullptr); // host-hidden Settings / view state
+    root.appendChild (settings.createCopy(), nullptr); // host-hidden Settings / view state
 
     // A slot the snapshot carries as INVALID is "lazily initialised from current"
     // (SERIALIZATION_REGISTRY.md, `AB` child): the live parameters plus the
@@ -1312,7 +1319,8 @@ void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
         // always written.
         adoptPendingHostState();
         abEnsureInit();
-        writeState (ownedProgram(), destData);
+        const auto owned = ownedProgram();
+        writeState (owned, owned.internalState, destData);
         return;
     }
 
@@ -1348,10 +1356,43 @@ void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
         fresh.presetBaseline  = anamorph::PresetManager::soundSignatureFor (apvts);
         fresh.presetSelection = { anamorph::PresetManager::Selection::Kind::factory, "default", {} };
         fresh.internalState   = anamorph::InternalState::resolveRestore (juce::ValueTree ("ANAMORPH_INTERNAL"));
-        writeState (fresh, destData);
+        writeState (fresh, fresh.internalState, destData);
         return;
     }
-    writeState (*view, destData);
+
+    // THE SETTINGS ARE DECIDED PER FIELD, NOT WITH THE SESSION (D-2 round 12, ADR-0036 §21).
+    // `covered` above answers ONE whole-object question -- has the message thread adopted my
+    // restore yet -- and rejecting the snapshot is right for every field that IS the session:
+    // in this window the message thread still holds the OUTGOING project's preset name,
+    // baseline, selection and A/B slots while the live parameters already hold the restored
+    // sound, so writing them would rebuild exactly the mixed state §5 and State test 42 forbid.
+    //
+    // The Settings do not follow that rule. Since round 3 they are per-field, arrival-ordered
+    // state (§9): a field edited at or after this restore ARRIVED is the newer arrival and the
+    // adoption will KEEP it. `hostRestoreView` cannot know that -- it is built at decode time,
+    // before the edit exists, and its Settings model `applyResolved` (write every field) while
+    // the adoption that will actually run is `adoptResolved`. So a save here used to describe
+    // the restore's session with Settings the plug-in was never going to hold, and a Setting
+    // the user had already changed vanished from the project.
+    //
+    // The missing information crosses the way every other message-thread fact crosses: inside
+    // the immutable snapshot, as the per-field generations published WITH the tree they
+    // describe. Both are read from the one object in hand, so a publication landing between
+    // two reads cannot pair a tree with someone else's generations -- the same rule round 2
+    // established for the object-wide generation. The merge itself is `resolvedWithEdits`,
+    // which is `adoptResolved`'s own predicate applied to values instead of in place, so the
+    // save and the adoption cannot disagree by construction.
+    //
+    // A snapshot published BEFORE the restore arrived carries only generations below it, so
+    // nothing is overlaid and the restore's own Settings stand -- which is the right answer
+    // for a save that never observed the edit, and is what keeps §18's stated ordering
+    // boundary intact rather than adding a second one.
+    const juce::ValueTree settings = covered || hostProgramView == nullptr
+                                       ? view->internalState
+                                       : anamorph::InternalState::resolvedWithEdits (
+                                             view->internalState, hostProgramView->internalState,
+                                             hostProgramView->settingsEditGen, hostRestoreGen);
+    writeState (*view, settings, destData);
 }
 
 // Read the blob and apply its SOUND; everything else it carries lands in `out`.

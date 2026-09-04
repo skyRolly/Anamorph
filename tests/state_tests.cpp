@@ -9257,7 +9257,13 @@ namespace r11
     // range's cell width varies along the range, so a leg that wants "one whole step HERE"
     // has to measure it here rather than reuse the parameter's smallest step, which for
     // chorusRate lives at the opposite end of the range.
-    struct Cell { bool found = false; float half = 0.0f, step = 0.0f; };
+    // It also returns the PAIR that straddles the boundary -- the largest value that still
+    // renders as `base` and the smallest that does not -- so the boundary leg can assert on
+    // two values the search itself proved land on opposite sides. Probing `boundary +/- d`
+    // for a guessed d instead makes the answer depend on where the platform's float
+    // arithmetic puts the crossing: measured, that probe finds the pair on native x86-64 and
+    // on arm64 and finds nothing under Rosetta, on identical `base` and cell width.
+    struct Cell { bool found = false; float half = 0.0f, step = 0.0f, below = 0.0f, above = 0.0f; };
 
     static Cell cellAround (const juce::RangedAudioParameter& rp, float base)
     {
@@ -9272,7 +9278,8 @@ namespace r11
             if (juce::exactlyEqual (mid, lo) || juce::exactlyEqual (mid, hi)) break;
             if (juce::exactlyEqual (normalisedAsRendered (rp, base + mid), r0)) lo = mid; else hi = mid;
         }
-        return { true, hi, hi * 2.0f };
+        // The invariant every branch above maintains: base+lo renders as base, base+hi does not.
+        return { true, hi, hi * 2.0f, base + lo, base + hi };
     }
 
     // Returns 0 for a parameter with no grid: (almost) every sample renders differently.
@@ -9512,27 +9519,26 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
         rp->setValueNotifyingHost (base);
         check (! p.getPresets().isDirty(), "...and returning to the saved value reads clean again");
 
-        // The snap boundary: a nudge far below 1e-6 that crosses it moves a whole step, so a
+        // The snap boundary: a move far below 1e-6 that crosses it moves a whole step, so a
         // tiny write CAN reach the signature on a grid parameter -- correctly, because at a
-        // boundary it really does move the DSP input and the file by a full step.
-        const float boundary = base + cell.half;
-        float tiny = 0.0f; bool crossed = false;
-        for (float d = 1.0e-8f; d <= 1.0e-6f && ! crossed; d *= 2.0f)
-            if (! juce::exactlyEqual (normalisedAsRendered (*rp, boundary + d), normalisedAsRendered (*rp, boundary - d)))
-                { tiny = d; crossed = true; }
-        check (crossed, "non-vacuity: a snap boundary is reachable by a sub-1e-6 move");
-        if (crossed)
-        {
-            rp->setValueNotifyingHost (boundary - tiny);
-            check (p.getPresets().saveUser (name), "the preset is written at the boundary");
-            check (! p.getPresets().isDirty(), "...and reads clean there");
-            rp->setValueNotifyingHost (boundary + tiny);
-            check (p.getPresets().isDirty(),
-                   "a sub-1e-6 write ACROSS a snap boundary is a whole step, and reads dirty");
-        }
+        // boundary it really does move the DSP input and the file by a full step. The two
+        // values come from the bisection itself, which established that they render
+        // differently, so the leg does not depend on where a guessed epsilon lands.
+        const float below = cell.below, above = cell.above;
+        const double crossing = std::abs ((double) above - (double) below);
+        check (! juce::exactlyEqual (normalisedAsRendered (*rp, below), normalisedAsRendered (*rp, above)),
+               "non-vacuity: the search's own pair renders on opposite sides of a snap boundary");
+        check (crossing > 0.0 && crossing <= 1.0e-6,
+               "non-vacuity: ...and the move between them is real and smaller than 1e-6");
+        rp->setValueNotifyingHost (below);
+        check (p.getPresets().saveUser (name), "the preset is written at the boundary");
+        check (! p.getPresets().isDirty(), "...and reads clean there");
+        rp->setValueNotifyingHost (above);
+        check (p.getPresets().isDirty(),
+               "a sub-1e-6 write ACROSS a snap boundary is a whole step, and reads dirty");
         std::printf ("  %-11s (grid): smallest step %.6g (%.1f quanta), cell here %.6g --"
                      " inside a cell is not an edit, a step is, and a %.1e write across a boundary is\n",
-                     id, step, step / (double) r11::kSignatureQuantum, (double) cell.step, (double) tiny);
+                     id, step, step / (double) r11::kSignatureQuantum, (double) cell.step, crossing);
     }
 
     // --- accumulation: many sub-resolution nudges must still become visible -----
@@ -9706,6 +9712,231 @@ static void testARestoreIsAFixedPoint()
         check (sigMoved == 0, "...and reopens at the same sound");
         std::printf ("  %d project save/reopen round trips: dirty on reopen %d, sound moved %d\n",
                      points, dirtyAfterReopen, sigMoved);
+    }
+}
+
+namespace r12
+{
+    // The preset name a saved blob carries, read straight out of the bytes.
+    static juce::String presetNameOf (const juce::MemoryBlock& blob)
+    {
+        if (auto xml = BlobCodec::unwrap (blob))
+            return juce::ValueTree::fromXml (*xml).getProperty ("presetName").toString();
+        return "<unreadable>";
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 59 -- a host save taken inside the pending-restore window carries
+//  the Settings edits made after that restore arrived (D-2 round 12, review
+//  finding "pending Settings edits vanish from saves").
+//
+//  PLACEHOLDER HEADER -- rewritten once the mechanism is proved.
+// ---------------------------------------------------------------------------
+static void testHostSaveInsideThePendingWindowCarriesTheEdit()
+{
+    std::printf ("State test 59: a host save inside the pending window carries the edit (D-2 r12)\n");
+
+    const r3::SettingsSet P  { 1, 3, 0.50, true,  true,  false };
+    const r3::SettingsSet R  { 2, 4, 0.25, true,  true,  false };
+    const r3::SettingsSet U  { 3, 5, 0.75, false, false, true  };
+    const auto blobR = r3::authorSession ("D2-R12-R", R);
+
+    // The intended logical state, built from the RULE (section 9) rather than from any
+    // production merge: the restore's Settings, with the fields edited after its
+    // arrival taking the edit's value.
+    auto expectedWith = [&] (std::initializer_list<int> edited)
+    {
+        r3::SettingsSet e = R;
+        for (int i : edited)
+            switch (i)
+            {
+                case 0: e.oversample   = U.oversample;   break;
+                case 1: e.uiScale      = U.uiScale;      break;
+                case 2: e.scopePersist = U.scopePersist; break;
+                case 3: e.metersOn     = U.metersOn;     break;
+                case 4: e.tooltipsOn   = U.tooltipsOn;   break;
+                default: e.uiAnimations = U.uiAnimations; break;
+            }
+        return e;
+    };
+
+    // --- (a) THE REPORTED CASE: restore pending, one Settings edit, host save ----
+    for (int i = 0; i < 6; ++i)
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // arrived; PENDING
+        r3::setField (p.getInternal(), i, U);                          // the edit, after the arrival
+
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });     // the host saves INSIDE the window
+
+        check (r3::same (r3::settingsOf (hostSave), expectedWith ({ i })),
+               (juce::String (r3::fieldNames[i]) + ": a host save inside the pending window carries the edit").toRawUTF8());
+        check (r12::presetNameOf (hostSave) == "D2-R12-R",
+               "...and still describes the RESTORE's program, not the outgoing session's");
+    }
+
+    // --- (b) several edits in one pending window ------------------------------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
+        r3::apply (p.getInternal(), U);                                // all six, after the arrival
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+        check (r3::same (r3::settingsOf (hostSave), U), "six edits in one pending window all reach a host save");
+    }
+
+    // --- (c) the edit was made BEFORE the restore arrived ----------------------
+    // The restore is the newer arrival, so the save must carry the RESTORE's values:
+    // the fix must not let a stale edit override a genuinely newer restore.
+    for (int i = 0; i < 6; ++i)
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), P);
+        r3::setField (p.getInternal(), i, U);                          // the edit, BEFORE the arrival
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+        check (r3::same (r3::settingsOf (hostSave), R),
+               (juce::String (r3::fieldNames[i]) + ": an edit made before the arrival is replaced by the restore, in the save too").toRawUTF8());
+    }
+
+    // --- (d) the same save, taken after the adoption --------------------------
+    for (int i = 0; i < 6; ++i)
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
+        r3::setField (p.getInternal(), i, U);
+        p.pollUndoCoalesce();                                          // the adoption
+        juce::MemoryBlock hostSave, ownerSave = d2::saveOf (p);
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+        check (r3::same (r3::settingsOf (hostSave), expectedWith ({ i })),
+               "a host save after the adoption carries the same answer");
+        check (hostSave == ownerSave, "...and equals the owner's own save");
+    }
+
+    // --- (e) an edit made after the adoption ----------------------------------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
+        p.pollUndoCoalesce();                                          // adopt first
+        r3::apply (p.getInternal(), U);                                // then edit
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+        check (r3::same (r3::settingsOf (hostSave), U), "an edit made after the adoption reaches a host save");
+    }
+
+    // --- (f) two restores, the edit after BOTH -------------------------------
+    // The edit follows the latest arrival, so it survives both adoptions and must be in
+    // the save. This is the leg that makes the fix key on the RECORDED per-field
+    // generation rather than on "was there an edit at all".
+    {
+        const r3::SettingsSet R2 { 4, 2, 0.90, false, true, false };
+        const auto blobR2 = r3::authorSession ("D2-R12-R2", R2);
+        for (int i = 0; i < 6; ++i)
+        {
+            AnamorphAudioProcessor p;
+            p.prepareToPlay (48000.0, 512);
+            r3::apply (p.getInternal(), P);
+            d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });    // R1 arrives
+            d2::offMessageThread ([&] { d2::restoreFrom (p, blobR2); });   // R2 arrives
+            r3::setField (p.getInternal(), i, U);                          // the edit, after BOTH
+            juce::MemoryBlock hostSave;
+            d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+            r3::SettingsSet e = R2;
+            switch (i)
+            {
+                case 0: e.oversample   = U.oversample;   break;
+                case 1: e.uiScale      = U.uiScale;      break;
+                case 2: e.scopePersist = U.scopePersist; break;
+                case 3: e.metersOn     = U.metersOn;     break;
+                case 4: e.tooltipsOn   = U.tooltipsOn;   break;
+                default: e.uiAnimations = U.uiAnimations; break;
+            }
+            check (r3::same (r3::settingsOf (hostSave), e),
+                   (juce::String (r3::fieldNames[i]) + ": an edit after two arrivals is in the save, over the LATER restore").toRawUTF8());
+            p.pollUndoCoalesce();
+            check (r3::same (r3::read (p.getInternal()), e),
+                   "...and the adoption produces exactly what that save described");
+        }
+
+        // --- (g) two restores, the edit BETWEEN them --------------------------
+        // R2 is a strictly later arrival, so it replaces the edit. The save must carry
+        // R2's values: the overlay must not resurrect an edit a newer restore supersedes.
+        for (int i = 0; i < 6; ++i)
+        {
+            AnamorphAudioProcessor p;
+            p.prepareToPlay (48000.0, 512);
+            r3::apply (p.getInternal(), P);
+            d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
+            r3::setField (p.getInternal(), i, U);                          // between the two
+            d2::offMessageThread ([&] { d2::restoreFrom (p, blobR2); });
+            juce::MemoryBlock hostSave;
+            d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+            check (r3::same (r3::settingsOf (hostSave), R2),
+                   (juce::String (r3::fieldNames[i]) + ": an edit a LATER restore supersedes is not resurrected by the overlay").toRawUTF8());
+            p.pollUndoCoalesce();
+            check (r3::same (r3::read (p.getInternal()), R2), "...and the adoption agrees");
+        }
+    }
+
+    // --- (h) the overlay applies to an edit that happened, and to nothing else ----
+    // A save issued inside the window with NO edit behind it must carry the restore's
+    // values untouched -- the overlay must not invent one -- and the next save, taken
+    // after a real edit, must carry it. The two saves are sequenced by the joins, so this
+    // is the "a save reflects every edit it observed and none it did not" half of the
+    // invariant, expressed without writing message-thread state from a host thread (which
+    // is the very rule the test is about).
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        r3::apply (p.getInternal(), P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
+
+        juce::MemoryBlock before;
+        d2::offMessageThread ([&] { before = d2::saveOf (p); });
+        check (r3::same (r3::settingsOf (before), R),
+               "a save inside the window with no edit behind it carries the restore's values, untouched");
+
+        r3::setField (p.getInternal(), 3, U);                          // the edit, on the message thread
+        juce::MemoryBlock after;
+        d2::offMessageThread ([&] { after = d2::saveOf (p); });
+        check (r3::settingsOf (after).metersOn == U.metersOn,
+               "...and the next save, which does follow the edit, carries it");
+        check (r3::same (r3::settingsOf (after), expectedWith ({ 3 })),
+               "...with the restore's values still standing in every field the edit did not touch");
+    }
+
+    // --- (i) the identity half is untouched by the overlay --------------------
+    // The fix must change the Settings and nothing else: the save inside the window still
+    // describes the RESTORE's session, never the outgoing one (section 5, State test 42).
+    {
+        AnamorphAudioProcessor outgoing;
+        outgoing.prepareToPlay (48000.0, 512);
+        outgoing.getPresets().setMeta ("D2-R12-OUTGOING", "r12-outgoing", anamorph::PresetManager::Selection());
+        r3::apply (outgoing.getInternal(), P);
+
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        p.getPresets().setMeta ("D2-R12-OUTGOING", "r12-outgoing", anamorph::PresetManager::Selection());
+        r3::apply (p.getInternal(), P);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });
+        r3::apply (p.getInternal(), U);
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+        checkStr (r12::presetNameOf (hostSave), "D2-R12-R",
+                  "the overlaid save still names the RESTORE's session, not the outgoing one");
+        check (r3::same (r3::settingsOf (hostSave), U), "...with the edited Settings on top of it");
     }
 }
 
@@ -9960,6 +10191,7 @@ int main (int argc, char* argv[])
     testPresetStepDerivesItsTargetAfterTheDrain();
     testNoToleranceAbsorbsAnAutomationWrite();
     testARestoreIsAFixedPoint();
+    testHostSaveInsideThePendingWindowCarriesTheEdit();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

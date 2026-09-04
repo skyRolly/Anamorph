@@ -339,6 +339,47 @@ public:
         writeResolved (resolved, true, restoreGeneration);
     }
 
+    // THE PER-FIELD PRECEDENCE PREDICATE, in one place (D-2 round 12, ADR-0036 §21).
+    // "Was this field edited at or after the restore being resolved against arrived?" --
+    // §9's rule, stated once so that the adoption on the message thread and a save on a
+    // host thread cannot answer it differently. Unsigned wrap-around subtraction, like
+    // every other generation comparison here, so the counters may wrap.
+    static bool editIsNewerThan (juce::uint32 editGen, juce::uint32 generation) noexcept
+    {
+        return (juce::int32) (editGen - generation) >= 0;
+    }
+
+    using EditGenerations = std::array<juce::uint32, 6>;
+
+    // The per-field generations, for publication (message thread). They are M-owned
+    // bookkeeping; a host thread can only ever see the COPY inside an immutable snapshot,
+    // paired there with the tree they describe.
+    EditGenerations editGenerations() const noexcept { return editGeneration; }
+
+    // THE SETTINGS AN ADOPTION WILL PRODUCE, as a value (D-2 round 12, ADR-0036 §21).
+    // `adoptResolved` computes this in place, on the tree it owns; this returns the same
+    // answer for a reader that owns neither tree -- a host-thread save inside the pending
+    // window, which must describe the Settings the plug-in will hold once the restore it
+    // handed over has been adopted. Same predicate, same inputs, no second rule: `restored`
+    // wins every field except one edited at or after `generation`, which keeps `live`'s.
+    //
+    // It is a pure function of two immutable trees and a copied array, so it is safe on any
+    // thread; nothing it touches is owned by the message thread.
+    static juce::ValueTree resolvedWithEdits (const juce::ValueTree& restored,
+                                              const juce::ValueTree& live,
+                                              const EditGenerations& editGen,
+                                              juce::uint32 generation)
+    {
+        if (! restored.isValid()) return live;
+        if (! live.isValid())     return restored;
+        auto out = restored.createCopy();
+        const auto& table = settings();
+        for (size_t i = 0; i < table.size(); ++i)
+            if (editIsNewerThan (editGen[i], generation) && live.hasProperty (table[i].id))
+                out.setProperty (table[i].id, live.getProperty (table[i].id), nullptr);
+        return out;
+    }
+
     // The engine-facing half of a restore (D-2): the oversampling index the audio
     // thread reads every block and prepareToPlay reads to prime the engine, published
     // as ONE tagged word -- the index in the low byte, the generation of the ARRIVAL
@@ -384,7 +425,9 @@ private:
         for (size_t i = 0; i < table.size(); ++i)
         {
             // Edited after this restore arrived: the edit is the newer arrival, it stands.
-            if (adoption && (juce::int32) (editGeneration[i] - generation) >= 0) continue;
+            // The predicate is `editIsNewerThan` so that a host-thread save answering the
+            // same question through `resolvedWithEdits` cannot answer it differently (§21).
+            if (adoption && editIsNewerThan (editGeneration[i], generation)) continue;
             tree.setProperty (table[i].id, resolved.getProperty (table[i].id), nullptr);
         }
         // The word follows the tree, whatever the loop kept (idempotent when the

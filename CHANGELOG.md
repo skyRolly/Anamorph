@@ -145,7 +145,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   registers or is smaller than the plug-in can store, with no grey area in between (State test 57).
   The same pass found the identical grey area on the reopening side, where a restored value within a
   hair of the one already in force was left alone rather than restored; that too is gone, and
-  reopening a project is now measurably a no-op you can repeat (State test 58). [Verified]
+  reopening a project is now measurably a no-op you can repeat (State test 58). A twelfth pass fixed a
+  settings change going missing from a project: if you changed a Setting in the moment right after a
+  project finished loading, and the host saved straight away, the save could still carry the setting
+  the project had arrived with rather than the one you had just chosen. A save now describes the
+  session as it will be once the arriving project has fully settled, setting by setting, so a change
+  you have already made can only be absent from a save if a newer project arrived after it (State
+  test 59). [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed
