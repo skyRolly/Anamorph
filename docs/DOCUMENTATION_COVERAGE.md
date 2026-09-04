@@ -8243,7 +8243,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1015`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1058`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8267,6 +8267,52 @@ counts; `CHANGELOG.md` as a user-visible fix — a button press could be swallow
 ownership, generation, baseline or signature semantics, and rounds 10, 12 and 15 are re-asserted by
 the suite.
 
+## D-2 round 17 (2026-09-04) — one whole-sound replacement at a time (ADR-0036 §24)
+
+**Code changed:** `src/PluginProcessor.h` / `.cpp` — a `juce::CriticalSection soundReplacement` and
+its accessor, taken by `applySoundTree`, `applyStatePreservingView` and (across the guard AND the
+write it guards) the adoption's §14 re-install, plus the `insideSoundReplacement` test seam in
+`reassertParameters`; `src/PresetManager.h` / `.cpp` — the same lock through a pointer the processor
+supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
+plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
+
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:1490`).
+A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
+per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
+H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
+held values from both sessions, and the DSP and `copyState()` read the parameters, not the tree. The
+codebase already detected the condition (`soundReplacementToken` returns 0, *no owner provable*) and
+repaired it at the next adoption — a 20 Hz timer, so up to 50 ms of audible mixed sound, and a host
+save taken inside that window wrote the mixture to the project file.
+
+**Measured.** State suite 2395 / 0 (61 tests). Removing the five exclusion scopes fails **6** checks
+across four observation points — the settled sound, live playback, an immediate host save, and a
+preset load in each of three factory rows — and the figure is legible: 30 parameters from one session
+and 3 from the other, the three the competing restore wrote before the paused loop resumed over the
+rest.
+
+**Documents updated:** `ADR-0036` (new §24, with the replacement-family audit table, the rejected
+alternatives, and an explicit statement of what the rule does NOT change — a reader sampling mid-loop
+still sees a partial set, which is ordinary automation); `TESTING.md` (State test 62, 61 tests);
+`README.md`, `TESTING_POLICY.md`, `HANDOVER.md`, `DOCUMENTATION_COVERAGE.md` and the worklog for the
+counts; `CHANGELOG.md` as a user-visible fix — audible mixed sound and a project file saved from it.
+
+**Reviewed against the tree before finalising**, which changed the code three more times: the
+view-param capture in `applyStatePreservingView` moved inside the scope (it was the one writer site
+left outside its own lock); the preset family's `soundSetGen` completion bump moved from `onLoaded`
+into each write loop's scope (a host thread released from the lock landed in the gap, read a clean
+token, and the adoption then re-installed its restore over the preset); and
+`beforeSoundReplacementWrites` moved back OUTSIDE the lock, which un-broke State tests 49 and 51 —
+they hold a replacement open at that seam and had been waiting on a thread the lock was blocking,
+spinning out a 4,000,000-yield escape hatch and passing on a timeout. Five further review findings
+are recorded in §24 as open, with mechanisms, rather than fixed here.
+
+**Drift.** One correction, in the code rather than the documents: the FACTORY preset path
+(`applyDefaults` then the table's overrides) is a whole-sound replacement that is not tree-shaped, so
+it never passed through `PresetManager::applySoundTree` and no document had ever named it as one. §24
+names it, and its two loops are recorded as ONE replacement. §24 changes no publication, ownership,
+generation, baseline or signature semantics; rounds 12, 15 and 16 are re-asserted by the suite.
+
 ## D-2 round 15 (2026-09-04) — a restore's clean baseline comes from its own bytes (ADR-0036 §22)
 
 **Code changed:** `src/PluginProcessor.h` / `.cpp` — `RestoreDecode` gains `restoredSoundSig`, filled
@@ -8276,7 +8322,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1260`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1311`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded

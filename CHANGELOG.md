@@ -15,6 +15,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.7] — 2026-09-03
 ### Fixed
+- **A session change arriving mid-swap can no longer leave you hearing two sounds at once.**
+  Loading a preset, switching A/B, or undoing sets every sound control in turn, and your DAW can
+  replace the whole session from its own thread while that is happening — Logic's autosave does, and
+  so do several VST3 hosts. The two used to write over each other, so what you heard afterwards was
+  part one session and part the other: not a glitch during the change, but a **settled** sound that
+  belonged to neither, held until the plug-in noticed and repaired it up to a twentieth of a second
+  later. Saving your project in that window wrote the mixture into the project file, and playing
+  through it played the mixture. A whole-sound change is now indivisible: whichever one finishes
+  last is the sound you get, entire, and the other cannot write into it. This covers factory presets
+  too, which are applied in two passes and had never been treated as one change. Nothing waits on
+  anything — the audio path takes no lock and is untouched. Decision: ADR-0036 §24. Regression
+  coverage: State test 62.
+  Evidence: PR #137. [Verified]
 - **The A/B button and the preset arrows can no longer be swallowed by a session change.** "The other
   slot" and "the next preset" are worked out from where you are, and your DAW can replace the whole
   session from its own thread at any moment — Logic's autosave does, and so do several VST3 hosts.

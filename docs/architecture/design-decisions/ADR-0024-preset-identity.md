@@ -117,8 +117,8 @@ folder) are not disjoint.
 - `src/PresetManager.cpp:22-61` (the factory table + `findFactory`), `:108-132` (`currentIndex`),
   `:202-250` (`load`), `:252-266` (`loadFile`), `:278-314` (`saveUser`), `:316-327`
   (`adoptRestoredState`), `:333-386` (`encodeSelection`/`decodeSelection`)
-- `src/PluginProcessor.h:207-219` (`StateSet::selection`)
-- `src/PluginProcessor.cpp:68-101` (the hooks, incl. `onSaved`), `:256-272`
+- `src/PluginProcessor.h:215-227` (`StateSet::selection`)
+- `src/PluginProcessor.cpp:68-107` (the hooks, incl. `onSaved`), `:256-272`
   (`currentStateSet`/`applyStateSet`), `:430-462` (`commitPresetSwitchUndoStep`, incl. the
   identity-moved guard on redo), `:563-584` (`writeSelection`/`readSelection`), `:665-706`
   (`readSlot`)

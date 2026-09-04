@@ -188,12 +188,20 @@ void PresetManager::resetSolo()
         sp->setValueNotifyingHost (sp->getDefaultValue());
 }
 
+// ONE AT A TIME (§24). This is HALF of the factory apply -- the overrides in loadAdopted are
+// the other half -- so its caller holds the same (recursive) lock across both; taking it here
+// as well costs nothing and keeps the function safe for any future caller of its own.
 void PresetManager::applyDefaults()
 {
+    const juce::ScopedLock oneAtATime (replacementLock());
+    int written = 0;
     for (auto* p : apvts.processor.getParameters())
         if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
             if (! pid::isPresetExcluded (wid->paramID))
+            {
+                if (++written == 4 && insideReplacement) insideReplacement();
                 p->setValueNotifyingHost (p->getDefaultValue());
+            }
     resetSolo();
 }
 
@@ -298,12 +306,21 @@ juce::ValueTree PresetManager::parseSoundFile (const juce::File& f) const
 // the baseline it will be judged against read the file through ONE rule (§17).
 void PresetManager::applySoundTree (const juce::ValueTree& state)
 {
+    // §24: one whole-sound replacement at a time. Without it this loop and a host thread's
+    // decode-install interleave, and the sound that settles is neither the preset's nor the
+    // restore's but a mixture of the two.
+    const juce::ScopedLock oneAtATime (replacementLock());
+    int written = 0;
     for (auto* p : apvts.processor.getParameters())
         if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
             if (! pid::isPresetExcluded (wid->paramID))
                 if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
+                {
+                    if (++written == 4 && insideReplacement) insideReplacement();
                     rp->setValueNotifyingHost (normalisedFromSavedTree (*rp, state, wid->paramID));
+                }
     resetSolo();
+    if (noteReplaced) noteReplaced();   // completion, published before the scope closes (§24)
 }
 
 // THE SIGNATURE OF THE LIVE STATE A SAVED TREE WAS CAPTURED FROM (D-2 round 9,
@@ -499,12 +516,21 @@ void PresetManager::loadAdopted (int index)
     juce::String applied;
     if (e.isFactory)
     {
-        applyDefaults();
-        // Resolved through the ID, not the list position: the entry already carries the
-        // identity the selection is about to adopt, so the two can never disagree (#4).
-        for (const auto& o : factory->set)
-            if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (o.id)))
-                rp->setValueNotifyingHost (rp->convertTo0to1 (o.value));
+        // ONE AT A TIME (§24), AND THE TWO PARTS ARE ONE REPLACEMENT. A factory preset is applied
+        // as every parameter to its default followed by the table's overrides; a restore landing
+        // between the two halves would settle a sound that is part factory default, part session,
+        // which is the same mixture the tree-shaped replacements are excluded from. The lock is
+        // recursive, so applyDefaults() taking it again inside this scope is a no-op.
+        {
+            const juce::ScopedLock oneAtATime (replacementLock());
+            applyDefaults();
+            // Resolved through the ID, not the list position: the entry already carries the
+            // identity the selection is about to adopt, so the two can never disagree (#4).
+            for (const auto& o : factory->set)
+                if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (o.id)))
+                    rp->setValueNotifyingHost (rp->convertTo0to1 (o.value));
+            if (noteReplaced) noteReplaced();   // completion, published before the scope closes (§24)
+        }
         // The resolver mirrors the two writes above: an override's value where the table
         // names the parameter, the default applyDefaults() wrote everywhere else. (The
         // signature only ever asks about preset-carried parameters, so an override on a

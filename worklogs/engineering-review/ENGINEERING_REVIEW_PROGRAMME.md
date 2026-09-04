@@ -1325,6 +1325,156 @@ moved only by the added non-vacuity checks (2261 → 2271).
 round adds no caller, no thread, no timer, no async or background path, and touches neither the
 host-side members nor the off-thread tripwire — `src/` is not modified at all.
 
+## D-2 / RISK-007 round 17 — 2026-09-04 — one whole-sound replacement at a time
+
+> *"Overlapping restores expose mixed sound. When a restore overlaps earlier adoption,
+> `applySoundTree` can leave the detected mixed sound live. Immediate playback or saving can
+> therefore observe parameters belonging to both sessions."* — `src/PluginProcessor.cpp:1490`
+
+**Genuine, and the codebase already contained the proof.** `soundReplacementToken(begin)` returns
+0 — *no owner provable* — exactly when another replacement ran inside ours, and its own comment
+states that "their per-parameter writes are not mutually excluded, so the live sound may hold values
+from both". The condition was detected and REPAIRED, at the next adoption; it was never prevented.
+
+**The mechanism, exactly.** A whole-sound replacement is two steps:
+
+| | step | locked by |
+|---|---|---|
+| 1 | `apvts.replaceState (tree)` | JUCE's APVTS lock |
+| 2 | a LOOP of `setValueNotifyingHost` over every sound parameter (`reassertParameters`, or `PresetManager`'s own loop) | **nothing** |
+
+Step 2 is where two replacements meet. Each individual write is atomic, so nothing tears; the SET is
+what ends up belonging to neither session. And it is the set the DSP reads and `copyState()` saves —
+the tree is not what is heard.
+
+**Which pairs can actually meet.** §11 gives the host ONE state thread and the message thread is one
+thread, so a conflicting pair is always {the sound half of a host thread's restore decode, on H} ×
+{any replacement on M}. Two message-thread replacements cannot interleave with each other, and two
+host restores cannot either.
+
+| | thread | what happened |
+|---|---|---|
+| t0 | M | A/B apply (or preset load, or undo) begins: `replaceState`, then writes parameters 1…3 of session P |
+| t1 | H | `setStateInformation` decodes session R and installs its sound — all 33 parameters |
+| t2 | M | the paused loop resumes and writes parameters 4…33 of P over R's |
+| t3 | — | **settled**: 3 parameters from R, 30 from P. Audible; savable; the tree says R |
+| t4 | M, ≤50 ms later | the adoption's §14 re-install repairs it wholesale |
+
+The measured figure from the mutation run is exactly this shape: *30 from one session, 3 from the
+other*. t3→t4 is up to one 20 Hz period of the wrong sound, and a host save taken in it writes the
+mixture into the project file, where it is permanent.
+
+**The rule (§24).** *A whole-sound replacement is indivisible with respect to every other whole-sound
+replacement.* Two halves, and the invariant is both: **sound coherence** — once the writers are
+finished, every parameter comes from ONE replacement — and **session coherence** — the replacement
+that finished last is what the live sound is, entire, so the sound, the tree and any baseline derived
+from that session's own bytes (§22) describe the same thing.
+
+**The implementation.** One `juce::CriticalSection soundReplacement` on the processor, taken at every
+replacement site and nowhere else; `PresetManager` receives a pointer to it at construction so the
+preset loops take the SAME lock rather than a second one. Recursive, which the adoption requires: it
+holds the lock across the §14 guard *and* the `applySoundTree` that guard calls, so "has anything
+replaced this sound since?" cannot be invalidated between being asked and being acted on. **The audio
+thread never takes it.**
+
+**Rejected.** An assertion records the mixture and ships it. Marking the older restore *pending* does
+not stop its writes, which are the defect. Delaying or disabling playback or saving hides the
+observation and would put the audio thread behind a message-thread loop. A per-write generation check
+leaves the sound mixed and merely bounds how long — the repair-later shape §14 already provides.
+
+**The bounded audit of the family.**
+
+| site | replacement | excluded before | verdict |
+|---|---|---|---|
+| `AnamorphAudioProcessor::applySoundTree` | `replaceState` + `reassertParameters` (restore install, H) | no | **fixed** |
+| `AnamorphAudioProcessor::applyStatePreservingView` | `replaceState` + `reassertParameters` + view re-override (undo / redo / A/B, M) | no | **fixed** |
+| the adoption's §14 re-install | the guard AND the write it guards | no | **fixed**, one scope over both |
+| `PresetManager::applySoundTree` | the per-parameter loop (user preset, `load` / `loadFile`, M) | no | **fixed** |
+| `PresetManager::applyDefaults` + the factory overrides | two loops, ONE replacement (factory preset, M) | no | **fixed**, one scope over both halves |
+| `applyAutoGain`, `resetSolo` | a single parameter | — | not in the family: one write cannot mix a set |
+| `processBlock` | reads only | — | never takes the lock |
+| pre-0.6.4 `applyStateSet` | reached only through `applyStatePreservingView` | now yes, by its caller | covered, unchanged |
+
+**The factory path is this round's own find, not the reviewer's.** It is not tree-shaped — "every
+parameter to its default, then the table's overrides" — so it never passed through
+`PresetManager::applySoundTree`, and no document had named it as a whole-sound replacement at all. A
+restore landing between its two halves settled a sound that was part factory default, part session.
+
+**State test 62** pins the rule at four observation points, with the competing restore landed exactly
+mid-loop through the `insideSoundReplacement` seam rather than raced for: the settled parameter set
+(B), live playback from an audio thread across the overlap (E), an immediate host save (F), and a
+preset load — three factory rows — as the message-thread half of the pair (G). Removing the five
+scopes fails **6** checks; the fixed tree is silent over six consecutive runs.
+
+**Three test-design problems this round had to solve, recorded because each one nearly produced a
+test that proves nothing.**
+
+1. *The seam fires inside EVERY replacement*, the competitor's own included, so a leg that arms it
+   naively reassigns a still-joinable `std::thread` and the suite terminates. A `fireOnce` CAS latch
+   arms it once, and the seam is cleared AFTER the join, never before.
+2. *A save taken the instant the host's own restore returns cannot witness the mixture* — the
+   obsolete writer has not resumed yet. Leg F's first version passed on the mutant for that reason.
+   It now orders the two explicitly (both waits bounded, so neither ordering hangs) so the save lands
+   after the resumed writer, which is the only instant that can see it.
+3. *Leg G's oracle was vacuous twice.* Classified against the two authored sessions, a factory apply
+   writes values belonging to NEITHER, so "not a mixture of A and B" was trivially true; it now
+   classifies against the preset's own sound. And it classified after `pollUndoCoalesce`, i.e. after
+   the §14 repair — measuring the repair rather than the property. It now classifies before.
+
+**And one property the test must NOT assert.** A reader sampling parameters mid-loop sees part of the
+outgoing sound and part of the incoming one — true of a single uncontested replacement, since JUCE
+offers no block-atomic parameter snapshot, and no lock the audio thread does not take could change
+it. `replaceState` adds a second transient: it carries a choice parameter through the tree's
+denormalised form, so between the two steps such a parameter reads as its snapped neighbour, a value
+from neither session. An early version of leg E asserted over all samples and failed intermittently
+**on the fixed tree** for exactly that reason. It now asserts only on samples taken once both writers
+have provably finished — which is where the defect lives.
+
+**Measured.** State suite 2395 / 0 (61 tests), six consecutive runs. Mutant: 6 failures, three runs,
+identical. State suite under ThreadSanitizer: 0 reports, no suppressions.
+
+**What an adversarial review of the first cut found.** The fix was reviewed against the tree before
+it was finalised, and three of its findings changed the code rather than the prose.
+
+1. **A writer site was outside its own scope.** `applyStatePreservingView` captured the view params
+   (`bypass`) BEFORE taking the lock and wrote them back inside it — so an A/B apply or undo racing a
+   decode could settle with the slot's sound everywhere and the restore's `bypass`. Moved inside.
+   **No regression covers it**: State test 62's oracle classifies the preset-carried set and `bypass`
+   is excluded from it, and constructing the window deterministically needs a seam at the capture
+   itself. The fix is argued, not proved, and that is stated rather than glossed.
+2. **The preset family's completion bump was outside the scope, and the lock steered the host thread
+   into the gap.** `soundSetGen` was bumped from `onLoaded`, after the write loop released the lock
+   and after the signature and `setMeta` work. A host thread released from the lock lands exactly
+   there: it samples a `begin` the load had already invalidated, gets a CLEAN token, and the adoption
+   then re-installs its restore over the preset — the §12 behaviour round 4 removed. The bump now
+   happens inside each preset write loop's own scope, where the two processor sites have always
+   published theirs.
+3. **Two pre-existing tests were broken by the seam's new position.** `beforeSoundReplacementWrites`
+   fired inside the lock, so State tests 49 and 51 — which hold a replacement open there and wait for
+   a host thread that performs a restore — waited on a thread blocked behind them, spun out their
+   4,000,000-yield escape hatch, and passed on a timeout rather than on the ordering. Found here
+   independently before the review returned; the seam now fires BEFORE the lock, restoring its
+   contract, and both seam contracts are stated in the headers. Suite wall time 12.6 s → 10.0 s.
+
+Five further findings are real and are NOT closed; they are recorded in ADR-0036 §24 with their
+mechanisms — the adoption guard's second term (`engineConfigGeneration`) still being published
+outside the lock and asking "has a newer restore announced" rather than "is a newer restore's sound
+live"; the lock making the resulting re-install of a SUPERSEDED restore deterministic rather than
+rare (root cause: install-before-announce, a threading-model change for its own round); the reader
+side being untouched, so a save taken ACROSS one in-progress replacement still records a part-old,
+part-new set; serialisation lengthening the interval a reader can be inside a replacement; and the
+A/B duck's masking being weakened when the lock is contended. One claim of the review is corrected:
+the exclusion is between THREADS, and the recursion the adoption requires means a re-entrant
+replacement on one thread passes through it — recorded, not guarded, because a guard would have to
+tell the two intentional nestings from a re-entrant one.
+
+**Host serialization: disposition D, unchanged, no new evidence.** This round adds no caller, thread,
+timer, async or background path. It adds a `juce::CriticalSection` taken only on the message and host
+threads and never by the audio thread, which narrows what two threads can do at once rather than
+widening it. The one interleaving §24 turns on — a host restore concurrent with a message-thread
+replacement — is the SUPPORTED shape (one host state thread, one message thread), not the unsupported
+concurrency Disposition D names.
+
 ## D-2 / RISK-007 round 16 — 2026-09-04 — a relative operation acts on the session it observed
 
 > *"Relative navigation uses stale targets. `abToggle` derives its destination before a second

@@ -81,6 +81,30 @@ the first cut drained in the gesture callback, and the rule is now: **nothing th
 lock runs from a parameter listener callback.** A restore landing mid-gesture is adopted by the next
 poll, which zeroes the gesture count exactly as an inline restore always has.
 
+**One whole-sound replacement at a time (D-2 round 17, ADR-0036 §24).** A replacement of the entire
+live sound — a restore's install, an undo, a redo, an A/B apply, a preset load — is
+`apvts.replaceState` (locked by JUCE) followed by a LOOP of per-parameter writes that is not. Two of
+them running at once therefore left the parameter set holding values from both sessions until the
+next adoption repaired it. `juce::CriticalSection AnamorphAudioProcessor::soundReplacement` now
+excludes them; `PresetManager` takes the same object through a pointer the processor supplies, so the
+preset loops and the session paths share ONE lock rather than two. Its ordering is fixed and
+one-directional: **`soundReplacement` → the APVTS lock → `listenerLock` → the host's own callback**
+(`performEdit` under VST3, `AUEventListenerNotify` under AU), taken in that order at every site.
+Nothing takes it in the other direction — both parameter-listener callbacks
+(`parameterValueChanged`, `parameterGestureChanged`) are lock-free by construction, which is the same
+property the paragraph above relies on — so it adds no cycle to the one recorded there, and the rule
+that paragraph states gains a second clause: **nothing that takes `soundReplacement` may run from a
+parameter listener callback either.**
+
+Two consequences of that edge are stated rather than left implicit. **The audio thread never takes
+`soundReplacement`** — `processBlock` reads parameter atomics — so no realtime path can block on a
+message-thread write loop. But the edge runs on through `listenerLock`, which the AUDIO thread does
+take when a host automates a parameter on it, so a HOST STATE thread waiting on `soundReplacement`
+can be waiting behind the audio thread; that is a wait on a non-realtime thread, which is what the
+D-2 design already accepts for a host save's `copyState`. And the exclusion is between THREADS: the
+lock is recursive because the adoption nests its re-install inside its own guard, so a re-entrant
+replacement on one thread passes through it (ADR-0036 §24 records that residual).
+
 One contract is load-bearing and is stated rather than assumed: **the host serializes its own state
 calls** (never two at once). Rounds 4–6 verified it against every wrapper this repository builds at the
 pinned JUCE 9.0.1, from primary evidence (ADR-0036 §11). **Round 8 re-verified the disposition mechanically against the current tree** — no Anamorph caller of
@@ -141,7 +165,7 @@ relies on.
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-190;
-  src/PluginProcessor.cpp:108-130, 321; src/InternalState.h:175, 533-556
+  src/PluginProcessor.cpp:117-139, 330; src/InternalState.h:175, 533-556
 - D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
   generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,
   `getStateInformation`); ADR-0036; State tests 37–41; the `tsan` job in

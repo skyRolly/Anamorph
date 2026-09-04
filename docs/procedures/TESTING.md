@@ -861,6 +861,35 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 62 — a settled sound is one session's, never a mixture** (round 17, ADR-0036 §24).
+  A whole-sound replacement is `apvts.replaceState` (locked by JUCE) followed by a LOOP of
+  per-parameter writes that was locked by nothing, so a host thread's restore install and a
+  message-thread A/B apply, undo or preset load interleaved and the settled parameter set held values
+  from BOTH sessions — repaired only at the next adoption, up to one 20 Hz period later. Four
+  observation points: the settled parameter set; live playback from an audio thread across the
+  overlap; an immediate host save; and a preset load — factory rows included, whose apply is
+  "defaults, then the table's overrides" and never passed through the tree-shaped path. The competing
+  restore is landed exactly mid-loop through the `insideSoundReplacement` seam rather than raced for;
+  a `fireOnce` latch is required because the seam fires inside EVERY replacement, the competitor's
+  own included. Its oracle is a pair of vectors read from instances that restored one session each
+  and nothing else, never a production helper compared against itself; leg G classifies against the
+  PRESET's own sound, because a factory apply writes values belonging to neither authored session and
+  "not a mixture of A and B" would otherwise be vacuously true. Three legs classify BEFORE the
+  adoption runs, since the §14 re-install repairs a mixture wholesale and a later reading measures the
+  repair. The playback leg asserts only on samples taken once both writers have provably finished: a
+  reader that lands inside ANY replacement, uncontested ones included, necessarily sees a partial set,
+  and `replaceState` additionally carries a choice parameter through the tree's denormalised form, so
+  it momentarily reads as its snapped neighbour. Mutation-tested — removing the five exclusion scopes
+  fails **6** checks, with 30 parameters from one session and 3 from the other. Heap-allocated
+  processors: see the 1 MB-stack note below. **Two seams, opposite contracts**:
+  `beforeSoundReplacementWrites` (used by State tests 49 and 51) fires BEFORE the §24 lock, so a
+  harness may hold a replacement open there and let a competitor run to completion;
+  `insideSoundReplacement` fires part-way through the write loop WITH THE LOCK HELD, so a harness may
+  sample or arm from it but must never join or wait on a thread that itself replaces the sound. One
+  coverage gap is stated rather than glossed: the view-param (`bypass`) capture moved inside the
+  scope in the same round has NO regression, because this test's oracle classifies the preset-carried
+  set and `bypass` is excluded from it.
+
 * **State test 61 — a relative operation acts on the session it observed** (round 16, ADR-0036 §23).
   `abToggle` and `PresetManager::step` derive a target and then call a primitive that DRAINS on the
   way in, so a restore landing in the gap was adopted after the target had been derived from the
@@ -961,7 +990,7 @@ is wrong with any of those tests; the harness assumes exclusive use of the folde
 give it (one suite per runner). Locally: never run the suite beside a sanitizer lane or a second
 copy of itself.
 
-`tests/state_tests.cpp` (**60 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**61 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

@@ -10094,7 +10094,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1260).
+//  baseline", src/PluginProcessor.cpp:1311).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -10327,7 +10327,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1015).
+//  targets", src/PluginProcessor.cpp:1058).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -10700,6 +10700,422 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
     // ======================= THE OTHER TWO RELATIVE SITES ======================
 }
 
+
+// ---------------------------------------------------------------------------
+//  State test 62 -- a settled sound is one session's, never a mixture
+//  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
+//  mixed sound", src/PluginProcessor.cpp:1490).
+//
+//  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
+//  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
+//  at once therefore interleave, and the live parameter set ends up holding values
+//  from BOTH: the first loop writes params 0..k, the second writes all of them, the
+//  first writes k+1..n over the top. The result is a sound that belongs to no session.
+//
+//  The codebase has always DETECTED this -- `soundReplacementToken` returns 0, "no
+//  owner provable", and says so in its own comment -- and the adoption repairs it by
+//  re-installing (§14). What it did not do is PREVENT it, so the mixture stayed live
+//  until that repair ran: up to one 20 Hz timer period, long enough for the engine to
+//  play it and for an off-message-thread save to write it into a session file.
+//
+//  Only one replacement can ever run off the message thread -- the sound half of a
+//  host thread's restore decode -- so the pairs that can tear are exactly
+//  {a decode's install} x {anything the message thread replaces with}: another
+//  restore's adoption re-install, an A/B apply, an undo, a preset load.
+//
+//  THE ORDERING IS FORCED, NOT RACED. `seams.insideSoundReplacement` fires once,
+//  part-way through the write loop. The harness lands the competing replacement from
+//  there, so the interleave is constructed rather than waited for. On the OLD tree the
+//  competing thread finishes inside that window (it is unobstructed) and the mixture
+//  is guaranteed; on the fixed tree it blocks on the replacement lock, the bounded
+//  wait below expires, and the competitor completes after this replacement finishes --
+//  which is the point, and why the wait is bounded rather than a join.
+//
+//  THE ORACLE IS THE TEST'S OWN TWO VECTORS. It reads every non-excluded parameter and
+//  classifies the live set against A's values and B's values, which it captured itself
+//  from the two authored sessions. It never calls `applySoundTree`, `reassertParameters`
+//  or any signature helper, so a defect in the code under test cannot make it agree
+//  with itself. "Mixed" is defined positively: at least one parameter equal to A's
+//  value where they differ, AND at least one equal to B's.
+// ---------------------------------------------------------------------------
+namespace r17
+{
+    // Every parameter a session actually carries, as raw normalised values, in a fixed order.
+    static std::vector<float> soundVector (AnamorphAudioProcessor& p)
+    {
+        std::vector<float> v;
+        for (auto* raw : p.getParameters())
+            if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (raw))
+                if (! pid::isPresetExcluded (wid->paramID))
+                    if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (raw))
+                        v.push_back (rp->getValue());
+        return v;
+    }
+
+    // The parameters whose values DIFFER between the two sessions -- the only ones that can
+    // testify to which session a live value came from.
+    static std::vector<size_t> discriminating (const std::vector<float>& a, const std::vector<float>& b)
+    {
+        std::vector<size_t> idx;
+        for (size_t i = 0; i < a.size() && i < b.size(); ++i)
+            if (! juce::exactlyEqual (a[i], b[i])) idx.push_back (i);
+        return idx;
+    }
+
+    struct Verdict { int fromA = 0, fromB = 0, fromNeither = 0; };
+
+    static Verdict classify (const std::vector<float>& live,
+                             const std::vector<float>& a, const std::vector<float>& b,
+                             const std::vector<size_t>& idx)
+    {
+        Verdict v;
+        for (auto i : idx)
+        {
+            if      (juce::exactlyEqual (live[i], a[i])) ++v.fromA;
+            else if (juce::exactlyEqual (live[i], b[i])) ++v.fromB;
+            else                                        ++v.fromNeither;
+        }
+        return v;
+    }
+
+    // A session whose every sound parameter is driven to `t` of its range, so the two sessions
+    // this test builds differ in as many parameters as the plug-in has.
+    static juce::MemoryBlock authorAt (float t)
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        auto& a = *owned;
+        a.prepareToPlay (48000.0, 512);
+        for (auto* raw : a.getParameters())
+            if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (raw))
+                if (! pid::isPresetExcluded (wid->paramID))
+                    if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (raw))
+                        rp->setValueNotifyingHost (t);
+        return d2::saveOf (a);
+    }
+
+    // The seam fires inside EVERY whole-sound replacement, including the competing thread's own,
+    // so a leg that arms it must act exactly once: otherwise the second firing reassigns a
+    // still-joinable std::thread and the suite terminates. `fireOnce` is that latch.
+    static bool fireOnce (std::atomic<bool>& armed)
+    {
+        bool expected = true;
+        return armed.compare_exchange_strong (expected, false);
+    }
+
+    // How many preset rows this machine offers. Read from an instance of its own, so the
+    // count is the shipping one and not whatever a leg has just loaded.
+    static int rowCount()
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        return owned->getPresets().entries().size();
+    }
+
+    // Waits, bounded, for `done`. Expiring is a legal outcome: on the fixed tree the competing
+    // replacement is BLOCKED for exactly as long as this replacement holds the lock, which is
+    // what the test is asserting, so waiting for it to finish here would deadlock.
+    static bool waitBounded (const std::atomic<bool>& done, int deadlineMs = 400)
+    {
+        for (int elapsed = 0; elapsed < deadlineMs; elapsed += 5)
+        {
+            if (done.load (std::memory_order_acquire)) return true;
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+        }
+        return done.load (std::memory_order_acquire);
+    }
+}
+
+static void testOverlappingReplacementsCannotMixTwoSessions()
+{
+    std::printf ("State test 62: a settled sound is one session's, never a mixture (D-2 r17)\n");
+
+    const auto blobA = r17::authorAt (0.20f);
+    const auto blobB = r17::authorAt (0.80f);
+
+    // The two vectors, read from instances that restored one session each and nothing else.
+    std::vector<float> soundA, soundB;
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        owned->prepareToPlay (48000.0, 512);
+        d2::restoreFrom (*owned, blobA); owned->pollUndoCoalesce();
+        soundA = r17::soundVector (*owned);
+    }
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        owned->prepareToPlay (48000.0, 512);
+        d2::restoreFrom (*owned, blobB); owned->pollUndoCoalesce();
+        soundB = r17::soundVector (*owned);
+    }
+    const auto idx = r17::discriminating (soundA, soundB);
+    std::printf ("  %d of %d sound parameters distinguish the two sessions\n",
+                 (int) idx.size(), (int) soundA.size());
+    check (idx.size() >= 10, "non-vacuity: the two sessions differ in at least ten parameters");
+
+    // --- A. one restore, no overlap: only that session is observable. ---------
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, blobA);
+        p.pollUndoCoalesce();
+        const auto v = r17::classify (r17::soundVector (p), soundA, soundB, idx);
+        check (v.fromA == (int) idx.size() && v.fromB == 0 && v.fromNeither == 0,
+               "case A: with no overlap the live sound is entirely the restored session's");
+    }
+
+    // --- B/C/D. THE REPORTED BUG: a restore arrives while another replacement is
+    //            part-way through its per-parameter writes.
+    //
+    //            The message thread is inside an A/B apply (a whole-sound replacement,
+    //            `applyStatePreservingView`); the seam fires mid-loop and a host thread
+    //            restores session B there. Before round 17 that thread ran to completion
+    //            inside the window and the settled sound held values from both.
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, blobA);        // A is live, and is what the A/B slot will carry
+        p.pollUndoCoalesce();
+        p.abCopyToOther();                 // slot B := A's sound, so the apply below writes A's values
+
+        std::atomic<bool> done { false }, armed { true };
+        std::thread host;
+        p.seams.insideSoundReplacement = [&]
+        {
+            if (! r17::fireOnce (armed)) return;
+            host = std::thread ([&] { d2::restoreFrom (p, blobB); done.store (true, std::memory_order_release); });
+            r17::waitBounded (done);       // expires on the fixed tree: the competitor is blocked
+        };
+        p.abSwitchTo (1);                  // the replacement the seam fires inside
+        if (host.joinable()) host.join();
+        p.seams.insideSoundReplacement = nullptr;   // cleared AFTER the join: the competitor calls it too
+        check (! armed.load(), "non-vacuity: the overlap was actually constructed (case B)");
+
+        const auto live = r17::soundVector (p);
+        const auto v = r17::classify (live, soundA, soundB, idx);
+        std::printf ("  overlapped A/B apply: %d parameter(s) from A, %d from B, %d from neither\n",
+                     v.fromA, v.fromB, v.fromNeither);
+        check (v.fromNeither == 0, "case B: no parameter holds a value from neither session");
+        check (v.fromA == 0 || v.fromB == 0,
+               "case B: the settled sound is ONE session's -- never a mixture of both");
+
+        // ...and the session that wins is the one that finished last, which is the restore:
+        // it is the newer arrival and the adoption re-installs it if anything replaced it since.
+        p.pollUndoCoalesce();
+        const auto after = r17::classify (r17::soundVector (p), soundA, soundB, idx);
+        check (after.fromNeither == 0 && (after.fromA == 0 || after.fromB == 0),
+               "case B: and it is still one session's after the adoption has run");
+    }
+
+    // --- E. immediate playback across the overlap: the audio path never settles on a
+    //        mixture. Blocks are processed WHILE the overlap is constructed, from the
+    //        audio thread, and the parameter view is sampled after each block.
+    //
+    //        What the sample may and may not show has to be stated carefully. A whole-sound
+    //        replacement writes parameter by parameter -- JUCE gives no block-atomic
+    //        parameter snapshot -- so a reader that lands inside ANY replacement, including
+    //        a single uncontested one, necessarily sees part of the outgoing session and
+    //        part of the incoming one. That is ordinary automation, not this defect, and no
+    //        lock the audio thread does not take could hide it. The defect is that the
+    //        mixture SETTLES: with two replacements interleaved the live sound still holds
+    //        values from both once both writers have finished, and stays that way until the
+    //        20 Hz adoption re-installs the newer session. So the samples that carry the
+    //        assertion are the ones taken after both replacements have provably completed
+    //        (the message thread has returned from its apply and the host thread is joined)
+    //        and before the adoption runs.
+    //
+    //        Samples taken DURING a replacement are classified for nothing at all, and a
+    //        second transient makes that necessary as well as sufficient: a replacement is
+    //        `apvts.replaceState` followed by the reassert loop, and replaceState carries a
+    //        choice parameter through the tree's denormalised form, so between the two steps
+    //        such a parameter momentarily reads as its snapped neighbour -- a value from
+    //        neither authored session. It is gone by the time the replacement returns.
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, blobA);
+        p.pollUndoCoalesce();
+        p.abCopyToOther();
+
+        std::atomic<bool> stop { false }, settled { false };
+        std::atomic<bool> sawMixed { false }, sawForeign { false };
+        std::atomic<int>  blocks { 0 }, settledSamples { 0 };
+        std::thread audio ([&]
+        {
+            juce::AudioBuffer<float> buf (2, 256);
+            juce::MidiBuffer midi;
+            std::mt19937 rng (0x17u);
+            d2::Pace pace;
+            while (! stop.load (std::memory_order_acquire))
+            {
+                std::uniform_real_distribution<float> dist (-0.5f, 0.5f);
+                for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+                    for (int i = 0; i < buf.getNumSamples(); ++i)
+                        buf.setSample (ch, i, dist (rng));
+                p.processBlock (buf, midi);
+
+                if (settled.load (std::memory_order_acquire))
+                {
+                    const auto v = r17::classify (r17::soundVector (p), soundA, soundB, idx);
+                    if (v.fromA > 0 && v.fromB > 0) sawMixed.store (true, std::memory_order_relaxed);
+                    if (v.fromNeither > 0)          sawForeign.store (true, std::memory_order_relaxed);
+                    settledSamples.fetch_add (1, std::memory_order_relaxed);
+                }
+                blocks.fetch_add (1, std::memory_order_relaxed);
+                pace.rest();
+            }
+        });
+
+        std::atomic<bool> done { false }, armed { true };
+        std::thread host;
+        p.seams.insideSoundReplacement = [&]
+        {
+            if (! r17::fireOnce (armed)) return;
+            host = std::thread ([&] { d2::restoreFrom (p, blobB); done.store (true, std::memory_order_release); });
+            r17::waitBounded (done);
+        };
+        p.abSwitchTo (1);
+        if (host.joinable()) host.join();
+        p.seams.insideSoundReplacement = nullptr;
+
+        // Both writers are finished and the adoption has not run: from here every sample is
+        // of a settled sound. Collect a bounded number of them, then stop.
+        settled.store (true, std::memory_order_release);
+        for (int waited = 0; waited < 400 && settledSamples.load() < 20; waited += 5)
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+        stop.store (true, std::memory_order_release);
+        audio.join();
+
+        std::printf ("  %d audio blocks processed across the overlap, %d of them settled\n",
+                     blocks.load(), settledSamples.load());
+        check (blocks.load() > 0, "non-vacuity: the audio thread ran across the overlap");
+        check (settledSamples.load() >= 20, "non-vacuity: settled samples were taken before the adoption");
+        check (! sawForeign.load (std::memory_order_relaxed),
+               "case E: a settled sound holds no value from outside either session");
+        check (! sawMixed.load (std::memory_order_relaxed),
+               "case E: once both writers finished, the live sound was never a mixture");
+    }
+
+    // --- F. immediate host save across the overlap: the bytes are one session's. ------
+    //        The save is deliberately taken at the ONLY instant that can witness the
+    //        mixture: after the message thread's replacement has finished. A save taken
+    //        the moment the host's own restore returns cannot see it -- the obsolete
+    //        writer has not resumed yet -- so this leg orders the two explicitly rather
+    //        than trusting the scheduler. Both waits are bounded, so neither ordering
+    //        hangs: pre-fix the restore completes inside the window and the save then
+    //        follows the resumed writer; post-fix the restore is blocked until the
+    //        replacement is over, so the save can only see the restore's own session.
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, blobA);
+        p.pollUndoCoalesce();
+        p.abCopyToOther();
+
+        std::atomic<bool> restored { false }, replacementOver { false }, armed { true };
+        juce::MemoryBlock captured;
+        std::thread host;
+        p.seams.insideSoundReplacement = [&]
+        {
+            if (! r17::fireOnce (armed)) return;
+            host = std::thread ([&]
+            {
+                d2::restoreFrom (p, blobB);
+                restored.store (true, std::memory_order_release);
+                r17::waitBounded (replacementOver);   // let the other writer finish first
+                captured = d2::saveOf (p);
+            });
+            r17::waitBounded (restored);
+        };
+        p.abSwitchTo (1);
+        replacementOver.store (true, std::memory_order_release);
+        if (host.joinable()) host.join();
+        p.seams.insideSoundReplacement = nullptr;
+
+        // Restore the captured bytes into a fresh instance and classify what they carry.
+        check (captured.getSize() > 0, "non-vacuity: the host thread captured a session");
+        const auto probe = std::make_unique<AnamorphAudioProcessor>();
+        probe->prepareToPlay (48000.0, 512);
+        d2::restoreFrom (*probe, captured);
+        probe->pollUndoCoalesce();
+        const auto v = r17::classify (r17::soundVector (*probe), soundA, soundB, idx);
+        std::printf ("  saved across the overlap: %d parameter(s) from A, %d from B, %d from neither\n",
+                     v.fromA, v.fromB, v.fromNeither);
+        check (v.fromNeither == 0 && (v.fromA == 0 || v.fromB == 0),
+               "case F: a save taken across the overlap holds ONE session's sound");
+    }
+
+    // --- G. a preset load as the message-thread replacement instead of an A/B apply:
+    //        the same rule, a different pair of writers -- and, for a FACTORY row, a
+    //        replacement that is not tree-shaped at all but "every parameter to its
+    //        default, then the table's overrides", two loops that are one replacement.
+    //
+    //        The oracle here cannot be the pair of authored sessions: a factory apply
+    //        writes values belonging to NEITHER of them, so "the sound is not a mixture
+    //        of A and B" would be vacuously true however badly the two writers interleave.
+    //        The two candidate outcomes are the preset's own sound and the restored
+    //        session's, so those are what a settled sound is classified against.
+    {
+        const int rows = std::min (3, r17::rowCount());
+        std::printf ("  preset rows exercised: %d\n", rows);
+        check (rows > 0, "non-vacuity: there is at least one preset row to load");
+
+        for (int row = 0; row < rows; ++row)
+        {
+            // The preset's own sound, from an instance that loads that row and nothing else.
+            std::vector<float> presetVec;
+            {
+                const auto ctl = std::make_unique<AnamorphAudioProcessor>();
+                ctl->prepareToPlay (48000.0, 512);
+                d2::restoreFrom (*ctl, blobA);
+                ctl->pollUndoCoalesce();
+                ctl->getPresets().load (row);
+                ctl->pollUndoCoalesce();
+                presetVec = r17::soundVector (*ctl);
+            }
+            const auto idxG = r17::discriminating (presetVec, soundB);
+            if (idxG.size() < 5)
+            {
+                std::printf ("  row %d skipped: only %d parameter(s) separate it from the restore\n",
+                             row, (int) idxG.size());
+                continue;
+            }
+
+            const auto owned = std::make_unique<AnamorphAudioProcessor>();
+            auto& p = *owned;
+            p.prepareToPlay (48000.0, 512);
+            d2::restoreFrom (p, blobA);
+            p.pollUndoCoalesce();
+
+            std::atomic<bool> done { false }, armed { true };
+            std::thread host;
+            p.seams.insideSoundReplacement = [&]
+            {
+                if (! r17::fireOnce (armed)) return;
+                host = std::thread ([&] { d2::restoreFrom (p, blobB); done.store (true, std::memory_order_release); });
+                r17::waitBounded (done);
+            };
+            p.getPresets().load (row);     // a preset load: PresetManager's own write loops
+            if (host.joinable()) host.join();
+            p.seams.insideSoundReplacement = nullptr;
+            check (! armed.load(), "non-vacuity: the preset load fired the seam it is overlapped at");
+
+            // Classified BEFORE the adoption runs, as case B is: the §14 re-install repairs a
+            // mixture wholesale, so a reading taken after it would measure the repair and not
+            // the property. What must hold is that the sound was never mixed to begin with.
+            const auto v = r17::classify (r17::soundVector (p), presetVec, soundB, idxG);
+            if (v.fromNeither > 0 || (v.fromA > 0 && v.fromB > 0))
+                std::printf ("  row %d overlapped: %d from the preset, %d from the restore, %d from neither\n",
+                             row, v.fromA, v.fromB, v.fromNeither);
+            check (v.fromNeither == 0,
+                   "case G: an overlapped preset load leaves no value from outside both candidates");
+            check (v.fromA == 0 || v.fromB == 0,
+                   "case G: an overlapped preset load settles on the preset OR the restore, not both");
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 //  D-2 stress probe (contract F): every thread the model names, at once, under
 //  ThreadSanitizer. NOT part of the suite, like the other three TSan probes:
@@ -10964,6 +11380,7 @@ int main (int argc, char* argv[])
     testHostSaveInsideThePendingWindowCarriesTheEdit();
     testRestoreWithoutBaselineIsCleanAgainstItsOwnSound();
     testRelativeNavigationActsOnTheSessionItObserved();
+    testOverlappingReplacementsCannotMixTwoSessions();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

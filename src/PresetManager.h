@@ -265,6 +265,32 @@ public:
     // observed. Empty in every shipping path.
     std::function<void()> beforeRelativeTarget;
 
+    // THE OWNER'S WHOLE-SOUND REPLACEMENT LOCK (ADR-0036 §24, round 17), set by the processor at
+    // construction. A preset load replaces the live sound one parameter at a time, and the sound
+    // half of a host thread's restore decode does the same on ITS thread: unexcluded, the two
+    // interleave and the live parameter set ends up holding values from both sessions. Held for
+    // exactly as long as a replacement is writing -- the tree-shaped one in `applySoundTree`, and
+    // the two-part factory apply in `loadAdopted` (defaults, then the table's overrides), which is
+    // one replacement and not two. Never taken by the audio thread; null only in a unit context
+    // that constructs a manager with no processor behind it.
+    const juce::CriticalSection* soundReplacementLock = nullptr;
+
+    // Test seam: fired from inside a whole-sound replacement's write loop, wired by the processor
+    // to its own `seams.insideSoundReplacement` so ONE seam covers every replacement the plug-in
+    // performs, wherever the loop lives. **It fires with the §24 replacement lock HELD**: a harness
+    // may sample state or ARM another thread from here, but must never join or wait on a thread
+    // that itself performs a whole-sound replacement -- that thread is blocked on this one.
+    // Empty in every shipping path.
+    std::function<void()> insideReplacement;
+
+    // Completion of a whole-sound replacement -- the processor's soundSetGen bump (§14). Called
+    // from INSIDE the §24 scope at the end of each preset write loop, never from `onLoaded`
+    // afterwards: a host thread released from the lock in the gap between the two would sample a
+    // `begin` this load had already invalidated, read a CLEAN token for a sound it no longer owns,
+    // and the adoption would then re-install its restore over the preset. Empty when no processor
+    // wires it up.
+    std::function<void()> noteReplaced;
+
     // D-2 (RISK-007). Fired by saveUser() AFTER the file is written and BEFORE any of
     // this manager's metadata moves, so the processor can adopt a host restore that is
     // still pending from another thread first: the save then lands on top of the
@@ -305,6 +331,20 @@ public:
     std::function<juce::uint32 ()> soundParamGeneration;
 
 private:
+    // Stands in when no processor wired one up, so the ScopedLock always has an object to take.
+    // Never contended in that case: without a processor there is no host restore thread.
+    juce::CriticalSection fallbackSoundLock;
+
+    // The §24 lock to take: the processor's. The stand-in exists only so the ScopedLock always
+    // has an object, and taking it would mean this manager is excluding against NOTHING -- a
+    // wiring mistake that would otherwise be invisible, since the lock still succeeds. Asserted
+    // rather than tolerated: every manager this plug-in builds has a processor behind it.
+    const juce::CriticalSection& replacementLock() const noexcept
+    {
+        jassert (soundReplacementLock != nullptr);   // the processor must have wired it (§24)
+        return soundReplacementLock != nullptr ? *soundReplacementLock : fallbackSoundLock;
+    }
+
     void applyDefaults();
     // Parse a preset file into its sound tree, or return an INVALID tree if the
     // file is not an Anamorph preset. Both loaders resolve through this, so the

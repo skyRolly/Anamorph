@@ -79,7 +79,13 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // adopt something AFTER a relative target had been chosen. The flush and the duck stay --
     // the duck deliberately after every check that can refuse (round 26).
     presets.onAboutToLoad = [this] { pollUndoCoalesceAdopted(); engine.requestDuck(); };
-    presets.onLoaded      = [this] { noteWholeSoundReplaced(); commitPresetSwitchUndoStep(); };
+    // The completion bump used to live here, AFTER the load's write loop had released the §24
+    // lock and after the signature and setMeta work. A host thread released from the lock into
+    // that gap sampled a `begin` the preset load had already invalidated, read a CLEAN token,
+    // and the adoption then re-installed its restore over the preset. It is now published from
+    // inside the write loop's own scope (`presets.noteReplaced`), where the two processor sites
+    // have always published theirs.
+    presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
     // A save changes no parameter, so nothing else would ever refresh `committed` off the
     // pre-save preset -- and the next undo would restore that stale name/identity/baseline.
     // Flush FIRST, exactly like the other program-state jumps (onAboutToLoad above, and
@@ -101,6 +107,9 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     presets.onMetaChanged = [this] { publishProgram(); };
     presets.onAboutToSave = [this] { adoptPendingHostState(); };
     presets.adoptPending  = [this] { adoptPendingHostState(); }; // load/loadFile/step drain through this (§18, §23)
+    presets.soundReplacementLock = &soundReplacement;   // a preset load is a whole-sound replacement too (§24)
+    presets.insideReplacement     = [this] { if (seams.insideSoundReplacement) seams.insideSoundReplacement(); };
+    presets.noteReplaced          = [this] { noteWholeSoundReplaced(); };   // published under the §24 lock
     internal.onChanged    = [this] { publishProgram(); };
 
     syncCommitted(); // establish the undo baseline
@@ -465,8 +474,6 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
 {
     // Restore a snapshot but keep the CURRENT shared view/Settings params (#10/#13).
     float saved[std::size (pid::viewParams)];
-    for (size_t i = 0; i < std::size (pid::viewParams); ++i)
-        saved[i] = apvts.getParameter (pid::viewParams[i])->getValue();
 
     // The same three steps as a host restore's sound half (applySoundTree), on the
     // editor's own thread: repair the serialized text on OUR copy, hand that copy to
@@ -475,7 +482,31 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
     // as a session can, and the repaired text has to reach the LIVE tree through
     // JUCE's lock here too -- an unlocked write into `apvts.state` would race an
     // off-message-thread save's locked copyState (D-2, ADR-0036).
+    // OUTSIDE the §24 scope, deliberately. This seam exists so a test can hold a replacement open
+    // at its LAST INSTANT BEFORE IT BEGINS and let a host restore run to completion there; the
+    // replacement then finishes and is the last writer. That is a legal ordering under §24 -- two
+    // replacements one after the other -- and it is what State tests 45 and 50 are about. Firing it
+    // inside the scope would make the restore they wait for block on this thread, so the seam would
+    // spin out its bound and the tests would pass on a timeout rather than on the ordering. The
+    // interleave §24 forbids is reached through `insideSoundReplacement` instead, which fires
+    // part-way through the write loop where the mixture is actually made.
     if (seams.beforeSoundReplacementWrites) seams.beforeSoundReplacementWrites();
+
+    // §24: the same mutual exclusion as applySoundTree. This path is message-thread only, but the
+    // replacement it can interleave with -- a host thread's decode installing a restored sound --
+    // is not, and an A/B apply or an undo torn against that decode mixes two sessions exactly as
+    // two restores do. The view-param restore below is inside the scope for the same reason.
+    const juce::ScopedLock oneAtATime (soundReplacement);
+
+    // INSIDE the scope, with the write-back at the end of this function. The view params are the
+    // one part of this replacement that is READ from the live sound rather than taken from the
+    // snapshot, so capturing them before the exclusion would let a host thread's decode-install
+    // move Bypass between the read and the write and settle a sound that is the slot's everywhere
+    // else and the restore's there -- the mixture this rule forbids, in the one place State test
+    // 62's oracle cannot see it (it classifies the preset-carried set, and Bypass is excluded).
+    for (size_t i = 0; i < std::size (pid::viewParams); ++i)
+        saved[i] = apvts.getParameter (pid::viewParams[i])->getValue();
+
     auto copy = target.createCopy();
     repairSerializedValues (copy);
     apvts.replaceState (copy);
@@ -723,9 +754,15 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
         }
     };
 
+    // Test seam: fires ONCE, part-way through the write loop -- the only place from which the
+    // interleave §24 forbids can be constructed deterministically. A harness lands a competing
+    // whole-sound replacement here and then requires the settled live sound to be one session's,
+    // not a mixture. Empty in every shipping path.
+    int written = 0;
     for (auto* p : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
         {
+            if (++written == 4 && seams.insideSoundReplacement) seams.insideSoundReplacement();
             if (auto node = restoredApvtsTree.getChildWithProperty ("id", rp->paramID); node.isValid())
             {
                 // The same two-branch reading as repairSerializedValues, on the same
@@ -791,6 +828,12 @@ juce::uint32 AnamorphAudioProcessor::applySoundTree (const juce::ValueTree& soun
     // A state set replaces the live sound (D-2 §12). `begin` before the first write and
     // the token after the last bracket this replacement, so the value returned is a
     // token only when no other replacement ran inside ours -- see soundReplacementToken.
+    // ONE AT A TIME (§24). Held across the WHOLE replacement -- the locked replaceState and the
+    // unlocked per-parameter loop after it -- because it is the loop that made two replacements
+    // able to interleave into a live sound holding values from both. This is the sound half of a
+    // host thread's decode when it runs there, so this is the one site where the lock is ever
+    // actually contended; every other replacement is message-thread work.
+    const juce::ScopedLock oneAtATime (soundReplacement);
     const auto begin = soundSetGen.load (std::memory_order_relaxed);
     auto copy = soundTree.createCopy();
     repairSerializedValues (copy);
@@ -1203,12 +1246,20 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
     // adoption must not resurrect its own (ADR-0036 §8's rule, applied to the sound).
     // An inline restore (generation 0) applied its sound on this thread with nothing
     // able to run in between, so it never needs this.
-    if (d.generation != 0
-        && internal.engineConfigGeneration() == d.generation
-        && soundSetGen.load (std::memory_order_relaxed) != d.soundSetGen   // 0 (no owner provable) never matches
-        && d.soundParams.isValid())
+    // THE GUARD AND THE WRITE UNDER ONE LOCK (§24, round 17). Both terms it tests are moved by a
+    // host thread's decode -- `engineConfigGeneration()` when that restore announces itself, and
+    // `soundSetGen` when it installs its sound -- so checking them and then writing outside the
+    // lock decides on a state that can be gone before the first parameter moves. The lock is
+    // recursive, so `applySoundTree` re-entering it below is free.
     {
-        applySoundTree (d.soundParams);
+        const juce::ScopedLock oneAtATime (soundReplacement);
+        if (d.generation != 0
+            && internal.engineConfigGeneration() == d.generation
+            && soundSetGen.load (std::memory_order_relaxed) != d.soundSetGen   // 0 (no owner provable) never matches
+            && d.soundParams.isValid())
+        {
+            applySoundTree (d.soundParams);
+        }
     }
 
     // The host-hidden Settings. A changed Oversampling fires InternalState's callback

@@ -113,9 +113,17 @@ public:
     // message thread's take inside an adoption -- which is the only way to
     // reproduce a reviewed interleaving deterministically rather than by timing.
     // Installed and cleared on the main thread while no other thread can reach them.
+    //
+    // TWO OF THEM HAVE OPPOSITE CONTRACTS, and mixing them up produces a test that hangs or one
+    // that proves nothing. `beforeSoundReplacementWrites` fires at a replacement's last instant
+    // BEFORE it takes the §24 lock, so a harness may hold the replacement open there and let a
+    // competing one run to completion. `insideSoundReplacement` fires part-way through the write
+    // loop, WITH THE LOCK HELD: a harness may sample state or arm another thread from there, but
+    // must never join or wait on a thread that itself performs a whole-sound replacement, because
+    // that thread is blocked on this one.
     struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake, beforeRestorePut,
                                         afterRestoreSoundApplied, beforeSoundReplacementWrites,
-                                        atRelativeDecision; };
+                                        atRelativeDecision, insideSoundReplacement; };
     Seams seams;
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.
@@ -525,6 +533,25 @@ private:
         JUCE_DECLARE_NON_COPYABLE (OffThreadStateCall)
     };
     bool adoptingRestore = false;                    // M: suppress per-field publishes inside an adoption
+    // ONE WHOLE-SOUND REPLACEMENT AT A TIME (D-2 round 17, ADR-0036 §24).
+    //
+    // A replacement is `apvts.replaceState` (locked by JUCE) followed by a LOOP of
+    // per-parameter writes (`reassertParameters`, or PresetManager's own loop) that runs
+    // outside that lock -- so it is not atomic, and two of them running at once leave the live
+    // parameter set holding values from BOTH. `soundReplacementToken` has always DETECTED that
+    // ("no owner provable", token 0) and the adoption repairs it (§14), but the mixed sound is
+    // live until the repair runs, which is up to one 20 Hz timer period later: long enough for
+    // the engine to play it and for an off-message-thread save to write it into a session.
+    //
+    // Only one replacement can ever be off the message thread -- the sound half of a host
+    // thread's decode -- and every other replacement (adoption re-install, A/B apply, undo,
+    // redo, preset load) is message-thread work, so this lock is uncontended in ordinary
+    // operation and the pairs it excludes are exactly {a decode's install} x {anything M does}.
+    // The AUDIO THREAD NEVER TAKES IT: `processBlock` reads parameter atomics and is untouched,
+    // so no realtime path can block. It is recursive (juce::CriticalSection), which lets the
+    // adoption hold it across its guard check AND the re-install so the decision cannot go
+    // stale between the two.
+    juce::CriticalSection soundReplacement;
 
     // The APVTS root type, captured once at construction so no thread reads the live
     // `apvts.state` handle to learn it (JUCE guards the tree's contents with its own

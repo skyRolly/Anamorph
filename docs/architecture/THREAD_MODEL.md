@@ -15,7 +15,7 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 | **Host prepare thread** (external) | host → `prepareToPlay` off the message thread (JUCE Linux VST3 pre-`IRunLoop`, FL Studio's Patcher, an AU `Initialize` off main) | Engine prepare under the format contract that no `processBlock` runs concurrently; latency through the D-1 request (round 15). |
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:310-378 (`processBlock`), :240 `ScopedNoDenormals`
+- Source: src/PluginProcessor.cpp:319-387 (`processBlock`), :240 `ScopedNoDenormals`
 - Source: src/PluginEditor.cpp:690 (24 Hz timer), :686-692 (VBlank), :306-320 (OpenGL gate)
 - Source: src/gui/Vectorscope.h:22 ("Nothing is ever drawn on the audio thread")
 
@@ -106,7 +106,16 @@ freed while another thread can reach it, because a pointer is reachable from exa
 - No painting, allocation, locking, or file IO on the audio thread.
 - No direct cross-thread access to non-atomic shared state. The only synchronisers are the
   `ScopeBuffer` release/acquire index, the D-1 latency flag, the two D-2 exchange cells and their
-  generation pair, and relaxed published atomics.
+  generation pair, relaxed published atomics, and — between the message thread and a host state
+  thread ONLY — the §24 whole-sound replacement lock below.
+- **One whole-sound replacement at a time** (`juce::CriticalSection AnamorphAudioProcessor::soundReplacement`,
+  ADR-0036 §24). A replacement of the entire live sound is `apvts.replaceState` plus an UNLOCKED
+  per-parameter write loop, so two at once left the sound holding values from both sessions; the
+  five replacement sites (the restore install, the adoption's re-install with its guard, the
+  undo / redo / A/B apply, a user preset load, and both halves of a factory preset apply) take this
+  one lock. `PresetManager` takes the same object through a pointer the processor supplies.
+  Ordering is one-directional — `soundReplacement` → the APVTS lock → `listenerLock` — and **the
+  audio thread never takes it**, so the no-locking rule above is untouched.
 - No host thread reads or writes program metadata directly (ADR-0036): a restore off the message
   thread hands its decoded tail over; a save off the message thread reads a published snapshot.
 - `ScopeBuffer` is single-producer / single-reader-thread: exactly one audio writer; all reads
