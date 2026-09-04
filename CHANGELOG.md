@@ -103,7 +103,11 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   same brief moment can no longer leave a project labelled as one session while it sounds like
   another (State tests 45–46). A fifth pass drew the line that pass had drawn too widely: a knob
   moved in that same moment is an edit *of* the arriving project, not a different project's sound,
-  so it now survives the load instead of being reverted (State test 47). [Verified]
+  so it now survives the load instead of being reverted (State test 47). A sixth pass closed the
+  last way the two could still be confused: when an A/B switch or a preset load happened at the
+  exact moment a project was being read, the plug-in could mistake that switch's sound for the
+  project's own and save the two together; each operation now carries its own identity, so it
+  cannot (State test 48). [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

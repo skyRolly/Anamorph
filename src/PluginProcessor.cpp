@@ -742,13 +742,14 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
 // the parameters -- and it is the part JUCE owns and makes thread-aware (the APVTS
 // locks its tree; ParameterAttachment hops to the message thread on its own).
 // Repair on our copy, one locked replaceState, then the exact raw values.
-void AnamorphAudioProcessor::applySoundTree (const juce::ValueTree& soundTree)
+juce::uint32 AnamorphAudioProcessor::applySoundTree (const juce::ValueTree& soundTree)
 {
-    noteWholeSoundReplaced();   // a state set replaces the live sound (D-2 §12)
+    const auto token = noteWholeSoundReplaced();   // a state set replaces the live sound (D-2 §12/§13)
     auto copy = soundTree.createCopy();
     repairSerializedValues (copy);
     apvts.replaceState (copy);
     reassertParameters (copy, /*notifyHost*/ false); // host restore: no host-notify (see above)
+    return token;
 }
 
 // Message thread. Count nested / overlapping gestures (e.g. the two-parameter Multiband band move
@@ -1315,9 +1316,16 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
             return false;
         }
 
-        applySoundTree (params);
+        // The token this restore's OWN sound install was handed (§13). Taken from the
+        // call rather than read back from the counter afterwards: a wholesale
+        // replacement that lands between the two -- an A/B apply, a preset load, an
+        // undo on the message thread while this decode runs on a host thread -- would
+        // otherwise be recorded as this restore's own, and the adoption would then take
+        // that replacement's sound for the restored session's and pair it with the
+        // restored metadata. The seam below is where a test lands exactly that.
+        d.soundSetGen  = applySoundTree (params);
+        if (seams.afterRestoreSoundApplied) seams.afterRestoreSoundApplied();
         d.soundParams  = params;
-        d.soundSetGen  = soundSetGen.load (std::memory_order_relaxed);
 
         // The host-hidden Settings / view state (Oversampling, UI Scale, Persistence,
         // Tooltips, Animations, Show Meters), RESOLVED here and written by the message
@@ -1452,9 +1460,9 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
     else if (xml->hasTagName (apvtsStateType)) // backward-compat (v0.2)
     {
         auto legacy = juce::ValueTree::fromXml (*xml);
-        applySoundTree (legacy);
+        d.soundSetGen  = applySoundTree (legacy);   // this restore's own token (§13)
+        if (seams.afterRestoreSoundApplied) seams.afterRestoreSoundApplied();
         d.soundParams  = legacy;
-        d.soundSetGen  = soundSetGen.load (std::memory_order_relaxed);
 
         // A v0.2 session is older than 0.8.4, so it can only carry the host-hidden Settings the
         // way pre-0.8.4 sessions do: as APVTS params, or not at all. Same resolver the AnamorphRoot

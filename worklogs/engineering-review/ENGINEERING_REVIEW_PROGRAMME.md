@@ -518,6 +518,104 @@ APPROVED**, and this round is inside the approved boundary. Host serialization: 
 evidence-backed. Non-actionable residuals, unchanged: a host save's snapshot and `copyState()`
 straddling a message-thread A/B switch, and the ≤ 50 ms adoption latency for the metadata tail.
 
+### 12. Round 6 — the token names an operation, not a moment (2026-09-03)
+
+**Architecture Review Gate: APPROVED, and this round is inside it.** Round 6 changes only *how* an
+existing counter's value is captured — from a read-back to the value the allocating `fetch_add`
+returns. No thread, no cross-thread path, no ownership mechanism and no ordering-critical atomic is
+added or altered. There is no architectural delta, and no further sign-off is sought.
+
+**Finding — an overlapping replacement was mistaken for the restore's own sound.** A defect in
+round 5's implementation of §12, at the line that implemented it.
+
+| | |
+|---|---|
+| actors | H (a restore R, decoding); M (any wholesale replacement X — an A/B apply, a preset load, an undo) |
+| state | `soundSetGen` (the wholesale-replacement counter); `RestoreDecode::soundSetGen` (the decode's reference value); the §10 re-install guard |
+| old order | H: `applySoundTree(params)` — which bumps the counter — returns; **then** `d.soundSetGen = soundSetGen.load()`. M, in the gap between those two statements: X bumps the counter |
+| window | between the decode's own bump (inside `applySoundTree`) and the read-back one statement later — a `createCopy`, a repair pass, a `replaceState` and a full `reassertParameters` had already run, so the gap is not a couple of instructions but the whole tail of the call |
+| observable | the counter now names X, and the read-back records X's value as R's reference. At the adoption `soundSetGen == d.soundSetGen` holds, the guard concludes "nothing has replaced my sound", the re-install is skipped — and the restored metadata is published over **X's** sound. A save then carries R's name, identity and slots around a sound R never had: the §10 split, reached through the token instead of through the handoff window |
+| root cause | the reference value was a *snapshot of shared state*, not an identity. "The counter after my own bump" names whichever replacement was last, which is only the caller's own when nothing overlapped |
+| decision | the token is the value the allocating `fetch_add` **returns**. `noteWholeSoundReplaced()` hands each replacement a value no other replacement can be handed; `applySoundTree` returns the one it was handed; the decode records that. Allocation and capture are one atomic operation, so there is no window between them |
+| why unrepresentable | the adoption now compares the counter against **an operation's own identity**. Any replacement after the restore's own — whenever it lands, before or after the decode returns — leaves the counter above the token, so the guard re-installs. Nothing else can be handed that token, so nothing else can be mistaken for the restore's sound |
+
+**Individual mutation versus wholesale replacement**, re-checked against the implementation rather
+than against function names, because §12's rule rests on the classification (the full table is in
+ADR-0036 §13): a knob turn, a gesture and host automation change one parameter of the session that
+is live and are **individual** (they survive the adoption, §12); an A/B apply, an undo/redo, a
+preset load and a restore's own install put a whole state set in place and are **wholesale**. The
+preset load is the one whose call shape does not match its semantics — it installs its session one
+parameter at a time through `PresetManager::applySoundTree` rather than through `replaceState` —
+which is exactly why the load hook bumps the counter explicitly rather than relying on the
+replacement sites.
+
+**Related-ordering audit — the same "snapshot of shared state where an identity was meant" shape.**
+
+| value | how it is obtained | verdict |
+|---|---|---|
+| `RestoreDecode::soundSetGen` | **was** a read-back of the shared counter | **was defective**; now the allocation's own return |
+| `RestoreDecode::generation` | `++hostRestoreGen`, a host-side-exclusive counter — the increment *is* the allocation | correct: an identity, not a snapshot |
+| `ProgramSnapshot::generation` | `= adoptedGeneration`, message-thread-exclusive, copied from the object being adopted | correct |
+| `InternalState`'s engine-config word | the CAS decides and stores in one operation | correct: no check-then-act |
+| `editGeneration[i] = engineConfigGeneration()` (§9) | reads the ambient "latest arrival" *deliberately* — the edit is being placed relative to whatever had arrived | correct, and not this shape: a concurrent arrival makes the edit land after that arrival instead of before it, which are two valid linearizations of two genuinely concurrent events, both consistent with §9 |
+| `soundParamGen` reads (`pollUndoCoalesce`, `PresetManager::isDirty`) | staleness hints; nothing is attributed to a caller | correct |
+
+One instance of the shape existed and it is the one that was reported. **No sibling defect.**
+
+**Finding — host serialization, re-derived a third time, now from the complete caller set.** A
+wrapper inspection shows what the wrappers do; it does not show whether something *else* in JUCE
+calls the state functions. Round 6 enumerated every caller of
+`AudioProcessor::get/setStateInformation` across the three formats `ANAMORPH_FORMATS` builds. The
+only ones are the host-facing entry points themselves: VST3 `IComponent::getState`/`setState` (plus
+the VST2-compat readers *inside* `setState`), AU `SaveState`/`RestoreState`, and the standalone's
+`savePluginState()` / `reloadPluginState()`. **No JUCE timer, async callback, audio callback or
+background thread calls either function on any of them** — the standalone's own 500 ms timer scans
+MIDI devices and touches no state, and its two calls run from `init()` and the close button, both on
+the message thread. So the concurrency question reduces entirely to whether the *host* issues two
+overlapping calls; nothing inside JUCE can produce one behind its back.
+
+On the host side the evidence is unchanged and stands: the pinned VST3 SDK annotates both
+`IComponent::setState` and `IComponent::getState` `[UI-thread & (Initialized | Connected | Setup
+Done | Activated | Processing)]`, so two calls pinned to one thread cannot overlap; AU pins neither
+and the wrapper adds nothing; the standalone uses the message thread for both. **Disposition D
+(unsupported host concurrency)**, unchanged and now better supported.
+
+**The debug tripwire, audited as the round required.** `OffThreadStateCall` detects exactly one
+condition: two *off-message-thread* state calls active at once. It cannot fire in a supported
+scenario — on VST3 an off-thread state call is already out of spec and two overlapping ones doubly
+so; on AU they may legitimately be off-thread but the host serializes them; on the standalone they
+are on the message thread and never counted. It also does not fire on the supported shapes that
+resemble it: an off-thread save concurrent with the message thread's own timer adoption (not a state
+call), or with a message-thread `getStateInformation` (not counted) — which is why State tests 42
+and 39 exercise those overlaps without tripping it. It is **purely diagnostic**: the counter is read
+only by the `jassert`, which compiles out in release, so no release-build behaviour depends on it
+and it is not standing in for a correctness mechanism in any supported case. **No code change was
+warranted and none was made.**
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 48 with the read-back restored (round 5's line) | FAILS (4 checks: the A/B leg saves the restored metadata over 0.82, the preset leg over 0.50, where the restored session says 0.62) |
+| State tests 37–48 on the tree | green; suite 1909 checks / 0 failures, 47 tests |
+| the four probes under TSan, after (round-6 tree) | silent in 10/10 runs each |
+| the state suite under TSan, after | 0 reports; 1909 checks, 0 failures |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | clean; 398 anchors against origin/main AND against the round-5 commit; self-test 160 cases |
+| `preflight.sh` | exit 0 on the committed round-6 tree (all gates, both suites) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: first-save
+consistency (42), overlapping restore ordering (43), Settings precedence (44), the handoff-window
+split (45), inline coherence (46) and sound-edit precedence (47) all pass unchanged — and 48's third
+leg re-proves 47's rule at the tighter timing.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains. Architecture Review Gate:
+**APPROVED**, this round inside it. Host serialization: **disposition D**. Non-actionable residuals,
+unchanged: a host save's snapshot and `copyState()` straddling a message-thread A/B switch, and the
+≤ 50 ms adoption latency for the metadata tail.
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can

@@ -7930,6 +7930,129 @@ static void testSoundEditWhilePendingSurvivesAdoption()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 48 -- a replacement that overlaps a restore's decode is not
+//  mistaken for the restore's own sound (D-2 round 6, review finding
+//  "overlapping replacement mixes saved sessions").
+//
+//  The adoption re-installs the restored sound only when another state set has
+//  been installed since the decode (§10/§12). It decides that by comparing the
+//  whole-sound-replacement counter against the token the decode recorded -- and
+//  round 5 recorded that token by READING the counter back after applying the
+//  sound. A wholesale replacement landing in the gap between the two therefore
+//  became the restore's recorded token: the counter then already equalled it, the
+//  adoption concluded "nothing has replaced my sound", and the restored metadata
+//  was published over the replacement's sound. The very split §10 exists to stop,
+//  reached through the token instead of through the window.
+//
+//  The token is now the one the restore's own sound install was handed (§13), so
+//  it names an operation rather than a moment and no other operation can be
+//  handed it. The seam fires inside the decode, exactly where the old read sat.
+//
+//  Three legs through that one seam, which is what makes the discriminator's
+//  behaviour visible rather than merely asserted: two WHOLESALE replacements (an
+//  A/B apply and a preset load) must be superseded by the adoption, and an
+//  ORDINARY EDIT at the identical instant must survive it (§12's rule, checked at
+//  the same timing as the case that must not survive).
+// ---------------------------------------------------------------------------
+static void testOverlappingReplacementIsNotTheRestoresOwnSound()
+{
+    std::printf ("State test 48: a replacement overlapping the decode is not the restore's own sound (D-2 r6)\n");
+
+    const auto P = d2::author ("D2-R6-P", 0.18f, 0.82f, 0, 1);   // the outgoing session
+    const auto R = d2::author ("D2-R6-R", 0.38f, 0.62f, 1, 2);   // the restore that arrives
+    const float restoredWidth = R.active == 0 ? R.widthA : R.widthB;
+    const float outgoingOther = P.active == 0 ? P.widthB : P.widthA;
+    check (! juce::exactlyEqual (restoredWidth, outgoingOther),
+           "non-vacuity: the restored sound and the slot an A/B switch would apply differ");
+
+    enum Overlap { abSwitch = 0, presetLoad, ordinaryEdit };
+    const char* const names[] = { "an A/B apply", "a preset load", "an ordinary edit" };
+
+    for (int which = 0; which < 3; ++which)
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);                       // inline: the outgoing session, whole
+        check (d2::View::of (p).matches (P), "the outgoing session is live before the restore arrives");
+
+        const int factoryCount = [&]
+        {
+            int n = 0;
+            for (const auto& e : p.getPresets().entries()) if (e.isFactory) ++n;
+            return n;
+        }();
+        check (factoryCount >= 1, "non-vacuity: at least one factory preset to load");
+
+        // The edit leg's value, chosen away from the restored sound so "survived" and
+        // "was replaced by the restore" cannot look the same.
+        const float editedWidth = restoredWidth < 0.5f ? restoredWidth + 0.30f : restoredWidth - 0.30f;
+
+        // The overlap runs on the owner's thread while the restoring thread sits inside
+        // its decode, immediately after it installed the restored sound.
+        std::atomic<int> phase { 0 };
+        p.seams.afterRestoreSoundApplied = [&]
+        {
+            phase.store (1, std::memory_order_release);
+            for (int spins = 0; phase.load (std::memory_order_acquire) != 2 && spins < 4000000; ++spins)
+                std::this_thread::yield();
+        };
+        std::thread host ([&] { d2::restoreFrom (p, R.blob); });
+        for (int spins = 0; phase.load (std::memory_order_acquire) != 1 && spins < 4000000; ++spins)
+            std::this_thread::yield();
+        check (phase.load() == 1, "the restoring thread is inside its decode, sound applied");
+        checkNear ((double) rawOf (p, "width"), (double) restoredWidth, 1.0e-6,
+                   "the restore's sound is live at the seam");
+
+        switch (which)
+        {
+            case abSwitch:    p.abSwitchTo (p.abActiveSlot() == 0 ? 1 : 0); break;
+            case presetLoad:  p.getPresets().load (0); p.pollUndoCoalesce(); break;
+            default:          { auto* rp = p.getAPVTS().getParameter ("width");
+                                rp->beginChangeGesture();
+                                rp->setValueNotifyingHost (editedWidth);
+                                rp->endChangeGesture(); } break;
+        }
+
+        phase.store (2, std::memory_order_release);
+        host.join();
+        p.seams.afterRestoreSoundApplied = nullptr;
+
+        p.pollUndoCoalesce();   // the adoption
+
+        // Whatever happened at the seam, the published session is ONE session.
+        check (d2::View::of (p).matches (R), "the restored program is adopted, whole");
+        check (p.getInternal().oversampleIndex() == R.oversampleId - 1, "...with the restored Oversampling");
+
+        if (which == ordinaryEdit)
+        {
+            // §12: an edit belongs to the restored session and stands.
+            checkNear ((double) rawOf (p, "width"), (double) editedWidth, 1.0e-6,
+                       "an ordinary edit at that instant survives the adoption (the restored session, edited)");
+            AnamorphAudioProcessor control;
+            control.prepareToPlay (48000.0, 512);
+            d2::restoreFrom (control, R.blob);
+            auto* rp = control.getAPVTS().getParameter ("width");
+            rp->beginChangeGesture(); rp->setValueNotifyingHost (editedWidth); rp->endChangeGesture();
+            check (d2::saveOf (p) == d2::saveOf (control),
+                   "...and a save equals a message-thread restore of the same session with the same edit");
+        }
+        else
+        {
+            // §10/§13: a wholesale replacement is another session's sound, and the
+            // adoption re-installs its own rather than wearing it.
+            checkNear ((double) rawOf (p, "width"), (double) restoredWidth, 1.0e-6,
+                       "the restored SOUND stands: the overlapping replacement was not taken for the restore's own");
+            check (d2::saveOf (p) == R.blob,
+                   "a save is byte-identical to the session restored: no metadata from one session over sound from another");
+            juce::MemoryBlock hostSave;
+            d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+            check (hostSave == d2::saveOf (p), "...and a host-thread save agrees with the owner's");
+        }
+        std::printf ("  overlap = %s: one coherent session\n", names[which]);
+    }
+}
+
+// ---------------------------------------------------------------------------
 //  D-2 stress probe (contract F): every thread the model names, at once, under
 //  ThreadSanitizer. NOT part of the suite, like the other three TSan probes:
 //  on the pre-D-2 tree its execution IS the undefined behaviour it measures.
@@ -8168,6 +8291,7 @@ int main (int argc, char* argv[])
     testActionInHandoffWindowCannotSplitTheSession();
     testInlineRestoreAdoptsPendingAgainstItsOwnSound();
     testSoundEditWhilePendingSurvivesAdoption();
+    testOverlappingReplacementIsNotTheRestoresOwnSound();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

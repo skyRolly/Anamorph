@@ -12,7 +12,7 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 | Direction | Mechanism | Rule |
 |---|---|---|
 | GUI → Audio (automatable params) | APVTS `std::atomic<float>*` | Read once per block into `EngineParameters`. |
-| GUI → Audio (host-hidden) | `InternalState` ValueTree + the engine-config word | Only Oversampling crosses to audio, read as the low byte of one `std::atomic<uint64>` (`oversampleIndex()`, relaxed). Its writers — the message thread from the tree, a host-thread restore (D-2) — publish through one compare-exchange tagged with the generation of the arrival, and a publication lands only if no higher generation stands: the latest restore wins, an older restore's completion never overwrites it (ADR-0036 §8). A Settings edit is an arrival too: it publishes under the generation of the latest restore that had arrived, lands over it, and its field survives that restore's adoption (ADR-0036 §9). The same generation decides whether an adoption re-installs its own restore's SOUND (ADR-0036 §10), which a separate relaxed counter (`soundSetGen`, wholesale sound replacements only) narrows to the case that needs it, so a user's sound edit made while a restore is pending survives its adoption (§12). |
+| GUI → Audio (host-hidden) | `InternalState` ValueTree + the engine-config word | Only Oversampling crosses to audio, read as the low byte of one `std::atomic<uint64>` (`oversampleIndex()`, relaxed). Its writers — the message thread from the tree, a host-thread restore (D-2) — publish through one compare-exchange tagged with the generation of the arrival, and a publication lands only if no higher generation stands: the latest restore wins, an older restore's completion never overwrites it (ADR-0036 §8). A Settings edit is an arrival too: it publishes under the generation of the latest restore that had arrived, lands over it, and its field survives that restore's adoption (ADR-0036 §9). The same generation decides whether an adoption re-installs its own restore's SOUND (ADR-0036 §10), which a separate relaxed counter (`soundSetGen`, wholesale sound replacements only) narrows to the case that needs it, so a user's sound edit made while a restore is pending survives its adoption (§12). That counter is read as the value the allocating `fetch_add` RETURNS, never read back afterwards, so a replacement overlapping a restore's decode cannot be recorded as the restore's own (§13). |
 | GUI → Audio (momentary solo) | `std::atomic<int> soloPreviewMask` | −1 = use the param; relaxed. |
 | GUI → Audio (meter reset) | `std::atomic<int> resetReq` | `exchange` consumed on the audio thread. |
 | Audio → GUI (scope) | `ScopeBuffer` SPSC ring | Exactly one producer + one reader **thread** (message thread; stateless read sites: Vectorscope, SpectrumImager, read-only `writeCount`); release/acquire on the write index. |
@@ -82,8 +82,13 @@ lock runs from a parameter listener callback.** A restore landing mid-gesture is
 poll, which zeroes the gesture count exactly as an inline restore always has.
 
 One contract is load-bearing and is stated rather than assumed: **the host serializes its own state
-calls** (never two at once). Rounds 4–5 verified it against every wrapper this repository builds at the
-pinned JUCE 9.0.1, from primary evidence (ADR-0036 §11). **VST3: the SDK header itself pins both
+calls** (never two at once). Rounds 4–6 verified it against every wrapper this repository builds at the
+pinned JUCE 9.0.1, from primary evidence (ADR-0036 §11). **Round 6 enumerated the complete set of
+callers:** across the three formats, the only code that reaches `get/setStateInformation` is the
+host-facing entry points themselves (VST3 `getState`/`setState`, AU `SaveState`/`RestoreState`, the
+standalone's `savePluginState`/`reloadPluginState`) — **no JUCE timer, async callback or background
+thread calls either one**, so the question reduces entirely to whether the host issues two
+overlapping calls. **VST3: the SDK header itself pins both
 halves to the host's UI thread** — `IComponent::setState` and `IComponent::getState` each carry
 *"\note [UI-thread & (Initialized | Connected | Setup Done | Activated | Processing)]"*
 (`format_types/VST3_SDK/pluginterfaces/vst/ivstcomponent.h`), and two calls pinned to one thread

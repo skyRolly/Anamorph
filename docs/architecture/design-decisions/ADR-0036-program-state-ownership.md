@@ -23,7 +23,10 @@ repository builds.
 > or an ordering-critical atomic beyond them is a new gated change and must be flagged as one
 > rather than treated as covered. Round 5 (§12) is inside the boundary: it re-keys an existing
 > guard onto a new *relaxed* counter that carries no payload and no ordering role — the same class
-> as `soundParamGen`, which predates D-2 — and adds no path and no ordering.
+> as `soundParamGen`, which predates D-2 — and adds no path and no ordering. **Round 6 (§13) is
+> inside it too**: it changes only *how* that counter's value is captured — from a read-back to the
+> value the allocating `fetch_add` returns — introducing no thread, no cross-thread path, no
+> ownership mechanism and no ordering-critical atomic. There is no architectural delta to review.
 
 **Resolves decision D-2** (`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, deferred in
 round 4) and **closes RISK-007** (`docs/FUTURE_RISKS.md`). **Amends `THREADING_POLICY.md`** §Host state
@@ -252,6 +255,16 @@ turn late) and leaves a save issued on the host thread right after its restore d
      `kAudioUnitProperty_ClassInfo` property mechanism — the real-world autosave case, and what
      pluginval's `BackgroundThreadStateTest` exercises.
    - **Standalone** — both calls are made from `StandaloneFilterWindow` on the message thread.
+   **Round 6 re-derived this from the complete set of callers**, which is the evidence a wrapper
+   inspection alone does not give: across the three formats `ANAMORPH_FORMATS` builds, the ONLY
+   code that reaches `AudioProcessor::get/setStateInformation` is the host-facing entry points
+   themselves — VST3 `IComponent::getState`/`setState` (plus the VST2-compat readers *inside*
+   `setState`), AU `SaveState`/`RestoreState`, and the standalone's `savePluginState()` /
+   `reloadPluginState()`. **No JUCE timer, async callback, audio callback or background thread
+   calls either function on any of them**; the standalone's own 500 ms timer scans MIDI devices and
+   touches no state, and its two calls run from `init()` and the close button, both on the message
+   thread. So the concurrency question reduces entirely to whether the *host* issues two overlapping
+   calls — there is no JUCE-side scheduler that could produce one behind the host's back.
    The **primary evidence** for the VST3 half is the pinned SDK header itself, which annotates both
    halves of the pair on the host's UI thread — `IComponent::setState`: *"\note [UI-thread &
    (Initialized | Connected | Setup Done | Activated | Processing)]"*, and `IComponent::getState`
@@ -265,6 +278,17 @@ turn late) and leaves a save issued on the host thread right after its restore d
    because the AU half rests on practice rather than a citable clause; not B, because no wrapper
    provides the serialization; not C, because nothing in supported operation produces the
    concurrency, and adding synchronisation would mean paying for a broken host on every save.
+   **The debug tripwire, audited (round 6).** `OffThreadStateCall` detects exactly one condition:
+   two *off-message-thread* state calls active at once. It cannot fire in a supported scenario — on
+   VST3 an off-thread state call is already out of spec and two overlapping ones doubly so; on AU
+   the calls may legitimately be off-thread but the host serializes them; on the standalone they are
+   on the message thread and never counted at all. It also cannot fire on the supported shapes that
+   look similar: an off-thread save concurrent with the message thread's own timer adoption (not a
+   state call), or with a message-thread `getStateInformation` (not counted). It is **purely
+   diagnostic** — the counter is read only by the `jassert`, which compiles out in release, so no
+   release-build behaviour depends on it and it is not standing in for a correctness mechanism in
+   any supported case. If it ever fires, the conclusion above is what needs revisiting, which is the
+   point of having it.
    Rather than synchronise a case the formats forbid, the two off-message-thread branches count
    themselves in (`offThreadStateCalls`) and a debug build asserts if a second one ever overlaps —
    a tripwire, never a lock, never blocking, with no effect on the result. A host that trips it is
@@ -300,6 +324,39 @@ turn late) and leaves a save issued on the host thread right after its restore d
    State test 47 pins it: one edit, several edits across two parameters, and an untouched parameter
    still holding the restored value. Mutation-tested — with the guard keyed on `soundParamGen`
    again, all of it is erased.
+
+13. **A restore's token identifies its own replacement, not a moment (round 6).** §12's
+   discriminator is a counter of wholesale sound replacements, and §10's adoption re-installs the
+   restored sound when that counter has moved since the decode. Round 5 recorded the decode's
+   reference value by **reading the counter back** after applying the sound — which answers a
+   different question than the one the adoption asks. The counter names the *latest* replacement,
+   so a replacement that landed between the decode's own install and that read-back was recorded as
+   the restore's own reference: the counter then already equalled it, the adoption concluded
+   "nothing has replaced my sound", and the restored metadata was published over the *other*
+   operation's sound. The split §10 exists to prevent, reached through the token instead of through
+   the handoff window.
+   **The token is now the value the allocating `fetch_add` returns.** `noteWholeSoundReplaced()`
+   hands each replacement a value no other replacement can be handed, `applySoundTree` returns the
+   one it was handed, and the decode records *that* — so "is the live sound still the one I
+   installed?" is answered by comparing the counter against an operation's own identity rather than
+   against a snapshot of shared state. Any replacement after the restore's own, whenever it lands,
+   leaves the counter above the token and the adoption re-installs; nothing else can be mistaken
+   for the restore's sound. Allocation and capture are one atomic operation, so there is no window
+   between them to interleave with — the defect is not narrowed, it is unrepresentable.
+   **Individual mutation versus wholesale replacement**, by state semantics rather than by
+   function name — this is the classification §12's rule rests on:
+
+   | operation | what it does to the live sound | class |
+   |---|---|---|
+   | a knob turn, a gesture, host automation | changes one parameter of the session that is live | **individual** — belongs to the live session (§12), survives the adoption |
+   | A/B apply / switch (`applyStatePreservingView`) | installs the other slot's whole state set | **wholesale** — another session's sound |
+   | undo / redo (`applyStateSet` → `applyStatePreservingView`) | installs a stored state set | **wholesale** |
+   | preset load (`PresetManager::applySoundTree`, via the load hook) | installs the preset's whole sound, one parameter at a time, and changes the preset identity with it | **wholesale** — the per-parameter mechanism is why the hook bumps the counter explicitly; the classification follows the semantics, not the call shape |
+   | a restore's own sound install (`applySoundTree`) | installs the restored session's sound | **wholesale**, and the one that allocates the token it later checks |
+
+   State test 48 pins all three: an A/B apply and a preset load overlapping the decode are each
+   superseded by the adoption, and an ordinary edit *at the identical instant, through the same
+   seam* survives it. Mutation-tested — with the read-back restored, both replacement legs mix.
 
 ## Consequences
 

@@ -95,7 +95,8 @@ public:
     // message thread's take inside an adoption -- which is the only way to
     // reproduce a reviewed interleaving deterministically rather than by timing.
     // Installed and cleared on the main thread while no other thread can reach them.
-    struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake, beforeRestorePut; };
+    struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake, beforeRestorePut,
+                                        afterRestoreSoundApplied; };
     Seams seams;
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.
@@ -224,7 +225,17 @@ private:
     // because it carries no payload -- the value that matters travels inside the
     // RestoreDecode, whose cell provides the ordering.
     std::atomic<juce::uint32> soundSetGen { 1 };
-    void noteWholeSoundReplaced() noexcept { soundSetGen.fetch_add (1, std::memory_order_relaxed); }
+    // Allocates the token for ONE replacement and returns it. The token identifies the
+    // operation, not the moment: `fetch_add` hands each caller a value no other caller
+    // can be handed, so an operation that keeps its own return value can later ask "is
+    // the live sound still the one I installed?" by comparing the counter against it.
+    // Reading the counter back AFTER performing a replacement answers a different and
+    // wrong question -- it returns whatever the LAST replacement was, which is another
+    // operation's token whenever one overlapped (D-2 round 6, ADR-0036 §13).
+    juce::uint32 noteWholeSoundReplaced() noexcept
+    {
+        return soundSetGen.fetch_add (1, std::memory_order_relaxed) + 1;
+    }
     juce::uint32 polledGen = 0;                    // generation the poll last built a signature for
 
     // H15: the view params (only Bypass now) are deliberately NOT listened to by
@@ -358,7 +369,9 @@ private:
         // replacement counter as it stood immediately after the decode installed its
         // sound, so the adoption can tell "another state set has been installed since"
         // (re-install) from "the restored sound is still the one live, whatever the
-        // user has since edited in it" (leave it alone -- ADR-0036 §12).
+        // user has since edited in it" (leave it alone -- ADR-0036 §12). The token is
+        // the one THIS restore's own sound install was handed (§13), never a later read
+        // of the shared counter, which would name an overlapping replacement instead.
         juce::ValueTree soundParams;
         juce::uint32    soundSetGen = 0;
     };
@@ -455,8 +468,9 @@ private:
     // The H-side view of a restore H just decoded: what M will own once it adopts it.
     static std::unique_ptr<const ProgramSnapshot> viewOfRestore (const RestoreDecode&, const juce::String& liveSoundSig);
     // The sound half of a restore on the caller's thread: repair on our copy, one
-    // locked replaceState, then reassert.
-    void applySoundTree (const juce::ValueTree& soundTree);
+    // locked replaceState, then reassert. Returns the token of the replacement it
+    // performed, which is how a restore identifies ITS OWN sound (ADR-0036 §13).
+    juce::uint32 applySoundTree (const juce::ValueTree& soundTree);
     // The serialized-text half of the malformed-value repair, on a tree WE own and
     // are about to hand to replaceState (see the .cpp for why it moved here).
     void repairSerializedValues (juce::ValueTree& tree) const;

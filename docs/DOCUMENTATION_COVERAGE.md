@@ -8055,3 +8055,24 @@ evidence and disposition) and the dashboard.
 
 **Drift.** None. Round 4's §10 text described a guard that was correct in intent and too wide in
 practice; §12 narrows it rather than contradicting it, and the round-4 record stands as written.
+
+## D-2 round 6 (2026-09-03) — the replacement token names an operation (ADR-0036 §13)
+
+**Code changed:** `src/PluginProcessor.h` (`noteWholeSoundReplaced()` allocates and RETURNS one
+replacement's token; `applySoundTree` returns it; the `afterRestoreSoundApplied` seam),
+`src/PluginProcessor.cpp` (the decode records the token its own sound install was handed instead of
+reading the shared counter back afterwards — a replacement landing in that gap was otherwise
+recorded as the restore's own, and the adoption then published restored metadata over that
+operation's sound), `tests/state_tests.cpp` (State test 48: an A/B apply, a preset load and an
+ordinary edit through one seam, mutation-tested).
+
+**Documents updated:** `ADR-0036` (new §13 with the individual-vs-wholesale classification table;
+§11 gains the complete caller enumeration and the debug-tripwire audit; the status block records
+that round 6 is inside the approved architecture); `THREADING_POLICY.md`; `THREAD_MODEL.md`;
+`API_REFERENCE.md`; `TESTING.md` (test 48, 47 tests); `TESTING_POLICY.md`, `HANDOVER.md`,
+`README.md` (47 tests / 1909 checks); `CHANGELOG.md`; the worklog (§12: the interleaving, the
+classification re-check, the shared-state-snapshot audit, the re-derived host-serialization
+evidence and the tripwire disposition) and the dashboard.
+
+**Drift.** None. Round 5's §12 rule is unchanged and correct; §13 fixes how its discriminator was
+captured, and says so rather than rewriting the round-5 record.
