@@ -887,6 +887,43 @@ reproduces the failure it exists for. **Both suites also run with `stdout` unbuf
 (`setvbuf(..., _IONBF, ...)`), so a crash can no longer take the log with it: on Windows the CRT
 buffers a pipe fully, which is why the round-12 failure arrived unreadable.
 
+**A background thread must prove it ran, and must not eat the machine.** Several state tests keep a
+thread alive for the whole of an operation because that is the condition under test — an audio
+thread processing under a restore (38, 39), a host thread autosaving under a preset walk or an undo
+walk (39, 44), an automation thread writing under a preset save (52 leg (d)). Two rules apply to
+every one of them, both learned from failures rather than from first principles.
+
+*Prove it ran.* `std::thread` guarantees the thread starts, **not** that it is scheduled before its
+creator does anything else, and a Release-build save is a few hundred microseconds. State test 52's
+automation thread lost that race on a macOS arm64 runner on 2026-09-04: the save finished first, the
+writer saw the stop flag on its first look and wrote nothing, and the leg's own non-vacuity check
+failed the suite (2236 checks, 1 failure) on a tree whose only change since the previous green run of
+the same job was one markdown file. Every such leg now WAITS, bounded, for the worker's own counter
+to advance before the operation starts, and asserts that sample rather than a count taken after the
+join — a post-join count cannot tell "wrote during the operation" from "started as it returned".
+Tests 39 and 44 already did this; 38 and 52 were brought into line in round 13.
+
+*Do not eat the machine.* A free-running spinner is nearly free natively — it lands on another core
+while the message thread sits in `d2::waitFor`'s 5 ms sleeps — and ruinous under a **serialising**
+checker. valgrind runs one thread at a time and instruments every instruction, so an unpaced spinner
+takes turns with the thread under test and consumes most of the run. Measured on this suite:
+
+| | native | under `valgrind --tool=memcheck` |
+|---|---|---|
+| State test 38, unpaced | < 0.5 s | **5 m 05 s** (CI), ≥ 9 min locally |
+| State test 39, unpaced | 20.4 s | **> 30 min**, unfinished at the job's 45-minute cap |
+| State test 38, paced | < 0.5 s | **< 1 s** |
+| State test 39, paced | < 0.5 s | **6 s** |
+| whole state suite | 27.5 s → **6.9 s** | never finished → **9 m 42 s**, 2272 / 0, `ERROR SUMMARY: 0 errors` |
+
+`d2::Pace` is the fix and it is uniform: no lane, job or environment variable changes behaviour. A
+spinner rests a multiple of what its own last iteration cost (capped at 50 ms), so it takes a bounded
+SHARE of the machine on any target — proportionally tiny natively, most of the serialised CPU handed
+back under memcheck. It also removed a self-inflicted native cost: on a 4-core box two unpaced
+spinners were starving the message thread they were supposed to be running underneath, which is most
+of what State test 39's 20.4 s was. Any new long-lived worker in this suite uses it, and asserts its
+non-vacuity counter.
+
 **One instance at a time.** The state suite writes into the REAL user preset folder (the production
 path — that is the point of it), parks and restores any genuine preset that shares a harness name,
 and several tests assert the folder's *listing* (row order, a deleted preset ticking nothing, a

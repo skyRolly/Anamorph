@@ -1230,6 +1230,26 @@ in about a minute. The fix it points at is never "raise the limit": it is to put
 heap (`docs/procedures/TESTING.md`). Both suites additionally run with `stdout` **unbuffered**, so a
 crash can no longer take the log with it on any platform.
 
+### Why the valgrind lane needs the suite's spinners paced (`sanitizers`)
+
+`sanitizers` runs both suites twice: once under ASan+UBSan (about a minute) and once under
+`valgrind --tool=memcheck`, in a **45-minute** job. memcheck is not just slow, it is **serialising**:
+it runs one thread at a time and instruments every instruction. A state test that keeps an unpaced
+background thread alive for the whole of an operation therefore hands that thread half the machine
+while the thread under test sleeps in a bounded poll — and the D-2 tests do exactly that by design.
+Measured on `3182e11`: the DSP suite cleared memcheck in 3 m 30 s, State tests 1–37 in about 25 s,
+then **State test 38 took 5 m 05 s** (under half a second natively) and **State test 39 was still
+running 30 minutes later** when the job hit its cap. The job had been dying this way since round 12;
+earlier rounds masked it because a follow-up push cancelled the run first. On the PR's base
+(`ac47151`) the same lane was comfortable — the state suite was 1506 checks and none of the D-2
+concurrency tests existed yet.
+
+The fix is in the suite, not in the lane: `d2::Pace` bounds a spinner's SHARE of the machine by
+resting a multiple of its own last iteration's cost. The lane's command, its timeout and its
+strictness are unchanged, every test still runs in it, and no environment variable makes the tests
+behave differently there — see `docs/procedures/TESTING.md`. After it, State test 38 clears memcheck
+in under a second and State test 39 in 6 s.
+
 The `linux` job asserts, on the **stripped** binaries and as its **last step**, that the shipped VST3
 and Standalone stay within a declared glibc/libstdc++ floor. This is a compatibility claim the
 pipeline previously did not make: a Linux binary records the oldest version providing each imported

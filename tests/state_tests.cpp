@@ -51,6 +51,8 @@
 #include <cstring>
 #include <thread>
 #include <mutex>
+#include <chrono>
+#include <algorithm>
 #include <random>
 #include <vector>
 #include <functional>
@@ -6791,6 +6793,45 @@ namespace d2
         return done();
     }
 
+    // PACING FOR THE LONG-LIVED BACKGROUND SPINNERS (round 13).
+    //
+    // Tests 38, 39 and 44 keep a thread alive for the WHOLE of an operation -- audio
+    // processing, or a host autosave loop -- because that is the condition under test.
+    // On a native run that thread is nearly free: it lands on another core while the
+    // message thread sits in `waitFor`'s 5 ms sleeps waiting for a 20 Hz timer. Under a
+    // SERIALISING checker it is ruinous. valgrind runs one thread at a time and
+    // instruments every instruction, so a spinner that never pauses takes turns with the
+    // thread under test and consumes most of the machine while that thread sleeps.
+    //
+    //   State test 38   under half a second natively   ->  5m05s under memcheck (CI)
+    //   State test 39   20.4s natively                 ->  still running after 30m, when
+    //                                                      the job hit its 45-minute cap
+    //
+    // The cure is to bound the spinner's SHARE of the machine rather than its rate, by
+    // resting a multiple of what its own last iteration cost. That is self-scaling and
+    // identical on every platform and lane -- no build, job or environment variable
+    // changes behaviour here. Natively an iteration costs tens of microseconds, so the
+    // rest is proportionally tiny and the spinner still lands thousands of blocks or
+    // saves inside every operation; under memcheck the same iteration costs tens of
+    // milliseconds, so the same code hands most of the serialised CPU back to the thread
+    // it is supposed to be running UNDER rather than instead of. The cap keeps one
+    // unusually long iteration from parking the spinner for a visible fraction of a test.
+    //
+    // Nothing here is a coverage argument: every leg that uses a spinner asserts, with
+    // its own non-vacuity check, that the spinner really ran, and prints what it did.
+    struct Pace
+    {
+        std::chrono::steady_clock::time_point began { std::chrono::steady_clock::now() };
+
+        void rest()
+        {
+            const auto cost = std::chrono::steady_clock::now() - began;
+            std::this_thread::sleep_for (std::min (std::chrono::duration_cast<std::chrono::nanoseconds> (cost * 2),
+                                                   std::chrono::nanoseconds (std::chrono::milliseconds (50))));
+            began = std::chrono::steady_clock::now();
+        }
+    };
+
     // A noise block the audio-thread loops feed, and a finiteness scan of the output.
     static bool processStaysFinite (AnamorphAudioProcessor& p, int blocks, juce::AudioBuffer<float>& buf, std::mt19937& rng)
     {
@@ -6940,14 +6981,30 @@ static void testRestoreCyclesUnderRunningAudio()
 
     std::atomic<bool> stopAudio { false };
     std::atomic<bool> audioFinite { true };
+    std::atomic<int>  audioRounds { 0 };
     std::thread audio ([&]
     {
         juce::AudioBuffer<float> buf (2, 512);
         std::mt19937 rng (0x0d2u);
+        d2::Pace pace;
         while (! stopAudio.load (std::memory_order_acquire))
+        {
             if (! d2::processStaysFinite (p, 4, buf, rng))
                 audioFinite.store (false, std::memory_order_relaxed);
+            audioRounds.fetch_add (1, std::memory_order_relaxed);
+            pace.rest();
+        }
     });
+
+    // "The audio path stayed finite" is only worth asserting if the audio path RAN:
+    // `audioFinite` starts true, so a thread that never got scheduled would report the
+    // property vacuously. State tests 39 and 44 already wait for their host thread the
+    // same way; this leg was the sibling that assumed instead of proving it, and round
+    // 13's audit of State test 52's automation thread -- which lost exactly that race on
+    // a macOS runner -- is what brought it up. Bounded, so a thread that never starts
+    // fails the check below instead of hanging the suite.
+    check (d2::waitFor ([&] { return audioRounds.load (std::memory_order_relaxed) > 0; }),
+           "non-vacuity: the audio thread is processing before the first restore lands");
 
     for (int i = 0; i < 4; ++i)
     {
@@ -6970,6 +7027,8 @@ static void testRestoreCyclesUnderRunningAudio()
 
     stopAudio.store (true, std::memory_order_release);
     audio.join();
+    std::printf ("  the audio thread ran %d block groups under the four restores\n",
+                 audioRounds.load (std::memory_order_relaxed));
     check (audioFinite.load(), "the audio path stayed finite with restores landing under it");
 
     const auto resaved = d2::saveOf (p);
@@ -7011,12 +7070,17 @@ static void testPresetTransitionsUnderConcurrentSaves()
     {
         juce::AudioBuffer<float> buf (2, 256);
         std::mt19937 rng (0x0d2bu);
+        d2::Pace pace;
         while (! stop.load (std::memory_order_acquire))
+        {
             if (! d2::processStaysFinite (p, 2, buf, rng))
                 audioFinite.store (false, std::memory_order_relaxed);
+            pace.rest();
+        }
     });
     std::thread autosave ([&]
     {
+        d2::Pace pace;
         while (! stop.load (std::memory_order_acquire))
         {
             juce::MemoryBlock out;
@@ -7025,6 +7089,7 @@ static void testPresetTransitionsUnderConcurrentSaves()
                 p.getStateInformation (out);
             }
             hostSaves.fetch_add (1, std::memory_order_relaxed);
+            pace.rest();
         }
     });
     check (d2::waitFor ([&] { return hostSaves.load (std::memory_order_relaxed) > 0; }),
@@ -7198,11 +7263,13 @@ static void testUndoHistoryIsOwnedByTheMessageThread()
     std::atomic<int>  hostSaves { 0 };
     std::thread autosave ([&]
     {
+        d2::Pace pace;
         while (! stop.load (std::memory_order_acquire))
         {
             juce::MemoryBlock out;
             p.getStateInformation (out);
             hostSaves.fetch_add (1, std::memory_order_relaxed);
+            pace.rest();
         }
     });
     // Non-vacuity, deterministically: the walk starts only once the host thread is
@@ -8546,12 +8613,33 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
                 std::this_thread::yield();
             }
         });
+        // THE WRITER MUST BE PROVABLY RUNNING BEFORE THE SAVE STARTS, or this leg saves
+        // with nothing under it and asserts coherence against an interleaving that never
+        // happened. `std::thread` guarantees the thread starts, NOT that it is scheduled
+        // before its creator does anything else, and `saveUser` here is a few hundred
+        // microseconds: if the save wins that race, `run` is already false when the writer
+        // first looks and the loop exits having written nothing. That is not theoretical --
+        // it is what the macOS arm64 runner produced on 2026-09-04 (2236 checks, 1 failure:
+        // this leg's non-vacuity check), on a tree whose only change since the previous
+        // green run of the same job was one markdown file, and with the same binary passing
+        // in the x86_64 slice of the same job minutes later. Waiting for the first write
+        // makes "an automation thread across the whole save" true by construction instead
+        // of by scheduling luck. Bounded, so a writer that never starts fails the check
+        // below rather than hanging the suite.
+        for (int elapsed = 0; elapsed < 2000 && writes.load (std::memory_order_relaxed) == 0; ++elapsed)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+
+        // Sampled BEFORE the save, and it is this sample the check below reads. A count
+        // taken after the join cannot tell "wrote during the save" from "started only as
+        // the save returned", so it would pass on exactly the vacuous run this leg has to
+        // reject.
+        const int writesBeforeSave = writes.load (std::memory_order_relaxed);
         const bool ok = p.getPresets().saveUser (name);
         run.store (false, std::memory_order_release);
         automation.join();
         p.getPresets().beforeStateCapture = nullptr;
         check (ok, "saveUser succeeds with an automation thread running");
-        check (writes.load() > 0, "non-vacuity: the automation thread actually wrote");
+        check (writesBeforeSave > 0, "non-vacuity: the automation thread was already writing when the save began");
         assertCoherent (p, presetFile, A, B, fires, "a concurrent automation thread");
     }
 

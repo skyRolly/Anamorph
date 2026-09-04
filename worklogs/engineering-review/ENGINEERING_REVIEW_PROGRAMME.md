@@ -1325,6 +1325,84 @@ moved only by the added non-vacuity checks (2261 → 2271).
 round adds no caller, no thread, no timer, no async or background path, and touches neither the
 host-side members nor the off-thread tripwire — `src/` is not modified at all.
 
+## D-2 / RISK-007 round 13b — 2026-09-04 — two failures in the test frame, neither in the product
+
+Head `3182e11` failed two jobs. Its only difference from `ed18db2`, on which the same jobs were
+green, is **one markdown file** (`git diff --stat ed18db2 3182e11` = 1 file, 20 insertions,
+11 deletions), so neither failure could be a regression from the change under review. Both were
+latent defects in the test frame, and one of them had been failing since round 12 behind cancelled
+runs. `src/` is not modified by this round.
+
+### 1. `macos` — one check, and it was the guard doing its job
+
+The arm64 leg of *DSP + state self-tests* reported **2236 checks, 1 failure**; the same universal
+binary's x86_64 slice passed under Rosetta minutes later in the same job, `macos-intel` passed on
+native Intel, and `windows`, `linux` (including the 1 MB-stack guard), `linux-lto-tests` and `tsan`
+were all green on the same head. The failing check was State test 52 leg (d)'s
+`non-vacuity: the automation thread actually wrote`. Round 13's unbuffered `stdout` is why the line
+was in the log at all.
+
+`std::thread` guarantees a thread STARTS; it does not guarantee it is scheduled before its creator
+does anything else, and the `saveUser` this leg wraps is a few hundred microseconds. When the save
+wins that race the writer sees `run == false` on its first look, writes nothing, and the leg would
+have asserted coherence against an interleaving that never happened — which its own non-vacuity check
+refused. 30 consecutive local runs on x86-64 Linux were clean (2271 / 0 each), which is what a
+start-up race looks like rather than a defect in what the leg tests.
+
+The leg now waits, bounded, for the writer's counter to advance BEFORE the save, and asserts that
+**pre-save** sample. A count taken after the join cannot distinguish "wrote during the save" from
+"started as the save returned", so it would pass on exactly the vacuous run this leg exists to reject.
+
+**Bounded audit of the same family** — every worker in the suite that must be live before the
+operation under test:
+
+| site | how it proves the worker is live | verdict |
+|---|---|---|
+| tests 30/31 prepare-race probes, test 43 (`go` flag) | worker spins on `go` until the main thread releases it | correct by construction |
+| test 39 (audio + autosave) | `check (waitFor (hostSaves > 0), "the host thread is saving before the first preset load")` | already correct |
+| test 44 (autosave) | the same wait, with the same reasoning written out | already correct |
+| test 52 leg (d) (automation) | nothing — assumed | **the defect; fixed** |
+| test 38 (audio) | nothing — and `audioFinite` starts `true`, so a thread that never ran passes VACUOUSLY | **fixed: counter + non-vacuity check** |
+| one-shot workers (22, 27, 30, 41, 45, 47, 51, 53, 59, …) | joined before anything is asserted | not in the family |
+
+The suite is **2272 / 0**: the one added check is test 38's.
+
+### 2. `sanitizers` — the 45-minute cap, and why the spinners caused it
+
+The job died inside `valgrind --tool=memcheck`. memcheck is not merely slow, it **serialises**: one
+thread runs at a time and every instruction is instrumented. A test that keeps an unpaced background
+thread alive for the whole of an operation therefore gives that thread half the machine while the
+thread under test sleeps in a bounded poll — and the D-2 tests do that deliberately.
+
+| | native | under memcheck |
+|---|---|---|
+| DSP suite | ~2 s | 3 m 30 s |
+| State tests 1–37 | ~1 s | ~25 s |
+| **State test 38** | < 0.5 s | **5 m 05 s** |
+| **State test 39** | 20.4 s | **> 30 min — unfinished when the job hit its cap** |
+
+On the PR's base (`ac47151`) the same lane is comfortable: the state suite is 1506 checks and none of
+these tests exist yet. So the timeout is this branch's, it dates from round 12, and rounds 12 and 13
+only ever saw `cancelled` because a follow-up push killed the run first — run 1075 (`b50f66b`) shows
+the identical 45-minute death.
+
+The fix is in the suite rather than the lane. `d2::Pace` bounds a spinner's **share** of the machine
+by resting a multiple of what its own last iteration cost (capped at 50 ms). It is uniform — no lane,
+job or environment variable changes behaviour, every test still runs in every lane, and every leg
+still asserts its non-vacuity counter. It also removed a self-inflicted native cost: on a 4-core box
+two unpaced spinners were starving the message thread they were meant to run underneath, which is
+most of State test 39's 20.4 s.
+
+| after `d2::Pace` | native | under memcheck |
+|---|---|---|
+| State test 38 | < 0.5 s | **< 1 s** |
+| State test 39 | < 0.5 s | **6 s** |
+| whole state suite | **6.9 s** (was 27.5 s) | **9 m 42 s** — 2272 / 0, `ERROR SUMMARY: 0 errors` (was: never finished) |
+
+**Host serialization: disposition D, unchanged, no new evidence.** This round modifies no `src/`
+file, adds no caller, thread, timer, async or background path, and touches neither the host-side
+members nor the off-thread tripwire.
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can

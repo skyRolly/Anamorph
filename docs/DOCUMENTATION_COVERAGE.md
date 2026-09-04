@@ -8234,6 +8234,40 @@ product trade-off. The cost had a removable cause (the load's extra store/report
 it as removed rather than leaving §17's framing to read as permanent. §17's own text is unchanged; it
 was true of the save-side formula it examined.
 
+## D-2 round 13b (2026-09-04) — a background thread proves it ran, and stops eating the machine
+
+**Code changed:** `tests/state_tests.cpp` only. State test 52 leg (d) now waits, bounded, for its
+automation thread's own counter to advance BEFORE the save starts, and asserts that pre-save sample;
+State test 38's audio thread gained the counter and the non-vacuity check its siblings (39, 44)
+already had, and prints what it did; and the four long-lived spinners in tests 38, 39 and 44 rest
+through `d2::Pace`, which bounds a spinner's share of the machine by resting a multiple of its own
+last iteration's cost. **No `src/` change**, no assertion removed, no gate relaxed.
+
+**Why.** Two CI failures on `3182e11`, a head whose only difference from the previous green run was
+one markdown file. (1) `macos` failed one check — State test 52's `non-vacuity: the automation thread
+actually wrote`. `std::thread` guarantees a thread starts, not that it is scheduled before its
+creator continues, and `saveUser` is a few hundred microseconds: the save won that race, the writer
+saw the stop flag on its first look, and the leg's own guard correctly refused a vacuous pass. The
+same binary's x86_64 slice passed minutes later in the same job, and 30 consecutive local runs were
+clean, which is what a start-up race looks like. (2) `sanitizers` hit its 45-minute cap inside
+valgrind: memcheck serialises threads and instruments every instruction, so the unpaced spinners took
+turns with the thread under test — State test 38 cost 5 m 05 s against under half a second natively,
+and State test 39 was unfinished after 30 minutes. Both are test-frame defects; neither says anything
+about the product, and the second had been failing this way since round 12, masked by pushes that
+cancelled the run before the cap.
+
+**Measured.** State suite 2272 / 0. Native total 27.5 s → 6.9 s (two unpaced spinners were starving
+the message thread on a 4-core box). Under memcheck: State test 38 5 m 05 s → under a second, State
+test 39 > 30 min → 6 s.
+
+**Documents updated:** `TESTING.md` (prove-it-ran and do-not-eat-the-machine, with the table);
+`CI_CD.md` (why the valgrind lane needs it); `HANDOVER.md`, `DOCUMENTATION_COVERAGE.md` and the
+worklog for the 2272-check count. `CHANGELOG.md` is deliberately untouched: nothing a user can
+observe changed, exactly as in round 13.
+
+**Drift.** None. No product behaviour, no ADR decision and no invariant changed; ADR-0036 is untouched
+because the round asserts nothing new about the state model.
+
 ## D-2 round 13 (2026-09-04) — CI closure: the Windows stack, and a log that survives a crash
 
 **Code changed:** `tests/state_tests.cpp` — State test 59's legs become separate functions that take
