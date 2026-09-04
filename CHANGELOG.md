@@ -116,7 +116,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   plug-in now takes on *everything* that has arrived before it acts on anything (State test 50).
   And saving a preset at that same moment could mark it unchanged against a sound its own file does
   not contain, so reloading it changed what you heard while the dot said nothing had changed; the
-  preset is now saved and judged against the same sound (State test 51). [Verified]
+  preset is now saved and judged against the same sound (State test 51). A ninth pass closed the last
+  way the two could come apart, the one that needs no restore at all: while automation was moving a
+  control, saving a preset could write one sound to the file and remember a *different* one as the
+  "unchanged" mark — and because automation comes back round, the moment the control returned to that
+  earlier value the preset read as unchanged again, with its file holding something else. Saving now
+  takes a single snapshot and both the file and the mark come from it, so a control that moves during
+  a save simply leaves the preset showing as modified, which is what it is. The same pass fixed a
+  quieter version of it with no automation involved: for the stepped controls (the algorithm and
+  focus choosers, the on/off switches) a preset can only store the step, so a value set part-way
+  between steps — which only a host's automation can produce — was remembered as itself and the
+  preset went modified the instant you loaded it back. Both now compare what a preset file can
+  actually hold (State test 52). [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

@@ -33,6 +33,12 @@ repository builds.
 > incremented. **Round 8 (§15, §16) as well**: it makes an existing drain run to a fixed point and
 > reorders an existing save so its baseline and its bytes come from one session. No thread, no
 > blocking mechanism, no new cross-thread ownership; both changes are on the message thread.
+> **Round 9 (§17) as well, and it REMOVES machinery rather than adding any**: it deletes a retry loop
+> and one of two reads of the live sound, so the save derives its bytes and its baseline from a single
+> `apvts.copyState()`; and it canonicalises an existing signature onto the grid a preset file can
+> already hold. No thread, no lock, no wait, no allocation on any audio path, no new cross-thread
+> reader, no serialization-format change and no parameter or latency change. Everything it touches
+> runs on the message thread. There is no architectural delta to review.
 
 **Resolves decision D-2** (`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, deferred in
 round 4) and **closes RISK-007** (`docs/FUTURE_RISKS.md`). **Amends `THREADING_POLICY.md`** §Host state
@@ -448,6 +454,11 @@ turn late) and leaves a save issued on the host thread right after its restore d
      them leaves the baseline describing the earlier state, which reads as *dirty* rather than as a
      false clean), and a sound-generation check across both reads confirms they describe one sound,
      retrying the two cheap in-memory reads — never the file write — when it does not.
+     **This second bullet is SUPERSEDED by §17 (round 9), and its stated safety argument was wrong.**
+     The retry gave up after eight attempts and used the unproven pair anyway, and "disagreeing only
+     in the safe direction" does not hold: a baseline naming an *earlier* sound reads clean again the
+     moment the sound returns to it, which is what cycling automation does by definition. The first
+     bullet — the drain runs before the capture — stands unchanged and is still required.
    State test 51 checks the invariant the way a user meets it: save, then load the very file just
    written, and require the sound to be unchanged and still clean.
    **`load`'s baseline is not the same defect.** It also reads `sigAtLoad = soundSig()` after
@@ -456,6 +467,144 @@ turn late) and leaves a save issued on the host thread right after its restore d
    `current`, `sel` and `sigAtLoad` outright (`setMeta` / `adoptRestoredState`), so the mislabel
    cannot outlive the pending window it was created in. Transient and self-correcting, where the
    save's was durable: recorded, not changed.
+
+17. **One capture. The bytes and the baseline are the same object (round 9).** §16 established that a
+   preset's clean baseline must describe its own file, and implemented it by taking two reads of the
+   live sound — a signature, then the state copy the file is written from — and trying to prove them
+   coherent with a sound-generation check that retried up to eight times. Under **sustained
+   automation** that check never settles: the loop fell through and wrote the unproven pair, so the
+   file held one sound and `sigAtLoad` described another. The consequence is the one §16 exists to
+   prevent, reached by the other route — and it is a **false clean**, not merely a stale baseline,
+   because a baseline naming an earlier sound compares equal again as soon as the sound returns to
+   it. Cycling automation does exactly that, which is why the finding is phrased as *busy automation
+   saves false baseline*: the preset sits there marked clean while reloading it changes what you hear.
+   Measured on the round-8 implementation with a parameter cycling between two values across the
+   save: the baseline named width `0.24000` while the bytes on disk held `0.76000`, and the preset
+   read **clean** at `0.24` while loading its own file moved the sound to `0.76`.
+
+   **The rule is now structural rather than checked.** `saveUser` takes **one** capture —
+   `apvts.copyState()`, which flushes the live parameters into the APVTS tree under JUCE's own lock
+   and returns a private copy — and derives *everything* from that single object: the bytes on disk,
+   and the clean baseline via `PresetManager::soundSignatureForSavedTree`. Nothing reads the live
+   parameters a second time, so there is no "between" for a mutation to land in. The retry is
+   **deleted, not bounded harder**: no number of retries can establish an invariant that one capture
+   gets for free, and a retry that gives up silently is worse than none. `saveUser` now contains no
+   loop of its own; the one it still reaches, through `onAboutToSave`, is §15's restore drain, whose
+   termination rests on §11's supported-host boundary rather than on anything in the save.
+
+   **What clean means after `saveUser` returns**, stated for a user: *loading the selected preset
+   would change nothing.* And therefore **the mutation-during-save semantic is (A)**: the preset
+   represents the state captured at the one capture instant, and any parameter change after it —
+   including one that lands while the file is still being written — leaves the preset **dirty**,
+   correctly and immediately, because the live sound has moved away from what the file holds. The
+   plug-in never retries, never waits for automation to settle, and never silently saves a state the
+   user cannot get back.
+
+   **A torn capture is still one snapshot, and that is the right answer.** JUCE's
+   `flushParameterValuesToValueTree` writes adapters one at a time, so a parameter moved from the
+   audio thread mid-flush can leave the tree holding parameter A at one instant and parameter B at
+   another. No non-blocking design can prevent that, and it does not weaken the invariant: whatever
+   mixture of values the flush captured **is** the preset, the baseline is computed from that same
+   object, and the two therefore agree by construction. The invariant this ADR owes the user is
+   "clean means reloading changes nothing", not "the file is an instantaneous photograph".
+
+   **One rule for what a saved tree means.** `soundSignatureForSavedTree` and
+   `PresetManager::applySoundTree` resolve every parameter through the same helper
+   (`normalisedFromSavedTree`): value present and usable → `convertTo0to1(plain)`; absent, value-less,
+   malformed or non-finite → the parameter default. The baseline is therefore the signature the
+   *loader* will produce, by construction rather than by argument, and a hand-edited file cannot mean
+   one thing to the apply path and another to the baseline.
+
+   **The signature is the sound as the plug-in renders it.** `normalisedAsRendered`
+   (`PluginParameters.h`) maps a normalised value onto the grid the plug-in can actually render and
+   keep: `convertTo0to1(convertFrom0to1(v))`. This is a **no-op for every stock parameter** —
+   `juce::AudioParameterFloat` stores the denormalised value and reports `convertTo0to1` of it, so its
+   `getValue()` is already on that grid. It matters for Anamorph's `RawChoice` / `RawBool`
+   (`src/PluginParameters.cpp`), which deliberately keep the *exact* normalised value in `getValue()`
+   so pluginval's state-restoration test reads back what it wrote; the session format preserves that
+   bit-for-bit through the `raw` attribute, but **a preset has no `raw`** and stores only the snapped
+   value. Signing the live unsnapped value therefore described a sound no preset file can hold: a
+   4-choice automated to `0.66` was written as index 2 and reloaded as `0.66667`, so §16's invariant
+   failed for every discrete parameter carrying an automated sub-step value — **with no concurrency
+   involved at all**. Measured: baseline `0.66000`, bytes `0.66667`, reload `0.66667`.
+   What this deliberately stops counting as a modification is movement *within* one step (`0.66` →
+   `0.67`, both index 2). That is not a sound change — the DSP reads `getRawParameterValue()`, i.e.
+   the snapped value — and the preset format cannot record the difference, so a modified-marker for it
+   would report a change the user can neither hear nor keep.
+
+   **APPLY IT EXACTLY ONCE, and the file side already has.** This is the sharp edge, and the first
+   implementation of this section got it wrong. `apvts.copyState()` writes the **denormalised** value
+   into the tree, so `normalisedFromSavedTree` returning `convertTo0to1(plain)` is already
+   `convertTo0to1(convertFrom0to1(live))` — character for character the expression the live side
+   computes. Canonicalising the file side *again* makes it that mapping twice, and while the mapping
+   is the identity in real arithmetic it is **not idempotent in float** for the four frequency
+   parameters whose ranges are built from custom log/exp conversion lambdas with no interval to snap
+   to (`logFreqRange`, `logFreqRangeCentred`). The two sides then part company in the last bits and,
+   at a 5-decimal rounding boundary, in the printed signature — so a **freshly saved preset reads
+   MODIFIED**, deterministically for that value, on a preset nobody has touched. Measured at 4 sweep
+   points in 20001 before the second application was removed. The rule is therefore: the live side
+   applies `normalisedAsRendered` once; the file side applies it zero times, because the tree gave it
+   one for free.
+
+   **One definition of "the sound", across the plug-in.** `AnamorphAudioProcessor::soundSignature`
+   (the undo / A-B coalescer) is built from `normalisedAsRendered` too. The two signatures answer
+   "has the sound changed?" for different purposes and over different parameter sets, but they must
+   not answer it *differently for the same movement*: signing the raw normalised value in one and the
+   rendered value in the other would record an undo step for a sub-step move on a discrete parameter
+   that the modified-marker simultaneously declares to be no change — an undo entry that, pressed,
+   moves neither the sound nor the star.
+
+   **Compatibility.** No file format changes: neither the preset format nor the session schema gains,
+   loses or reinterprets a field. The one visible edge is that `presetBaseline` strings written by an
+   older build are compared against a signature computed the new way, so a session saved by an older
+   build can restore showing a modified-marker it did not show before. It applies to **two** cases,
+   not one: a discrete parameter carrying a host-automated sub-step value (always), and any of the
+   four custom-mapped frequency parameters at a value where the float round trip crosses a
+   5-decimal boundary (measured at roughly 1 value in 500). Cosmetic, no sound change, and
+   self-correcting on the next save or preset load — both of which recompute the baseline under the
+   new definition. Recorded as rule 6 in `SESSION_COMPATIBILITY_POLICY.md`.
+
+   **AN OPEN SIBLING, NOT CLOSED BY THIS ROUND: `load` and `loadFile` still baseline by re-reading.**
+   Both apply the file's sound and then take `sigAtLoad` from a second, live read
+   (`sigAtLoad = soundSig()`), which is the structure this section condemns — and the consequence is
+   the same false clean: with automation cycling a parameter, a write landing between the apply and
+   the read makes the baseline describe the automated value, so the menu reads *unmodified* while
+   reloading the preset would move the sound. It is durable. §16 recorded `load`'s baseline as a
+   self-correcting transient, but that judgement was made about a **restore** landing in the window
+   (the restore's own adoption overwrites `sigAtLoad`); an **automation** write is overwritten by
+   nothing, and that case was not considered.
+   It is **not fixed here, deliberately**, because every remedy examined costs more than it saves and
+   the choice is a product decision that wants numbers rather than a reflex:
+   - Baseline from the tree (`soundSignatureForSavedTree(apvts, sound)`, the obvious symmetry with
+     the save) removes the window entirely, but a load applies `convertTo0to1(plain)` and the
+     parameter then reports what it *stores*, so the post-load sound passes through the range mapping
+     once more than the baseline did. For the four custom-mapped frequency ranges that extra pass is
+     not idempotent, and the preset then reads **modified immediately after being loaded**. Measured
+     by State test 52 leg (i): 2 divergences in 3000 round trips, i.e. of order **1 preset load in
+     1500** — a spurious dot on the single most common preset action, traded for a window that needs
+     an automation write inside a few instructions.
+   - Re-reading each parameter inside the apply loop shrinks the window by roughly the length of the
+     loop but does not close it, which is a smaller lie rather than a true statement.
+   - A generation check across the two reads is round 8's retry, deleted above for the reason above.
+   The residual is therefore **reported, measured and left open**: a rare false clean on the load
+   path, against a measured ~1-in-1500 false *dirty* as the price of the symmetric fix. The direction
+   matters — this ADR treats a false clean as the dangerous one — so it should be closed, but by a
+   decision that accepts the cost, not by this round's momentum.
+
+   State test 52 pins the rest, through the `beforeStateCapture` seam so the interleaving is exact
+   rather than a race to lose: one mutation in the window, sustained cycling automation, several
+   parameters at once, a real concurrent automation thread, and the sub-step discrete case that needs
+   no concurrency. The assertion is the user-visible invariant — *if the preset reads clean, reloading
+   it changes nothing* — checked at **both** values the automation cycles through, so a baseline that
+   named either of them is caught without the test having to guess which. Three further legs pin what
+   the arguments above assert: a **sweep** measures the signature equality instead of arguing it —
+   20001 normalised points × 33 parameters, uniform then pseudo-random, since a uniform grid alone
+   never meets a rounding boundary (measured 0 mismatches; 4 with the canonicaliser applied twice,
+   199 of 201 with it removed altogether, and it asserts that every preset-carried parameter is
+   ranged, which pins `soundSignatureForSavedTree`'s one approximate branch as dead); a
+   **freshly-saved-preset-reads-clean** leg at a custom-mapped frequency value, the same property as
+   a user meets it; and a **coherence** leg proving a sub-step move on a discrete parameter moves
+   neither the modified-marker nor the undo history.
 
 ## Consequences
 

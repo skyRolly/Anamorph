@@ -676,9 +676,10 @@ so the same file measures the pre-fix tree with the same instruments:
   the drain; the owner then walks new history — undo, undo, redo, redo, a Copy undone on the other
   slot — while a host thread saves throughout, and every step lands exactly.
 
-**State tests 42–51 (rounds 2–8, the PR review's findings) reproduce a reviewed interleaving
-deterministically** rather than by timing, through the two seams `AnamorphAudioProcessor::seams`
-exposes for exactly that (empty in production: one null check each, on non-audio paths). Each was
+**State tests 42–52 (rounds 2–9, the PR review's findings) reproduce a reviewed interleaving
+deterministically** rather than by timing, through the seams `AnamorphAudioProcessor::seams` exposes
+for exactly that, plus `PresetManager::beforeStateCapture` for the save path (all empty in production:
+one null check each, on non-audio paths). Each was
 mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37's window check
 (44 uses no seam for its first three legs, the adoption seam for the fourth):
 
@@ -756,13 +757,37 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   re-installs the restored sound *during* the save; leg 1 is the no-restore control. Mutation-tested
   — draining after the write and re-reading the live sound as the baseline marks the preset clean
   against a sound its own file does not hold (0.76 written, 0.64 baselined) (ADR-0036 §16).
+- **52 (a save's bytes and its clean baseline, round 9)** — the `beforeStateCapture` seam fires at the
+  one instant a mutation must land to split the file from the baseline it is judged against. Five legs:
+  one mutation in the window, **sustained cycling automation** (the reported case), several parameters
+  at once, a real concurrent automation thread, and a **sub-step discrete value with no concurrency at
+  all**. The assertion is the user-visible invariant — *if the preset reads clean, reloading it changes
+  nothing* — checked at **both** values the automation cycles between, so a baseline naming either is
+  caught without the test guessing which; the structural form (`baseline()` equals the signature of the
+  bytes on disk) is asserted alongside it. Mutation-tested twice: restoring round 8's two-read save
+  makes the sustained leg fail with the baseline naming width 0.24 while the file holds 0.76 *and* the
+  preset reading clean at 0.24 while reloading moves the sound to 0.76; removing the preset-grid
+  canonicalisation makes the discrete leg fail with the baseline naming 0.66 where the file holds and
+  reloads 0.66667 (ADR-0036 §17). The single-mutation leg does **not** discriminate against round 8 —
+  one mutation lets its retry settle — which is exactly why the sustained leg exists.
+  Four further legs pin what the argument asserts. **(f)** *measures* the save-time signature equality
+  instead of arguing it — 20001 points × 33 parameters, uniform then pseudo-random because a uniform
+  grid never lands near a 5-decimal rounding boundary, and it asserts that every preset-carried
+  parameter is ranged, which pins the one approximate branch as dead. **(g)** requires a freshly saved
+  preset to read clean at a custom-mapped frequency value. **(h)** requires a sub-step move on a
+  discrete parameter to move neither the modified-marker nor the undo history. **(i)** measures the
+  save→load round trip over 3000 points: a reloaded preset must never read modified and the reloaded
+  sound must be the saved sound, while the baseline-string and re-saved-byte drift are recorded as
+  observations (the preset format's own denormalised round trip, which predates this round and moves
+  no marker). Mutation-tested: canonicalising the file side a *second* time fails (f) and (g) —
+  4 sweep points in 20001 — and reverting the undo signature fails (h).
 
 State tests 22 and 27 were re-shaped in the same change: their off-thread requester used to be a
 `juce::Value` written from a worker, which after D-2 models nothing the plug-in does; both now drive
 the real `setStateInformation` from the worker, and 27 asserts the ORDER of reported values because
 the tick that adopts a restore delivers its latency from inside the adoption.
 
-`tests/state_tests.cpp` (**50 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**51 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

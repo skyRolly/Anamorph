@@ -801,6 +801,134 @@ fire, assertion for assertion.
 residuals: `PresetManager::load`'s transient baseline (above), a host save's snapshot and
 `copyState()` straddling a message-thread A/B switch, and the ≤ 50 ms adoption latency for the tail.
 
+### 15. Round 9 — one capture: a preset's bytes and its clean baseline are the same object (2026-09-03)
+
+**Architecture Review Gate: APPROVED, and this round is inside it — it REMOVES machinery.** A retry
+loop and one of two reads of the live sound are deleted; an existing signature is canonicalised onto
+the grid a preset file already holds. No thread, no lock, no wait, no audio-path allocation, no new
+cross-thread reader, no serialization-format change, no parameter or latency change.
+
+**Finding 1 — busy automation saved a false baseline.**
+
+| | |
+|---|---|
+| actors | M (`saveUser` on the message thread); any writer of a sound parameter — host automation from A, the UI, a control surface |
+| state | the bytes written to the `.anamorph` file; `sigAtLoad`, the signature `isDirty()` compares against |
+| old order | two reads: `savedSig = soundSig()` (live parameters), then `xml = apvts.copyState()` (the tree the file is written from), with a `soundParamGeneration` re-read to prove them coherent and **up to 8 retries** |
+| interleaving | a parameter moves between the two reads on every attempt → all 8 attempts see a changed generation → **the loop falls through and uses the unproven pair** → the file holds the value the *copy* saw while `sigAtLoad` names the value the *signature* saw |
+| observable | the preset is marked **clean** against a sound its own file does not contain. It is not merely a stale marker: a baseline naming an earlier sound compares equal again the moment the sound returns to it, and cycling automation does that by definition — so the preset sits there clean while reloading it changes what you hear |
+| measured | on the round-8 implementation, a parameter cycling between two values across the save: baseline `width 0.24000`, bytes on disk `0.76000`; the preset read **clean** at 0.24 and reloading moved the sound to 0.76 |
+| root cause | the baseline was derived from a *different read* than the bytes. The retry only narrowed the window, and it gave up **silently** in exactly the case — sustained automation — that the check exists for. Round 8's stated fallback ("they can only disagree in the safe direction, which reads as dirty") is refuted by the return-to-value case |
+| decision | **one capture.** `saveUser` takes a single `apvts.copyState()` and derives *both* the bytes and the baseline from that one object (`soundSignatureForSavedTree`). Nothing reads the live parameters again, so there is no "between". The retry is deleted rather than bounded harder: no number of retries establishes an invariant that one capture gets for free |
+| semantics | **(A) — the state captured at the capture instant.** Clean means *loading the selected preset would change nothing*; a parameter change after the capture leaves the preset **dirty**, correctly and immediately. The plug-in never waits for automation to settle and never silently saves a state the user cannot get back |
+| boundedness | there is no loop over live state at all, so sustained automation cannot make the save spin, retry or block. §5's constraint is met by removal, not by a bound |
+
+**A torn capture is still one snapshot.** JUCE's `flushParameterValuesToValueTree` writes adapters one
+at a time under `valueTreeChanging`, so a parameter moved from the audio thread mid-flush can leave
+the tree holding parameter A at one instant and parameter B at another. No non-blocking design can
+prevent that, and it does not weaken the invariant: whatever mixture the flush captured **is** the
+preset, and the baseline is computed from that same object. The invariant owed to the user is "clean
+means reloading changes nothing", not "the file is an instantaneous photograph".
+
+**Finding 1b — the same defect one level down, with no concurrency at all.** Anamorph's custom
+`RawChoice` / `RawBool` keep the *exact* normalised value in `getValue()` (deliberately: pluginval's
+state-restoration test sets a raw normalised value and reads it back, and stock discrete parameters
+snap). The session format preserves that bit-for-bit through the `raw` attribute — **a preset file
+has no `raw`** and stores only the snapped value. So a baseline taken from the live parameter
+described a sound no preset can hold. Measured: a 4-choice automated to `0.66` was written as index 2,
+baselined at `0.66000`, and reloaded as `0.66667` — §16's invariant broken by a plain save-then-load.
+Both sides now sign the value a preset can hold, `convertTo0to1(convertFrom0to1(v))`: a no-op for
+every stock parameter, and the correction for the custom ones. Movement *within* one step stops
+counting as a modification, which is right — the DSP reads the snapped value and the file cannot
+record the difference.
+
+**Related-ordering audit**, asking "is a durable value derived from state read on the far side of a
+window?":
+
+| site | same defect? | durable? | disposition |
+|---|---|---|---|
+| `PresetManager::saveUser` | yes | **yes** — `sigAtLoad` and a file on disk both persist | **fixed** (one capture) |
+| `PresetManager::load` / `loadFile` | **yes** — applies the file's sound, then baselines from a second LIVE read | **yes** — an *automation* write in that window is overwritten by nothing | **OPEN, reported not fixed** — see below |
+| `PresetManager::setMeta` / `adoptRestoredState` | no — the empty-baseline fallback reads the live sound *after* the caller has applied the parameters, which is the documented precondition | n/a | no defect |
+| `PresetManager::isDirty` memo | reads a generation, then builds; a change between them rebuilds on the next call | no | no defect |
+| `AnamorphAudioProcessor::currentStateSet` | captures tree + metadata without a window between them that a durable decision spans | no | no defect |
+| `getStateInformation` / `publishProgram` | read after their own drain (§15) | no | no defect |
+| `pollUndoCoalesce`'s undo signature | an in-memory snapshot, replaced on the next poll | no | no defect |
+
+**The load path is a confirmed sibling and is NOT closed by this round.** §16 recorded `load`'s
+baseline as a self-correcting transient, but that judgement was about a *restore* landing in the
+window — whose own adoption overwrites `sigAtLoad`. An *automation* write is overwritten by nothing,
+and that case was never considered. The failure is identical in shape and consequence: automation
+cycles a parameter, the user loads preset P, a write lands between `applySoundTree` and
+`sigAtLoad = soundSig()`, and the preset reads **clean** against the automated value while reloading
+P would move the sound.
+
+It is left open deliberately, with the measurement that makes the decision rather than a reflex fix:
+the symmetric remedy (baseline from the tree, as `saveUser` now does) removes the window entirely but
+makes the preset read **modified immediately after being loaded** at a measured rate of 2 in 3000
+round trips — roughly **1 preset load in 1500** — because a load applies `convertTo0to1(plain)` and
+the parameter then reports what it stores, one range mapping deeper than the baseline, and that extra
+pass is not idempotent for the four custom-mapped frequency ranges. Re-reading inside the apply loop
+shrinks the window without closing it; a generation check across the two reads is round 8's retry.
+Trading a rare false *clean* for a frequent false *dirty* on the most common preset action is a
+product decision, and it should be made with these numbers in hand rather than by this round's
+momentum. Recorded in ADR-0036 §17 and carried as an **actionable** residual.
+
+The other candidate the audit raised — `getStateInformation`'s off-message-thread path pairing a
+snapshot's metadata with a later live `copyStateWithRawValues()` — is the **already-dispositioned**
+host-timing residual (a host save straddling a message-thread edit), not a new finding: no
+non-blocking design can make those two reads atomic, and §5 already makes the *choice of snapshot*
+coherent. `pollUndoCoalesce`'s undo-signature capture writes nothing durable. Apart from the load
+path, no sibling fix was warranted.
+
+**Finding 2 — host serialization, disposition D, no new evidence.** Re-checked mechanically against
+the round-9 tree rather than restated: no Anamorph caller of either state function in `src/`; no new
+thread, timer, async callback or pool; the host-side members still touched only inside the two
+off-message-thread branches; the tripwire still diagnostic-only. The round-9 change adds one
+`PresetManager` hook and one static function, neither of which is reachable from either state function
+or read by any other thread. **Disposition D — unsupported host concurrency; no code change
+warranted.**
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 52 vs the round-8 two-read save (mutation A) | FAILS — baseline names width 0.24000, bytes hold 0.76000; the preset reads CLEAN at 0.24 while reloading moves the sound to 0.76 |
+| State test 52 vs HEAD's live baseline + no canonicalisation (mutation C) | FAILS 4 checks, incl. the sub-step discrete leg with no concurrency: baseline 0.66000, bytes and reload 0.66667 |
+| the canonicalisation removed (mutation B) | FAILS the pre-existing State test 8 assertion "freshly saved preset is clean" |
+| State tests 37–52 on the tree | green; suite 2000 checks / 0 failures, 51 tests |
+| the four probes under TSan, after (round-9 tree) | `--d2-stress-probe`, `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe`, 10 runs each: 0 runs with reports, 0 reports in total. No suppressions |
+| the state suite under TSan, after | 2000 checks, 0 failures, 0 TSan reports — including State test 52 leg (d), whose real automation thread writes parameters concurrently with `saveUser`, so the new capture path is exercised under the sanitizer rather than only in the plain build |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | 120 files clean; 398 anchors still point at the same text as both `8f781a3` (the round-8 merge) and `origin/main`; self-test 161 cases |
+| `preflight.sh` | exit 0 on the committed round-9 tree (all gates, both suites; `check-portability` 57 files / 0 violations, `check-realtime` 47 files / 0 violations, both warning-gate self-tests green) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: first-save
+consistency (42), overlapping restore ordering (43), Settings precedence (44), the handoff-window
+split (45), inline coherence (46), sound-edit precedence (47), replacement identity (48), completion
+ordering (49), the fixed-point drain (50) and the save/restore pairing (51) all pass unchanged.
+
+**What adversarial review changed in this round, recorded because the first implementation was
+wrong.** The fix as first written canonicalised the value on BOTH sides of the comparison. The file
+side already had that mapping applied — the tree holds the denormalised value — so it was applied
+twice, and the mapping is not idempotent in float for the four custom-mapped frequency ranges: a
+freshly saved preset then read **modified**, measured at 4 sweep points in 20001. The 201-point
+uniform sweep that was supposed to prove the equality could not see it, because a uniform grid never
+lands near a 5-decimal rounding boundary. Both are fixed (the file side applies it zero times; the
+sweep is uniform then pseudo-random over 20001 points) and both are now mutation-tested. Review also
+established that unifying the definition required the undo / A-B signature to move with it, and that
+the load path is a genuine sibling — both are carried above.
+
+**Status.** D-2 / RISK-007 — the reported finding is closed; **one actionable issue is now open**:
+the load-path baseline (above), reported with its measured trade-off rather than fixed blind.
+Architecture Review Gate: **APPROVED**, this round inside it. Host serialization: **disposition D**,
+no new evidence. Non-actionable residuals: a host save's snapshot and `copyState()` straddling a
+message-thread edit, the ≤ 50 ms adoption latency for the tail, and the preset format's own
+denormalised round trip (a re-saved preset can differ from the original in the last bits — measured
+347 in 3000 — which predates this round, moves no marker and changes no sound).
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can

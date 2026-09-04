@@ -164,7 +164,14 @@ juce::String PresetManager::soundSignatureFor (const juce::AudioProcessorValueTr
     for (auto* p : s.processor.getParameters())
         if (auto* wid = dynamic_cast<const juce::AudioProcessorParameterWithID*> (p))
             if (! pid::isPresetExcluded (wid->paramID))
-                sig << juce::String (p->getValue(), 5) << ',';
+            {
+                // Signed as the plug-in renders and stores it, so that this signature and
+                // the one soundSignatureForSavedTree builds from a FILE are the same
+                // quantity (§17). A no-op for every stock parameter; see
+                // normalisedAsRendered in PluginParameters.h, which the undo / A-B
+                // signature uses too so all three answer one question.
+                sig << juce::String (normalisedAsRendered (*p), 5) << ',';
+            }
     return sig;
 }
 
@@ -213,6 +220,38 @@ namespace
         out = v;
         return true;
     }
+
+    // THE ONE RULE FOR "WHAT SOUND DOES THIS SAVED TREE MEAN", shared by the two paths
+    // that must never disagree about it (D-2 round 9, ADR-0036 §17): the path that
+    // APPLIES a preset (applySoundTree) and the path that computes the CLEAN BASELINE a
+    // saved preset is judged against (soundSignatureForSavedTree). They used to be
+    // different computations over different sources -- the apply read the tree, the
+    // baseline read the LIVE parameters -- which is exactly how a preset came to be
+    // marked clean against a sound its own file does not contain. One function now
+    // answers the question for both, so "clean" can only ever mean "the live sound is
+    // what this file restores".
+    //
+    // The resolution rule itself is unchanged and is the one SERIALIZATION_REGISTRY.md
+    // records: a value is adopted only when the node, the property and the number are
+    // all usable; absent, value-less, malformed or non-finite all resolve to the
+    // parameter DEFAULT, which is the same answer a missing PARAM child already got.
+    // The presence test is on the PROPERTY, not just the node: a <PARAM id="width"/>
+    // that lost its value to a truncated write or a hand edit reads back as var() ->
+    // 0.0 -> the range MINIMUM, which for width (0..2, default 1) is a silent mono
+    // collapse. The guard runs on the INPUT, before convertTo0to1, because the
+    // conversion clamps: an infinity arrives at a finiteness test already laundered
+    // into a finite range ENDPOINT. anamorph::SerializedNumber.h carries the measured
+    // table; the session path applies the same predicate so the two cannot drift.
+    float normalisedFromSavedTree (const juce::RangedAudioParameter& rp,
+                                   const juce::ValueTree& savedSound,
+                                   const juce::String& paramID)
+    {
+        const auto child = savedSound.getChildWithProperty ("id", paramID);
+        float plain = 0.0f;
+        return readSerializedValue (child.getProperty ("value"), plain)
+                 ? rp.convertTo0to1 (plain)
+                 : rp.getDefaultValue();
+    }
 }
 
 // A preset file is accepted only when it is a well-formed document AND its root
@@ -248,42 +287,71 @@ juce::ValueTree PresetManager::parseSoundFile (const juce::File& f) const
     return {};
 }
 
+// A preset file is user-editable text and `nan` parses, so a value is adopted only
+// when it is usable -- otherwise the parameter default applies, exactly as it does
+// for a missing child. A non-finite parameter silences the plug-in for the rest of
+// the session (see reassertParameters for the full mechanism); the session path is
+// guarded there. "Absent means default" holds for a value-less node too -- the writer
+// is apvts.copyState().createXml(), which always emits `value`, so nothing this
+// plug-in saves takes that branch. All of it now lives in normalisedFromSavedTree,
+// which is also what soundSignatureForSavedTree resolves through: this function and
+// the baseline it will be judged against read the file through ONE rule (§17).
 void PresetManager::applySoundTree (const juce::ValueTree& state)
 {
     for (auto* p : apvts.processor.getParameters())
         if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (p))
             if (! pid::isPresetExcluded (wid->paramID))
-            {
-                auto child = state.getChildWithProperty ("id", wid->paramID);
                 if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
-                {
-                    // A preset file is user-editable text and `nan` parses, so the
-                    // value is only adopted when it is finite -- otherwise the
-                    // parameter default applies, exactly as it does for a missing
-                    // child. A non-finite parameter silences the plug-in for the
-                    // rest of the session (see reassertParameters for the full
-                    // mechanism); the session path is guarded there.
-                    //
-                    // The presence test is on the PROPERTY, not just the node: a
-                    // <PARAM id="width"/> that lost its value to a truncated write or
-                    // a hand edit reads back as var() -> 0.0 -> the range MINIMUM,
-                    // which for width (0..2, default 1) is a silent mono collapse.
-                    // "Absent means default" has to hold for a value-less node too --
-                    // the writer is apvts.copyState().createXml(), which always emits
-                    // `value`, so nothing this plug-in saves takes the new branch.
-                    // The guard runs on the INPUT, before convertTo0to1, because the
-                    // conversion clamps: an infinity arrives at a finiteness test
-                    // already laundered into a finite range ENDPOINT. anamorph::
-                    // SerializedNumber.h carries the measured table and the rule; the
-                    // session path applies the same predicate so the two cannot drift.
-                    float plain = 0.0f;
-                    const bool usable = readSerializedValue (child.getProperty ("value"), plain);
-                    const float fromFile = usable ? rp->convertTo0to1 (plain)
-                                                  : rp->getDefaultValue();
-                    rp->setValueNotifyingHost (fromFile);
-                }
-            }
+                    rp->setValueNotifyingHost (normalisedFromSavedTree (*rp, state, wid->paramID));
     resetSolo();
+}
+
+// THE SIGNATURE A SAVED SOUND TREE WILL PRODUCE ONCE IT IS LOADED (D-2 round 9,
+// ADR-0036 §17). This is the clean baseline of a preset that was just written, and it
+// is derived from the BYTES rather than from a second read of the live parameters --
+// which is the whole point: no mutation, however busy, can separate a baseline from
+// the file it describes when the baseline is computed FROM that file.
+//
+// It mirrors applySoundTree parameter for parameter, through the same
+// normalisedFromSavedTree, so the equality "this is what soundSignatureFor returns
+// after applySoundTree(t)" is true by construction rather than by argument. State
+// test 52 pins it by measurement across the whole parameter set as well, because a
+// construction argument is only as good as the two functions staying in step.
+//
+// THE NON-RANGED BRANCH IS UNREACHABLE IN THIS PLUG-IN and is a fallback, not a claim.
+// Every parameter `createAnamorphLayout` builds is a RangedAudioParameter (stock
+// AudioParameterFloat, or the RawChoice / RawBool / RawInt subclasses), which State test
+// 52's sweep leg asserts rather than assumes. If one ever were not, a preset could carry
+// no value for it and a load would leave it untouched, so its live value is the only
+// defensible contribution -- but it is then the live value AT SAVE TIME, which is the one
+// place this function's "what the file will restore" contract is approximate. Nothing in
+// the tree can make it exact, because the tree holds nothing for such a parameter.
+juce::String PresetManager::soundSignatureForSavedTree (const juce::AudioProcessorValueTreeState& s,
+                                                        const juce::ValueTree& savedSound)
+{
+    juce::String sig;
+    for (auto* p : s.processor.getParameters())
+        if (auto* wid = dynamic_cast<const juce::AudioProcessorParameterWithID*> (p))
+            if (! pid::isPresetExcluded (wid->paramID))
+            {
+                // NOT canonicalised again here, and that is load-bearing. The tree already
+                // holds the DENORMALISED value, so `normalisedFromSavedTree` returns
+                // convertTo0to1(convertFrom0to1(live)) -- character for character the
+                // expression the live side computes. Applying the canonicaliser a second
+                // time would make this side convertTo0to1(convertFrom0to1(...)) twice, and
+                // for the four frequency parameters whose range carries custom log/exp
+                // conversion lambdas and no interval to snap to, that mapping is the
+                // identity in real arithmetic but NOT idempotent in float: the two sides
+                // then part company in the last bits and, at a 5-decimal rounding boundary,
+                // in the printed signature -- a freshly saved preset reading MODIFIED.
+                // Measured at 4 sweep points in 20001 before this was removed; State test
+                // 52's sweep leg is dense enough to see it.
+                const auto* rp = dynamic_cast<const juce::RangedAudioParameter*> (p);
+                sig << juce::String (rp != nullptr
+                                       ? normalisedFromSavedTree (*rp, savedSound, wid->paramID)
+                                       : p->getValue(), 5) << ',';
+            }
+    return sig;
 }
 
 void PresetManager::load (int index)
@@ -394,35 +462,49 @@ bool PresetManager::saveUser (const juce::String& rawName)
     // by hand. Different function, different question: §9.)
     auto file = dir.getChildFile (name + kPresetExt);
 
-    // A pending host restore is adopted BEFORE the sound is captured (D-2 round 8,
-    // ADR-0036 §16). It used to be adopted after the file had been written, which put
-    // the restore between the bytes and the baseline: the file held the outgoing
-    // session's sound while `sigAtLoad` below was read from the restored one, so the
-    // preset was marked CLEAN against a sound its own file does not contain -- reloading
-    // it changed what you heard while the indicator said nothing had changed. Draining
-    // first is also what every other message-thread entry point does, so the save now
-    // writes the same session the rest of the program is on.
+    // ONE CAPTURE, ONE SNAPSHOT, ONE MEANING (D-2 round 9, ADR-0036 §17). The preset IS
+    // this tree: `copyState()` flushes the live parameters into the APVTS tree under
+    // JUCE's own lock and hands back a private copy, and everything downstream -- the
+    // bytes on disk AND the clean baseline -- is derived from that one object. No
+    // parameter change, however fast or however sustained, can land "between" two reads,
+    // because there is only one read. (Precisely: one read of any parameter this plug-in
+    // has. `soundSignatureForSavedTree` keeps a live fallback for a parameter that is not
+    // a RangedAudioParameter, and Anamorph has none -- State test 52 asserts that rather
+    // than assuming it.)
+    //
+    // `saveUser` itself contains no loop. The drain it calls through `onAboutToSave` is
+    // §15's, whose termination argument is §11's supported-host boundary, not this
+    // function's.
+    //
+    // WHAT THIS REPLACED and why the replacement is not a stronger version of it. Round
+    // 8 took two reads -- a live signature and then the state copy -- and tried to prove
+    // them coherent by re-reading the sound generation, retrying up to eight times. Two
+    // things were wrong with that. The loop FELL THROUGH after eight failures and used
+    // the unproven pair anyway, so sustained automation (which is exactly when the check
+    // fails) was the case it silently stopped covering. And its stated fallback -- that a
+    // disagreement "reads as dirty rather than as a false clean" -- does not hold: a
+    // baseline describing an EARLIER sound reads clean again the moment the sound returns
+    // to it, which is what cycling automation does by definition. The preset then sat
+    // there marked clean while its file held a different sound.
+    //
+    // The retry is gone rather than bounded harder, because no number of retries can
+    // establish an invariant that one capture gets for free.
+    //
+    // A pending host restore is adopted BEFORE that capture (D-2 round 8, §16). It used
+    // to be adopted after the file had been written, which put the restore between the
+    // bytes and the baseline: the file held the outgoing session's sound while the
+    // baseline came from the restored one. Draining first is also what every other
+    // message-thread entry point does, so the save writes the session the rest of the
+    // program is on.
     if (onAboutToSave) onAboutToSave();
 
-    // ONE COHERENT PAIR: the baseline and the bytes. `sigAtLoad` is the sound this file
-    // holds, so "clean" can only ever mean "the live sound is what the selected preset
-    // contains". The signature is read BEFORE the state copy so the two can only ever
-    // disagree in the safe direction -- a sound that moved between them leaves the
-    // baseline describing the EARLIER state, which reads as dirty rather than as a false
-    // clean -- and the generation check makes even that unnecessary whenever it holds:
-    // an unchanged sound generation across both reads proves they describe one sound.
-    // The retry is over two cheap in-memory reads, never over the file write, and it
-    // gives up rather than looping: without a processor to supply the generation (the
-    // hook is optional) the first pass is simply taken, exactly as before.
-    juce::String savedSig;
-    std::unique_ptr<juce::XmlElement> xml;
-    for (int attempt = 0; attempt < 8; ++attempt)
-    {
-        const auto before = soundParamGeneration ? soundParamGeneration() : 0;
-        savedSig = soundSig();
-        xml      = apvts.copyState().createXml();
-        if (soundParamGeneration == nullptr || soundParamGeneration() == before) break;
-    }
+    // Test seam (empty in production: one null check, on a non-audio path). It fires at
+    // the one instant a mutation would have to land to split the bytes from the baseline,
+    // which is what makes State test 52 deterministic instead of a race to lose.
+    if (beforeStateCapture) beforeStateCapture();
+
+    const auto savedSound = apvts.copyState();
+    const auto xml = savedSound.createXml();
     if (xml == nullptr || ! file.replaceWithText (xml->toString())) return false;
 
     refresh();
@@ -431,7 +513,12 @@ bool PresetManager::saveUser (const juce::String& rawName)
     // exists for: saving a user preset under a factory preset's name now moves the
     // tick to the USER row instead of leaving it on the factory one (#4).
     sel = { Selection::Kind::userFile, {}, file };
-    sigAtLoad = savedSig;   // the sound the file holds, not a re-read of the live one (§16)
+    // The baseline is the sound THIS FILE RESTORES, computed from the tree that was just
+    // written (§17) -- never a second read of the live parameters. So "clean" means
+    // exactly "loading the selected preset would change nothing", and a mutation that
+    // lands during the save leaves the preset DIRTY, correctly and immediately, because
+    // the live sound has moved away from what the file holds.
+    sigAtLoad = soundSignatureForSavedTree (apvts, savedSound);
     if (onMetaChanged) onMetaChanged();
     if (onSaved) onSaved(); // re-baseline the processor's undo snapshot onto the saved preset
     return true;

@@ -87,6 +87,47 @@ namespace pid
     }
 }
 
+// ---------------------------------------------------------------------------
+//  THE SOUND VALUE, AS THE PLUG-IN ACTUALLY RENDERS AND STORES IT.
+//
+//  A parameter's normalised `getValue()` is not always the value that reaches the
+//  DSP or a file. The DSP reads `getRawParameterValue()`, which is the DENORMALISED
+//  value -- `convertFrom0to1(getValue())`, snapped to the range's interval -- and both
+//  the preset format and the APVTS session tree store that same denormalised number.
+//  `RawChoice` / `RawBool` above keep the EXACT normalised value in `getValue()` on
+//  purpose (pluginval sets a raw normalised value and reads it back), so for those the
+//  two differ: a 4-choice automated to 0.66 renders, and stores, as index 2.
+//
+//  This maps a normalised value onto the grid the plug-in can actually render and keep.
+//  Every "has the sound changed?" signature is built from it, so they all answer the
+//  same question -- the preset modified-marker (`PresetManager::soundSignatureFor`) and
+//  the undo / A-B coalescer (`AnamorphAudioProcessor::soundSignature`) alike. Before
+//  D-2 round 9 they used the raw normalised value, which made a sub-step move on a
+//  discrete parameter count as an edit even though nothing about the sound, the file or
+//  the DSP input changed by it (ADR-0036 §17).
+//
+//  It is a no-op for every stock `juce::AudioParameterFloat`, which already stores the
+//  denormalised value and reports `convertTo0to1` of it. APPLY IT EXACTLY ONCE per
+//  value: for the frequency ranges built from custom log/exp conversion lambdas it is
+//  the identity in real arithmetic but NOT idempotent in float, so a second application
+//  moves the last bits and can cross a decimal rounding boundary in a signature. A value
+//  resolved out of a saved tree has already had it applied, because the tree holds the
+//  denormalised number -- see PresetManager::soundSignatureForSavedTree.
+// ---------------------------------------------------------------------------
+inline float normalisedAsRendered (const juce::RangedAudioParameter& rp, float normalised) noexcept
+{
+    return rp.convertTo0to1 (rp.convertFrom0to1 (normalised));
+}
+
+// The same question for a parameter that may not be ranged: a non-ranged parameter has
+// no grid to land on, so its own value is already the answer.
+inline float normalisedAsRendered (const juce::AudioProcessorParameter& p) noexcept
+{
+    if (auto* rp = dynamic_cast<const juce::RangedAudioParameter*> (&p))
+        return normalisedAsRendered (*rp, rp->getValue());
+    return p.getValue();
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout();
 
 // Cached raw atomic pointers + conversion to the DSP snapshot.

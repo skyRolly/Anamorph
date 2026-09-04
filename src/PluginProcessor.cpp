@@ -415,7 +415,15 @@ juce::String AnamorphAudioProcessor::soundSignature() const
     for (auto* p : getParameters())
         if (auto* wid = dynamic_cast<const juce::AudioProcessorParameterWithID*> (p))
             if (! isViewParam (wid->paramID))
-                sig << juce::String (p->getValue(), 5) << ',';
+                // As the plug-in RENDERS it, the same question the preset modified-marker
+                // asks (D-2 round 9, ADR-0036 §17). These two signatures answer "has the
+                // sound changed?" for different purposes and over different parameter sets,
+                // but they must not answer it differently for the same movement: signing the
+                // raw normalised value here while the marker signs the rendered one would
+                // record an undo step for a sub-step move on a discrete parameter -- 0.66 to
+                // 0.67 on a 4-choice, both index 2 -- that the marker simultaneously
+                // declares to be no change, and that undoing would neither hear nor show.
+                sig << juce::String (normalisedAsRendered (*p), 5) << ',';
     return sig;
 }
 

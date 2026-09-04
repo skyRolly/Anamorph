@@ -8359,6 +8359,421 @@ static void testPresetSavedDuringRestoreIsCleanAgainstItsOwnFile()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 52 -- a save's BYTES and its clean BASELINE describe one sound,
+//  however busy the automation (D-2 round 9, review finding "busy automation
+//  saves false baseline").
+//
+//  `saveUser` took TWO reads of the live sound -- a signature, then the state copy
+//  the file is written from -- and tried to prove them coherent by re-reading the
+//  sound generation, retrying up to eight times. Under SUSTAINED automation every
+//  attempt fails, and the loop then FELL THROUGH and used the unproven pair: the
+//  file held one sound and `sigAtLoad` described another. Its stated fallback --
+//  that such a disagreement "reads as dirty rather than as a false clean" -- is
+//  what fails here, because a baseline describing an EARLIER sound reads clean
+//  again the moment the sound RETURNS to it, which is exactly what cycling
+//  automation does. The preset then sat there marked clean while reloading it
+//  changed what you heard.
+//
+//  The invariant pinned is stated so that it holds whatever the implementation
+//  does to get there, and it is the user-visible one:
+//      IF THE SELECTED PRESET READS CLEAN, RELOADING IT CHANGES NOTHING.
+//  It is checked at BOTH values the automation cycles through, so a baseline that
+//  named either of them is caught; the false clean is not a value the test has to
+//  guess. Alongside it the structural form is asserted directly -- the baseline
+//  equals the signature of the bytes actually on disk.
+//
+//  WHICH LEG DISCRIMINATES, measured rather than assumed. Against the round-8
+//  two-read save only leg (b) fails: its seam CYCLES, so the generation check never
+//  settles and the retry gives up. Legs (a) and (c) mutate to the same values on
+//  every fire, so round 8's second attempt is stable and its retry succeeds -- they
+//  cover the shape, not the defect. Leg (d) is a real thread and therefore timing-
+//  dependent; it is a robustness leg, never the discriminator. Deleting leg (b)
+//  would leave the whole defect uncaught, which is why this paragraph exists.
+//
+//  The `beforeStateCapture` seam makes the interleaving exact instead of a race to
+//  lose: it fires at the one instant a mutation must land to split the two reads.
+//  Every leg asserts that it actually fired, because a seam that stopped landing in
+//  the split would make every leg pass while testing nothing.
+// ---------------------------------------------------------------------------
+static void testSaveBaselineDescribesTheBytesUnderAutomation()
+{
+    std::printf ("State test 52: a save's bytes and its clean baseline describe one sound (D-2 r9)\n");
+
+    const juce::String name ("AnamorphHarness-D2R9");
+    auto presetFile = anamorph::PresetManager::presetDirectory()
+                          .getChildFile (name + anamorph::PresetManager::fileSuffix());
+
+    // The test writes into the REAL user preset folder (the production path), so a
+    // genuine user preset with the harness name is parked and put back afterwards.
+    // RAII, not a trailing pair of statements: an assertion that aborts the process
+    // mid-leg must not leave a user's preset parked in the temp directory.
+    struct ParkedPreset
+    {
+        explicit ParkedPreset (juce::File f)
+            : live (std::move (f)),
+              parked (juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getChildFile ("AnamorphStateHarness.d2r9.parked")),
+              had (live.existsAsFile())
+        {
+            if (had) { parked.deleteFile(); live.moveFileTo (parked); }
+        }
+        ~ParkedPreset()
+        {
+            live.deleteFile();
+            if (had) { parked.moveFileTo (live); parked.deleteFile(); }
+        }
+        juce::File live, parked;
+        bool had;
+    };
+    const ParkedPreset guard { presetFile };
+
+    // The signature of the sound the FILE ON DISK restores -- read back through the
+    // same resolution the loader uses, so "the baseline describes the bytes" is a
+    // claim about the bytes and not about the writer's intentions.
+    auto signatureOfFile = [] (AnamorphAudioProcessor& proc, const juce::File& f)
+    {
+        auto xml = juce::parseXML (f);
+        return xml == nullptr ? juce::String()
+                              : anamorph::PresetManager::soundSignatureForSavedTree (
+                                    proc.getAPVTS(), juce::ValueTree::fromXml (*xml));
+    };
+
+    // Every seam leg ends here: the baseline must name the bytes, and a preset that
+    // reads clean must reload without moving the sound. Checked at BOTH cycled values,
+    // and the clean branch is ASSERTED to have been taken -- otherwise an
+    // always-dirty regression would silently delete the reload invariant from the run.
+    auto assertCoherent = [&] (AnamorphAudioProcessor& proc, const juce::File& f,
+                               float valueA, float valueB, int seamFires, const char* leg)
+    {
+        auto& pm = proc.getPresets();
+        check (seamFires >= 1,
+               (juce::String ("the capture seam fired (") + leg + ")").toRawUTF8());
+        checkStr (pm.baseline(), signatureOfFile (proc, f),
+                  (juce::String ("the clean baseline is the signature of the bytes on disk (")
+                       + leg + ")").toRawUTF8());
+
+        int cleanLegs = 0;
+        for (const float v : { valueA, valueB })
+        {
+            setRaw (proc, "width", v);
+            if (pm.isDirty()) continue;      // dirty is always safe: the star can only over-report
+            ++cleanLegs;
+            const auto soundBefore = anamorph::PresetManager::soundSignatureFor (proc.getAPVTS());
+            check (pm.loadFile (f), "the preset file the save wrote loads back");
+            proc.pollUndoCoalesce();
+            checkStr (anamorph::PresetManager::soundSignatureFor (proc.getAPVTS()), soundBefore,
+                      (juce::String ("a preset that reads CLEAN reloads without changing the sound (")
+                           + leg + ")").toRawUTF8());
+        }
+        // The file holds ONE of the two cycled values, so setting the live sound to that
+        // one must read clean. Zero clean legs means the reload invariant above never
+        // ran, which is a hole, not a pass.
+        check (cleanLegs >= 1,
+               (juce::String ("the clean branch was exercised: one cycled value reads clean (")
+                    + leg + ")").toRawUTF8());
+        std::printf ("  %s: %d of 2 cycled values read clean\n", leg, cleanLegs);
+    };
+
+    const float A = 0.24f, B = 0.76f;   // the two values the automation cycles between
+    check (! juce::exactlyEqual (A, B), "non-vacuity: the cycled values differ");
+
+    // --- (a) ONE mutation inside the capture window --------------------------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "width", A);
+        int fires = 0;
+        p.getPresets().beforeStateCapture = [&] { ++fires; setRaw (p, "width", B); };
+        check (p.getPresets().saveUser (name), "saveUser succeeds");
+        p.getPresets().beforeStateCapture = nullptr;
+        assertCoherent (p, presetFile, A, B, fires, "one mutation in the window");
+    }
+
+    // --- (b) SUSTAINED automation: the seam CYCLES on every fire --------------
+    // THE DISCRIMINATOR. Against the round-8 implementation the generation check never
+    // settles, its retry gives up, and the pair it writes was never proven coherent --
+    // so the bytes hold one of these two values and the baseline names the other.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "width", A);
+        int fires = 0;
+        p.getPresets().beforeStateCapture = [&]
+        {
+            ++fires;
+            setRaw (p, "width", (fires % 2) == 1 ? B : A);   // cycle, like an LFO on the lane
+        };
+        check (p.getPresets().saveUser (name), "saveUser succeeds under sustained automation");
+        p.getPresets().beforeStateCapture = nullptr;
+        assertCoherent (p, presetFile, A, B, fires, "sustained cycling automation");
+    }
+
+    // --- (c) SEVERAL parameters mutated inside the window --------------------
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "width", A);
+        const float driveA = rawOf (p, "drive");
+        const float driveB = driveA < 0.5f ? driveA + 0.30f : driveA - 0.30f;
+        int fires = 0;
+        p.getPresets().beforeStateCapture = [&]
+        {
+            ++fires;
+            setRaw (p, "width", B);
+            setRaw (p, "drive", driveB);
+            setRaw (p, "amount", 0.61f);
+        };
+        check (p.getPresets().saveUser (name), "saveUser succeeds with several parameters moving");
+        p.getPresets().beforeStateCapture = nullptr;
+        assertCoherent (p, presetFile, A, B, fires, "several parameters in the window");
+    }
+
+    // --- (d) a REAL automation thread across the whole save ------------------
+    // NOT the discriminator -- leg (b) is -- but the case the finding describes, driven
+    // by an actual concurrent writer rather than a seam. Whatever interleaving it
+    // happens to produce, the invariant is the same one. It is also the leg that puts
+    // the new capture path under ThreadSanitizer in the tsan lane.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "width", A);
+        int fires = 0;
+        p.getPresets().beforeStateCapture = [&] { ++fires; };
+        std::atomic<bool> run { true };
+        std::atomic<int>  writes { 0 };
+        std::thread automation ([&]
+        {
+            for (int i = 0; run.load (std::memory_order_acquire); ++i)
+            {
+                setRaw (p, "width", (i % 2) == 0 ? B : A);
+                writes.fetch_add (1, std::memory_order_relaxed);
+                std::this_thread::yield();
+            }
+        });
+        const bool ok = p.getPresets().saveUser (name);
+        run.store (false, std::memory_order_release);
+        automation.join();
+        p.getPresets().beforeStateCapture = nullptr;
+        check (ok, "saveUser succeeds with an automation thread running");
+        check (writes.load() > 0, "non-vacuity: the automation thread actually wrote");
+        assertCoherent (p, presetFile, A, B, fires, "a concurrent automation thread");
+    }
+
+    // --- (e) a DISCRETE parameter carrying an automated sub-step value -------
+    // No concurrency at all. A preset stores the SNAPPED value, so a 4-choice that host
+    // automation left at 0.66 reloads as 0.66667 -- and a baseline taken from the raw
+    // live parameter therefore described a sound the file cannot hold, so the preset
+    // went dirty the instant it was reloaded. Both signatures are now built from
+    // `normalisedAsRendered` (§17), which is the same defect one level below the window.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "algorithm", 0.66f);        // a mid-step raw, exactly as automation writes it
+        // The leg only means anything while RawChoice keeps the raw value UNSNAPPED. If
+        // that ever changed, getValue() would read back 0.66667 and the leg would pass
+        // while testing nothing, so the sub-step property is asserted rather than assumed.
+        check (juce::exactlyEqual (rawOf (p, "algorithm"), 0.66f),
+               "non-vacuity: the discrete parameter kept the exact sub-step raw value");
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("algorithm")))
+            check (! juce::exactlyEqual (normalisedAsRendered (*rp, 0.66f), 0.66f),
+                   "...and that value is NOT what the plug-in renders, so the two could disagree");
+        check (p.getPresets().saveUser (name), "saveUser succeeds for a sub-step discrete value");
+        check (! p.getPresets().isDirty(), "the freshly saved preset reads clean");
+        const auto baselineAtSave = p.getPresets().baseline();
+        checkStr (baselineAtSave, signatureOfFile (p, presetFile),
+                  "the clean baseline is the signature of the bytes on disk (sub-step discrete)");
+        check (p.getPresets().loadFile (presetFile), "the preset file loads back");
+        p.pollUndoCoalesce();
+        check (! p.getPresets().isDirty(),
+               "...and reloading a preset saved at a sub-step discrete value leaves it CLEAN");
+        checkStr (anamorph::PresetManager::soundSignatureFor (p.getAPVTS()), baselineAtSave,
+                  "...reproducing exactly the sound it was clean against");
+    }
+
+    // --- (f) the SAVE-TIME equality, measured across the whole domain ---------
+    // soundSignatureForSavedTree must return exactly what soundSignatureFor returns for
+    // the same live state -- that is what makes a freshly saved preset read clean. It is
+    // true by construction, both sides reducing to convertTo0to1(convertFrom0to1(live)):
+    // the live side applies `normalisedAsRendered` once, and the FILE side applies it
+    // ZERO times because the tree already holds the denormalised value. Getting that
+    // count wrong is the failure this leg exists for -- the mapping is the identity in
+    // real arithmetic but NOT idempotent in float for the four frequency ranges built
+    // from custom log/exp lambdas, so one extra application moves the last bits and, at a
+    // 5-decimal rounding boundary, the printed signature: a freshly saved preset then
+    // reads MODIFIED. A uniform grid never meets such a boundary, so the sweep is
+    // uniform THEN pseudo-random, and the random points are generated arithmetically
+    // rather than through a std:: distribution, whose point set is implementation-defined.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        auto& apvts = p.getAPVTS();
+
+        std::vector<juce::RangedAudioParameter*> ranged;
+        int nonRanged = 0;
+        for (auto* q : p.getParameters())
+            if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (q))
+                if (! pid::isPresetExcluded (wid->paramID))
+                {
+                    if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (q)) ranged.push_back (rp);
+                    else ++nonRanged;
+                }
+        check (ranged.size() >= 20, "non-vacuity: the sweep covers the real parameter set");
+        // Pins soundSignatureForSavedTree's one approximate branch as DEAD: it falls back
+        // to a LIVE read for a parameter that is not ranged, and this plug-in has none.
+        check (nonRanged == 0,
+               "every preset-carried parameter is a RangedAudioParameter, so the saved-tree "
+               "signature never falls back to a live read");
+
+        int mismatches = 0;
+        juce::String firstMismatch;
+        juce::uint32 lcg = 0xD2900009u;
+        const int uniformPoints = 200, totalPoints = 20000;
+        for (int step = 0; step <= totalPoints; ++step)
+        {
+            lcg = lcg * 1664525u + 1013904223u;
+            const float v = step <= uniformPoints
+                              ? (float) step / (float) uniformPoints
+                              : (float) ((lcg >> 8) * (1.0 / 16777216.0));
+            for (auto* rp : ranged) rp->setValueNotifyingHost (v);
+
+            const auto live = anamorph::PresetManager::soundSignatureFor (apvts);
+            const auto tree = anamorph::PresetManager::soundSignatureForSavedTree (apvts, apvts.copyState());
+            if (live != tree && mismatches++ == 0)
+                firstMismatch = "at normalised " + juce::String (v, 9);
+        }
+        check (mismatches == 0,
+               mismatches == 0 ? "the live signature and the saved-tree signature agree across the whole"
+                                 " normalised domain of every parameter"
+                               : ("the two signatures disagree at " + juce::String (mismatches)
+                                  + " sweep point(s); first " + firstMismatch).toRawUTF8());
+        std::printf ("  save-time signature equality swept over %d points x %d parameters: %d mismatch(es)\n",
+                     totalPoints + 1, (int) ranged.size(), mismatches);
+    }
+
+    // --- (g) a freshly saved preset reads CLEAN at a custom-mapped frequency --
+    // Leg (f) compares the two builders; this is the same property as a user meets it,
+    // at a value chosen to sit on the float round trip's rounding edge for a
+    // `logFreqRange` parameter. Canonicalising the FILE side a second time makes exactly
+    // this fail: the star appears on a preset nobody has touched.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "mbFreqLow", 0.381175071f);
+        check (p.getPresets().saveUser (name), "saveUser succeeds at a custom-mapped frequency value");
+        check (! p.getPresets().isDirty(),
+               "a freshly saved preset reads CLEAN at a custom-mapped frequency value");
+        checkStr (p.getPresets().baseline(), signatureOfFile (p, presetFile),
+                  "the clean baseline is the signature of the bytes on disk (custom-mapped frequency)");
+    }
+
+    // --- (h) the modified-marker and the undo history answer ONE question -----
+    // Both signatures are built from the value the plug-in RENDERS. A sub-step move on a
+    // discrete parameter (0.66 -> 0.67 on a 4-choice, both index 2) changes neither the
+    // DSP input nor anything a file can hold, so it must be a change to NEITHER -- if the
+    // marker ignored it while the coalescer recorded it, the user would get an undo entry
+    // that, pressed, moves neither the sound nor the star.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        const float atStart = rawOf (p, "algorithm");
+        check (! p.canUndo(), "non-vacuity: a fresh instance has no undo history");
+
+        auto gesture = [&] (float v)
+        {
+            auto* rp = p.getAPVTS().getParameter ("algorithm");
+            rp->beginChangeGesture(); rp->setValueNotifyingHost (v); rp->endChangeGesture();
+            p.pollUndoCoalesce();
+        };
+
+        gesture (0.66f);                       // a real step change: index 2
+        check (p.canUndo(), "the step change recorded an undo step");
+        const bool dirtyAfterStep = p.getPresets().isDirty();
+
+        gesture (0.67f);                       // WITHIN the same step: index 2 still
+        checkNear ((double) rawOf (p, "algorithm"), 0.67, 1.0e-6, "the sub-step move took effect");
+        check (p.getPresets().isDirty() == dirtyAfterStep,
+               "a sub-step move on a discrete parameter does not move the modified-marker");
+
+        // Decisive: if the sub-step move had recorded its own step, one undo would land on
+        // 0.66. It records none, so one undo goes back past both, to where we started.
+        p.undo();
+        p.pollUndoCoalesce();
+        checkNear ((double) rawOf (p, "algorithm"), (double) atStart, 1.0e-6,
+                   "...and it recorded no undo step either -- one undo goes back past both moves");
+    }
+
+    // --- (i) the SAVE -> LOAD round trip, measured -----------------------------
+    // The equality leg (f) pins is the one that must be EXACT, because it is what makes a
+    // freshly saved preset read clean. Loading is a different question: a load applies
+    // convertTo0to1(plain) and the parameter then reports the value it stores, so the
+    // sound after a reload passes through the range round trip once MORE than the
+    // baseline did. That extra application is not exactly the identity in float, and it
+    // cannot be made so from this side -- a preset stores one lossy denormalised number
+    // per parameter, which is the format, not a defect.
+    //
+    // So this leg asserts what must hold exactly and MEASURES what cannot:
+    //   * exact -- a reloaded preset never reads modified, and the reloaded sound is the
+    //     saved sound to well inside anything audible;
+    //   * measured -- the printed counts record how often the baseline STRING and the
+    //     re-saved BYTES differ in their last digits across a round trip. The byte drift
+    //     is pre-existing (it is the preset format's denormalised round trip and predates
+    //     this round entirely); what matters is that it never moves the marker.
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        auto& apvts = p.getAPVTS();
+        std::vector<juce::RangedAudioParameter*> ranged;
+        for (auto* q : p.getParameters())
+            if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (q))
+                if (! pid::isPresetExcluded (wid->paramID))
+                    if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (q))
+                        ranged.push_back (rp);
+
+        auto probe = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                         .getChildFile ("AnamorphStateHarness.d2r9.probe" + anamorph::PresetManager::fileSuffix());
+        juce::uint32 lcg = 0x5EED1234u;
+        int sigDrift = 0, byteDrift = 0, markerWrong = 0, soundMoved = 0, loadsFailed = 0;
+        const int points = 3000;
+        for (int i = 0; i < points; ++i)
+        {
+            lcg = lcg * 1664525u + 1013904223u;
+            const float v = (float) ((lcg >> 8) * (1.0 / 16777216.0));
+            for (auto* rp : ranged) rp->setValueNotifyingHost (v);
+
+            const auto tree      = apvts.copyState();
+            const auto sigAtSave = anamorph::PresetManager::soundSignatureForSavedTree (apvts, tree);
+            // What the file can hold, not what the live parameter happens to carry: a
+            // discrete parameter left at a sub-step value snaps when the preset reloads,
+            // by design, so comparing against the raw live value would be asserting that
+            // presets store something they cannot.
+            std::vector<float> before;
+            for (auto* rp : ranged) before.push_back (normalisedAsRendered (*rp, rp->getValue()));
+
+            auto xml = tree.createXml();
+            if (xml == nullptr || ! probe.replaceWithText (xml->toString())) { ++loadsFailed; continue; }
+            if (! p.getPresets().loadFile (probe)) { ++loadsFailed; continue; }
+
+            if (p.getPresets().isDirty()) ++markerWrong;
+            if (anamorph::PresetManager::soundSignatureFor (apvts) != sigAtSave) ++sigDrift;
+            for (size_t k = 0; k < ranged.size(); ++k)
+                if (std::abs (ranged[k]->getValue() - before[k]) > 1.0e-4f) { ++soundMoved; break; }
+            if (auto after = apvts.copyState().createXml(); after != nullptr && after->toString() != xml->toString())
+                ++byteDrift;
+        }
+        probe.deleteFile();
+
+        check (loadsFailed == 0, "every probe preset written by the round trip loaded back");
+        check (markerWrong == 0, "a reloaded preset NEVER reads modified, across the whole sweep");
+        check (soundMoved == 0, "the reloaded sound is the saved sound at every swept value");
+        std::printf ("  save->load round trip over %d points: marker wrong %d, sound moved %d,"
+                     " baseline-string drift %d, re-saved-byte drift %d (the last two are the preset"
+                     " format's own denormalised round trip and move no marker)\n",
+                     points, markerWrong, soundMoved, sigDrift, byteDrift);
+    }
+}
+
+
+// ---------------------------------------------------------------------------
 //  D-2 stress probe (contract F): every thread the model names, at once, under
 //  ThreadSanitizer. NOT part of the suite, like the other three TSan probes:
 //  on the pre-D-2 tree its execution IS the undefined behaviour it measures.
@@ -8601,6 +9016,7 @@ int main (int argc, char* argv[])
     testReplacementFinishingLastCannotWearRestoredMetadata();
     testDrainReachesFixedPointBeforeTheCallerActs();
     testPresetSavedDuringRestoreIsCleanAgainstItsOwnFile();
+    testSaveBaselineDescribesTheBytesUnderAutomation();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

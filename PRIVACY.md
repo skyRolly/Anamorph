@@ -48,7 +48,7 @@ of something you did:
   dialog;
 - the session's preset references — **three** of them: one for the preset you have selected and one
   for **each A/B slot**. The rule is one condition with two halves
-  (`PresetManager::encodeSelection`, `src/PresetManager.cpp:465-485`): a preset is recorded by its
+  (`PresetManager::encodeSelection`, `src/PresetManager.cpp:552-572`): a preset is recorded by its
   **file name** alone when it sits **directly in** your preset folder **and** its name cannot itself
   be mistaken for a path; **otherwise the full filesystem path is stored**. The file-name form is
   deliberate — it keeps the folder's location (and with it your account name) out of the saved

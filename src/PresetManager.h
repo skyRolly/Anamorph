@@ -162,6 +162,17 @@ public:
     // is exactly this over the manager's own APVTS.
     static juce::String soundSignatureFor (const juce::AudioProcessorValueTreeState&);
 
+    // The signature `soundSignatureFor` will return once `savedSound` has been LOADED --
+    // i.e. the clean baseline of a preset whose file holds that tree (D-2 round 9,
+    // ADR-0036 §17). Derived from the tree alone, so it describes the BYTES rather than a
+    // second read of the live parameters, which is what makes "clean" mean "loading the
+    // selected preset would change nothing" no matter what automation does during a save.
+    // It resolves every parameter through the same rule the loader applies, so the two
+    // cannot disagree about what a file means; State test 52 pins the equality by
+    // measurement over the whole parameter set as well as by construction.
+    static juce::String soundSignatureForSavedTree (const juce::AudioProcessorValueTreeState&,
+                                                    const juce::ValueTree& savedSound);
+
     void load (int index);                           // message thread only
     bool loadFile (const juce::File&);               // load an arbitrary .anamorph file (OS chooser, #3)
     void step (int delta);                           // prev/next with wrap-around
@@ -197,6 +208,20 @@ public:
     // restore, in the order the two events actually happened. (load()/loadFile() are
     // covered by onAboutToLoad, which already fires before their first mutation.)
     std::function<void()> onAboutToSave;
+
+    // TEST SEAM (D-2 round 9). Fired by saveUser() immediately before the ONE state
+    // capture the file and its baseline are both derived from. Empty in production: one
+    // null check, on a non-audio path, exactly like the processor's own seams.
+    //
+    // It exists because the defect this round closed lived in the gap between two reads,
+    // and a test that can only hope to land a mutation in that gap is a race to lose.
+    // With the seam the interleaving is exact and repeatable: State test 52 mutates a
+    // sound parameter here, which in the DEFECTIVE implementation falls between the
+    // signature read and the state copy (bytes and baseline then describe different
+    // sounds), and in the fixed one falls before the single capture, where it is simply
+    // part of what gets saved. The seam therefore discriminates rather than merely
+    // executing -- which is the property a regression for an ordering defect has to have.
+    std::function<void()> beforeStateCapture;
 
     // D-2 (RISK-007). Fired on the message thread after ANY change to the metadata
     // this manager owns -- the name, the identity and the clean baseline -- from

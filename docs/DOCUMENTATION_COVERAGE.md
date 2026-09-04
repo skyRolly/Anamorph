@@ -8,7 +8,7 @@ that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
 Last updated: for the **0.9.7 change set** (2026-09-03, matching the CHANGELOG heading) — **D-2 /
 RISK-007 resolved as ADR-0036** (program state is message-thread-owned; host threads exchange
-immutable snapshots; the `tsan` CI lane), whose entry is LAST in the body; before it the
+immutable snapshots; the `tsan` CI lane), whose round-9 entry is LAST in the body; before it the
 **scanner-SARIF artifact change** (2026-09-03) — `codeql.yml` and `msvc.yml` now also publish
 their raw SARIF as Actions artifacts; before it ADR-0035,
 the oversampling path crossfade; before it ADR-0034,
@@ -8178,3 +8178,30 @@ re-verified host-serialization evidence) and the dashboard.
 
 **Drift.** None. §10's precedence rule is unchanged — §15 makes it actually hold for a caller that
 drains, which is what it always claimed.
+
+## D-2 round 9 (2026-09-03) — one capture: a preset's bytes and its clean baseline are the same object (ADR-0036 §17)
+
+**Code changed:** `src/PresetManager.cpp` (`saveUser` takes ONE `apvts.copyState()` and derives both
+the file and the clean baseline from it — the round-8 two-read-plus-retry is deleted, not bounded
+harder; a new `soundSignatureForSavedTree` computes the signature a saved tree will produce once
+loaded; `applySoundTree` and that new function are refactored onto one shared resolver,
+`normalisedFromSavedTree`, so the apply path and the baseline cannot disagree about what a file means;
+a new `asAPresetCanHoldIt` canonicaliser is applied on BOTH sides of every signature),
+`src/PresetManager.h` (the new static, and a `beforeStateCapture` test seam — empty in production),
+`tests/state_tests.cpp` (State test 52, five legs, mutation-tested three ways).
+
+**Documents updated:** `ADR-0036` (new §17 — one capture, the mutation-during-save semantic, the torn
+capture argument, the one-rule-for-what-a-tree-means refactor, the preset-grid canonicalisation and
+its compatibility edge; §16's second bullet marked SUPERSEDED, with its "safe direction" argument
+recorded as refuted; the approval-boundary paragraph records round 9 as machinery removed);
+`SESSION_COMPATIBILITY_POLICY.md` (new rule 6 — `presetBaseline` is a comparison key, and the recorded
+0.9.7 change to how it is computed); `API_REFERENCE.md`; `TESTING.md` (test 52, 51 tests);
+`TESTING_POLICY.md`, `HANDOVER.md`, `README.md` (51 tests / 2000 checks); `CHANGELOG.md`; the worklog
+(§15: both findings, the bounded audit table, the re-checked host-serialization evidence) and the
+dashboard.
+
+**Drift.** One correction rather than an addition: §16 claimed its two reads could "only disagree in
+the safe direction". That was wrong — a baseline naming an earlier sound reads clean again the moment
+the sound returns to it — and §16 now says so at the point the claim was made, instead of leaving a
+refuted argument standing next to its replacement. §16's first bullet (the drain runs before the
+capture) is unchanged and still required.

@@ -9,7 +9,7 @@ Field-level ledger of everything written to session state. Companion to
 > migration support (a read path for the old field). Adding a field is allowed only if absence
 > is handled (a default), so older sessions still load.
 
-Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:1365-1368 (pre-0.8.4, `resolveLegacy`), :1287-1360 (pre-0.6.4 `readSlot`), :1388-1410 (v0.2 bare APVTS);
+Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:1373-1376 (pre-0.8.4, `resolveLegacy`), :1287-1360 (pre-0.6.4 `readSlot`), :1388-1410 (v0.2 bare APVTS);
 src/InternalState.h:198-374.
 
 ## `AnamorphRoot` properties
@@ -19,7 +19,7 @@ src/InternalState.h:198-374.
 | `presetName` | String | ≥0.6 (Unverified exact) | No | No | `PresetManager::defaultName()` — **absent ≠ empty**, see below |
 | `presetBaseline` | String | 0.6.x (#6) [Partially Verified] | No | No | `adoptRestoredState` clean baseline |
 
-Source: src/PluginProcessor.cpp:1223-1231 (write), :1268-1277 (read), :1104-1105 (adoption).
+Source: src/PluginProcessor.cpp:1231-1239 (write), :1268-1277 (read), :1104-1105 (adoption).
 
 **`presetName`: absent and empty are different answers.** The property is *absent* only in a session
 that predates it (< 0.6); it resolves to `PresetManager::defaultName()`, whose name-fallback tick is
@@ -30,7 +30,7 @@ Neither case may fall back to `presets.currentName()`: `presets` is a processor 
 reuses one instance across `setStateInformation` calls, so the live name is the **previous project's**
 — the same rule `readSlot` follows for the A/B slots. `adoptRestoredState` therefore assigns the name
 unconditionally, and only `setStateInformation` (which can see `hasProperty`) resolves absence.
-Source: src/PresetManager.h:103-108 (`defaultName`); src/PresetManager.cpp:440-452
+Source: src/PresetManager.h:103-108 (`defaultName`); src/PresetManager.cpp:527-539
 (`adoptRestoredState`).
 
 **A malformed legacy Setting resolves to a valid setting, deterministically** (2026-09-01, ER-STATE-17). Pre-0.8.4 sessions carry Oversampling, UI Scale and Scope Persistence as APVTS `PARAM`s that `InternalState::migrateFromLegacyApvts` converts. Each value now passes the same usability predicate as the session and preset paths (`SerializedNumber.h`: plain decimal text, finite after float narrowing) — anything else means the field's **default**, exactly as an absent node does — and the choice indices are clamped into the ComboBox domain (`oversample` ids 1..4, `uiScale` 1..5; `scopePersist` to 0..1) in double **before** the integer conversion, so that conversion is defined for every input and the `+ 1` cannot overflow. Before this the value went straight into `(int)`, which is undefined for NaN, ±inf and out-of-range doubles, and JUCE's parser accepts "nan"/"inf": measured on x86-64 every such value became −2147483647 in the tree and was written back out on the next save; "2147483647" wrapped to INT_MIN through a second UB; AArch64 saturated the same inputs differently. Valid legacy values convert exactly as before (State tests 5 and 6 unchanged); State test 28 pins 88 synthetic cases over both legacy shapes, plus 36 on the real frozen pre-0.8.4 fixture mutated in place with its surrounding session asserted intact (round 13). Source: src/InternalState.h:254-299.
@@ -44,7 +44,7 @@ moved — "metadata describing a session that was never loaded", which is the sa
 paragraph exists to prevent. `getStateInformation` appends the child unconditionally, so no session
 this plug-in has ever written reaches that branch and no valid session changes behaviour; what
 reaches it is a truncated, hand-edited or forward-version blob. Source:
-src/PluginProcessor.cpp:1263-1333; State test 27.
+src/PluginProcessor.cpp:1271-1341; State test 27.
 
 **A chunk of neither recognised shape is not a restore at all.** `setStateInformation` handles two
 root shapes — `AnamorphRoot` and the bare v0.2 APVTS tree. Anything else (a foreign or
@@ -52,7 +52,7 @@ forward-version root) matches neither, so no parameter, Settings value or A/B sl
 the function **returns before the adoption block**: preset name, identity, checkmark and dirty
 baseline all stay exactly as they were. That is the same answer the guard at the top already gives a
 blob `getXmlFromBinary` cannot parse — input we do not recognise never becomes state. Source:
-src/PluginProcessor.cpp:1491-1526 (the else-branch), :607 (the unparsable-blob guard).
+src/PluginProcessor.cpp:1499-1534 (the else-branch), :607 (the unparsable-blob guard).
 
 ### The preset **indicator identity** (0.9.2, ADR-0024 as amended)
 
@@ -92,8 +92,8 @@ fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
 same-named preset. Source: src/PresetManager.h:54-76 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
-src/PresetManager.cpp:458-511 (`encodeSelection` / `decodeSelection`);
-src/PluginProcessor.cpp:993-1015 (`writeSelection`/`readSelection`), :585 (root write),
+src/PresetManager.cpp:545-598 (`encodeSelection` / `decodeSelection`);
+src/PluginProcessor.cpp:1001-1023 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
 ## `ANAMORPH` child (APVTS)
@@ -304,7 +304,7 @@ switch recalled the previous project's sound underneath the restored one. The re
 (`active` → 0, both slots → invalid, i.e. "lazily initialised from current") on those two paths,
 `adoptRestoreTail` assigns the slot set as a whole, and the existing `abEnsureInit()` re-seeds from
 the state that was just restored. A blob that DOES carry an `AB` node is unaffected: its slots restore as before.
-Source: src/PluginProcessor.cpp:1464-1488 (the `AB`-absent branch of `decodeRestore`), :1388-1410 (the
+Source: src/PluginProcessor.cpp:1472-1496 (the `AB`-absent branch of `decodeRestore`), :1388-1410 (the
 v0.2 branch) and :1063-1108 (`adoptRestoreTail`, which assigns the slot set and resets the
 Level-Match memory); State test 26.
 
@@ -334,7 +334,7 @@ path that runs every time — construction, where both slots are invalid — the
 indistinguishable, since slot A has just been seeded from the same live state. They diverged only
 when slot A was valid and slot B was not, i.e. an `AB` node whose `slotBParams` alone was missing or
 unparsable: slot B came back as a **duplicate of slot A** rather than as the state just restored, and
-a later save wrote that duplicate out. Source: src/PluginProcessor.cpp:1389-1462
+a later save wrote that duplicate out. Source: src/PluginProcessor.cpp:1397-1470
 (`readSlot`), :904-932 (`abEnsureInit`); src/PluginProcessor.h:177-190 (`StateSet::isValid`).
 
 An empty `slotABase` / `slotBBase` means **"no baseline was recorded"**, which is *not* the same as
@@ -344,10 +344,10 @@ An empty `slotABase` / `slotBBase` means **"no baseline was recorded"**, which i
 compare unequal to every possible `soundSig()`, so such a slot would read as permanently edited and
 the top bar would render a bare ` *` — a modified-marker against a preset the slot does not have
 (its name is empty by the same rule). Source: src/PresetManager.h:127-156 (`setMeta`);
-src/PresetManager.cpp:440-452 (`adoptRestoredState`, the root-side rule).
+src/PresetManager.cpp:527-539 (`adoptRestoredState`, the root-side rule).
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
-Evidence [Verified]: src/PluginProcessor.cpp:1436-1437 (the legacy-key fallback inside `readSlot`, :991-1078);
+Evidence [Verified]: src/PluginProcessor.cpp:1444-1445 (the legacy-key fallback inside `readSlot`, :991-1078);
 the per-slot identity is written at :831 / :835 and read at :918.
 
 ## Legacy root formats (read-only compatibility)
@@ -356,7 +356,7 @@ the per-slot identity is written at :831 / :835 and read at :918.
 |---|---|---|
 | v0.2 bare APVTS tree | `xml->hasTagName(apvtsStateType)` | repair on a private copy → `apvts.replaceState` → `reassertParameters` (`applySoundTree`) |
 
-Source: src/PluginProcessor.cpp:1490-1514.
+Source: src/PluginProcessor.cpp:1498-1522.
 
 ## Notes
 
