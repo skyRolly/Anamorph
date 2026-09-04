@@ -228,7 +228,7 @@ mitigation. Do not invent risks to fill the template.
 - **RESOLVED 2026-09-03 — decision D-2, implemented as ADR-0036 (the 0.9.7 change set).** The
   register entry below is kept in full as the measured record. What closed it: every piece of
   program metadata this entry names — `internal.restoreState`'s tree, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`/`adoptRestoredState`, `syncCommitted` — is now **message-thread state** that only
+  `presets.setMeta`, `syncCommitted` — is now **message-thread state** that only
   the message thread writes and reads directly. An off-message-thread `setStateInformation` applies
   the sound (the APVTS, JUCE-locked) and the oversampling atomic on its own thread and hands the
   DECODED metadata tail to the message thread through one `std::atomic<T*>::exchange` cell (the D-1
@@ -249,7 +249,7 @@ mitigation. Do not invent risks to fill the template.
   inside that window is ordered after the restore.
 - **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`/`adoptRestoredState`, `syncCommitted` (src/PluginProcessor.cpp:1621-1692 read
+  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:1647-1718 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -327,7 +327,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:1621`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:1647`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are

@@ -8234,6 +8234,39 @@ product trade-off. The cost had a removable cause (the load's extra store/report
 it as removed rather than leaving §17's framing to read as permanent. §17's own text is unchanged; it
 was true of the save-side formula it examined.
 
+## D-2 round 15 (2026-09-04) — a restore's clean baseline comes from its own bytes (ADR-0036 §22)
+
+**Code changed:** `src/PluginProcessor.h` / `.cpp` — `RestoreDecode` gains `restoredSoundSig`, filled
+in `decodeRestore` from the restore's own sound tree by `soundSignatureAfterLoading`; one new
+resolver `baselineOfRestore` answers for both `viewOfRestore`'s prediction and `adoptRestoreTail`'s
+adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (its rule was the defect),
+and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
+`tests/state_tests.cpp` — State test 60.
+
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1231`).
+A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
+which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
+the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
+window after the restore itself, so every sound edit made in it was absorbed into the baseline and
+the indicator reported the user's own edits as clean. It is the same second-live-read defect §17
+removed from the save baseline and §18 from the preset-load baseline (KI-029), in the third and last
+place it occurred; `soundSignatureAfterLoading` is the primitive round 10 built for exactly this.
+
+**Measured.** State suite 2336 / 0 (59 tests). Reverting to the live read fails **16** checks, and
+the diff is legible: the baseline holds the edited width (0.41000) where the restored session's
+(0.24000) belongs. The four shapes and five orderings are in `TESTING.md`; the oracle is a control
+instance that restores the same bytes and is never touched, so it shares no code with the decision
+under test.
+
+**Documents updated:** `ADR-0036` (new §22, including the one sibling live read recorded rather than
+changed); `TESTING.md` (State test 60, 59 tests); `README.md`, `TESTING_POLICY.md`, `HANDOVER.md`,
+`DOCUMENTATION_COVERAGE.md` and the worklog for the counts. `CHANGELOG.md` carries it as a user-
+visible fix: the modified-star was wrong on a real session shape.
+
+**Drift.** None. §22 extends §17/§18's rule to the restore path rather than changing it; the D-2
+publication and ownership model, generation ordering, A/B, preset save/load and the round-11 signature
+semantics are untouched, and the suite re-asserts them.
+
 ## D-2 round 13b (2026-09-04) — a background thread proves it ran, and stops eating the machine
 
 **Code changed:** `tests/state_tests.cpp` only. State test 52 leg (d) now waits, bounded, for its

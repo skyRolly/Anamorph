@@ -861,6 +861,18 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 60 — a restore that carries no baseline is clean against ITS sound** (round 15,
+  ADR-0036 §22). The two session shapes that record no `presetBaseline` — written before 0.6, or
+  saved on a nameless A/B slot (present-but-empty since 0.9.2) — used to have their clean baseline
+  read off the LIVE parameters when the message thread adopted the restore, so every sound edit made
+  in the pending window was absorbed and the indicator called the user's own edits clean. Four
+  shapes (absent, empty, its own sound, another sound) × five orderings: adoption alone, an edit
+  inside the window, an edit before the arrival, an edit after the adoption, and several edits then
+  a second restore. The `another sound` shape is the discriminator — it is the only one whose right
+  answer differs from what the fallback produces. The oracle is a CONTROL INSTANCE that restores the
+  same bytes and is never touched, so it shares no code with the decision under test. Mutation-tested
+  — restoring the live read fails **16** checks.
+
 State tests 22 and 27 were re-shaped in the same change: their off-thread requester used to be a
 `juce::Value` written from a worker, which after D-2 models nothing the plug-in does; both now drive
 the real `setStateInformation` from the worker, and 27 asserts the ORDER of reported values because
@@ -935,7 +947,7 @@ is wrong with any of those tests; the harness assumes exclusive use of the folde
 give it (one suite per runner). Locally: never run the suite beside a sanitizer lane or a second
 copy of itself.
 
-`tests/state_tests.cpp` (**58 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**59 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

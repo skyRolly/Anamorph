@@ -127,13 +127,19 @@ public:
     //
     // An EMPTY `baselineSig` means the state being adopted never recorded one. The only thing
     // that produces it is a pre-0.6.4 A/B slot, which stored parameters ALONE -- every in-memory
-    // producer (the constructor, load, loadFile, saveUser, adoptRestoredState, and therefore
-    // currentStateSet and every undo / redo / A-B / copy snapshot built from it) always fills it.
+    // producer (the constructor, load, loadFile, saveUser, and therefore currentStateSet and every
+    // undo / redo / A-B / copy snapshot built from it) always fills it.
     // "No baseline" is not "modified": soundSig() is never empty, so a literal "" would compare
     // unequal to every possible sound and report the slot dirty forever -- a modified-marker on a
     // preset the slot does not even have (it has no name either). The state being adopted becomes
-    // its own clean baseline instead, which is exactly the rule adoptRestoredState() applies to a
-    // session root that carries no `presetBaseline`.
+    // its own clean baseline instead.
+    //
+    // A HOST RESTORE NO LONGER REACHES THIS FALLBACK. Round 15 (ADR-0036 §22) resolves a session's
+    // absent or empty `presetBaseline` at DECODE time, from the restore's own bytes, and passes the
+    // result here non-empty; the live read below is an unbounded window later than the restore on a
+    // host thread, and it used to absorb every edit made in that window into the clean baseline. The
+    // remaining caller is the pre-0.6.4 A/B slot above, where the state IS being applied by the same
+    // call and the window does not exist.
     //
     // PRECONDITION for that fallback, not enforced by the signature: the parameters this metadata
     // describes must ALREADY be applied. soundSig() reads the LIVE apvts, so "its own clean
@@ -214,15 +220,16 @@ public:
     void step (int delta);                           // prev/next with wrap-around
     bool saveUser (const juce::String& name);        // write + select; false on IO error
 
-    // Host state restore: adopt the remembered name + identity WITHOUT applying anything.
-    // `restoredSel` is whatever the session carried -- `Selection()` (unknown) for a pre-0.9.2
-    // session, which is the name fallback -- and it is METADATA ONLY: it never touches a
-    // parameter, so the sound
-    // restores identically whether or not the identity resolves. Its baseline is derived from the
-    // live sound, so the same "apply the parameters first" precondition as setMeta applies. Like
-    // setMeta it takes the identity explicitly -- the one-argument overload was removed with
-    // setMeta's for the same reason.
-    void adoptRestoredState (const juce::String& name, const Selection& restoredSel);
+    // REMOVED in D-2 round 15 (ADR-0036 §22): `adoptRestoredState (name, sel)`, the host-restore
+    // entry point for a session that carried no `presetBaseline`. It derived the baseline from a
+    // LIVE read of the parameters at the moment it was called -- which for a host thread's restore
+    // is an unbounded window after the restore itself -- so every sound edit made in that window
+    // was absorbed into the clean baseline and the indicator reported the user's own edits as
+    // clean. The caller now resolves that baseline from the restore's own bytes, at decode time
+    // (`AnamorphAudioProcessor::baselineOfRestore`), and adopts it through `setMeta` like every
+    // other restore. The entry point is gone rather than fixed so the live-read rule cannot come
+    // back through it: the only side that can name a restore's own sound is the side holding the
+    // restore.
 
     // Undo bracketing (set by the processor). onAboutToLoad fires BEFORE any parameter changes
     // (flush a settled edit into its own step); onLoaded fires AFTER the new name/baseline are set
@@ -273,8 +280,8 @@ public:
 
     // D-2 (RISK-007). Fired on the message thread after ANY change to the metadata
     // this manager owns -- the name, the identity and the clean baseline -- from
-    // every path that changes them: load, loadFile, saveUser, setMeta and
-    // adoptRestoredState. The processor republishes its program snapshot from here,
+    // every path that changes them: load, loadFile, saveUser and setMeta (which is
+    // also how a host restore adopts). The processor republishes its snapshot from here,
     // so an off-message-thread save can never read a stale name or identity.
     // Fired after the fields are set and before onLoaded / onSaved. Empty when no
     // processor wires it up (safe to skip).

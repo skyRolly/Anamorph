@@ -1009,6 +1009,68 @@ turn late) and leaves a save issued on the host thread right after its restore d
    outgoing one. Reverting the merge — writing the restore's Settings as decoded — fails **16**
    checks; State test 59 fails **7** against the round-11 tree that had the defect.
 
+22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
+    (round 15).** Review finding *"pending edits become the clean baseline"*
+    (`src/PluginProcessor.cpp:1231`).
+
+    **What `presetBaseline` is.** The sound signature the session was clean against when it was
+    saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
+    session written before 0.6, and (since 0.9.2) one saved while sitting on a NAMELESS A/B slot,
+    which stores the property present-but-**empty**. Absence and emptiness are different facts, and
+    only the decode can tell them apart, but they mean the same thing here: *this session recorded
+    no baseline*. Neither means "modified" — an empty string is unequal to every possible signature,
+    so adopting it literally would pin the star on for ever — and neither may mean "whatever happens
+    to be live when the message thread gets round to adopting".
+
+    **The defect.** It meant exactly that. `adoptRestoredState` set `sigAtLoad = soundSig()`, and
+    `setMeta`'s empty-baseline fallback did the same, both at ADOPTION time. For an inline restore
+    that instant is the restore. For a host thread's restore it is not: the restore is handed over
+    as a pending value and the message thread adopts it later, so every sound edit the user made in
+    that window was read into the baseline and the indicator reported the user's own edits as clean.
+
+    **The rule.** The baseline a restore adopts is the session's own `presetBaseline` when it
+    recorded a non-empty one, and otherwise **the sound this restore installed, taken from the
+    restore's own bytes at decode time** — `soundSignatureAfterLoading (apvts, soundParams)`, the
+    primitive §18 built for the preset-load baseline, evaluated by the thread that decoded the
+    restore and carried across in `RestoreDecode::restoredSoundSig`. Nothing that happens after the
+    decode can enter it. One function, `baselineOfRestore`, answers for both the prediction
+    `viewOfRestore` publishes and the value `adoptRestoreTail` writes, so the two cannot disagree —
+    which also closes the divergence round 13 recorded here as a residual.
+
+    **Which edits stay dirty.** Every edit made after the restore installed its sound: before the
+    arrival is published, between arrival and adoption, or after the adoption. An edit made BEFORE
+    the restore arrives is not an edit *against* that session at all — a restore replaces the whole
+    sound, so there is nothing left to be dirty about. This is the same answer a session WITH a
+    stored baseline already gave: it adopts a value fixed before the window and edits after it read
+    dirty. The no-baseline case now behaves like it instead of specially.
+
+    **Why it is the established rule, not a new one.** §17 removed the second live read from the
+    save baseline, §18 removed it from the preset-load baseline (KI-029) — and round 11 removed the
+    tolerance that had been layered on top of that one (§19). This is the same removal in the third
+    and last place the pattern occurred. `PresetManager::adoptRestoredState` is **deleted** rather
+    than repaired, so the live-read rule cannot return through it: the only side that can name a
+    restore's own sound is the side holding the restore.
+
+    State test 60 pins it over four session shapes — baseline absent, present-but-empty, its own
+    sound (saved clean) and another sound (saved dirty, the shape whose correct answer differs from
+    what the fallback would produce) — across the five orderings: adoption alone; an edit inside the
+    pending window; an edit before the arrival; an edit after the adoption; and several edits in one
+    window followed by a second restore. Its oracle is a control instance that restores the same
+    bytes and is never touched, so it shares no code with the decision under test. Reverting to the
+    live read fails **16** checks, and the failure is legible in the diff: the baseline holds the
+    edited width where the restored session's belongs.
+
+    **Recorded, not changed.** One sibling live read survives, in `applyStateSet`: a pre-0.6.4 A/B
+    slot payload stored parameters alone, so it reaches `setMeta` with an empty baseline and the
+    fallback resolves it from the live sound. It is not this finding's class — both statements run
+    back to back on the message thread, so no user edit can land between them; only an audio-thread
+    automation write can, and only for that vintage of slot. Closing it means deriving the baseline
+    from `s.params` through `soundSignatureAfterLoading`, which first requires MEASURING that the
+    function models `applyStatePreservingView`'s store/report pass bit for bit — the sound is applied
+    there by `replaceState` + `reassertParameters`, not by `applySoundTree`. Assuming that equality
+    instead of measuring it is exactly what round 10 did wrong (§19), so it belongs to a round that
+    can measure, not to this one.
+
 ## Consequences
 
 - **Realtime.** `processBlock`, `toEngine`, `setParameters` and `process` are unchanged. The one

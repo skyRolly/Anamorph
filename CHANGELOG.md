@@ -14,6 +14,20 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
 ## [0.9.7] — 2026-09-03
+### Fixed
+- **An older session's modified-star no longer goes out after you edit it.** Sessions written before
+  0.6 — and, since 0.9.2, any session saved while the A/B slot you were on had no preset name —
+  record no "clean" reference of their own, so the plug-in works one out from the sound the session
+  restored. When your DAW restores such a session from its own thread (Logic's autosave does this,
+  and so do several VST3 hosts), the plug-in adopts it a moment later on its UI thread; anything you
+  changed in between used to be folded into that reference, so your edit was treated as part of the
+  session and the modified-star stayed off. The reference is now taken from the session's own stored
+  sound at the moment it is read, so an edit made in that window shows the star, and putting the
+  value back clears it again. Sessions that DO record a clean reference — everything saved by 0.6 or
+  later on a named slot — were never affected, and their star still restores exactly as stored.
+  Decision: ADR-0036 §22. Regression coverage: State test 60.
+  Evidence: PR #137. [Verified]
+
 ### Changed
 - **Turning up Drive, or changing algorithm, no longer interrupts the sound when Oversampling is
   on.** The latency the plug-in reports to your DAW used to depend on whether the oversampler was

@@ -655,20 +655,6 @@ bool PresetManager::saveUser (const juce::String& rawName)
     return true;
 }
 
-void PresetManager::adoptRestoredState (const juce::String& name, const Selection& restoredSel)
-{
-    // `name` is adopted VERBATIM, empty included. An empty preset name is a real state since
-    // 0.9.2 -- a session saved while sitting on a nameless A/B slot stores exactly that -- and
-    // keeping the old name instead would leave the PREVIOUS project's label on this instance,
-    // because hosts reuse one processor across setStateInformation calls. Resolving "the field
-    // was absent" (a pre-0.6 session) into defaultName() is the caller's job: only the caller
-    // can tell an absent property from an empty one, exactly as it already does for the baseline.
-    current = name;
-    sel = restoredSel;      // unknown for a pre-0.9.2 session -> the name fallback, as before (#4)
-    sigAtLoad = soundSig(); // restored state counts as the clean baseline
-    if (onMetaChanged) onMetaChanged();
-}
-
 // ----------------------------------------------------------------------------
 //  Indicator identity <-> session state. Metadata only: nothing here reads or writes
 //  a parameter, and nothing here touches a user preset FILE.

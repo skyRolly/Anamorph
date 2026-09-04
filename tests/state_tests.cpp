@@ -10089,6 +10089,240 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
     r12::legIdentityStaysTheRestores (f);
 }
 
+
+// ---------------------------------------------------------------------------
+//  State test 60 -- a restore that carries no baseline is clean against the sound
+//  IT restored, not against whatever is live when the adoption runs
+//  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
+//  baseline", src/PluginProcessor.cpp:1231).
+//
+//  A session records `presetBaseline` so the modified-star survives a reload. Two
+//  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
+//  a session saved while sitting on a NAMELESS A/B slot, which stores the property
+//  present-but-empty. For those the plug-in has to decide a clean baseline itself.
+//
+//  It used to decide it by READING THE LIVE PARAMETERS at the moment the message
+//  thread adopted the restore -- `adoptRestoredState`'s `sigAtLoad = soundSig()`,
+//  and `setMeta`'s empty-baseline fallback. For an inline restore that is the same
+//  instant as the restore. For a HOST THREAD's restore it is not: the restore is
+//  handed over as a pending value and adopted by the message thread later, and
+//  every sound edit the user makes in that window was read INTO the baseline. The
+//  edit then looked like part of the restored session and the indicator reported
+//  the user's own change as clean -- the same defect round 9 removed from the save
+//  baseline (§17) and round 10 from the preset-load baseline (§18, KI-029), in the
+//  third and last place the pattern occurred.
+//
+//  The rule is now §22: the baseline is the session's own `presetBaseline` when it
+//  recorded a non-empty one, and otherwise the sound THIS RESTORE INSTALLED, taken
+//  from the restore's own bytes at decode time. Nothing that happens after the
+//  decode can enter it.
+//
+//  THE ORACLE IS A CONTROL INSTANCE, NOT A PRODUCTION HELPER. The intended
+//  baseline is "what this session's sound is", so the test restores the same blob
+//  into a second processor that is never edited and reads the sound signature
+//  there. It never calls `baselineOfRestore`, `soundSignatureAfterLoading` or any
+//  other part of the code under test, so a defect shared between the prediction and
+//  the adoption cannot make it agree with itself. The user-visible half --
+//  `isDirty()` -- is asserted alongside it at every step, and an undo back to the
+//  restored value must read CLEAN again, which no "always dirty" implementation can
+//  satisfy.
+// ---------------------------------------------------------------------------
+namespace r15
+{
+    // The four session shapes this rule has to answer for. The first two carry no usable
+    // baseline and must fall back; the last two carry a real one and must be adopted
+    // verbatim -- `dirtyOther` is the discriminator, because it is the only shape whose
+    // correct answer DIFFERS from what the fallback would produce.
+    enum Shape { absent = 0, empty, cleanOwn, dirtyOther, numShapes };
+    static const char* shapeName (int s)
+    {
+        return s == absent   ? "absent"
+             : s == empty    ? "empty"
+             : s == cleanOwn ? "its own sound (saved clean)"
+                             : "another sound (saved dirty)";
+    }
+
+    // `sn`'s blob with `presetBaseline` removed, emptied, or set to `value`.
+    static juce::MemoryBlock blobWithBaseline (const d2::Session& sn, int shape, const juce::String& value)
+    {
+        auto xml  = BlobCodec::unwrap (sn.blob);
+        auto root = juce::ValueTree::fromXml (*xml);
+        if (shape == absent) root.removeProperty ("presetBaseline", nullptr);
+        else                 root.setProperty ("presetBaseline", shape == empty ? juce::String() : value, nullptr);
+        auto out = root.createXml();
+        return BlobCodec::wrap (*out);
+    }
+
+    // THE ORACLE. What the restored session's sound IS, observed on an instance that
+    // restores the same bytes and is never touched afterwards. It never calls
+    // `baselineOfRestore`, `soundSignatureAfterLoading` or anything else the fix
+    // changed, so a defect shared between the prediction and the adoption cannot make
+    // the test agree with itself.
+    static juce::String soundOfSessionAsRestored (const juce::MemoryBlock& blob)
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        auto& control = *owned;
+        control.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (control, blob);        // inline, on this thread; nothing else runs
+        control.pollUndoCoalesce();
+        return anamorph::PresetManager::soundSignatureFor (control.getAPVTS());
+    }
+
+    // A restore that ARRIVES from a host thread and is left PENDING, which is the whole
+    // point: the message thread adopts it later, and the window between the two is where
+    // the absorbed edits used to go.
+    static void arriveFromHostThread (AnamorphAudioProcessor& p, const juce::MemoryBlock& blob)
+    {
+        std::thread host ([&] { d2::restoreFrom (p, blob); });
+        host.join();
+    }
+}
+
+static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
+{
+    std::printf ("State test 60: a restore with no baseline is clean against ITS sound (D-2 r15)\n");
+
+    // Two sessions whose sounds differ, so "which sound is the baseline" is answerable.
+    const auto S = d2::author ("D2-R15-S", 0.24f, 0.76f, 0, 1);
+    const auto T = d2::author ("D2-R15-T", 0.62f, 0.38f, 1, 2);
+    const float restoredWidthS = S.active == 0 ? S.widthA : S.widthB;
+    const float restoredWidthT = T.active == 0 ? T.widthA : T.widthB;
+    const float editedWidth    = 0.41f;   // differs from both restored values
+    check (! juce::exactlyEqual (restoredWidthS, editedWidth)
+        && ! juce::exactlyEqual (restoredWidthT, editedWidth)
+        && ! juce::exactlyEqual (restoredWidthS, restoredWidthT),
+           "non-vacuity: the two restored sounds and the edit are three different values");
+
+    // The oracle, taken from the shape that carries no baseline at all -- the property
+    // cannot influence the SOUND, so this is each session's sound in every shape below.
+    const auto soundS = r15::soundOfSessionAsRestored (r15::blobWithBaseline (S, r15::absent, {}));
+    const auto soundT = r15::soundOfSessionAsRestored (r15::blobWithBaseline (T, r15::absent, {}));
+    check (soundS != soundT, "non-vacuity: the two sessions have different sound signatures");
+
+    for (int shape = 0; shape < r15::numShapes; ++shape)
+    {
+        // What each shape stores, and therefore what it must adopt. Only `dirtyOther`
+        // separates "adopted verbatim" from "resolved by the fallback": for it the two
+        // answers are different strings, and the session must come back with its star on.
+        const auto storedS = shape == r15::cleanOwn ? soundS : shape == r15::dirtyOther ? soundT : juce::String();
+        const auto storedT = shape == r15::cleanOwn ? soundT : shape == r15::dirtyOther ? soundS : juce::String();
+        const auto blobS   = r15::blobWithBaseline (S, shape, storedS);
+        const auto blobT   = r15::blobWithBaseline (T, shape, storedT);
+        const auto wantS   = shape == r15::dirtyOther ? soundT : soundS;   // the baseline S must adopt
+        const auto wantT   = shape == r15::dirtyOther ? soundS : soundT;   // ...and T
+        const bool cleanUntouched = (shape != r15::dirtyOther);
+        const juce::String tag = juce::String ("[baseline ") + r15::shapeName (shape) + "] ";
+
+        // --- A. the restore adopted with nothing else happening. --------------------
+        {
+            const auto owned = std::make_unique<AnamorphAudioProcessor>();
+            auto& p = *owned;
+            p.prepareToPlay (48000.0, 512);
+            r15::arriveFromHostThread (p, blobS);
+            p.pollUndoCoalesce();                       // the adoption
+            checkStr (p.getPresets().baseline(), wantS,
+                      (tag + "A: the adopted baseline is the session's own answer").toRawUTF8());
+            check (p.getPresets().isDirty() != cleanUntouched,
+                   (tag + "A: an untouched restored session reports the star the session stored").toRawUTF8());
+        }
+
+        // --- B. THE REPORTED BUG. arrival -> sound edit -> adoption. -----------------
+        //        The edit is the user's, made after the restore installed its sound, so it
+        //        must read DIRTY and must not have entered the baseline.
+        {
+            const auto owned = std::make_unique<AnamorphAudioProcessor>();
+            auto& p = *owned;
+            p.prepareToPlay (48000.0, 512);
+            r15::arriveFromHostThread (p, blobS);
+            setRaw (p, "width", editedWidth);           // inside the pending window
+            p.pollUndoCoalesce();                       // the adoption
+
+            checkNear ((double) rawOf (p, "width"), (double) editedWidth, 1.0e-6,
+                       (tag + "B: the edit itself survives the adoption (it is the newer write)").toRawUTF8());
+            checkStr (p.getPresets().baseline(), wantS,
+                      (tag + "B: the baseline is the restored session's, NOT the edited sound").toRawUTF8());
+            check (p.getPresets().isDirty(),
+                   (tag + "B: an edit made inside the pending window reads DIRTY").toRawUTF8());
+
+            // ...and not "dirty for ever": putting the restored value back reads clean
+            // again, which an implementation that simply forced the star could not do.
+            if (cleanUntouched)
+            {
+                setRaw (p, "width", restoredWidthS);
+                check (! p.getPresets().isDirty(),
+                       (tag + "B: undoing the edit by hand reads clean again").toRawUTF8());
+            }
+        }
+
+        // --- C. edit BEFORE the arrival. --------------------------------------------
+        //        A restore replaces the whole sound, so that edit is gone and there is
+        //        nothing to be dirty about: the session is exactly as in A.
+        {
+            const auto owned = std::make_unique<AnamorphAudioProcessor>();
+            auto& p = *owned;
+            p.prepareToPlay (48000.0, 512);
+            setRaw (p, "width", editedWidth);           // before anything arrives
+            r15::arriveFromHostThread (p, blobS);
+            p.pollUndoCoalesce();
+
+            checkNear ((double) rawOf (p, "width"), (double) restoredWidthS, 1.0e-6,
+                       (tag + "C: the restore overwrote the earlier edit").toRawUTF8());
+            checkStr (p.getPresets().baseline(), wantS,
+                      (tag + "C: ...and the baseline is still the session's own answer").toRawUTF8());
+            check (p.getPresets().isDirty() != cleanUntouched,
+                   (tag + "C: an edit made BEFORE the arrival changes nothing about the star").toRawUTF8());
+        }
+
+        // --- D. edit AFTER the adoption. --------------------------------------------
+        //        The ordinary case, which always worked. Asserted here so B is shown to be
+        //        the SAME answer rather than a special rule for the pending window.
+        {
+            const auto owned = std::make_unique<AnamorphAudioProcessor>();
+            auto& p = *owned;
+            p.prepareToPlay (48000.0, 512);
+            r15::arriveFromHostThread (p, blobS);
+            p.pollUndoCoalesce();
+            setRaw (p, "width", editedWidth);
+            check (p.getPresets().isDirty(),
+                   (tag + "D: an edit made after the adoption reads dirty").toRawUTF8());
+            checkStr (p.getPresets().baseline(), wantS,
+                      (tag + "D: ...and did not move the baseline").toRawUTF8());
+        }
+
+        // --- E. several edits in one window, then a SECOND restore + adoption. -------
+        {
+            const auto owned = std::make_unique<AnamorphAudioProcessor>();
+            auto& p = *owned;
+            p.prepareToPlay (48000.0, 512);
+
+            r15::arriveFromHostThread (p, blobS);
+            setRaw (p, "width",  editedWidth);          // three edits, one window
+            setRaw (p, "amount", 0.61f);
+            setRaw (p, "width",  0.33f);
+            p.pollUndoCoalesce();
+            check (p.getPresets().isDirty(),
+                   (tag + "E: several edits in one window still read dirty").toRawUTF8());
+            checkStr (p.getPresets().baseline(), wantS,
+                      (tag + "E: ...against the first session's own answer").toRawUTF8());
+
+            r15::arriveFromHostThread (p, blobT);       // the second session arrives
+            setRaw (p, "width", editedWidth);           // edited again inside ITS window
+            p.pollUndoCoalesce();
+            checkStr (p.getPresets().baseline(), wantT,
+                      (tag + "E: the second restore re-baselines onto ITS OWN answer").toRawUTF8());
+            check (p.getPresets().isDirty(),
+                   (tag + "E: and the edit inside its window reads dirty too").toRawUTF8());
+
+            if (cleanUntouched)
+            {
+                setRaw (p, "width", restoredWidthT);
+                check (! p.getPresets().isDirty(),
+                       (tag + "E: putting the second session's value back reads clean").toRawUTF8());
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 //  D-2 stress probe (contract F): every thread the model names, at once, under
 //  ThreadSanitizer. NOT part of the suite, like the other three TSan probes:
@@ -10351,6 +10585,7 @@ int main (int argc, char* argv[])
     testNoToleranceAbsorbsAnAutomationWrite();
     testARestoreIsAFixedPoint();
     testHostSaveInsideThePendingWindowCarriesTheEdit();
+    testRestoreWithoutBaselineIsCleanAgainstItsOwnSound();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

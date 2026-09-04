@@ -418,6 +418,17 @@ private:
         // of the shared counter, which would name an overlapping replacement instead.
         juce::ValueTree soundParams;
         juce::uint32    soundSetGen = 0;
+
+        // THIS RESTORE'S OWN CLEAN BASELINE (D-2 round 15, ADR-0036 §22), for the sessions
+        // that carry no `presetBaseline` of their own: the signature the parameters will
+        // report once `soundParams` has been installed, derived from that tree ALONE by
+        // `soundSignatureAfterLoading` -- the primitive round 10 built for the preset-load
+        // baseline (§18, KI-029). Decided at DECODE time, by the thread that decoded it, so
+        // there is no live read and therefore no window an edit or an automation write can
+        // land in. It is what both the adoption and `viewOfRestore` resolve an absent or
+        // empty stored baseline to, through one shared helper, so the prediction and the
+        // adoption cannot disagree.
+        juce::String    restoredSoundSig;
     };
 
     // A single-object handoff cell. `put` publishes and frees whatever the other side
@@ -524,7 +535,11 @@ private:
     // Republish `ownedProgram()` into the mailbox (M only; skipped inside an adoption).
     void publishProgram();
     // The H-side view of a restore H just decoded: what M will own once it adopts it.
-    static std::unique_ptr<const ProgramSnapshot> viewOfRestore (const RestoreDecode&, const juce::String& liveSoundSig);
+    // The one resolver both the prediction and the adoption use for a restore's clean
+    // baseline (ADR-0036 §22): the session's own `presetBaseline` when it recorded a
+    // non-empty one, and otherwise the sound THIS restore installed, from its own bytes.
+    static juce::String baselineOfRestore (const RestoreDecode&);
+    static std::unique_ptr<const ProgramSnapshot> viewOfRestore (const RestoreDecode&);
     // The sound half of a restore on the caller's thread: repair on our copy, one
     // locked replaceState, then reassert. Returns the token of the replacement it
     // performed, which is how a restore identifies ITS OWN sound (ADR-0036 §13).

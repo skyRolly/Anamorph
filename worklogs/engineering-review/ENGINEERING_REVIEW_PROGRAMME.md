@@ -1325,6 +1325,91 @@ moved only by the added non-vacuity checks (2261 → 2271).
 round adds no caller, no thread, no timer, no async or background path, and touches neither the
 host-side members nor the off-thread tripwire — `src/` is not modified at all.
 
+## D-2 / RISK-007 round 15 — 2026-09-04 — a restore's clean baseline comes from its own bytes
+
+> *"Pending edits become the clean baseline. When an older session lacks `presetBaseline`,
+> `adoptRestoredState` absorbs sound edits made before adoption. The preset indicator then reports
+> those edits as clean."* — `src/PluginProcessor.cpp:1231`
+
+**It is a genuine defect, and it is the third instance of a pattern this programme has already
+removed twice.** §17 took the second live read out of the SAVE baseline (round 9) and §18 out of the
+PRESET-LOAD baseline (round 10, KI-029). The restore path kept one.
+
+**The ordering, exactly.** `presetBaseline` records what the session was clean against. Two real
+shapes carry none: written before 0.6 (property absent), and — since 0.9.2 — saved while sitting on
+a NAMELESS A/B slot (property present, empty). For those the plug-in decides a baseline itself, and
+it decided it like this:
+
+| | thread | what happened |
+|---|---|---|
+| t0 | host thread H | `decodeRestore` installs the session's sound; `viewOfRestore` predicts the baseline as the sound just installed; the decode is handed to the message thread |
+| t1 | message thread M | **the user edits a sound parameter** — the live parameters move away from the restored sound |
+| t2 | message thread M | the drain adopts the restore. `adoptRestoredState` runs `sigAtLoad = soundSig()` — a LIVE read, now |
+
+At t2 the live sound is the restored sound *plus the t1 edit*, so the edit became the clean baseline
+and the indicator reported it as unmodified. For an INLINE restore t0 and t2 are the same instant and
+nothing is absorbed, which is why this only ever appeared on the host-thread path — and why the
+prediction published at t0 and the value adopted at t2 could disagree, a divergence round 13 recorded
+here as a residual and this round removes.
+
+**The invariant (ADR-0036 §22).** The baseline a restore adopts is the session's own `presetBaseline`
+when it recorded a non-empty one, and otherwise **the sound this restore installed, from the
+restore's own bytes at decode time**. Absent and empty are different facts but the same answer;
+neither means "modified" (an empty string matches no signature, so it would pin the star on for ever)
+and neither may mean "whatever is live when the adoption happens to run". Every edit after the
+restore installed its sound stays dirty — before the arrival is published, between arrival and
+adoption, or after it. An edit made BEFORE the arrival is not an edit against that session at all: a
+restore replaces the whole sound. That is exactly what a session WITH a stored baseline already did,
+so the no-baseline case now behaves like it rather than specially.
+
+**The change.** `RestoreDecode` carries `restoredSoundSig`, filled by `soundSignatureAfterLoading`
+(§18's primitive) from the restore's own tree, at decode time, by the thread that decoded it — a pure
+function of the tree and the parameters' ranges, so it reads nothing live and adds no cross-thread
+read. One resolver, `baselineOfRestore`, answers for both `viewOfRestore` and `adoptRestoreTail`, so
+the prediction and the adoption cannot disagree. `PresetManager::adoptRestoredState` is **deleted**
+rather than repaired: the live-read rule cannot come back through an entry point that no longer
+exists, and only the side holding the restore can name its sound.
+
+**The regression, and what it measures.** State test 60 crosses four session shapes with five
+orderings. The shapes are `absent`, `empty`, `its own sound (saved clean)` and `another sound (saved
+dirty)` — the last is the discriminator, the only one whose correct answer differs from what the
+fallback produces, and it also pins that a stored star survives a reload. The orderings are A
+adoption alone, B an edit inside the pending window (the reported bug), C an edit before the arrival,
+D an edit after the adoption, E several edits in one window then a second restore. The oracle is a
+CONTROL INSTANCE that restores the same bytes and is never touched afterwards; it calls neither
+`baselineOfRestore` nor `soundSignatureAfterLoading`, so a defect shared between the prediction and
+the adoption cannot make the test agree with itself. Restoring the live read fails **16** checks:
+
+```
+[baseline absent] B: the baseline is the restored session's, NOT the edited sound:
+  got      ... ,0.41000, ...      <- the edit
+  expected ... ,0.24000, ...      <- the session's own width
+```
+
+**Bounded audit of the baseline family.**
+
+| site | how the baseline is built | verdict |
+|---|---|---|
+| `load` / `loadFile` | `soundSignatureAfterLoading` — from the bytes | safe (§18) |
+| `saveUser` | `soundSignatureForSavedTree` — from the bytes written | safe (§17) |
+| `PresetManager` constructor | live read, but at construction: no earlier operation exists for an edit to be *after* | safe |
+| `viewOfRestore` + `adoptRestoreTail` | one shared resolver over the decode's own bytes | **the fix** |
+| `currentStateSet` → undo / redo / A-B / copy | carries `presets.baseline()`, which is never empty, so the fallback is unreachable | safe |
+| `applyStateSet` → `setMeta` empty fallback | live read, for a **pre-0.6.4 A/B slot payload** only | **recorded, not changed** |
+
+The last row is not this finding's class. Both statements run back to back on the message thread, so
+no user edit can land between them; only an audio-thread automation write can, and only for that
+vintage of slot. Closing it means deriving the baseline from `s.params` — but that sound is applied
+by `replaceState` + `reassertParameters`, not by `applySoundTree`, so it first requires MEASURING
+that `soundSignatureAfterLoading` models that store/report pass bit for bit. Assuming that equality
+instead of measuring it is precisely what round 10 got wrong (§19), so it belongs to a round that can
+measure rather than to a closure round.
+
+**Host serialization: disposition D, unchanged, no new evidence.** The finding moved line again
+(`src/PluginProcessor.h:437`) because this round added lines above it. That is not evidence. The
+round adds no caller, no thread, no timer, no async or background path, and touches neither the
+host-side members nor the off-thread tripwire.
+
 ## D-2 / RISK-007 round 13b — 2026-09-04 — two failures in the test frame, neither in the product
 
 Head `3182e11` failed two jobs. Its only difference from `ed18db2`, on which the same jobs were

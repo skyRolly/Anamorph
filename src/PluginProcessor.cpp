@@ -687,7 +687,7 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
         // one deleted from the preset baseline in the same round and it sat on the same
         // coherence path: the value it declined to write is the value the SESSION stored,
         // while the baseline travelling with that session is adopted verbatim
-        // (adoptRestoredState). Keeping the live value and the restored baseline is the
+        // (baselineOfRestore). Keeping the live value and the restored baseline is the
         // combination that makes an untouched preset show the modified star -- and, as
         // there, a tolerance cannot tell a float tail from a real difference of the same
         // size, so the only defensible answer is "restore what was stored".
@@ -1228,29 +1228,49 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
     // 0.9.2 a session saved while sitting on a nameless A/B slot stores exactly that, so it is
     // adopted verbatim and must never be turned back into a name.
     const auto adoptedName = d.haveName ? d.restoredName : anamorph::PresetManager::defaultName();
-    if (d.haveBaseline) presets.setMeta (adoptedName, d.restoredBaseline, d.restoredSelection);
-    else                presets.adoptRestoredState (adoptedName, d.restoredSelection);
+    presets.setMeta (adoptedName, baselineOfRestore (d), d.restoredSelection);
 
     syncCommitted();
+}
+
+// THE CLEAN BASELINE A RESTORE ADOPTS (D-2 round 15, ADR-0036 §22). One function, so the
+// prediction `viewOfRestore` publishes and the value `adoptRestoreTail` writes into the
+// manager are the same answer by construction rather than by two sites agreeing.
+//
+// A session that recorded a baseline gets that baseline, verbatim. ABSENT and EMPTY are not
+// the same thing -- only the decode can tell them apart, the same distinction `haveName`
+// draws for the sibling field -- but they resolve alike here: neither means "modified" (an
+// empty string is unequal to every possible sound, so it would pin the star on for ever) and
+// neither may mean "whatever happens to be live when the message thread gets round to
+// adopting". Both mean "this session recorded no baseline", and the answer is the sound THIS
+// RESTORE INSTALLED, taken from the restore's own bytes at decode time.
+//
+// That last clause is the round-15 fix. It used to be a live read of the parameter atomics --
+// `adoptRestoredState`'s `sigAtLoad = soundSig()`, and `setMeta`'s empty-baseline fallback --
+// performed at ADOPTION time, which is an unbounded window later than the restore for a host
+// thread's restore. Every sound edit made in that window was absorbed into the baseline, so
+// the preset indicator reported the user's own edits as clean. It is the same defect round 9
+// removed from the save baseline (§17) and round 10 from the preset-load baseline (§18,
+// KI-029), in the third and last place the pattern occurs, and `soundSignatureAfterLoading`
+// is the primitive round 10 built for exactly this.
+juce::String AnamorphAudioProcessor::baselineOfRestore (const RestoreDecode& d)
+{
+    return (d.haveBaseline && d.restoredBaseline.isNotEmpty()) ? d.restoredBaseline
+                                                               : d.restoredSoundSig;
 }
 
 // What the message thread WILL own once it adopts `d`, computed on the restoring
 // thread so a save issued there before the adoption describes the sound it just
 // applied. Each field follows the rule adoptRestoreTail applies: the name's
-// absent-vs-empty distinction; a non-empty restored baseline adopted verbatim and
-// every other case -- no `presetBaseline` field, or an empty one -- resolving to
-// the live sound's signature, which is setMeta's own empty-baseline fallback and
-// adoptRestoredState's rule (`liveSoundSig` is that signature, read from the
-// parameter atomics right after they were applied). A slot with no usable payload
-// stays INVALID and is resolved at save time, as abEnsureInit resolves it on the
-// message thread.
+// absent-vs-empty distinction, and the baseline through the one resolver above. A
+// slot with no usable payload stays INVALID and is resolved at save time, as
+// abEnsureInit resolves it on the message thread.
 std::unique_ptr<const AnamorphAudioProcessor::ProgramSnapshot>
-AnamorphAudioProcessor::viewOfRestore (const RestoreDecode& d, const juce::String& liveSoundSig)
+AnamorphAudioProcessor::viewOfRestore (const RestoreDecode& d)
 {
     auto v = std::make_unique<ProgramSnapshot>();
     v->presetName      = d.haveName ? d.restoredName : anamorph::PresetManager::defaultName();
-    v->presetBaseline  = (d.haveBaseline && d.restoredBaseline.isNotEmpty()) ? d.restoredBaseline
-                                                                             : liveSoundSig;
+    v->presetBaseline  = baselineOfRestore (d);
     v->presetSelection = d.restoredSelection;
     // The restore's own resolved Settings. Since round 12 this is NOT the whole answer for a
     // save taken before the adoption: a field the message thread edits after this restore
@@ -1441,6 +1461,11 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
         d.soundSetGen  = applySoundTree (params);
         if (seams.afterRestoreSoundApplied) seams.afterRestoreSoundApplied();
         d.soundParams  = params;
+        // ...and THIS restore's clean baseline, for a session that carries none of its own
+        // (§22). From the tree, not from the parameters: a live read here would describe
+        // whatever the seam above -- or a real replacement landing in the same window -- had
+        // just installed, and on the message thread it would also absorb an automation write.
+        d.restoredSoundSig = anamorph::PresetManager::soundSignatureAfterLoading (apvts, params);
 
         // The host-hidden Settings / view state (Oversampling, UI Scale, Persistence,
         // Tooltips, Animations, Show Meters), RESOLVED here and written by the message
@@ -1578,6 +1603,7 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
         d.soundSetGen  = applySoundTree (legacy);   // this restore's own token (§13)
         if (seams.afterRestoreSoundApplied) seams.afterRestoreSoundApplied();
         d.soundParams  = legacy;
+        d.restoredSoundSig = anamorph::PresetManager::soundSignatureAfterLoading (apvts, legacy);   // §22
 
         // A v0.2 session is older than 0.8.4, so it can only carry the host-hidden Settings the
         // way pre-0.8.4 sessions do: as APVTS params, or not at all. Same resolver the AnamorphRoot
@@ -1667,7 +1693,7 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         // side's next save compares the published snapshot's generation against.
         const auto generation = ++hostRestoreGen;
         internal.publishEngineConfig (d.internalResolved, generation);
-        hostRestoreView = viewOfRestore (d, anamorph::PresetManager::soundSignatureFor (apvts));
+        hostRestoreView = viewOfRestore (d);
 
         auto* handoff = new RestoreDecode (d);
         handoff->generation = generation;
