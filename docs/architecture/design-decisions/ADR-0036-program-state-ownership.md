@@ -844,7 +844,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
    broke it would be reporting a real defect on that toolchain, to be fixed by making the two sides
    agree and never by widening the comparison.
 
-   **Recorded, not changed — one sibling of the same SHAPE, outside this round's finding.**
+   **Recorded, not changed — the one sibling, and it is a prediction rather than a mutation.**
    `viewOfRestore` also predicts `presetBaseline`, and for the two cases where the restore carries no
    usable one (absent, or present-but-empty) it predicts the live sound's signature *at decode time*
    while the adoption's `setMeta`/`adoptRestoredState` fallback recomputes it *at adoption time*. A
@@ -852,6 +852,13 @@ turn late) and leaves a save issued on the host thread right after its restore d
    is narrower — it needs a session with no stored baseline, i.e. pre-0.6 or one saved on a nameless
    slot — it predates round 12, and no review finding names it, so it is recorded here rather than
    changed inside a closure round.
+
+   **Also recorded:** `writeState` takes up to three independent live captures of the sound in one
+   save — once for the root and once more for each A/B slot the snapshot carries as invalid, which is
+   resolved at save time by design. Automation moving between them can leave the root and a lazily
+   initialised slot describing different instants. That is the pre-existing shape §17 named for the
+   preset save, applied to the session format's own lazy-slot rule; no review finding names it and
+   this round does not change it.
 
    **Recorded, not changed.** Two live reads survive inside otherwise tree-derived signatures: the
    non-ranged fallbacks in `soundSignatureAfterLoading` and `soundSignatureForSavedTree`. They are
@@ -982,7 +989,8 @@ turn late) and leaves a save issued on the host thread right after its restore d
    PREDICTION — if the processor is destroyed before the drain runs, those bytes describe a state
    that was never live. That residual belongs to §14's mechanism and is not touched here.
 
-   **The bounded audit of the same family found no sibling.** Every other message-thread mutation of
+   **The bounded audit of the same family found no sibling among the mutations, and one among the
+   predictions** (recorded below). Every other message-thread mutation of
    program state drains first, by construction (`adoptPendingHostState` at the top of the A/B switch,
    the A/B copy, `step`, the preset load and save hooks, the undo poll, the editor's construction,
    Level-Match apply, and both message-thread state calls), so by the time it publishes,
