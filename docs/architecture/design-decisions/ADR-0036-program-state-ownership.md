@@ -1011,7 +1011,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:1231`).
+    (`src/PluginProcessor.cpp:1260`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1070,6 +1070,112 @@ turn late) and leaves a save issued on the host thread right after its restore d
     there by `replaceState` + `reassertParameters`, not by `applySoundTree`. Assuming that equality
     instead of measuring it is exactly what round 10 did wrong (§19), so it belongs to a round that
     can measure, not to this one.
+
+23. **A relative operation acts on the session it observed (round 16).** Review finding *"relative
+    navigation uses stale targets"* (`src/PluginProcessor.cpp:1015`).
+
+    **What a relative operation is.** One whose target is a function of the current state rather than
+    of the user's input: *the other slot* (`abToggle`), *the next/previous preset*
+    (`PresetManager::step`), *the previous undo step* (`undo`/`redo`), *the other A/B slot to copy
+    into* (`abCopyToOther`). "Switch to B", "load row 7" and "save as <name>" are ABSOLUTE and are not
+    in this family — their target is the user's, and no state change can invalidate it.
+
+    **The defect.** Each of these is two steps — derive, then apply — and the primitive that applies
+    DRAINS on the way in. `abToggle` calls `abSwitchTo`, which adopts before it does anything; `step`
+    calls `load`, whose `onAboutToLoad` adopts, and whose `pollUndoCoalesce` adopts again. A host
+    restore landing between the operation's own drain and that one was adopted in the gap, so the
+    target had been derived from a session that was no longer live when it was applied:
+
+    * **A/B.** The target is "the other slot of P", applied to R. When R's active slot IS that
+      target — which is exactly what a session saved on slot B gives — `abSwitchTo`'s
+      `if (slot == abActive) return;` fired and the toggle did **nothing at all**. The user pressed
+      A/B and the plug-in stood still.
+    * **step.** The target is "the row after P's selection", loaded onto R, which had by then selected
+      a different row. The result is neither session: R's Settings and R's A/B state carrying a preset
+      chosen as the neighbour of a selection that was already gone.
+
+    Round 10 fixed the half of this that lived in the editor — it used to compute
+    `abSwitchTo (abActiveSlot() == 0 ? 1 : 0)` itself, before any drain — and gave `step` its own
+    drain. Neither closed the second drain inside the primitive, so the window got smaller rather than
+    closing. This is the same lesson §17–§19 and §22 record for baselines, one level up: it is not
+    enough to read the right thing, the reading must still be true when it is used.
+
+    **The rule.** *Between deriving a relative target and applying it, nothing may be adopted.* The
+    session the target names and the session it lands on are then the same by construction.
+
+    **How.** Each primitive becomes a draining SHELL over an already-adopted core —
+    `abSwitchTo` over `abSwitchToAdopted`, `PresetManager::load` over `loadAdopted`,
+    `pollUndoCoalesce` over `pollUndoCoalesceAdopted` — and `load`/`loadFile` drain at their own
+    top rather than through `onAboutToLoad`, which now carries only the undo flush and the duck
+    (the duck still after every check that can refuse, round 26). An absolute caller uses the
+    shell and is unchanged; a relative operation drains once itself and calls the core.
+
+    **What happens to a restore that arrives inside the window.** It stays in the cell and is adopted
+    at the next entry point, or by the 20 Hz timer — the residual §15 already documents for the
+    instant after ANY drain, and the same answer `abSwitchTo`, `applyAutoGain` and every other entry
+    point have always given. The alternative — re-derive after the late adoption so the action lands
+    on the restore — was considered and rejected: it is unbounded (a restore can always arrive later),
+    and it would give relative operations a precedence rule no other entry point has.
+
+    **Why the split rather than suspending the drain.** The first implementation of this round
+    suspended adoption for the duration of the operation — a counter `adoptPendingHostState()`
+    honoured — which is smaller and closes the same window. It was rejected on review: the
+    suppression is *global*, so it also silences the drain at the top of `setStateInformation`.
+    An A/B apply calls `setValueNotifyingHost` for every parameter, which reaches the host
+    wrapper; a host that re-enters `setStateInformation` on the message thread from inside that
+    burst would then decode and apply a NEWER session while an older restore sat unadopted in the
+    cell, and the next drain would adopt the older one on top of it — an INVERSION of §10, and one
+    a release build cannot even assert. The split has no such window: every drain that must run
+    still runs, and the nested one simply does not exist for the relative caller.
+
+    **The bounded audit of the family.**
+
+    | site | target | drain between derive and apply | verdict |
+    |---|---|---|---|
+    | `abToggle` | the other slot | `abSwitchTo`'s | **fixed** |
+    | `PresetManager::step` | current row ± 1 | `load`'s, and `pollUndoCoalesce`'s inside it | **fixed** |
+    | `abCopyToOther` | the other slot | none — `abEnsureInit`, `currentStateSet`, `publishProgram` do not drain | safe |
+    | `undo` / `redo` | `abUndo[abActive].back()` | none — `pollUndoCoalesce` drains BEFORE the derivation, and `applyStateSet` does not drain | safe |
+    | `showPresetMenu`'s clicked row | absolute index into `list` | `load`'s, but no adoption reorders `list` (only `refresh()` does) | safe |
+    | `abSwitchTo (slot)`, `load (index)`, `saveUser (name)` | absolute | — | not in the family |
+
+    `showPresetMenu` was the one entry point in the preset family that read program state (the row the
+    tick is drawn on) without adopting first, so an already-pending restore left the check mark on the
+    outgoing session's row for the life of the popup. Display only — the row the user clicks is
+    absolute — but it now adopts like every other entry point.
+
+    State test 61 pins the rule over both operations and six orderings each: no pending restore; one
+    already pending when the call is made; **one arriving at the decision point** (the reported bug,
+    landed through a seam at the operation's last observation point); one adopted just before the
+    call; two restores around one operation; and repeated operations with a restore between them. Its
+    discriminators are fields the operations themselves do not move — the preset name for A/B, the
+    adopted Settings **tree** and the active slot for step — so "which session is this" is answerable
+    independently of "did the operation do its job". Pointing the two operations back at the draining
+    shells fails **9** checks, and the A/B one is legible: the live sound after the toggle is the
+    restore's 0.37 where the observed session's other slot (0.83) belongs.
+
+    **Recorded, not changed: an operation that SPANS a drain.** `PresetManager::saveUser` drains at
+    `onAboutToSave`, writes the file, sets `current`/`sel`/`sigAtLoad`, and then drains again through
+    `onSaved` → `pollUndoCoalesce`. A restore landing during the disk write — an unbounded window — is
+    adopted by that second drain and `setMeta` replaces all three fields: the `.anamorph` file is on
+    disk and in `list`, but the name, the tick and the clean baseline are the restore's. §10 (an action
+    after a restore's arrival lands on top of it) and §15's residual (a restore arriving after the last
+    check is adopted next) genuinely disagree about this one, because the operation spans the drain.
+    Reordering its drains does NOT close it: whenever that restore is adopted it replaces the
+    session's preset identity, so the save's metadata is superseded either way. Making it survive would mean
+    giving preset-save metadata the post-arrival survival §12 gives sound edits — a semantic decision
+    that needs its own round, not a closure round. The file, which is what the user asked for, is
+    always written correctly.
+
+    **Also recorded, not changed.** A Settings ComboBox is bound to the tree through a
+    `juce::Value` whose change notification is ASYNCHRONOUS, so for up to one dispatch the widget can
+    still show the pre-restore item; a mouse-wheel notch or arrow key in that window computes its
+    neighbour from the displayed item rather than the adopted one. It is not this rule's shape — no
+    drain intervenes, the staleness is in JUCE's binding latency — and closing it means making those
+    bindings synchronous, which changes Settings publication (§9, §18) and belongs with a measurement
+    rather than in a closure round. `applyAutoGain`'s Output Gain is derived from a converging
+    loudness MEASUREMENT that lags any sound change by many blocks, restore or no restore; there is no
+    derived program-state target there to go stale.
 
 ## Consequences
 

@@ -450,6 +450,15 @@ juce::String PresetManager::soundSignatureForSavedTree (const juce::AudioProcess
 
 void PresetManager::load (int index)
 {
+    // The drain that used to sit inside `onAboutToLoad`, hoisted here in round 16 (§23) so it
+    // runs BEFORE anything is derived rather than after. It is unchanged for this absolute
+    // caller -- the row is the one the user named -- and it is what `step` no longer repeats.
+    if (adoptPending) adoptPending();
+    loadAdopted (index);
+}
+
+void PresetManager::loadAdopted (int index)
+{
     if (index < 0 || index >= list.size()) return;
     const auto& e = list.getReference (index);
 
@@ -526,6 +535,8 @@ void PresetManager::load (int index)
 
 bool PresetManager::loadFile (const juce::File& f)
 {
+    if (adoptPending) adoptPending();   // as `load`: the drain `onAboutToLoad` used to carry (§23)
+
     // Unparsable OR foreign-rooted -> false, and nothing is touched: the chooser
     // can point at any file on the machine, so this is the path a user is most
     // likely to hand another plug-in's preset to (ER-STATE-24).
@@ -553,11 +564,20 @@ void PresetManager::step (int delta)
     // round 10, §18). Without this, "next" from a session that had just been replaced landed
     // on the row after the OLD selection -- the same stale-derivation shape as the A/B toggle.
     if (adoptPending) adoptPending();
+    if (beforeRelativeTarget) beforeRelativeTarget();   // test seam: land a restore HERE
+
+    // ...AND THE SELECTION MUST STILL BE THAT ONE WHEN THE ROW IS LOADED (§23, round 16). The
+    // drain above was not enough on its own while `load` drained again on the way in, and the
+    // `pollUndoCoalesce` inside its `onAboutToLoad` drained a third time: a restore landing in
+    // between was adopted there, AFTER `cur` had been read from the session it replaced, and
+    // "next" then loaded the row after the OUTGOING selection onto the incoming session. Those
+    // drains are correct for `load`'s absolute callers, so they were not removed -- they were
+    // hoisted into `load` itself, and this calls the ALREADY-ADOPTED core below them.
     const int cur = currentIndex();
     const int n   = list.size();
     // Unknown current name steps from "Default"; otherwise wrap around the list.
     const int from = cur >= 0 ? cur : 0;
-    load (((from + delta) % n + n) % n);
+    loadAdopted (((from + delta) % n + n) % n);
 }
 
 bool PresetManager::saveUser (const juce::String& rawName)

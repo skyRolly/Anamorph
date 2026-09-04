@@ -861,6 +861,20 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 61 — a relative operation acts on the session it observed** (round 16, ADR-0036 §23).
+  `abToggle` and `PresetManager::step` derive a target and then call a primitive that DRAINS on the
+  way in, so a restore landing in the gap was adopted after the target had been derived from the
+  session it replaced: the A/B toggle became a NO-OP (its target was already the restore's active
+  slot, so `abSwitchTo`'s "already there" guard returned) and `step` loaded the neighbour of a
+  selection that was gone, onto the restore's session. Both operations × six orderings: nothing
+  pending; already pending; **arriving at the decision point** (through the `atRelativeDecision` /
+  `beforeRelativeTarget` seams, which fire at the operation's last observation point); adopted just
+  before the call; two restores around one operation; and repeated operations with a restore between
+  them. Discriminated by fields the operations do not move — the preset name, the adopted Settings
+  TREE (not `oversampleIndex()`, which is the engine-facing atomic the restoring thread publishes
+  synchronously by design), and the active slot. Mutation-tested — pointing the two operations back
+  at the draining shells (`abSwitchTo`, `load`) fails **9** checks.
+
 * **State test 60 — a restore that carries no baseline is clean against ITS sound** (round 15,
   ADR-0036 §22). The two session shapes that record no `presetBaseline` — written before 0.6, or
   saved on a nameless A/B slot (present-but-empty since 0.9.2) — used to have their clean baseline
@@ -947,7 +961,7 @@ is wrong with any of those tests; the harness assumes exclusive use of the folde
 give it (one suite per runner). Locally: never run the suite beside a sanitizer lane or a second
 copy of itself.
 
-`tests/state_tests.cpp` (**59 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**60 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

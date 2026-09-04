@@ -10094,7 +10094,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1231).
+//  baseline", src/PluginProcessor.cpp:1260).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -10321,6 +10321,383 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
             }
         }
     }
+}
+
+
+// ---------------------------------------------------------------------------
+//  State test 61 -- a relative operation acts on the session it observed
+//  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
+//  targets", src/PluginProcessor.cpp:1015).
+//
+//  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
+//  taken in two steps -- read the current slot / row, then apply the derived target
+//  -- and both call a primitive that DRAINS on the way in: `abToggle` calls
+//  `abSwitchTo`, and `step` calls `load`, whose `onAboutToLoad` drains and whose
+//  `pollUndoCoalesce` drains again. A host restore landing between the operation's
+//  own drain and that one was adopted in the gap, so the target had been derived
+//  from a session that was no longer live when it was applied:
+//
+//    A/B     target = "the other slot of P" ... applied to R. When R's active slot
+//            IS that target -- which is what a session saved on slot B gives --
+//            `abSwitchTo`'s "already there" guard returned and the toggle became a
+//            NO-OP. The user pressed A/B and nothing happened.
+//    step    target = "the row after P's selection" ... loaded onto R, which by then
+//            had selected a different row. The result is neither P nor R: R's
+//            session carrying a preset chosen as the neighbour of P's selection.
+//
+//  Round 10 fixed the half of this that lived in the EDITOR (it used to compute
+//  `abSwitchTo (abActiveSlot() == 0 ? 1 : 0)` itself, before any drain) and added
+//  `step`'s own drain. It did not close the second drain inside the primitives,
+//  which is what this round does.
+//
+//  THE RULE (§23): between deriving a relative target and applying it, nothing may
+//  be adopted. Each primitive is now a draining SHELL over an already-adopted core, and
+//  a relative operation drains once itself and calls the core, so the target and the state
+//  it lands on are the same session by construction and no drain is ever skipped. A
+//  restore arriving inside that window stays pending and is adopted at the next
+//  entry point, exactly as one arriving an instant after any other drain is -- the
+//  residual §15 already documents, and the same answer `abSwitchTo`, `applyAutoGain`
+//  and every other entry point have always given.
+//
+//  THE ORACLE IS THE TEST'S OWN BOOKKEEPING. Each leg names, in the test, which
+//  session it expects the result to belong to and which slot or row that session's
+//  answer is. Nothing here calls `abToggle`'s or `step`'s target arithmetic a second
+//  time, so a defect in that arithmetic cannot make the test agree with itself.
+//  The discriminators are deliberately fields a toggle or a preset load DOES NOT
+//  TOUCH but a restore does -- the preset name for the A/B legs, the Settings and
+//  the active slot for the step legs -- so "which session am I on" is answerable
+//  independently of "did the operation do its job".
+// ---------------------------------------------------------------------------
+namespace r16
+{
+    // A session that selects a FACTORY ROW, with its own Settings and active slot, so a
+    // restore of it moves the preset selection, the Settings and the A/B state at once.
+    struct Session
+    {
+        juce::MemoryBlock blob;
+        juce::String      name;
+        int               row = 0, active = 0, oversampleId = 1;
+        float             widthA = 0.0f, widthB = 0.0f;
+        float             other() const { return active == 0 ? widthB : widthA; }
+    };
+
+    // The two slots carry DIFFERENT sounds, so a toggle has a visible effect of its own --
+    // otherwise "the toggle happened" and "the toggle was neutralized" look identical.
+    // The preset row is loaded before either slot is filled, so both slots carry it.
+    static Session authorOnRow (int row, int active, int oversampleId, float widthA, float widthB)
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        auto& a = *owned;
+        a.prepareToPlay (48000.0, 512);
+        a.getInternal().oversampleValue().setValue (oversampleId);
+        a.getPresets().load (row);              // an absolute load: the selection is row
+        setRaw (a, "width", widthA);
+        a.abCopyToOther();                      // B := A's sound and row
+        a.abSwitchTo (1);
+        setRaw (a, "width", widthB);            // ...then B gets its own
+        a.abSwitchTo (0);                       // stores B, applies A
+        if (active == 1) a.abSwitchTo (1);
+        Session s;
+        s.blob = d2::saveOf (a);
+        s.name = a.getPresets().currentName();
+        s.row = a.getPresets().currentIndex();
+        s.active = a.abActiveSlot();
+        s.oversampleId = oversampleId;
+        s.widthA = widthA; s.widthB = widthB;
+        return s;
+    }
+
+    // A restore that ARRIVES from a host thread and is left PENDING.
+    static void arrive (AnamorphAudioProcessor& p, const juce::MemoryBlock& blob)
+    {
+        std::thread host ([&] { d2::restoreFrom (p, blob); });
+        host.join();
+    }
+
+    // What the plug-in is showing right now, in the fields the two operations do not move.
+    struct Where
+    {
+        int active, oversample, row;
+        juce::String name;
+        static Where of (AnamorphAudioProcessor& p)
+        {
+            // The Settings value read from the TREE, which only the message thread writes at
+            // adoption -- not `oversampleIndex()`, which is the ENGINE-facing atomic the
+            // restoring thread publishes synchronously by design (§8; State test 38 pins that).
+            // The tree is the half that says "this session has been adopted".
+            return { p.abActiveSlot(), (int) p.getInternal().copyState()[anamorph::iid::oversample],
+                     p.getPresets().currentIndex(), p.getPresets().currentName() };
+        }
+    };
+}
+
+static void testRelativeNavigationActsOnTheSessionItObserved()
+{
+    std::printf ("State test 61: a relative operation acts on the session it observed (D-2 r16)\n");
+
+    const int factoryCount = [&]
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        int n = 0;
+        for (const auto& e : owned->getPresets().entries()) if (e.isFactory) ++n;
+        return n;
+    }();
+    check (factoryCount >= 3, "non-vacuity: at least three factory presets to step through");
+
+    // P is the session the user is on; R is the one the host restores. They differ in every
+    // field the assertions below read, so "which session is this" is always answerable.
+    const auto P = r16::authorOnRow (0, 0, 1, 0.22f, 0.83f);
+    const auto R = r16::authorOnRow (2, 1, 3, 0.71f, 0.37f);
+    check (P.row != R.row && P.active != R.active && P.oversampleId != R.oversampleId
+        && P.name != R.name,
+           "non-vacuity: the two sessions differ in row, active slot, Settings and preset name");
+
+    // ======================= A/B TOGGLE =======================================
+    //
+    // --- A. no pending restore: the plain toggle. -----------------------------
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);                    // inline: P is live and adopted
+        const auto before = r16::Where::of (p);
+        p.abToggle();
+        check (p.abActiveSlot() == 1 - before.active,
+               "A/B case A: with nothing pending, the toggle goes to the other slot");
+        checkStr (p.getPresets().currentName(), before.name,
+                  "A/B case A: ...of the session it was on");
+    }
+
+    // --- B. a restore is ALREADY pending when the toggle is called. -----------
+    //        The toggle's own drain adopts it, so the toggle is relative to R -- the
+    //        precedence rule §10, and the half round 10 already established.
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        r16::arrive (p, R.blob);                        // pending BEFORE the call
+        p.abToggle();
+        check (p.abActiveSlot() == 1 - R.active,
+               "A/B case B: a restore pending before the call is adopted, and the toggle is relative to IT");
+        checkStr (p.getPresets().currentName(), R.name,
+                  "A/B case B: ...on the restored session");
+    }
+
+    // --- C. THE REPORTED BUG. The restore lands at the decision point, i.e. AFTER
+    //        the toggle's own drain and BEFORE the primitive's. R's active slot is
+    //        the one the toggle is heading for, which is the case that used to make
+    //        `abSwitchTo` return early and do nothing at all.
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        const auto before = r16::Where::of (p);
+        check (before.active != R.active,
+               "A/B case C non-vacuity: R makes the slot the toggle is heading for the active one");
+
+        p.seams.atRelativeDecision = [&] { r16::arrive (p, R.blob); };
+        p.abToggle();
+        p.seams.atRelativeDecision = nullptr;
+
+        // The toggle HAPPENED, and it happened to P: the slot moved, and the session is
+        // still the one the toggle observed. Before round 16 the target was derived from
+        // P and applied to R, and since R had already made that slot active the switch
+        // returned without doing anything -- the name below read R's.
+        check (p.abActiveSlot() == 1 - before.active,
+               "A/B case C: the toggle is NOT neutralized by a restore it never observed");
+        checkNear ((double) rawOf (p, "width"), (double) P.other(), 1.0e-6,
+                   "A/B case C: ...and the other slot's SOUND is what is live, so it really switched");
+        checkStr (p.getPresets().currentName(), before.name,
+                  "A/B case C: ...and it acted on the session it observed, not on the restore");
+        check ((int) p.getInternal().copyState()[anamorph::iid::oversample] == P.oversampleId,
+               "A/B case C: no half of the restore leaked into the toggled session");
+
+        // ...and the restore is not lost: it is still pending, and the next entry point
+        // adopts it WHOLE, which is the same answer any restore arriving an instant after
+        // a drain gets.
+        p.pollUndoCoalesce();
+        const auto after = r16::Where::of (p);
+        check (after.active == R.active && after.oversample == R.oversampleId,
+               "A/B case C: the pending restore is adopted whole at the next entry point");
+        checkStr (after.name, R.name, "A/B case C: ...including its preset identity");
+    }
+
+    // --- D. the restore lands just BEFORE the derivation, i.e. before the drain.
+    //        Same answer as B: the drain observes it, so the toggle is relative to R.
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        r16::arrive (p, R.blob);
+        p.pollUndoCoalesce();                           // adopted here rather than by the toggle
+        p.abToggle();
+        check (p.abActiveSlot() == 1 - R.active,
+               "A/B case D: a restore adopted before the call is what the toggle is relative to");
+    }
+
+    // --- E. TWO restores around one toggle. -----------------------------------
+    //        The first is adopted by the toggle's drain, so the toggle is relative to IT;
+    //        the second arrives at the decision point and must not touch this toggle.
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        const auto R2 = r16::authorOnRow (1, 0, 2, 0.44f, 0.59f);
+        r16::arrive (p, R.blob);                        // pending before the call -> adopted
+        p.seams.atRelativeDecision = [&] { r16::arrive (p, R2.blob); };  // lands in the window
+        p.abToggle();
+        p.seams.atRelativeDecision = nullptr;
+        check (p.abActiveSlot() == 1 - R.active,
+               "A/B case E: the toggle is relative to the restore its own drain adopted");
+        checkStr (p.getPresets().currentName(), R.name,
+                  "A/B case E: ...and the later arrival did not move it");
+        p.pollUndoCoalesce();
+        check (p.abActiveSlot() == R2.active && p.getPresets().currentIndex() == R2.row,
+               "A/B case E: the later arrival is adopted whole afterwards");
+    }
+
+    // --- F. toggle -> restore -> toggle. --------------------------------------
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        p.abToggle();
+        check (p.abActiveSlot() == 1 - P.active, "A/B case F: the first toggle moves off P's slot");
+        r16::arrive (p, R.blob);
+        p.abToggle();                                   // its own drain adopts R
+        check (p.abActiveSlot() == 1 - R.active,
+               "A/B case F: the second toggle is relative to the session that arrived between them");
+        checkStr (p.getPresets().currentName(), R.name, "A/B case F: ...and is on that session");
+    }
+
+    // ======================= PRESET STEP ======================================
+    //
+    // --- A. no pending restore: the plain step, both directions and the wrap. ---
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        const int n = p.getPresets().entries().size();
+        const int from = p.getPresets().currentIndex();
+        p.getPresets().step (+1);
+        check (p.getPresets().currentIndex() == (from + 1) % n, "step case A: +1 lands on the next row");
+        p.getPresets().step (-1);
+        check (p.getPresets().currentIndex() == from, "step case A: -1 comes back");
+        // The wrap, from the last row.
+        p.getPresets().load (n - 1);
+        p.getPresets().step (+1);
+        check (p.getPresets().currentIndex() == 0, "step case A: +1 from the last row wraps to the first");
+        p.getPresets().step (-1);
+        check (p.getPresets().currentIndex() == n - 1, "step case A: -1 from the first row wraps to the last");
+    }
+
+    // --- B. a restore is ALREADY pending: step's own drain adopts it and the step
+    //        is relative to R's row.
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        const int n = p.getPresets().entries().size();
+        r16::arrive (p, R.blob);
+        p.getPresets().step (+1);
+        check (p.getPresets().currentIndex() == (R.row + 1) % n,
+               "step case B: a restore pending before the call moves the row the step is relative to");
+        check (p.abActiveSlot() == R.active
+            && (int) p.getInternal().copyState()[anamorph::iid::oversample] == R.oversampleId,
+               "step case B: ...and the preset was loaded onto that restored session");
+    }
+
+    // --- C. THE REPORTED BUG. The restore lands at the decision point: after step's
+    //        own drain, before `load` drains again.
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        const int n = p.getPresets().entries().size();
+        const int from = p.getPresets().currentIndex();
+
+        p.getPresets().beforeRelativeTarget = [&] { r16::arrive (p, R.blob); };
+        p.getPresets().step (+1);
+        p.getPresets().beforeRelativeTarget = nullptr;
+
+        // The row is the neighbour of the row the step READ, and -- the half that used to
+        // break -- it was loaded onto the session that row belongs to. Before round 16 the
+        // restore was adopted by `load`'s own drain in between, so the preset landed on R:
+        // the result carried R's Settings and R's active slot with a preset chosen as the
+        // neighbour of P's selection, which is a session that never existed.
+        check (p.getPresets().currentIndex() == (from + 1) % n,
+               "step case C: the row loaded is the neighbour of the row the step observed");
+        check (p.abActiveSlot() == P.active,
+               "step case C: ...loaded onto THAT session, not onto the restore (A/B slot)");
+        check ((int) p.getInternal().copyState()[anamorph::iid::oversample] == P.oversampleId,
+               "step case C: ...nor its Settings -- no mixed session");
+
+        p.pollUndoCoalesce();
+        check (p.getPresets().currentIndex() == R.row && p.abActiveSlot() == R.active
+            && (int) p.getInternal().copyState()[anamorph::iid::oversample] == R.oversampleId,
+               "step case C: the pending restore is adopted whole at the next entry point");
+    }
+
+    // --- D. adopted before the call: identical to B, by a different route. -----
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        const int n = p.getPresets().entries().size();
+        r16::arrive (p, R.blob);
+        p.pollUndoCoalesce();
+        p.getPresets().step (-1);
+        check (p.getPresets().currentIndex() == ((R.row - 1) % n + n) % n,
+               "step case D: a restore adopted before the call is what the step is relative to");
+    }
+
+    // --- E. two restores around one step. -------------------------------------
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        const int n = p.getPresets().entries().size();
+        const auto R2 = r16::authorOnRow (1, 0, 2, 0.44f, 0.59f);
+        r16::arrive (p, R.blob);                                        // adopted by step's drain
+        p.getPresets().beforeRelativeTarget = [&] { r16::arrive (p, R2.blob); };
+        p.getPresets().step (+1);
+        p.getPresets().beforeRelativeTarget = nullptr;
+        check (p.getPresets().currentIndex() == (R.row + 1) % n,
+               "step case E: the step is relative to the restore its own drain adopted");
+        check (p.abActiveSlot() == R.active,
+               "step case E: ...and landed on that session, not on the one that arrived later");
+        p.pollUndoCoalesce();
+        check (p.getPresets().currentIndex() == R2.row,
+               "step case E: the later arrival is adopted whole afterwards");
+    }
+
+    // --- F. step -> restore -> step. ------------------------------------------
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);
+        const int n = p.getPresets().entries().size();
+        p.getPresets().step (+1);
+        check (p.getPresets().currentIndex() == (P.row + 1) % n, "step case F: the first step moves off P's row");
+        r16::arrive (p, R.blob);
+        p.getPresets().step (+1);                                       // its own drain adopts R
+        check (p.getPresets().currentIndex() == (R.row + 1) % n,
+               "step case F: the second step is relative to the session that arrived between them");
+        check (p.abActiveSlot() == R.active, "step case F: ...and landed on it");
+    }
+
+    // ======================= THE OTHER TWO RELATIVE SITES ======================
 }
 
 // ---------------------------------------------------------------------------
@@ -10586,6 +10963,7 @@ int main (int argc, char* argv[])
     testARestoreIsAFixedPoint();
     testHostSaveInsideThePendingWindowCarriesTheEdit();
     testRestoreWithoutBaselineIsCleanAgainstItsOwnSound();
+    testRelativeNavigationActsOnTheSessionItObserved();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

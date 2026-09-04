@@ -89,6 +89,24 @@ public:
     // is pending (one relaxed atomic load).
     void adoptPendingHostState();
 
+    // THE RULE FOR RELATIVE NAVIGATION (D-2 round 16, ADR-0036 §23).
+    //
+    // "The other slot", "the next preset", "the previous undo step" are decisions ABOUT a
+    // session, and the session they are about is the one the operation observed at its drain.
+    // Between deriving such a target and applying it NOTHING MAY BE ADOPTED: an adoption there
+    // replaces the session the target was derived from, and the target then names a slot or a
+    // row of a session that is no longer live.
+    //
+    // The primitives drain on ENTRY, which is right for their absolute callers ("switch to B",
+    // "load row 7") and fatal for a relative one, whose target is already in its hand. So each
+    // primitive is a draining shell over an ALREADY-ADOPTED core, and a relative operation
+    // drains once itself and then calls the core. Nothing is ever skipped -- the drains that
+    // must always run still always run -- and no window exists in which an adoption is
+    // suppressed, which is what makes this safe against a host that pumps the message loop from
+    // inside a parameter notification.
+    void abSwitchToAdopted (int slot);        // the switch, with the drain already done
+    void pollUndoCoalesceAdopted();           // the poll, with the drain already done
+
     // Test seams (D-2): EMPTY in production, so each costs one null check on a
     // non-audio path. A harness installs one to run code at an ownership boundary
     // -- after the host side's mailbox take inside an off-thread save, after the
@@ -96,7 +114,8 @@ public:
     // reproduce a reviewed interleaving deterministically rather than by timing.
     // Installed and cleared on the main thread while no other thread can reach them.
     struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake, beforeRestorePut,
-                                        afterRestoreSoundApplied, beforeSoundReplacementWrites; };
+                                        afterRestoreSoundApplied, beforeSoundReplacementWrites,
+                                        atRelativeDecision; };
     Seams seams;
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.

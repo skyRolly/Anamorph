@@ -216,6 +216,10 @@ public:
                                                     const juce::ValueTree& savedSound);
 
     void load (int index);                           // message thread only
+    // `load` with the drain already done. `step` calls this directly: it has drained itself and
+    // derived its row from what that drain established, and a second adoption here would move
+    // the selection under a row already chosen (ADR-0036 §23, round 16).
+    void loadAdopted (int index);
     bool loadFile (const juce::File&);               // load an arbitrary .anamorph file (OS chooser, #3)
     void step (int delta);                           // prev/next with wrap-around
     bool saveUser (const juce::String& name);        // write + select; false on IO error
@@ -254,6 +258,12 @@ public:
     // onAboutToSave below is the save path's instance of the same rule. Empty when no
     // processor wires it up (safe to skip: the manager then has no restores to adopt).
     std::function<void()> adoptPending;
+
+    // Test seam: fires inside `step`, at its LAST OBSERVATION POINT -- after the drain that
+    // makes the selection authoritative and before the target row is derived from it. A test
+    // lands a restore here to prove the row it loads cannot come from a session the step never
+    // observed. Empty in every shipping path.
+    std::function<void()> beforeRelativeTarget;
 
     // D-2 (RISK-007). Fired by saveUser() AFTER the file is written and BEFORE any of
     // this manager's metadata moves, so the processor can adopt a host restore that is

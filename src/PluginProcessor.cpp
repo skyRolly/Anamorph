@@ -74,7 +74,11 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // writes, the same point every other replacement bumps at (§14), and the two hooks
     // are paired on every path that can succeed (see the failure discipline in
     // PresetManager::load).
-    presets.onAboutToLoad = [this] { adoptPendingHostState(); pollUndoCoalesce(); engine.requestDuck(); };
+    // NO DRAIN HERE since round 16 (§23): `load`/`loadFile` drain at their own top, before the
+    // refusal checks and before `step` derives its row, so a drain at this point could only
+    // adopt something AFTER a relative target had been chosen. The flush and the duck stay --
+    // the duck deliberately after every check that can refuse (round 26).
+    presets.onAboutToLoad = [this] { pollUndoCoalesceAdopted(); engine.requestDuck(); };
     presets.onLoaded      = [this] { noteWholeSoundReplaced(); commitPresetSwitchUndoStep(); };
     // A save changes no parameter, so nothing else would ever refresh `committed` off the
     // pre-save preset -- and the next undo would restore that stale name/identity/baseline.
@@ -96,7 +100,7 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // the two land in the order they happened.
     presets.onMetaChanged = [this] { publishProgram(); };
     presets.onAboutToSave = [this] { adoptPendingHostState(); };
-    presets.adoptPending  = [this] { adoptPendingHostState(); }; // step() decides after the drain (§18)
+    presets.adoptPending  = [this] { adoptPendingHostState(); }; // load/loadFile/step drain through this (§18, §23)
     internal.onChanged    = [this] { publishProgram(); };
 
     syncCommitted(); // establish the undo baseline
@@ -819,6 +823,14 @@ void AnamorphAudioProcessor::pollUndoCoalesce()
     // adoption replaces (the undo history, the committed baseline, the gesture
     // bookkeeping). One relaxed load when nothing is pending.
     adoptPendingHostState();
+    pollUndoCoalesceAdopted();
+}
+
+// The poll itself, with the drain already done. A preset load reaches this through
+// `onAboutToLoad` AFTER the load path has drained and (for `step`) after the target row has
+// been derived, so draining again here would move the selection under a chosen row (§23).
+void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
+{
 
     // S10: the signature is a pure function of the listened sound parameters,
     // so an unchanged generation means it is character-identical to the one
@@ -993,6 +1005,14 @@ void AnamorphAudioProcessor::abApplySlot (int slot)
 void AnamorphAudioProcessor::abSwitchTo (int slot)
 {
     adoptPendingHostState(); // message thread: a pending host restore lands BEFORE this switch (D-2)
+    abSwitchToAdopted (slot);
+}
+
+// The switch itself, with the drain already done. `abToggle` calls this directly because its
+// target is derived from the state that drain established, and adopting again here would
+// replace that state underneath a target already in hand (§23).
+void AnamorphAudioProcessor::abSwitchToAdopted (int slot)
+{
     slot = juce::jlimit (0, anamorph::kNumAbSlots - 1, slot); // defensive: never index out of bounds
     abEnsureInit();
     if (slot == abActive) return;
@@ -1008,12 +1028,21 @@ void AnamorphAudioProcessor::abSwitchTo (int slot)
 void AnamorphAudioProcessor::abToggle()
 {
     // Drain FIRST, then decide: the target is the other slot of the session that is
-    // authoritative once every arrived restore has been adopted (§15), never of the
-    // one a caller happened to observe earlier. abSwitchTo drains again; a restore
-    // that lands between the two drains is adopted there and the toggle applies to
-    // THAT session -- a legal serialization, since it arrived before the switch.
+    // authoritative once every arrived restore has been adopted (§15), never of the one a
+    // caller happened to observe earlier.
+    //
+    // ROUND 16 CLOSED THE REST OF IT (§23). Round 10 moved the derivation off the editor and
+    // in here, but `abSwitchTo` drains AGAIN on entry, so the window merely got smaller: a
+    // restore landing between the two drains was adopted by the second one, AFTER the target
+    // had been derived from the outgoing session. When that restore made the other slot
+    // active -- which is exactly what a session saved on slot B does -- the derived target
+    // equalled the new `abActive` and `abSwitchTo`'s own "already there" guard returned
+    // without switching. The user pressed A/B and NOTHING HAPPENED. The decision window makes
+    // the second drain a no-op, so the target and the state it is applied to are the same
+    // session by construction.
     adoptPendingHostState();
-    abSwitchTo (abActive == 0 ? 1 : 0);
+    if (seams.atRelativeDecision) seams.atRelativeDecision();   // test seam: land a restore HERE
+    abSwitchToAdopted (abActive == 0 ? 1 : 0);                  // ...and NOT abSwitchTo: no second drain
 }
 
 void AnamorphAudioProcessor::abCopyToOther()

@@ -15,6 +15,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.7] — 2026-09-03
 ### Fixed
+- **The A/B button and the preset arrows can no longer be swallowed by a session change.** "The other
+  slot" and "the next preset" are worked out from where you are, and your DAW can replace the whole
+  session from its own thread at any moment — Logic's autosave does, and so do several VST3 hosts.
+  If one arrived in the instant between the plug-in working out where to go and going there, the
+  destination described the session that had just been replaced: pressing A/B could do **nothing at
+  all** (when the arriving session was already on the slot you were heading for), and Next/Previous
+  could load the preset next to a selection that no longer existed, on top of the new session. Both
+  now decide and act on one session: whichever one is in force when you press the button. A session
+  arriving in that same instant is applied straight afterwards, exactly as it is for every other
+  control. Opening the preset menu also refreshes the tick first, so it can no longer show the
+  previous session's row. Decision: ADR-0036 §23. Regression coverage: State test 61.
+  Evidence: PR #137. [Verified]
 - **An older session's modified-star no longer goes out after you edit it.** Sessions written before
   0.6 — and, since 0.9.2, any session saved while the A/B slot you were on had no preset name —
   record no "clean" reference of their own, so the plug-in works one out from the sound the session

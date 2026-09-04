@@ -947,7 +947,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:885-894`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2256-2281`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2266-2291`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1467,7 +1467,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2080"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2090"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -8234,6 +8234,39 @@ product trade-off. The cost had a removable cause (the load's extra store/report
 it as removed rather than leaving §17's framing to read as permanent. §17's own text is unchanged; it
 was true of the save-side formula it examined.
 
+## D-2 round 16 (2026-09-04) — a relative operation acts on the session it observed (ADR-0036 §23)
+
+**Code changed:** `src/PluginProcessor.h` / `.cpp` — `abSwitchTo` and `pollUndoCoalesce` become
+draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle` calls the core, and
+`onAboutToLoad` no longer drains; `src/PresetManager.h` / `.cpp` — `load` becomes a shell over
+`loadAdopted` and drains at its own top (as does `loadFile`), `step` calls the core, plus the
+`beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
+row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
+
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1015`).
+`abToggle` and `step` each derive a target and then call a primitive that drains on the way in
+(`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
+after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
+its target was already the arriving session's active slot, and `abSwitchTo` returns when it is
+already there — and `step` loaded the neighbour of a selection that was gone, onto the restore's
+session. Round 10 fixed the editor half of this and gave `step` its own drain; it did not close the
+second drain inside the primitives.
+
+**Measured.** State suite 2373 / 0 (60 tests). Pointing the two operations back at the draining
+shells fails **9** checks,
+including the A/B one directly: the live sound after the toggle is the restore's 0.37 where the
+observed session's other slot (0.83) belongs.
+
+**Documents updated:** `ADR-0036` (new §23, with the family audit table, why the split was chosen
+over suspending the drain, and two recorded residuals —
+`saveUser` spanning a drain, and the async ComboBox binding); `TESTING.md` (State test 61, 60 tests);
+`README.md`, `TESTING_POLICY.md`, `HANDOVER.md`, `DOCUMENTATION_COVERAGE.md` and the worklog for the
+counts; `CHANGELOG.md` as a user-visible fix — a button press could be swallowed.
+
+**Drift.** None. §23 is a new rule about WHEN a relative target is decided; it changes no publication,
+ownership, generation, baseline or signature semantics, and rounds 10, 12 and 15 are re-asserted by
+the suite.
+
 ## D-2 round 15 (2026-09-04) — a restore's clean baseline comes from its own bytes (ADR-0036 §22)
 
 **Code changed:** `src/PluginProcessor.h` / `.cpp` — `RestoreDecode` gains `restoredSoundSig`, filled
@@ -8243,7 +8276,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1231`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1260`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded

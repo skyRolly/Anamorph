@@ -15,7 +15,7 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 | **Host prepare thread** (external) | host → `prepareToPlay` off the message thread (JUCE Linux VST3 pre-`IRunLoop`, FL Studio's Patcher, an AU `Initialize` off main) | Engine prepare under the format contract that no `processBlock` runs concurrently; latency through the D-1 request (round 15). |
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:306-374 (`processBlock`), :240 `ScopedNoDenormals`
+- Source: src/PluginProcessor.cpp:310-378 (`processBlock`), :240 `ScopedNoDenormals`
 - Source: src/PluginEditor.cpp:690 (24 Hz timer), :686-692 (VBlank), :306-320 (OpenGL gate)
 - Source: src/gui/Vectorscope.h:22 ("Nothing is ever drawn on the audio thread")
 
