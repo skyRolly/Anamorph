@@ -844,22 +844,6 @@ turn late) and leaves a save issued on the host thread right after its restore d
    broke it would be reporting a real defect on that toolchain, to be fixed by making the two sides
    agree and never by widening the comparison.
 
-   **Recorded, not changed — the one sibling, and it is a prediction rather than a mutation.**
-   `viewOfRestore` also predicts `presetBaseline`, and for the two cases where the restore carries no
-   usable one (absent, or present-but-empty) it predicts the live sound's signature *at decode time*
-   while the adoption's `setMeta`/`adoptRestoredState` fallback recomputes it *at adoption time*. A
-   sound edit between the two therefore moves it, exactly as the Settings moved before this round. It
-   is narrower — it needs a session with no stored baseline, i.e. pre-0.6 or one saved on a nameless
-   slot — it predates round 12, and no review finding names it, so it is recorded here rather than
-   changed inside a closure round.
-
-   **Also recorded:** `writeState` takes up to three independent live captures of the sound in one
-   save — once for the root and once more for each A/B slot the snapshot carries as invalid, which is
-   resolved at save time by design. Automation moving between them can leave the root and a lazily
-   initialised slot describing different instants. That is the pre-existing shape §17 named for the
-   preset save, applied to the session format's own lazy-slot rule; no review finding names it and
-   this round does not change it.
-
    **Recorded, not changed.** Two live reads survive inside otherwise tree-derived signatures: the
    non-ranged fallbacks in `soundSignatureAfterLoading` and `soundSignatureForSavedTree`. They are
    unreachable in this plug-in — every parameter `createAnamorphLayout` builds is a
@@ -1000,13 +984,30 @@ turn late) and leaves a save issued on the host thread right after its restore d
    so a knob turned inside the window is already in the blob, and `adoptRestoreTail` re-installs the
    decode's sound only for a wholesale replacement, never for an edit (§12).
 
+   **Recorded, not changed — the one sibling, and it is a prediction rather than a mutation.**
+   `viewOfRestore` also predicts `presetBaseline`, and for the two cases where the restore carries no
+   usable one (absent, or present-but-empty) it predicts the live sound's signature *at decode time*
+   while the adoption's `setMeta`/`adoptRestoredState` fallback recomputes it *at adoption time*. A
+   sound edit between the two therefore moves it, exactly as the Settings moved before this round. It
+   is narrower — it needs a session with no stored baseline, i.e. pre-0.6 or one saved on a nameless
+   slot — it predates round 12, and no review finding names it, so it is recorded here rather than
+   changed inside a closure round.
+
+   **Also recorded:** `writeState` takes up to three independent live captures of the sound in one
+   save — once for the root and once more for each A/B slot the snapshot carries as invalid, which is
+   resolved at save time by design. Automation moving between them can leave the root and a lazily
+   initialised slot describing different instants. That is the pre-existing shape §17 named for the
+   preset save, applied to the session format's own lazy-slot rule; no review finding names it and
+   this round does not change it.
+
    State test 59 pins all of it: the reported case per field and all six at once; an edit before the
    arrival, which the restore correctly replaces; an edit after two arrivals, which stands over the
    later restore; an edit between two arrivals, which the later restore supersedes and the overlay
    must not resurrect; a save whose snapshot was taken before the edit published, which correctly
    carries the restore's values while the very next save carries the edit; saves on both sides of the
    adoption; and the identity half — the overlaid save still names the restore's session, never the
-   outgoing one. Reverting the merge fails **14** checks.
+   outgoing one. Reverting the merge — writing the restore's Settings as decoded — fails **16**
+   checks; State test 59 fails **7** against the round-11 tree that had the defect.
 
 ## Consequences
 
