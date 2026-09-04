@@ -110,7 +110,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   cannot (State test 48). A seventh pass fixed when that identity is taken: it was stamped as each
   operation *began*, so an A/B switch, undo or preset load that started first but finished last
   could still leave its sound under the project's name; each operation is now stamped as it
-  *finishes* (State test 49). [Verified]
+  *finishes* (State test 49). An eighth pass closed two remaining cases. A project arriving while
+  the plug-in was still taking on the previous one used to be left waiting, so the next thing you
+  did was done to a project that had already been superseded and was then wiped out by it; the
+  plug-in now takes on *everything* that has arrived before it acts on anything (State test 50).
+  And saving a preset at that same moment could mark it unchanged against a sound its own file does
+  not contain, so reloading it changed what you heard while the dot said nothing had changed; the
+  preset is now saved and judged against the same sound (State test 51). [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

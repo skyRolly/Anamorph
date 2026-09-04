@@ -7412,25 +7412,39 @@ static void testOlderRestoreCannotOverwriteNewerOversampling()
     check (p.getInternal().oversampleIndex() == 1, "restore A published 2x synchronously");
 
     // Restore B lands from a host thread AFTER the owner has taken A from the cell
-    // and BEFORE A's tail runs -- the reviewed overlap.
+    // and BEFORE A's tail runs -- the reviewed overlap. Since round 8 the drain runs to
+    // a FIXED POINT, so the same pass goes on to adopt B, and the seam's SECOND fire is
+    // exactly the instant this round-2 measurement is about: A's tail has finished and
+    // B's has not begun. Every assertion below is the one this test has always made,
+    // taken at that instant instead of between two drains (the seam injects only once,
+    // or the drain would have a new restore to adopt on every pass).
     int seamRuns = 0;
+    int  osInWindow = -1, latencyInWindow = -1;
+    bool viewInWindowIsA = false;
     p.seams.afterRestoreTake = [&]
     {
         ++seamRuns;
-        d2::offMessageThread ([&] { d2::restoreFrom (p, B.blob); });
+        if (seamRuns == 1)
+        {
+            d2::offMessageThread ([&] { d2::restoreFrom (p, B.blob); });   // B arrives during A's adoption
+        }
+        else if (seamRuns == 2)
+        {
+            viewInWindowIsA = d2::View::of (p).matches (A);
+            osInWindow      = p.getInternal().oversampleIndex();
+            p.prepareToPlay (48000.0, 512);                                // activation inside the window
+            latencyInWindow = p.getLatencySamples();
+        }
     };
-    p.pollUndoCoalesce();                                             // adopts A; B is now pending
+    p.pollUndoCoalesce();                                             // drains to a fixed point: A, then B
     p.seams.afterRestoreTake = nullptr;
-    check (seamRuns == 1, "the overlap was produced exactly once");
+    check (seamRuns == 2, "the overlap was produced once and the same drain went on to adopt B");
 
-    check (d2::View::of (p).matches (A), "the owner adopted A's program (B's tail is still pending)");
-    check (p.getInternal().oversampleIndex() == 2,
+    check (viewInWindowIsA, "the owner adopted A's program (B's tail had not run yet)");
+    check (osInWindow == 2,
            "A's tail did not overwrite B's oversampling: the word holds the newer restore's 4x");
+    check (latencyInWindow == latencyB, "an activation in the window primes the engine at B's setting");
 
-    p.prepareToPlay (48000.0, 512);                                   // activation inside the window
-    check (p.getLatencySamples() == latencyB, "an activation in the window primes the engine at B's setting");
-
-    p.pollUndoCoalesce();                                             // adopts B
     check (d2::View::of (p).matches (B), "B's program is adopted");
     check (p.getInternal().oversampleIndex() == 2 && (int) p.getInternal().oversampleValue().getValue() == 3,
            "after B's adoption the tree and the word agree on 4x");
@@ -7622,26 +7636,36 @@ static void testSettingsEditAfterRestoreArrivalSurvivesAdoption()
         d2::offMessageThread ([&] { d2::restoreFrom (p, blobR); });   // R1 pending
         r3::setField (p.getInternal(), 0, U);                          // Oversampling := U -- after R1, before R2
         const SettingsSet U2 { 0, 1, 0.0, false, false, false };       // only its uiScale is used
+        // Since round 8 the drain runs to a FIXED POINT, so this one pass adopts R1 and
+        // then R2, and the seam's SECOND fire is the instant between the two tails --
+        // where the "after R1's adoption" assertions belong. The seam injects only once,
+        // or the drain would have a new restore to adopt on every pass.
         int seamRuns = 0;
+        SettingsSet afterR1 {};
         p.seams.afterRestoreTake = [&]
         {
             ++seamRuns;
-            d2::offMessageThread ([&] { d2::restoreFrom (p, blobR2); });   // R2 arrives after the owner took R1
-            r3::setField (p.getInternal(), 1, U2);                          // uiScale := U2 -- after R2
+            if (seamRuns == 1)
+            {
+                d2::offMessageThread ([&] { d2::restoreFrom (p, blobR2); });   // R2 arrives after the owner took R1
+                r3::setField (p.getInternal(), 1, U2);                          // uiScale := U2 -- after R2
+            }
+            else if (seamRuns == 2)
+            {
+                afterR1 = r3::read (p.getInternal());   // R1's tail has run; R2's has not
+            }
         };
-        p.pollUndoCoalesce();                                          // adopts R1
+        p.pollUndoCoalesce();                                          // drains to a fixed point: R1, then R2
         p.seams.afterRestoreTake = nullptr;
-        check (seamRuns == 1, "the overlap was produced exactly once");
+        check (seamRuns == 2, "the overlap was produced once and the same drain went on to adopt R2");
 
-        auto got = r3::read (p.getInternal());
-        check (got.oversample == U.oversample, "after R1's adoption the Oversampling edit (made after R1) stands");
-        check (got.uiScale == U2.uiScale, "...and the uiScale edit (made after R2) stands");
-        check (juce::exactlyEqual (got.scopePersist, R.scopePersist) && got.metersOn == R.metersOn
-               && got.tooltipsOn == R.tooltipsOn && got.uiAnimations == R.uiAnimations,
+        check (afterR1.oversample == U.oversample, "after R1's adoption the Oversampling edit (made after R1) stands");
+        check (afterR1.uiScale == U2.uiScale, "...and the uiScale edit (made after R2) stands");
+        check (juce::exactlyEqual (afterR1.scopePersist, R.scopePersist) && afterR1.metersOn == R.metersOn
+               && afterR1.tooltipsOn == R.tooltipsOn && afterR1.uiAnimations == R.uiAnimations,
                "...and the untouched fields take R1's values");
 
-        p.pollUndoCoalesce();                                          // adopts R2
-        got = r3::read (p.getInternal());
+        auto got = r3::read (p.getInternal());
         check (got.oversample == R2.oversample, "after R2's adoption the Oversampling edit (made before R2) is replaced: R2 is the newer arrival");
         check (got.uiScale == U2.uiScale, "...while the uiScale edit (made after R2) still stands");
         check (juce::exactlyEqual (got.scopePersist, R2.scopePersist) && got.metersOn == R2.metersOn
@@ -8164,6 +8188,177 @@ static void testReplacementFinishingLastCannotWearRestoredMetadata()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 50 -- the drain reaches a FIXED POINT, so a restore arriving during
+//  an adoption cannot discard the action that follows it (D-2 round 8, review
+//  finding "later restore bypasses state drain").
+//
+//  Every message-thread entry point drains before it touches program state, and
+//  the guarantee it needs from that drain is not "one restore was adopted" but
+//  "nothing is pending any more" -- only then is the state it goes on to edit the
+//  state of every restore that has arrived. The drain took exactly one restore, so
+//  a second arriving DURING the adoption stayed in the cell: the caller edited a
+//  session that was already superseded, and the later adoption wholesale-overwrote
+//  the edit, even though the edit came after that restore's arrival, which is
+//  precisely the case §10 says must land on top of it.
+//
+//  Reproduced through the adoption seam: R1 is pending; the A/B switch's own drain
+//  takes it; R2 arrives from a host thread inside that adoption; the drain must go
+//  on to adopt R2 as well, so the switch that follows is applied to R2's slots and
+//  survives. The seam count is the direct evidence -- two fires inside ONE
+//  abSwitchTo call -- and the A/B state is the observable one, chosen so the two
+//  outcomes differ: R1 and R2 have different active slots, so a switch applied to
+//  R1's session and then overwritten by R2 lands on the opposite slot from a switch
+//  applied to R2's.
+// ---------------------------------------------------------------------------
+static void testDrainReachesFixedPointBeforeTheCallerActs()
+{
+    std::printf ("State test 50: the restore drain reaches a fixed point before the caller acts (D-2 r8)\n");
+
+    const auto R1 = d2::author ("D2-R8-1", 0.22f, 0.78f, 0, 1);   // active slot A
+    const auto R2 = d2::author ("D2-R8-2", 0.42f, 0.58f, 1, 2);   // active slot B
+    check (R1.active != R2.active, "non-vacuity: the two sessions sit on different A/B slots");
+
+    AnamorphAudioProcessor p;
+    p.prepareToPlay (48000.0, 512);
+
+    d2::offMessageThread ([&] { d2::restoreFrom (p, R1.blob); });   // R1 pending
+
+    int seamRuns = 0;
+    p.seams.afterRestoreTake = [&]
+    {
+        ++seamRuns;
+        if (seamRuns == 1)
+            d2::offMessageThread ([&] { d2::restoreFrom (p, R2.blob); });   // R2 arrives DURING R1's adoption
+    };
+
+    // One entry point: its drain must leave nothing pending before the switch.
+    const int switchTo = 1 - R2.active;
+    p.abSwitchTo (switchTo);
+    p.seams.afterRestoreTake = nullptr;
+
+    check (seamRuns == 2, "the drain adopted BOTH restores before the switch -- it reached a fixed point");
+    check (p.abActiveSlot() == switchTo, "the switch landed and stands");
+
+    // The switch was applied to R2's slot set, which is what "after R2's arrival" means.
+    const float expected = switchTo == 0 ? R2.widthA : R2.widthB;
+    checkNear ((double) rawOf (p, "width"), (double) expected, 1.0e-6,
+               "the switch applied R2's slot, not a slot from the session it superseded");
+
+    // Nothing is pending, so a further drain changes nothing -- the fixed point holds.
+    const auto afterSwitch = d2::saveOf (p);
+    p.pollUndoCoalesce();
+    check (p.abActiveSlot() == switchTo, "a later drain does not undo the switch");
+    check (d2::saveOf (p) == afterSwitch, "...and changes nothing at all");
+}
+
+// ---------------------------------------------------------------------------
+//  State test 51 -- a preset saved while a restore is pending is clean against
+//  its own file (D-2 round 8, review finding "overlapping restore mislabels
+//  saved preset").
+//
+//  `saveUser` wrote the file, THEN adopted a pending host restore, THEN read the
+//  live sound as the clean baseline. The restore sat between the bytes and the
+//  baseline: the file held the outgoing session's sound while `sigAtLoad` came
+//  from the restored one, so the preset was marked clean against a sound its own
+//  file does not contain. Reloading it changed what you heard while the indicator
+//  said nothing had changed.
+//
+//  The invariant this pins is the user-visible meaning of clean: RELOADING THE
+//  SELECTED PRESET REPRODUCES THE SOUND IT WAS SAVED WITH. That is checked
+//  directly -- save, then load the very file just written and compare the sound --
+//  because it holds whichever way the implementation gets there, and it is exactly
+//  what a false-clean breaks. A control leg with no restore pending proves the
+//  test is not vacuous.
+// ---------------------------------------------------------------------------
+static void testPresetSavedDuringRestoreIsCleanAgainstItsOwnFile()
+{
+    std::printf ("State test 51: a preset saved while a restore is pending is clean against its own file (D-2 r8)\n");
+
+    const auto P = d2::author ("D2-R8-P", 0.24f, 0.76f, 0, 1);   // the outgoing session
+    const auto R = d2::author ("D2-R8-R", 0.64f, 0.36f, 0, 2);   // the restore that is pending at save time
+    const float outgoingWidth = P.active == 0 ? P.widthA : P.widthB;
+    const float restoredWidth = R.active == 0 ? R.widthA : R.widthB;
+    check (! juce::exactlyEqual (outgoingWidth, restoredWidth),
+           "non-vacuity: the two sessions' live sounds differ");
+
+    const juce::String name ("AnamorphHarness-D2R8");
+    auto presetFile = anamorph::PresetManager::presetDirectory()
+                          .getChildFile (name + anamorph::PresetManager::fileSuffix());
+    // The test writes into the REAL user preset folder (the production path), so a
+    // genuine user preset with the harness name is parked and put back afterwards.
+    auto parked = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                      .getChildFile ("AnamorphStateHarness.d2r8.parked");
+    const bool hadUserFile = presetFile.existsAsFile();
+    if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
+
+    for (int leg = 0; leg < 2; ++leg)   // 0 = a restore is pending at save time, 1 = the control
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);                                   // inline: the outgoing session
+        checkNear ((double) rawOf (p, "width"), (double) outgoingWidth, 1.0e-6, "the outgoing session is live");
+
+        if (leg == 0)
+        {
+            // The restore has to be pending AND its adoption has to MOVE the sound, or
+            // the save has nothing to be incoherent about: a restore applies its sound at
+            // decode, so a merely-pending one leaves the live sound already equal to what
+            // a save would write. The adoption moves the sound exactly when another
+            // wholesale replacement has landed since the decode (§10/§14) -- so R arrives
+            // while an A/B switch is mid-write, the switch finishes last and its sound is
+            // live, and R -- still pending, because the switch's own drain ran before it
+            // arrived -- will re-install its own sound when it is finally adopted.
+            std::atomic<int> phase { 0 };
+            p.seams.beforeSoundReplacementWrites = [&]
+            {
+                if (phase.load (std::memory_order_acquire) != 0) return;
+                phase.store (1, std::memory_order_release);
+                for (int spins = 0; phase.load (std::memory_order_acquire) != 2 && spins < 4000000; ++spins)
+                    std::this_thread::yield();
+            };
+            std::thread host ([&]
+            {
+                for (int spins = 0; phase.load (std::memory_order_acquire) != 1 && spins < 4000000; ++spins)
+                    std::this_thread::yield();
+                d2::restoreFrom (p, R.blob);
+                phase.store (2, std::memory_order_release);
+            });
+            p.abSwitchTo (1 - p.abActiveSlot());
+            host.join();
+            p.seams.beforeSoundReplacementWrites = nullptr;
+            check (! juce::exactlyEqual (rawOf (p, "width"), restoredWidth),
+                   "the A/B switch finished last, so the live sound is not the restore's yet");
+        }
+
+        check (p.getPresets().saveUser (name), "saveUser succeeds");
+        check (presetFile.existsAsFile(), "the preset file was written");
+        check (! p.getPresets().isDirty(), "the preset the save selected reads CLEAN");
+
+        const int idx = p.getPresets().currentIndex();
+        check (idx >= 0, "the saved preset is the selected row");
+        const float soundAtSave = rawOf (p, "width");
+        if (leg == 0)
+            checkNear ((double) soundAtSave, (double) restoredWidth, 1.0e-6,
+                       "the save adopted the pending restore first, so it wrote the session the plug-in is on");
+        else
+            checkNear ((double) soundAtSave, (double) outgoingWidth, 1.0e-6,
+                       "the control save wrote the session that was live");
+
+        // What CLEAN means: reloading the selected preset reproduces the sound it was
+        // saved with. A baseline taken from a different session than the file breaks
+        // exactly this, and nothing else in the save path can.
+        p.getPresets().load (idx);
+        p.pollUndoCoalesce();
+        checkNear ((double) rawOf (p, "width"), (double) soundAtSave, 1.0e-6,
+                   "reloading the preset just saved reproduces the sound it was clean against");
+        check (! p.getPresets().isDirty(), "...and it is still clean after that reload");
+    }
+
+    presetFile.deleteFile();
+    if (hadUserFile) { parked.moveFileTo (presetFile); parked.deleteFile(); }
+}
+
+// ---------------------------------------------------------------------------
 //  D-2 stress probe (contract F): every thread the model names, at once, under
 //  ThreadSanitizer. NOT part of the suite, like the other three TSan probes:
 //  on the pre-D-2 tree its execution IS the undefined behaviour it measures.
@@ -8404,6 +8599,8 @@ int main (int argc, char* argv[])
     testSoundEditWhilePendingSurvivesAdoption();
     testOverlappingReplacementIsNotTheRestoresOwnSound();
     testReplacementFinishingLastCannotWearRestoredMetadata();
+    testDrainReachesFixedPointBeforeTheCallerActs();
+    testPresetSavedDuringRestoreIsCleanAgainstItsOwnFile();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

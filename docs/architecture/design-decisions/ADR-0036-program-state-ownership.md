@@ -30,7 +30,9 @@ repository builds.
 > **Round 7 (§14) likewise**: it moves an existing relaxed counter's increment from the start of an
 > operation to its end and brackets the operation with a second read of the same counter. No thread,
 > no blocking mechanism, no cross-thread ownership change; the delta is *when* an existing counter is
-> incremented.
+> incremented. **Round 8 (§15, §16) as well**: it makes an existing drain run to a fixed point and
+> reorders an existing save so its baseline and its bytes come from one session. No thread, no
+> blocking mechanism, no new cross-thread ownership; both changes are on the message thread.
 
 **Resolves decision D-2** (`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, deferred in
 round 4) and **closes RISK-007** (`docs/FUTURE_RISKS.md`). **Amends `THREADING_POLICY.md`** §Host state
@@ -259,6 +261,14 @@ turn late) and leaves a save issued on the host thread right after its restore d
      `kAudioUnitProperty_ClassInfo` property mechanism — the real-world autosave case, and what
      pluginval's `BackgroundThreadStateTest` exercises.
    - **Standalone** — both calls are made from `StandaloneFilterWindow` on the message thread.
+   **Round 8 re-verified the whole disposition mechanically against the current tree** and found no
+   new evidence: no Anamorph caller of either state function exists (both names appear in `src/`
+   only as their own definitions); the only schedulers in `src/` are the editor's 24 Hz and the
+   processor's 20 Hz `juce::Timer`s, both on the message thread, with no `std::thread`,
+   `juce::Thread`, `callAsync` or thread pool anywhere; `hostRestoreGen` and the two host views are
+   read or written at exactly four sites, all inside the off-message-thread branches of the two
+   state functions; and the tripwire is constructed at exactly those same two branches. The
+   disposition below therefore stands unchanged.
    **Round 6 re-derived this from the complete set of callers**, which is the evidence a wrapper
    inspection alone does not give: across the three formats `ANAMORPH_FORMATS` builds, the ONLY
    code that reaches `AudioProcessor::get/setStateInformation` is the host-facing entry points
@@ -401,6 +411,51 @@ turn late) and leaves a save issued on the host thread right after its restore d
    leaves `counter == token` and survives the adoption. State test 49 pins the ordering for the three
    replacements that share the mechanism — an A/B apply, an undo and a preset load, each held before
    its writes while the restore completes inside it — and State tests 47 and 48 keep the edit control.
+
+15. **The drain runs to a FIXED POINT (round 8).** Every message-thread entry point calls
+   `adoptPendingHostState()` before it reads or mutates program state, and what it needs from that
+   call is not "one restore was adopted" but **"nothing is pending any more"** — only then is the
+   state it goes on to edit the state of every restore that has arrived, and only then does §10's
+   precedence rule (an action after a restore's arrival lands on top of it) actually hold for that
+   caller. The drain took exactly one restore, so a second arriving *during* the adoption stayed in
+   the cell: the caller edited a session that was already superseded, and the later adoption
+   wholesale-overwrote the edit — even though the edit came after that restore's arrival, which is
+   precisely the case §10 says must survive. The loop closes it: when `adoptPendingHostState()`
+   returns, the cell is empty, so any mutation the caller then makes is after every arrived restore
+   and is superseded only by one that arrives strictly later.
+   It is a **drain, not a wait**: it stops as soon as the cell is empty and never blocks. It cannot
+   spin indefinitely in supported operation because a host serializes its own state calls (§11), so
+   a further restore can only appear after a whole `setStateInformation` has returned.
+   State test 50 pins it through the adoption seam — two seam fires inside one `abSwitchTo`, and the
+   switch applied to the *second* restore's slot set. State tests 43 and 44 measured their
+   intermediate instants between two drains; those instants now fall inside one drain, so both take
+   the same measurements at the seam's second fire instead, assertion for assertion.
+
+16. **A preset's clean baseline and its bytes come from one session (round 8).** `isDirty()` is
+   `current sound != sigAtLoad`, and the user-visible meaning of **clean** is *reloading the
+   selected preset reproduces the sound you are hearing*. `saveUser` wrote the file, **then** ran
+   `onAboutToSave` (which drains a pending restore, replacing the live sound and metadata), **then**
+   read the live sound as `sigAtLoad`. The restore sat between the bytes and the baseline: the file
+   held the outgoing session's sound while the baseline came from the restored one, so the preset
+   was marked clean against a sound its own file does not contain — reloading it changed what you
+   heard while the indicator said nothing had changed. A durable mislabel, in a file.
+   Two changes, and the rule they implement is that **the baseline is the signature of the sound the
+   file was written from**:
+   - **The drain runs first**, before the sound is captured, so the save writes the same session the
+     rest of the program is on — the adopt-before-use every other message-thread entry point does.
+   - **The signature and the state are captured as one coherent pair**, the signature read *before*
+     the state copy so the two can only disagree in the safe direction (a sound that moved between
+     them leaves the baseline describing the earlier state, which reads as *dirty* rather than as a
+     false clean), and a sound-generation check across both reads confirms they describe one sound,
+     retrying the two cheap in-memory reads — never the file write — when it does not.
+   State test 51 checks the invariant the way a user meets it: save, then load the very file just
+   written, and require the sound to be unchanged and still clean.
+   **`load`'s baseline is not the same defect.** It also reads `sigAtLoad = soundSig()` after
+   applying the preset's sound, so a restore landing in between would baseline the preset against
+   the restore's sound — but nothing durable is written, and the restore's own adoption overwrites
+   `current`, `sel` and `sigAtLoad` outright (`setMeta` / `adoptRestoredState`), so the mislabel
+   cannot outlive the pending window it was created in. Transient and self-correcting, where the
+   save's was durable: recorded, not changed.
 
 ## Consequences
 

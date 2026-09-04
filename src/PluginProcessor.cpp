@@ -1058,28 +1058,45 @@ void AnamorphAudioProcessor::publishProgram()
 
 void AnamorphAudioProcessor::adoptPendingHostState()
 {
-    // The fast path is one relaxed load: nothing pending is the overwhelmingly
-    // common case (every in-spec VST3 host restores on this very thread and never
-    // uses the cell at all). A restore that lands between this load and the next
-    // entry point is simply adopted then, or by the 20 Hz timer.
-    if (pendingRestore.empty()) return;
-
-    std::unique_ptr<const RestoreDecode> r (pendingRestore.take());
-    if (r == nullptr) return;   // only this thread takes, but the answer is exact either way
-    if (seams.afterRestoreTake) seams.afterRestoreTake();
-
-    // The generation FIRST. It tags every tree write the tail makes, so the
-    // oversampling this adoption republishes lands only if no newer host restore has
-    // published since (InternalState::publishEngineConfig); and it stamps the
-    // snapshot published below, which is how a host-side save learns that the
-    // program it describes is this restore's or later.
-    adoptedGeneration = r->generation;
-    internal.noteAdoptedGeneration (adoptedGeneration);
+    // Drains to a FIXED POINT (D-2 round 8, ADR-0036 §15). Every caller is a message-
+    // thread entry point about to read or mutate program state, and the guarantee it
+    // needs is not "one restore was adopted" but "nothing is pending any more": only
+    // then is the state it goes on to edit the state of every restore that has arrived,
+    // and only then does the precedence rule §10 states -- an action after a restore's
+    // arrival lands on top of it -- actually hold for this caller. Adopting a single
+    // restore left a newer one that arrived DURING the adoption still in the cell, and
+    // the caller then edited a session that was already superseded; the later adoption
+    // wholesale-overwrote the edit, even though the edit came after that restore's
+    // arrival.
+    //
+    // This is a drain, not a wait: it stops as soon as the cell is empty and never
+    // blocks. It cannot spin indefinitely in supported operation, because a host
+    // serializes its own state calls (ADR-0036 §11), so a further restore can only
+    // appear after a whole setStateInformation has returned.
+    //
+    // The fast path is still one relaxed load: nothing pending is the overwhelmingly
+    // common case (every in-spec VST3 host restores on this very thread and never uses
+    // the cell at all). A restore that lands after the last check is adopted at the next
+    // entry point, or by the 20 Hz timer.
+    while (! pendingRestore.empty())
     {
-        const juce::ScopedValueSetter<bool> adopting (adoptingRestore, true);
-        adoptRestoreTail (*r);
+        std::unique_ptr<const RestoreDecode> r (pendingRestore.take());
+        if (r == nullptr) break;   // only this thread takes, but the answer is exact either way
+        if (seams.afterRestoreTake) seams.afterRestoreTake();
+
+        // The generation FIRST. It tags every tree write the tail makes, so the
+        // oversampling this adoption republishes lands only if no newer host restore has
+        // published since (InternalState::publishEngineConfig); and it stamps the
+        // snapshot published below, which is how a host-side save learns that the
+        // program it describes is this restore's or later.
+        adoptedGeneration = r->generation;
+        internal.noteAdoptedGeneration (adoptedGeneration);
+        {
+            const juce::ScopedValueSetter<bool> adopting (adoptingRestore, true);
+            adoptRestoreTail (*r);
+        }
+        publishProgram();
     }
-    publishProgram();
 }
 
 // The restore TAIL: everything a restore changes that is not the sound. Message

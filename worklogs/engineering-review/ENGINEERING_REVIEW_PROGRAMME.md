@@ -711,6 +711,96 @@ unchanged.
 Non-actionable residuals, unchanged: a host save's snapshot and `copyState()` straddling a
 message-thread A/B switch, and the ≤ 50 ms adoption latency for the metadata tail.
 
+### 14. Round 8 — the drain reaches a fixed point, and a preset's baseline belongs to its own file (2026-09-03)
+
+**Architecture Review Gate: APPROVED, and this round is inside it.** One change makes an existing
+message-thread drain run to a fixed point; the other reorders an existing save so its baseline and
+its bytes come from one session. No thread, no blocking mechanism, no new cross-thread ownership.
+
+**Finding 1 — a restore arriving during an adoption left the caller editing a superseded session.**
+
+| | |
+|---|---|
+| actors | H (restores R1 then R2); M (any entry point that drains and then mutates — an A/B switch, an undo, a preset load) |
+| state | `pendingRestore`; the program state the caller goes on to edit |
+| old order | `adoptPendingHostState()` took **one** restore: `if (empty) return; take; adopt`. R2 arriving during R1's tail stayed in the cell |
+| interleaving | R1 pending → M's entry point drains, taking R1 → R2 arrives from a host thread during that adoption → the drain returns with R2 still pending → the caller switches slots against R1's session → R2 is adopted later and wholesale-overwrites the slot set |
+| observable | the user's A/B switch is silently discarded, *and* it was made after R2's arrival — precisely the case §10 says must land on top of the restore, not under it |
+| root cause | the guarantee an entry point needs from the drain is not "one restore was adopted" but "**nothing is pending any more**". Only then is the state it edits the state of every restore that has arrived |
+| decision | the drain runs to a **fixed point**: `while (! pendingRestore.empty()) { take; adopt; }`. When it returns the cell is empty, so any mutation the caller then makes is after every arrived restore and is superseded only by one that arrives strictly later |
+| why it terminates | it is a drain, not a wait — it stops as soon as the cell is empty and never blocks. A host serializes its own state calls (§11), so a further restore can only appear after a whole `setStateInformation` has returned |
+
+State tests 43 and 44 had used the one-at-a-time drain as a scheduling device: each injected a second
+restore from the adoption seam and then asserted the state *between* two drains. Both were
+restructured to take the identical measurements at the seam's **second fire** — the instant the first
+restore's tail has finished and the second's has not begun — so every assertion they made is still
+made, at the same logical instant, and the seams inject only once (or the drain would have a fresh
+restore to adopt on every pass).
+
+**Finding 2 — a preset saved during a restore was clean against a sound its file does not hold.**
+
+| | |
+|---|---|
+| actors | M (the user saving a preset); H (a restore, pending) |
+| state | the preset file's bytes; `sigAtLoad` (the clean baseline); the live sound |
+| old order | `saveUser`: capture the sound → **write the file** → `onAboutToSave` (drains a pending restore, whose adoption re-installs the restored sound, §10/§14) → `sigAtLoad = soundSig()` — a fresh read of the now-restored live sound |
+| interleaving | a restore arrives while an A/B switch is mid-write, so the switch finishes last and its sound is live while the restore stays pending; the save writes the switch's sound to the file; the drain then adopts the restore and re-installs *its* sound; the baseline is read from that |
+| observable | the preset is marked **clean** against a sound its own file does not contain. Reloading the preset changes what you hear while the indicator says nothing has changed — and unlike every other transient in this design, it is **durable**: it is in a file |
+| semantics | "clean" means what a user takes it to mean and what the repository already documents (`isDirty() = current sound != baseline`): **reloading the selected preset reproduces the sound you are hearing**. The rule that follows is that the baseline is the signature of the sound the file was written from |
+| decision | (a) the drain runs **first**, before the sound is captured, so the save writes the same session the rest of the program is on — the adopt-before-use every other entry point does; (b) the signature and the state are captured as **one coherent pair**, the signature read *before* the state copy so the two can only disagree in the safe direction (a sound that moved between them leaves the baseline describing the earlier state, which reads as *dirty*, never as a false clean), with a sound-generation check across both reads confirming they describe one sound and retrying the two cheap in-memory reads — never the file write — when it does not |
+
+**Bounded audit of the same family.** The shape looked for was "newer state arrives → an older
+operation continues on stale state → it later overwrites or mislabels the newer state".
+
+| operation | drains first? | can it mislabel or overwrite? | verdict |
+|---|---|---|---|
+| every mutating entry point (A/B, undo/redo, preset load, Apply gain, gesture-free edits, `createEditor`, get/setState on M) | yes — and now to a fixed point | no | fixed above |
+| `saveUser` | now yes, before capturing | no | fixed above |
+| `PresetManager::load` / `loadFile` | yes (`onAboutToLoad`) | its `sigAtLoad = soundSig()` is read after applying the preset's sound, so a restore landing between the two would baseline the preset against the restore's sound | **considered, not changed**: nothing durable is written, and the restore's own adoption overwrites `current`, `sel` and `sigAtLoad` outright (`setMeta` / `adoptRestoredState`), so the mislabel cannot outlive the pending window that created it. Transient and self-correcting, where the save's was durable |
+| Settings edits | n/a (a binding write) | no | §9 governs, unchanged |
+| ordinary sound edits | n/a | no | §12 governs, unchanged |
+| snapshot publication / serialization | n/a | no | §5, §13, §14 govern, unchanged |
+
+**No sibling defect** beyond the one recorded above as transient.
+
+**Finding 3 — host serialization: no new evidence, disposition D stands.** Re-verified mechanically
+against the current tree rather than restated: **no Anamorph caller** of either state function exists
+(both names appear in `src/` only as their own definitions); the only schedulers in `src/` are the
+editor's 24 Hz and the processor's 20 Hz `juce::Timer`s, both on the message thread, with **no**
+`std::thread`, `juce::Thread`, `callAsync` or thread pool anywhere; **`hostRestoreGen` and the two
+host views are read or written at exactly four sites**, all inside the off-message-thread branches of
+`getStateInformation` and `setStateInformation`; and the **tripwire is constructed at exactly those
+same two branches**, so the condition it detects remains "two off-message-thread state calls at
+once", which no supported VST3/AU/Standalone path can produce. Nothing changes the disposition:
+**D — unsupported host concurrency, evidence-backed.** No code change was warranted and none was
+made.
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State tests 43, 44 and 50 with the drain taking one restore per pass | FAIL (17 checks) |
+| State test 51 with the drain after the write and a fresh live baseline read | FAILS (the reload check: 0.76, the A/B switch's sound written to the file, where the preset was marked clean against the restored 0.64) |
+| State tests 37–51 on the tree | green; suite 1952 checks / 0 failures, 50 tests |
+| the four probes under TSan, after (round-8 tree) | `--d2-stress-probe`, `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe`, 10 runs each: 0 runs with reports, 0 reports in total |
+| the state suite under TSan, after | 1952 checks, 0 failures, 0 TSan reports |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | 120 files clean; 398 anchors still point at the same text as both `d9eefa5` (the round-7 commit) and `origin/main`, self-test 161 cases |
+| `preflight.sh` | exit 0 on the committed round-8 tree (all gates, both suites; `check-portability` 57 files / 0 violations, `check-realtime` 47 files / 0 violations, both warning-gate self-tests green) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: first-save
+consistency (42), overlapping restore ordering (43), Settings precedence (44), the handoff-window
+split (45), inline coherence (46), sound-edit precedence (47), replacement identity (48) and
+completion ordering (49) all pass — 43 and 44 with their measurements moved to the seam's second
+fire, assertion for assertion.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains. Architecture Review Gate:
+**APPROVED**, this round inside it. Host serialization: **disposition D**, re-verified. Non-actionable
+residuals: `PresetManager::load`'s transient baseline (above), a host save's snapshot and
+`copyState()` straddling a message-thread A/B switch, and the ≤ 50 ms adoption latency for the tail.
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can

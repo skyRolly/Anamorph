@@ -393,17 +393,45 @@ bool PresetManager::saveUser (const juce::String& rawName)
     // real defect and is fixed in encodeSelection -- a `~`-named file a user copies into the folder
     // by hand. Different function, different question: §9.)
     auto file = dir.getChildFile (name + kPresetExt);
-    auto xml  = apvts.copyState().createXml();
+
+    // A pending host restore is adopted BEFORE the sound is captured (D-2 round 8,
+    // ADR-0036 §16). It used to be adopted after the file had been written, which put
+    // the restore between the bytes and the baseline: the file held the outgoing
+    // session's sound while `sigAtLoad` below was read from the restored one, so the
+    // preset was marked CLEAN against a sound its own file does not contain -- reloading
+    // it changed what you heard while the indicator said nothing had changed. Draining
+    // first is also what every other message-thread entry point does, so the save now
+    // writes the same session the rest of the program is on.
+    if (onAboutToSave) onAboutToSave();
+
+    // ONE COHERENT PAIR: the baseline and the bytes. `sigAtLoad` is the sound this file
+    // holds, so "clean" can only ever mean "the live sound is what the selected preset
+    // contains". The signature is read BEFORE the state copy so the two can only ever
+    // disagree in the safe direction -- a sound that moved between them leaves the
+    // baseline describing the EARLIER state, which reads as dirty rather than as a false
+    // clean -- and the generation check makes even that unnecessary whenever it holds:
+    // an unchanged sound generation across both reads proves they describe one sound.
+    // The retry is over two cheap in-memory reads, never over the file write, and it
+    // gives up rather than looping: without a processor to supply the generation (the
+    // hook is optional) the first pass is simply taken, exactly as before.
+    juce::String savedSig;
+    std::unique_ptr<juce::XmlElement> xml;
+    for (int attempt = 0; attempt < 8; ++attempt)
+    {
+        const auto before = soundParamGeneration ? soundParamGeneration() : 0;
+        savedSig = soundSig();
+        xml      = apvts.copyState().createXml();
+        if (soundParamGeneration == nullptr || soundParamGeneration() == before) break;
+    }
     if (xml == nullptr || ! file.replaceWithText (xml->toString())) return false;
 
-    if (onAboutToSave) onAboutToSave(); // a pending host restore is adopted before this save lands on it (D-2)
     refresh();
     current = name;
     // Saving SELECTS what was just written, by file. This is the case the ID split
     // exists for: saving a user preset under a factory preset's name now moves the
     // tick to the USER row instead of leaving it on the factory one (#4).
     sel = { Selection::Kind::userFile, {}, file };
-    sigAtLoad = soundSig();
+    sigAtLoad = savedSig;   // the sound the file holds, not a re-read of the live one (§16)
     if (onMetaChanged) onMetaChanged();
     if (onSaved) onSaved(); // re-baseline the processor's undo snapshot onto the saved preset
     return true;

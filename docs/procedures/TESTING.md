@@ -676,7 +676,7 @@ so the same file measures the pre-fix tree with the same instruments:
   the drain; the owner then walks new history — undo, undo, redo, redo, a Copy undone on the other
   slot — while a host thread saves throughout, and every step lands exactly.
 
-**State tests 42–49 (rounds 2–7, the PR review's findings) reproduce a reviewed interleaving
+**State tests 42–51 (rounds 2–8, the PR review's findings) reproduce a reviewed interleaving
 deterministically** rather than by timing, through the two seams `AnamorphAudioProcessor::seams`
 exposes for exactly that (empty in production: one null check each, on non-audio paths). Each was
 mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37's window check
@@ -741,13 +741,28 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   byte-identical to the session restored. Mutation-tested — allocating each replacement's token at
   its start again (round 6's ordering) makes all three publish the restored metadata over the
   replacement's sound (ADR-0036 §14). The ordinary-edit control stays in 47 and 48.
+- **50 (the drain reaches a fixed point, round 8)** — every message-thread entry point drains the
+  pending-restore cell before it touches program state, and what it needs from that drain is not
+  “one restore was adopted” but “nothing is pending any more”. The `afterRestoreTake` seam injects a
+  SECOND restore from a host thread while the first is being adopted; one `abSwitchTo` must fire the
+  seam **twice**, and the switch that follows must land on the second restore's slot set and survive
+  a further drain unchanged. Mutation-tested — taking one restore per pass makes the switch land on
+  the superseded session's slot and be wholesale-overwritten by the later adoption, 17 checks across
+  43, 44 and 50 (ADR-0036 §15).
+- **51 (a preset saved while a restore is pending, round 8)** — the invariant is the user-visible
+  meaning of *clean*: **reloading the selected preset reproduces the sound it was saved with**, so
+  the test saves, then loads the very file it just wrote and compares. Leg 0 puts a restore in the
+  cell while an A/B switch is mid-write (through `beforeSoundReplacementWrites`), so the adoption
+  re-installs the restored sound *during* the save; leg 1 is the no-restore control. Mutation-tested
+  — draining after the write and re-reading the live sound as the baseline marks the preset clean
+  against a sound its own file does not hold (0.76 written, 0.64 baselined) (ADR-0036 §16).
 
 State tests 22 and 27 were re-shaped in the same change: their off-thread requester used to be a
 `juce::Value` written from a worker, which after D-2 models nothing the plug-in does; both now drive
 the real `setStateInformation` from the worker, and 27 asserts the ORDER of reported values because
 the tick that adopts a restore delivers its latency from inside the adoption.
 
-`tests/state_tests.cpp` (**48 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**50 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

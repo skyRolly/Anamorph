@@ -8098,3 +8098,26 @@ both sides and the re-audited tripwire) and the dashboard.
 
 **Drift.** None. Round 6's §13 identity rule is unchanged and still required; §14 adds *when* the
 identity is taken and says so rather than rewriting the round-6 record.
+
+## D-2 round 8 (2026-09-03) — the drain reaches a fixed point; a preset's baseline belongs to its own file (ADR-0036 §15, §16)
+
+**Code changed:** `src/PluginProcessor.cpp` (`adoptPendingHostState` drains to a fixed point, so a
+restore arriving during an adoption is adopted in the same pass and the caller never goes on to edit
+a session already superseded), `src/PresetManager.cpp` (`saveUser` adopts a pending restore BEFORE
+capturing the sound, and takes its baseline from the sound the file was written from rather than
+from a fresh live read afterwards, with a generation check across the two reads),
+`tests/state_tests.cpp` (State tests 50 and 51, both mutation-tested; State tests 43 and 44
+restructured to take their intermediate measurements at the adoption seam's second fire, which is
+the same instant they always measured, now that one drain adopts both restores).
+
+**Documents updated:** `ADR-0036` (new §15 — the fixed-point drain and why an entry point needs
+"nothing pending" rather than "one adopted"; new §16 — the preset clean/dirty semantic and the
+baseline-belongs-to-the-bytes rule, including `load`'s transient case recorded as deliberately
+unchanged; §11 gains the mechanical re-verification; the status block records round 8 inside the
+approved architecture); `THREADING_POLICY.md`; `API_REFERENCE.md`; `TESTING.md` (tests 50–51, 50
+tests); `TESTING_POLICY.md`, `HANDOVER.md`, `README.md` (50 tests / 1952 checks); `CHANGELOG.md`;
+the worklog (§14: both interleavings, the bounded audit of the restore/save/action family, and the
+re-verified host-serialization evidence) and the dashboard.
+
+**Drift.** None. §10's precedence rule is unchanged — §15 makes it actually hold for a caller that
+drains, which is what it always claimed.
