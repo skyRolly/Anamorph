@@ -947,9 +947,22 @@ turn late) and leaves a save issued on the host thread right after its restore d
    the restoring thread's engine-config CAS and its `pendingRestore.put`: the word already carries
    the new generation, so the edit records it and will survive the adoption, yet the cell is still
    empty and there is nothing for any drain to adopt. That sub-case is immune to draining, and it is
-   inside the reported window. Draining would also move a full restore adoption — a sound re-install,
-   an undo-history clear, a preset-metadata swap — into a `ValueTree` property-changed callback
-   raised by an editor binding.
+   inside the reported window — and it is not a nanosecond-wide gap either: `viewOfRestore` runs in
+   it, formatting all 33 parameters into a signature, and so does the `RestoreDecode` copy. Reordering
+   to put-then-publish would only move the problem: an edit landing between the put and the publish
+   would read the OLD arrival, store its own oversampling index under it, and be overwritten by the
+   restore's publication at the higher generation — the §8 CAS ordering the word exists to keep.
+   Draining would also move a full restore adoption — a sound re-install, an undo-history clear, a
+   preset-metadata swap — into a `ValueTree` property-changed callback raised by an editor binding.
+
+   **Residuals, stated.** An edit whose publication lands after the save's `programMailbox.take()` is
+   invisible to that save — §18's boundary, not a new one, and State test 59's leg (h) pins the
+   behaviour rather than hiding it. The listener-dispatch gap inside `valueTreePropertyChanged` is
+   unchanged in either direction. Only the six Settings are decided per field: a preset rename, an
+   A/B copy or an undo inside the window is still discarded by `covered` in favour of the restore's
+   session, which is §5/§10's deliberate answer. And the whole of `hostRestoreView` remains a
+   PREDICTION — if the processor is destroyed before the drain runs, those bytes describe a state
+   that was never live. That residual belongs to §14's mechanism and is not touched here.
 
    **The bounded audit of the same family found no sibling.** Every other message-thread mutation of
    program state drains first, by construction (`adoptPendingHostState` at the top of the A/B switch,
