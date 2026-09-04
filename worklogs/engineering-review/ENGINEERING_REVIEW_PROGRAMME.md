@@ -616,6 +616,101 @@ leg re-proves 47's rule at the tighter timing.
 unchanged: a host save's snapshot and `copyState()` straddling a message-thread A/B switch, and the
 ≤ 50 ms adoption latency for the metadata tail.
 
+### 13. Round 7 — the token is allocated at completion, and the writes are bracketed (2026-09-03)
+
+**Architecture Review Gate: APPROVED, and this round is inside it.** The change moves an existing
+relaxed counter's increment from the start of an operation to its end and adds a second read of the
+same counter before the operation's first write. No thread, no blocking mechanism, no cross-thread
+ownership change — the delta is *when* an existing counter is incremented. No further sign-off is
+sought.
+
+**Finding — a replacement that began earlier and finished later kept its sound under the restored
+metadata.** Round 6 gave every wholesale replacement an identity no other replacement can be handed;
+round 7 fixes *when* that identity is taken.
+
+| | |
+|---|---|
+| actors | H (a restore R, decoding and installing its sound); M (a wholesale replacement X — an A/B apply, an undo, a preset load) |
+| state | `soundSetGen`; `RestoreDecode::soundSetGen`; the §10 re-install guard |
+| old order | every replacement allocated its token at its **start**: `applySoundTree` and `applyStatePreservingView` bumped before their first write, the preset load bumped in `onAboutToLoad` before `PresetManager::applySoundTree` wrote anything |
+| interleaving | X begins and takes *n+1*. R's install then runs to completion and takes *n+2*, which the decode records. X then finishes writing — so the live parameters are **X's**, while the counter still reads *n+2* |
+| observable | at the adoption `counter == d.soundSetGen`, the guard concludes "nothing has replaced my sound", the re-install is skipped, and the restored metadata is published over X's sound. §10's split again, reached this time through the token's *ordering* rather than its ownership |
+| root cause | the counter ordered replacements by **begin** time. Completion time is what decides ownership: every wholesale replacement writes *every* sound parameter, so the one that finishes last owns them all. Begin order and completion order are different orders |
+| decision, part 1 — completion | every wholesale replacement bumps **after** its last sound write: `applySoundTree` after `reassertParameters`, `applyStatePreservingView` after the view-parameter restore, the preset load in `onLoaded` rather than `onAboutToLoad` (its writes go one parameter at a time through `PresetManager::applySoundTree`, so the hook is where its completion is observable; the two hooks are paired on every path that can succeed). Uniform on purpose — one path incrementing at the start and another at the end orders nothing |
+| decision, part 2 — bracketing | a caller that will KEEP its token samples the counter into `begin` before its first write and allocates after its last. `token == begin + 1` proves no other wholesale replacement began *and* finished inside ours; anything else means the two interleaved — their per-parameter writes are not mutually excluded, so the live parameters may hold values from both — and `soundReplacementToken` returns **0**, "no owner provable". The counter starts at 1, so 0 is never a real token and never compares equal: the adoption re-installs, the conservative answer that restores one coherent session |
+| why unrepresentable | the three cases are exhaustive. A replacement that finishes *after* ours raises the counter above our token → re-install. One that finishes *inside* our bracket breaks `token == begin + 1` → 0 → re-install. One that finishes *before* our first write wrote parameters we then overwrote → ours is live, and `counter == token` correctly skips. The residual window is closed rather than narrowed: there is no interleaving in which another replacement's writes land inside ours without the counter showing it |
+
+**Nothing is reclassified.** An individual mutation — a knob, a gesture, host automation — still
+bumps nothing, so §12's rule is untouched: an ordinary edit after the restore's install leaves
+`counter == token` and survives the adoption. State tests 47 and 48 keep that control and pass
+unchanged; test 49 adds the ordering.
+
+**Related-ordering audit — "does this value order operations by the event that matters?"**
+
+| value | event it orders by | verdict |
+|---|---|---|
+| `soundSetGen` / `RestoreDecode::soundSetGen` | **was** begin of the replacement | **was defective**; now completion, plus the bracket |
+| `RestoreDecode::generation` (`++hostRestoreGen`) | the host side's own serialized restore sequence — one thread, so begin and completion order coincide | correct |
+| `adoptedGeneration` / `ProgramSnapshot::generation` | the message thread's own adoption sequence — one thread | correct |
+| the engine-config word's generation | the CAS decides and stores together, and the value published *is* the completed state | correct |
+| `editGeneration[i]` (§9) | the arrival the edit followed; an edit is a single atomic property write with no begin/end to separate | correct |
+| `soundParamGen` | a staleness hint with no ownership claim | correct |
+
+Only the values with a *duration* between their begin and their effect could carry this defect, and
+`soundSetGen` is the only one of those. **No sibling defect.**
+
+**Finding — host serialization, closed on both sides.** Rounds 4–6 established that no wrapper
+serializes save against restore for the plug-in and that no JUCE timer, async callback or background
+thread calls either state function on any format built here. Round 7 closes the remaining half of
+the question the review's wording asks for — *whether any internal Anamorph callback can call these
+functions concurrently* — and the answer is that **Anamorph never calls them at all**:
+`getStateInformation` and `setStateInformation` appear in `src/` only as their own definitions (every
+other occurrence is a comment), so no timer, editor action, preset path or engine callback can
+re-enter them. Every activation comes from a host entry point, JUCE adds none, and the plug-in adds
+none. The host-side evidence is unchanged: the pinned VST3 SDK annotates both `IComponent::setState`
+and `IComponent::getState` `[UI-thread & …]`, so two calls pinned to one thread cannot overlap; AU
+pins neither and the wrapper adds nothing; the standalone uses the message thread for both.
+**Disposition D (unsupported host concurrency)**, now with both the JUCE side and the Anamorph side
+enumerated rather than argued.
+**Why `hostRestoreGen` and the two host views remain correct within that boundary:** they are read
+and written only inside the off-message-thread branches of the two state functions. Under the
+boundary at most one such branch runs at a time, so they are single-threaded state with no reader on
+any other thread — the message thread never touches them, and the audio thread never touches
+anything in the section. Making them atomic would not add a guarantee; it would only make a broken
+host's mixed results slightly different.
+**The tripwire, re-audited.** Condition: two off-message-thread state calls active at once. Reachable
+only from those two branches. It cannot fire on any supported VST3/AU/Standalone path, nor on the
+supported shapes that resemble it (an off-thread save concurrent with the message thread's timer
+adoption, or with a message-thread `getStateInformation` — neither is counted; State tests 42 and 39
+exercise those without tripping it). It is compiled in both builds but read only by the `jassert`,
+which compiles out in release, so no release behaviour depends on it; it changes no state and imposes
+no ordering, so it is diagnostic and cannot be mistaken for the synchronisation mechanism. **No code
+change was warranted and none was made.**
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 49 with every token allocated at its operation's start again (round 6's ordering) | FAILS (4 checks: the A/B leg saves the restored metadata over 0.84 and the undo leg over 0.16, where the restored session says 0.64) |
+| State tests 37–49 on the tree | green; suite 1928 checks / 0 failures, 48 tests |
+| the four probes under TSan, after (round-7 tree) | silent in 10/10 runs each |
+| the state suite under TSan, after | 0 reports; 1928 checks, 0 failures |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | clean; 398 anchors against origin/main AND against the round-6 commit; self-test 161 cases |
+| `preflight.sh` | exit 0 on the committed round-7 tree (all gates, both suites) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: first-save
+consistency (42), overlapping restore ordering (43), Settings precedence (44), the handoff-window
+split (45), inline coherence (46), sound-edit precedence (47) and the token's ownership (48) all pass
+unchanged.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains. Architecture Review Gate:
+**APPROVED**, this round inside it. Host serialization: **disposition D**, both sides enumerated.
+Non-actionable residuals, unchanged: a host save's snapshot and `copyState()` straddling a
+message-thread A/B switch, and the ≤ 50 ms adoption latency for the metadata tail.
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can

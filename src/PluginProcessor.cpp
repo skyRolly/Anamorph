@@ -65,13 +65,17 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // (the menu, Load Preset..., and the prev/next buttons via step()), cannot drift between the
     // two loaders, and keeps the ordering the duck depends on: still raised before any
     // setValueNotifyingHost, so the swap is still heard only at the silent bottom.
-    // noteWholeSoundReplaced: a preset load installs another session's sound one
-    // parameter at a time (PresetManager::applySoundTree) rather than through
-    // replaceState, so the counter is bumped here instead -- it is a whole-sound
-    // replacement like the A/B and undo paths, and a restore adopted after it must
-    // re-install its own sound rather than wear the preset's (D-2 §12).
-    presets.onAboutToLoad = [this] { adoptPendingHostState(); pollUndoCoalesce(); noteWholeSoundReplaced(); engine.requestDuck(); };
-    presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
+    // A preset load installs another session's sound one parameter at a time
+    // (PresetManager::applySoundTree) rather than through replaceState, so its
+    // whole-sound-replacement bump is made here rather than at a replacement site -- it
+    // is a wholesale replacement like the A/B and undo paths, and a restore adopted
+    // after it must re-install its own sound rather than wear the preset's (D-2 §12).
+    // It belongs in onLoaded, not onAboutToLoad: the bump marks COMPLETION of the sound
+    // writes, the same point every other replacement bumps at (§14), and the two hooks
+    // are paired on every path that can succeed (see the failure discipline in
+    // PresetManager::load).
+    presets.onAboutToLoad = [this] { adoptPendingHostState(); pollUndoCoalesce(); engine.requestDuck(); };
+    presets.onLoaded      = [this] { noteWholeSoundReplaced(); commitPresetSwitchUndoStep(); };
     // A save changes no parameter, so nothing else would ever refresh `committed` off the
     // pre-save preset -- and the next undo would restore that stale name/identity/baseline.
     // Flush FIRST, exactly like the other program-state jumps (onAboutToLoad above, and
@@ -458,7 +462,7 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
     // as a session can, and the repaired text has to reach the LIVE tree through
     // JUCE's lock here too -- an unlocked write into `apvts.state` would race an
     // off-message-thread save's locked copyState (D-2, ADR-0036).
-    noteWholeSoundReplaced();   // a state set replaces the live sound (D-2 §12)
+    if (seams.beforeSoundReplacementWrites) seams.beforeSoundReplacementWrites();
     auto copy = target.createCopy();
     repairSerializedValues (copy);
     apvts.replaceState (copy);
@@ -469,6 +473,12 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
 
     for (size_t i = 0; i < std::size (pid::viewParams); ++i)
         apvts.getParameter (pid::viewParams[i])->setValueNotifyingHost (saved[i]);
+
+    // A state set replaced the live sound, and it is finished replacing it: the counter
+    // is bumped HERE, after the last write, so replacements are ordered by completion
+    // (D-2 §14). Bumping at the top ordered them by start, which let a replacement that
+    // began earlier and finished later leave its sound live under a higher token.
+    noteWholeSoundReplaced();
 }
 
 // apvts.copyState() with each PARAM node additively stamped with its exact raw getValue(): pluginval
@@ -744,12 +754,15 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
 // Repair on our copy, one locked replaceState, then the exact raw values.
 juce::uint32 AnamorphAudioProcessor::applySoundTree (const juce::ValueTree& soundTree)
 {
-    const auto token = noteWholeSoundReplaced();   // a state set replaces the live sound (D-2 §12/§13)
+    // A state set replaces the live sound (D-2 §12). `begin` before the first write and
+    // the token after the last bracket this replacement, so the value returned is a
+    // token only when no other replacement ran inside ours -- see soundReplacementToken.
+    const auto begin = soundSetGen.load (std::memory_order_relaxed);
     auto copy = soundTree.createCopy();
     repairSerializedValues (copy);
     apvts.replaceState (copy);
     reassertParameters (copy, /*notifyHost*/ false); // host restore: no host-notify (see above)
-    return token;
+    return soundReplacementToken (begin);
 }
 
 // Message thread. Count nested / overlapping gestures (e.g. the two-parameter Multiband band move
@@ -1104,7 +1117,7 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
     // able to run in between, so it never needs this.
     if (d.generation != 0
         && internal.engineConfigGeneration() == d.generation
-        && soundSetGen.load (std::memory_order_relaxed) != d.soundSetGen
+        && soundSetGen.load (std::memory_order_relaxed) != d.soundSetGen   // 0 (no owner provable) never matches
         && d.soundParams.isValid())
     {
         applySoundTree (d.soundParams);

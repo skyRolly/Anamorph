@@ -107,7 +107,10 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   last way the two could still be confused: when an A/B switch or a preset load happened at the
   exact moment a project was being read, the plug-in could mistake that switch's sound for the
   project's own and save the two together; each operation now carries its own identity, so it
-  cannot (State test 48). [Verified]
+  cannot (State test 48). A seventh pass fixed when that identity is taken: it was stamped as each
+  operation *began*, so an A/B switch, undo or preset load that started first but finished last
+  could still leave its sound under the project's name; each operation is now stamped as it
+  *finishes* (State test 49). [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

@@ -8076,3 +8076,25 @@ evidence and the tripwire disposition) and the dashboard.
 
 **Drift.** None. Round 5's §12 rule is unchanged and correct; §13 fixes how its discriminator was
 captured, and says so rather than rewriting the round-5 record.
+
+## D-2 round 7 (2026-09-03) — completion-ordered replacement tokens (ADR-0036 §14)
+
+**Code changed:** `src/PluginProcessor.h` (`noteWholeSoundReplaced()` documents the identity AND
+completion rules; new `soundReplacementToken (begin)` returning 0 — "no owner provable" — when
+another replacement ran inside ours; the `beforeSoundReplacementWrites` seam; the host-serialization
+comment gains the Anamorph-side half of the evidence), `src/PluginProcessor.cpp` (`applySoundTree`
+brackets its writes and allocates at completion; `applyStatePreservingView` bumps after its last
+write instead of before its first; the preset load's bump moves from `onAboutToLoad` to `onLoaded`),
+`tests/state_tests.cpp` (State test 49: an A/B apply, an undo and a preset load each held before
+their writes while the restore completes inside them; mutation-tested).
+
+**Documents updated:** `ADR-0036` (new §14 — completion allocation and the bracket, with the
+exhaustive three-case argument; the status block records round 7 inside the approved architecture);
+`THREADING_POLICY.md` (the caller enumeration now covers both JUCE and Anamorph); `THREAD_MODEL.md`;
+`API_REFERENCE.md`; `TESTING.md` (test 49, 48 tests); `TESTING_POLICY.md`, `HANDOVER.md`,
+`README.md` (48 tests / 1928 checks); `CHANGELOG.md`; the worklog (§13: the interleaving, the two
+decisions, the "does this order by the event that matters" audit, the host-serialization closure on
+both sides and the re-audited tripwire) and the dashboard.
+
+**Drift.** None. Round 6's §13 identity rule is unchanged and still required; §14 adds *when* the
+identity is taken and says so rather than rewriting the round-6 record.

@@ -8053,6 +8053,117 @@ static void testOverlappingReplacementIsNotTheRestoresOwnSound()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 49 -- a replacement that BEGAN before the restore's own but
+//  FINISHED after it cannot leave its sound under the restored metadata
+//  (D-2 round 7, review finding "overlapping replacements mix saved sessions").
+//
+//  Round 6 gave each wholesale replacement a token no other replacement can be
+//  handed, which fixed attributing someone else's token to oneself. But the
+//  token was allocated at the START of the replacement, so the counter ordered
+//  replacements by when they BEGAN. Begin order is not completion order, and it
+//  is the completion order that decides whose sound is live: each wholesale
+//  replacement writes every sound parameter, so the one that finishes last owns
+//  them all.
+//
+//  The interleaving that exploits the difference: an A/B apply X begins (token
+//  n+1) and is held before its writes; the restore's own sound install then runs
+//  to completion (token n+2, which the decode records); X then finishes writing,
+//  so the LIVE sound is X's while the counter still reads n+2. At the adoption
+//  `counter == d.soundSetGen`, the guard concludes "nothing has replaced my
+//  sound", the re-install is skipped -- and the restored metadata is published
+//  over X's sound.
+//
+//  The token is now allocated after the last write (§14), so X's completion
+//  raises the counter above the restore's token and the adoption re-installs.
+//  The `begin`/token bracket additionally catches the case where the two
+//  interleave so tightly that neither finished cleanly inside the other: the
+//  restore then records "no owner provable" (0), which never compares equal, so
+//  the conservative answer -- re-install and publish one coherent session -- is
+//  the one that is reached.
+//
+//  Three legs through the same seam, so the ordering rule is shown to hold for
+//  every replacement that shares the mechanism: an A/B apply, an undo, and a
+//  preset load. The ordinary-edit control lives in State tests 47 and 48 and is
+//  not repeated.
+// ---------------------------------------------------------------------------
+static void testReplacementFinishingLastCannotWearRestoredMetadata()
+{
+    std::printf ("State test 49: a replacement finishing after the restore's cannot wear its metadata (D-2 r7)\n");
+
+    const auto P = d2::author ("D2-R7-P", 0.16f, 0.84f, 0, 1);   // the outgoing session
+    const auto R = d2::author ("D2-R7-R", 0.36f, 0.64f, 1, 2);   // the restore that arrives
+    const float restoredWidth = R.active == 0 ? R.widthA : R.widthB;
+
+    enum Kind { abApply = 0, undoStep, presetLoad };
+    const char* const names[] = { "an A/B apply", "an undo", "a preset load" };
+
+    for (int kind = 0; kind < 3; ++kind)
+    {
+        AnamorphAudioProcessor p;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, P.blob);                       // inline: the outgoing session, whole
+
+        // The undo leg needs history to step back to, built before the restore arrives.
+        if (kind == undoStep)
+        {
+            auto* rp = p.getAPVTS().getParameter ("width");
+            rp->beginChangeGesture(); rp->setValueNotifyingHost (0.44f); rp->endChangeGesture();
+            p.pollUndoCoalesce();
+            check (p.canUndo(), "non-vacuity: the undo leg has history to step back to");
+        }
+
+        // The overlapping replacement is held after it has begun and before it writes.
+        // While it waits there, the restoring thread installs the restored sound and
+        // completes its handoff; the replacement then finishes writing, so it is the
+        // LAST writer of every sound parameter.
+        std::atomic<int> phase { 0 };
+        p.seams.beforeSoundReplacementWrites = [&]
+        {
+            if (phase.load (std::memory_order_acquire) != 0) return;   // only the first replacement waits
+            phase.store (1, std::memory_order_release);
+            for (int spins = 0; phase.load (std::memory_order_acquire) != 2 && spins < 4000000; ++spins)
+                std::this_thread::yield();
+        };
+
+        std::atomic<bool> restoreDone { false };
+        std::thread host ([&]
+        {
+            for (int spins = 0; phase.load (std::memory_order_acquire) != 1 && spins < 4000000; ++spins)
+                std::this_thread::yield();
+            d2::restoreFrom (p, R.blob);                   // begins and completes inside the held replacement
+            restoreDone.store (true, std::memory_order_release);
+            phase.store (2, std::memory_order_release);    // release the replacement's writes
+        });
+
+        switch (kind)
+        {
+            case abApply:   p.abSwitchTo (p.abActiveSlot() == 0 ? 1 : 0); break;
+            case undoStep:  p.undo();                                     break;
+            default:        p.getPresets().load (0); p.pollUndoCoalesce(); break;
+        }
+
+        host.join();
+        p.seams.beforeSoundReplacementWrites = nullptr;
+        check (restoreDone.load(), "the restore ran inside the held replacement");
+
+        p.pollUndoCoalesce();   // the adoption
+
+        // One session: the restored metadata AND the restored sound, whichever of the
+        // two operations happened to write last.
+        check (d2::View::of (p).matches (R), "the restored program is adopted, whole");
+        checkNear ((double) rawOf (p, "width"), (double) restoredWidth, 1.0e-6,
+                   "the restored SOUND stands: the replacement that finished last did not keep the parameters");
+        check (p.getInternal().oversampleIndex() == R.oversampleId - 1, "...with the restored Oversampling");
+        check (d2::saveOf (p) == R.blob,
+               "a save is byte-identical to the session restored: no metadata from one session over sound from another");
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+        check (hostSave == d2::saveOf (p), "...and a host-thread save agrees with the owner's");
+        std::printf ("  overlap = %s finishing last: one coherent session\n", names[kind]);
+    }
+}
+
+// ---------------------------------------------------------------------------
 //  D-2 stress probe (contract F): every thread the model names, at once, under
 //  ThreadSanitizer. NOT part of the suite, like the other three TSan probes:
 //  on the pre-D-2 tree its execution IS the undefined behaviour it measures.
@@ -8292,6 +8403,7 @@ int main (int argc, char* argv[])
     testInlineRestoreAdoptsPendingAgainstItsOwnSound();
     testSoundEditWhilePendingSurvivesAdoption();
     testOverlappingReplacementIsNotTheRestoresOwnSound();
+    testReplacementFinishingLastCannotWearRestoredMetadata();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

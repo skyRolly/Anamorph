@@ -676,7 +676,7 @@ so the same file measures the pre-fix tree with the same instruments:
   the drain; the owner then walks new history — undo, undo, redo, redo, a Copy undone on the other
   slot — while a host thread saves throughout, and every step lands exactly.
 
-**State tests 42–48 (rounds 2–6, the PR review's findings) reproduce a reviewed interleaving
+**State tests 42–49 (rounds 2–7, the PR review's findings) reproduce a reviewed interleaving
 deterministically** rather than by timing, through the two seams `AnamorphAudioProcessor::seams`
 exposes for exactly that (empty in production: one null check each, on non-audio paths). Each was
 mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37's window check
@@ -732,13 +732,22 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   survive it (§12's rule, checked at the same timing as the case that must not survive).
   Mutation-tested — restoring the read-back makes both replacement legs publish the restored
   metadata over the other operation's sound (ADR-0036 §13).
+- **49 (a replacement that finishes last, round 7)** — the counterpart to 48, one level down. The
+  `beforeSoundReplacementWrites` seam holds a wholesale replacement after it has begun and before it
+  writes; the restoring thread then installs the restored sound and completes its handoff *inside*
+  that hold; the replacement is released and finishes writing, so it is the last writer of every
+  sound parameter. Three legs — an **A/B apply**, an **undo** and a **preset load** — each must end
+  as one session: the restored metadata, the restored sound, the restored Oversampling, and a save
+  byte-identical to the session restored. Mutation-tested — allocating each replacement's token at
+  its start again (round 6's ordering) makes all three publish the restored metadata over the
+  replacement's sound (ADR-0036 §14). The ordinary-edit control stays in 47 and 48.
 
 State tests 22 and 27 were re-shaped in the same change: their off-thread requester used to be a
 `juce::Value` written from a worker, which after D-2 models nothing the plug-in does; both now drive
 the real `setStateInformation` from the worker, and 27 asserts the ORDER of reported values because
 the tick that adopts a restore delivers its latency from inside the adoption.
 
-`tests/state_tests.cpp` (**47 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**48 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

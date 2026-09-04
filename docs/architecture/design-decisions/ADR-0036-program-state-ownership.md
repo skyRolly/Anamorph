@@ -27,6 +27,10 @@ repository builds.
 > inside it too**: it changes only *how* that counter's value is captured — from a read-back to the
 > value the allocating `fetch_add` returns — introducing no thread, no cross-thread path, no
 > ownership mechanism and no ordering-critical atomic. There is no architectural delta to review.
+> **Round 7 (§14) likewise**: it moves an existing relaxed counter's increment from the start of an
+> operation to its end and brackets the operation with a second read of the same counter. No thread,
+> no blocking mechanism, no cross-thread ownership change; the delta is *when* an existing counter is
+> incremented.
 
 **Resolves decision D-2** (`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, deferred in
 round 4) and **closes RISK-007** (`docs/FUTURE_RISKS.md`). **Amends `THREADING_POLICY.md`** §Host state
@@ -357,6 +361,46 @@ turn late) and leaves a save issued on the host thread right after its restore d
    State test 48 pins all three: an A/B apply and a preset load overlapping the decode are each
    superseded by the adoption, and an ordinary edit *at the identical instant, through the same
    seam* survives it. Mutation-tested — with the read-back restored, both replacement legs mix.
+
+14. **A replacement's token is allocated at COMPLETION, and its writes are bracketed (round 7).**
+   §13 gave each wholesale replacement an identity no other replacement can be handed. It allocated
+   that identity at the operation's **start**, so the counter ordered replacements by when they
+   *began* — and begin order is not completion order. Completion order is the one that matters:
+   every wholesale replacement writes *every* sound parameter, so the live sound belongs to whichever
+   finished last.
+   The interleaving that separates them: an A/B apply (or an undo, or a preset load) begins and takes
+   token *n+1*; the restore's own sound install then runs to completion and takes *n+2*, which the
+   decode records; the A/B apply then finishes writing, so the live parameters are **its**, while the
+   counter still reads *n+2*. At the adoption `counter == d.soundSetGen`, the guard concludes
+   "nothing has replaced my sound", the re-install is skipped, and the restored metadata is published
+   over the other operation's sound — §10's split again, now through the *ordering* of the token
+   rather than its ownership.
+   **Two rules fix it, and both are needed.**
+   - **Completion.** Every wholesale replacement bumps the counter *after* its last sound write,
+     never before — `applySoundTree` after `reassertParameters`, `applyStatePreservingView` after the
+     view-parameter restore, the preset load in `onLoaded` rather than `onAboutToLoad` (its writes go
+     through `PresetManager::applySoundTree` one parameter at a time, so the hook is where its
+     completion is observable; the two hooks are paired on every path that can succeed). The rule is
+     uniform on purpose: a scheme where one path increments at the beginning and another at the end
+     orders nothing.
+   - **Bracketing.** A caller that will *keep* its token samples the counter into `begin` before its
+     first write and allocates after its last: exactly one bump in between (`token == begin + 1`)
+     proves no other wholesale replacement began *and* finished inside ours, and therefore that ours
+     is the replacement the live sound belongs to. Anything else means the two interleaved — their
+     per-parameter writes are not mutually excluded, so the live parameters may hold values from
+     both — and `soundReplacementToken` returns **0**, "no owner provable". The counter starts at 1
+     and only rises, so 0 is never a real token and can never compare equal: the adoption
+     re-installs, which is the conservative answer and the one that restores a coherent session.
+   Together these close the residual window completely rather than narrowing it. There is no
+   interleaving in which another replacement's writes land inside the restore's without the counter
+   showing it: a replacement that finishes after ours raises the counter above our token, one that
+   finishes inside our bracket breaks `token == begin + 1`, and one that finishes entirely before our
+   first write wrote parameters we then overwrote.
+   **This does not reclassify anything.** An individual mutation (a knob, a gesture, host automation)
+   still bumps nothing, so §12's rule is untouched: an ordinary edit after the restore's install
+   leaves `counter == token` and survives the adoption. State test 49 pins the ordering for the three
+   replacements that share the mechanism — an A/B apply, an undo and a preset load, each held before
+   its writes while the restore completes inside it — and State tests 47 and 48 keep the edit control.
 
 ## Consequences
 

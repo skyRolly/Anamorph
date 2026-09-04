@@ -96,7 +96,7 @@ public:
     // reproduce a reviewed interleaving deterministically rather than by timing.
     // Installed and cleared on the main thread while no other thread can reach them.
     struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake, beforeRestorePut,
-                                        afterRestoreSoundApplied; };
+                                        afterRestoreSoundApplied, beforeSoundReplacementWrites; };
     Seams seams;
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.
@@ -225,16 +225,42 @@ private:
     // because it carries no payload -- the value that matters travels inside the
     // RestoreDecode, whose cell provides the ordering.
     std::atomic<juce::uint32> soundSetGen { 1 };
-    // Allocates the token for ONE replacement and returns it. The token identifies the
-    // operation, not the moment: `fetch_add` hands each caller a value no other caller
-    // can be handed, so an operation that keeps its own return value can later ask "is
-    // the live sound still the one I installed?" by comparing the counter against it.
-    // Reading the counter back AFTER performing a replacement answers a different and
-    // wrong question -- it returns whatever the LAST replacement was, which is another
-    // operation's token whenever one overlapped (D-2 round 6, ADR-0036 §13).
+    // Allocates the token for ONE replacement and returns it. Two rules make the token
+    // mean what the adoption needs it to mean (ADR-0036 §13, §14):
+    //
+    //  * IDENTITY. `fetch_add` hands each caller a value no other caller can be handed,
+    //    so an operation that keeps its own return value holds an identity rather than a
+    //    reading of shared state. Reading the counter back after a replacement instead
+    //    returns whatever the LAST replacement was -- another operation's token whenever
+    //    one overlapped (the round-6 defect).
+    //  * COMPLETION. Every caller allocates AFTER its last sound write, never before, so
+    //    the counter orders replacements by when they finished rather than by when they
+    //    started. Since each wholesale replacement writes every sound parameter, the one
+    //    that finished last is the one the live sound belongs to; allocating at the start
+    //    ordered them by begin time, which is a different order (the round-7 defect).
+    //
+    // Callers that need to prove the live sound is still theirs bracket their writes with
+    // `soundReplacementToken` rather than calling this directly.
     juce::uint32 noteWholeSoundReplaced() noexcept
     {
         return soundSetGen.fetch_add (1, std::memory_order_relaxed) + 1;
+    }
+
+    // The completion token for a replacement whose writes began when the counter read
+    // `begin`, or 0 when another replacement ran inside ours. `begin` is sampled before
+    // the first write and the token allocated after the last, so the pair BRACKETS this
+    // replacement: exactly one bump in between (`token == begin + 1`) is proof that no
+    // other wholesale replacement began-and-finished while ours was in flight, and so
+    // that ours is the one the live sound belongs to. Anything else means the two
+    // interleaved -- their per-parameter writes are not mutually excluded, so the live
+    // sound may hold values from both -- and 0 is returned to say "no owner provable".
+    // The counter starts at 1 and only rises, so 0 is never a real token, and a decode
+    // holding it can never compare equal: the adoption re-installs, which is the
+    // conservative answer that restores one coherent session (ADR-0036 §14).
+    juce::uint32 soundReplacementToken (juce::uint32 begin) noexcept
+    {
+        const auto token = noteWholeSoundReplaced();
+        return token == begin + 1 ? token : 0;
     }
     juce::uint32 polledGen = 0;                    // generation the poll last built a signature for
 
@@ -418,12 +444,23 @@ private:
     // can: the guarantee is the host's, and JUCE's whole AudioProcessor state API
     // already rests on it.
     //
+    // AND NOTHING ON THIS SIDE CALLS THEM EITHER. The other half of the question is
+    // whether the plug-in can re-enter its own state functions concurrently: it cannot,
+    // because it never calls them at all. `getStateInformation` / `setStateInformation`
+    // appear in this repository only as these definitions -- no timer, no editor action,
+    // no preset path, no engine callback invokes either one -- so every activation comes
+    // from a host entry point, and JUCE itself adds none (no wrapper timer, async
+    // callback or background thread reaches them on any format built here).
+    //
     // So the support boundary, stated rather than implied: concurrent host state calls
     // are OUTSIDE supported operation, Anamorph assumes nothing stronger than JUCE
     // itself, and rather than paying for a broken host on every save the two off-thread
     // branches count themselves in and a debug build asserts if a second one ever
-    // overlaps. Never blocks, never affects the result, and same-thread nesting cannot
-    // occur (no state call re-enters another off the message thread).
+    // overlaps. The assertion is diagnostic only -- nothing reads the counter in a
+    // release build, and it neither changes state nor imposes ordering -- so it is not
+    // the synchronisation mechanism and is not standing in for one. Never blocks, never
+    // affects the result, and same-thread nesting cannot occur (no state call re-enters
+    // another off the message thread).
     std::atomic<int> offThreadStateCalls { 0 };
     struct OffThreadStateCall
     {

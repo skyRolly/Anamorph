@@ -83,12 +83,14 @@ poll, which zeroes the gesture count exactly as an inline restore always has.
 
 One contract is load-bearing and is stated rather than assumed: **the host serializes its own state
 calls** (never two at once). Rounds 4–6 verified it against every wrapper this repository builds at the
-pinned JUCE 9.0.1, from primary evidence (ADR-0036 §11). **Round 6 enumerated the complete set of
-callers:** across the three formats, the only code that reaches `get/setStateInformation` is the
-host-facing entry points themselves (VST3 `getState`/`setState`, AU `SaveState`/`RestoreState`, the
-standalone's `savePluginState`/`reloadPluginState`) — **no JUCE timer, async callback or background
-thread calls either one**, so the question reduces entirely to whether the host issues two
-overlapping calls. **VST3: the SDK header itself pins both
+pinned JUCE 9.0.1, from primary evidence (ADR-0036 §11). **Rounds 6–7 enumerated the complete set of
+callers, on both sides:** across the three formats, the only JUCE code that reaches
+`get/setStateInformation` is the host-facing entry points themselves (VST3 `getState`/`setState`,
+AU `SaveState`/`RestoreState`, the standalone's `savePluginState`/`reloadPluginState`) — **no JUCE
+timer, async callback or background thread calls either one** — and **Anamorph never calls them at
+all**: both names appear in `src/` only as their own definitions, so no timer, editor action, preset
+path or engine callback can re-enter them. Every activation therefore comes from a host entry point,
+and the question reduces entirely to whether the host issues two overlapping calls. **VST3: the SDK header itself pins both
 halves to the host's UI thread** — `IComponent::setState` and `IComponent::getState` each carry
 *"\note [UI-thread & (Initialized | Connected | Setup Done | Activated | Processing)]"*
 (`format_types/VST3_SDK/pluginterfaces/vst/ivstcomponent.h`), and two calls pinned to one thread
@@ -134,7 +136,7 @@ relies on.
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-190;
-  src/PluginProcessor.cpp:99-121, 312; src/InternalState.h:175, 441-464
+  src/PluginProcessor.cpp:103-125, 316; src/InternalState.h:175, 441-464
 - D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
   generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,
   `getStateInformation`); ADR-0036; State tests 37–41; the `tsan` job in

@@ -123,7 +123,7 @@ Evidence [Verified]: src/InternalState.h:34-160.
 
 This is the one precedent for a parameter-surface change. It was done **with a migration path**
 (the model the compatibility policy requires). Evidence [Partially Verified]: CHANGELOG.md [0.8.4];
-src/InternalState.h:255-309; src/PluginProcessor.cpp:1335-1338.
+src/InternalState.h:255-309; src/PluginProcessor.cpp:1348-1351.
 
 ## Introduced / Deprecated columns
 
