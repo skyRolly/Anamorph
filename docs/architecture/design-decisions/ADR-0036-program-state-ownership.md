@@ -844,6 +844,15 @@ turn late) and leaves a save issued on the host thread right after its restore d
    broke it would be reporting a real defect on that toolchain, to be fixed by making the two sides
    agree and never by widening the comparison.
 
+   **Recorded, not changed — one sibling of the same SHAPE, outside this round's finding.**
+   `viewOfRestore` also predicts `presetBaseline`, and for the two cases where the restore carries no
+   usable one (absent, or present-but-empty) it predicts the live sound's signature *at decode time*
+   while the adoption's `setMeta`/`adoptRestoredState` fallback recomputes it *at adoption time*. A
+   sound edit between the two therefore moves it, exactly as the Settings moved before this round. It
+   is narrower — it needs a session with no stored baseline, i.e. pre-0.6 or one saved on a nameless
+   slot — it predates round 12, and no review finding names it, so it is recorded here rather than
+   changed inside a closure round.
+
    **Recorded, not changed.** Two live reads survive inside otherwise tree-derived signatures: the
    non-ranged fallbacks in `soundSignatureAfterLoading` and `soundSignatureForSavedTree`. They are
    unreachable in this plug-in — every parameter `createAnamorphLayout` builds is a
@@ -920,6 +929,15 @@ turn late) and leaves a save issued on the host thread right after its restore d
    restore has arrived, or the save never observed the edit's publication.** The second clause is not
    a new boundary — it is §18's, restated for the save: a save reflects every edit whose publication
    it observed and none it did not.
+
+   **Stated for the Settings, and only for them.** The equivalent "a save inside the window equals the
+   save the owner takes after the adoption" does NOT hold as a general statement about the whole blob,
+   and this section does not claim it does. The sound is read live, so an *edit* to it is in the save
+   and survives the adoption (§12) — consistent. But a wholesale replacement that overlaps a decode is
+   deliberately re-installed by the adoption (§13's token rule, State tests 48–49), so a save taken
+   between the two describes the replacement's sound where the adoption will describe the restore's.
+   That case belongs to §13 and is pinned there; it is named here so §21's invariant is not read wider
+   than it is.
 
    **Whole-session precedence and per-field precedence are different rules, and one comparison cannot
    serve both.** Preset name, baseline, selection, the A/B slot set and the active index are the

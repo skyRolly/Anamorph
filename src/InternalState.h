@@ -349,7 +349,10 @@ public:
         return (juce::int32) (editGen - generation) >= 0;
     }
 
-    using EditGenerations = std::array<juce::uint32, 6>;
+    // Sized FROM the settings table rather than beside it: the two loops that walk them
+    // together (`writeResolved` and `resolvedWithEdits`) index one by the other, so a
+    // seventh Setting must not be able to arrive without this growing with it.
+    using EditGenerations = std::array<juce::uint32, std::tuple_size_v<std::remove_cvref_t<decltype (settings())>>>;
 
     // The per-field generations, for publication (message thread). They are M-owned
     // bookkeeping; a host thread can only ever see the COPY inside an immutable snapshot,
@@ -556,7 +559,7 @@ private:
     // Per field, the generation of the latest restore that had arrived when the user
     // last edited it (message thread only; 0 = never edited). adoptResolved keeps a
     // field whose value is >= the restore being adopted.
-    std::array<juce::uint32, 6> editGeneration {};
+    EditGenerations editGeneration {};
     std::atomic<float> animFloat { 1.0f };   // written on the message thread only; polled there
     std::atomic<juce::uint32> gen { 1 };
 };

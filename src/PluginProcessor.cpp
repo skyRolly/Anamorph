@@ -1380,8 +1380,11 @@ void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     // describe. Both are read from the one object in hand, so a publication landing between
     // two reads cannot pair a tree with someone else's generations -- the same rule round 2
     // established for the object-wide generation. The merge itself is `resolvedWithEdits`,
-    // which is `adoptResolved`'s own predicate applied to values instead of in place, so the
-    // save and the adoption cannot disagree by construction.
+    // which applies `adoptResolved`'s own predicate to values instead of in place: the two
+    // walk the same table in the same order and share `editIsNewerThan`, so they cannot
+    // disagree about WHICH value wins. They are still two loops rather than one, so what
+    // pins them together is a test, not the type system -- State test 59's two-restore legs
+    // adopt after the save and require the tree to equal what the save described.
     //
     // A snapshot published BEFORE the restore arrived carries only generations below it, so
     // nothing is overlaid and the restore's own Settings stand -- which is the right answer
