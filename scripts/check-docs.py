@@ -1004,7 +1004,16 @@ def placement_phrase(line: str, placement: str) -> str:
 # definition. Testing the first character instead (`startswith("-")`) called a
 # paragraph beginning `-not a list` a list item, and called the thematic break
 # under the file's own link definitions a heading.
-SETEXT_UNDERLINE = re.compile(r"^ {0,3}(=+|-+)[ \t\r]*$")
+# THE RUN ONLY -- NO INDENT ALLOWANCE. CommonMark's 0-3 columns are counted from
+# the CONTENT column of whatever contains the line, and this pattern cannot know
+# that column: it is a property of the SUBJECT line, which the rule reads
+# afterwards. Baking `^ {0,3}` in here meant the allowance was measured from the
+# container's start instead, so a continuation line under any marker four columns
+# wide -- `10. `, `99. `, `100. `, or `1. ` with a second space -- failed this
+# pattern before the alignment test could look at it, and the release heading it
+# underlined vanished into the notes above. The indent is now judged once, in
+# `aligned`, against the column the subject's list marker established.
+SETEXT_UNDERLINE = re.compile(r"^(=+|-+)[ \t\r]*$")
 
 
 class ChangelogEntry:
@@ -1109,12 +1118,16 @@ def parse_changelog(lines: list[str], skip: list[bool]
         # while the renderer showed a level-2 heading and the extractor missed the
         # boundary.
         under_prefix, under_content, under_depth, _ = strip_containers(line)
-        if i and not skip[i - 1] and SETEXT_UNDERLINE.match(under_content) \
+        if i and not skip[i - 1] and SETEXT_UNDERLINE.match(under_content.lstrip(" \t")) \
                 and not LIST_CONTAINER_MARKER.search(under_prefix):
             _, subj_content, subj_depth, subj_cols = strip_containers(lines[i - 1])
-            # A continuation line is indented to the list's content column; with
-            # no list above it, CommonMark's own 0-3 allowance (already in
-            # `SETEXT_UNDERLINE`) is the whole rule.
+            # A continuation line is indented to the list's CONTENT COLUMN, and
+            # CommonMark's 0-3 allowance is counted from there -- not from the
+            # container's start. The column is the marker's full width including
+            # the space after it, so `1. ` puts content at 3 and `100. ` at 5;
+            # nothing here is special-cased per marker, `strip_containers` just
+            # measures what the marker consumed. With no list above, `subj_cols`
+            # is 0 and this is CommonMark's plain top-level rule again.
             aligned = (indent_columns(under_content) >= subj_cols
                        and indent_columns(under_content) <= subj_cols + 3)
             if subj_depth == under_depth and aligned and subj_content.strip() \
@@ -2151,6 +2164,63 @@ def self_test() -> int:
          ["# Changelog", V5, "### Added", "- a", "", "- [0.9.7]", "  -------", "", "- b"]),
         ("...but not when the underline misses that column", 0,
          ["# Changelog", V5, "### Added", "- a", "", "- [0.9.7]", "-------", "", "- b"]),
+
+        # ===================================================================
+        # ROUND 6: the list marker's WIDTH. A continuation line is indented to
+        # the list's content column, and CommonMark's 0-3 allowance is counted
+        # from THERE. The allowance used to live in `SETEXT_UNDERLINE`, which is
+        # matched before the subject line is read and so measured it from the
+        # container's start -- so every marker four columns wide or more (`10. `,
+        # `99. `, `100. `, `10) `, or `1. ` with a second space) rejected its own
+        # continuation and hid the release heading it underlined. Nothing here is
+        # special-cased per marker: `strip_containers` measures what the marker
+        # actually consumed.
+        # ===================================================================
+        ("a setext release under `1.` is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "1. [0.9.7]", "   -------"]),
+        ("...under `10.` (the reported bypass) is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "10. [0.9.7]", "    -------"]),
+        ("...under `100.` is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "100. [0.9.7]", "     -------"]),
+        ("...under `1000.` is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "1000. [0.9.7]", "      -------"]),
+        ("...under `10)` is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "10) [0.9.7]", "    -------"]),
+        ("...under `1.` with a second space is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "1.  [0.9.7]", "    -------"]),
+        ("...in a NESTED ordered list is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "1. x", "", "   1. [0.9.7]",
+          "      -------"]),
+        ("...inside a blockquote is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "> 10. [0.9.7]", ">     -------"]),
+        ("...with a blockquote inside the item is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "10. > [0.9.7]", "    > -------"]),
+        ("...after a `-` item, in a mixed list, is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "- x", "", "  10. [0.9.7]",
+          "      -------"]),
+        ("a setext CATEGORY under `10.` is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "10. Added", "    -----"]),
+        # ...and the alignment really is measured, in both directions: short of
+        # the content column is not a heading, and the 0-3 allowance beyond it is.
+        ("an underline short of the content column is not a heading", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "10. [0.9.7]", "   -------"]),
+        ("...nor one at column 0", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "10. [0.9.7]", "-------"]),
+        ("...but three columns past it still is", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "10. [0.9.7]", "       -------"]),
+        ("...and four past it is not", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "10. [0.9.7]", "        -------"]),
+        ("`10. foo` over `10. ---` is two list items, not a heading", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "10. foo", "10. ---"]),
+        # The ATX half of the same family was already right, and stays right.
+        ("an ATX release heading under `100.` is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "100. " + V7CONTENT]),
+        ("...and the diagnostic names the container", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "100. " + V7CONTENT,
+          "@@says:sits behind `100.` on the same line@@"]),
+        ("...and the setext diagnostic names a setext heading", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "10. [0.9.7]", "    -------",
+          "@@says:is a setext heading@@"]),
 
         # -- categories live at column 0 (restriction 4) ----------------------
         ("a category indented one column is a finding", 1,

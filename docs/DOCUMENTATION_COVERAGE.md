@@ -6,8 +6,8 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **changelog system round 5** (2026-09-05), whose
-entry is LAST in the body; before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
+Last updated: for the **0.9.7 change set** — the **changelog system round 6** (2026-09-05), whose
+entry is LAST in the body; before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
 `Vectorscope Persistence` Settings relabel** (2026-09-05); before it
@@ -9173,3 +9173,62 @@ or more puts its setext underline beyond `SETEXT_UNDERLINE`'s own `^ {0,3}` allo
 pair is not detected. It is an under-report in a shape (a release name written as a setext heading
 inside a deeply indented list) that nothing in this repository writes, and closing it needs the
 container stack this file deliberately does not keep.
+
+
+## Changelog system round 6 (2026-09-05) — the list marker's width
+
+**What the round is.** One finding, and it closes the residual round 5 recorded as deferred. The
+reviewer showed it is reachable with an ordinary two-digit list marker rather than an exotic
+construct, which makes it a bypass and not a limitation.
+
+**The defect.** A setext release heading under a wide ordered-list marker was invisible.
+`10. [0.9.7]` over four spaces and `-------` is a level-2 heading to every renderer; the checker saw
+nothing and the extractor folded the release into the notes above it. Measured, not assumed: every
+marker whose content column reaches four bypassed — `10.`, `11.`, `99.`, `100.`, `1000.`, `10)`, and
+`1.` with a second space. One-digit markers (column 3) were caught, which is why it survived five
+rounds.
+
+**The cause was an ordering error, not a missing case.** `SETEXT_UNDERLINE` carried CommonMark's
+0-3 indent allowance inside the pattern (`^ {0,3}`), and the rule matched it in the `if` BEFORE
+reading the subject line. That allowance is counted from the CONTENT COLUMN of whatever contains the
+line — a property of the SUBJECT, which the code only computed afterwards, in `aligned`. So it was
+measured from the container's start, and any continuation line four or more columns in failed the
+pattern before alignment could look at it. The fix moves the allowance out of the pattern and into
+`aligned`, where the column is known; `SETEXT_UNDERLINE` is now the run alone.
+
+**Nothing is special-cased per marker.** `strip_containers` already measured what each marker
+consumed — its digits, its delimiter and the space after it. The calculation was never wrong; the
+question was asked in the wrong order.
+
+**Bounded audit of the class, 33 shapes against the renderer.** Markers `1.` `2.` `9.` `10.` `11.`
+`99.` `100.` `1000.` `1)` `10)` `100)`; one to four spaces after the marker; underlines short of the
+content column and beyond it (the 0-3 allowance: five and seven columns are headings under `10.`,
+eight is not); nested ordered lists; an ordered list inside a blockquote and a blockquote inside an
+ordered item; a mixed `-` then `10.` list; ATX headings under `10.`, `100.` and `1000.`; a setext
+CATEGORY under `10.`; `10. foo` over `10. ---`; and a tab after the marker. **33 of 33 agree with
+`markdown-it-py`** on whether a heading exists, and where one does the checker reports it.
+
+**Three-way differential on the reported shape.** The renderer sees two level-2 headings; the
+checker reports both as forbidden container structure with the right diagnostic; the extractor
+treats neither as a boundary — `[0.9.8]` swallows both and neither hidden version extracts to
+anything. The three agree about the structure's nature while none of them supports it, which is the
+property the grammar asks for.
+
+**Measured.** Self-test 253 -> 272 cases. Five mutations each fail a named case: restoring the old
+`SETEXT_UNDERLINE.match(under_content)` (13 cases), treating every marker as three columns wide,
+ignoring the content column in the alignment test, and dropping either bound of the allowance. A
+sixth — putting `^ {0,3}` back into the pattern WITHOUT also restoring the raw match — is a provable
+**equivalent mutant**: no lstripped input distinguishes the two patterns, checked exhaustively
+rather than argued, so its survival is the mutation test behaving correctly. `check-docs` 120 files
+clean, `check-citations` 415 anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0), and
+the changelog rules over all 84 real documents give identical results to the previous head.
+
+**The real `CHANGELOG.md` is byte-unchanged** and still parses to 23 entries (21 versions + the 2
+reconstructed, in order), 40 categories, no findings, with the parser and the extractor agreeing
+line-for-line on all 22 versioned boundaries.
+
+**Residual closed.** Round 5's "a setext underline inside a list whose content column is >= 4 is not
+detected" is resolved by this fix rather than deferred further — the content column is measured and
+used, at any width. The others stand: HTML blocks unmodelled, the preamble link-definition
+behaviour, the deliberate over-report on a four-column `### Fixed` with no blank line above it, and
+the editorial rules that stay with the author.

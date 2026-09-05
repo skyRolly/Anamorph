@@ -121,9 +121,13 @@ because CommonMark treats them differently: a `>` takes at most **one** space wi
 so `>  ## [0.9.7]` leaves one column of content indent and is still a heading — and the
 blockquote **depth**, not a column, is what pairs a setext underline with its subject
 (`> [0.9.7]` over `>-------` is one heading; depth 1 under depth 2 is none). A **list**
-marker establishes a content column instead, which a continuation line is indented to
-(`- [0.9.7]` over `  -------` is a heading; `- foo` over `- ---` is two list items). Both
-heading forms, ATX and setext, go through that one normalisation, and the boundaries were
+marker establishes a content column instead — its full width, the space after it included, so
+`1. ` puts content at column 3 and `100. ` at column 5 — and a continuation line is indented to
+that column, with CommonMark's 0–3 allowance counted **from there** rather than from the
+container's start (`- [0.9.7]` over `  -------` is a heading, and so is `10. [0.9.7]` over four
+spaces and `-------`; `- foo` over `- ---` is two list items). Measuring that allowance from the
+wrong place is how a marker four or more columns wide once hid the release heading it underlined.
+Both heading forms, ATX and setext, go through that one normalisation, and the boundaries were
 verified against a CommonMark renderer rather than reasoned about.
 
 **Where a heading SITS is half of what it is.** `classify_heading` answers both questions
