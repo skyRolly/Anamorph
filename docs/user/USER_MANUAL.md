@@ -209,7 +209,7 @@ Controls respond to some universal gestures:
 
 - **Vectorscope** — a goniometer rotated 45°: a **vertical** trace means mono (all Mid),
   a **horizontal** spread means Side content, a tilted line means one channel is louder.
-  The phosphor-style afterglow length is set by **Persist** in Settings.
+  The phosphor-style afterglow length is set by **Vectorscope Persistence** in Settings.
 - **Correlation meter** (vertical bar, right of the scope) — ranges **+1 … −1**. Values
   near +1: mono-safe; around 0: wide/decorrelated; **negative: parts of the signal will
   cancel in mono** — back off Width or check phase.
@@ -274,7 +274,7 @@ presets, and are invisible to host automation:
 |---|---|---|
 | **Oversampling** | Off (1×) / 2× / 4× / 8× | For the nonlinear stages (Drive, Chorus, Dim-D). **Off adds no latency.** Choosing 2×/4×/8× adds a small, host-compensated latency **for as long as it is selected** — a few samples, and it never changes again until you change the setting. The extra CPU is still only spent when there is nonlinear work to do (§5). |
 | **UI Scale** | XS / S / M / L / XL | Scales the whole window (75 % … 150 %); M is the original size. (Labelled *Window Size* before 0.9.2.) |
-| **Vectorscope Persist** | 0 … 100 % | Afterglow length. While you drag it, the Settings panel becomes see-through so you can watch the scope behind it. |
+| **Vectorscope Persistence** | 0 … 100 % | Afterglow length. While you drag it, the Settings panel becomes see-through so you can watch the scope behind it. (Labelled *Vectorscope Persist* before 0.9.7.) |
 | **Tooltips** | on/off | Default off. |
 | **UI Animations** | on/off | Default on. |
 

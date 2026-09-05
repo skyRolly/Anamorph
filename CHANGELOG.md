@@ -68,6 +68,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Evidence: PR #137. [Verified]
 
 ### Changed
+- **The Settings row that sets the vectorscope's afterglow is now labelled *Vectorscope
+  Persistence*.** It read *Vectorscope Persist*. The control itself is untouched — same place in
+  the Settings overlay, same 0 … 100 % range, same default, same behaviour while you drag it — and
+  the value your projects already store is read and written exactly as before, so every saved
+  session opens the same as it did. Display name only: the identifier `int_scopePersist` is
+  unchanged, as the ID-immutability rule requires (`PARAMETER_COMPATIBILITY_POLICY` rule 2).
+  Evidence: PR #137. [Verified]
 - **Turning up Drive, or changing algorithm, no longer interrupts the sound when Oversampling is
   on.** The latency the plug-in reports to your DAW used to depend on whether the oversampler was
   actually running, and it only runs when it has something to do — so with Oversampling set to 2×,

@@ -1622,7 +1622,7 @@ static void testTooltipSourceOfTruth()
     struct Row { const char* name; juce::Rectangle<int> bounds; };
     const Row oversampling { "Oversampling",       { 804, 630, 312, 23 } };
     const Row uiScale      { "UI Scale",           { 804, 687, 312, 23 } };
-    const Row persist      { "Vectorscope Persist",{ 796, 743, 320, 24 } };
+    const Row persist      { "Vectorscope Persistence",{ 796, 743, 320, 24 } };
 
     juce::Component cOvers, cScale, cPersist;
     cOvers  .setBounds (oversampling.bounds);
@@ -1641,7 +1641,7 @@ static void testTooltipSourceOfTruth()
            "and in the other direction too");
     check (TooltipSource::choose (&cScale, persist.bounds.getCentre(), &cPersist)
                == &cPersist,
-           "Vectorscope Persist: same");
+           "Vectorscope Persistence: same");
 
     // --- the behaviour that must NOT change ---------------------------------------------------
     // The overwhelmingly common case: the cache agrees with the pointer, so nothing is overridden.

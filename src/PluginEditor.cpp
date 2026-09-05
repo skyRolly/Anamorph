@@ -41,7 +41,7 @@ static int algoBoxWidth (int rowWidth) { return (rowWidth - kAlgoRowGap) / 2; }
 // ============================================================================
 void AnamorphAudioProcessorEditor::Backdrop::paint (juce::Graphics& g)
 {
-    // While revealing (Persist drag), only partially dim and partially fade the
+    // While revealing (Persistence drag), only partially dim and partially fade the
     // panel so the live vectorscope shows through -- the bar/controls on top stay
     // fully opaque (#26).
     const float dimA   = juce::jmap (reveal, 0.0f, 1.0f, 0.80f, 0.34f);
@@ -84,7 +84,7 @@ void AnamorphAudioProcessorEditor::Backdrop::paint (juce::Graphics& g)
             glass::fillPanel (g, pf, 12.0f, colours::bgPanel); // Settings: subtle glass
         }
     }
-    else // mid-reveal (Persist drag): the SAME glass, just composited see-through,
+    else // mid-reveal (Persistence drag): the SAME glass, just composited see-through,
     {    // so it never switches to a different "faded" style when revealed (#1).
         juce::ColourGradient gr (colours::bgPanel.brighter (0.04f).withAlpha (panelA), pf.getCentreX(), pf.getY(),
                                  colours::bgPanel.darker (0.20f).withAlpha (panelA), pf.getCentreX(), pf.getBottom(), false);
@@ -612,7 +612,7 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     settingsBackdrop.addAndMakeVisible (uiScaleBox);
 
     // Scope Persistence is now a Settings bar (#21).
-    persistLabel.setText ("Vectorscope Persist", juce::dontSendNotification);
+    persistLabel.setText ("Vectorscope Persistence", juce::dontSendNotification);
     persistLabel.setColour (juce::Label::textColourId, colours::textDim);
     settingsBackdrop.addAndMakeVisible (persistLabel);
     scopePersistK.setSliderStyle (juce::Slider::LinearHorizontal);
@@ -640,11 +640,11 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // reset animates like every other Knob (#7).
     scopePersistK.onSweep = [this] { if (uiAnimOn) { knobSweepTime = 0.45; scopePersistK.getProperties().set ("resetSweep", true); } };
     scopePersistK.onValueChange = [this] { applyScopePersist(); };
-    // Listen for the mouse wheel ON the Persist bar so a sustained scroll reveals the
+    // Listen for the mouse wheel ON the Persistence bar so a sustained scroll reveals the
     // window (handled in mouseWheelMove, the single source of truth, so a single
     // notch never triggers it) (#1).
     scopePersistK.addMouseListener (this, false);
-    // While dragging Persist, fade the Settings overlay so the live vectorscope
+    // While dragging Persistence, fade the Settings overlay so the live vectorscope
     // behind it is visible (#9).
     scopePersistK.onDragStart = [this] { persistDragging = true; };
     scopePersistK.onDragEnd   = [this] { persistDragging = false; };
@@ -998,7 +998,7 @@ void AnamorphAudioProcessorEditor::updateMsLabels()
 void AnamorphAudioProcessorEditor::showAbout (bool show)    { aboutBackdrop.setVisible (show);    if (show) { aboutBackdrop.toFront (false); resized(); } }
 void AnamorphAudioProcessorEditor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails&)
 {
-    // Sustained scroll of the Persist bar reveals the window: the first notch arms a
+    // Sustained scroll of the Persistence bar reveals the window: the first notch arms a
     // short window, a SECOND notch inside it reveals (so a single notch doesn't),
     // and a ~0.5 s dwell holds it after the last notch. Drag is handled separately
     // and is unchanged (#1).
@@ -1470,7 +1470,7 @@ void AnamorphAudioProcessorEditor::timerCallback()
     //  stepMeterReveal, driven by the vblank attachment -- #6.)
 
     // Settings overlay becomes see-through (panel + dim only; the bar stays
-    // opaque) while the Persist bar is dragged -- shorter, gentler reveal (#26).
+    // opaque) while the Persistence bar is dragged -- shorter, gentler reveal (#26).
     // A short hold delay before revealing means a double-click-to-reset no longer
     // flashes the window transparent then opaque (#7).
     if (settingsBackdrop.isVisible())
@@ -1526,7 +1526,7 @@ void AnamorphAudioProcessorEditor::timerCallback()
     // (cheap, no syscall) and only when it says a button is held do we ask the OS for the REAL
     // state via getCurrentModifiersRealtime() -- which also REFRESHES the cached state, so after
     // one reconcile tick the gate goes quiet by itself. If the button is actually up, reconcile
-    // the drag state we own: clear the knob value-box "dragging" flag, drop the Persist-bar drag,
+    // the drag state we own: clear the knob value-box "dragging" flag, drop the Persistence-bar drag,
     // and cancel a stuck Multiband drag. During a real drag the button is genuinely down, so this
     // block is inert.
     // The second half asks the OS, not JUCE's cache. On macOS JUCE's realtime

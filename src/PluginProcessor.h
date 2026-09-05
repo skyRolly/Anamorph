@@ -60,7 +60,7 @@ public:
 
     // Custom Undo/Redo: each A/B slot keeps its OWN stack of SOUND-param
     // snapshots; the "view"/Settings params (Bypass, Advanced, Meters, Tooltips,
-    // Oversampling, Persist) and A/B switches themselves are never recorded
+    // Oversampling, Persistence) and A/B switches themselves are never recorded
     // (feedback #10 / #11 / #12). The editor calls pollUndoCoalesce() on its timer
     // to fold a knob gesture into a single step.
     void undo();
