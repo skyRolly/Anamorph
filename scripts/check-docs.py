@@ -574,12 +574,16 @@ def check_changelog_notes_boundary(path: Path, lines: list[str], skip: list[bool
         h = atx_heading(line)
         if h is None or h[0] != 2:
             continue
-        if CHANGELOG_VERSION_HEADING.match(line):
+        if CHANGELOG_VERSION_HEADING.match(line) or h[1].startswith("["):
+            # Any entry-SHAPED heading arms the rule, even one spelled in a way
+            # `release.yml` cannot extract: `check_changelog_headings` reports the
+            # spelling, and this rule must still see that the entries have begun.
+            # Arming only on the publishable spelling meant one bad heading at the
+            # top of the file silently disarmed the boundary check for the rest of
+            # it -- a second, independent defect hidden behind the first.
             if first is None:
                 first = i
             continue
-        if h[1].startswith("["):
-            continue             # an INDENTED entry heading: check_changelog_headings reports it
         if first is not None:
             findings.append(
                 f"{path}:{i + 1}: `## ` heading that is not an entry heading (`## [`), below "
@@ -669,7 +673,7 @@ REPO_URL = "https://github.com/skyRolly/Anamorph"
 # broken link, but it is still the script telling the truth about its own regex
 # rather than about the document.
 LINK_DEFINITION = re.compile(
-    r"""^ {0,3}\[([^\]]+)\]:[ \t]*(<[^>\n]*>|\S+)(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$"""
+    r"""^ {0,3}\[([^\]]+)\]:[ \t]*(<[^>\n]*>|\S+)(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t\r]*$"""
 )
 # The one spelling `release.yml` can publish: `## [` at column 0, exactly one
 # space. Everything else -- a leading indent, a tab or a second space after the
@@ -684,11 +688,25 @@ PUBLISHABLE_ENTRY_PREFIX = "## ["
 # and `### Fixed` still renders as a heading. `indented_code_mask` deliberately
 # leaves list-context indentation unmasked (its docstring says so), so such a line
 # was neither masked as code nor matched as a heading: a duplicated or invented
-# category could hide there. It is matched here and reported.
-DEEP_HEADING = re.compile(r"^ {4,}(#{1,6})[ \t]+(\S.*?)[ \t]*$")
+# category could hide there.
+#
+# TWO THINGS THIS DELIBERATELY DOES NOT DO. It does not measure the indent in
+# characters -- `indent_columns` exists because one tab is four columns, and a
+# tab-indented heading bypassed the first spelling of this rule. And it does not
+# report every deep `###`: inside a list item at that depth the line may equally
+# be a code sample, which no parser can distinguish without a container stack, so
+# only a heading whose text is a Keep a Changelog CATEGORY (or a level-2 entry
+# heading) is reported. That is the shape a real category bypass takes, and a
+# sample called `### Fixed` is not one anybody writes.
+DEEP_HEADING = re.compile(r"^[ \t]+(#{1,6})[ \t]+(\S.*?)[ \t]*$")
 # A setext underline (§4.3): `Changed` over `---` renders as a heading too, and
-# `release.yml`'s extractor stops at neither it nor a setext version heading.
-SETEXT_UNDERLINE = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
+# `release.yml`'s extractor stops at neither it nor a setext version heading. Only
+# a PARAGRAPH can carry one, which is what `NOT_A_SETEXT_SUBJECT` excludes: a list
+# item, a table row, a quote, an ATX heading, an HTML block, a link reference
+# definition. Testing the first character instead (`startswith("-")`) called a
+# paragraph beginning `-not a list` a list item, and called the thematic break
+# under the file's own link definitions a heading.
+SETEXT_UNDERLINE = re.compile(r"^ {0,3}(=+|-+)[ \t\r]*$")
 
 
 class ChangelogEntry:
@@ -736,22 +754,35 @@ def parse_changelog(lines: list[str], skip: list[bool]
             destination = d.group(2)
             if destination.startswith("<") and destination.endswith(">"):
                 destination = destination[1:-1]     # CommonMark §4.7: `<...>` is a wrapper
-            definitions.append((i + 1, d.group(1), destination))
+            definitions.append((i + 1, " ".join(d.group(1).split()), destination))
             continue
         deep = DEEP_HEADING.match(line)
-        if deep and entries:
+        if deep and entries and indent_columns(line) >= 4:
             level, text = len(deep.group(1)), deep.group(2)
-            if level == 3:
+            if level == 3 and text in KAC_CATEGORIES:
                 findings.append(
                     f"CHANGELOG.md:{i + 1}: `### {text}` is indented "
-                    f"{len(line) - len(line.lstrip(' '))} columns. Inside a list item that "
-                    f"still renders as a heading, so a category can hide there; a category "
-                    f"heading belongs at column 0"
+                    f"{indent_columns(line)} columns. Inside a list item that still renders "
+                    f"as a heading, so a category can hide there; a category heading belongs "
+                    f"at column 0"
                 )
                 entries[-1].categories.append((text, i + 1))
-            continue
+                continue
+            if level == 2 and text.startswith("["):
+                findings.append(
+                    f"CHANGELOG.md:{i + 1}: `{line.strip()}` is indented "
+                    f"{indent_columns(line)} columns. Inside a list item it renders as an "
+                    f"entry heading, which `release.yml` cannot extract (`^## \\[`) and which "
+                    f"does not terminate the entry above it; write it at column 0"
+                )
+                continue
+            # anything else at that depth is a sample, not structure: leave it be,
+            # and let the branches below have their turn at the line.
         if SETEXT_UNDERLINE.match(line) and i and lines[i - 1].strip() and not skip[i - 1] \
-                and not lines[i - 1].lstrip().startswith(("|", ">", "-", "*", "+", "#")):
+                and not LIST_MARKER.match(lines[i - 1]) \
+                and not interrupts_paragraph(lines[i - 1]) \
+                and not LINK_DEFINITION.match(lines[i - 1]) \
+                and not lines[i - 1].lstrip().startswith(("|", "<")):
             findings.append(
                 f"CHANGELOG.md:{i + 1}: `{lines[i - 1].strip()}` underlined by `{line.strip()}` "
                 f"is a setext heading. `release.yml` extracts and terminates release notes on "
@@ -923,14 +954,15 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
     entries, definitions, _ = parse_changelog(lines, skip)
     findings: list[str] = []
     defined: dict[str, tuple[int, str]] = {}
+    versions_early = {".".join(map(str, e.version)): e for e in entries if e.kind == "version"}
+    ordered = list(versions_early)
     for line_no, label, url in definitions:
         if re.fullmatch(r"\d+\.\d+\.\d+", label) or label.lower() == "unreleased":
             key = label.lower() if label.lower() == "unreleased" else label
             if key in defined:
                 findings.append(f"{path}:{line_no}: `[{label}]` is defined twice")
             defined[key] = (line_no, url)
-    versions = {".".join(map(str, e.version)): e for e in entries if e.kind == "version"}
-    ordered = [k for k in versions]
+    versions = versions_early
     previous_of = {k: ordered[n + 1] for n, k in enumerate(ordered) if n + 1 < len(ordered)}
     # A label whose heading EXISTS but is malformed (`## [0.9.8] — <YYYY-MM-DD>`)
     # is not an orphaned definition: the entry is there, its heading text is
@@ -950,12 +982,21 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
                     f"{path}:{line_no}: `[Unreleased]` is defined but there is no "
                     f"`## [Unreleased]` entry"
                 )
-            elif not re.fullmatch(rf"{re.escape(REPO_URL)}/compare/v\d+\.\d+\.\d+\.\.\.HEAD",
-                                  url):
-                findings.append(
-                    f"{path}:{line_no}: the `[Unreleased]` definition must be "
-                    f"`{REPO_URL}/compare/v<last tag>...HEAD`; got `{url}`"
-                )
+            else:
+                newest = next((k for k in ordered), None)
+                if newest is None:
+                    # No released version below it: nothing to compare from, so the
+                    # shape is all that can be asked for.
+                    want = url if re.fullmatch(
+                        rf"{re.escape(REPO_URL)}/compare/\S+\.\.\.HEAD", url) else (
+                        f"{REPO_URL}/compare/v<last tag>...HEAD")
+                else:
+                    want = f"{REPO_URL}/compare/v{newest}...HEAD"
+                if url != want:
+                    findings.append(
+                        f"{path}:{line_no}: the `[Unreleased]` definition must be `{want}` -- "
+                        f"the comparison runs from the newest released version to HEAD"
+                    )
             continue
         e = versions.get(key)
         if e is None:
@@ -979,12 +1020,25 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
         # check -- let `[0.9.7]: .../compare/v0.9.6...v0.9.7` pass, a comparison
         # against a tag that was never cut, which is a dead link in the one place
         # the specification asks to be linkable.
-        want = (f"{REPO_URL}/releases/tag/{tag}" if e.version == FIRST_TAGGED_VERSION
-                else f"{REPO_URL}/compare/v{previous_of.get(key, '?')}...{tag}")
+        if e.version == FIRST_TAGGED_VERSION:
+            want = f"{REPO_URL}/releases/tag/{tag}"
+        elif key in previous_of:
+            want = f"{REPO_URL}/compare/v{previous_of[key]}...{tag}"
+        else:
+            # A tagged-era version with no older entry beneath it in the file. The
+            # comparison has no left operand to name, so say that rather than
+            # printing a placeholder into the URL the author is told to write.
+            findings.append(
+                f"{path}:{line_no}: `[{key}]` must compare against the version released "
+                f"before it, but no older entry appears below `## [{key}]` -- add the "
+                f"predecessor's entry, or use `{REPO_URL}/releases/tag/{tag}` if this is "
+                f"the first tag"
+            )
+            continue
         if url != want:
             why = ("the line's first tag has no predecessor to compare against"
                    if e.version == FIRST_TAGGED_VERSION
-                   else "a comparison against the entry directly above it")
+                   else "a comparison against the next-older entry, the one directly BELOW it")
             findings.append(
                 f"{path}:{line_no}: the `[{key}]` definition must be `{want}` ({why}); "
                 f"got `{url}`"
@@ -1247,8 +1301,19 @@ def self_test() -> int:
          ["# Changelog", "## [Unreleased]", "### Added", "- x",
           "[Unreleased]: https://example.com/x/compare/v0.5.0...HEAD"]),
         ("an `[Unreleased]` definition that names no tag is a finding", 1,
-         ["# Changelog", "## [Unreleased]", "### Added", "- x",
-          "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/main...HEAD"]),
+         ["# Changelog", "## [Unreleased]", "### Added", "- x", V7, "### Fixed", "- y",
+          "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/main...HEAD", D7]),
+        # The comparison runs from the NEWEST released version, not any tag: an
+        # `[Unreleased]` pointing at an older one silently misreports what is
+        # unreleased.
+        ("an `[Unreleased]` comparison from the wrong version is a finding", 1,
+         ["# Changelog", "## [Unreleased]", "### Added", "- x", V8, "### Fixed", "- y",
+          V7, "### Fixed", "- z",
+          "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...HEAD", D8, D7]),
+        ("...and from the newest one it passes", 0,
+         ["# Changelog", "## [Unreleased]", "### Added", "- x", V8, "### Fixed", "- y",
+          V7, "### Fixed", "- z",
+          "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.9.8...HEAD", D8, D7]),
         ("`## [Unreleased]` below a release is a finding", 1,
          ["# Changelog", V5, "### Fixed", "- x", "## [Unreleased]", "### Added", "- y",
           "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.5.0...HEAD"]),
@@ -1340,13 +1405,65 @@ def self_test() -> int:
          ["# Changelog", V7, "### Fixed", "- x", "    ### Security", "- y", D7]),
         ("...and its duplicate is caught there too", 2,
          ["# Changelog", V7, "### Fixed", "- x", "    ### Fixed", "- y", D7]),
+        # One TAB is four columns (`indent_columns`), so a tab-indented category
+        # is the same bypass wearing a different character.
+        ("a tab-indented category under a bullet is reported", 1,
+         ["# Changelog", V7, "### Changed", "- x", "\t### Fixed", "- y", D7]),
+        ("a deeply indented ENTRY heading is reported", 1,
+         ["# Changelog", V7, "### Fixed", "- x", "    ## [0.9.6] — 2026-09-01", D7]),
+        # ...but a code SAMPLE at that depth is not structure. Only a real category
+        # name (or an entry heading) is reported, because nothing else can be told
+        # apart from a sample without a container stack.
+        ("a deep heading that is not a category name is left alone", 0,
+         ["# Changelog", V7, "### Fixed", "- x", "    ### How to read this", "- y", D7]),
+        ("a deep `#` sample inside a bullet is left alone", 0,
+         ["# Changelog", V7, "### Fixed", "- x", "        # not a category", "- y", D7]),
         # -- setext headings are invisible to the extractor ------------------------
         ("a setext heading inside an entry is a finding", 1,
-         ["# Changelog", V7, "### Fixed", "- x", D7, "", "Acknowledgements", "---"]),
+         ["# Changelog", V7, "### Fixed", "- x", "", "Acknowledgements", "---", "", D7]),
         ("a table delimiter row is not a setext heading", 0,
          ["# Changelog", V7, "### Fixed", "- x", "", "| a | b |", "|---|---|", "| 1 | 2 |",
           D7]),
+        # A thematic break is not a setext underline. The first spelling of the
+        # guard tested the previous line's first character, so the break under
+        # this file's own link definitions was reported as a heading, as was a
+        # paragraph that merely began with `-`.
+        ("a thematic break under the link definitions is not a heading", 0,
+         ["# Changelog", V7, "### Fixed", "- x", "", D7, "---"]),
+        ("a thematic break under a list item is not a heading", 0,
+         ["# Changelog", V7, "### Fixed", "- x", "---", "", D7]),
+        ("a thematic break under an ordered list item is not a heading", 0,
+         ["# Changelog", V7, "### Fixed", "- x", "", "1. step", "---", "", D7]),
+        ("a thematic break under an HTML block is not a heading", 0,
+         ["# Changelog", V7, "### Fixed", "- x", "", "<div>", "---", "", D7]),
+        ("a paragraph beginning with `-` still carries a setext underline", 1,
+         ["# Changelog", V7, "### Fixed", "- x", "", "-not a list item", "---", "", D7]),
+        # -- a first heading the extractor cannot read must not disarm the rest ----
+        ("a stray `## ` section is still reported after a badly spelled first entry", 2,
+         ["# Changelog", "##  [0.9.7] — 2026-09-05", "### Fixed", "- x", "## Acknowledgements",
+          D7]),
+        # -- link labels and messages ----------------------------------------------
+        ("a label with inner spaces is normalised, as CommonMark normalises it", 0,
+         ["# Changelog", V7, "### Fixed", "- x", "[ 0.9.7 ]: " + D7.split(": ", 1)[1]]),
+        ("a tagged-era version with no older entry says so, without a placeholder", 1,
+         ["# Changelog", V8, "### Fixed", "- x", D8]),
+        # ...and the message must not contain the sentinel: a `v?` in the URL an
+        # author is told to write is worse than no message at all.
+        ("...and the message never prints `v?`", 0,
+         ["# Changelog", V8, "### Fixed", "- x", D8, "@@no-placeholder@@"]),
     ]:
+        # A fixture carrying the `@@no-placeholder@@` marker asserts the TEXT of
+        # the findings instead of their count: the defect it pins is a sentinel
+        # (`v?`) leaking into the URL a finding tells the author to write, which
+        # no count can see.
+        if lines and lines[-1] == "@@no-placeholder@@":
+            found = analyse(root / "CHANGELOG.md", lines[:-1], root)
+            checked += 1
+            if any("v?" in f for f in found):
+                failures += 1
+                print(f"self-test FAIL: changelog {label}: a finding printed the `v?` "
+                      f"placeholder: {found}", file=sys.stderr)
+            continue
         got = len(analyse(root / "CHANGELOG.md", lines, root))
         checked += 1
         if got != expected:
