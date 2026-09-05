@@ -78,18 +78,32 @@ on nothing else:
 |---|---|---|
 | 1 | An entry heading is level 2, at **column 0**, written `## [` with exactly one space | the only form the extractor's `^## \[` matches. `##\t[`, `##  [` and an indented `## [` all render as entry headings and none of them can be published |
 | 2 | Below the first entry, every level-1 and level-2 heading is an entry heading | anything else does not terminate the entry above it, so it is published inside that release's notes |
-| 3 | A heading that **reads as** an entry heading must be one, at any level | a bracket lost from `## [0.9.7] — …` used to make it preamble: its categories were charged to the release above it. Release-like means it starts with `[`, or starts with a version number, or is `Unreleased`, or carries both a version and an ISO date |
+| 3 | A heading that **names a release** — a version number (with or without a leading `v`), or `Unreleased` — must be a valid entry heading, at any level. At level 2 the **bracket** is reserved as well | a bracket lost from `## [0.9.7] — …` used to make it preamble: its categories were charged to the release above it. Release-like means it starts with `[`, or starts with a version number, or is `Unreleased`, or carries both a version and an ISO date |
 | 4 | Category headings are level 3, at column 0, one of the six names, in the specification's order, once each per release | rule 6 |
 | 5 | Headings are ATX (`##`), never setext (text over `---`) | the extractor cannot see a setext heading, and neither can `^## \[` |
 | 6 | An entry heading is never written inside a fenced code block as a live heading | a fence is data; the extractor and the checker both skip it, so a heading there is a sample and nothing more |
+
+**Line endings.** `\n` or `\r\n`. A **lone** carriage return is a line ending to CommonMark
+and not to `awk`, so the two tools would split the file differently; both follow `awk`, and
+`check-docs.py` reports the character rather than resolving the disagreement silently.
+
+**Container markers.** A heading written on the same line as a `>` or a list marker
+(`> ### Fixed`, `- ## [0.9.7] — …`) still renders as a heading, and `release.yml`'s `^## \[`
+cannot see through the marker — so a category hidden there is reported and counted, and an
+entry heading there is reported as unpublishable. Ordinary quoted prose is untouched.
 
 **Fenced code blocks** follow CommonMark §4.5 exactly, in both tools: three backticks or
 three tildes minimum, at most **three columns** of indent (one tab is four columns, so a
 tab-indented delimiter is an indented code block and opens nothing), a closer of the same
 character, at least as long, with nothing but whitespace after it — and a backtick fence's
 info string may not contain a backtick, which makes ` ```a`b ` a paragraph rather than a
-fence. Content inside a fence is never read as changelog structure; a line that is not
-actually a fence never hides changelog structure.
+fence, and a closer may be followed by spaces and tabs only (not by any other Unicode
+whitespace — that difference alone made the two tools disagree about where a release ends).
+Content inside a fence is never read as changelog structure; a line that is not actually a
+fence never hides changelog structure. One exception is stated rather than hidden: a fence
+nested inside a list item has its delimiters four or more columns from column 0, where
+neither tool can see them without a container stack, so the deep-heading rule is silenced
+between two such delimiters — a sample is not a defect.
 
 **Where the two tools deliberately differ from the renderer**, they differ in one
 direction only: `check-docs.py` may see structure the renderer treats as an indented code

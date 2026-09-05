@@ -6,8 +6,8 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **changelog system round 3** (2026-09-05), whose
-entry is LAST in the body; before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
+Last updated: for the **0.9.7 change set** — the **changelog system round 3b** (2026-09-05), whose
+entry is LAST in the body; before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
 `Vectorscope Persistence` Settings relabel** (2026-09-05); before it
@@ -8948,3 +8948,79 @@ harmlessly, and porting it back is a decision for that repository. Seven functio
 byte-for-byte identical and are named in the module docstring. `LEVEL5_AUDITION.md:15-16` still
 refers to v0.9.6 and is deliberately untouched: it is outside the changelog compliance chain and is
 recorded here as a separate documentation follow-up.
+
+
+## Changelog system round 3b (2026-09-05) — what the bounded audit found in round 3's own fix
+
+**What the round is.** Round 3 was audited immediately, by eight reviewers each confined to one
+area of the parser/extractor attack surface (heading grammar, fence grammar, release boundaries,
+preamble, category normalisation, tool agreement, malformed-input rejection, valid-input
+preservation) — the bounded replacement for the spend-limited panel of round 2d. All eight
+completed. Nine defects were reproduced by hand from their fixtures and fixed here; every fix
+carries a case that fails against the previous implementation.
+
+**Four reviewers independently found the same divergence, and it was one character.**
+`fence_mask` closed a fence with `not delim[2].strip()` — Python's argument-less `strip`, which
+removes every Unicode whitespace character. CommonMark §4.5 allows spaces and tabs after a closing
+run and nothing else, and `changelog-section.awk` tests `/^[ \t\r]*$/`. So a closer trailed by a
+non-breaking space closed the fence in the checker and not in the extractor: the checker called the
+file clean while the published notes ran two releases together. `strip(" \t")` now. The same trap
+one line up in `atx_heading` — `re.sub(r"(?:^|\s+)#+$", ...)` — made `### Fixed\u00a0###`, whose
+rendered name really is `Fixed\u00a0###`, read as the category `Fixed`.
+
+**Round 3's own regression: `release_like` fired at every heading level.** At level 2 the bracket
+is reserved and must stay so — the reconstructed headings at the foot of this file (`[0.6.x] and
+earlier`, whose version is not a semantic version) are entries only because of that reservation.
+Nowhere else is it reserved, and applying it everywhere told the author that `# [Anamorph] —
+changelog`, the document's own title, "reads as an entry heading but is level 1" and should be
+rewritten as a release entry; a preamble `### [Verified]` sub-heading got the same advice.
+`names_a_release` now decides the level-1 and level-3 cases: a version number, `Unreleased`, a
+lost `]` with a version behind it, or a version and an ISO date together.
+
+**A `v`-prefixed version was invisible.** `\b\d+\.\d+\.\d+\b` cannot match inside `v0.9.8` —
+`v` and `0` are both word characters, so there is no boundary — and the anchored pattern did not
+allow the prefix either. `## v0.9.8 — 2026-10-01` passed as ordinary prose.
+
+**A heading behind a container marker was invisible to both functions.** `> ### Fixed` and
+`- ### Fixed` render as headings; `atx_heading` is anchored at columns 0–3 and `deep_heading` needs
+four columns of leading whitespace, so a category — or an entry heading `release.yml` could never
+extract — hid behind two characters. Reported now, and a hidden category is still counted, so the
+duplicate and order rules see it. Ordinary quoted prose is untouched: only a Keep a Changelog
+category name or an entry-shaped level-2 heading is reported.
+
+**A fenced sample nested in a list item was read as structure.** CommonMark measures a fence's
+three-column allowance from its CONTAINER's content column; nothing here keeps a container stack, so
+a perfectly ordinary sample inside a bullet had its delimiters at four columns and its contents were
+reported as hidden category headings and a duplicate — three findings, no defect. The deep rule is
+now silenced between two deep delimiters. Stated in the policy rather than hidden, and the case that
+proves the real detection still fires sits beside it.
+
+**A lone carriage return split the file differently for each tool.** CommonMark §2.1 counts it as a
+line ending; `awk` does not. `check_file` read with universal newlines and so agreed with the
+renderer and disagreed with the extractor. It now splits the way `awk` does — a CRLF line's trailing
+`\r` is dropped so every other rule sees what it saw before — and the lone CR is REPORTED, because
+resolving the disagreement silently would leave the renderer showing a heading neither tool sees.
+
+**Three smaller defects.** A malformed entry heading collected a second, false finding — its own
+link definition read as an orphan — because the `claimed` set only understood the bracketed shape.
+`VERSION_HEADING_TEXT` accepted a leading zero (`[0.08.0]`), which `int()` normalised, so every
+message quoted a version the heading does not carry and the link rule demanded a tag `release.yml`
+can never cut. And its end anchor was pinned by nothing: `## [0.5.0] — 2026-01-02 (final)` and a
+misspelled `[Yanked]` marker now each have a case.
+
+**Measured.** Self-test 187 → 207 cases. Twelve mutations this round each fail a named case, and
+four of them only after the fixture was rebuilt: a closer that does not close and one that closes
+wrongly both yield exactly one finding, so a single duplicate after the closer proved nothing.
+One dead guard was removed rather than kept as defence — a redundant condition is what a mutation
+test cannot tell from a rule. The 47-fixture grammar matrix still shows zero under-reports against
+the CommonMark renderer, and on the real `CHANGELOG.md` the parser and the extractor still agree
+line-for-line on all 22 versioned entries. `check-docs` 120 files clean, `check-citations` 415
+anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**Residuals, recorded not fixed.** CommonMark's HTML blocks (§4.6) are not modelled, so a
+`## [x.y.z]` line inside an open `<details>` block in the preamble is an entry to both tools and a
+raw-HTML line to the renderer — both tools agree, so the pipeline stays coherent, and no such block
+exists in this file. A link reference definition written directly under preamble prose cannot
+interrupt a paragraph in CommonMark but is counted as a definition here. Two `## [Unreleased]`
+headings are reported as a placement defect rather than as a duplicate. `LEVEL5_AUDITION.md:15-16`
+still refers to v0.9.6 and remains a separate documentation follow-up outside this chain.

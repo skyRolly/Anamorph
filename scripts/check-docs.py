@@ -360,7 +360,14 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
                 char, width, opened_at, mask[i] = delim[0], delim[1], i + 1, True
             continue
         mask[i] = True                       # inside the fence, including its closer
-        if delim and delim[0] == char and delim[1] >= width and not delim[2].strip():
+        # `strip(" \t")`, never a bare `strip()`. CommonMark 4.5 allows spaces and
+        # TABS after a closing run and nothing else; Python's argument-less strip
+        # removes every Unicode space, so a closer trailed by a non-breaking space
+        # closed the fence HERE and not in `changelog-section.awk`, whose test is
+        # `/^[ \t\r]*$/`. One character, and the two tools disagreed about where a
+        # release ends -- the checker calling the file clean while the extractor
+        # ran two releases together.
+        if delim and delim[0] == char and delim[1] >= width and not delim[2].strip(" \t"):
             char, width, opened_at = None, 0, None
     return mask, opened_at
 
@@ -715,7 +722,11 @@ def atx_heading(line: str) -> tuple[int, str] | None:
     if not m:
         return None
     text = m.group(2) or ""
-    text = re.sub(r"(?:^|\s+)#+$", "", text).strip()
+    # CommonMark 4.2: the closing run must be preceded by spaces or TABS -- not by
+    # "whitespace" in Python's Unicode sense. `\s+` here stripped a run after a
+    # non-breaking space, so `### Fixed\u00a0###`, which renders as the category
+    # `Fixed\u00a0###`, was read as `Fixed` and passed the name check.
+    text = re.sub(r"(?:^|[ \t]+)#+$", "", text).strip()
     return len(m.group(1)), text
 
 
@@ -732,8 +743,14 @@ def atx_heading(line: str) -> tuple[int, str] | None:
 # rather than rewritten. The bracket alone (`^## \[`) is what `release.yml`
 # terminates a release's notes at, so that stays the boundary rule; THIS grammar
 # is what the checker demands of the text inside the bracket.
+# `0|[1-9]\d*` per component, not `\d+`: SemVer forbids a leading zero in a
+# numeric identifier, and `\d+` accepted `[0.08.0]`, which `int()` then normalised
+# to 0.8.0 -- so every message quoted a version the heading does not carry, and
+# the link rule demanded a definition for a tag `release.yml` can never cut (it
+# takes the tag from the CMake `project VERSION`, which is written the SemVer way).
 VERSION_HEADING_TEXT = re.compile(
-    r"^\[(\d+)\.(\d+)\.(\d+)\] (?:—|-) (\d{4}-\d{2}-\d{2})( \[YANKED\])?$"
+    r"^\[(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\] (?:—|-) "
+    r"(\d{4}-\d{2}-\d{2})( \[YANKED\])?$"
 )
 UNRELEASED_HEADING_TEXT = "[Unreleased]"
 # WHICH HEADINGS MUST SATISFY THAT GRAMMAR. The bracket alone used to decide it,
@@ -758,19 +775,39 @@ UNRELEASED_HEADING_TEXT = "[Unreleased]"
 # not an entry at all: `release.yml` boundaries on `^## [`, so a release written
 # at the wrong level does not terminate anything and is published inside its
 # predecessor's notes.
-RELEASE_LIKE_VERSION = re.compile(r"^\[?\s*\d+\.\d+\.\d+(?![\w.])")
+RELEASE_LIKE_VERSION = re.compile(r"^\[?[ \t]*v?\d+\.\d+\.\d+(?![\w.])")
 RELEASE_LIKE_UNRELEASED = re.compile(r"^\[?\s*unreleased\s*\]?$", re.I)
-SEMVER_ANYWHERE = re.compile(r"\b\d+\.\d+\.\d+\b")
+SEMVER_ANYWHERE = re.compile(r"(?<![\w.])v?\d+\.\d+\.\d+(?![\w.])")
 ISO_DATE_ANYWHERE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 
 
-def release_like(text: str) -> bool:
-    """Is this heading text TRYING to be a changelog entry heading?"""
-    if text.startswith("["):
-        return True
+def names_a_release(text: str) -> bool:
+    """Does this heading NAME a release -- a version number or `Unreleased`?
+
+    Level-independent, and deliberately narrower than `release_like`: it must not
+    fire on an ordinary bracketed link in a heading. `# [Anamorph] — changelog`
+    is this file's own title and `### [Verified]` is a preamble sub-heading; both
+    start with `[` and neither is a release. Reporting them told the author to
+    rewrite the document title as a release entry.
+    """
     if RELEASE_LIKE_VERSION.match(text) or RELEASE_LIKE_UNRELEASED.match(text):
         return True
+    if text.startswith("[") and SEMVER_ANYWHERE.search(text):
+        return True                      # `## [0.9.8 — 2026-10-01`: lost its `]`
     return bool(SEMVER_ANYWHERE.search(text) and ISO_DATE_ANYWHERE.search(text))
+
+
+def release_like(text: str) -> bool:
+    """Is this LEVEL-2 heading text trying to be an entry heading?
+
+    At level 2 the bracket is RESERVED (§The structural grammar, restrictions 1
+    and 2): `release.yml` boundaries a release's notes on `^## [`, so a `## [`
+    heading either is an entry or is a defect, and the reconstructed headings at
+    the foot of this file (`[0.6.x] and earlier — …`, whose version is not a
+    semantic version at all) are entries only because of that reservation.
+    Nowhere else is the bracket reserved -- see `names_a_release`.
+    """
+    return text.startswith("[") or names_a_release(text)
 RECONSTRUCTED_HEADINGS = (
     "[0.7.5] – [0.7.0] — 2026-06-21…22",
     "[0.6.x] and earlier — 2026-06 (reconstructed)",
@@ -833,6 +870,21 @@ def deep_heading(line: str) -> tuple[int, str] | None:
     if not line[:1] in (" ", "\t") or indent_columns(line) < 4:
         return None
     return atx_heading(line.lstrip(" \t"))
+# A heading written on the same line as its container's marker: `> ### Fixed`,
+# `- ### Fixed`, `1. ## [0.9.7] — …`. CommonMark renders every one of them as a
+# heading -- the marker opens a block quote or a list item and the heading is that
+# block's content -- but neither `atx_heading` (anchored at column 0-3) nor
+# `deep_heading` (which needs four columns of leading whitespace) can see through
+# the marker, so a category or an entry heading could hide behind two characters.
+# `release.yml` cannot see through one either (`^## \[` does not match `> ## [`),
+# so an entry heading written this way does not terminate the entry above it.
+#
+# Only the shapes that MATTER are reported, for the same reason the deep rule is
+# narrow: a quoted `### Something` is ordinary quoted prose, and a checker that
+# reported it would be wrong far more often than right.
+CONTAINER_HIDDEN_HEADING = re.compile(
+    r"^ {0,3}((?:>[ \t]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+)+)(#{1,6})(?:[ \t]+(.*?))?[ \t]*$"
+)
 # A setext underline (§4.3): `Changed` over `---` renders as a heading too, and
 # `release.yml`'s extractor stops at neither it nor a setext version heading. Only
 # a PARAGRAPH can carry one, which is what `NOT_A_SETEXT_SUBJECT` excludes: a list
@@ -880,9 +932,52 @@ def parse_changelog(lines: list[str], skip: list[bool]
     entries: list[ChangelogEntry] = []
     definitions: list[tuple[int, str, str]] = []
     findings: list[str] = []
+    # A FENCED BLOCK NESTED IN A LIST ITEM. CommonMark measures a fence's
+    # three-column allowance from its CONTAINER's content column, not from column
+    # 0, so a perfectly ordinary sample inside a list has its delimiters at four
+    # columns or more -- where `fence_delimiter` (which measures from column 0,
+    # because nothing here keeps a container stack) does not see them. Its
+    # contents were then read as document structure: a sample entry heading and
+    # its `### Added` were reported as hidden category headings, and a second
+    # `### Added` in the sample as a duplicate. Three findings, no defect.
+    #
+    # Tracked here rather than in `fence_mask`, and used ONLY to silence the deep
+    # rule: it is the deep rule that cannot tell a sample from a container, and a
+    # deep delimiter run is the clearest signal there is that what follows is a
+    # sample. Nothing else in this file changes its answer because of it.
+    deep_fence: tuple[str, int] | None = None
     for i, line in enumerate(lines):
+        # A LONE CARRIAGE RETURN, reported rather than silently resolved.
+        # CommonMark 2.1 calls it a line ending; `awk` does not, and
+        # `changelog-section.awk` is `awk`. `check_file` splits the way the
+        # extractor does, so the two tools agree about the file -- but the
+        # RENDERER then shows a heading neither of them sees, which is the
+        # bypass direction. Naming the character is the only answer that leaves
+        # nothing hidden: one interpretation downstream, and a finding on the
+        # input that would have needed two.
+        if "\r" in line:
+            findings.append(
+                f"CHANGELOG.md:{i + 1}: a bare carriage return inside the line. GitHub "
+                f"renders it as a line break and `release.yml`'s extractor does not, so a "
+                f"heading after it would be published inside the wrong release -- use `\\n` "
+                f"or `\\r\\n` line endings throughout"
+            )
         if skip[i]:
             continue
+        if indent_columns(line) >= 4:
+            bare = line.lstrip(" \t")
+            run = re.match(r"(`{3,}|~{3,})(.*)$", bare)
+            if run:
+                char, width, info = run.group(1)[0], len(run.group(1)), run.group(2)
+                if deep_fence is None:
+                    if not (char == "`" and "`" in info):
+                        deep_fence = (char, width)
+                elif char == deep_fence[0] and width >= deep_fence[1] \
+                        and not info.strip(" \t"):
+                    deep_fence = None
+                continue
+            if deep_fence is not None:
+                continue
         d = LINK_DEFINITION.match(line)
         if d:
             destination = d.group(2)
@@ -890,7 +985,31 @@ def parse_changelog(lines: list[str], skip: list[bool]
                 destination = destination[1:-1]     # CommonMark §4.7: `<...>` is a wrapper
             definitions.append((i + 1, " ".join(d.group(1).split()), destination))
             continue
+        hidden = CONTAINER_HIDDEN_HEADING.match(line)
+        if hidden and entries:
+            marker = hidden.group(1).strip()
+            level = len(hidden.group(2))
+            text = re.sub(r"(?:^|[ \t]+)#+$", "", hidden.group(3) or "").strip()
+            if level == 3 and text in KAC_CATEGORIES:
+                findings.append(
+                    f"CHANGELOG.md:{i + 1}: `### {text}` sits behind `{marker}` on the same "
+                    f"line. It still renders as a heading, so a category can hide there; a "
+                    f"category heading belongs at column 0"
+                )
+                entries[-1].categories.append((text, i + 1))
+                continue
+            if level == 2 and release_like(text):
+                findings.append(
+                    f"CHANGELOG.md:{i + 1}: `{line.strip()}` sits behind `{marker}` on the "
+                    f"same line. It renders as an entry heading, which `release.yml` cannot "
+                    f"extract (`^## \\[`) and which does not terminate the entry above it; "
+                    f"write it at column 0"
+                )
+                continue
         deep = deep_heading(line)
+        # No `deep_fence` guard here: the tracking block above already skipped
+        # every line inside one. A second test would read as defence and be dead
+        # code -- and dead code is what a mutation test cannot tell from a rule.
         if deep and entries:
             level, text = deep
             if level == 3 and text in KAC_CATEGORIES:
@@ -927,7 +1046,7 @@ def parse_changelog(lines: list[str], skip: list[bool]
         if h is None:
             continue
         level, text = h
-        if level != 2 and release_like(text):
+        if level != 2 and names_a_release(text):
             # An entry heading at the wrong level. `release.yml` terminates a
             # release's notes at `^## [` and at nothing else, so this heading and
             # everything under it is published inside the entry above it -- and
@@ -1132,10 +1251,17 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
     # is not an orphaned definition: the entry is there, its heading text is
     # wrong, and `check_changelog_headings` already says so. Reporting the
     # definition too pointed the author at the wrong line.
+    # Every version a MALFORMED entry names, however it is spelled. A malformed
+    # heading's own definition is not an orphan -- the entry is there, its text is
+    # wrong, and `check_changelog_headings` already says so. Reading only the
+    # bracketed shape covered the one defect that predates `release_like` and none
+    # of the shapes it added, so `## 0.9.8] — …` collected a second, false finding
+    # ("`[0.9.8]` is defined but there is no `## [0.9.8]` entry") on top of the
+    # true one.
     claimed = {
-        e.text[1:e.text.index("]")]
-        for e in entries
-        if e.kind == "malformed" and e.text.startswith("[") and "]" in e.text
+        m.group(0).lstrip("v")
+        for e in entries if e.kind == "malformed"
+        for m in [SEMVER_ANYWHERE.search(e.text)] if m
     }
     has_unreleased = any(e.kind == "unreleased" for e in entries)
 
@@ -1257,7 +1383,18 @@ def analyse(path: Path, lines: list[str], root: Path) -> list[str]:
 
 def check_file(path: Path, root: Path) -> list[str]:
     try:
-        text = path.read_text(encoding="utf-8")
+        # `newline=""` and a `\n` split, NOT universal newlines. CommonMark 2.1
+        # counts a LONE carriage return as a line ending; `awk` counts only `\n`,
+        # and `scripts/changelog-section.awk` is `awk`. Universal-newline reading
+        # made this checker agree with CommonMark and disagree with the extractor:
+        # a lone CR before an entry heading split the file into two entries here
+        # and into one record there, so the checker called the file clean while
+        # the published notes ran two releases together. The two tools now split
+        # the same file the same way; the trailing `\r` of a CRLF line is dropped
+        # so every other rule sees what universal newlines used to give it, and a
+        # lone CR stays inside its line, exactly as `awk` leaves it.
+        with path.open(encoding="utf-8", newline="") as handle:
+            text = handle.read()
     except UnicodeDecodeError as exc:
         # Report as a finding, not a traceback: the CI job's whole contract is
         # `path:line: message`, and a stray legacy-encoded byte in a corpus this
@@ -1267,7 +1404,8 @@ def check_file(path: Path, root: Path) -> list[str]:
             f"{path}:{line}: not valid UTF-8 (byte {exc.object[exc.start]:#04x} "
             f"at offset {exc.start}: {exc.reason}) -- the file cannot be checked"
         ]
-    return analyse(path, text.split("\n"), root)
+    lines = [ln[:-1] if ln.endswith("\r") else ln for ln in text.split("\n")]
+    return analyse(path, lines, root)
 
 
 def self_test() -> int:
@@ -1742,6 +1880,88 @@ def self_test() -> int:
          ["# Changelog", V5, "### Added", "````", "### Added", "```", "- y", "````"]),
         ("a fenced entry heading is data, not a boundary", 0,
          ["# Changelog", V5, "### Added", "```", "## [9.9.9] — 2026-01-03", "```"]),
+        # A closer may be followed by SPACES AND TABS and by nothing else
+        # (CommonMark 4.5). The two directions were both unpinned: a rule that
+        # refused to close on a trailing space would break ordinary files, and one
+        # that closed on a non-breaking space -- Python's bare `.strip()` -- closed
+        # the fence HERE and not in the extractor, which is the divergence four
+        # separate audits of this file found first.
+        # TWO duplicates after the closer, not one: whether the fence closes or
+        # not, the alternative produces exactly one finding (a duplicate, or an
+        # unclosed fence), so a single one cannot tell the two apart.
+        ("a closer followed by spaces still closes", 2,
+         ["# Changelog", V5, "### Added", "```", "### Added", "```   ",
+          "### Added", "### Added"]),
+        ("a closer followed by a tab still closes", 2,
+         ["# Changelog", V5, "### Added", "```", "### Added", "```\t",
+          "### Added", "### Added"]),
+        ("a closer followed by a NON-BREAKING space does not close", 1,
+         ["# Changelog", V5, "### Added", "```", "### Added", "```\u00a0",
+          "### Added", "### Added"]),
+        # ...and the same Unicode trap one line up, in the ATX closing run: the
+        # run must be preceded by a space or a tab, so this heading's name really
+        # is `Fixed\u00a0###` and really is not a category.
+        ("a closing run after a non-breaking space is part of the name", 1,
+         ["# Changelog", V5, "### Fixed\u00a0###", "- a"]),
+
+        # -- headings hidden behind a container marker on the same line -------
+        ("a category behind a `>` is reported and still counted", 2,
+         ["# Changelog", V5, "### Added", "- a", "> ### Added", "- b"]),
+        ("a category behind a list marker is the same defect", 2,
+         ["# Changelog", V5, "### Added", "- a", "- ### Added", "- b"]),
+        ("an entry heading behind a `>` cannot be extracted", 1,
+         ["# Changelog", V5, "### Added", "- a", "> ## [0.4.0] — 2026-01-01", "- b"]),
+        ("ordinary quoted prose with a heading in it is not a category", 0,
+         ["# Changelog", V5, "### Added", "- a", "> ### Some note", "- b"]),
+
+        # -- a fenced sample nested in a list item ----------------------------
+        # CommonMark measures the fence's three-column allowance from the
+        # CONTAINER's content column. Nothing here keeps a container stack, so the
+        # deep rule is silenced between deep delimiters instead: a sample is not a
+        # defect, and three findings on one were what the alternative produced.
+        ("a fenced sample inside a list item is data", 0,
+         ["# Changelog", V5, "### Added", "- The template is:",
+          "    ```markdown", "    ## [1.2.3] — 2026-01-01", "    ### Added", "    - x",
+          "    ```", "- b"]),
+        ("...and a deep category OUTSIDE one is still reported", 1,
+         ["# Changelog", V5, "- b", "", "    ### Added", "", "- c"]),
+
+        # -- release-likeness is level-dependent ------------------------------
+        # At level 2 the bracket is reserved; nowhere else is. Reporting an
+        # ordinary bracketed link in a heading told the author to rewrite this
+        # file's own title as a release entry.
+        ("the document title may carry a bracketed link", 0,
+         ["# [Anamorph] — changelog", "", V5, "### Added", "- a"]),
+        ("a preamble `### [Verified]` sub-heading is not a release", 0,
+         ["# Changelog", "", "### [Verified]", "Text.", "", V5, "### Added", "- a"]),
+        ("a `v`-prefixed version is still a release heading", 1,
+         ["# Changelog", "## v0.5.0 — 2026-01-02", "### Added", "- a"]),
+        # ...and one where the version is not at the start, so only the
+        # anywhere-in-the-text pattern can see it.
+        ("a `v`-prefixed version mid-heading is still a release heading", 1,
+         ["# Changelog", "## Release v0.5.0 on 2026-01-02", "### Added", "- a"]),
+        # ...and one with a `v` version and NO date, which only the
+        # start-of-heading pattern can see.
+        ("a `v`-prefixed version with no date is still a release heading", 1,
+         ["# Changelog", "## v0.5.0", "### Added", "- a"]),
+        # The entry grammar is anchored at BOTH ends: trailing text after the date
+        # is not a release heading, however well the front of it reads.
+        ("trailing text after the date is not a valid entry heading", 1,
+         ["# Changelog", "## [0.5.0] — 2026-01-02 (final)", "### Added", "- a"]),
+        ("a misspelled YANKED marker is not a valid entry heading", 1,
+         ["# Changelog", "## [0.5.0] — 2026-01-02 [Yanked]", "### Added", "- a"]),
+        # SemVer forbids a leading zero, and `\d+` accepted one and then quoted a
+        # version the heading does not carry back at the author.
+        ("a leading-zero version is not a valid entry heading", 1,
+         ["# Changelog", "## [0.08.0] — 2026-01-02", "### Added", "- a"]),
+        # A malformed entry's own definition is not an orphan: one defect, one
+        # finding. Reading only the bracketed shape gave this input two.
+        ("a malformed entry does not orphan its own definition", 1,
+         ["# Changelog", "## 0.9.7] — 2026-09-05", "### Added", "- a", D7]),
+
+        # -- a bare CR is named, not silently resolved ------------------------
+        ("a bare carriage return inside a line is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a. Evidence: PR #2.\r### Fixed", "- b"]),
     ]:
         # A fixture carrying the `@@no-placeholder@@` marker asserts the TEXT of
         # the findings instead of their count: the defect it pins is a sentinel
