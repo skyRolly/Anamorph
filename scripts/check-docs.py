@@ -2,14 +2,26 @@
 """Structural lint for the Anamorph documentation set.
 
 PROVENANCE, stated as it stands rather than as it started. Checks 1-4 were adopted
-from the sibling product Anabasis (`scripts/check-docs.py`) and are still BYTE-FOR-BYTE
-identical to it, function for function: `fence_mask`, `indented_code_mask`,
-`blanked_lines`, `check_tables`, `check_links`, `check_lazy_continuation`. They are
-structural properties of GitHub-Flavored Markdown, not of either product, so there was
-nothing to adapt -- and a diverged copy of a checker is worse than a shared one. The
-defects each of them names happened in Anabasis; they are reproducible in any document
-set written the same way, which this one is (same directory layout, same navigation
-documents, same ADR index).
+from the sibling product Anabasis (`scripts/check-docs.py`). Six functions are still
+BYTE-FOR-BYTE identical to it: `indent_columns`, `indented_code_mask`, `blanked_lines`,
+`interrupts_paragraph`, `check_tables`, `check_links` and `check_lazy_continuation`.
+They are structural properties of GitHub-Flavored Markdown, not of either product, so
+there was nothing to adapt -- and a diverged copy of a checker is worse than a shared
+one. The defects each of them names happened in Anabasis; they are reproducible in any
+document set written the same way, which this one is (same directory layout, same
+navigation documents, same ADR index).
+
+`fence_mask` and `FENCE` have DIVERGED, deliberately, and the reason is in this
+repository rather than in the sibling: only here does a second implementation of the
+same grammar exist -- `scripts/changelog-section.awk`, which publishes the release
+notes -- and the two were giving opposite answers about the same line. A tab-indented
+delimiter (the sibling's `\s{0,3}` matches a tab; four columns, so CommonMark calls it
+an indented code block) and a backtick inside a backtick fence's info string (never a
+fence at all, CommonMark 4.5) both masked a real `## [x.y.z]` entry heading here while
+the extractor still saw it. `fence_delimiter` below states both rules. Anabasis has no
+extractor to disagree with, so it carries the same latent defect harmlessly; porting
+this back is a product-family decision for that repository, not a change to make from
+this one.
 
 Check 5 is where the two files have diverged, deliberately and by about 930 lines. The
 sibling carries a single `check_changelog_notes_boundary` that reads raw `## ` prefixes;
@@ -133,12 +145,15 @@ KNOWN LIMITS, stated rather than implied (constraint C7):
   * An indented code block at the very **first** line of a file is not masked
     (the mask requires a preceding blank line). CommonMark does not need one
     there; no file in this corpus opens that way.
-  * `FENCE` still measures its own three-column allowance in characters, so a
-    tab-indented ` ``` ` is read as a fence opener where CommonMark would call it
-    indented code. Both readings mask the block, so no finding differs -- except
-    that an *unpaired* tab-indented fence line would be reported as an unclosed
-    fence. Left as is deliberately: tightening it would trade this narrow case
-    for the risk of a spurious unclosed-fence report, which is the louder failure.
+  * A `### Fixed` indented four columns or more with no blank line above it and no
+    list container is an indented code block to CommonMark, and a hidden category
+    heading to `deep_heading`. The mask needs a preceding blank line and cannot
+    see containers without a container stack, so the two cannot be told apart
+    here. The rule errs toward REPORTING, and only for the six category names:
+    over-reporting costs an author one blank line, under-reporting is the bypass
+    the rule exists to close. Measured over the 47-fixture grammar matrix against
+    a CommonMark renderer, this checker never sees LESS structure than the
+    renderer does -- these two fixtures are the only two where it sees more.
   * Link existence is checked against the filesystem, so on a case-insensitive
     filesystem (macOS) a case-mismatched path passes here and 404s on GitHub.
     Root-relative destinations (`/docs/x.md`) resolve against the **repository**
@@ -181,7 +196,11 @@ from urllib.parse import unquote
 # delimiters here and rejected there -- a false negative, never a false positive.
 SEPARATOR = re.compile(r"^\|[\s:|-]*-[\s:|-]*$")
 LINK_OPEN = re.compile(r"\[[^\]]*\]\(")
-FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})(.*)$")
+# A line that LOOKS like a fence delimiter. Whether it IS one is decided by
+# `fence_delimiter` below, which applies the two rules a regex cannot: the
+# three-column indent allowance measured in COLUMNS, and CommonMark 4.5's
+# ban on a backtick inside a backtick fence's info string.
+FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,})(.*)$")
 TABLE_ROW = re.compile(r"^\s*\|")
 # An entry-boundary heading, spelled to match THIS repository's extractor rather
 # than the sibling's. `release.yml` here ends a release's notes at the next
@@ -279,6 +298,36 @@ def blank_code_spans(line: str) -> str:
     return "".join(chars)
 
 
+def fence_delimiter(line: str) -> tuple[str, int, str] | None:
+    """(character, run length, info string) if `line` is a fence delimiter, else None.
+
+    THE TWO RULES A REGEX CANNOT STATE, both CommonMark section 4.5 and both
+    live defects rather than pedantry:
+
+      * THE INDENT ALLOWANCE IS THREE **COLUMNS**. One tab is four columns, so a
+        tab-indented ``` is an indented code block, not a fence. Measured in
+        characters it opened one -- and in CHANGELOG.md that masked a real
+        `## [x.y.z]` entry heading from every rule here while
+        `changelog-section.awk`, which counts columns, still saw it. Two
+        grammars, one document, opposite answers.
+      * A BACKTICK FENCE'S INFO STRING MAY NOT CONTAIN A BACKTICK. ```a`b is a
+        PARAGRAPH, not a fence, so nothing after it is code. Reading it as a
+        fence hid every following line until the next delimiter -- including the
+        next release's heading, which then vanished from this checker while the
+        published notes ran the two releases together. A TILDE fence has no such
+        restriction: ~~~a`b IS a fence.
+
+    Info-string rules apply to an OPENING fence. A closer is a delimiter whose
+    info string is blank, so the backtick rule cannot change a closer's verdict
+    and is applied by the caller only where it opens.
+    """
+    m = FENCE.match(line)
+    if m is None or indent_columns(line) > 3:
+        return None
+    run = m.group(1)
+    return run[0], len(run), m.group(2)
+
+
 def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
     """(mask, unclosed_opener_line) — True for lines inside or delimiting a fence.
 
@@ -290,6 +339,10 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
     closes the outer block, so the example's contents get scanned as real
     structure and the real closer re-opens a block that then reads as unclosed.
 
+    What counts as a delimiter at all is `fence_delimiter`: three COLUMNS of
+    indent at most, and no backtick in a backtick fence's info string. Its
+    docstring records why each of those is here.
+
     The second element is the 1-based line of an opener that was never closed,
     or None. Callers must report it: silently masking to EOF is how this script
     once passed a file it had not read.
@@ -299,17 +352,16 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
     width = 0
     opened_at: int | None = None
     for i, line in enumerate(lines):
-        match = FENCE.match(line)
+        delim = fence_delimiter(line)
         if char is None:
-            if match:
-                run = match.group(1)
-                char, width, opened_at, mask[i] = run[0], len(run), i + 1, True
+            # CommonMark 4.5: a backtick fence's info string may not contain a
+            # backtick. Such a line is a paragraph and opens nothing.
+            if delim and not (delim[0] == "`" and "`" in delim[2]):
+                char, width, opened_at, mask[i] = delim[0], delim[1], i + 1, True
             continue
         mask[i] = True                       # inside the fence, including its closer
-        if match:
-            run, rest = match.group(1), match.group(2)
-            if run[0] == char and len(run) >= width and not rest.strip():
-                char, width, opened_at = None, 0, None
+        if delim and delim[0] == char and delim[1] >= width and not delim[2].strip():
+            char, width, opened_at = None, 0, None
     return mask, opened_at
 
 
@@ -597,13 +649,25 @@ def check_changelog_notes_boundary(path: Path, lines: list[str], skip: list[bool
         # published inside the notes of the entry above it just as `## Appendix`
         # is. The rule looked at level 2 only, so the more eye-catching spelling
         # was the one it missed.
-        if h[0] == 2 and (CHANGELOG_VERSION_HEADING.match(line) or h[1].startswith("[")):
+        if release_like(h[1]) or (h[0] == 2 and CHANGELOG_VERSION_HEADING.match(line)):
+            # A release-like heading is `parse_changelog`'s to report, at every
+            # level: it says WHICH way the heading is wrong (unbracketed, wrong
+            # level), where this rule could only say "not an entry heading". Only
+            # a level-2 one ARMS the rule -- a `# [0.9.7] ...` is not where the
+            # entries begin, it is a defect inside whatever entry it sits in.
+            if h[0] != 2:
+                continue
             # Any entry-SHAPED heading arms the rule, even one spelled in a way
             # `release.yml` cannot extract: `check_changelog_headings` reports the
             # spelling, and this rule must still see that the entries have begun.
             # Arming only on the publishable spelling meant one bad heading at the
             # top of the file silently disarmed the boundary check for the rest of
             # it -- a second, independent defect hidden behind the first.
+            #
+            # `release_like` rather than a bare `[`, and for the same reason:
+            # `## 0.9.8] - 2026-10-01` is a release somebody wrote, not a preamble
+            # section. `parse_changelog` reports the spelling; arming here and
+            # saying nothing keeps one defect to one message.
             if first is None:
                 first = i
             continue
@@ -672,6 +736,41 @@ VERSION_HEADING_TEXT = re.compile(
     r"^\[(\d+)\.(\d+)\.(\d+)\] (?:—|-) (\d{4}-\d{2}-\d{2})( \[YANKED\])?$"
 )
 UNRELEASED_HEADING_TEXT = "[Unreleased]"
+# WHICH HEADINGS MUST SATISFY THAT GRAMMAR. The bracket alone used to decide it,
+# which meant a heading that LOST one was not an entry attempt at all: it fell
+# through to the preamble path, its `### ` sections were charged to the release
+# ABOVE it, and if it was the file's first entry nothing here reported it -- the
+# `release.yml` grep at tag time was the first thing to notice, by which point
+# the tag exists.
+#
+# A level-2 heading is an ENTRY ATTEMPT, and so must be a valid entry heading, if
+# any of these hold. Each catches one way the brackets can be lost, and none of
+# them fires on an ordinary preamble section (`## How to read this file`):
+#
+#   * it starts with `[`                              -- the intended spelling
+#   * its text starts with a semantic version, with or without a leading bracket
+#     (`## 0.9.8] - 2026-10-01`, `## 0.9.8 - 2026-10-01`)
+#   * its text is `Unreleased`, brackets optional, in any case
+#   * it carries BOTH a semantic version and an ISO date anywhere in the text
+#     (`## Version 0.9.8 - 2026-10-01`)
+#
+# The same predicate applies at level 1 and level 3, where an entry heading is
+# not an entry at all: `release.yml` boundaries on `^## [`, so a release written
+# at the wrong level does not terminate anything and is published inside its
+# predecessor's notes.
+RELEASE_LIKE_VERSION = re.compile(r"^\[?\s*\d+\.\d+\.\d+(?![\w.])")
+RELEASE_LIKE_UNRELEASED = re.compile(r"^\[?\s*unreleased\s*\]?$", re.I)
+SEMVER_ANYWHERE = re.compile(r"\b\d+\.\d+\.\d+\b")
+ISO_DATE_ANYWHERE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+
+
+def release_like(text: str) -> bool:
+    """Is this heading text TRYING to be a changelog entry heading?"""
+    if text.startswith("["):
+        return True
+    if RELEASE_LIKE_VERSION.match(text) or RELEASE_LIKE_UNRELEASED.match(text):
+        return True
+    return bool(SEMVER_ANYWHERE.search(text) and ISO_DATE_ANYWHERE.search(text))
 RECONSTRUCTED_HEADINGS = (
     "[0.7.5] – [0.7.0] — 2026-06-21…22",
     "[0.6.x] and earlier — 2026-06 (reconstructed)",
@@ -721,7 +820,19 @@ PUBLISHABLE_ENTRY_PREFIX = "## ["
 # only a heading whose text is a Keep a Changelog CATEGORY (or a level-2 entry
 # heading) is reported. That is the shape a real category bypass takes, and a
 # sample called `### Fixed` is not one anybody writes.
-DEEP_HEADING = re.compile(r"^[ \t]+(#{1,6})[ \t]+(\S.*?)[ \t]*$")
+#
+# ONE GRAMMAR, APPLIED TWICE. There is no second heading regex here: the line is
+# dedented and handed to `atx_heading`, the same function every other heading in
+# this file goes through. A private pattern of its own is what let `### Fixed ###`
+# past -- it captured the text RAW, closing `#` run included, so the category
+# comparison saw `Fixed ###`, matched nothing, and the duplicate/invented/misorder
+# rules never saw the heading at all. The closing run is decoration the renderer
+# strips (CommonMark 4.2), and stripping it is `atx_heading`'s job.
+def deep_heading(line: str) -> tuple[int, str] | None:
+    """(level, text) for a heading indented four columns or more, else None."""
+    if not line[:1] in (" ", "\t") or indent_columns(line) < 4:
+        return None
+    return atx_heading(line.lstrip(" \t"))
 # A setext underline (§4.3): `Changed` over `---` renders as a heading too, and
 # `release.yml`'s extractor stops at neither it nor a setext version heading. Only
 # a PARAGRAPH can carry one, which is what `NOT_A_SETEXT_SUBJECT` excludes: a list
@@ -779,9 +890,9 @@ def parse_changelog(lines: list[str], skip: list[bool]
                 destination = destination[1:-1]     # CommonMark §4.7: `<...>` is a wrapper
             definitions.append((i + 1, " ".join(d.group(1).split()), destination))
             continue
-        deep = DEEP_HEADING.match(line)
-        if deep and entries and indent_columns(line) >= 4:
-            level, text = len(deep.group(1)), deep.group(2)
+        deep = deep_heading(line)
+        if deep and entries:
+            level, text = deep
             if level == 3 and text in KAC_CATEGORIES:
                 findings.append(
                     f"CHANGELOG.md:{i + 1}: `### {text}` is indented "
@@ -816,7 +927,37 @@ def parse_changelog(lines: list[str], skip: list[bool]
         if h is None:
             continue
         level, text = h
-        if level == 2 and text.startswith("["):
+        if level != 2 and release_like(text):
+            # An entry heading at the wrong level. `release.yml` terminates a
+            # release's notes at `^## [` and at nothing else, so this heading and
+            # everything under it is published inside the entry above it -- and
+            # at level 3 it would otherwise be counted as an invented CATEGORY,
+            # which reports the wrong defect.
+            findings.append(
+                f"CHANGELOG.md:{i + 1}: `{line.strip()}` reads as an entry heading but is "
+                f"level {level}, not level 2. `release.yml` starts and ends a release's notes "
+                f"at `^## [`, so this neither begins a release nor terminates the one above "
+                f"it -- write it `## [x.y.z] — YYYY-MM-DD`"
+            )
+            continue
+        if level == 2 and release_like(text):
+            if not text.startswith("["):
+                # The brackets are the entry syntax AND the extractor's boundary,
+                # so a release heading that lost one is not a preamble section: it
+                # is a release nobody can publish. Recorded as a malformed ENTRY,
+                # not skipped, so its categories are charged to it rather than to
+                # the release above it.
+                names = ("is an `Unreleased` heading" if RELEASE_LIKE_UNRELEASED.match(text)
+                         else "names a version")
+                wanted = ("`## [Unreleased]`" if RELEASE_LIKE_UNRELEASED.match(text)
+                          else "`## [x.y.z] — YYYY-MM-DD`")
+                findings.append(
+                    f"CHANGELOG.md:{i + 1}: `{line.strip()}` {names} but is not bracketed, so "
+                    f"`release.yml` cannot extract it (`^## \[`) and it does not terminate the "
+                    f"entry above it -- write {wanted}"
+                )
+                entries.append(ChangelogEntry(i + 1, text, "malformed", None, None))
+                continue
             if not line.startswith(PUBLISHABLE_ENTRY_PREFIX):
                 findings.append(
                     f"CHANGELOG.md:{i + 1}: `{line.strip()}` renders as an entry heading but "
@@ -1497,6 +1638,110 @@ def self_test() -> int:
         # author is told to write is worse than no message at all.
         ("...and the message never prints `v?`", 0,
          ["# Changelog", V8, "### Fixed", "- x", D8, "@@no-placeholder@@"]),
+
+        # ===================================================================
+        # THE GRAMMAR BOUNDARIES, one fixture per rule the parser and the
+        # extractor have to agree on. Every expectation below was derived from
+        # `markdown-it-py` in CommonMark mode -- an actual renderer, asked what
+        # each line IS -- and then written down as a literal, because this
+        # self-test must keep running on a bare `python3` with no dependency to
+        # install. Where a fixture and CommonMark deliberately disagree, the
+        # comment says so and why.
+        # ===================================================================
+
+        # -- ATX closing hashes are DECORATION (CommonMark 4.2) ---------------
+        # `### Fixed ###` is the heading `Fixed`. Every rule here goes through
+        # `atx_heading`, which strips the run -- and `deep_heading` now does too,
+        # which is the defect these six pin: it had a regex of its own, captured
+        # the text raw, compared `Fixed ###` against the category names, matched
+        # nothing, and let a duplicate, an invented or a misordered category
+        # through untouched.
+        ("a closing `#` run is not part of the category name", 0,
+         ["# Changelog", V5, "### Added ###", "- a"]),
+        ("...nor when trailing spaces follow it", 0,
+         ["# Changelog", V5, "### Added ###   ", "- a"]),
+        ("...and a run with no space before it IS part of the name", 1,
+         ["# Changelog", V5, "### Added###", "- a"]),
+        ("...as is anything after the run, which is then not a closer", 1,
+         ["# Changelog", V5, "### Added ### x", "- a"]),
+        ("a duplicate category hidden by a closing run is still duplicate", 1,
+         ["# Changelog", V5, "### Added", "- a", "### Added ###", "- b"]),
+        ("a misordered category hidden by a closing run is still misordered", 1,
+         ["# Changelog", V5, "### Fixed ###", "- a", "### Added ###", "- b"]),
+        ("an invented category hidden by a closing run is still invented", 1,
+         ["# Changelog", V5, "### Documentation ###", "- a"]),
+        # The four-column case is the one the private regex was written for, so
+        # it is the one that must still fire -- now through the shared grammar.
+        ("a deep category with a closing run is reported, not skipped", 1,
+         ["# Changelog", V5, "- b", "", "    ### Added ###", "", "- c"]),
+
+        # -- release-heading grammar (CHANGELOG_POLICY.md rule 7) -------------
+        # A heading that is TRYING to be an entry must BE one. Losing a bracket
+        # used to make it preamble: its categories were charged to the release
+        # above it, and if it was the file's first entry nothing here said a
+        # word -- `release.yml`'s grep at tag time was the first to notice.
+        ("an entry heading that lost its `[` is a finding", 1,
+         ["# Changelog", "## 0.5.0] — 2026-01-02", "### Added", "- a"]),
+        ("an entry heading with no brackets at all is a finding", 1,
+         ["# Changelog", "## 0.5.0 — 2026-01-02", "### Added", "- a"]),
+        ("an entry heading that lost its `]` is a finding", 1,
+         ["# Changelog", "## [0.5.0 — 2026-01-02", "### Added", "- a"]),
+        ("`## Unreleased` without brackets is a finding", 1,
+         ["# Changelog", "## Unreleased", "### Added", "- a"]),
+        ("a heading carrying a version AND a date is an entry attempt", 1,
+         ["# Changelog", "## Version 0.5.0 on 2026-01-02", "Text.", "", V5,
+          "### Added", "- a"]),
+        ("an entry heading at level 1 is a finding", 1,
+         ["# Changelog", "# [0.5.0] — 2026-01-02", "### Added", "- a"]),
+        ("an entry heading at level 3 is a finding, and not a category one", 1,
+         ["# Changelog", V5, "### [0.4.0] — 2026-01-01", "- a"]),
+        # The malformed entry is still an ENTRY: its categories belong to it, or
+        # they silently become the previous release's and the counts go wrong in
+        # both entries at once.
+        ("a malformed entry's categories are charged to IT", 2,
+         ["# Changelog", "## 0.5.0] — 2026-01-02", "### Fixed", "- a",
+          "### Added", "- b"]),
+        # ...and the other half: an ordinary preamble section must stay ordinary.
+        # A rule that catches the cases above by banning `## ` headings would
+        # pass every fixture here and make the file unwritable.
+        ("an ordinary preamble heading is not an entry attempt", 0,
+         ["# Changelog", "## How to read this file", "Text.", "", V5,
+          "### Added", "- a"]),
+        ("...nor is one that merely has a number in it", 0,
+         ["# Changelog", "## The 6 categories", "Text.", "", V5,
+          "### Added", "- a"]),
+
+        # -- fence grammar (CommonMark 4.5), shared with the extractor --------
+        # A backtick fence's info string MAY NOT contain a backtick: ```a`b is a
+        # paragraph, so what follows is document structure, not code. Reading it
+        # as a fence hid every line to the next delimiter -- here a duplicate
+        # category, in CHANGELOG.md a whole release heading.
+        # Two duplicates, not one: with the rule dropped, the would-be fence
+        # masks both AND reports itself unclosed, so a single duplicate leaves
+        # the COUNT unchanged and the case proves nothing. This is the shape that
+        # actually separates the two implementations.
+        ("a backtick in a backtick fence's info string: not a fence", 2,
+         ["# Changelog", V5, "### Added", "```a`b", "### Added", "- b",
+          "### Added", "- c"]),
+        # A TILDE fence has no such restriction, and the pair is what makes the
+        # rule above discriminating rather than merely present.
+        ("...but a tilde fence may carry one, and hides the sample", 0,
+         ["# Changelog", V5, "### Added", "~~~a`b", "### Added", "~~~"]),
+        # Three columns of indent at most, counted in COLUMNS: one tab is four,
+        # so a tab-indented delimiter is an indented code block and opens
+        # nothing. `changelog-section.awk` has counted columns since the round
+        # before this one; `FENCE` still counted characters, so the two tools
+        # gave opposite answers about the same line.
+        ("a tab-indented delimiter opens no fence", 1,
+         ["# Changelog", V5, "### Added", "\t```", "### Added", "\t```"]),
+        ("a three-space-indented delimiter still opens one", 0,
+         ["# Changelog", V5, "### Added", "   ```", "### Added", "   ```"]),
+        ("a closer carrying an info string does not close", 0,
+         ["# Changelog", V5, "### Added", "```", "### Added", "```x", "- y", "```"]),
+        ("a closer shorter than its opener does not close", 0,
+         ["# Changelog", V5, "### Added", "````", "### Added", "```", "- y", "````"]),
+        ("a fenced entry heading is data, not a boundary", 0,
+         ["# Changelog", V5, "### Added", "```", "## [9.9.9] — 2026-01-03", "```"]),
     ]:
         # A fixture carrying the `@@no-placeholder@@` marker asserts the TEXT of
         # the findings instead of their count: the defect it pins is a sentinel
@@ -1692,6 +1937,18 @@ def self_test() -> int:
              "0.9.8",
              ["# Changelog", *entry, "- see ## [0.9.7] for the original", *older],
              [*entry, "- see ## [0.9.7] for the original"]),
+            # CommonMark 4.5: a BACKTICK fence's info string may not contain a
+            # backtick, so ```a`b opens nothing and the entry heading below it
+            # still terminates this release's notes. Opening a fence there ran
+            # the two releases together in the published notes.
+            ("a backtick in a backtick info string opens no fence", "0.9.8",
+             ["# Changelog", *entry, F + "a`b", *older],
+             [*entry, F + "a`b"]),
+            # ...and the discriminating other half: a TILDE fence may carry one,
+            # so the same heading IS data and is published with the entry.
+            ("...but a tilde fence may carry one", "0.9.8",
+             ["# Changelog", *entry, "~~~a`b", *older, "~~~"],
+             [*entry, "~~~a`b", *older, "~~~"]),
             # ONE TAB IS FOUR COLUMNS, so a tab-indented ``` is an indented code
             # block and must not open a fence. Measured in characters it did, and
             # the mask then ran on until the next delimiter -- merging the

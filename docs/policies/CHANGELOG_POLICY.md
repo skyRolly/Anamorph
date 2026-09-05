@@ -55,6 +55,46 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    and must have no definition — there is no page to link. `check-docs.py` requires exactly the form
    the version calls for, in both directions.
 
+## The structural grammar
+
+Two programs read `CHANGELOG.md` and must never disagree about it: `scripts/check-docs.py`
+gates every push, and `scripts/changelog-section.awk` extracts the release notes that
+`release.yml` publishes (it runs the extractor twice — once in `validate`, once in
+`draft-release` — so there is one implementation, not two). Each defect this section
+names was a place where they disagreed, or where one of them disagreed with the renderer.
+
+**Authority.** [CommonMark](https://spec.commonmark.org/) decides what a line *is* — both
+tools implement it and neither invents. This policy decides which of those forms
+`CHANGELOG.md` may *use*. `check-docs.py` is the gate: it is the only stage that reads the
+whole file on every push, and every restriction below is machine-checked there.
+
+**The restricted subset.** Ordinary CommonMark everywhere, with six restrictions, each of
+which exists because `release.yml` boundaries a release's notes on the literal `^## [` and
+on nothing else:
+
+| # | Restriction | Why |
+|---|---|---|
+| 1 | An entry heading is level 2, at **column 0**, written `## [` with exactly one space | the only form the extractor's `^## \[` matches. `##\t[`, `##  [` and an indented `## [` all render as entry headings and none of them can be published |
+| 2 | Below the first entry, every level-1 and level-2 heading is an entry heading | anything else does not terminate the entry above it, so it is published inside that release's notes |
+| 3 | A heading that **reads as** an entry heading must be one, at any level | a bracket lost from `## [0.9.7] — …` used to make it preamble: its categories were charged to the release above it. Release-like means it starts with `[`, or starts with a version number, or is `Unreleased`, or carries both a version and an ISO date |
+| 4 | Category headings are level 3, at column 0, one of the six names, in the specification's order, once each per release | rule 6 |
+| 5 | Headings are ATX (`##`), never setext (text over `---`) | the extractor cannot see a setext heading, and neither can `^## \[` |
+| 6 | An entry heading is never written inside a fenced code block as a live heading | a fence is data; the extractor and the checker both skip it, so a heading there is a sample and nothing more |
+
+**Fenced code blocks** follow CommonMark §4.5 exactly, in both tools: three backticks or
+three tildes minimum, at most **three columns** of indent (one tab is four columns, so a
+tab-indented delimiter is an indented code block and opens nothing), a closer of the same
+character, at least as long, with nothing but whitespace after it — and a backtick fence's
+info string may not contain a backtick, which makes ` ```a`b ` a paragraph rather than a
+fence. Content inside a fence is never read as changelog structure; a line that is not
+actually a fence never hides changelog structure.
+
+**Where the two tools deliberately differ from the renderer**, they differ in one
+direction only: `check-docs.py` may see structure the renderer treats as an indented code
+block (a `### Fixed` indented four columns with no blank line above it), and reports it.
+It never sees *less* structure than the renderer — that direction is the bypass the rules
+exist to close, and the property is asserted over the grammar matrix in `--self-test`.
+
 ## Writing an entry
 
 Establish the facts from the repository, then write for the reader:

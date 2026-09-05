@@ -37,6 +37,12 @@
 #      inside a ```markdown example does not end it. With only clause 1 it did:
 #      the example's body was then scanned as real structure and the real closer
 #      re-opened a block, inverting the mask from there to EOF.
+#   4. AND ONE RULE ABOUT OPENING: a BACKTICK fence's info string may not contain
+#      a backtick. ```a`b is a PARAGRAPH, not a fence, so nothing after it is
+#      code. Opening one here hid every following line until the next delimiter
+#      -- the next release's heading included, so two releases ran together in
+#      the published notes. A TILDE fence carries no such restriction: ~~~a`b IS
+#      a fence, and the difference is CommonMark's, not this script's.
 #      A CARRIAGE RETURN COUNTS AS TRAILING WHITESPACE. `check-docs.py` reads the
 #      file with Python's universal newlines and never sees one, so on a CRLF
 #      CHANGELOG.md it reported the file clean while no fence here could ever
@@ -66,7 +72,13 @@
         n  = 0
         while (substr (fl, n + 1, 1) == fc) n++
         rest = substr (fl, n + 1)
-        if (! fence)                                            { fence = 1; f = fc; w = n }
+        if (! fence) {
+            # An info string with a backtick makes a BACKTICK delimiter no
+            # delimiter at all (clause 4). Fall through to the rules below, so
+            # the line is scanned as the ordinary content CommonMark says it is.
+            if (fc == "`" && index (rest, "`")) { if (on) print; next }
+            fence = 1; f = fc; w = n
+        }
         else if (fc == f && n >= w && rest ~ /^[ \t\r]*$/)      { fence = 0 }
         if (on) print
         next
