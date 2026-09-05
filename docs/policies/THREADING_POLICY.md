@@ -12,7 +12,7 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 | Direction | Mechanism | Rule |
 |---|---|---|
 | GUI → Audio (automatable params) | APVTS `std::atomic<float>*` | Read once per block into `EngineParameters`. |
-| GUI → Audio (host-hidden) | `InternalState` ValueTree + atomic mirror | Only Oversampling crosses to audio (via `osAtomic`). |
+| GUI → Audio (host-hidden) | `InternalState` ValueTree + the engine-config word | Only Oversampling crosses to audio, read as the low byte of one `std::atomic<uint64>` (`oversampleIndex()`, relaxed). Its writers — the message thread from the tree, a host-thread restore (D-2) — publish through one compare-exchange tagged with the generation of the arrival, and a publication lands only if no higher generation stands: the latest restore wins, an older restore's completion never overwrites it (ADR-0036 §8). A Settings edit is an arrival too: it publishes under the generation of the latest restore that had arrived, lands over it, and its field survives that restore's adoption (ADR-0036 §9). The same generation decides whether an adoption re-installs its own restore's SOUND (ADR-0036 §10), which a separate relaxed counter (`soundSetGen`, wholesale sound replacements only) narrows to the case that needs it, so a user's sound edit made while a restore is pending survives its adoption (§12). That counter is read as the value the allocating `fetch_add` RETURNS, never read back afterwards, so a replacement overlapping a restore's decode cannot be recorded as the restore's own (§13). |
 | GUI → Audio (momentary solo) | `std::atomic<int> soloPreviewMask` | −1 = use the param; relaxed. |
 | GUI → Audio (meter reset) | `std::atomic<int> resetReq` | `exchange` consumed on the audio thread. |
 | Audio → GUI (scope) | `ScopeBuffer` SPSC ring | Exactly one producer + one reader **thread** (message thread; stateless read sites: Vectorscope, SpectrumImager, read-only `writeCount`); release/acquire on the write index. |
@@ -20,6 +20,8 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
 | Audio → GUI (sound-param change generation) | `std::atomic<uint32> soundParamGen` (relaxed) | A monotonic staleness hint, **not** payload sync: bumped on any sound-param value change (the per-parameter listener, on whichever thread changes the value) and on host restore; the GUI compares it to skip rebuilding its 24 Hz signature caches. Carries no payload — the values themselves cross via the APVTS atomics above — so relaxed is sufficient (no ordering/publication role). |
 | Audio/host → Message (latency re-report request, D-1) | `std::atomic<int> latencyUpdateRequest` — **release** store, **acquire** `exchange` — plus the engine's `latency2/4/8` (relaxed `std::atomic<int>`) | The one ordering-critical pair besides the scope ring: the flag PUBLISHES the parameter, oversampling or (round 15) prepare write that raised it, and a processor-owned 20 Hz timer delivers `setLatencySamples` on the message thread. Raised by `requestLatencyUpdate()` from any non-message thread — the APVTS listener under host automation, `setStateInformation`'s tail, an off-message-thread `prepareToPlay` — and served synchronously when the caller IS the message thread. |
 | Audio → GUI (view-param / InternalState generations, Wave 2 / H15) | `std::atomic<uint32> viewParamGen`; `InternalState::gen` (relaxed) | The identical staleness-hint pattern, extended so the editor's 60 Hz micro-anim poll re-arms on counter loads instead of hashing every animated widget per frame: `viewParamGen` is bumped by a dedicated no-gesture listener on the view params (Bypass), `InternalState::gen` by its property-change callback (Settings values, incl. session restore). No payload, no ordering role. |
+| Host state thread → Message (a restore's metadata tail, D-2 / ADR-0036) | `ExchangeCell<RestoreDecode> pendingRestore` — one `std::atomic<T*>`, `exchange` with **acq_rel** on both sides | An off-message-thread `setStateInformation` first ANNOUNCES its generation in the engine-config word (a CAS, tagged with this restore's generation — from that instant the restore is authoritative and every older one obsolete, ADR-0036 §25), then installs the sound (the APVTS, JUCE-locked, under the whole-sound replacement lock), on the caller's thread, then publishes the DECODED metadata tail as one immutable object carrying that generation; the message thread adopts it (`adoptPendingHostState`) from the processor's 20 Hz timer and at the top of every entry point that mutates program state, draining to a FIXED POINT so a restore that arrives during an adoption is adopted in the same pass and the caller never goes on to edit a session already superseded (ADR-0036 §15). Ownership transfers with the exchange — whichever side's exchange returns the pointer frees it — so at most one object exists and nothing is freed while reachable elsewhere. The decode carries the parameter tree it installed, so the adoption commits the restore's SOUND and metadata together and a message-thread action taken in the handoff window cannot be left half-applied under the new session's identity (ADR-0036 §10). On the message thread the tail is adopted inline, after the pending one is drained; nothing is deferred. |
+| Message → Host state thread (the program snapshot, D-2 / ADR-0036) | `ExchangeCell<ProgramSnapshot> programMailbox` (same cell); the snapshot carries the generation of the last restore the message thread had adopted when it published | The message thread republishes an immutable snapshot of the program state it owns after every mutation (`PresetManager::onMetaChanged`, `InternalState::onChanged`, the A/B paths); an off-message-thread `getStateInformation` takes the latest into its own view and serializes from it plus the JUCE-locked `copyState()`. While the newest snapshot it holds carries a generation older than its own last restore, it serializes from the view it built from that restore, so a save after a restore on the same host thread describes the sound it applied — and because the generation is part of the snapshot, the decision is about the object in hand, never about a generation read at another moment (round 2, review finding 1). |
 
 ## Forbidden cross-thread access
 
@@ -46,21 +48,132 @@ Audio · Message/GUI · OpenGL render (macOS/Windows only) · (no worker threads
   engine's `latency2/4/8` are relaxed atomics whose ordering rides on the flag. State test 30;
   `AnamorphStateTests --reprepare-race-probe` under ThreadSanitizer.
 
-## Host state calls: a documented assumption, not a covered path
+## Host state calls: a covered path (D-2 / ADR-0036)
 
-The tables above are exhaustive for the paths the plug-in *creates*. Host-driven
-`getStateInformation`/`setStateInformation` are additionally **assumed to arrive on the message
-thread**: their Anamorph-owned tail (A/B slots, preset metadata, `InternalState`, undo
-signatures) is non-atomic message-thread state with no lock or marshalling. On VST3 the pinned
-SDK annotates both calls `[UI-thread]` (JUCE debug-asserts it for `setState`), so the assumption
-is the format contract; on the **macOS AU** no spec forbids off-main-thread
-`SaveState`/`RestoreState`, and that unguarded exposure is tracked as **RISK-007**
-(`docs/FUTURE_RISKS.md`) — any lock/hop guard is itself an Architecture-Review-Gate change.
-`prepareToPlay` is in the same position: the tables cover the paths it creates, not the thread it
-arrives on. Its engine body relies on the format contract that no `processBlock` runs
-concurrently, which every wrapper guarantees; its latency report no longer depends on the thread
-at all (round 15, ER-STATE-19, above). An off-message-thread prepare against an OPEN editor's
-reads of engine state is RISK-007's exposure class and is recorded there, not closed here.
+Host-driven `getStateInformation`/`setStateInformation` may arrive on **any** thread: on VST3 the
+pinned SDK annotates both calls `[UI-thread]` (JUCE debug-asserts it for `setState`), on the **macOS
+AU** no spec forbids off-main-thread `SaveState`/`RestoreState` (host autosave is the real-world
+case, and pluginval's AU background-thread state test produces exactly that window), and JUCE's
+Linux VST3 wrapper services the plug-in's messages from its own thread until the host registers an
+`IRunLoop`. Since D-2 the rule is: **every piece of program metadata this plug-in owns — the preset
+name, identity and dirty baseline, the A/B slot set, the undo history, the committed baseline and
+gesture bookkeeping, and `InternalState`'s Settings tree — is message-thread state; only the message
+thread writes it, only the message thread reads it directly, and a host thread reaches it through
+the two exchange cells in the table above.** The audio thread's inputs are unchanged: the APVTS
+parameter atomics, `InternalState`'s oversampling atomic and `soloPreviewMask`, published exactly as
+before. RISK-007 is closed; `AnamorphStateTests --state-thread-probe`, `--state-prepare-race-probe`
+and `--d2-stress-probe` under ThreadSanitizer, in the `tsan` CI lane, keep it closed.
+
+`prepareToPlay` is unchanged by D-2: the tables cover the paths it creates, not the thread it
+arrives on. Its engine body relies on the format contract that no `processBlock` runs concurrently,
+which every wrapper guarantees; its latency report does not depend on the thread at all (round 15,
+ER-STATE-19). It reads the oversampling atomic, which an off-message-thread restore stores
+synchronously before it returns — the ordinary setState-then-activate order therefore primes the
+engine from the restored Setting from the first sample, as it did before D-2.
+
+The adoption never runs inside a JUCE listener callback. `AudioProcessorParameter::Listener`
+callbacks (`parameterValueChanged`, `parameterGestureChanged`) are delivered under the parameter's
+`listenerLock`, and adopting a restore takes the APVTS lock (`syncCommitted` → `copyState`) — the
+reverse of the order a host-thread `replaceState` takes the two (the APVTS lock, then `listenerLock`
+through `setValueNotifyingHost`). That cycle is a real deadlock between a host-thread restore and a
+gesture start on the message thread; `--d2-stress-probe` reported it as a lock-order inversion when
+the first cut drained in the gesture callback, and the rule is now: **nothing that takes the APVTS
+lock runs from a parameter listener callback.** A restore landing mid-gesture is adopted by the next
+poll, which zeroes the gesture count exactly as an inline restore always has.
+
+**Restore authority is the announcement, and it precedes the install (D-2 round 18, ADR-0036 §25).**
+A host thread's restore announces its generation in the engine-config word BEFORE it installs its
+sound, and installing takes the replacement lock below. So the adoption guard, evaluated under that
+lock, reads "the word still carries my generation" as "no newer restore has installed, nor can
+before I release" — and an obsolete restore can never re-install its sound over a newer one. Until
+round 18 the order was install-then-announce, and the guard re-installed a superseded session inside
+the window; the round-17 lock had made that timing deterministic. Stated exactly: no obsolete
+restore's replacement can COMPLETE after a newer restore's install has begun — both lock orders are
+safe, because a newer install queues behind an older re-install already in flight and is then the
+last writer. The announcement is its own operation (`InternalState::announceRestore`): it lands
+whether or not the restore carries a usable Settings tree, its return is asserted, and the host
+counter steps over zero at wrap. The ownership is unchanged: `hostRestoreGen` is the host state
+thread's alone, the word is written through one CAS by either side and read with acquire by the
+guard, `soundSetGen` is bumped and read under the lock. The gap between the announcement and the
+parameters landing is bounded by one replacement including its per-parameter host notifications
+(`replaceState` notifies the host through `setNewState`), not by microseconds.
+
+**Durable readers take the replacement lock too (round 18).** `copyStateWithRawValues` — behind
+every session save on either thread and behind every A/B slot, undo step and committed baseline —
+takes `soundReplacement` around the copy and its `raw` stamping, because a preset-shaped
+replacement (a per-parameter loop with no `replaceState`) could otherwise be captured mid-loop into
+a project file (measured: 3 preset parameters, 30 of the outgoing session). The session-shaped
+replacements were already reader-atomic up to round-trip noise — `replaceState` moves every
+parameter under the APVTS lock that `copyState` shares. A host save therefore waits for a
+message-thread replacement to finish: the relationship JUCE's own `replaceState` (APVTS lock held
+while it notifies the host) and `copyState` already have, not a new hazard class. The audio thread
+never takes it. `writeState` captures the live sound ONCE per save and copies it into the root and
+any lazily-seeded slot, so one blob can no longer describe two sounds through separate captures.
+`PresetManager::saveUser`'s `copyState` and the transient readers (`soundSignature`, `isDirty`) stay
+unsynchronised — the first can meet only a session-shaped install, the others are recomputed every
+poll. **The listener rule widens with it**: "nothing that takes `soundReplacement` may run from a
+parameter listener callback" now binds every caller of `currentStateSet` — the A/B paths, undo/redo,
+the undo poll, `syncCommitted` — because `ParameterAttachment::parameterValueChanged` runs on the
+message thread under the parameter's `listenerLock`, and a widget callback reaching
+`currentStateSet` from there would take the locks in the reverse of a host install's order. None is
+reached from a listener today; none may be in future.
+
+**One whole-sound replacement at a time (D-2 round 17, ADR-0036 §24).** A replacement of the entire
+live sound — a restore's install, an undo, a redo, an A/B apply, a preset load — is
+`apvts.replaceState` (locked by JUCE) followed by a LOOP of per-parameter writes that is not. Two of
+them running at once therefore left the parameter set holding values from both sessions until the
+next adoption repaired it. `juce::CriticalSection AnamorphAudioProcessor::soundReplacement` now
+excludes them; `PresetManager` takes the same object through a pointer the processor supplies, so the
+preset loops and the session paths share ONE lock rather than two. Its ordering is fixed and
+one-directional: **`soundReplacement` → the APVTS lock → `listenerLock` → the host's own callback**
+(`performEdit` under VST3, `AUEventListenerNotify` under AU), taken in that order at every site.
+Nothing takes it in the other direction — both parameter-listener callbacks
+(`parameterValueChanged`, `parameterGestureChanged`) are lock-free by construction, which is the same
+property the paragraph above relies on — so it adds no cycle to the one recorded there, and the rule
+that paragraph states gains a second clause: **nothing that takes `soundReplacement` may run from a
+parameter listener callback either.**
+
+Two consequences of that edge are stated rather than left implicit. **The audio thread never takes
+`soundReplacement`** — `processBlock` reads parameter atomics — so no realtime path can block on a
+message-thread write loop. But the edge runs on through `listenerLock`, which the AUDIO thread does
+take when a host automates a parameter on it, so a HOST STATE thread waiting on `soundReplacement`
+can be waiting behind the audio thread; that is a wait on a non-realtime thread, which is what the
+D-2 design already accepts for a host save's `copyState`. And the exclusion is between THREADS: the
+lock is recursive because the adoption nests its re-install inside its own guard, so a re-entrant
+replacement on one thread passes through it (ADR-0036 §24 records that residual).
+
+One contract is load-bearing and is stated rather than assumed: **the host serializes its own state
+calls** (never two at once). Rounds 4–6 verified it against every wrapper this repository builds at the
+pinned JUCE 9.0.1, from primary evidence (ADR-0036 §11). **Round 8 re-verified the disposition mechanically against the current tree** — no Anamorph caller of
+either state function, no `std::thread` / `juce::Thread` / `callAsync` / thread pool anywhere in
+`src/` (the only schedulers are the editor's 24 Hz and the processor's 20 Hz message-thread timers),
+the host-side members touched at exactly four sites inside the two off-thread branches, and the
+tripwire constructed at exactly those branches — and found nothing that changes it.
+**Rounds 6–7 enumerated the complete set of
+callers, on both sides:** across the three formats, the only JUCE code that reaches
+`get/setStateInformation` is the host-facing entry points themselves (VST3 `getState`/`setState`,
+AU `SaveState`/`RestoreState`, the standalone's `savePluginState`/`reloadPluginState`) — **no JUCE
+timer, async callback or background thread calls either one** — and **Anamorph never calls them at
+all**: both names appear in `src/` only as their own definitions, so no timer, editor action, preset
+path or engine callback can re-enter them. Every activation therefore comes from a host entry point,
+and the question reduces entirely to whether the host issues two overlapping calls. **VST3: the SDK header itself pins both
+halves to the host's UI thread** — `IComponent::setState` and `IComponent::getState` each carry
+*"\note [UI-thread & (Initialized | Connected | Setup Done | Activated | Processing)]"*
+(`format_types/VST3_SDK/pluginterfaces/vst/ivstcomponent.h`), and two calls pinned to one thread
+cannot overlap, so there the ordering is contractual rather than conventional; JUCE additionally
+asserts the thread for `setState`. **AU:** no clause pins them and the wrapper adds nothing —
+`SaveState`/`RestoreState` pass straight through on the caller's thread, taking neither
+`getCallbackLock()` nor a `MessageManagerLock` — so serialization is the host's practice. **Standalone:**
+both on the message thread. **No wrapper serializes save against restore for the
+plug-in — none can, the guarantee is the host's — so Anamorph relies on exactly what JUCE relies on
+and nothing stronger. The support boundary, stated rather than implied: concurrent host state calls
+are OUTSIDE supported operation** (on VST3 they are a spec violation outright), and the disposition
+is ADR-0036 §11's D — not a defect to synchronise against, but a contract to state and detect. The two off-message-thread branches count themselves in
+(`offThreadStateCalls`) and a debug build asserts if a second one overlaps: a tripwire that never
+blocks and never changes a result, so a host that breaks the contract is found where it breaks it
+rather than through a silent race. The host-side views of the two cells are read and replaced by the
+single caller that contract implies — the same contract JUCE's `AudioProcessor` state API already
+relies on.
 
 ## Atomic usage rules
 
@@ -74,12 +187,26 @@ reads of engine state is RISK-007's exposure class and is recorded there, not cl
 - `latencyUpdateRequest`: `release` on the store, `acquire` on the `exchange` — the second
   ordering-critical pair (D-1). The engine's `latency2/4/8` are `relaxed`: their ordering rides on
   that flag, and they carry no ordering of their own.
+- The two D-2 cells (`pendingRestore`, `programMailbox`): `exchange` with `acq_rel` on both sides —
+  the third ordering-critical pair. The exchange PUBLISHES the immutable object's contents to the
+  side that takes it and TRANSFERS ownership in the same operation. The generations ride INSIDE
+  the objects (a decode's, a snapshot's), so no separate atomic pair is read at a different moment
+  than the object it is about. The one relaxed load is the empty-check fast path, which only decides
+  whether to attempt the exchange.
+- The engine-config word (`InternalState::engineConfig`): `compare_exchange` with `acq_rel` on
+  the writers (a host-thread restore, the message thread's tree writes), `relaxed` on the audio
+  reader — a value with no payload behind it. The tag is the generation of the arrival, and the
+  CAS refuses a lower one: "latest arrival wins" is decided and stored in one operation.
 - The OpenGL context is attached only on macOS/Windows; all Linux/BSD rendering is on the
   message thread (`docs/architecture/design-decisions/ADR-0011`).
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-190;
-  src/PluginProcessor.cpp:79-97, 272; src/InternalState.h:172-177, 283-292
+  src/PluginProcessor.cpp:117-139, 330; src/InternalState.h:175, 548-571
+- D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
+  generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,
+  `getStateInformation`); ADR-0036; State tests 37–41; the `tsan` job in
+  `.github/workflows/build.yml`
 
 ## Enforcement
 

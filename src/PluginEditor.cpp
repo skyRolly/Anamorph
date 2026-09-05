@@ -338,7 +338,10 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     addAndMakeVisible (titleButton);
 
     abControl.getActive = [this] { return processor.abActiveSlot(); };
-    abControl.onToggle  = [this] { processor.abSwitchTo (processor.abActiveSlot() == 0 ? 1 : 0); knobSweepTime = 0.45; refreshPresetDisplay(); repaint(); };
+    // The destination is the PROCESSOR's to derive, after it has adopted any pending
+    // host restore: computing it here from abActiveSlot() read a slot the restore was
+    // about to change and made the toggle a no-op (D-2 round 10, ADR-0036 §18).
+    abControl.onToggle  = [this] { processor.abToggle(); knobSweepTime = 0.45; refreshPresetDisplay(); repaint(); };
     abControl.setTooltip ("A/B Compare"); // #17 (no period)
     addAndMakeVisible (abControl);
     copyButton.onClick = [this] { processor.abCopyToOther(); };
@@ -1949,6 +1952,16 @@ void AnamorphAudioProcessorEditor::refreshPresetDisplay()
 
 void AnamorphAudioProcessorEditor::showPresetMenu()
 {
+    // ADOPT FIRST, like every other message-thread entry point that reads program state
+    // (D-2 round 16, ADR-0036 §23). This one did not, and it is the only preset-family
+    // entry point that did not: the tick below is drawn from `currentIndex()`, so with a
+    // host restore already pending the menu opened with the check mark on the OUTGOING
+    // session's row and kept it for the life of the popup -- the menu is built once and
+    // the 20 Hz adopt cannot rebuild it. Display only (the row the user clicks is an
+    // ABSOLUTE index into `list`, which no adoption reorders), but wrong on screen, and
+    // one call removes the exception rather than documenting it.
+    processor.adoptPendingHostState();
+
     auto& pm = processor.getPresets();
     pm.refresh();
 

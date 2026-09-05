@@ -87,8 +87,9 @@ jobs that guard classes the build matrix cannot see:
 | **merge-check** | `ubuntu-latest` + **pinned `clang`** | VST3 + Standalone + tests, from `refs/pull/N/merge` — **same-repo PRs only**, no packaging, no artifacts | — |
 | **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint) | — |
 | **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, then `check-citations.py --check`) | — |
-| **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, and a `-fsyntax-only` compile of the two opt-in instruments | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
+| **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, a `-fsyntax-only` compile of the two opt-in instruments, and the **Windows-parity stack guard** (the state suite re-run under `ulimit -s 1024`, blocking — see below) | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
+| **tsan** | `ubuntu-latest` | Clang ThreadSanitizer build of the state suite; the four cross-thread probes ×5 and the suite once, behind a seeded-race canary (D-2 / ADR-0036) | — |
 | **windows** | `windows-latest` (MSVC, multi-config) | VST3 + Standalone (+ tests) | VST3, **both modes ×3** — **blocking** |
 | **macos** | `macos-latest` (Apple Silicon) | universal VST3 + AU + Standalone (+ tests) | **VST3 and AU**, both modes ×3 each — **blocking** |
 | **macos-intel** | `macos-15-intel` (**native Intel**) | thin x86_64 VST3 + AU (+ tests); Standalone off; **no packaging, no artifacts** | **VST3 and AU**, both modes ×3 each — **blocking** |
@@ -275,6 +276,24 @@ edge above must not be read as release non-blocking.
   **allocation** detection switched off — lock and blocking-call interception survives, but
   allocation is the class this suite exists to police, and on a healthy tree the run exits 0 either
   way.
+- **tsan** — the state suite built with **`-fsanitize=thread`** (added 2026-09-03, ADR-0036), the
+  mechanical guard for D-2 / RISK-007: the plug-in's program state is message-thread-owned and a host
+  thread reaches it only through two lock-free exchange cells, and this is the one tool in the
+  pipeline that can see a torn read — ASan, UBSan, valgrind and RTSan all treat one as correct code.
+  It runs the four opt-in probes the suite never runs on its own (`--state-thread-probe`,
+  `--state-prepare-race-probe`, `--reprepare-race-probe`, `--d2-stress-probe`) **five times each**,
+  because a race that failed to reproduce is not one that was eliminated, and then the whole suite
+  once under the instrument. Its own job by driver restriction (clang rejects `thread` alongside
+  `address`, `undefined` or `realtime`), its own build directory and ccache lineage.
+  `TSAN_OPTIONS=halt_on_error=1:exitcode=66:report_bugs=1` is the gate: TSan reports and CONTINUES
+  by default, so halting makes a red run short and its first report the one at the top; the exit
+  code restates the default so a future change to it cannot turn a report into a green step. A
+  **liveness canary** (`tests/tsan_canary.cpp`, two threads writing one plain int) runs first and
+  the step fails unless it aborts *with* a `ThreadSanitizer: data race` report — both halves, for
+  the reason the RTSan canary records. `vm.mmap_rnd_bits` is lowered to 28 first: the sanitizer's
+  shadow-memory layout cannot cope with the 32-bit ASLR entropy newer runner images default to.
+  A report from inside JUCE would fail this lane too, deliberately: the boundary being measured is
+  the plug-in's, and a JUCE-internal report would be evidence that it is not where ADR-0036 says.
 - **linux-lto-tests** — both suites built and run with `-flto` on GCC Release (added 2026-08-18),
   the **GCC-only first-party warning gate** (§The GCC warning baseline), and the liveness builds of
   the two committed instruments: `AnamorphBench` (built and smoke-run, no timing asserted) and, since
@@ -505,7 +524,7 @@ unit that reads it (`CMakeLists.txt`, `set_source_files_properties` beside the v
 `src/PluginEditor.cpp` already carried the `#ifndef … "0"` fallback). Nothing else ever read it.
 A second property is inherited rather than created: each job's build directory name is fixed
 (`build`, `build-san`, `build-vg`, `build-lto`, `build-bench`, `build-dump`, `build-rtsan`,
-`build-fuzz`), which matters because FetchContent puts JUCE
+`build-tsan`, `build-fuzz`), which matters because FetchContent puts JUCE
 *inside* the build directory, so its path is in the `-I` flags of every compile — the same tree
 built at two different directory names shares nothing.
 
@@ -1000,7 +1019,7 @@ not audited, and a clean run means none of them **moved**.
 
 **Since 2026-08-21 that hole is closed for the anchors that say what they point at.** A citation
 written in this repository's own convention carries the symbol beside the line number —
-`` src/PluginProcessor.cpp:183-193 (`updateLatency`) `` — and the checker now reads that gloss and
+`` src/PluginProcessor.cpp:225-235 (`updateLatency`) `` — and the checker now reads that gloss and
 asserts the token is in the cited lines. It needs no base revision, because it is not a question
 about drift: it asks whether an anchor lands on what its own document says it lands on, in the tree
 as it is now. Exactly two gloss shapes are claimed — one backticked identifier, or one double-quoted
@@ -1195,6 +1214,42 @@ Evidence [Verified]: `.github/workflows/codeql.yml`, `.github/workflows/msvc.yml
 
 ### The Linux ABI floor
 
+### The Windows-parity stack guard (`linux`)
+
+Linux and macOS give the main thread **8 MB**; a Windows console EXE gets **1 MB**.
+`AnamorphAudioProcessor` is ~138 kB and a compiler gives each of a function's sibling-scope locals
+its own frame slot, so a test holding several of them overflows **on Windows alone** — and does it on
+entry to the function, before its first statement. That is exactly how round 12's State test 59
+failed: the suite died before printing anything, the Windows CRT's fully-buffered pipe took the log
+with it, and CI reported one truncated line and no summary from the slowest job in the matrix.
+
+The `linux` job therefore re-runs the state suite under `ulimit -s 1024` as a blocking step, right
+after the ordinary self-tests and re-using the same binary. It is a **proxy** — MSVC lays out frames
+its own way — but it reproduces the failure it exists for, on the platform the suite is developed on,
+in about a minute. The fix it points at is never "raise the limit": it is to put the processors on the
+heap (`docs/procedures/TESTING.md`). Both suites additionally run with `stdout` **unbuffered**, so a
+crash can no longer take the log with it on any platform.
+
+### Why the valgrind lane needs the suite's spinners paced (`sanitizers`)
+
+`sanitizers` runs both suites twice: once under ASan+UBSan (about a minute) and once under
+`valgrind --tool=memcheck`, in a **45-minute** job. memcheck is not just slow, it is **serialising**:
+it runs one thread at a time and instruments every instruction. A state test that keeps an unpaced
+background thread alive for the whole of an operation therefore hands that thread half the machine
+while the thread under test sleeps in a bounded poll — and the D-2 tests do exactly that by design.
+Measured on `3182e11`: the DSP suite cleared memcheck in 3 m 30 s, State tests 1–37 in about 25 s,
+then **State test 38 took 5 m 05 s** (under half a second natively) and **State test 39 was still
+running 30 minutes later** when the job hit its cap. The job had been dying this way since round 12;
+earlier rounds masked it because a follow-up push cancelled the run first. On the PR's base
+(`ac47151`) the same lane was comfortable — the state suite was 1506 checks and none of the D-2
+concurrency tests existed yet.
+
+The fix is in the suite, not in the lane: `d2::Pace` bounds a spinner's SHARE of the machine by
+resting a multiple of its own last iteration's cost. The lane's command, its timeout and its
+strictness are unchanged, every test still runs in it, and no environment variable makes the tests
+behave differently there — see `docs/procedures/TESTING.md`. After it, State test 38 clears memcheck
+in under a second and State test 39 in 6 s.
+
 The `linux` job asserts, on the **stripped** binaries and as its **last step**, that the shipped VST3
 and Standalone stay within a declared glibc/libstdc++ floor. This is a compatibility claim the
 pipeline previously did not make: a Linux binary records the oldest version providing each imported
@@ -1356,7 +1411,7 @@ lipo -archs build/Anamorph_artefacts/Release/VST3/Anamorph.vst3/Contents/MacOS/A
 scripts/run-tests.sh                       # unprefixed: the binaries are native here
 ```
 
-The `sanitizers`, `realtime` and `fuzz` jobs use their own build trees so they never collide with the one
+The `sanitizers`, `realtime`, `tsan` and `fuzz` jobs use their own build trees so they never collide with the one
 above — `build-clang`, `build-san`, `build-vg`. All are covered by `.gitignore`'s `build*/`.
 
 ```bash

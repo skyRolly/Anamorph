@@ -14,6 +14,59 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
 ## [0.9.7] — 2026-09-03
+### Fixed
+- **A project reopened from your DAW's own thread can no longer come up playing the sound of the
+  session it replaced, and an autosave can no longer capture a preset half-loaded.** Two closely
+  related fixes to how a session restore arriving from your DAW's own thread — Logic's autosave path,
+  and several VST3 hosts — is ordered against everything else. First, a restore used to load its
+  sound and only *then* declare itself the newest; if the plug-in was still finishing an older
+  restore at that instant, the older one could put its own sound back over the newer one, for up to
+  a twentieth of a second, and a project saved in that moment kept the new session's name and
+  settings around the old session's sound. A restore now declares itself first, so an older one can
+  never win. Second, saving from your DAW's own thread while you were clicking a preset could
+  capture the preset with some controls already changed and the rest not yet — a sound that was
+  never any preset — into the project file; a save now waits for the preset to finish loading, a few
+  microseconds. Playback is untouched: the audio path takes no lock. Decision: ADR-0036 §25.
+  Regression coverage: State tests 63 and 64.
+  Evidence: PR #137. [Verified]
+- **A session change arriving mid-swap can no longer leave you hearing two sounds at once.**
+  Loading a preset, switching A/B, or undoing sets every sound control in turn, and your DAW can
+  replace the whole session from its own thread while that is happening — Logic's autosave does, and
+  so do several VST3 hosts. The two used to write over each other, so what you heard afterwards was
+  part one session and part the other: not a glitch during the change, but a **settled** sound that
+  belonged to neither, held until the plug-in noticed and repaired it up to a twentieth of a second
+  later. Saving your project in that window wrote the mixture into the project file, and playing
+  through it played the mixture. A whole-sound change is now indivisible: whichever one finishes
+  last is the sound you get, entire, and the other cannot write into it. This covers factory presets
+  too, which are applied in two passes and had never been treated as one change. Nothing waits on
+  anything — the audio path takes no lock and is untouched. Decision: ADR-0036 §24. Regression
+  coverage: State test 62.
+  Evidence: PR #137. [Verified]
+- **The A/B button and the preset arrows can no longer be swallowed by a session change.** "The other
+  slot" and "the next preset" are worked out from where you are, and your DAW can replace the whole
+  session from its own thread at any moment — Logic's autosave does, and so do several VST3 hosts.
+  If one arrived in the instant between the plug-in working out where to go and going there, the
+  destination described the session that had just been replaced: pressing A/B could do **nothing at
+  all** (when the arriving session was already on the slot you were heading for), and Next/Previous
+  could load the preset next to a selection that no longer existed, on top of the new session. Both
+  now decide and act on one session: whichever one is in force when you press the button. A session
+  arriving in that same instant is applied straight afterwards, exactly as it is for every other
+  control. Opening the preset menu also refreshes the tick first, so it can no longer show the
+  previous session's row. Decision: ADR-0036 §23. Regression coverage: State test 61.
+  Evidence: PR #137. [Verified]
+- **An older session's modified-star no longer goes out after you edit it.** Sessions written before
+  0.6 — and, since 0.9.2, any session saved while the A/B slot you were on had no preset name —
+  record no "clean" reference of their own, so the plug-in works one out from the sound the session
+  restored. When your DAW restores such a session from its own thread (Logic's autosave does this,
+  and so do several VST3 hosts), the plug-in adopts it a moment later on its UI thread; anything you
+  changed in between used to be folded into that reference, so your edit was treated as part of the
+  session and the modified-star stayed off. The reference is now taken from the session's own stored
+  sound at the moment it is read, so an edit made in that window shows the star, and putting the
+  value back clears it again. Sessions that DO record a clean reference — everything saved by 0.6 or
+  later on a named slot — were never affected, and their star still restores exactly as stored.
+  Decision: ADR-0036 §22. Regression coverage: State test 60.
+  Evidence: PR #137. [Verified]
+
 ### Changed
 - **Turning up Drive, or changing algorithm, no longer interrupts the sound when Oversampling is
   on.** The latency the plug-in reports to your DAW used to depend on whether the oversampler was
@@ -73,6 +126,85 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   can no longer fade toward a path that is not there. Switching between 2×, 4× and 8×, and switching
   Oversampling on, are all unchanged. Regression coverage: DSP test 54.
   Evidence: PR #135. [Verified]
+- **A DAW that saves or restores the plug-in's state from a background thread can no longer corrupt
+  the preset name, the A/B slots or the undo history.** Some hosts do exactly that — Logic's and
+  GarageBand's autosave on the AU, and any host that ignores the VST3 rule that state calls belong on
+  its UI thread — and until now the plug-in's own bookkeeping (which preset is loaded and whether it
+  has been edited, the two A/B slots and which is live, the undo history, the Settings) was written by
+  that background restore at the same moment the open window was reading it: a data race, with a
+  crash or a mislabelled preset as the possible outcome, measured under ThreadSanitizer and tracked
+  since v0.9.6 as RISK-007. That bookkeeping now belongs to the window's own thread alone. A restore
+  from any other thread still applies the sound immediately, exactly as before — including the
+  Oversampling setting the engine reads, so a project comes up at its restored sound from the first
+  sample as it always has — and hands the bookkeeping over as one complete package that the plug-in
+  adopts within a twentieth of a second, whether or not the window is open; a save from that thread
+  describes the state it just restored. Nothing changes for the DAWs that already call from the UI
+  thread, and nothing changes in the saved file. One further correction rides along: a damaged
+  control value in a project file is now corrected *before* the DAW is told about it, where it used
+  to be reported at its clamped value first and then corrected. Decision: ADR-0036 (D-2).
+  Regression coverage: State tests 37–41 and the four ThreadSanitizer probes, now run on every push
+  in their own CI lane. A second pass (the PR review) closed two narrow ordering windows in that
+  hand-over: a save issued from the restoring thread could, in one interleaving, describe the
+  previous project's bookkeeping around the newly restored sound, and when two restores overlapped
+  the older one's bookkeeping could briefly reinstate its Oversampling over the newer one's. Both
+  are gone — the newer restore always wins, and a save always describes one project — with State
+  tests 42–43 reproducing each interleaving deterministically. A third pass closed the last
+  reviewed window: a Settings change made in the moment between such a restore arriving and the
+  plug-in adopting it used to be replaced by the older restore; it now stands, and only a restore
+  that arrives *after* the change replaces it (State test 44). A fourth pass made the adoption
+  install the restored *sound* as well as its bookkeeping, so an A/B switch or Copy made in that
+  same brief moment can no longer leave a project labelled as one session while it sounds like
+  another (State tests 45–46). A fifth pass drew the line that pass had drawn too widely: a knob
+  moved in that same moment is an edit *of* the arriving project, not a different project's sound,
+  so it now survives the load instead of being reverted (State test 47). A sixth pass closed the
+  last way the two could still be confused: when an A/B switch or a preset load happened at the
+  exact moment a project was being read, the plug-in could mistake that switch's sound for the
+  project's own and save the two together; each operation now carries its own identity, so it
+  cannot (State test 48). A seventh pass fixed when that identity is taken: it was stamped as each
+  operation *began*, so an A/B switch, undo or preset load that started first but finished last
+  could still leave its sound under the project's name; each operation is now stamped as it
+  *finishes* (State test 49). An eighth pass closed two remaining cases. A project arriving while
+  the plug-in was still taking on the previous one used to be left waiting, so the next thing you
+  did was done to a project that had already been superseded and was then wiped out by it; the
+  plug-in now takes on *everything* that has arrived before it acts on anything (State test 50).
+  And saving a preset at that same moment could mark it unchanged against a sound its own file does
+  not contain, so reloading it changed what you heard while the dot said nothing had changed; the
+  preset is now saved and judged against the same sound (State test 51). A ninth pass closed the last
+  way the two could come apart, the one that needs no restore at all: while automation was moving a
+  control, saving a preset could write one sound to the file and remember a *different* one as the
+  "unchanged" mark — and because automation comes back round, the moment the control returned to that
+  earlier value the preset read as unchanged again, with its file holding something else. Saving now
+  takes a single snapshot and both the file and the mark come from it, so a control that moves during
+  a save simply leaves the preset showing as modified, which is what it is. The same pass fixed a
+  quieter version of it with no automation involved: for the stepped controls (the algorithm and
+  focus choosers, the on/off switches) a preset can only store the step, so a value set part-way
+  between steps — which only a host's automation can produce — was remembered as itself and the
+  preset went modified the instant you loaded it back. Both now compare what a preset file can
+  actually hold (State test 52). A tenth pass closed three more. The A/B button decided which slot to
+  go to from what it had been showing, before the plug-in had taken on a project that was arriving
+  at that same moment — so when that project put you on the other slot, the button did nothing; the
+  plug-in now decides after taking the project on (State test 53). Changing an unrelated Setting —
+  Meters, say — while such a project was arriving could briefly put the *previous* project's
+  Oversampling back into the engine until the new one finished arriving; a Setting now only ever
+  publishes itself (State test 54). And the case the ninth pass left open is closed: loading a preset
+  while automation moved a control could mark it unchanged against a sound its file does not hold;
+  the mark is now taken from what the preset actually contains, with no cost in spurious modified
+  dots (State test 55). The same pass's audit found the preset Prev/Next buttons had the A/B button's
+  problem — stepping from the row you had been on rather than the one an arriving project put you
+  on — and fixed it the same way (State test 56). An eleventh pass removed a tolerance that had
+  crept into the previous one: while a preset was loading, an automation move too small to see was
+  being folded into the "unchanged" mark, so a frequency control nudged by a hair during the load
+  left the preset looking untouched when it was not. Nothing is folded in any more — a change either
+  registers or is smaller than the plug-in can store, with no grey area in between (State test 57).
+  The same pass found the identical grey area on the reopening side, where a restored value within a
+  hair of the one already in force was left alone rather than restored; that too is gone, and
+  reopening a project is now measurably a no-op you can repeat (State test 58). A twelfth pass fixed a
+  settings change going missing from a project: if you changed a Setting in the moment right after a
+  project finished loading, and the host saved straight away, the save could still carry the setting
+  the project had arrived with rather than the one you had just chosen. A save now describes the
+  session as it will be once the arriving project has fully settled, setting by setting, so a change
+  you have already made can only be absent from a save if a newer project arrived after it (State
+  test 59). [Verified]
 
 ## [0.9.6] — 2026-09-03
 ### Fixed

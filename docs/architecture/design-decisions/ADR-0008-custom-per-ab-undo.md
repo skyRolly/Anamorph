@@ -40,10 +40,10 @@ cleared on session restore.
 - Cost: a hand-rolled history with a 128-entry cap per slot.
 
 ## Related code
-- `src/PluginProcessor.cpp:359-376, :340-520` (signature, coalesce, undo/redo, A/B)
-- `src/PluginProcessor.h:150-162, :144-171` (StateSet, UndoStacks, A/B members)
+- `src/PluginProcessor.cpp:419-444, :340-520` (signature, coalesce, undo/redo, A/B)
+- `src/PluginProcessor.h:215-227, :144-171` (StateSet, UndoStacks, A/B members)
 - `src/PluginParameters.h:64-87` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:359-376, :340-520
+- Source: src/PluginProcessor.cpp:419-444, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")

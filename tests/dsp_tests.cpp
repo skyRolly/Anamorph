@@ -5915,6 +5915,16 @@ static int runOsOffHandoffProbe()
 
 int main (int argc, char* argv[])
 {
+    // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
+    // stdout fully when it is a pipe -- which every CI runner is -- so a suite that
+    // dies mid-run loses everything written since the last flush. That is exactly how
+    // a round-12 Windows failure arrived: one truncated line, no summary, and no way
+    // to tell which test had been running. Unbuffered output costs nothing measurable
+    // for a few thousand short lines and makes every future failure readable at the
+    // point it happened, on every platform, without a `stdbuf` wrapper the Windows job
+    // cannot use anyway.
+    std::setvbuf (stdout, nullptr, _IONBF, 0);
+
     if (argc > 1 && std::strcmp (argv[1], "--match-inject-probe") == 0)
         return runMatchInjectProbe();
 

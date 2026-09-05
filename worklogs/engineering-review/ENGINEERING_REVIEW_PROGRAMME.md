@@ -29,6 +29,1808 @@ entries and CHANGELOG notes cite.
 
 ---
 
+## D-2 / RISK-007 — 2026-09-03 — program state becomes message-thread-owned; host threads exchange immutable snapshots (ADR-0036)
+
+> *"State race remains outside latency fields. Atomic latency values do not synchronize concurrent
+> restore, prepare, A/B, preset, or engine state."* — the D-2 finding, re-raised as a dedicated
+> v0.9.7 threading/state hardening task with a fixed brief: evidence first, an explicit ownership
+> model, no lock on the audio thread, no behaviour change beyond what a demonstrated race requires.
+
+**An `ARCHITECTURE_REVIEW_GATE` "Thread Model change"** (a new cross-thread path and a new atomic
+ordering), discharged by the maintainer's instruction that opened the task and recorded as
+**ADR-0036**. D-2 was deferred in round 4 with its measurement complete; this is its implementation.
+
+### 1. The audit: who touches what, from where
+
+Every access to the raced members was mapped before a line changed (the full table is in
+ADR-0036 §Context and `docs/architecture/THREAD_MODEL.md`). The threads that actually occur:
+**A** (audio), **M** (JUCE's message thread — the editor, this processor's 20 Hz timer, the APVTS
+flush timer, every in-spec VST3 host call), **H** (a host's state thread that is not M — macOS AU
+`SaveState`/`RestoreState`, pluginval's AU `BackgroundThreadStateTest`, an out-of-spec VST3 host,
+JUCE's Linux VST3 wrapper before the host registers an `IRunLoop`) and **P** (a host's prepare
+thread that is not M — the round-15 class).
+
+| Shared object | Writers | Readers | Protection before | Race? |
+|---|---|---|---|---|
+| APVTS parameter values | M, H (restore), A (automation) | A, M, H | JUCE atomics; `ParameterAttachment` hops | no (JUCE-owned) |
+| `apvts.state` tree | H/M `replaceState` (JUCE lock); **the malformed-value repair write, unlocked** | M/H `copyState` (JUCE lock) | JUCE's private lock — except the repair | latent (malformed blob only) |
+| `InternalState::tree` | M (Value bindings), H (`restoreState`) | M (`Value::getValue`, getters), H (`copyState`) | none | **yes** — outside the register (the probes bound no `Value`) |
+| `abActive` | M, H | M, H | none | **register #1** |
+| `abSlot[2]` handles | M, H (`readSlot`, `abEnsureInit` inside getState) | M, H | none | yes (String/ValueTree handle assignment vs copy) |
+| `abUndo[2]` | M; H clears | M | none | **register #2, #3** |
+| `committed*`, gesture bookkeeping | M; H (`syncCommitted`) | M | none | yes (same class as #4) |
+| `PresetManager` name/identity/baseline/cache | M; H (`setMeta`/`adoptRestoredState`) | M, H | none | **register #4** |
+| everything the audio thread reads | — | A | per-parameter atomics, `osAtomic`, `soloPreviewMask`, engine plain state under the host's prepare/process contract | no |
+
+**The conclusion that shaped the design:** every race is between H and M on Anamorph-owned *program
+metadata*; the audio thread reads none of it, and its own inputs are published exactly as before.
+"Make the raced fields atomic" was rejected on the brief's own terms — `abActive` is logically atomic
+*with* the slots, the match memory and the undo clear (one restore), and a container or a string
+cannot be made atomic at all. The candidate fixes recorded at deferral were re-examined: a narrow
+mutex has to be released and re-taken around every `setValueNotifyingHost` inside an A/B apply,
+which is exactly where a torn view is possible, and a `callAsync` of the whole tail defers the
+oversampling atomic the ordinary setState-then-activate order reads.
+
+### 2. The baseline, measured before any change (ThreadSanitizer, clang 18, 4 cores)
+
+| probe | pre-change runs | reports |
+|---|---|---|
+| `--state-thread-probe` | 10 | a report in **10/10** — the `juce::String` refcount exchange (`PresetManager::setMeta` on H vs `currentName()` on M) |
+| `--state-prepare-race-probe` | 10 | a report in **10/10** — the same class |
+| `--reprepare-race-probe` | 10 | silent in 10/10 (ER-STATE-19 / D-1 stays closed) |
+| `--d2-stress-probe` (new; H restore+save, P prepare, A audio, an editor-shaped M) | 2 — **166 reports** (exit 66) and **54 before the 900 s wall** (the pre-change tree under TSan did not finish the probe): 208 data races and **12 heap-use-after-free** | **every register class and the three the audit predicted**: `abActive` (`setStateInformation` vs `pollUndoCoalesce` / `commitPresetSwitchUndoStep`), `abUndo` (`UndoStacks::operator=` vs `commitPresetSwitchUndoStep`), the `juce::String` class (`setMeta` vs `currentName` / `isDirty` / `baseline` / `soundSig` / `load`), the committed baseline (`syncCommitted` vs `pollUndoCoalesce` / `soundSignature`), the slot handles (`readSlot` vs `reassertParameters` in an A/B apply, `StateSet::operator=` vs `isValid`), the `Selection` (`operator=` vs copy), and `InternalState`'s tree (`restoreState` vs the `Value` binding read) |
+
+On this machine the two register probes interleave only the first restore's tail against the last
+editor ticks — the main loop finishes its 400 iterations before the host thread's second
+`setStateInformation` — which is why they reproduce one class where round 2's machine reproduced
+four; the stress probe's denser interleaving is what reproduces all of them. The first version of
+that probe reported 861 further `AnamorphEngine::prepare` vs `process` pairs, which were the probe
+breaking the format contract (no wrapper runs `prepareToPlay` concurrently with `processBlock`) and
+not a D-2 class; the probe now serialises those two calls with a host-side lock, as a host does, and
+nothing else.
+
+### 3. The architecture (ADR-0036)
+
+- **Ownership.** All program metadata is message-thread state. Only M writes it; only M reads it
+  directly.
+- **H → M, the restore handoff.** `setStateInformation` decodes the blob into a `RestoreDecode` on the
+  caller's thread; the *sound* (the APVTS) and the *engine-facing Settings atomic* are applied there,
+  synchronously, because a `prepareToPlay` that follows on the same host thread reads both. On M the
+  tail is adopted inline, exactly as before. On any other thread the decode goes through one
+  `std::atomic<T*>::exchange` cell — ownership transfers with the exchange; whichever side's
+  exchange returns the pointer frees it; at most one object exists — and M adopts it
+  (`adoptPendingHostState`) from its 20 Hz timer and at the top of every entry point that mutates
+  program state, so sequential order is preserved.
+- **M → H, the program snapshot.** After every metadata mutation M publishes an immutable
+  `ProgramSnapshot` through a second cell (`PresetManager::onMetaChanged`, `InternalState::onChanged`,
+  the A/B paths). An off-message-thread `getStateInformation` takes the latest into its own view and
+  serializes from it plus the JUCE-locked `copyState()`. While a restore H handed over is unadopted
+  (`restoreGen` ahead of `adoptedGen`), H serializes from the view it built from that restore.
+- **The repair write moves before `replaceState`.** The malformed-value text repair now lands on the
+  private copy the caller hands to `replaceState`, on both restore paths and the A/B/undo apply, so
+  the live tree is only ever written under JUCE's lock. The host is told the repaired value rather
+  than the clamped garbage first; end state and durability (ER-STATE-25) unchanged.
+- **Nothing on the audio thread changed**, and nothing waits anywhere: no mutex, no `callAsync`, no
+  `MessageManagerLock`. The lifetime model is closed by construction (a pointer is reachable from
+  exactly one side at a time).
+
+### 4. What changed, file by file
+
+- `src/PluginProcessor.h` — the ownership-boundary comment; `ProgramSnapshot`, `RestoreDecode`,
+  `ExchangeCell`; the two cells, the generation pair, the H-side views; `apvtsStateType`;
+  `adoptPendingHostState()` public.
+- `src/PluginProcessor.cpp` — `decodeRestore` / `adoptRestoreTail` / `setStateInformation` (the
+  thread split); `ownedProgram` / `publishProgram` / `writeState` / `getStateInformation`;
+  `viewOfRestore`; `applySoundTree` + `repairSerializedValues` (the repair on our copy;
+  `reassertParameters` loses its tree write); the drains at `timerCallback`, `pollUndoCoalesce`,
+  `applyAutoGain`, `abSwitchTo`, `abCopyToOther`, `createEditor` (and deliberately NOT the gesture
+  callback, see §5); `abEnsureInit`
+  publishes when it seeds; `abResetToDefaults` folds into the decode's defaults.
+- `src/InternalState.h` — `resolveRestore` / `resolveLegacy` (pure), `applyResolved` (M),
+  `publishEngineConfig` (the atomic half), `onChanged`; `restoreState` / `migrateFromLegacyApvts`
+  keep their meaning as wrappers.
+- `src/PresetManager.{h,cpp}` — `onMetaChanged`, `onAboutToSave`, `soundSignatureFor`.
+- `tests/state_tests.cpp` — State tests 37–41; `--d2-stress-probe`; tests 22 and 27 re-shaped to
+  the production off-thread path (their worker used to write a `juce::Value` off-thread, which after
+  D-2 models nothing the plug-in does; 27's first rewrite hung the suite on a join and is bounded).
+- `tests/tsan_canary.cpp`, `.github/workflows/build.yml` — the `tsan` lane.
+- Docs: ADR-0036, `THREADING_POLICY`, `THREAD_MODEL`, `STATE_SERIALIZATION`, `FUTURE_RISKS`
+  (RISK-007 resolved), `TESTING`, `TESTING_POLICY`, `CI_CD`, `REPOSITORY_MAP`, `API_REFERENCE`,
+  `HANDOVER`, `CHANGELOG`, this worklog and the dashboard; `scripts/check-citations.py`'s
+  `DELIBERATE_REAIMS` emptied of its completed transitions and refilled with this change's.
+
+### 5. Validation
+
+| gate | result |
+|---|---|
+| `--state-thread-probe` under TSan, after | silent in 10/10 |
+| `--state-prepare-race-probe` under TSan, after | silent in 10/10 |
+| `--reprepare-race-probe` under TSan, after | silent in 10/10 |
+| `--d2-stress-probe` under TSan, after | silent in 10/10 (against a report in every pre-change run) |
+| the state suite under TSan, after | 0 reports; 1701 checks, 0 failures (halt_on_error=0, so every report would have been counted) |
+| State tests 37–41 (plain build) | green; 1701 checks in the suite (1506 before), 40 tests |
+| the DSP suite | green (unchanged sources; `AnamorphTests` links the engine alone) |
+| `check-realtime.py` | 47 files, 0 violations — `processBlock` and its closure are byte-identical |
+| `check-docs.py`, `check-citations.py` (three bases) | clean; 398 anchors |
+| `preflight.sh` | exit 0 on the committed tree (docs / portability / realtime / citation gates on all three bases, both suites) |
+| first-party warnings | no new (path, flag) beyond `clang-warning-baseline.txt` / `gcc-warning-baseline.txt` on the local compilers (clang 18, gcc 13 — the pinned gates run in CI). The first cut had added six and they are gone: `-Wshadow` on `applySoundTree`'s parameter, `-Wunused-variable` on a lambda test 27's rewrite left behind, four `-Wmissing-prototypes` on the `d2` helpers (now internal linkage) |
+
+**Two things the first after-change run reported, both fixed before the figures above were taken.**
+(1) `--d2-stress-probe` reported a **lock-order inversion** in 8/10 runs — not a data race, a
+potential deadlock the change itself had introduced: the first cut drained the pending restore at a
+gesture start, inside `parameterGestureChanged`, which JUCE delivers under the parameter's
+`listenerLock`; the adoption's `syncCommitted()` takes the APVTS lock, the reverse of the order a
+host-thread `replaceState` takes the two (`setValueNotifyingHost` under the APVTS lock). The drain
+is gone from the gesture callback (a mid-gesture restore is adopted by the next poll, which zeroes
+the gesture count exactly as an inline restore always has) and the rule — nothing that takes the
+APVTS lock runs from a parameter listener callback — is in `THREADING_POLICY.md`. (2) The suite
+under TSan reported **one data race in State test 39**: the test's autosave thread and its
+sequenced host save overlapped, two host threads at once, which is outside the contract the design
+states (the host serializes its own state calls) — a test error, fixed by serialising the two with
+the host-side lock the stress probe already uses for prepare/process. Neither is a class the
+baseline recorded; both were found by the new probes doing their job.
+
+### 6. What is deliberately different, and what is not
+
+- **Unchanged:** the message-thread path (byte-identical serialization, State test 3 and the frozen
+  fixtures), every restore/migration rule, A/B, undo and preset semantics, the latency report, the
+  audio path.
+- **Different, by design:** on the off-message-thread path the metadata tail becomes visible to the
+  editor within one timer period (≤ 50 ms) instead of instantly, and a user action landing inside
+  that window is ordered after the restore. Both are inside the timing tolerance of a host restore
+  and replace undefined behaviour. A malformed value in a session is now reported to the host
+  repaired rather than clamped-then-repaired.
+
+### 7. Status
+
+**D-2 — RESOLVED, implemented as ADR-0036. RISK-007 — RESOLVED.** RISK-008 and KI-015 unchanged.
+
+### 8. Round 2 — the PR review's two findings, closed (2026-09-03)
+
+Two ordering windows inside the round-1 machinery, both real on the committed tree, both closed by
+an explicit invariant rather than by a wider read. Neither is a ThreadSanitizer class — every access
+was already race-free — which is why the proof for each is the interleaving, not a silent probe.
+
+**Finding 1 — a host-thread save could pair the restored sound with the previous program.**
+
+| | |
+|---|---|
+| actors | H (the host's state thread: restore, then save); M (the owner: the adoption) |
+| state | `programMailbox` (M → H), `hostProgramView` (H), `hostRestoreView` (H), and round 1's two atomics `restoreGen` (H) / `adoptedGen` (M) |
+| old order | H save: (1) `take()` the mailbox → `hostProgramView`; (2) load `restoreGen`, `adoptedGen`; (3) pending? → `hostRestoreView` : `hostProgramView`; (4) serialize with `copyState()`. M adoption: (a) `take()` the decode; (b) the tail; (c) `publishProgram()`; (d) `adoptedGen = g` |
+| window | H(1) returns the PRE-restore snapshot (or nothing, leaving the previous one in the view); M runs (b)(c)(d) in full; H(2)(3) then see `restoreGen == adoptedGen` — "nothing pending" — and choose `hostProgramView` |
+| observable | a save carrying the restored sound (H applied it synchronously) around the previous program's name, baseline, slots and Settings: two programs in one file, and the DAW's next reload puts the wrong label and slot set on the restored sound |
+| new invariant | the generation is PART of the snapshot (`ProgramSnapshot::generation`, the last restore M had adopted when it published); H uses the snapshot in hand iff its generation ≥ H's own last restore generation, else the view it built from that restore. `restoreGen`/`adoptedGen` are gone; each side's counter is its own plain state and crosses only inside the objects |
+| why unrepresentable | the decision and the object it is about are one immutable value: a snapshot that says "generation ≥ g" was published AFTER adopting g, whichever moment H took it; one that says less was published before, and H's own view of g is coherent by construction. No read happens at a different moment than the take |
+
+**Finding 2 — an older restore's completion could overwrite a newer restore's oversampling.**
+
+| | |
+|---|---|
+| actors | H (two restores, A then B); M (the adoption of A); the activation (`prepareToPlay`, on H or M) and the audio thread |
+| state | `InternalState`'s oversampling atomic (round 1: a plain `std::atomic<int>` any writer stored), the Settings tree (M), `pendingRestore` |
+| old order | H restore A: store atomic = A, put(A). M: take(A), begin the tail. H restore B: store atomic = B, put(B). M: `applyResolved(A)` → the tree listener stores atomic = A |
+| window | between M's take of A and M's tree write of A's Oversampling, any H restore |
+| observable | the atomic holds A's setting while the sound is B's; a `prepareToPlay` in that window primes the engine at A's oversampling and reports A's latency; the audio thread runs A's factor over B's sound until B's adoption (≤ 50 ms), then the engine switches — the restored-session glide the synchronous publication exists to prevent |
+| new invariant | the atomic is a 64-bit word: the index tagged with the generation of the ARRIVAL that publishes it; a publication lands only if no higher generation stands, decided and stored by one compare-exchange. H publishes with its restore's generation; M's tree writes publish with the last generation M adopted (`noteAdoptedGeneration`, set before the tail). "Latest restore wins" — the semantics the sound (last `replaceState`) and the cell (a superseded decode is freed) already had |
+| why unrepresentable | there is no check-then-store: A's completion carries generation 1 and the CAS refuses it while generation 2 stands, in the same operation that would have stored it. A Settings edit inside the window yields the same way and the restore's own adoption rewrites the tree ≤ 50 ms later; a completion of the LATEST restore is idempotent |
+
+**Related audit (the same pattern elsewhere).** The remaining two-phase reads in the machinery were
+each examined for "a decision taken from a value read at a different moment than the object it
+decides about": the host side's `take()` then `copyState()` (one program plus the live sound — the
+host-timing class every non-blocking design has, recorded in ADR-0036's consequences, not this
+class); M's `adoptPendingHostState` fast path (`empty()` then `take()`: the exact answer comes from
+the exchange, the relaxed load only decides whether to try); H's `hostRestoreView` then `put()`
+(single serialized caller); `viewOfRestore`'s `soundSignatureFor` read after the sound was applied
+on the same thread. No further actionable instance.
+
+**What changed.** `src/InternalState.h` — the tagged word (`engineConfig`, `publishOversample`,
+`publishEngineConfig(resolved, generation)`, `noteAdoptedGeneration`, `engineConfigGeneration`;
+`animFloat` a message-thread mirror). `src/PluginProcessor.{h,cpp}` — `ProgramSnapshot::generation`,
+`hostRestoreGen` / `adoptedGeneration` as per-side plain state, the H-side selection, the two seams.
+`tests/state_tests.cpp` — State tests 42 and 43. Docs: ADR-0036 §5/§8 and consequences,
+`THREADING_POLICY`, `THREAD_MODEL`, `STATE_SERIALIZATION`, `API_REFERENCE`, `TESTING`, `CHANGELOG`,
+`HANDOVER`, `README`, coverage, this section, the dashboard.
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 42 with fix 1 reverted (the mailbox chosen regardless of generation) | FAILS (6 checks; 37's window check fails alongside) |
+| State test 43 with fix 2 reverted (the word stored regardless of generation) | FAILS (5 checks, both layers) |
+| State tests 42–43 on the tree | green; suite 1753 checks / 0 failures, 42 tests |
+| the four probes under TSan, after (round-2 tree) | silent in 10/10 runs each |
+| the state suite under TSan, after | 0 reports; 1753 checks, 0 failures |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations — the one audio-thread read that moved is a relaxed 64-bit load |
+| `check-docs.py`, `check-citations.py` | clean; 398 anchors against origin/main AND against the round-1 commit (the push predecessor), the two content-changed ranges declared |
+| `preflight.sh` | exit 0 on the committed round-2 tree (all gates, both suites) |
+| first-party warnings | none new in the touched files on clang 18 / gcc 13 (the pinned gates run in CI) |
+
+**Residual, non-actionable.** A host-thread save reads one snapshot then one `copyState()`; a
+message-thread A/B switch between the two leaves the earlier index around the later sound (the
+host-timing class; ADR-0036 consequences). **D-2 / RISK-007 — RESOLVED, round 2 closed.**
+
+### 9. Round 3 — pending restores must not discard Settings edits (2026-09-03)
+
+One further review finding against the round-2 tree, real, closed by an explicit precedence rule
+at the boundary that can enforce it. Not a ThreadSanitizer class: the six Settings are message-
+thread state on both ends.
+
+| | |
+|---|---|
+| actors | H (a restore, generation g); M (the editor's Settings bindings, then the adoption) |
+| state | `InternalState::tree` (the six Settings, M-owned); the pending decode's `internalResolved`; the engine-config word |
+| old order | H restore g arrives (word = g's oversampling; decode put). M: the user edits Setting S through a `juce::Value` binding (tree.S = U). M: the adoption's `applyResolved` writes all six from g's decode — tree.S = g's |
+| window | the whole pending window: from g's arrival to its adoption (≤ 50 ms with the timer, longer with a starved message queue) |
+| observable | the user's edit, made AFTER the restore arrived, is silently replaced by the older restore — the one message-thread mutation not ordered after the restore it overlapped; every other mutating entry point drains first, but a binding write reaches our code only through the tree listener, after the fact |
+| semantics decided | **precedence by arrival**, the rule the rest of the design already has ("a user action inside the pending window lands on top of the restore"): an edit is newer than every restore that has arrived when it is made and older than every restore that arrives after it. "User always wins" was rejected (a project load could fail to restore a Setting touched minutes earlier), "restore always wins" is the defect, excluding Settings from restores changes the file format's meaning, field-level timestamps are what this is — keyed on the generation the design already carries |
+| new invariant | an edit records, against its field, the generation of the latest restore that had arrived (the engine-config word's tag, the one trace of an arrival visible to M before adoption) and publishes the word under it; `adoptResolved (resolved, g)` keeps a field recorded at ≥ g and writes the rest; an inline restore (`applyResolved`) writes every field; the word is republished from the whole tree after every adoption |
+| why unrepresentable | the adoption cannot write a field whose recorded generation says the edit came after the restore's arrival; a restore that arrives after the edit carries a higher generation than the edit recorded, so it replaces the field — the order of arrivals is the order of outcomes, on every interleaving |
+
+**Interaction with rounds 1–2, checked.** Finding 1 (save selection) is untouched: the snapshot's
+generation is still the last adopted one and the host side's rule is unchanged; State test 42 passes
+on the round-3 tree. Finding 2 (the word): an edit now publishes under the latest arrival's
+generation rather than the last adopted one, so it lands over the restore it follows; an older
+restore's completion still cannot overwrite a newer restore (State test 43, its edit leg restated to
+the new rule: the edit lands, B's completion keeps it, a newer C replaces it). Restore precedence,
+adoption order and the host-side selection are unchanged.
+
+**Related-state audit (the same pattern, the rest of the tail).** The tail also writes `abActive`,
+`abSlot[]`, `abMatchGain[]`, clears `abUndo[]`, sets the preset name/baseline/selection and
+re-syncs the committed baseline. Every message-thread mutation of those goes through an entry
+point that drains first (`abSwitchTo`, `abCopyToOther`, `undo`/`redo`, `applyAutoGain`, preset
+load/save, `pollUndoCoalesce`, `createEditor`, get/setState) — so a user action on them is ordered
+after the restore by construction. The sound (the APVTS) is applied on the restoring thread at
+arrival and a later parameter edit lands on top of it; the tail never touches it. The one
+un-drained path was the Settings bindings, now covered. A gesture in flight across an adoption
+keeps its parameter values and loses only the undo step for that drag, exactly as an inline
+restore mid-gesture always has (round 1, the gesture-callback rule). **No sibling defect.**
+
+**What changed.** `src/InternalState.h` — `adoptResolved`, `writeResolved`, the per-field edit
+generations, the listener's edit branch (records the arrival, publishes under it), `publishFromTree`
+returning whether the index moved. `src/PluginProcessor.cpp` — `adoptRestoreTail` routes a cell
+restore (generation ≠ 0) through `adoptResolved`. `tests/state_tests.cpp` — State test 44; test 43's
+edit leg restated. Docs: ADR-0036 (status, §8, new §9, consequences, related code, evidence),
+`THREADING_POLICY`, `THREAD_MODEL`, `STATE_SERIALIZATION`, `API_REFERENCE`, `TESTING`,
+`TESTING_POLICY`, `CHANGELOG`, `HANDOVER`, `README`, coverage, this section, the dashboard.
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 44 with the fix reverted (the adoption writes every field) | FAILS (13 checks; 43's restated edit leg fails alongside; 42 untouched) |
+| State tests 37–44 on the tree | green; suite 1836 checks / 0 failures, 43 tests |
+| the four probes under TSan, after (round-3 tree) | silent in 10/10 runs each |
+| the state suite under TSan, after | 0 reports; 1836 checks, 0 failures |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | clean; 398 anchors against origin/main AND against the round-2 commit (the push predecessor) |
+| `preflight.sh` | exit 0 on the committed round-3 tree (all gates, both suites) |
+| first-party warnings | none new in the touched files on clang 18 / gcc 13 (the pinned gates run in CI) |
+
+**Residual, non-actionable (unchanged).** A host-thread save's snapshot then `copyState()` across
+a concurrent message-thread A/B switch (the host-timing class). A Settings edit inside the pending
+window is visible to a host-thread save only after the adoption (≤ one timer period), the same lag
+the whole tail has. **D-2 / RISK-007 — RESOLVED, round 3 closed; no actionable review issue
+remains.**
+
+### 10. Round 4 — session coherence, the handoff window, and the two verification findings (2026-09-03)
+
+Four review items: two ordering defects, one gate, one verification question. The two defects turn
+out to be one root cause with two faces, and neither is a ThreadSanitizer class.
+
+**The root cause both findings share.** A restore is two publications on two ownership tracks: its
+SOUND is installed by the decode on the calling thread (decision 2 — a `prepareToPlay` behind it
+must prime the restored session), its METADATA reaches the message thread through the cell. Between
+them there is a window the message thread cannot see into — from the decode installing the sound to
+`pendingRestore.put`, the cell is empty, so every entry point's drain finds nothing.
+
+**Finding 1 — inline restore exposes mixed sessions** (`setStateInformation`, the message-thread
+branch).
+
+| | |
+|---|---|
+| actors | H (a restore handed over earlier, R1 pending); M (a restore arriving inline, R2) |
+| old order | `decodeRestore(R2)` — installs R2's SOUND — then `adoptPendingHostState()` adopts R1 and publishes R1's metadata, then R2's tail publishes R2's |
+| window | from R2's decode to R2's tail: the snapshot says R1, the parameters say R2 |
+| observable | the intermediate publication describes R1's session against R2's live parameters; a save taken there mixes two sessions |
+| new order | the inline path **drains first**, so R1 is adopted against its own sound and R2's sound and metadata land together after it (State test 46 asserts the live sound at the adoption seam is R1's) |
+| reachability, stated honestly | the *saved* mixture additionally requires a `getStateInformation` running while that `setStateInformation` is mid-flight — two host state calls at once, which decision 11 establishes no supported wrapper permits. The reorder closes the window regardless, at no cost: it is one statement moved, and it makes the intermediate state coherent for every observer rather than only for contract-honouring ones |
+
+**Finding 2 — concurrent actions vanish before handoff** (`setStateInformation`, the host-thread
+branch, before `pendingRestore.put`). **This one is reachable without any host misbehaviour** — an
+editor action is not a host state call — and it is the more serious of the two.
+
+| | |
+|---|---|
+| actors | H (a restore R); M (the editor: an A/B switch, a Copy, an undo, a preset load) |
+| state | the live APVTS parameters; `pendingRestore`; the A/B slot set; the preset identity |
+| old order | H: decode installs R's SOUND → `++hostRestoreGen` → `publishEngineConfig` → build the view → allocate the handoff → `put`. M, anywhere in that span: drain (empty — R is not in the cell) → act |
+| window | decode-installs-sound → `put` |
+| observable | the action stores the parameters it finds — already R's sound — into the OUTGOING session's slot and applies another, so the live sound is then neither session's; R's adoption (metadata only, before this round) stamped R's name, identity and slots over it. **A saved session assembled from two**, and persistent: nothing later corrects it |
+| precedence decided | the action ran against the outgoing session, and a session restore replaces that session — so the action is **superseded**, exactly as an inline restore replaces everything. This is deliberately *not* decision 9's rule: the Settings are orthogonal preferences a session carries, whereas the A/B slots and the preset identity **are** the session. What is forbidden is not the supersession but the split |
+| new invariant | **adopting a restore installs its SOUND and its metadata together** (decision 10): the decode keeps the parameter tree it installed and the adoption re-installs it, guarded so an ordinary restore re-installs nothing (`soundParamGen` unchanged since the decode) and a superseded restore never resurrects its own sound (the engine word must still carry this restore's generation — decision 8's rule applied to the sound) |
+| why unrepresentable | after the adoption the sound, the slots and the identity all come from the one decode; there is no path by which the tail's metadata can end up over parameters the decode did not install |
+
+**Finding 3 — Architecture Review Gate.** `ARCHITECTURE_REVIEW_GATE.md` lists **Thread Model change
+— new thread, new cross-thread path, new atomic ordering**, and D-2 is exactly that;
+`AI_AGENT_POLICY.md` makes detecting one an agent **Hard Stop**, and states that a passing
+build/test/pluginval "does **not** clear a Hard Stop — only human review does". The gate's own
+procedure has four steps: the author flags it (done — the header comment, this worklog and the pull
+request all say so), **a human reviewer with DSP/audio context reviews it** (outstanding), an ADR
+records the decision (done — ADR-0036), and compatibility-affecting changes run the release
+checklist (the serialized format is unchanged, so nothing there is due). So the gate **cannot** be
+discharged from inside this repository and is **not** marked discharged: the maintainer instruction
+that opened the task authorised the *work*, not the review of its *result*. What this round does
+instead is assemble the package a reviewer needs — ADR-0036 with its eleven decisions and their
+rejected alternatives, these four D-2 rounds with an interleaving proof per finding, State tests
+37–46, and the four ThreadSanitizer probes in their own CI lane — and state the gate's status
+plainly in the ADR, the header and the pull request. **It remains OPEN.**
+
+**Finding 4 — host serialization, verified.** The question was whether `hostRestoreGen` and the two
+host-side views can be touched concurrently. They are read and written only by
+`getStateInformation` and `setStateInformation`, so the answer is entirely "does a host run two
+state calls at once". Read at the pinned JUCE 9.0.1, for every format `ANAMORPH_FORMATS` builds:
+
+| wrapper | save | restore | serialized by the wrapper? |
+|---|---|---|---|
+| VST3 (`juce_audio_plugin_client_VST3.cpp`) | `getState` → `getStateInformation` on the caller's thread | `setState` → `assertHostMessageThread()` then `setStateInformation` | **No.** In spec both are the UI thread (the SDK annotates them so, and JUCE asserts it for `setState`), which serializes them — but that is the *host* honouring the spec, not the wrapper enforcing it |
+| AU (`juce_audio_plugin_client_AU_1.mm`) | `SaveState` → `getStateInformation` | `RestoreState` → `setStateInformation` | **No.** Both are `MusicDeviceBase` overrides passing straight through on the caller's thread; neither takes `getCallbackLock()` (the wrapper takes it for `processBlock` and offline-mode changes only) nor a `MessageManagerLock`. Serialization is the host's, through the `kAudioUnitProperty_ClassInfo` mechanism |
+| Standalone (`Standalone/juce_StandaloneFilterWindow.h`) | `getStateInformation` | `setStateInformation` | Both on the message thread — serialized, trivially |
+
+**Disposition C.** No wrapper serializes save against restore for the plug-in, and none can: the
+guarantee belongs to the host, and JUCE's entire `AudioProcessor` state API already rests on it.
+Anamorph relies on **exactly** that and nothing stronger, which is now stated in
+`THREADING_POLICY.md` and ADR-0036 §11 rather than left implicit. Adding synchronisation for a case
+the formats forbid would be paying for a host bug on every save; instead the two off-message-thread
+branches count themselves in (`offThreadStateCalls`) and a debug build asserts if a second overlaps
+— a tripwire, never a lock, never blocking, with no effect on any result. **No real race, given the
+contract; the contract is now checkable.**
+
+**Related ordering audit.** The shape "older state applied after newer state, newer silently lost"
+was re-searched across the restore/save/action machinery. The A/B slots, the preset identity, the
+undo history and the committed baseline are all written by the tail and mutated on M only through
+entry points that drain first — the handoff window was their one exposure, and decision 10 closes
+its persistent half while the precedence above defines the rest. The Settings have their own rule
+(§9). The sound is now re-installed by the adoption, which is what made the family one bug rather
+than four. The engine-config word already refuses older generations (§8). The remaining two-phase
+read (a host save's snapshot then `copyState()`) is the recorded host-timing residual, unchanged.
+**No further actionable instance.**
+
+**What changed.** `src/PluginProcessor.h` — `RestoreDecode::soundParams` / `soundGen`, the
+`beforeRestorePut` seam, `OffThreadStateCall` and `offThreadStateCalls`, the gate note on the
+ownership comment. `src/PluginProcessor.cpp` — the decode records the tree it installed; the
+adoption re-installs it under two guards; the inline path drains before it decodes; both
+off-message-thread branches take the tripwire. `tests/state_tests.cpp` — State tests 45 and 46.
+Docs: ADR-0036 (status block with the gate OPEN, decisions 10 and 11, consequences, related code,
+evidence), `THREADING_POLICY`, `THREAD_MODEL`, `API_REFERENCE`, `TESTING`, `TESTING_POLICY`,
+`CHANGELOG`, `HANDOVER`, `README`, coverage, this section, the dashboard.
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 45 with the adoption's sound re-install removed | FAILS (2 checks: the save carries the restore's identity over the action's sound — 0.88 where the restored session says 0.66) |
+| State test 46 with the inline drain moved back after the decode | FAILS (3 checks: the pending restore is adopted against the incoming session's sound) |
+| State tests 37–46 on the tree | green; suite 1866 checks / 0 failures, 45 tests |
+| the four probes under TSan, after (round-4 tree) | silent in 10/10 runs each |
+| the state suite under TSan, after | 0 reports; 1866 checks, 0 failures |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | clean; 398 anchors against origin/main AND against the round-3 commit; self-test 159 cases |
+| `preflight.sh` | exit 0 on the committed round-4 tree (all gates, both suites) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Status.** D-2 / RISK-007 — the reported defects are closed and no actionable review issue remains.
+**The Architecture Review Gate is OPEN and requires human approval**, which is the one thing this
+work cannot supply for itself. Non-actionable residual, unchanged: a host save's snapshot and
+`copyState()` straddling a message-thread A/B switch (the host-timing class), and the ≤ 50 ms
+adoption latency for the metadata tail.
+
+*(Round 5 update: that approval was granted — see §11.)*
+
+### 11. Round 5 — the sound-edit precedence §10 got wrong, and the gate approved (2026-09-03)
+
+**The Architecture Review Gate is APPROVED.** Human architecture review of the ADR-0036
+threading/state model was granted on 2026-09-03. What was approved is the model the ADR records:
+message-thread ownership of the program metadata; the two single-object exchange cells with
+ownership transferring on the exchange; the generation carried inside each immutable object rather
+than in a separate atomic; the generation-tagged engine-config word with its latest-arrival-wins
+compare-exchange; and the precedence rules for a user action overlapping a restore. **This round
+stays inside that boundary** — it re-keys an existing guard onto a new *relaxed* counter with no
+payload and no ordering role (the same class as `soundParamGen`, which predates D-2), and adds no
+thread, no cross-thread path and no ordering-critical atomic. Nothing here is a new gated change.
+
+**Finding — pending sound edits are erased.** A regression from round 4's own fix, and the review
+caught it at the line that introduced it.
+
+| | |
+|---|---|
+| actors | H (a restore R, handed over); M (the user, turning a knob) |
+| state | the live APVTS parameters; `pendingRestore`; `soundParamGen` (bumped by every parameter change); the round-4 re-install guard |
+| old order | H: decode installs R's sound, records `soundParamGen`, puts the handoff. M: the user edits a sound parameter — `soundParamGen` moves. M: the adoption reads "something touched the parameters since the decode" and re-installs R's sound |
+| window | the whole pending window, from the handoff to the next drain (≤ 50 ms with the timer, longer with a starved queue). No seam is needed to hit it: a knob turn is the one message-thread mutation that does not drain — every entry point that drains would adopt first and land on top |
+| observable | the user's edit is silently reverted to the restored value on adoption. A save taken afterwards carries the restored value, so the edit is not merely invisible, it is gone |
+| root cause | §10's guard asked "has anything touched the parameters", read from a counter that every knob turn bumps. It needed to ask "has another STATE SET been installed" |
+| semantics decided | a **wholesale replacement** (an A/B apply, an undo/redo, a preset load) means the live sound is some other session's, and the adoption re-installs its own (§10, unchanged). An **edit** means the restored session is live with a newer mutation in it — the parameters the user turned are the ones the decode had just installed — so the edit is an edit *of the restored session* and stands, which is the rule the rest of the design already follows (§9 for the Settings; adopt-before-use everywhere that can drain) |
+| new invariant | `soundSetGen` counts wholesale replacements only — bumped at `applyStatePreservingView`, at `applySoundTree` and at the preset-load hook (a preset installs its session one parameter at a time rather than through `replaceState`, so it needs the explicit bump) — and never by an individual parameter change. The decode records it immediately after installing its sound; the adoption re-installs only if it has moved |
+| why the two differ | the A/B slots and the preset identity **are** the session, so a restore replaces them by definition and an A/B navigation of the outgoing session means nothing in the incoming one. A parameter value is not session identity; after the decode, the thing the user is editing *is* the restored session |
+
+**Focused audit of the restore tail's other writes.** Every field `adoptRestoreTail` writes was
+re-examined for the same "older restore overwrites a newer user mutation" shape:
+
+| field | represents | can a newer user mutation exist before adoption? | verdict |
+|---|---|---|---|
+| the live sound (§12, new) | the session's parameters | yes — a knob turn does not drain | **was defective**; fixed above |
+| `internal` (the six Settings) | orthogonal preferences | yes — a Settings binding write does not drain | already correct (§9, round 3): per-field arrival generations |
+| `abSlot[]`, `abActive`, `abMatchGain[]` | the session itself | only through entry points that drain first, plus the handoff window | correct by §10: superseded deliberately, and the sound re-install stops the split |
+| `abUndo[]` | history of the outgoing session | same | correct: a restore clears it, which is the documented fresh-session rule |
+| preset name / baseline / selection | the session's identity | same | correct by §10 |
+| `committed*`, gesture bookkeeping | the undo baseline, derived | recomputed by `syncCommitted()` from the state the tail just installed | correct by construction — it is derived, not carried |
+
+The one field with an un-draining mutation path other than the Settings was the sound, and it is
+the one that was wrong. **No sibling defect.**
+
+**Finding — host serialization, re-derived from primary evidence.** The concern was raised again,
+so it was re-answered from the headers rather than from the previous round's conclusion. The
+**pinned VST3 SDK annotates both halves of the pair on the host's UI thread**:
+`IComponent::setState` carries *"\note [UI-thread & (Initialized | Connected | Setup Done |
+Activated | Processing)]"* and `IComponent::getState` carries the identical note
+(`format_types/VST3_SDK/pluginterfaces/vst/ivstcomponent.h`). Two calls pinned to one thread cannot
+overlap, so on VST3 the ordering Anamorph relies on is **contractual**, not conventional — and JUCE
+additionally asserts the thread for `setState`. On **AU** no clause pins them and the wrapper adds
+nothing (`SaveState`/`RestoreState` pass straight through on the caller's thread, taking neither
+`getCallbackLock()` nor a `MessageManagerLock`), so serialization there is the host's practice.
+**Standalone** uses the message thread for both.
+
+**Disposition D — unsupported host concurrency.** Not A, because the AU half rests on practice
+rather than a citable clause; not B, because no wrapper provides the serialization and none can —
+the guarantee is the host's, and JUCE's whole `AudioProcessor` state API already rests on it; not C,
+because nothing in supported operation produces the concurrency, and synchronising against it would
+mean paying for a broken host on every save. The support boundary is now stated in the header
+beside the members it protects, in `THREADING_POLICY.md` and in ADR-0036 §11, with the SDK quotation
+inline so it is not re-litigated from memory; the debug tripwire added in round 4 names a host that
+crosses it. **No code change was warranted and none was made.**
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 47 with the guard keyed on `soundParamGen` again (round 4's) | FAILS (4 checks: every pending edit reverted to the restored value, and the save with it) |
+| State tests 37–47 on the tree | green; suite 1882 checks / 0 failures, 46 tests |
+| the four probes under TSan, after (round-5 tree) | silent in 10/10 runs each |
+| the state suite under TSan, after | 0 reports; 1882 checks, 0 failures |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | clean; 398 anchors against origin/main AND against the round-4 commit; self-test 160 cases |
+| `preflight.sh` | exit 0 on the committed round-5 tree (all gates, both suites) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: first-save
+consistency (State test 42), overlapping restore ordering (43), Settings precedence (44), the
+handoff-window split and inline coherence (45, 46) all pass unchanged — 45 in particular still
+proves that a *wholesale* replacement in the window IS superseded, which is the half of §10 this
+round deliberately kept.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains. **Architecture Review Gate:
+APPROVED**, and this round is inside the approved boundary. Host serialization: **disposition D**,
+evidence-backed. Non-actionable residuals, unchanged: a host save's snapshot and `copyState()`
+straddling a message-thread A/B switch, and the ≤ 50 ms adoption latency for the metadata tail.
+
+### 12. Round 6 — the token names an operation, not a moment (2026-09-03)
+
+**Architecture Review Gate: APPROVED, and this round is inside it.** Round 6 changes only *how* an
+existing counter's value is captured — from a read-back to the value the allocating `fetch_add`
+returns. No thread, no cross-thread path, no ownership mechanism and no ordering-critical atomic is
+added or altered. There is no architectural delta, and no further sign-off is sought.
+
+**Finding — an overlapping replacement was mistaken for the restore's own sound.** A defect in
+round 5's implementation of §12, at the line that implemented it.
+
+| | |
+|---|---|
+| actors | H (a restore R, decoding); M (any wholesale replacement X — an A/B apply, a preset load, an undo) |
+| state | `soundSetGen` (the wholesale-replacement counter); `RestoreDecode::soundSetGen` (the decode's reference value); the §10 re-install guard |
+| old order | H: `applySoundTree(params)` — which bumps the counter — returns; **then** `d.soundSetGen = soundSetGen.load()`. M, in the gap between those two statements: X bumps the counter |
+| window | between the decode's own bump (inside `applySoundTree`) and the read-back one statement later — a `createCopy`, a repair pass, a `replaceState` and a full `reassertParameters` had already run, so the gap is not a couple of instructions but the whole tail of the call |
+| observable | the counter now names X, and the read-back records X's value as R's reference. At the adoption `soundSetGen == d.soundSetGen` holds, the guard concludes "nothing has replaced my sound", the re-install is skipped — and the restored metadata is published over **X's** sound. A save then carries R's name, identity and slots around a sound R never had: the §10 split, reached through the token instead of through the handoff window |
+| root cause | the reference value was a *snapshot of shared state*, not an identity. "The counter after my own bump" names whichever replacement was last, which is only the caller's own when nothing overlapped |
+| decision | the token is the value the allocating `fetch_add` **returns**. `noteWholeSoundReplaced()` hands each replacement a value no other replacement can be handed; `applySoundTree` returns the one it was handed; the decode records that. Allocation and capture are one atomic operation, so there is no window between them |
+| why unrepresentable | the adoption now compares the counter against **an operation's own identity**. Any replacement after the restore's own — whenever it lands, before or after the decode returns — leaves the counter above the token, so the guard re-installs. Nothing else can be handed that token, so nothing else can be mistaken for the restore's sound |
+
+**Individual mutation versus wholesale replacement**, re-checked against the implementation rather
+than against function names, because §12's rule rests on the classification (the full table is in
+ADR-0036 §13): a knob turn, a gesture and host automation change one parameter of the session that
+is live and are **individual** (they survive the adoption, §12); an A/B apply, an undo/redo, a
+preset load and a restore's own install put a whole state set in place and are **wholesale**. The
+preset load is the one whose call shape does not match its semantics — it installs its session one
+parameter at a time through `PresetManager::applySoundTree` rather than through `replaceState` —
+which is exactly why the load hook bumps the counter explicitly rather than relying on the
+replacement sites.
+
+**Related-ordering audit — the same "snapshot of shared state where an identity was meant" shape.**
+
+| value | how it is obtained | verdict |
+|---|---|---|
+| `RestoreDecode::soundSetGen` | **was** a read-back of the shared counter | **was defective**; now the allocation's own return |
+| `RestoreDecode::generation` | `++hostRestoreGen`, a host-side-exclusive counter — the increment *is* the allocation | correct: an identity, not a snapshot |
+| `ProgramSnapshot::generation` | `= adoptedGeneration`, message-thread-exclusive, copied from the object being adopted | correct |
+| `InternalState`'s engine-config word | the CAS decides and stores in one operation | correct: no check-then-act |
+| `editGeneration[i] = engineConfigGeneration()` (§9) | reads the ambient "latest arrival" *deliberately* — the edit is being placed relative to whatever had arrived | correct, and not this shape: a concurrent arrival makes the edit land after that arrival instead of before it, which are two valid linearizations of two genuinely concurrent events, both consistent with §9 |
+| `soundParamGen` reads (`pollUndoCoalesce`, `PresetManager::isDirty`) | staleness hints; nothing is attributed to a caller | correct |
+
+One instance of the shape existed and it is the one that was reported. **No sibling defect.**
+
+**Finding — host serialization, re-derived a third time, now from the complete caller set.** A
+wrapper inspection shows what the wrappers do; it does not show whether something *else* in JUCE
+calls the state functions. Round 6 enumerated every caller of
+`AudioProcessor::get/setStateInformation` across the three formats `ANAMORPH_FORMATS` builds. The
+only ones are the host-facing entry points themselves: VST3 `IComponent::getState`/`setState` (plus
+the VST2-compat readers *inside* `setState`), AU `SaveState`/`RestoreState`, and the standalone's
+`savePluginState()` / `reloadPluginState()`. **No JUCE timer, async callback, audio callback or
+background thread calls either function on any of them** — the standalone's own 500 ms timer scans
+MIDI devices and touches no state, and its two calls run from `init()` and the close button, both on
+the message thread. So the concurrency question reduces entirely to whether the *host* issues two
+overlapping calls; nothing inside JUCE can produce one behind its back.
+
+On the host side the evidence is unchanged and stands: the pinned VST3 SDK annotates both
+`IComponent::setState` and `IComponent::getState` `[UI-thread & (Initialized | Connected | Setup
+Done | Activated | Processing)]`, so two calls pinned to one thread cannot overlap; AU pins neither
+and the wrapper adds nothing; the standalone uses the message thread for both. **Disposition D
+(unsupported host concurrency)**, unchanged and now better supported.
+
+**The debug tripwire, audited as the round required.** `OffThreadStateCall` detects exactly one
+condition: two *off-message-thread* state calls active at once. It cannot fire in a supported
+scenario — on VST3 an off-thread state call is already out of spec and two overlapping ones doubly
+so; on AU they may legitimately be off-thread but the host serializes them; on the standalone they
+are on the message thread and never counted. It also does not fire on the supported shapes that
+resemble it: an off-thread save concurrent with the message thread's own timer adoption (not a state
+call), or with a message-thread `getStateInformation` (not counted) — which is why State tests 42
+and 39 exercise those overlaps without tripping it. It is **purely diagnostic**: the counter is read
+only by the `jassert`, which compiles out in release, so no release-build behaviour depends on it
+and it is not standing in for a correctness mechanism in any supported case. **No code change was
+warranted and none was made.**
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 48 with the read-back restored (round 5's line) | FAILS (4 checks: the A/B leg saves the restored metadata over 0.82, the preset leg over 0.50, where the restored session says 0.62) |
+| State tests 37–48 on the tree | green; suite 1909 checks / 0 failures, 47 tests |
+| the four probes under TSan, after (round-6 tree) | silent in 10/10 runs each |
+| the state suite under TSan, after | 0 reports; 1909 checks, 0 failures |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | clean; 398 anchors against origin/main AND against the round-5 commit; self-test 160 cases |
+| `preflight.sh` | exit 0 on the committed round-6 tree (all gates, both suites) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: first-save
+consistency (42), overlapping restore ordering (43), Settings precedence (44), the handoff-window
+split (45), inline coherence (46) and sound-edit precedence (47) all pass unchanged — and 48's third
+leg re-proves 47's rule at the tighter timing.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains. Architecture Review Gate:
+**APPROVED**, this round inside it. Host serialization: **disposition D**. Non-actionable residuals,
+unchanged: a host save's snapshot and `copyState()` straddling a message-thread A/B switch, and the
+≤ 50 ms adoption latency for the metadata tail.
+
+### 13. Round 7 — the token is allocated at completion, and the writes are bracketed (2026-09-03)
+
+**Architecture Review Gate: APPROVED, and this round is inside it.** The change moves an existing
+relaxed counter's increment from the start of an operation to its end and adds a second read of the
+same counter before the operation's first write. No thread, no blocking mechanism, no cross-thread
+ownership change — the delta is *when* an existing counter is incremented. No further sign-off is
+sought.
+
+**Finding — a replacement that began earlier and finished later kept its sound under the restored
+metadata.** Round 6 gave every wholesale replacement an identity no other replacement can be handed;
+round 7 fixes *when* that identity is taken.
+
+| | |
+|---|---|
+| actors | H (a restore R, decoding and installing its sound); M (a wholesale replacement X — an A/B apply, an undo, a preset load) |
+| state | `soundSetGen`; `RestoreDecode::soundSetGen`; the §10 re-install guard |
+| old order | every replacement allocated its token at its **start**: `applySoundTree` and `applyStatePreservingView` bumped before their first write, the preset load bumped in `onAboutToLoad` before `PresetManager::applySoundTree` wrote anything |
+| interleaving | X begins and takes *n+1*. R's install then runs to completion and takes *n+2*, which the decode records. X then finishes writing — so the live parameters are **X's**, while the counter still reads *n+2* |
+| observable | at the adoption `counter == d.soundSetGen`, the guard concludes "nothing has replaced my sound", the re-install is skipped, and the restored metadata is published over X's sound. §10's split again, reached this time through the token's *ordering* rather than its ownership |
+| root cause | the counter ordered replacements by **begin** time. Completion time is what decides ownership: every wholesale replacement writes *every* sound parameter, so the one that finishes last owns them all. Begin order and completion order are different orders |
+| decision, part 1 — completion | every wholesale replacement bumps **after** its last sound write: `applySoundTree` after `reassertParameters`, `applyStatePreservingView` after the view-parameter restore, the preset load in `onLoaded` rather than `onAboutToLoad` (its writes go one parameter at a time through `PresetManager::applySoundTree`, so the hook is where its completion is observable; the two hooks are paired on every path that can succeed). Uniform on purpose — one path incrementing at the start and another at the end orders nothing |
+| decision, part 2 — bracketing | a caller that will KEEP its token samples the counter into `begin` before its first write and allocates after its last. `token == begin + 1` proves no other wholesale replacement began *and* finished inside ours; anything else means the two interleaved — their per-parameter writes are not mutually excluded, so the live parameters may hold values from both — and `soundReplacementToken` returns **0**, "no owner provable". The counter starts at 1, so 0 is never a real token and never compares equal: the adoption re-installs, the conservative answer that restores one coherent session |
+| why unrepresentable | the three cases are exhaustive. A replacement that finishes *after* ours raises the counter above our token → re-install. One that finishes *inside* our bracket breaks `token == begin + 1` → 0 → re-install. One that finishes *before* our first write wrote parameters we then overwrote → ours is live, and `counter == token` correctly skips. The residual window is closed rather than narrowed: there is no interleaving in which another replacement's writes land inside ours without the counter showing it |
+
+**Nothing is reclassified.** An individual mutation — a knob, a gesture, host automation — still
+bumps nothing, so §12's rule is untouched: an ordinary edit after the restore's install leaves
+`counter == token` and survives the adoption. State tests 47 and 48 keep that control and pass
+unchanged; test 49 adds the ordering.
+
+**Related-ordering audit — "does this value order operations by the event that matters?"**
+
+| value | event it orders by | verdict |
+|---|---|---|
+| `soundSetGen` / `RestoreDecode::soundSetGen` | **was** begin of the replacement | **was defective**; now completion, plus the bracket |
+| `RestoreDecode::generation` (`++hostRestoreGen`) | the host side's own serialized restore sequence — one thread, so begin and completion order coincide | correct |
+| `adoptedGeneration` / `ProgramSnapshot::generation` | the message thread's own adoption sequence — one thread | correct |
+| the engine-config word's generation | the CAS decides and stores together, and the value published *is* the completed state | correct |
+| `editGeneration[i]` (§9) | the arrival the edit followed; an edit is a single atomic property write with no begin/end to separate | correct |
+| `soundParamGen` | a staleness hint with no ownership claim | correct |
+
+Only the values with a *duration* between their begin and their effect could carry this defect, and
+`soundSetGen` is the only one of those. **No sibling defect.**
+
+**Finding — host serialization, closed on both sides.** Rounds 4–6 established that no wrapper
+serializes save against restore for the plug-in and that no JUCE timer, async callback or background
+thread calls either state function on any format built here. Round 7 closes the remaining half of
+the question the review's wording asks for — *whether any internal Anamorph callback can call these
+functions concurrently* — and the answer is that **Anamorph never calls them at all**:
+`getStateInformation` and `setStateInformation` appear in `src/` only as their own definitions (every
+other occurrence is a comment), so no timer, editor action, preset path or engine callback can
+re-enter them. Every activation comes from a host entry point, JUCE adds none, and the plug-in adds
+none. The host-side evidence is unchanged: the pinned VST3 SDK annotates both `IComponent::setState`
+and `IComponent::getState` `[UI-thread & …]`, so two calls pinned to one thread cannot overlap; AU
+pins neither and the wrapper adds nothing; the standalone uses the message thread for both.
+**Disposition D (unsupported host concurrency)**, now with both the JUCE side and the Anamorph side
+enumerated rather than argued.
+**Why `hostRestoreGen` and the two host views remain correct within that boundary:** they are read
+and written only inside the off-message-thread branches of the two state functions. Under the
+boundary at most one such branch runs at a time, so they are single-threaded state with no reader on
+any other thread — the message thread never touches them, and the audio thread never touches
+anything in the section. Making them atomic would not add a guarantee; it would only make a broken
+host's mixed results slightly different.
+**The tripwire, re-audited.** Condition: two off-message-thread state calls active at once. Reachable
+only from those two branches. It cannot fire on any supported VST3/AU/Standalone path, nor on the
+supported shapes that resemble it (an off-thread save concurrent with the message thread's timer
+adoption, or with a message-thread `getStateInformation` — neither is counted; State tests 42 and 39
+exercise those without tripping it). It is compiled in both builds but read only by the `jassert`,
+which compiles out in release, so no release behaviour depends on it; it changes no state and imposes
+no ordering, so it is diagnostic and cannot be mistaken for the synchronisation mechanism. **No code
+change was warranted and none was made.**
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 49 with every token allocated at its operation's start again (round 6's ordering) | FAILS (4 checks: the A/B leg saves the restored metadata over 0.84 and the undo leg over 0.16, where the restored session says 0.64) |
+| State tests 37–49 on the tree | green; suite 1928 checks / 0 failures, 48 tests |
+| the four probes under TSan, after (round-7 tree) | silent in 10/10 runs each |
+| the state suite under TSan, after | 0 reports; 1928 checks, 0 failures |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | clean; 398 anchors against origin/main AND against the round-6 commit; self-test 161 cases |
+| `preflight.sh` | exit 0 on the committed round-7 tree (all gates, both suites) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: first-save
+consistency (42), overlapping restore ordering (43), Settings precedence (44), the handoff-window
+split (45), inline coherence (46), sound-edit precedence (47) and the token's ownership (48) all pass
+unchanged.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains. Architecture Review Gate:
+**APPROVED**, this round inside it. Host serialization: **disposition D**, both sides enumerated.
+Non-actionable residuals, unchanged: a host save's snapshot and `copyState()` straddling a
+message-thread A/B switch, and the ≤ 50 ms adoption latency for the metadata tail.
+
+### 14. Round 8 — the drain reaches a fixed point, and a preset's baseline belongs to its own file (2026-09-03)
+
+**Architecture Review Gate: APPROVED, and this round is inside it.** One change makes an existing
+message-thread drain run to a fixed point; the other reorders an existing save so its baseline and
+its bytes come from one session. No thread, no blocking mechanism, no new cross-thread ownership.
+
+**Finding 1 — a restore arriving during an adoption left the caller editing a superseded session.**
+
+| | |
+|---|---|
+| actors | H (restores R1 then R2); M (any entry point that drains and then mutates — an A/B switch, an undo, a preset load) |
+| state | `pendingRestore`; the program state the caller goes on to edit |
+| old order | `adoptPendingHostState()` took **one** restore: `if (empty) return; take; adopt`. R2 arriving during R1's tail stayed in the cell |
+| interleaving | R1 pending → M's entry point drains, taking R1 → R2 arrives from a host thread during that adoption → the drain returns with R2 still pending → the caller switches slots against R1's session → R2 is adopted later and wholesale-overwrites the slot set |
+| observable | the user's A/B switch is silently discarded, *and* it was made after R2's arrival — precisely the case §10 says must land on top of the restore, not under it |
+| root cause | the guarantee an entry point needs from the drain is not "one restore was adopted" but "**nothing is pending any more**". Only then is the state it edits the state of every restore that has arrived |
+| decision | the drain runs to a **fixed point**: `while (! pendingRestore.empty()) { take; adopt; }`. When it returns the cell is empty, so any mutation the caller then makes is after every arrived restore and is superseded only by one that arrives strictly later |
+| why it terminates | it is a drain, not a wait — it stops as soon as the cell is empty and never blocks. A host serializes its own state calls (§11), so a further restore can only appear after a whole `setStateInformation` has returned |
+
+State tests 43 and 44 had used the one-at-a-time drain as a scheduling device: each injected a second
+restore from the adoption seam and then asserted the state *between* two drains. Both were
+restructured to take the identical measurements at the seam's **second fire** — the instant the first
+restore's tail has finished and the second's has not begun — so every assertion they made is still
+made, at the same logical instant, and the seams inject only once (or the drain would have a fresh
+restore to adopt on every pass).
+
+**Finding 2 — a preset saved during a restore was clean against a sound its file does not hold.**
+
+| | |
+|---|---|
+| actors | M (the user saving a preset); H (a restore, pending) |
+| state | the preset file's bytes; `sigAtLoad` (the clean baseline); the live sound |
+| old order | `saveUser`: capture the sound → **write the file** → `onAboutToSave` (drains a pending restore, whose adoption re-installs the restored sound, §10/§14) → `sigAtLoad = soundSig()` — a fresh read of the now-restored live sound |
+| interleaving | a restore arrives while an A/B switch is mid-write, so the switch finishes last and its sound is live while the restore stays pending; the save writes the switch's sound to the file; the drain then adopts the restore and re-installs *its* sound; the baseline is read from that |
+| observable | the preset is marked **clean** against a sound its own file does not contain. Reloading the preset changes what you hear while the indicator says nothing has changed — and unlike every other transient in this design, it is **durable**: it is in a file |
+| semantics | "clean" means what a user takes it to mean and what the repository already documents (`isDirty() = current sound != baseline`): **reloading the selected preset reproduces the sound you are hearing**. The rule that follows is that the baseline is the signature of the sound the file was written from |
+| decision | (a) the drain runs **first**, before the sound is captured, so the save writes the same session the rest of the program is on — the adopt-before-use every other entry point does; (b) the signature and the state are captured as **one coherent pair**, the signature read *before* the state copy so the two can only disagree in the safe direction (a sound that moved between them leaves the baseline describing the earlier state, which reads as *dirty*, never as a false clean), with a sound-generation check across both reads confirming they describe one sound and retrying the two cheap in-memory reads — never the file write — when it does not |
+
+**Bounded audit of the same family.** The shape looked for was "newer state arrives → an older
+operation continues on stale state → it later overwrites or mislabels the newer state".
+
+| operation | drains first? | can it mislabel or overwrite? | verdict |
+|---|---|---|---|
+| every mutating entry point (A/B, undo/redo, preset load, Apply gain, gesture-free edits, `createEditor`, get/setState on M) | yes — and now to a fixed point | no | fixed above |
+| `saveUser` | now yes, before capturing | no | fixed above |
+| `PresetManager::load` / `loadFile` | yes (`onAboutToLoad`) | its `sigAtLoad = soundSig()` is read after applying the preset's sound, so a restore landing between the two would baseline the preset against the restore's sound | **considered, not changed**: nothing durable is written, and the restore's own adoption overwrites `current`, `sel` and `sigAtLoad` outright (`setMeta` / `adoptRestoredState`), so the mislabel cannot outlive the pending window that created it. Transient and self-correcting, where the save's was durable |
+| Settings edits | n/a (a binding write) | no | §9 governs, unchanged |
+| ordinary sound edits | n/a | no | §12 governs, unchanged |
+| snapshot publication / serialization | n/a | no | §5, §13, §14 govern, unchanged |
+
+**No sibling defect** beyond the one recorded above as transient.
+
+**Finding 3 — host serialization: no new evidence, disposition D stands.** Re-verified mechanically
+against the current tree rather than restated: **no Anamorph caller** of either state function exists
+(both names appear in `src/` only as their own definitions); the only schedulers in `src/` are the
+editor's 24 Hz and the processor's 20 Hz `juce::Timer`s, both on the message thread, with **no**
+`std::thread`, `juce::Thread`, `callAsync` or thread pool anywhere; **`hostRestoreGen` and the two
+host views are read or written at exactly four sites**, all inside the off-message-thread branches of
+`getStateInformation` and `setStateInformation`; and the **tripwire is constructed at exactly those
+same two branches**, so the condition it detects remains "two off-message-thread state calls at
+once", which no supported VST3/AU/Standalone path can produce. Nothing changes the disposition:
+**D — unsupported host concurrency, evidence-backed.** No code change was warranted and none was
+made.
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State tests 43, 44 and 50 with the drain taking one restore per pass | FAIL (17 checks) |
+| State test 51 with the drain after the write and a fresh live baseline read | FAILS (the reload check: 0.76, the A/B switch's sound written to the file, where the preset was marked clean against the restored 0.64) |
+| State tests 37–51 on the tree | green; suite 1952 checks / 0 failures, 50 tests |
+| the four probes under TSan, after (round-8 tree) | `--d2-stress-probe`, `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe`, 10 runs each: 0 runs with reports, 0 reports in total |
+| the state suite under TSan, after | 1952 checks, 0 failures, 0 TSan reports |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | 120 files clean; 398 anchors still point at the same text as both `d9eefa5` (the round-7 commit) and `origin/main`, self-test 161 cases |
+| `preflight.sh` | exit 0 on the committed round-8 tree (all gates, both suites; `check-portability` 57 files / 0 violations, `check-realtime` 47 files / 0 violations, both warning-gate self-tests green) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: first-save
+consistency (42), overlapping restore ordering (43), Settings precedence (44), the handoff-window
+split (45), inline coherence (46), sound-edit precedence (47), replacement identity (48) and
+completion ordering (49) all pass — 43 and 44 with their measurements moved to the seam's second
+fire, assertion for assertion.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains. Architecture Review Gate:
+**APPROVED**, this round inside it. Host serialization: **disposition D**, re-verified. Non-actionable
+residuals: `PresetManager::load`'s transient baseline (above), a host save's snapshot and
+`copyState()` straddling a message-thread A/B switch, and the ≤ 50 ms adoption latency for the tail.
+
+### 15. Round 9 — one capture: a preset's bytes and its clean baseline are the same object (2026-09-03)
+
+**Architecture Review Gate: APPROVED, and this round is inside it — it REMOVES machinery.** A retry
+loop and one of two reads of the live sound are deleted; an existing signature is canonicalised onto
+the grid a preset file already holds. No thread, no lock, no wait, no audio-path allocation, no new
+cross-thread reader, no serialization-format change, no parameter or latency change.
+
+**Finding 1 — busy automation saved a false baseline.**
+
+| | |
+|---|---|
+| actors | M (`saveUser` on the message thread); any writer of a sound parameter — host automation from A, the UI, a control surface |
+| state | the bytes written to the `.anamorph` file; `sigAtLoad`, the signature `isDirty()` compares against |
+| old order | two reads: `savedSig = soundSig()` (live parameters), then `xml = apvts.copyState()` (the tree the file is written from), with a `soundParamGeneration` re-read to prove them coherent and **up to 8 retries** |
+| interleaving | a parameter moves between the two reads on every attempt → all 8 attempts see a changed generation → **the loop falls through and uses the unproven pair** → the file holds the value the *copy* saw while `sigAtLoad` names the value the *signature* saw |
+| observable | the preset is marked **clean** against a sound its own file does not contain. It is not merely a stale marker: a baseline naming an earlier sound compares equal again the moment the sound returns to it, and cycling automation does that by definition — so the preset sits there clean while reloading it changes what you hear |
+| measured | on the round-8 implementation, a parameter cycling between two values across the save: baseline `width 0.24000`, bytes on disk `0.76000`; the preset read **clean** at 0.24 and reloading moved the sound to 0.76 |
+| root cause | the baseline was derived from a *different read* than the bytes. The retry only narrowed the window, and it gave up **silently** in exactly the case — sustained automation — that the check exists for. Round 8's stated fallback ("they can only disagree in the safe direction, which reads as dirty") is refuted by the return-to-value case |
+| decision | **one capture.** `saveUser` takes a single `apvts.copyState()` and derives *both* the bytes and the baseline from that one object (`soundSignatureForSavedTree`). Nothing reads the live parameters again, so there is no "between". The retry is deleted rather than bounded harder: no number of retries establishes an invariant that one capture gets for free |
+| semantics | **(A) — the state captured at the capture instant.** Clean means *loading the selected preset would change nothing*; a parameter change after the capture leaves the preset **dirty**, correctly and immediately. The plug-in never waits for automation to settle and never silently saves a state the user cannot get back |
+| boundedness | there is no loop over live state at all, so sustained automation cannot make the save spin, retry or block. §5's constraint is met by removal, not by a bound |
+
+**A torn capture is still one snapshot.** JUCE's `flushParameterValuesToValueTree` writes adapters one
+at a time under `valueTreeChanging`, so a parameter moved from the audio thread mid-flush can leave
+the tree holding parameter A at one instant and parameter B at another. No non-blocking design can
+prevent that, and it does not weaken the invariant: whatever mixture the flush captured **is** the
+preset, and the baseline is computed from that same object. The invariant owed to the user is "clean
+means reloading changes nothing", not "the file is an instantaneous photograph".
+
+**Finding 1b — the same defect one level down, with no concurrency at all.** Anamorph's custom
+`RawChoice` / `RawBool` keep the *exact* normalised value in `getValue()` (deliberately: pluginval's
+state-restoration test sets a raw normalised value and reads it back, and stock discrete parameters
+snap). The session format preserves that bit-for-bit through the `raw` attribute — **a preset file
+has no `raw`** and stores only the snapped value. So a baseline taken from the live parameter
+described a sound no preset can hold. Measured: a 4-choice automated to `0.66` was written as index 2,
+baselined at `0.66000`, and reloaded as `0.66667` — §16's invariant broken by a plain save-then-load.
+Both sides now sign the value a preset can hold, `convertTo0to1(convertFrom0to1(v))`: a no-op for
+every stock parameter, and the correction for the custom ones. Movement *within* one step stops
+counting as a modification, which is right — the DSP reads the snapped value and the file cannot
+record the difference.
+
+**Related-ordering audit**, asking "is a durable value derived from state read on the far side of a
+window?":
+
+| site | same defect? | durable? | disposition |
+|---|---|---|---|
+| `PresetManager::saveUser` | yes | **yes** — `sigAtLoad` and a file on disk both persist | **fixed** (one capture) |
+| `PresetManager::load` / `loadFile` | **yes** — applies the file's sound, then baselines from a second LIVE read | **yes** — an *automation* write in that window is overwritten by nothing | **OPEN, reported not fixed** — see below |
+| `PresetManager::setMeta` / `adoptRestoredState` | no — the empty-baseline fallback reads the live sound *after* the caller has applied the parameters, which is the documented precondition | n/a | no defect |
+| `PresetManager::isDirty` memo | reads a generation, then builds; a change between them rebuilds on the next call | no | no defect |
+| `AnamorphAudioProcessor::currentStateSet` | captures tree + metadata without a window between them that a durable decision spans | no | no defect |
+| `getStateInformation` / `publishProgram` | read after their own drain (§15) | no | no defect |
+| `pollUndoCoalesce`'s undo signature | an in-memory snapshot, replaced on the next poll | no | no defect |
+
+**The load path is a confirmed sibling and is NOT closed by this round.** §16 recorded `load`'s
+baseline as a self-correcting transient, but that judgement was about a *restore* landing in the
+window — whose own adoption overwrites `sigAtLoad`. An *automation* write is overwritten by nothing,
+and that case was never considered. The failure is identical in shape and consequence: automation
+cycles a parameter, the user loads preset P, a write lands between `applySoundTree` and
+`sigAtLoad = soundSig()`, and the preset reads **clean** against the automated value while reloading
+P would move the sound.
+
+It is left open deliberately, with the measurement that makes the decision rather than a reflex fix:
+the symmetric remedy (baseline from the tree, as `saveUser` now does) removes the window entirely but
+makes the preset read **modified immediately after being loaded** at a measured rate of 2 in 3000
+round trips — roughly **1 preset load in 1500** — because a load applies `convertTo0to1(plain)` and
+the parameter then reports what it stores, one range mapping deeper than the baseline, and that extra
+pass is not idempotent for the four custom-mapped frequency ranges. Re-reading inside the apply loop
+shrinks the window without closing it; a generation check across the two reads is round 8's retry.
+Trading a rare false *clean* for a frequent false *dirty* on the most common preset action is a
+product decision, and it should be made with these numbers in hand rather than by this round's
+momentum. Recorded in ADR-0036 §17 and carried as an **actionable** residual.
+
+The other candidate the audit raised — `getStateInformation`'s off-message-thread path pairing a
+snapshot's metadata with a later live `copyStateWithRawValues()` — is the **already-dispositioned**
+host-timing residual (a host save straddling a message-thread edit), not a new finding: no
+non-blocking design can make those two reads atomic, and §5 already makes the *choice of snapshot*
+coherent. `pollUndoCoalesce`'s undo-signature capture writes nothing durable. Apart from the load
+path, no sibling fix was warranted.
+
+**Finding 2 — host serialization, disposition D, no new evidence.** Re-checked mechanically against
+the round-9 tree rather than restated: no Anamorph caller of either state function in `src/`; no new
+thread, timer, async callback or pool; the host-side members still touched only inside the two
+off-message-thread branches; the tripwire still diagnostic-only. The round-9 change adds one
+`PresetManager` hook and one static function, neither of which is reachable from either state function
+or read by any other thread. **Disposition D — unsupported host concurrency; no code change
+warranted.**
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 52 vs the round-8 two-read save (mutation A) | FAILS — baseline names width 0.24000, bytes hold 0.76000; the preset reads CLEAN at 0.24 while reloading moves the sound to 0.76 |
+| State test 52 vs HEAD's live baseline + no canonicalisation (mutation C) | FAILS 4 checks, incl. the sub-step discrete leg with no concurrency: baseline 0.66000, bytes and reload 0.66667 |
+| the canonicalisation removed (mutation B) | FAILS the pre-existing State test 8 assertion "freshly saved preset is clean" |
+| State tests 37–52 on the tree | green; suite 2000 checks / 0 failures, 51 tests |
+| the four probes under TSan, after (round-9 tree) | `--d2-stress-probe`, `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe`, 10 runs each: 0 runs with reports, 0 reports in total. No suppressions |
+| the state suite under TSan, after | 2000 checks, 0 failures, 0 TSan reports — including State test 52 leg (d), whose real automation thread writes parameters concurrently with `saveUser`, so the new capture path is exercised under the sanitizer rather than only in the plain build |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | 120 files clean; 398 anchors still point at the same text as both `8f781a3` (the round-8 merge) and `origin/main`; self-test 161 cases |
+| `preflight.sh` | exit 0 on the committed round-9 tree (all gates, both suites; `check-portability` 57 files / 0 violations, `check-realtime` 47 files / 0 violations, both warning-gate self-tests green) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: first-save
+consistency (42), overlapping restore ordering (43), Settings precedence (44), the handoff-window
+split (45), inline coherence (46), sound-edit precedence (47), replacement identity (48), completion
+ordering (49), the fixed-point drain (50) and the save/restore pairing (51) all pass unchanged.
+
+**What adversarial review changed in this round, recorded because the first implementation was
+wrong.** The fix as first written canonicalised the value on BOTH sides of the comparison. The file
+side already had that mapping applied — the tree holds the denormalised value — so it was applied
+twice, and the mapping is not idempotent in float for the four custom-mapped frequency ranges: a
+freshly saved preset then read **modified**, measured at 4 sweep points in 20001. The 201-point
+uniform sweep that was supposed to prove the equality could not see it, because a uniform grid never
+lands near a 5-decimal rounding boundary. Both are fixed (the file side applies it zero times; the
+sweep is uniform then pseudo-random over 20001 points) and both are now mutation-tested. Review also
+established that unifying the definition required the undo / A-B signature to move with it, and that
+the load path is a genuine sibling — both are carried above.
+
+**Status.** D-2 / RISK-007 — the reported finding is closed; **one actionable issue is now open**:
+the load-path baseline (above), reported with its measured trade-off rather than fixed blind.
+Architecture Review Gate: **APPROVED**, this round inside it. Host serialization: **disposition D**,
+no new evidence. Non-actionable residuals: a host save's snapshot and `copyState()` straddling a
+message-thread edit, the ≤ 50 ms adoption latency for the tail, and the preset format's own
+denormalised round trip (a re-saved preset can differ from the original in the last bits — measured
+347 in 3000 — which predates this round, moves no marker and changes no sound).
+
+### 16. Round 10 — one rule seen three times: derive at commit, publish only what is authoritative, baseline from what is written (2026-09-03)
+
+**Architecture Review Gate: APPROVED, and this round is inside it.** One derivation moves across a
+drain the processor already performs; one publication narrows from a whole tree to its one changed
+field; one read-back becomes a computation from values already being written. No thread, no lock, no
+wait, no audio-path allocation, no new cross-thread reader, no serialization or parameter change.
+
+**The bounded ordering audit that opened the round.** Every generation and the pending-restore state
+were traced through restore arrival → publication → synchronous sound/config application → handoff →
+adoption → A/B action → Settings mutation → preset load/save → snapshot publication → host save.
+Findings 1 and 2 are the same rule violated at two sites — *a value derived from state read before the
+drain or adoption that made it authoritative, then committed after it* — and finding 4 (KI-029) is the
+same rule on the load path. Finding 3 is not a fourth instance but the *definition* the tag mechanism
+already implements, made explicit. No shared lower boundary existed at which to fix them once: each
+is a caller getting the rule wrong at its own site. The round's own entry-point audit (below) found
+a **fourth** instance — the preset prev/next step — and it is fixed the same way; the publication-path
+audit found none.
+
+**Finding 1 — the A/B toggle used a stale selection.**
+
+| | |
+|---|---|
+| actors | M (the editor's toggle → `abSwitchTo`); H (a restore that flips the active slot) |
+| old order | editor reads `abActiveSlot()` → computes `1 - that` → `abSwitchTo (target)` → **its drain adopts the restore, moving `abActive`** → `slot == abActive` → return |
+| observable | with the restore flipping the active slot, the toggle is a silent no-op, for either parity |
+| root cause | the destination was derived by a caller from a read taken before the drain, then committed after it |
+| decision | **an A/B action chooses its target from the session the plug-in is on once every arrived restore has been adopted.** `abToggle()` on the processor: drain, then derive the other slot of the post-drain `abActive`. `abSwitchTo (int)` stays as the explicit-target primitive — "go to B" after a restore onto B is correctly a no-op |
+| audit of the other entry points | `abCopyToOther`, `undo`, `redo` drain and then use `abActive`; the editor's `getActive` is the display read (≤ 50 ms lag, a recorded residual); no other caller passes a *derived* target |
+
+**The audit's fourth instance — `PresetManager::step` (the prev/next buttons).** It computed "the
+row after this one" from `currentIndex()` and then called `load`, whose drain (through
+`onAboutToLoad`) adopts a pending restore — *after* the index was chosen. A restore that moved the
+selection had Next land on the row after the **old** selection. Same shape as finding 1, same fix: a
+new `adoptPending` hook, wired to `adoptPendingHostState`, is fired before the index is read.
+`onAboutToSave` is the save path's instance of the same hook. State test 56 pins Next and Prev across
+a restore that moves the selection; deriving the row before the drain fails 4 checks.
+
+**Findings 2 and 3 — Settings publication, one mechanism.**
+
+| | |
+|---|---|
+| actors | H (a pending restore, its Oversampling already in the engine-config word under g_R); M (an unrelated Settings edit) |
+| old order | edit → `valueTreePropertyChanged` → `arrival = engineConfigGeneration()` (= g_R) → `publishFromTree (g_R)` republishes the **whole tree**, whose Oversampling is still the outgoing value → CAS accepts an equal generation → the engine drops to the old factor until the adoption |
+| root cause | a publication borrowed a generation for a value that was not that generation's: the tree is only partly authoritative while a restore is pending |
+| the publication invariant | **a publication carries exactly the fields whose values are authoritative at the generation it is tagged with.** A single property change publishes its one field (`publishField`); the whole tree only where it has just been made coherent — the end of `writeResolved`, the constructor |
+| finding 3 | "when an edit happened", for ordering against restores, is **defined** as the instant its callback reads the word's generation. Both observable orderings are exact and pinned: a restore published before the callback is superseded at the adoption; one published after replaces it. The boundary — a restore landing between the binding's tree write and the callback's read is observed as *before* the edit, so the edit stands — is the user-favouring resolution of an instant the message thread cannot observe more finely without a lock, and is now stated at the site and in §18. With the invariant in force its only consequence is the edited field itself |
+| what was NOT closed and is said so | the adoption's own field-by-field write cannot expose a stale Oversampling under this rule either, but with the current table (Oversampling first) that was never observable; the mutation that would show it is not caught, and the test does not pretend to |
+
+**Finding 4 — KI-029, the load-side baseline: MUST FIX, fixed.** Re-investigated from the current
+tree: the race existed exactly as filed (apply, then `sigAtLoad = soundSig()`), durable, user-visible,
+and the 2-in-3000 cost of the symmetric fix was still representative — *of the save-side formula*.
+The cost had a cause: a load's live state is written from the tree and read back through the
+parameter's own store/report pair, one range mapping deeper than a save's capture, and not idempotent
+in float for the four log-mapped frequency ranges. `soundSignatureAfterLoading` models that pass
+(`normalisedAsRendered` twice) and is the same arithmetic as the post-load live signature: on the
+reference Release build, 0 mismatches over 3000 random round trips where the save-side formula gives
+2. **The first version trusted that prediction bare and the ThreadSanitizer build refuted it** — the
+same arithmetic is bit-exact only if the compiler emits it identically at both sites, and under the
+sanitizer's RelWithDebInfo build (fused multiply-add contraction differing between an inlined chain
+and a value routed through `std::atomic<float>`) it disagreed at ≥ 1 point and failed State test 55.
+The load paths therefore **reconcile** the prediction against one read-back per parameter at the
+signature's own resolution (`loadBaselineFromTree`): the live form where the two agree within ~10
+ulps — five hundred times below the smallest real step — and the predicted value where a foreign
+write moved the parameter, so the read-back has no window to lose. A just-loaded preset is exactly
+clean on both builds (0 in 3000), and automation landing during the load still leaves it dirty. The
+factory path does the same over its override table. The invariant is now uniform: *the clean
+baseline is derived from the artifact, and a mutation landing during the operation leaves the preset
+dirty rather than being absorbed.* KI-029 removed; INC-013 records the two-round history.
+
+**Finding 5 — host serialization, disposition D, no new evidence** (mechanical check on this tree:
+two declarations, two definitions, no caller; two message-thread timers, nothing else; the host-side
+members at the same four sites; the tripwire read by a `jassert` only; the round's three additions
+message-thread-only and unreachable from either state function).
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 53 vs the target derived before the drain | FAILS 8 checks (both parities) |
+| State test 54 vs the user-edit branch republishing the whole tree | FAILS 1 check (the engine reverts to the outgoing Oversampling) |
+| State test 54 vs the adoption branch republishing the whole tree | not caught — deliberately unasserted, see above |
+| State test 55 vs a read-back baseline in `load`/`loadFile` | FAILS 4 checks |
+| State test 55 vs the save-side formula on the load side | FAILS 3 checks (the 2-in-3000 false dirty reappears) |
+| State test 56 vs the step's row derived before the drain | FAILS 4 checks (Next and Prev each land relative to the outgoing row) |
+| State tests 37–56 on the tree | green; suite 2079 checks / 0 failures, 55 tests |
+| the four probes under TSan, after (round-10 tree) | `--d2-stress-probe`, `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe`, 10 runs each, across four lanes on this round's trees: 0 runs with reports, 0 reports in total. No suppressions |
+| the state suite under TSan, after | 2079 checks, 0 failures, 0 TSan reports — on the final tree, run alone. (Two earlier lanes reported one non-race failure each: the first the bare load-side prediction the reconciliation replaced; the second and third the shared-folder collision with a plain suite running beside them, root-caused above) |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | 120 files clean; 398 anchors still point at the same text as both `efe46a5` (the round-9 commit) and `origin/main`; self-test 161 cases |
+| `preflight.sh` | exit 0 on the committed round-10 tree (all gates, both suites; `check-portability` 57 files / 0 violations, `check-realtime` 47 files / 0 violations, both warning-gate self-tests green) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: 42–52 all pass
+unchanged, including 44 (Settings precedence — the field-level publication changes what an edit
+publishes, not what the adoption keeps) and 52 (the save's single capture is untouched).
+
+**What adversarial review changed in this round.** Four lenses, all sound-with-caveats, no blocking
+finding: a wrong justification in `abToggle`'s comment (the two drains are separated by a window a
+restore can land in; the outcome is a legal serialization, the stated reason was not what makes it
+so — rewritten); a stale save-side signature comment that still described the load's behaviour
+(rewritten); a transient where a restore landing between an edit's generation read and its
+compare-exchange leaves tree and word disagreeing until the next adoption (recorded in §18); and
+three test hardenings (a pending-restore guard in 53, a cross-reference to 44's generation
+comparison in 54, the save-side mismatch count asserted rather than printed in 55). The entry-point
+audit found the fourth instance above; the publication-path audit found none. **And the TSan lane,
+not a reviewer, found the toolchain dependence** in the bare load-side prediction (above) — the
+reason "do not treat TSan silence as sufficient proof" has a converse: a TSan *failure* that is not a
+race is still evidence, and it was.
+
+**A flake, root-caused rather than re-run.** Two validation runs in this round each reported one
+failure in State test 52 leg (i) — "the reloaded sound is the saved sound at every swept value" — a
+deterministic sweep on a fixed binary, so a real nondeterminism. Fifteen quiet runs did not
+reproduce it. The two failing runs had one thing in common: the `tsan` lane's own suite run was
+alive at the same time. The suite writes probe presets to fixed paths in the temp folder and
+harness presets into the real user preset folder, and asserts that folder's listing; two instances
+read each other's files. Confirmed by running two plain suites deliberately side by side: 2 and 8
+failures across tests 10, 12, 13, 24, 28 and 52 — none of them this round's, all of them the
+folder. A per-process tag on the probe and harness names was tried and reverted: it fixes 52's
+probe file and leaves the listing assertions colliding, a half-measure that would read as a
+guarantee. The constraint is instead recorded where it belongs (`TESTING.md`: one instance at a
+time, as CI already gives it), and the TSan lane below was re-run with nothing else on the
+machine. Operator error in how the lanes were overlapped, not a defect in the product or the tests.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains; KI-029 closed. Architecture Review
+Gate: **APPROVED**, this round inside it. Host serialization: **disposition D**, no new evidence.
+Non-actionable residuals: a host save's snapshot and `copyState()` straddling a message-thread edit,
+the ≤ 50 ms adoption latency for the tail, the preset format's own denormalised round trip, and the
+edit-ordering boundary stated in §18 (user-favouring, by definition).
+
+### 17. Round 11 — one equivalence, and nothing layered on top of it (2026-09-03)
+
+**Architecture Review Gate: APPROVED, and this round is inside it — it removes machinery.** A
+tolerance and the comparison that used it are deleted from one signature builder, and a second
+tolerance of the same shape from the restore path's per-parameter write gate. No thread, no lock, no
+wait, no audio-path allocation, no new cross-thread reader, no serialization or parameter change.
+
+**The finding — a tolerance absorbed real automation writes.** §18 closed KI-029 by deriving the
+load's clean baseline from the values the load writes rather than reading the parameters back, and
+then reconciled that prediction against one live read-back: where the two agreed to within `1e-6`,
+the **live** value was taken. A tolerance cannot tell compiler noise from a real automation write of
+the same size, so a write landing in the load window was folded into the baseline and the preset
+read *clean* against a sound its own file does not hold — the failure §17 and §18 exist to prevent,
+reintroduced by the mechanism meant to protect §18.
+
+**The premise was measured and does not hold.** Round 10 justified the reconciliation by a
+ThreadSanitizer build failing State test 55's exact-equality assertion, concluding the prediction was
+not bit-exact across toolchains. Re-measured with a temporary probe:
+
+| measurement | Release | ThreadSanitizer |
+|---|---|---|
+| 20 000 values × 33 params: prediction vs live signature, float level | 0 differences | 0 differences |
+| the same, at the five-decimal string level | 0 | 0 |
+| 3 000 save → `copyState` → XML → re-parse → `loadFile` round trips: XML value fidelity | 0 differences | 0 differences |
+| the same: prediction vs post-load live, from the in-memory tree and from the re-parsed file | 0 / 0 | 0 / 0 |
+
+**Round 10's named mechanism is refuted outright.** It was fused-multiply-add contraction differing
+between the inlined prediction chain and the value routed through the parameter. Every x86-64 target
+in this project — the ThreadSanitizer build among them — is compiled under ADR-0031 with
+`-march=haswell -ffp-contract=off`, measured there at **0 FMA instructions emitted**. No interleaving
+of that build could have exhibited the mechanism it was blamed on.
+
+**What produced the red run is a candidate, not a finding, and is recorded as one.** Two instances of
+that probe run concurrently — they share a fixed temp-file path — produce hundreds of mismatches,
+with value differences up to **~1.9e4**, i.e. one process reading the other's file. Round 10
+root-caused exactly that collision later in the same round, for a different test, and recorded the
+one-instance rule in `TESTING.md`. But round 10's own reproduction listed failures in tests 10, 12,
+13, 24, 28 and 52 — **not 55**, the test that actually failed under TSan. So the collision is
+available as a mechanism and is **not** claimed as the measured cause. What is established is enough
+to decide: the arithmetic is exonerated in the build that failed, and the tolerance bought with that
+failure was unjustified. **The lesson is procedural, not numerical**: a failure explained by a
+hypothesis is not the same as a failure whose hypothesis was tested — which applies to this round's
+own first draft, which asserted the collision as fact. Round 11 also removes the fixed shared temp
+paths from the suite (`juce::File::createTempFile`) so the mechanism cannot recur; the preset
+**folder** is still shared, which is what the one-instance rule covers.
+
+**The decision — equivalence model B, stated once.** The signature has exactly one equivalence, and
+every producer applies it identically:
+
+> Two sounds are the same when their **rendered normalised values agree to five decimal places**.
+
+"Rendered" is `normalisedAsRendered` (§17), the value the plug-in actually renders and stores.
+Nothing is layered on it.
+
+**What the quantisation itself absorbs, stated rather than implied.** One signature bucket is `1e-5`
+of normalised range, so the margin has to be measured against the parameter set:
+
+| domain | count | smallest step | vs one `1e-5` bucket |
+|---|---|---|---|
+| on a grid (interval-snapped) | 29 | 8.08e-5 (Chorus Rate, top of range) | 8.08 × |
+| gridless (log-mapped frequency) | 4 | — | no grid at all |
+
+The binding case is **Chorus Rate** — `{0.05, 5.0, interval 0.001, skew 0.4}`, the set's only skewed
+range. The margin is **~8 ×, not the ~50 × this round's first draft recorded**; 50 × is the Width
+family alone, and a future range change checked against that number could narrow a cell below one
+bucket. State test 57 now **asserts** the margin over the whole parameter set instead of quoting it.
+For the four gridless ranges the bucket is the only resolution there is: at worst **1.38 Hz** at the
+20 kHz end of the three multiband splits and **0.013 Hz** on Mono Maker Freq. Such a move does not
+hide indefinitely — successive sub-bucket writes cross a boundary and the preset then reads dirty and
+stays dirty.
+
+**The two parameter domains, asserted rather than assumed.** A grid parameter absorbs movement
+*inside one cell* — §17's deliberate rule, since such a move changes neither the DSP input nor
+anything a file can hold — and reports movement across a cell boundary, which is a whole step. It is
+**not** true that a tiny write can only reach the signature on the gridless ranges, as the first
+draft claimed: `snapToLegalValue` rounds, so a sub-`1e-6` write straddling a snap boundary moves a
+whole step and is correctly an edit. State test 57 asserts all of it, for Amount *and* for Chorus
+Rate.
+
+**Related signature audit, and the sibling it found.** Every producer and consumer of a sound
+signature was examined — `soundSignatureFor`, `soundSig`, `soundSignatureForSavedTree`,
+`soundSignatureAfterLoading`, `signatureAfterApplying` and its factory lambda,
+`normalisedFromSavedTree`, `isDirty` and its memo, `setMeta`, `adoptRestoredState`, `saveUser`,
+`load`, `loadFile`, the constructor, and `AnamorphAudioProcessor::soundSignature` with its
+`committedSig` comparisons. No float tolerance remains on any of them.
+
+The audit then found one more comparison of the deleted shape **off** the signature paths, on the
+restore path that a baseline travels through: `reassertParameters`'s per-parameter write gate,
+`! (std::abs (norm - rp->getValue()) <= 1.0e-6f)`. The value it declined to write is the value the
+**session** stored, while the baseline travelling with that session is adopted verbatim — "live value
+from before, baseline from the file", the shape that lights the modified star on an untouched preset.
+It is exact now (ADR-0036 §20), which is safe because a restore is a **fixed point**: measured with
+the gate exact, 2 000 sounds × 20 re-applications of their own chunk move **no parameter at all**
+(worst delta 0.0), and 3 000 project save/reopen round trips reopen clean. The tolerance had been
+declining 23 writes per 198 000, all float tails on the gridless ranges. **Stated honestly:** no test
+discriminates the two gates, because they agree on every observable measured; State test 58 guards
+the property that makes the exact form safe, and the change is justified as removing an epsilon with
+no argument behind it, not as fixing a reproduced failure.
+
+**Recorded, not changed.** Two live reads survive inside otherwise tree-derived signatures: the
+non-ranged fallbacks in `soundSignatureAfterLoading` and `soundSignatureForSavedTree`, unreachable
+here (State test 52 asserts every parameter is ranged) but the one construct that would reopen the
+KI-029 window for a future non-ranged parameter. `lastPolledSig` is assigned on every poll and read
+nowhere — dead state, left for a cleanup outside this round.
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State tests 55/57 vs round 10's `1e-6` reconciliation restored | FAILS 10 checks (all four boundary legs and the `load(index)` leg, plus State test 55's equality) |
+| State tests 37–58 on the tree | green; suite 2198 checks / 0 failures, 57 tests |
+| the four probes under TSan, after (round-11 tree) | `--d2-stress-probe`, `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe`, 10 runs each: 0 runs with reports, 0 reports in total. No suppressions |
+| the state suite under TSan, after | 2198 checks, 0 failures, 0 TSan reports — run alone. **This is the direct confirmation**: State test 55's exact-equality assertion, the one whose ThreadSanitizer failure motivated round 10's tolerance, now passes under that same build |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | 120 files clean; 398 anchors still point at the same text as both `a00f39d` (the round-10 commit) and `origin/main`; self-test 161 cases |
+| `preflight.sh` | exit 0 on the committed round-11 tree (all gates, both suites; `check-portability` 57 files / 0 violations, `check-realtime` 47 files / 0 violations, both warning-gate self-tests green) |
+| first-party warnings | none in the touched files on gcc 13; none new on clang 18 (the pinned gates run in CI) |
+
+**Regression protection for the earlier rounds**, re-checked rather than assumed: 42–56 all pass
+unchanged. State test 55's equality assertion, which round 10 had weakened to "within float tail"
+with the count merely printed, is **restored to exact string equality** — which is what it measures,
+in both builds, when the suite is run alone.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains. Architecture Review Gate:
+**APPROVED**, this round inside it. Host serialization: **disposition D**, no new evidence.
+Non-actionable residuals: a host save's snapshot and `copyState()` straddling a message-thread edit,
+the ≤ 50 ms adoption latency for the tail, the preset format's own denormalised round trip, and the
+edit-ordering boundary and read-then-CAS transient stated in §18.
+
+### 18. Round 12 — a save describes the session the adoption will produce (2026-09-04)
+
+**Architecture Review Gate: APPROVED, and this round is inside it.** One more message-thread fact is
+published inside the snapshot that already crosses. No new thread, cell, lock, wait, audio-path
+allocation or cross-thread reader; no serialization-format, parameter or latency change.
+
+**The finding — a Setting changed during pending adoption vanished from an immediate host save.**
+Reproduced deterministically before anything was changed: State test 59 fails **7 checks** against
+the round-11 tree, one per Settings field plus the all-six leg.
+
+**The mechanism — two counters that do not move together.** A restore has an ARRIVAL generation (the
+engine-config word's CAS on the restoring thread, the one instant the message thread can see a
+restore before adopting it) and an ADOPTION generation (`adoptedGeneration`, moved at exactly one
+site inside the drain). §9's per-field Settings rule is written against the first; `covered` is
+written against the second, because `ProgramSnapshot::generation` is stamped from it. A Settings edit
+can therefore never raise the generation of the snapshot it publishes: inside the window that
+snapshot is *guaranteed* rejected, however many edits it carries.
+
+**`covered` is right and stays.** In that window the message thread still holds the OUTGOING
+project's preset name, baseline, selection and A/B slots while the live parameters already hold the
+restored sound; accepting the snapshot would rebuild the mixed state §5 forbids and State test 42
+pins. Raising the snapshot's generation on an edit is that same mistake in another hat.
+
+**The defect is one field of the other branch.** `viewOfRestore` is documented as *what the message
+thread will own once it adopts this restore*, and every field honours that except its Settings, which
+model `applyResolved` (write every field) while the adoption that actually runs is `adoptResolved`
+(keep a field edited at or after this restore arrived). Those have been two different functions since
+round 3; the host-side view was never moved onto the second, and it is immutable and built before the
+edit exists, so nothing can repair it in place.
+
+**The decision — whole-session precedence and per-field precedence are different rules.** The save
+now decides the Settings separately, per field, from the per-field edit generations published
+alongside the tree they describe (`ProgramSnapshot::settingsEditGen`). Both are read out of the one
+immutable object, so a publication landing between two reads cannot pair a tree with someone else's
+generations — round 2's rule for the object-wide generation, applied field-wise. The merge is
+`InternalState::resolvedWithEdits`, which is `adoptResolved`'s own predicate (`editIsNewerThan`, now
+named and used by both) applied to values instead of in place: one predicate, two callers, no second
+notion of "the current Settings".
+
+**Why "drain in the edit path" is not the fix**, though it looks smaller: an edit can land between the
+restoring thread's engine-config CAS and its `pendingRestore.put`, where the word already carries the
+new generation — so the edit records it and will survive the adoption — while the cell is still empty
+and there is nothing for any drain to adopt. That sub-case is inside the reported window and immune to
+draining. It would also move a full adoption (a sound re-install, an undo-history clear, a preset
+metadata swap) into a `ValueTree` property-changed callback raised by an editor binding.
+
+**Bounded audit of the same ordering family — no sibling.** Every other message-thread mutation of
+program state drains first by construction (the A/B switch and copy, `step`, the preset load/save
+hooks, the undo poll, the editor's construction, Level-Match apply, both message-thread state calls),
+so its publish carries the arrival's generation and `covered` is true. The Settings edit path is the
+only message-thread mutation that deliberately does not drain — §9 exists because it cannot — and the
+only one that needed this. The sound needs nothing: `writeState` reads the live APVTS, and an edit
+never triggers the adoption's sound re-install (§12).
+
+**Validation.**
+
+| gate | result |
+|---|---|
+| State test 59 against the round-11 tree | FAILS 7 checks (six fields + the all-six leg) |
+| the fix vs writing the restore's Settings as decoded | FAILS 14 checks |
+| State tests 37–59 on the tree | green; suite 2271 checks / 0 failures, 58 tests |
+| the four probes under TSan, after | `--d2-stress-probe`, `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe`, 10 runs each: 0 runs with reports, 0 reports. No suppressions |
+| the state suite under TSan, after | 2271 checks, 0 failures, 0 reports — run alone |
+| the DSP suite | 396 checks, 0 failures (unchanged sources) |
+| `check-realtime.py` | 47 files, 0 violations |
+| `check-docs.py`, `check-citations.py` | 120 files clean; 398 anchors clean against both `8b348f6` and `origin/main` |
+| `preflight.sh` | exit 0 |
+
+**macOS CI, fixed in the same round.** The `macos` job's step *DSP + state self-tests, x86_64 slice
+under Rosetta* failed 2 checks on the round-11 commit: State test 57's snap-boundary leg probed
+`boundary ± d` for a doubling `d` and found no crossing under Rosetta, while native x86-64
+(`macos-intel`) and arm64 both found one at 2.0e-08 with an identical base and cell width. The probe
+is gone: the leg now asserts on the pair the bisection itself established straddles the boundary, so
+the property is proved by the search on whatever platform runs it rather than by a guessed epsilon.
+Same assertion, no weakening — and the same class of fragility round 11 removed from the product.
+
+**Status.** D-2 / RISK-007 — no actionable review issue remains. Host serialization: **disposition D**,
+no new evidence (the round's source change touches `getStateInformation`'s Settings selection,
+`ownedProgram`, `writeState`'s signature and `InternalState`; it adds no caller, no thread, no timer
+and no concurrent path, and leaves the host-side members and the off-thread tripwire untouched).
+
+### 19. Round 13 — CI closure: the Windows stack, and a log that survives a crash (2026-09-04)
+
+**No product change.** The D-2 state model, ADR-0036 §21's decision and every invariant rounds 2–12
+established are untouched: this round is a test-frame fix, a CI guard and a diagnostics fix.
+
+**macOS: green, no further change.** The round-12 fix to State test 57's snap-boundary leg holds. On
+the round-12 head the `macos` job passes end to end, including *DSP + state self-tests, x86_64 slice
+under Rosetta* — the step that failed in round 11 — alongside `macos-intel` (native x86-64) and
+`macos-crossslice`.
+
+**Windows: a stack overflow, found and fixed.** The `windows` job's *DSP + state self-tests* step
+exited non-zero having printed one truncated line and no summary. Root cause, reproduced locally
+rather than inferred: `AnamorphAudioProcessor` is **~138 kB**, a compiler gives each of a function's
+sibling-scope locals its own frame slot rather than reusing one, and State test 59 was written as a
+single function holding **ten** of them — a ~1.4 MB frame. Linux and macOS give the main thread 8 MB
+and never noticed; **Windows gives a console EXE 1 MB**, so the suite died on ENTRY to that function,
+before its first `printf`.
+
+| measurement | result |
+|---|---|
+| `sizeof (AnamorphAudioProcessor)` | 141 216 bytes |
+| the round-12 suite under `ulimit -s 1024` | **SIGSEGV** entering State test 59, exactly as on Windows |
+| the same suite after the fix, `ulimit -s 1024` | 2271 checks / 0 failures |
+| the same suite, default 8 MB stack | 2271 checks / 0 failures |
+
+**The fix is the heap, and only the heap.** State test 59's legs are now separate functions, and each
+takes its processor from `std::make_unique`. Splitting into functions alone was tried first and
+**measured insufficient** — the compiler inlines them back into one frame and the overflow returns —
+so the split is kept for readability while the heap allocation is what carries the guarantee. Not one
+assertion was weakened; the restructure ADDED the fixture's non-vacuity checks, and the round-12
+mutation (writing the restore's Settings as decoded) now fails **16** checks rather than 14.
+
+**Two durable guards, because the failure was invisible where the suite is developed.**
+
+* **`stdout` is unbuffered in both suites.** Windows' CRT buffers a pipe fully, so a suite that dies
+  mid-run loses everything since the last flush — which is why round 12's failure arrived as one
+  truncated line with no summary and no way to tell which test was running. `setvbuf(_IONBF)` costs
+  nothing measurable for a few thousand short lines and makes every future failure readable at the
+  point it happened, on every platform, without a `stdbuf` wrapper the Windows job cannot use.
+* **The `linux` job re-runs the state suite under `ulimit -s 1024`**, blocking. A proxy, not an
+  equivalence — MSVC lays out frames its own way — but it reproduces this failure, on the platform the
+  suite is developed on, about twenty minutes earlier than the Windows job can. The error it prints
+  names the fix (put the processors on the heap) and rules out the wrong one (raising the limit).
+
+**Bounded regression audit of the changed area.** The round touches `tests/state_tests.cpp`,
+`tests/dsp_tests.cpp` (the `setvbuf` line) and one added CI step. No `src/` file changed, so state
+publication, generation ordering, host save, restore, A/B, preset and realtime behaviour are
+untouched by construction; the suites re-assert them and are green. The state suite's own numbers
+moved only by the added non-vacuity checks (2261 → 2271).
+
+**Host serialization: disposition D, unchanged, no new evidence.** The finding moved line (now
+`src/PluginProcessor.h:430`) because round 12 added six lines above it. That is not evidence. This
+round adds no caller, no thread, no timer, no async or background path, and touches neither the
+host-side members nor the off-thread tripwire — `src/` is not modified at all.
+
+## D-2 / RISK-007 round 18 — 2026-09-04 — a restore is authoritative from its announcement, and announces before it installs
+
+> Round 17's adversarial audit left five §24 residuals open; the owner commissioned this round to
+> fix the first of them as a correctness problem — *"the guard's `engineConfigGeneration()` term
+> still publishes outside the lock and asks 'has a newer restore announced' rather than 'is one
+> live'; the lock makes the resulting re-install of a superseded restore deterministic rather than
+> rare"* — and to reassess the rest with evidence.
+
+**The ordering, reconstructed.** An off-message-thread restore was: decode → **install** the sound
+(under §24's lock) → `++hostRestoreGen` → **announce** (`publishEngineConfig`, a CAS on the
+engine-config word) → build the host-side view → **hand over** (`pendingRestore.put`). The
+adoption of an older restore asks the word "does it still carry MY generation?" and the counter
+"has anything replaced my sound?", and re-installs its own sound when both are yes.
+
+| | thread | what happened (round-17 tree) |
+|---|---|---|
+| t0 | H | R1: install, announce g1, hand over. M has not drained. |
+| t1 | H | R2: **install** — R2's sound is live; `soundSetGen` moved; the word still says g1 |
+| t2 | M | drain takes R1; guard blocks on the lock R2's install holds; **wakes at its release** |
+| t3 | M | word == g1 (R2 unannounced) and counter moved (R2 installed) → **re-installs R1 over R2** |
+| t4 | H | R2 announces g2, hands over |
+| t5 | — | R1's sound live under R2's oversampling; a host save here = R2's metadata over R1's sound |
+| t6 | M, ≤ 50 ms | R2's adoption re-installs R2 |
+
+Measured before the fix (State test 63, case C): width 0.21 where 0.57 was the newer session's, in
+the live sound AND in the host save taken at t5. Case E (three restores) shows it at every step.
+
+**Scenario D as the round states it** — a second restore arriving before the first has announced —
+needs two host state calls in flight and is outside §11 (Disposition D). Under the new order it is
+also structurally impossible: no restore is ever installed-but-unannounced.
+
+**The invariant (§25).** *A restore is AUTHORITATIVE from the instant its generation is announced,
+and it announces BEFORE it installs.* Under the replacement lock, "the word still carries my
+generation" then means no newer restore has announced, hence none has installed, hence none can
+before this thread releases the lock — because installing takes the lock and a newer restore
+announces before trying to. The guard's two terms are unchanged in code; the ordering is what makes
+the first one answer the question the decision needs.
+
+**Ownership and visibility.** `hostRestoreGen`: written and read by the one host state thread only
+(§11). The engine-config word: written by H at the announcement and by M's tree writes, both through
+one acq_rel CAS keeping the highest generation; read by audio (low byte, relaxed), `prepareToPlay`,
+and the guard (acquire, under the lock). `soundSetGen`: bumped under the lock at each install's
+completion, read under it by the guard. H's CAS is sequenced before its lock acquisition and its
+unlock synchronises with the guard's acquisition, so whenever the install completed before the guard
+took the lock the announcement is visible; otherwise the guard either already sees it or the newer
+install cannot begin until the guard releases — correct either way.
+
+**The fix.** `decodeRestore` records the sound tree and no longer installs; `installRestoredSound`
+installs it and takes the token (§13) as its own step. M calls it right after the decode (generation
+0: authoritative by thread ownership and the drain, never by the word). H calls it after
+`++hostRestoreGen` (stepping over zero at wrap) and `InternalState::announceRestore` — the
+announcement as an operation of its own, landing whether or not the restore carries a usable
+Settings tree, its return asserted — before `viewOfRestore` and the handoff. Stated exactly, the
+invariant is one of critical sections: no obsolete restore's replacement can COMPLETE after a newer
+install has begun; both lock orders are safe. Stated consequence: the oversampling word flips BEFORE
+the parameters land rather than after, and the gap is bounded by one replacement including its
+per-parameter host notifications (`replaceState` notifies the host through `setNewState`) — not
+microseconds; neither order was atomic with the sound, and only the old one carried a
+wrong-direction re-install. A Settings edit landed during an install is now ordered after that
+restore (case F pins the boundary shift). Reverting the order fails **8** checks; removing the
+guard's announcement term alone fails **4**, which is the term shown load-bearing.
+
+**The reader side, measured rather than argued.** State test 64 lands a host save inside a
+replacement's write loop through the round-17 seam, for both shapes, on the round-17 tree:
+
+| replacement shape | mechanism | host save mid-loop recorded |
+|---|---|---|
+| session-shaped (`applySoundTree`, `applyStatePreservingView`) | `replaceState` moves EVERY parameter under JUCE's `valueTreeChanging`, the lock `copyState` shares; the reassert loop then fixes exact values | 22 exact + 11 round-tripped, **0 from the outgoing session** — one session |
+| preset-shaped (`PresetManager::applySoundTree`, `applyDefaults` + overrides) | the loop is the only write | **3 preset + 30 outgoing** — a sound that was never any session |
+
+The second is a persistence defect (in spec: an AU autosave during a preset click). Fix: the one
+durable reader, `copyStateWithRawValues` — behind `writeState` on both threads and behind
+`currentStateSet` (A/B slots, undo, committed baseline) — takes `soundReplacement` around the copy
+and its `raw` stamping; and `writeState` captures once per save and copies, where it used to capture
+up to three times under separate scopes. Lock order unchanged (this lock → APVTS lock inside `copyState`); audio never
+takes it. A host save now waits for a message-thread replacement — the relationship JUCE's own
+`replaceState` (APVTS lock held while `setNewState → setValueNotifyingHost` notifies the host) and
+`copyState` already have, verified in the pinned source, so not a new hazard class. Removing the lock
+fails **1** check with the same 3 / 30. `saveUser`'s `copyState` stays as it is: on M it can meet
+only H's session-shaped install. `soundSignature` / `isDirty` are transient, recomputed every poll.
+
+**The other §24 items.** Item 4 (the reader's window lengthens) is now bounded: a durable reader
+waits for at most one replacement. Item 5 (the A/B duck under contention): `requestDuck()` sets a
+flag consumed at the audio thread's next `setParameters`; a forced swap landing during the fade-out
+takes the tighten branch and keeps forced semantics, one landing during the fade-in takes the
+ordinary re-duck path (no snap, no dry fill); the window is bounded by up to two host installs with
+their per-parameter notifications (the slot capture and the apply each take the lock). A masking
+miss, never a click: intentionally accepted, bound stated.
+
+**An adversarial review of the design (read-only, two of three lenses completed) changed four
+things before the code was final**: the invariant's wording (critical sections, not instants); the
+announcement made unconditional and asserted, with the wrap step; `writeState`'s single capture;
+and the bounds and the widened listener rule written down.
+
+**Measured.** State suite 2439 / 0 (63 tests), repeated; the two new tests fail on the round-17
+tree exactly as described, and each fix is caught by its own regression alone (8 / 1 / 4).
+
+**Host serialization: Disposition D, unchanged, no new evidence.** No new caller, thread, timer,
+async or background path; two operations reordered on the one host state thread, and a wait added
+to a reader that never runs on the audio thread. This is a threading-model change under
+`ARCHITECTURE_REVIEW_GATE.md`, commissioned as such by the owner for this round.
+
+## D-2 / RISK-007 round 17 — 2026-09-04 — one whole-sound replacement at a time
+
+> *"Overlapping restores expose mixed sound. When a restore overlaps earlier adoption,
+> `applySoundTree` can leave the detected mixed sound live. Immediate playback or saving can
+> therefore observe parameters belonging to both sessions."* — `src/PluginProcessor.cpp:1490`
+
+**Genuine, and the codebase already contained the proof.** `soundReplacementToken(begin)` returns
+0 — *no owner provable* — exactly when another replacement ran inside ours, and its own comment
+states that "their per-parameter writes are not mutually excluded, so the live sound may hold values
+from both". The condition was detected and REPAIRED, at the next adoption; it was never prevented.
+
+**The mechanism, exactly.** A whole-sound replacement is two steps:
+
+| | step | locked by |
+|---|---|---|
+| 1 | `apvts.replaceState (tree)` | JUCE's APVTS lock |
+| 2 | a LOOP of `setValueNotifyingHost` over every sound parameter (`reassertParameters`, or `PresetManager`'s own loop) | **nothing** |
+
+Step 2 is where two replacements meet. Each individual write is atomic, so nothing tears; the SET is
+what ends up belonging to neither session. And it is the set the DSP reads and `copyState()` saves —
+the tree is not what is heard.
+
+**Which pairs can actually meet.** §11 gives the host ONE state thread and the message thread is one
+thread, so a conflicting pair is always {the sound half of a host thread's restore decode, on H} ×
+{any replacement on M}. Two message-thread replacements cannot interleave with each other, and two
+host restores cannot either.
+
+| | thread | what happened |
+|---|---|---|
+| t0 | M | A/B apply (or preset load, or undo) begins: `replaceState`, then writes parameters 1…3 of session P |
+| t1 | H | `setStateInformation` decodes session R and installs its sound — all 33 parameters |
+| t2 | M | the paused loop resumes and writes parameters 4…33 of P over R's |
+| t3 | — | **settled**: 3 parameters from R, 30 from P. Audible; savable; the tree says R |
+| t4 | M, ≤50 ms later | the adoption's §14 re-install repairs it wholesale |
+
+The measured figure from the mutation run is exactly this shape: *30 from one session, 3 from the
+other*. t3→t4 is up to one 20 Hz period of the wrong sound, and a host save taken in it writes the
+mixture into the project file, where it is permanent.
+
+**The rule (§24).** *A whole-sound replacement is indivisible with respect to every other whole-sound
+replacement.* Two halves, and the invariant is both: **sound coherence** — once the writers are
+finished, every parameter comes from ONE replacement — and **session coherence** — the replacement
+that finished last is what the live sound is, entire, so the sound, the tree and any baseline derived
+from that session's own bytes (§22) describe the same thing.
+
+**The implementation.** One `juce::CriticalSection soundReplacement` on the processor, taken at every
+replacement site and nowhere else; `PresetManager` receives a pointer to it at construction so the
+preset loops take the SAME lock rather than a second one. Recursive, which the adoption requires: it
+holds the lock across the §14 guard *and* the `applySoundTree` that guard calls, so "has anything
+replaced this sound since?" cannot be invalidated between being asked and being acted on. **The audio
+thread never takes it.**
+
+**Rejected.** An assertion records the mixture and ships it. Marking the older restore *pending* does
+not stop its writes, which are the defect. Delaying or disabling playback or saving hides the
+observation and would put the audio thread behind a message-thread loop. A per-write generation check
+leaves the sound mixed and merely bounds how long — the repair-later shape §14 already provides.
+
+**The bounded audit of the family.**
+
+| site | replacement | excluded before | verdict |
+|---|---|---|---|
+| `AnamorphAudioProcessor::applySoundTree` | `replaceState` + `reassertParameters` (restore install, H) | no | **fixed** |
+| `AnamorphAudioProcessor::applyStatePreservingView` | `replaceState` + `reassertParameters` + view re-override (undo / redo / A/B, M) | no | **fixed** |
+| the adoption's §14 re-install | the guard AND the write it guards | no | **fixed**, one scope over both |
+| `PresetManager::applySoundTree` | the per-parameter loop (user preset, `load` / `loadFile`, M) | no | **fixed** |
+| `PresetManager::applyDefaults` + the factory overrides | two loops, ONE replacement (factory preset, M) | no | **fixed**, one scope over both halves |
+| `applyAutoGain`, `resetSolo` | a single parameter | — | not in the family: one write cannot mix a set |
+| `processBlock` | reads only | — | never takes the lock |
+| pre-0.6.4 `applyStateSet` | reached only through `applyStatePreservingView` | now yes, by its caller | covered, unchanged |
+
+**The factory path is this round's own find, not the reviewer's.** It is not tree-shaped — "every
+parameter to its default, then the table's overrides" — so it never passed through
+`PresetManager::applySoundTree`, and no document had named it as a whole-sound replacement at all. A
+restore landing between its two halves settled a sound that was part factory default, part session.
+
+**State test 62** pins the rule at four observation points, with the competing restore landed exactly
+mid-loop through the `insideSoundReplacement` seam rather than raced for: the settled parameter set
+(B), live playback from an audio thread across the overlap (E), an immediate host save (F), and a
+preset load — three factory rows — as the message-thread half of the pair (G). Removing the five
+scopes fails **6** checks; the fixed tree is silent over six consecutive runs.
+
+**Three test-design problems this round had to solve, recorded because each one nearly produced a
+test that proves nothing.**
+
+1. *The seam fires inside EVERY replacement*, the competitor's own included, so a leg that arms it
+   naively reassigns a still-joinable `std::thread` and the suite terminates. A `fireOnce` CAS latch
+   arms it once, and the seam is cleared AFTER the join, never before.
+2. *A save taken the instant the host's own restore returns cannot witness the mixture* — the
+   obsolete writer has not resumed yet. Leg F's first version passed on the mutant for that reason.
+   It now orders the two explicitly (both waits bounded, so neither ordering hangs) so the save lands
+   after the resumed writer, which is the only instant that can see it.
+3. *Leg G's oracle was vacuous twice.* Classified against the two authored sessions, a factory apply
+   writes values belonging to NEITHER, so "not a mixture of A and B" was trivially true; it now
+   classifies against the preset's own sound. And it classified after `pollUndoCoalesce`, i.e. after
+   the §14 repair — measuring the repair rather than the property. It now classifies before.
+
+**And one property the test must NOT assert.** A reader sampling parameters mid-loop sees part of the
+outgoing sound and part of the incoming one — true of a single uncontested replacement, since JUCE
+offers no block-atomic parameter snapshot, and no lock the audio thread does not take could change
+it. `replaceState` adds a second transient: it carries a choice parameter through the tree's
+denormalised form, so between the two steps such a parameter reads as its snapped neighbour, a value
+from neither session. An early version of leg E asserted over all samples and failed intermittently
+**on the fixed tree** for exactly that reason. It now asserts only on samples taken once both writers
+have provably finished — which is where the defect lives.
+
+**Measured.** State suite 2395 / 0 (61 tests), six consecutive runs. Mutant: 6 failures, three runs,
+identical. State suite under ThreadSanitizer: 0 reports, no suppressions.
+
+**What an adversarial review of the first cut found.** The fix was reviewed against the tree before
+it was finalised, and three of its findings changed the code rather than the prose.
+
+1. **A writer site was outside its own scope.** `applyStatePreservingView` captured the view params
+   (`bypass`) BEFORE taking the lock and wrote them back inside it — so an A/B apply or undo racing a
+   decode could settle with the slot's sound everywhere and the restore's `bypass`. Moved inside.
+   **No regression covers it**: State test 62's oracle classifies the preset-carried set and `bypass`
+   is excluded from it, and constructing the window deterministically needs a seam at the capture
+   itself. The fix is argued, not proved, and that is stated rather than glossed.
+2. **The preset family's completion bump was outside the scope, and the lock steered the host thread
+   into the gap.** `soundSetGen` was bumped from `onLoaded`, after the write loop released the lock
+   and after the signature and `setMeta` work. A host thread released from the lock lands exactly
+   there: it samples a `begin` the load had already invalidated, gets a CLEAN token, and the adoption
+   then re-installs its restore over the preset — the §12 behaviour round 4 removed. The bump now
+   happens inside each preset write loop's own scope, where the two processor sites have always
+   published theirs.
+3. **Two pre-existing tests were broken by the seam's new position.** `beforeSoundReplacementWrites`
+   fired inside the lock, so State tests 49 and 51 — which hold a replacement open there and wait for
+   a host thread that performs a restore — waited on a thread blocked behind them, spun out their
+   4,000,000-yield escape hatch, and passed on a timeout rather than on the ordering. Found here
+   independently before the review returned; the seam now fires BEFORE the lock, restoring its
+   contract, and both seam contracts are stated in the headers. Suite wall time 12.6 s → 10.0 s.
+
+Five further findings are real and are NOT closed; they are recorded in ADR-0036 §24 with their
+mechanisms — the adoption guard's second term (`engineConfigGeneration`) still being published
+outside the lock and asking "has a newer restore announced" rather than "is a newer restore's sound
+live"; the lock making the resulting re-install of a SUPERSEDED restore deterministic rather than
+rare (root cause: install-before-announce, a threading-model change for its own round); the reader
+side being untouched, so a save taken ACROSS one in-progress replacement still records a part-old,
+part-new set; serialisation lengthening the interval a reader can be inside a replacement; and the
+A/B duck's masking being weakened when the lock is contended. One claim of the review is corrected:
+the exclusion is between THREADS, and the recursion the adoption requires means a re-entrant
+replacement on one thread passes through it — recorded, not guarded, because a guard would have to
+tell the two intentional nestings from a re-entrant one.
+
+**Host serialization: disposition D, unchanged, no new evidence.** This round adds no caller, thread,
+timer, async or background path. It adds a `juce::CriticalSection` taken only on the message and host
+threads and never by the audio thread, which narrows what two threads can do at once rather than
+widening it. The one interleaving §24 turns on — a host restore concurrent with a message-thread
+replacement — is the SUPPORTED shape (one host state thread, one message thread), not the unsupported
+concurrency Disposition D names.
+
+## D-2 / RISK-007 round 16 — 2026-09-04 — a relative operation acts on the session it observed
+
+> *"Relative navigation uses stale targets. `abToggle` derives its destination before a second
+> restore drain. A restore arriving between those drains can neutralize the A/B operation.
+> `PresetManager::step` has the same structural issue and can load the wrong neighbouring preset."*
+> — `src/PluginProcessor.cpp:1015`
+
+**Both are genuine, and the reviewer's description of the mechanism is exactly right.**
+
+**The interleavings.** A relative operation is two steps — derive the target from the current state,
+then apply it — and the primitive that applies it DRAINS on entry.
+
+| | A/B toggle | preset step |
+|---|---|---|
+| the operation drains | `abToggle`: `adoptPendingHostState()` | `step`: `adoptPending()` |
+| the target is derived | `abActive == 0 ? 1 : 0` → T | `currentIndex() + delta` → row |
+| **the restore lands here** | | |
+| the primitive drains again | `abSwitchTo` on entry | `load` → `onAboutToLoad` → drain, and `pollUndoCoalesce` inside it → drain |
+| the target is applied | to the restore's session | to the restore's session |
+
+For the A/B toggle that is not merely wrong, it is *silent*: the restore made its own active slot
+current, and a session saved on slot B makes that slot exactly T. `abSwitchTo` then hits
+`if (slot == abActive) return;` and the toggle does **nothing at all** — the user presses A/B and the
+plug-in stands still. For `step`, the row loaded is the neighbour of a selection that was already
+gone, applied on top of the arriving session: a result that is neither session, carrying the
+restore's Settings and A/B state with a preset chosen for the one it replaced.
+
+Round 10 fixed the half of this that lived in the editor — it computed
+`abSwitchTo (abActiveSlot() == 0 ? 1 : 0)` itself, before any drain — and gave `step` its own drain.
+Neither closed the second drain inside the primitive, so the window narrowed instead of closing. The
+same lesson §17–§19 and §22 record for baselines, one level up: reading the right thing is not enough
+if the reading is no longer true when it is used.
+
+**The rule (§23).** *Between deriving a relative target and applying it, nothing may be adopted.*
+
+**The implementation, and a design this round rejected.** The first attempt suspended adoption for
+the duration of the operation (a counter `adoptPendingHostState()` honoured). It is smaller and
+closes the same window, and an adversarial review of it found a defect that would have shipped: the
+suppression is global, so it also silences the drain at the top of `setStateInformation`. An A/B
+apply calls `setValueNotifyingHost` for every parameter, which reaches the host wrapper; a host that
+re-enters `setStateInformation` on the message thread from inside that burst would decode and apply a
+NEWER session while an older restore sat unadopted, and the next drain would put the older one on top
+— an inversion of §10 that a release build cannot even assert. What shipped instead is a split: each
+primitive is a draining SHELL over an already-adopted core (`abSwitchToAdopted`, `loadAdopted`,
+`pollUndoCoalesceAdopted`), `load`/`loadFile` drain at their own top instead of through
+`onAboutToLoad`, and a relative operation drains once and calls the core. No drain is ever skipped.
+
+**The bounded audit of the family.**
+
+| site | target | can a drain intervene? | verdict |
+|---|---|---|---|
+| `abToggle` | the other slot | yes — `abSwitchTo`'s | **fixed** |
+| `PresetManager::step` | current row ± 1 | yes — `load`'s, and `pollUndoCoalesce`'s inside it | **fixed** |
+| `abCopyToOther` | the other slot | no — `abEnsureInit`, `currentStateSet`, `publishProgram` do not drain | safe |
+| `undo` / `redo` | `abUndo[abActive].back()` | no — `pollUndoCoalesce` drains BEFORE the derivation; `applyStateSet` → `setMeta` → `publishProgram` do not drain | safe |
+| `showPresetMenu`'s clicked row | absolute row | yes, in `load` — but no adoption writes `list` (only `refresh()` does, and no adoption calls it), so the row still names the entry the user picked | safe |
+| `abSwitchTo`, `load`, `loadFile`, `saveUser` | absolute | — | not in the family |
+
+`showPresetMenu` was, however, the one preset-family entry point that read program state without
+adopting first, so an already-pending restore left the drop-down's tick on the outgoing session's row
+for the life of the popup (the menu is built once; the 20 Hz adopt cannot rebuild it). Display only —
+it now adopts like every other entry point.
+
+**State test 61** pins the rule over both operations × six orderings: nothing pending; already
+pending; **arriving at the decision point** (through a seam at the operation's last observation
+point); adopted just before the call; two restores around one operation; and repeated operations with
+a restore between them. Its discriminators are fields the operations do not move — the preset name,
+the adopted Settings TREE, the active slot. Pointing the two operations back at the draining shells
+fails **9** checks, the A/B one legibly: the live sound after the toggle is the restore's 0.37 where
+the observed session's other slot (0.83) belongs.
+
+**Recorded, not changed.** (1) `PresetManager::saveUser` SPANS a drain: it drains, writes the file,
+sets `current`/`sel`/`sigAtLoad`, then drains again through `onSaved`. A restore landing during the
+disk write is adopted by that second drain and `setMeta` replaces all three — the file is on disk and
+in `list`, but the name, the tick and the baseline are the restore's. §10 and §15's residual genuinely
+disagree here because the operation spans the drain, and no reordering closes it: whenever that
+restore is adopted it replaces the session's preset identity. Making the save survive would mean
+giving its metadata the post-arrival survival §12 gives sound edits — its own round. (2) A Settings
+ComboBox is bound through a `juce::Value` whose notification is ASYNCHRONOUS, so a wheel notch or
+arrow key dispatched before the widget catches up computes its neighbour from the displayed item. Not
+this rule's shape — no drain intervenes — and closing it changes Settings publication (§9, §18).
+(3) `applyAutoGain` derives Output Gain from a converging loudness MEASUREMENT that lags any sound
+change by many blocks, restore or not; there is no derived program-state target there to go stale.
+
+**Host serialization: disposition D, unchanged, no new evidence.** The finding moved line again
+(`src/PluginProcessor.h:448`). This round adds no caller, thread, timer, async or background path.
+The one interleaving the audit raised that would matter — a host re-entering `setStateInformation` on
+the message thread from inside a parameter notification while another restore is in flight — is two
+concurrent host state calls, which §11 forbids and `OffThreadStateCall` already counts: the
+unsupported concurrency Disposition D names, not new evidence about it.
+
+## D-2 / RISK-007 round 15 — 2026-09-04 — a restore's clean baseline comes from its own bytes
+
+> *"Pending edits become the clean baseline. When an older session lacks `presetBaseline`,
+> `adoptRestoredState` absorbs sound edits made before adoption. The preset indicator then reports
+> those edits as clean."* — `src/PluginProcessor.cpp:1231`
+
+**It is a genuine defect, and it is the third instance of a pattern this programme has already
+removed twice.** §17 took the second live read out of the SAVE baseline (round 9) and §18 out of the
+PRESET-LOAD baseline (round 10, KI-029). The restore path kept one.
+
+**The ordering, exactly.** `presetBaseline` records what the session was clean against. Two real
+shapes carry none: written before 0.6 (property absent), and — since 0.9.2 — saved while sitting on
+a NAMELESS A/B slot (property present, empty). For those the plug-in decides a baseline itself, and
+it decided it like this:
+
+| | thread | what happened |
+|---|---|---|
+| t0 | host thread H | `decodeRestore` installs the session's sound; `viewOfRestore` predicts the baseline as the sound just installed; the decode is handed to the message thread |
+| t1 | message thread M | **the user edits a sound parameter** — the live parameters move away from the restored sound |
+| t2 | message thread M | the drain adopts the restore. `adoptRestoredState` runs `sigAtLoad = soundSig()` — a LIVE read, now |
+
+At t2 the live sound is the restored sound *plus the t1 edit*, so the edit became the clean baseline
+and the indicator reported it as unmodified. For an INLINE restore t0 and t2 are the same instant and
+nothing is absorbed, which is why this only ever appeared on the host-thread path — and why the
+prediction published at t0 and the value adopted at t2 could disagree, a divergence round 13 recorded
+here as a residual and this round removes.
+
+**The invariant (ADR-0036 §22).** The baseline a restore adopts is the session's own `presetBaseline`
+when it recorded a non-empty one, and otherwise **the sound this restore installed, from the
+restore's own bytes at decode time**. Absent and empty are different facts but the same answer;
+neither means "modified" (an empty string matches no signature, so it would pin the star on for ever)
+and neither may mean "whatever is live when the adoption happens to run". Every edit after the
+restore installed its sound stays dirty — before the arrival is published, between arrival and
+adoption, or after it. An edit made BEFORE the arrival is not an edit against that session at all: a
+restore replaces the whole sound. That is exactly what a session WITH a stored baseline already did,
+so the no-baseline case now behaves like it rather than specially.
+
+**The change.** `RestoreDecode` carries `restoredSoundSig`, filled by `soundSignatureAfterLoading`
+(§18's primitive) from the restore's own tree, at decode time, by the thread that decoded it — a pure
+function of the tree and the parameters' ranges, so it reads nothing live and adds no cross-thread
+read. One resolver, `baselineOfRestore`, answers for both `viewOfRestore` and `adoptRestoreTail`, so
+the prediction and the adoption cannot disagree. `PresetManager::adoptRestoredState` is **deleted**
+rather than repaired: the live-read rule cannot come back through an entry point that no longer
+exists, and only the side holding the restore can name its sound.
+
+**The regression, and what it measures.** State test 60 crosses four session shapes with five
+orderings. The shapes are `absent`, `empty`, `its own sound (saved clean)` and `another sound (saved
+dirty)` — the last is the discriminator, the only one whose correct answer differs from what the
+fallback produces, and it also pins that a stored star survives a reload. The orderings are A
+adoption alone, B an edit inside the pending window (the reported bug), C an edit before the arrival,
+D an edit after the adoption, E several edits in one window then a second restore. The oracle is a
+CONTROL INSTANCE that restores the same bytes and is never touched afterwards; it calls neither
+`baselineOfRestore` nor `soundSignatureAfterLoading`, so a defect shared between the prediction and
+the adoption cannot make the test agree with itself. Restoring the live read fails **16** checks:
+
+```
+[baseline absent] B: the baseline is the restored session's, NOT the edited sound:
+  got      ... ,0.41000, ...      <- the edit
+  expected ... ,0.24000, ...      <- the session's own width
+```
+
+**Bounded audit of the baseline family.**
+
+| site | how the baseline is built | verdict |
+|---|---|---|
+| `load` / `loadFile` | `soundSignatureAfterLoading` — from the bytes | safe (§18) |
+| `saveUser` | `soundSignatureForSavedTree` — from the bytes written | safe (§17) |
+| `PresetManager` constructor | live read, but at construction: no earlier operation exists for an edit to be *after* | safe |
+| `viewOfRestore` + `adoptRestoreTail` | one shared resolver over the decode's own bytes | **the fix** |
+| `currentStateSet` → undo / redo / A-B / copy | carries `presets.baseline()`, which is never empty, so the fallback is unreachable | safe |
+| `applyStateSet` → `setMeta` empty fallback | live read, for a **pre-0.6.4 A/B slot payload** only | **recorded, not changed** |
+
+The last row is not this finding's class. Both statements run back to back on the message thread, so
+no user edit can land between them; only an audio-thread automation write can, and only for that
+vintage of slot. Closing it means deriving the baseline from `s.params` — but that sound is applied
+by `replaceState` + `reassertParameters`, not by `applySoundTree`, so it first requires MEASURING
+that `soundSignatureAfterLoading` models that store/report pass bit for bit. Assuming that equality
+instead of measuring it is precisely what round 10 got wrong (§19), so it belongs to a round that can
+measure rather than to a closure round.
+
+**Host serialization: disposition D, unchanged, no new evidence.** The finding moved line again
+(`src/PluginProcessor.h:437`) because this round added lines above it. That is not evidence. The
+round adds no caller, no thread, no timer, no async or background path, and touches neither the
+host-side members nor the off-thread tripwire.
+
+## D-2 / RISK-007 round 13b — 2026-09-04 — two failures in the test frame, neither in the product
+
+Head `3182e11` failed two jobs. Its only difference from `ed18db2`, on which the same jobs were
+green, is **one markdown file** (`git diff --stat ed18db2 3182e11` = 1 file, 20 insertions,
+11 deletions), so neither failure could be a regression from the change under review. Both were
+latent defects in the test frame, and one of them had been failing since round 12 behind cancelled
+runs. `src/` is not modified by this round.
+
+### 1. `macos` — one check, and it was the guard doing its job
+
+The arm64 leg of *DSP + state self-tests* reported **2236 checks, 1 failure**; the same universal
+binary's x86_64 slice passed under Rosetta minutes later in the same job, `macos-intel` passed on
+native Intel, and `windows`, `linux` (including the 1 MB-stack guard), `linux-lto-tests` and `tsan`
+were all green on the same head. The failing check was State test 52 leg (d)'s
+`non-vacuity: the automation thread actually wrote`. Round 13's unbuffered `stdout` is why the line
+was in the log at all.
+
+`std::thread` guarantees a thread STARTS; it does not guarantee it is scheduled before its creator
+does anything else, and the `saveUser` this leg wraps is a few hundred microseconds. When the save
+wins that race the writer sees `run == false` on its first look, writes nothing, and the leg would
+have asserted coherence against an interleaving that never happened — which its own non-vacuity check
+refused. 30 consecutive local runs on x86-64 Linux were clean (2271 / 0 each), which is what a
+start-up race looks like rather than a defect in what the leg tests.
+
+The leg now waits, bounded, for the writer's counter to advance BEFORE the save, and asserts that
+**pre-save** sample. A count taken after the join cannot distinguish "wrote during the save" from
+"started as the save returned", so it would pass on exactly the vacuous run this leg exists to reject.
+
+**Bounded audit of the same family** — every worker in the suite that must be live before the
+operation under test:
+
+| site | how it proves the worker is live | verdict |
+|---|---|---|
+| tests 30/31 prepare-race probes, test 43 (`go` flag) | worker spins on `go` until the main thread releases it | correct by construction |
+| test 39 (audio + autosave) | `check (waitFor (hostSaves > 0), "the host thread is saving before the first preset load")` | already correct |
+| test 44 (autosave) | the same wait, with the same reasoning written out | already correct |
+| test 52 leg (d) (automation) | nothing — assumed | **the defect; fixed** |
+| test 38 (audio) | nothing — and `audioFinite` starts `true`, so a thread that never ran passes VACUOUSLY | **fixed: counter + non-vacuity check** |
+| one-shot workers (22, 27, 30, 41, 45, 47, 51, 53, 59, …) | joined before anything is asserted | not in the family |
+
+The suite is **2272 / 0**: the one added check is test 38's.
+
+### 2. `sanitizers` — the 45-minute cap, and why the spinners caused it
+
+The job died inside `valgrind --tool=memcheck`. memcheck is not merely slow, it **serialises**: one
+thread runs at a time and every instruction is instrumented. A test that keeps an unpaced background
+thread alive for the whole of an operation therefore gives that thread half the machine while the
+thread under test sleeps in a bounded poll — and the D-2 tests do that deliberately.
+
+| | native | under memcheck |
+|---|---|---|
+| DSP suite | ~2 s | 3 m 30 s |
+| State tests 1–37 | ~1 s | ~25 s |
+| **State test 38** | < 0.5 s | **5 m 05 s** |
+| **State test 39** | 20.4 s | **> 30 min — unfinished when the job hit its cap** |
+
+On the PR's base (`ac47151`) the same lane is comfortable: the state suite is 1506 checks and none of
+these tests exist yet. So the timeout is this branch's, it dates from round 12, and rounds 12 and 13
+only ever saw `cancelled` because a follow-up push killed the run first — run 1075 (`b50f66b`) shows
+the identical 45-minute death.
+
+The fix is in the suite rather than the lane. `d2::Pace` bounds a spinner's **share** of the machine
+by resting a multiple of what its own last iteration cost (capped at 50 ms). It is uniform — no lane,
+job or environment variable changes behaviour, every test still runs in every lane, and every leg
+still asserts its non-vacuity counter. It also removed a self-inflicted native cost: on a 4-core box
+two unpaced spinners were starving the message thread they were meant to run underneath, which is
+most of State test 39's 20.4 s.
+
+| after `d2::Pace` | native | under memcheck |
+|---|---|---|
+| State test 38 | < 0.5 s | **< 1 s** |
+| State test 39 | < 0.5 s | **6 s** |
+| whole state suite | **6.9 s** (was 27.5 s) | **9 m 42 s** — 2272 / 0, `ERROR SUMMARY: 0 errors` (was: never finished) |
+
+**Host serialization: disposition D, unchanged, no new evidence.** This round modifies no `src/`
+file, adds no caller, thread, timer, async or background path, and touches neither the host-side
+members nor the off-thread tripwire.
+
 ## ADR-0035 points 8-9 — 2026-09-03 — the blend that outlived its path (PR #135 final review)
 
 > *"When changing from an active Oversampling factor: 2x, 4x, 8x to Off, the `osBlend` transition can

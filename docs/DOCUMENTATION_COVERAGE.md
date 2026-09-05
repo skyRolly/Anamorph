@@ -6,9 +6,11 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **scanner-SARIF artifact change** (2026-09-03) — `codeql.yml` and `msvc.yml`
-now also publish their raw SARIF as Actions artifacts, whose entry is LAST in the body. Before it,
-for the **0.9.7 change set** (2026-09-03, matching the CHANGELOG heading) — ADR-0035,
+Last updated: for the **0.9.7 change set** (2026-09-03, matching the CHANGELOG heading) — **D-2 /
+RISK-007 resolved as ADR-0036** (program state is message-thread-owned; host threads exchange
+immutable snapshots; the `tsan` CI lane), whose round-11 entry is LAST in the body; before it the
+**scanner-SARIF artifact change** (2026-09-03) — `codeql.yml` and `msvc.yml` now also publish
+their raw SARIF as Actions artifacts; before it ADR-0035,
 the oversampling path crossfade; before it ADR-0034,
 the maintainer-instructed latency change. Before it, for the
 **0.9.6 change set** — the
@@ -945,7 +947,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:885-894`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2253-2278`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2266-2291`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1416,7 +1418,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1606-1614`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1609-1617`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -1455,7 +1457,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1563` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1566` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -1465,7 +1467,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2077"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2090"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -1542,7 +1544,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:583`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:586`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
@@ -1832,7 +1834,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3209` and `.github/workflows/build.yml:3294`, this round being
+`.github/workflows/build.yml:3235` and `.github/workflows/build.yml:3320`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -7964,3 +7966,549 @@ SARIF artifacts` subsection), `docs/procedures/TESTING.md` (one new section), th
 **Unchanged:** every source file, both test suites and their counts, `CMakeLists.txt`, both warning
 baselines, `CHANGELOG.md` (no version bump — CI-only), `docs/policies/TESTING_POLICY.md`,
 `docs/REPOSITORY_MAP.md`, `.github/workflows/build.yml` and every action pin.
+
+## D-2 / RISK-007 — the state race outside the latency fields, resolved by ownership (2026-09-03, the 0.9.7 change set)
+
+The dedicated v0.9.7 threading/state hardening task. Every piece of program metadata the processor
+owns is now message-thread state; a host thread that saves or restores off the message thread
+exchanges immutable snapshots with it through two lock-free single-object cells (ADR-0036). Nothing on
+the audio thread changed. The full evidence trail — the access map, the ThreadSanitizer baseline on
+the two register probes and the new stress probe, the architecture, the validation — is
+`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` §D-2.
+
+**Documents added**
+- `docs/architecture/design-decisions/ADR-0036-program-state-ownership.md` — the decision: context,
+  the three properties that had to hold at once, the options (narrow mutex, per-field atomics,
+  ownership + handoffs, reference-counted snapshots), the seven decision points, consequences.
+  Indexed in `ADR_INDEX.md`.
+- `tests/tsan_canary.cpp` — the `tsan` lane's liveness proof (a seeded, unmistakable data race).
+
+**Documents updated (the `DOCUMENTATION_LIFECYCLE_POLICY` trigger map for a threading change plus
+new tests and a CI lane)**
+- `docs/policies/THREADING_POLICY.md` — two new rows in the allowed-paths table (the restore handoff
+  and the program snapshot), §Host state calls rewritten from "a documented assumption" to "a covered
+  path", the atomic-usage rules gain the two cells' ordering, the evidence block gains D-2.
+- `docs/architecture/THREAD_MODEL.md` — the host state and host prepare threads in the thread
+  table; a new "Host state thread ↔ Message" path table with the ownership statement; the forbidden
+  list gains the no-direct-host-access rule.
+- `docs/architecture/STATE_SERIALIZATION.md` — a "Which thread" section; the restore logic re-stated
+  with the repair-before-`replaceState` step and the resolve/apply split of the Settings.
+- `docs/FUTURE_RISKS.md` — the header re-synced to v0.9.7; RISK-007 marked RESOLVED in the table and
+  with a resolution bullet at the top of its entry, the measured record kept in full.
+- `docs/procedures/TESTING.md` — the four TSan probes and their expected silence, the `tsan` lane,
+  State tests 37–41 one by one, the re-shaped tests 22 and 27; the CI table row; 40 tests.
+- `docs/policies/TESTING_POLICY.md` — Level 1b gains ThreadSanitizer; the gate's test count.
+- `docs/procedures/CI_CD.md` — the `tsan` job in the matrix and the job inventory; `build-tsan`.
+- `docs/REPOSITORY_MAP.md` — the state-test row and the `tsan_canary.cpp` row.
+- `docs/architecture/API_REFERENCE.md` — `adoptPendingHostState`; InternalState's
+  `resolveRestore` / `resolveLegacy` / `applyResolved` / `publishEngineConfig` / `onChanged`.
+- `docs/HANDOVER.md` — the version and test-status rows.
+- `CHANGELOG.md` — one `[0.9.7]` Fixed entry, in user terms.
+- `worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md` + `ENGINEERING_REVIEW_REPORT.html`
+  — the round and the dashboard (status, executive summary, the D-2 decision card, the roadmap row).
+
+**Citation re-anchoring.** The restore functions were restructured (`setStateInformation` became
+`decodeRestore` + `adoptRestoreTail` + `setStateInformation`; `getStateInformation` gained
+`writeState`; `InternalState`'s restore split into resolve and apply), so `--fix` re-anchored the
+citations whose text merely moved and reported eighteen whose cited lines were themselves edited.
+Those were re-derived by reading the span of the symbol each document names, and
+`scripts/check-citations.py`'s `DELIBERATE_REAIMS` was **emptied of every completed transition** —
+all of them retired by PR #135's merge, which the tool itself reported as "not needed against
+origin/main" — and refilled with this change's eighteen, each with a token the aim check verifies.
+The gate reads clean against `origin/main` (398 anchors) and its self-test passes.
+
+**Drift found and corrected (C6).** `SERIALIZATION_REGISTRY.md` and `STATE_SERIALIZATION.md` named
+`abResetToDefaults()`, which the decode's defaults replace, and `apvts.state.getType()`, which the
+decode no longer reads (it uses `apvtsStateType`, captured at construction); both were re-worded in
+place with the reason.
+
+
+## D-2 round 2 (2026-09-03) — the PR review's two findings closed (ADR-0036 §5 amended, §8 added)
+
+**Code changed:** `src/InternalState.h` (the engine-config word: the oversampling index tagged with
+the generation of the arrival, published by one compare-exchange — the latest restore wins;
+`noteAdoptedGeneration`; the animation flag a message-thread mirror), `src/PluginProcessor.{h,cpp}`
+(`ProgramSnapshot::generation`; the two generation atomics replaced by per-side plain counters
+that cross the boundary only inside the objects; the host side's selection made from the snapshot
+in hand; two test seams), `tests/state_tests.cpp` (State tests 42–43, each reproducing its reviewed
+interleaving deterministically and mutation-tested).
+
+**Documents updated:** `ADR-0036` (status line, decisions 5 and 8, consequences — realtime, the
+CAS, the recorded host-timing residual — related code, evidence); `THREADING_POLICY.md` (the
+GUI → Audio row, the two D-2 rows, the atomic-usage rules: the generations ride inside the
+objects, the word's CAS); `THREAD_MODEL.md` (the D-2 path table: the word's row and the
+animation flag's, the snapshot row); `STATE_SERIALIZATION.md` (the two "oversampling atomic"
+sentences); `API_REFERENCE.md` (`publishEngineConfig`'s new signature, `noteAdoptedGeneration`,
+`engineConfigGeneration`); `TESTING.md` (tests 42–43, the seams, 42 tests); `CHANGELOG.md`
+(the `[0.9.7]` D-2 entry gains the second pass); `HANDOVER.md` and `README.md` (42 tests / 1753
+checks); the worklog (§8 of the D-2 round: the two interleaving proofs, the audit, validation) and
+the dashboard.
+
+**Drift.** None found: every document that named `restoreGen` / `adoptedGen` or the "oversampling
+atomic" as a plain store was on the trigger list above and re-worded; `FUTURE_RISKS.md`'s RISK-007
+record keeps its round-1 wording as the measured history it is.
+
+## D-2 round 3 (2026-09-03) — pending restores no longer discard Settings edits (ADR-0036 §9)
+
+**Code changed:** `src/InternalState.h` (`adoptResolved`: an adopted restore keeps every field the
+user edited after it arrived; per-field edit generations recorded from the engine-config word's
+tag; an edit publishes the word under the latest arrival's generation; the word republished from
+the tree after every adoption), `src/PluginProcessor.cpp` (`adoptRestoreTail` routes a cell restore
+through `adoptResolved`), `tests/state_tests.cpp` (State test 44; test 43's edit leg restated).
+
+**Documents updated:** `ADR-0036` (status, §8, new §9, the consequences bullet on user actions
+inside the window, related code, evidence); `THREADING_POLICY.md` (the GUI → Audio row);
+`THREAD_MODEL.md` (the word's row); `STATE_SERIALIZATION.md` (the Settings restore step);
+`API_REFERENCE.md` (`applyResolved` re-described, `adoptResolved` added); `TESTING.md` (test 44,
+43 tests); `TESTING_POLICY.md`, `HANDOVER.md`, `README.md` (43 tests / 1836 checks);
+`CHANGELOG.md` (the `[0.9.7]` D-2 entry gains the third pass); the worklog (§9) and the dashboard.
+
+**Drift.** None: the round-2 sentence in ADR-0036 §8 that described the edit yielding to the
+restore was the defect's description, not a decision, and is replaced by §9.
+
+## D-2 round 4 (2026-09-03) — session coherence at the handoff, and the two verification findings
+
+**Code changed:** `src/PluginProcessor.h` (`RestoreDecode::soundParams` / `soundGen`; the
+`beforeRestorePut` seam; `OffThreadStateCall` / `offThreadStateCalls`, the debug tripwire for the
+host-serialization contract; the Architecture Review Gate note on the ownership comment),
+`src/PluginProcessor.cpp` (the decode records the parameter tree it installed; the adoption
+re-installs it under two guards — nothing touched the sound since the decode, and this restore is
+still the latest arrival; the inline restore drains before it decodes; both off-message-thread
+branches take the tripwire), `tests/state_tests.cpp` (State tests 45–46, each mutation-tested).
+
+**Documents updated:** `ADR-0036` (a status block recording the gate as OPEN, decisions 10 and 11,
+the "a save describes one session" consequence, related code, evidence); `THREADING_POLICY.md` (the
+verified wrapper evidence in §Host state calls, the two D-2 rows); `THREAD_MODEL.md` (the restore
+handoff row); `API_REFERENCE.md` (`engineConfigGeneration`'s second reader); `TESTING.md` (tests 45
+and 46, 45 tests); `TESTING_POLICY.md`, `HANDOVER.md`, `README.md` (45 tests / 1866 checks);
+`CHANGELOG.md` (the `[0.9.7]` D-2 entry gains the fourth pass); the worklog (§10: the shared root
+cause, an interleaving table per finding, the gate procedure walked step by step, the wrapper
+evidence table, the ordering audit) and the dashboard.
+
+**Drift.** None. The round-3 statement that the adoption writes metadata only was accurate for that
+tree and is superseded by decision 10 rather than corrected.
+
+**Gate.** `ARCHITECTURE_REVIEW_GATE.md` is **not** discharged by this documentation and is not
+marked as such anywhere: a Thread Model change requires a human reviewer, and only the pull
+request's approval clears it.
+
+## D-2 round 5 (2026-09-03) — pending sound-edit precedence, and the gate approved (ADR-0036 §12)
+
+**Code changed:** `src/PluginProcessor.h` (`soundSetGen` + `noteWholeSoundReplaced()`, the
+wholesale-sound-replacement counter; `RestoreDecode::soundGen` becomes `soundSetGen`; the ownership
+comment records the GRANTED Architecture Review Gate approval and carries the VST3 SDK thread
+annotation inline beside the members it justifies), `src/PluginProcessor.cpp` (the adoption's sound
+re-install is re-keyed from `soundParamGen` — which every knob turn bumps — onto `soundSetGen`; the
+counter is bumped at `applyStatePreservingView`, `applySoundTree` and the preset-load hook),
+`tests/state_tests.cpp` (State test 47, mutation-tested).
+
+**Documents updated:** `ADR-0036` (the status block now records the approval and states exactly what
+architecture it covers and that round 5 is inside it; new §12; §11 gains the SDK quotation and the
+explicit A/B/C/D disposition); `THREADING_POLICY.md` (the primary evidence and the support
+boundary); `THREAD_MODEL.md`; `API_REFERENCE.md`; `TESTING.md` (test 47, 46 tests);
+`TESTING_POLICY.md`, `HANDOVER.md`, `README.md` (46 tests / 1882 checks); `CHANGELOG.md`; the
+worklog (§11: the interleaving, the restore-tail field audit, the re-derived host-serialization
+evidence and disposition) and the dashboard.
+
+**Drift.** None. Round 4's §10 text described a guard that was correct in intent and too wide in
+practice; §12 narrows it rather than contradicting it, and the round-4 record stands as written.
+
+## D-2 round 6 (2026-09-03) — the replacement token names an operation (ADR-0036 §13)
+
+**Code changed:** `src/PluginProcessor.h` (`noteWholeSoundReplaced()` allocates and RETURNS one
+replacement's token; `applySoundTree` returns it; the `afterRestoreSoundApplied` seam),
+`src/PluginProcessor.cpp` (the decode records the token its own sound install was handed instead of
+reading the shared counter back afterwards — a replacement landing in that gap was otherwise
+recorded as the restore's own, and the adoption then published restored metadata over that
+operation's sound), `tests/state_tests.cpp` (State test 48: an A/B apply, a preset load and an
+ordinary edit through one seam, mutation-tested).
+
+**Documents updated:** `ADR-0036` (new §13 with the individual-vs-wholesale classification table;
+§11 gains the complete caller enumeration and the debug-tripwire audit; the status block records
+that round 6 is inside the approved architecture); `THREADING_POLICY.md`; `THREAD_MODEL.md`;
+`API_REFERENCE.md`; `TESTING.md` (test 48, 47 tests); `TESTING_POLICY.md`, `HANDOVER.md`,
+`README.md` (47 tests / 1909 checks); `CHANGELOG.md`; the worklog (§12: the interleaving, the
+classification re-check, the shared-state-snapshot audit, the re-derived host-serialization
+evidence and the tripwire disposition) and the dashboard.
+
+**Drift.** None. Round 5's §12 rule is unchanged and correct; §13 fixes how its discriminator was
+captured, and says so rather than rewriting the round-5 record.
+
+## D-2 round 7 (2026-09-03) — completion-ordered replacement tokens (ADR-0036 §14)
+
+**Code changed:** `src/PluginProcessor.h` (`noteWholeSoundReplaced()` documents the identity AND
+completion rules; new `soundReplacementToken (begin)` returning 0 — "no owner provable" — when
+another replacement ran inside ours; the `beforeSoundReplacementWrites` seam; the host-serialization
+comment gains the Anamorph-side half of the evidence), `src/PluginProcessor.cpp` (`applySoundTree`
+brackets its writes and allocates at completion; `applyStatePreservingView` bumps after its last
+write instead of before its first; the preset load's bump moves from `onAboutToLoad` to `onLoaded`),
+`tests/state_tests.cpp` (State test 49: an A/B apply, an undo and a preset load each held before
+their writes while the restore completes inside them; mutation-tested).
+
+**Documents updated:** `ADR-0036` (new §14 — completion allocation and the bracket, with the
+exhaustive three-case argument; the status block records round 7 inside the approved architecture);
+`THREADING_POLICY.md` (the caller enumeration now covers both JUCE and Anamorph); `THREAD_MODEL.md`;
+`API_REFERENCE.md`; `TESTING.md` (test 49, 48 tests); `TESTING_POLICY.md`, `HANDOVER.md`,
+`README.md` (48 tests / 1928 checks); `CHANGELOG.md`; the worklog (§13: the interleaving, the two
+decisions, the "does this order by the event that matters" audit, the host-serialization closure on
+both sides and the re-audited tripwire) and the dashboard.
+
+**Drift.** None. Round 6's §13 identity rule is unchanged and still required; §14 adds *when* the
+identity is taken and says so rather than rewriting the round-6 record.
+
+## D-2 round 8 (2026-09-03) — the drain reaches a fixed point; a preset's baseline belongs to its own file (ADR-0036 §15, §16)
+
+**Code changed:** `src/PluginProcessor.cpp` (`adoptPendingHostState` drains to a fixed point, so a
+restore arriving during an adoption is adopted in the same pass and the caller never goes on to edit
+a session already superseded), `src/PresetManager.cpp` (`saveUser` adopts a pending restore BEFORE
+capturing the sound, and takes its baseline from the sound the file was written from rather than
+from a fresh live read afterwards, with a generation check across the two reads),
+`tests/state_tests.cpp` (State tests 50 and 51, both mutation-tested; State tests 43 and 44
+restructured to take their intermediate measurements at the adoption seam's second fire, which is
+the same instant they always measured, now that one drain adopts both restores).
+
+**Documents updated:** `ADR-0036` (new §15 — the fixed-point drain and why an entry point needs
+"nothing pending" rather than "one adopted"; new §16 — the preset clean/dirty semantic and the
+baseline-belongs-to-the-bytes rule, including `load`'s transient case recorded as deliberately
+unchanged; §11 gains the mechanical re-verification; the status block records round 8 inside the
+approved architecture); `THREADING_POLICY.md`; `API_REFERENCE.md`; `TESTING.md` (tests 50–51, 50
+tests); `TESTING_POLICY.md`, `HANDOVER.md`, `README.md` (50 tests / 1952 checks); `CHANGELOG.md`;
+the worklog (§14: both interleavings, the bounded audit of the restore/save/action family, and the
+re-verified host-serialization evidence) and the dashboard.
+
+**Drift.** None. §10's precedence rule is unchanged — §15 makes it actually hold for a caller that
+drains, which is what it always claimed.
+
+## D-2 round 9 (2026-09-03) — one capture: a preset's bytes and its clean baseline are the same object (ADR-0036 §17)
+
+**Code changed:** `src/PresetManager.cpp` (`saveUser` takes ONE `apvts.copyState()` and derives both
+the file and the clean baseline from it — the round-8 two-read-plus-retry is deleted, not bounded
+harder; a new `soundSignatureForSavedTree` computes the signature a saved tree will produce once
+loaded; `applySoundTree` and that new function are refactored onto one shared resolver,
+`normalisedFromSavedTree`, so the apply path and the baseline cannot disagree about what a file means;
+a new `asAPresetCanHoldIt` canonicaliser is applied on BOTH sides of every signature),
+`src/PresetManager.h` (the new static, and a `beforeStateCapture` test seam — empty in production),
+`tests/state_tests.cpp` (State test 52, five legs, mutation-tested three ways).
+
+**Documents updated:** `ADR-0036` (new §17 — one capture, the mutation-during-save semantic, the torn
+capture argument, the one-rule-for-what-a-tree-means refactor, the preset-grid canonicalisation and
+its compatibility edge; §16's second bullet marked SUPERSEDED, with its "safe direction" argument
+recorded as refuted; the approval-boundary paragraph records round 9 as machinery removed);
+`SESSION_COMPATIBILITY_POLICY.md` (new rule 6 — `presetBaseline` is a comparison key, and the recorded
+0.9.7 change to how it is computed); `API_REFERENCE.md`; `TESTING.md` (test 52, 51 tests);
+`TESTING_POLICY.md`, `HANDOVER.md`, `README.md` (51 tests / 2000 checks); `CHANGELOG.md`; the worklog
+(§15: both findings, the bounded audit table, the re-checked host-serialization evidence) and the
+dashboard.
+
+**Drift.** One correction rather than an addition: §16 claimed its two reads could "only disagree in
+the safe direction". That was wrong — a baseline naming an earlier sound reads clean again the moment
+the sound returns to it — and §16 now says so at the point the claim was made, instead of leaving a
+refuted argument standing next to its replacement. §16's first bullet (the drain runs before the
+capture) is unchanged and still required.
+
+## D-2 round 10 (2026-09-03) — decisions derive from the adopted session; publications carry only their field; the load baseline comes from what is written (ADR-0036 §18)
+
+**Code changed:** `src/PluginProcessor.h/.cpp` (`abToggle()` — drain, then derive the destination from
+the post-drain active slot), `src/PluginEditor.cpp` (the toggle calls it instead of computing
+`abSwitchTo (abActiveSlot() == 0 ? 1 : 0)` from a pre-drain read), `src/InternalState.h`
+(`valueTreePropertyChanged` publishes only the changed field through the new `publishField`; the
+whole-tree `publishFromTree` is reserved for the two points where the whole tree is coherent for a
+generation; the edit-ordering definition and its boundary are documented at the site),
+`src/PresetManager.h/.cpp` (`soundSignatureAfterLoading` and the shared `signatureAfterApplying`
+builder; `load`/`loadFile` fix their baseline from the values being written — a prediction reconciled
+against one read-back at signature resolution, because the ThreadSanitizer build showed the bare
+prediction is not bit-exact across toolchains — the factory path from its override table; the `beforeStateCapture` seam also fires after a load's apply; a new `adoptPending`
+hook fired by `step()` before it reads the current row — the round's own entry-point audit found the
+prev/next step to be a fourth instance of the rule), `tests/state_tests.cpp` (State tests 53, 54, 55,
+56 — mutation-tested six ways; one mutation deliberately not caught and said so).
+
+**Documents updated:** `ADR-0036` (new §18 — the rule seen three times, the publication invariant,
+the edit-ordering definition with its boundary stated, KI-029 closed with the measurement that closed
+it, host serialization re-checked; the approval-boundary paragraph records round 10);
+`KNOWN_ISSUES.md` (KI-029 removed — fixed); `POSTMORTEMS.md` (INC-013, the two-round history);
+`API_REFERENCE.md`; `TESTING.md` (tests 53–56, 55 tests); `TESTING_POLICY.md`, `HANDOVER.md`,
+`README.md` (55 tests / 2079 checks); `CHANGELOG.md`; the worklog (§16) and the dashboard.
+
+**Drift.** One correction: §17 said the symmetric load fix "costs ~1 in 1500 false dirty" as a standing
+product trade-off. The cost had a removable cause (the load's extra store/report pass) and §18 records
+it as removed rather than leaving §17's framing to read as permanent. §17's own text is unchanged; it
+was true of the save-side formula it examined.
+
+## D-2 round 16 (2026-09-04) — a relative operation acts on the session it observed (ADR-0036 §23)
+
+**Code changed:** `src/PluginProcessor.h` / `.cpp` — `abSwitchTo` and `pollUndoCoalesce` become
+draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle` calls the core, and
+`onAboutToLoad` no longer drains; `src/PresetManager.h` / `.cpp` — `load` becomes a shell over
+`loadAdopted` and drains at its own top (as does `loadFile`), `step` calls the core, plus the
+`beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
+row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
+
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1077`).
+`abToggle` and `step` each derive a target and then call a primitive that drains on the way in
+(`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
+after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
+its target was already the arriving session's active slot, and `abSwitchTo` returns when it is
+already there — and `step` loaded the neighbour of a selection that was gone, onto the restore's
+session. Round 10 fixed the editor half of this and gave `step` its own drain; it did not close the
+second drain inside the primitives.
+
+**Measured.** State suite 2373 / 0 (60 tests). Pointing the two operations back at the draining
+shells fails **9** checks,
+including the A/B one directly: the live sound after the toggle is the restore's 0.37 where the
+observed session's other slot (0.83) belongs.
+
+**Documents updated:** `ADR-0036` (new §23, with the family audit table, why the split was chosen
+over suspending the drain, and two recorded residuals —
+`saveUser` spanning a drain, and the async ComboBox binding); `TESTING.md` (State test 61, 60 tests);
+`README.md`, `TESTING_POLICY.md`, `HANDOVER.md`, `DOCUMENTATION_COVERAGE.md` and the worklog for the
+counts; `CHANGELOG.md` as a user-visible fix — a button press could be swallowed.
+
+**Drift.** None. §23 is a new rule about WHEN a relative target is decided; it changes no publication,
+ownership, generation, baseline or signature semantics, and rounds 10, 12 and 15 are re-asserted by
+the suite.
+
+## D-2 round 17 (2026-09-04) — one whole-sound replacement at a time (ADR-0036 §24)
+
+**Code changed:** `src/PluginProcessor.h` / `.cpp` — a `juce::CriticalSection soundReplacement` and
+its accessor, taken by `applySoundTree`, `applyStatePreservingView` and (across the guard AND the
+write it guards) the adoption's §14 re-install, plus the `insideSoundReplacement` test seam in
+`reassertParameters`; `src/PresetManager.h` / `.cpp` — the same lock through a pointer the processor
+supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
+plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
+
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:1525`).
+A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
+per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
+H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
+held values from both sessions, and the DSP and `copyState()` read the parameters, not the tree. The
+codebase already detected the condition (`soundReplacementToken` returns 0, *no owner provable*) and
+repaired it at the next adoption — a 20 Hz timer, so up to 50 ms of audible mixed sound, and a host
+save taken inside that window wrote the mixture to the project file.
+
+**Measured.** State suite 2395 / 0 (61 tests). Removing the five exclusion scopes fails **6** checks
+across four observation points — the settled sound, live playback, an immediate host save, and a
+preset load in each of three factory rows — and the figure is legible: 30 parameters from one session
+and 3 from the other, the three the competing restore wrote before the paused loop resumed over the
+rest.
+
+**Documents updated:** `ADR-0036` (new §24, with the replacement-family audit table, the rejected
+alternatives, and an explicit statement of what the rule does NOT change — a reader sampling mid-loop
+still sees a partial set, which is ordinary automation); `TESTING.md` (State test 62, 61 tests);
+`README.md`, `TESTING_POLICY.md`, `HANDOVER.md`, `DOCUMENTATION_COVERAGE.md` and the worklog for the
+counts; `CHANGELOG.md` as a user-visible fix — audible mixed sound and a project file saved from it.
+
+**Reviewed against the tree before finalising**, which changed the code three more times: the
+view-param capture in `applyStatePreservingView` moved inside the scope (it was the one writer site
+left outside its own lock); the preset family's `soundSetGen` completion bump moved from `onLoaded`
+into each write loop's scope (a host thread released from the lock landed in the gap, read a clean
+token, and the adoption then re-installed its restore over the preset); and
+`beforeSoundReplacementWrites` moved back OUTSIDE the lock, which un-broke State tests 49 and 51 —
+they hold a replacement open at that seam and had been waiting on a thread the lock was blocking,
+spinning out a 4,000,000-yield escape hatch and passing on a timeout. Five further review findings
+are recorded in §24 as open, with mechanisms, rather than fixed here.
+
+**Drift.** One correction, in the code rather than the documents: the FACTORY preset path
+(`applyDefaults` then the table's overrides) is a whole-sound replacement that is not tree-shaped, so
+it never passed through `PresetManager::applySoundTree` and no document had ever named it as one. §24
+names it, and its two loops are recorded as ONE replacement. §24 changes no publication, ownership,
+generation, baseline or signature semantics; rounds 12, 15 and 16 are re-asserted by the suite.
+
+## D-2 round 18 (2026-09-04) — a restore is authoritative from its announcement, and announces before it installs (ADR-0036 §25)
+
+**Code changed:** `src/PluginProcessor.h` / `.cpp` — `decodeRestore` no longer installs the sound;
+`installRestoredSound` does, as its own step; the off-message-thread branch of `setStateInformation`
+now announces (`++hostRestoreGen`, `publishEngineConfig`) BEFORE it installs and hands over; the
+adoption guard's code is unchanged and its comment now states why it is sound;
+`copyStateWithRawValues` takes the whole-sound replacement lock around the copy and its `raw`
+stamping, and `writeState` captures the live sound once per save. `src/InternalState.h` —
+`announceRestore`, the announcement as an unconditional operation of its own (asserted at the
+call; the host counter steps over zero at wrap). `tests/state_tests.cpp` — State tests 63 and 64.
+
+**Why.** The §24 residuals recorded as open. The install preceded the announcement, so an older
+restore's adoption, evaluating its guard inside that window, read its own generation from the
+engine-config word while the newer sound was already live and re-installed a superseded session over
+it — deterministically, once the round-17 lock woke it at the newer install's release — and a host
+save in that window persisted the newer session's metadata over the older session's sound. And the
+readers of the live sound were unsynchronised: for a PRESET-shaped replacement (no `replaceState`)
+a host save landing mid-loop recorded 3 preset parameters and 30 of the outgoing session.
+
+**Measured.** State suite 2439 / 0 (63 tests). Both defects reproduced deterministically on the
+round-17 tree BEFORE the fix (test 63: width 0.21 where 0.57 was the newer session's, live and in the
+host save; test 64: 3 / 30). Reverting install-before-announce fails **8** checks; removing the
+guard's announcement term alone fails **4**; removing the reader lock fails **1**, with the same
+3 / 30. An adversarial read-only review of the design (two of three lenses completed) corrected the
+invariant's wording to one of critical sections, made the announcement unconditional and asserted,
+found `writeState`'s three separate captures, and bounded the announce-to-parameters gap by one
+replacement with its host notifications rather than microseconds. The session-shaped replacements were measured
+reader-atomic already (22 exact, 11 round-tripped, 0 from the outgoing session), because
+`replaceState` and `copyState` share JUCE's APVTS lock — leg C keeps that as a property pin.
+
+**Documents updated:** `ADR-0036` (new §25 — what "a newer restore exists" has to mean, the
+authority rule, the ownership/visibility model, the two reader shapes measured, the remaining §24
+items reclassified: 1–3 fixed, 4 bounded, 5 non-defect); `THREADING_POLICY.md` and
+`THREAD_MODEL.md` (the announce-install-handoff order; the durable reader); `TESTING.md` (State
+tests 63–64, 63 tests); `README.md`, `TESTING_POLICY.md`, `HANDOVER.md`,
+`DOCUMENTATION_COVERAGE.md` and the worklog for the counts; `CHANGELOG.md` as a user-visible fix.
+
+**Drift.** Two corrections in documents that described the OLD order as a fact: `THREADING_POLICY`'s
+H→M row and `THREAD_MODEL`'s host-state-thread row both said the sound was applied and THEN the
+word published; both now state the announce-first order and why it is load-bearing. §8's "arrival"
+was always the announcement; it now precedes every effect of the restore, so the definition is
+tighter, not different. This is a threading-model change under `ARCHITECTURE_REVIEW_GATE.md`,
+commissioned as such by the owner for this round. Host serialization stays Disposition D.
+
+## D-2 round 15 (2026-09-04) — a restore's clean baseline comes from its own bytes (ADR-0036 §22)
+
+**Code changed:** `src/PluginProcessor.h` / `.cpp` — `RestoreDecode` gains `restoredSoundSig`, filled
+in `decodeRestore` from the restore's own sound tree by `soundSignatureAfterLoading`; one new
+resolver `baselineOfRestore` answers for both `viewOfRestore`'s prediction and `adoptRestoreTail`'s
+adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (its rule was the defect),
+and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
+`tests/state_tests.cpp` — State test 60.
+
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1340`).
+A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
+which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
+the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
+window after the restore itself, so every sound edit made in it was absorbed into the baseline and
+the indicator reported the user's own edits as clean. It is the same second-live-read defect §17
+removed from the save baseline and §18 from the preset-load baseline (KI-029), in the third and last
+place it occurred; `soundSignatureAfterLoading` is the primitive round 10 built for exactly this.
+
+**Measured.** State suite 2336 / 0 (59 tests). Reverting to the live read fails **16** checks, and
+the diff is legible: the baseline holds the edited width (0.41000) where the restored session's
+(0.24000) belongs. The four shapes and five orderings are in `TESTING.md`; the oracle is a control
+instance that restores the same bytes and is never touched, so it shares no code with the decision
+under test.
+
+**Documents updated:** `ADR-0036` (new §22, including the one sibling live read recorded rather than
+changed); `TESTING.md` (State test 60, 59 tests); `README.md`, `TESTING_POLICY.md`, `HANDOVER.md`,
+`DOCUMENTATION_COVERAGE.md` and the worklog for the counts. `CHANGELOG.md` carries it as a user-
+visible fix: the modified-star was wrong on a real session shape.
+
+**Drift.** None. §22 extends §17/§18's rule to the restore path rather than changing it; the D-2
+publication and ownership model, generation ordering, A/B, preset save/load and the round-11 signature
+semantics are untouched, and the suite re-asserts them.
+
+## D-2 round 13b (2026-09-04) — a background thread proves it ran, and stops eating the machine
+
+**Code changed:** `tests/state_tests.cpp` only. State test 52 leg (d) now waits, bounded, for its
+automation thread's own counter to advance BEFORE the save starts, and asserts that pre-save sample;
+State test 38's audio thread gained the counter and the non-vacuity check its siblings (39, 44)
+already had, and prints what it did; and the four long-lived spinners in tests 38, 39 and 44 rest
+through `d2::Pace`, which bounds a spinner's share of the machine by resting a multiple of its own
+last iteration's cost. **No `src/` change**, no assertion removed, no gate relaxed.
+
+**Why.** Two CI failures on `3182e11`, a head whose only difference from the previous green run was
+one markdown file. (1) `macos` failed one check — State test 52's `non-vacuity: the automation thread
+actually wrote`. `std::thread` guarantees a thread starts, not that it is scheduled before its
+creator continues, and `saveUser` is a few hundred microseconds: the save won that race, the writer
+saw the stop flag on its first look, and the leg's own guard correctly refused a vacuous pass. The
+same binary's x86_64 slice passed minutes later in the same job, and 30 consecutive local runs were
+clean, which is what a start-up race looks like. (2) `sanitizers` hit its 45-minute cap inside
+valgrind: memcheck serialises threads and instruments every instruction, so the unpaced spinners took
+turns with the thread under test — State test 38 cost 5 m 05 s against under half a second natively,
+and State test 39 was unfinished after 30 minutes. Both are test-frame defects; neither says anything
+about the product, and the second had been failing this way since round 12, masked by pushes that
+cancelled the run before the cap.
+
+**Measured.** State suite 2272 / 0. Native total 27.5 s → 6.9 s (two unpaced spinners were starving
+the message thread on a 4-core box). Under memcheck: State test 38 5 m 05 s → under a second, State
+test 39 > 30 min → 6 s.
+
+**Documents updated:** `TESTING.md` (prove-it-ran and do-not-eat-the-machine, with the table);
+`CI_CD.md` (why the valgrind lane needs it); `HANDOVER.md`, `DOCUMENTATION_COVERAGE.md` and the
+worklog for the 2272-check count. `CHANGELOG.md` is deliberately untouched: nothing a user can
+observe changed, exactly as in round 13.
+
+**Drift.** None. No product behaviour, no ADR decision and no invariant changed; ADR-0036 is untouched
+because the round asserts nothing new about the state model.
+
+## D-2 round 13 (2026-09-04) — CI closure: the Windows stack, and a log that survives a crash
+
+**Code changed:** `tests/state_tests.cpp` — State test 59's legs become separate functions that take
+their processor from the HEAP (`AnamorphAudioProcessor` is ~138 kB; ten of them in one frame is
+~1.4 MB, which overflows Windows' 1 MB main-thread stack on ENTRY to the function), plus the fixture's
+non-vacuity checks; `tests/dsp_tests.cpp` and `tests/state_tests.cpp` — `setvbuf(stdout, _IONBF)`, so a
+crash cannot take the buffered log with it; `.github/workflows/build.yml` — the `linux` job re-runs the
+state suite under `ulimit -s 1024` as a blocking Windows-parity guard. **No `src/` change.**
+
+**Why.** The `windows` job failed with one truncated line and no summary. Reproduced locally with
+`ulimit -s 1024`: SIGSEGV entering State test 59, exactly as on Windows; the same suite passes at both
+1 MB and 8 MB after the fix. Splitting the legs into functions was tried first and measured
+insufficient — the compiler inlines them back into one frame — so the heap allocation is what carries
+the guarantee.
+
+**Documents updated:** `TESTING.md` (the 1 MB-stack rule, how to reproduce it, the unbuffered-output
+note, test 59's mutation count 14 → 16); `CI_CD.md` (the `linux` row and a section on the parity
+guard); `HANDOVER.md`, `DOCUMENTATION_COVERAGE.md` and the worklog (§19) for the 2271-check count.
+
+**Drift.** None. No product behaviour, no ADR decision and no invariant changed; ADR-0036 is untouched
+because the round asserts nothing new about the state model.
+
+## D-2 round 12 (2026-09-04) — a save describes the session the adoption will produce (ADR-0036 §21)
+
+**Code changed:** `src/InternalState.h` — the per-field precedence test of §9 is named
+(`editIsNewerThan`) and used by both callers; `editGenerations()` publishes the array;
+`resolvedWithEdits` returns the Settings an adoption will produce, for a reader that owns neither
+tree. `src/PluginProcessor.h` / `.cpp` — `ProgramSnapshot` carries `settingsEditGen` alongside the
+tree it describes; `ownedProgram` fills it; `writeState` takes the Settings tree to write; the
+off-message-thread `getStateInformation` decides the Settings per field instead of with the session.
+`tests/state_tests.cpp` — State test 59 (nine legs), and State test 57's snap-boundary leg rebuilt on
+the pair its own bisection straddles rather than on a guessed epsilon.
+
+**Why.** A restore has an ARRIVAL generation (the engine-config CAS, which §9's per-field Settings
+rule is written against) and an ADOPTION generation (`adoptedGeneration`, which stamps the published
+snapshot and which `covered` is written against). A Settings edit can never raise the second, so
+inside the pending window the snapshot is guaranteed rejected and the save fell back to
+`hostRestoreView` — whose Settings model `applyResolved` (write every field) rather than the
+`adoptResolved` that will actually run. A Setting the user had already changed vanished from the
+project. `covered` itself is right and unchanged: accepting that snapshot would pair the restored
+sound with the outgoing session's identity (§5, State test 42).
+
+**Documents updated:** `ADR-0036` (new §21 and the approval-boundary paragraph); `API_REFERENCE.md`
+(the three new InternalState entries); `TESTING.md` (test 59, 58 tests); `TESTING_POLICY.md`,
+`HANDOVER.md`, `README.md` (58 tests / 2271 checks); `CHANGELOG.md`; the worklog (§18) and the
+dashboard.
+
+**Drift.** None: §21 extends §9's rule to the save path rather than changing it, and §18's
+publication invariant is unchanged — a publication still carries exactly what is authoritative at its
+generation, now stated per field. The one correction is to `viewOfRestore`'s own contract comment,
+which claimed to model the adoption for every field and modelled the wrong function for one.
+
+## D-2 round 11 (2026-09-03) — one equivalence, and nothing layered on top of it (ADR-0036 §19, §20)
+
+**Code changed:** `src/PresetManager.cpp` and `.h` — the `1e-6` reconciliation round 10 added to
+`signatureAfterApplying` is deleted along with its `kSameValue` constant and the
+`loadBaselineFromTree` wrapper, leaving one tolerance-free signature definition that `load`,
+`loadFile` and the factory path all use directly, and the two loaders now fire the
+`beforeStateCapture` seam at the same instant; `src/PluginProcessor.cpp` — the sibling `1e-6` in
+`reassertParameters`'s per-parameter write gate is exact (§20); `tests/state_tests.cpp` — State test
+57 (a banded deterministic boundary search with an independent oracle, the asserted grid margin,
+both parameter domains including the snap boundary, both loaders, accumulation), State test 58 (the
+restore fixed point and the clean project reopen), State test 55's equality assertion restored from
+"within float tail" to exact string equality, and every fixed shared temp path in the suite replaced
+with `juce::File::createTempFile`.
+
+**Why.** A tolerance cannot distinguish compiler noise from a real automation write of the same
+size, so a write landing in the load window was absorbed into the clean baseline. Round 10's
+premise — that the prediction is not bit-exact across toolchains — was re-measured over 20 000
+values and 3 000 full save/XML/load round trips in both the Release and the ThreadSanitizer build
+and found false (zero differences everywhere), and its named mechanism (FMA contraction) is refuted
+outright by the build flags that build is compiled with (ADR-0031, `-ffp-contract=off`, 0 FMA
+emitted). What produced the red run is recorded as a **candidate, not a finding**: a shared probe
+path reproduces the same shape of failure on demand, but round 10's own reproduction did not fail
+this test.
+
+**Documents updated:** `ADR-0036` (new §19 — the equivalence stated once, what the quantisation
+itself absorbs with the measured margins, the two parameter domains, the corrected diagnosis — and
+new §20 for the restore write gate; the approval-boundary paragraph records round 11);
+`API_REFERENCE.md` (both signature rows and `normalisedAsRendered`); `TESTING.md` (tests 57–58,
+57 tests); `TESTING_POLICY.md`, `HANDOVER.md`, `README.md` (57 tests / 2198 checks); `CHANGELOG.md`;
+the worklog (§17) and the dashboard.
+
+**Drift.** One correction rather than an addition: §18 recorded the reconciliation and its
+toolchain rationale as settled. §19 says plainly that the rationale was wrong and removes the
+mechanism; §18's own text is left as written, since it was an accurate record of what round 10 did
+and believed, and §19 names it as superseded on that one point.
+

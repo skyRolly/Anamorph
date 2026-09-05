@@ -127,13 +127,19 @@ public:
     //
     // An EMPTY `baselineSig` means the state being adopted never recorded one. The only thing
     // that produces it is a pre-0.6.4 A/B slot, which stored parameters ALONE -- every in-memory
-    // producer (the constructor, load, loadFile, saveUser, adoptRestoredState, and therefore
-    // currentStateSet and every undo / redo / A-B / copy snapshot built from it) always fills it.
+    // producer (the constructor, load, loadFile, saveUser, and therefore currentStateSet and every
+    // undo / redo / A-B / copy snapshot built from it) always fills it.
     // "No baseline" is not "modified": soundSig() is never empty, so a literal "" would compare
     // unequal to every possible sound and report the slot dirty forever -- a modified-marker on a
     // preset the slot does not even have (it has no name either). The state being adopted becomes
-    // its own clean baseline instead, which is exactly the rule adoptRestoredState() applies to a
-    // session root that carries no `presetBaseline`.
+    // its own clean baseline instead.
+    //
+    // A HOST RESTORE NO LONGER REACHES THIS FALLBACK. Round 15 (ADR-0036 §22) resolves a session's
+    // absent or empty `presetBaseline` at DECODE time, from the restore's own bytes, and passes the
+    // result here non-empty; the live read below is an unbounded window later than the restore on a
+    // host thread, and it used to absorb every edit made in that window into the clean baseline. The
+    // remaining caller is the pre-0.6.4 A/B slot above, where the state IS being applied by the same
+    // call and the window does not exist.
     //
     // PRECONDITION for that fallback, not enforced by the signature: the parameters this metadata
     // describes must ALREADY be applied. soundSig() reads the LIVE apvts, so "its own clean
@@ -152,22 +158,82 @@ public:
         current = name;
         sigAtLoad = baselineSig.isNotEmpty() ? baselineSig : soundSig();
         sel = sourceSel;
+        if (onMetaChanged) onMetaChanged();
     }
 
+    // The sound signature of an APVTS's parameters, as a pure function of the
+    // parameter values (each an atomic read), so any thread can compute it without
+    // touching this manager: an off-message-thread restore needs it for the
+    // "restored state counts as its own clean baseline" fallback (D-2). soundSig()
+    // is exactly this over the manager's own APVTS.
+    static juce::String soundSignatureFor (const juce::AudioProcessorValueTreeState&);
+
+    // The signature of the LIVE state `savedSound` was just captured FROM -- the clean
+    // baseline of a preset saveUser has just written (D-2 round 9, ADR-0036 §17). Derived
+    // from the tree alone, so it describes the BYTES rather than a second read of the live
+    // parameters, and it equals `soundSignatureFor` of that live state bit for bit: the
+    // tree holds the denormalised value, so resolving it back IS the one rendering pass
+    // the live side applies. It resolves every parameter through the same rule the loader
+    // applies, so a file cannot mean one thing to the apply path and another here; State
+    // test 52 pins the equality by measurement over the whole parameter set. It is NOT the
+    // signature the parameters will report after that tree is LOADED -- that is one
+    // store/report pass deeper and is soundSignatureAfterLoading's job (§18).
+    static juce::String soundSignatureForSavedTree (const juce::AudioProcessorValueTreeState&,
+                                                    const juce::ValueTree& savedSound);
+
+    // The signature `soundSignatureFor` will return once `savedSound` has been LOADED
+    // through applySoundTree -- the clean baseline of a preset the plug-in has just
+    // loaded (D-2 round 10, ADR-0036 §18, closing KI-029). Derived from the tree alone,
+    // like the save-side one, so no live read and no window for automation to land in.
+    //
+    // WHY IT IS NOT soundSignatureForSavedTree. A save's baseline describes live state
+    // the tree was captured FROM; a load's describes live state that was written from the
+    // tree and then read back through the parameter's own store/report pair. That pair
+    // is one range mapping deeper -- setValue stores convertFrom0to1(x), getValue reports
+    // convertTo0to1 of it -- and for the four frequency ranges built from custom log/exp
+    // lambdas that extra pass is not idempotent in float. Modelling it here is what makes
+    // the post-load live signature equal this one BIT FOR BIT for every parameter kind:
+    // the same arithmetic on the same inputs. Measured in round 11 over 20000 values x 33
+    // parameters and 3000 full save/XML/load round trips, in BOTH the Release and the
+    // ThreadSanitizer build, with no exceptions -- so there is no tolerance anywhere on this
+    // path.
+    //
+    // Round 10 briefly reconciled this against a live read-back within 1e-6, believing the
+    // equality toolchain-dependent, and that window absorbed real automation writes into the
+    // baseline (ADR-0036 §19). Its stated mechanism -- FMA contraction differing between the
+    // two chains -- cannot have applied in the build where the equality failed, which
+    // ADR-0031 compiles with `-ffp-contract=off` at 0 FMA instructions emitted. What round
+    // 11 does NOT claim is the cause of that red run: a fixed shared probe path reproduces
+    // the same kind of mismatch on demand, but round 10's own reproduction did not fail this
+    // test. The equality is asserted because it is the product invariant -- a just-loaded
+    // preset must read clean -- so a toolchain that broke it would be reporting a real defect
+    // on that toolchain, to be fixed by making the two sides agree, never by widening the
+    // comparison.
+    //
+    // State test 55 measures the equality and shows the save-side signature would NOT do here
+    // (2 in 3000), which is why the two exist; State test 57 pins the boundary behaviour.
+    static juce::String soundSignatureAfterLoading (const juce::AudioProcessorValueTreeState&,
+                                                    const juce::ValueTree& savedSound);
+
     void load (int index);                           // message thread only
+    // `load` with the drain already done. `step` calls this directly: it has drained itself and
+    // derived its row from what that drain established, and a second adoption here would move
+    // the selection under a row already chosen (ADR-0036 §23, round 16).
+    void loadAdopted (int index);
     bool loadFile (const juce::File&);               // load an arbitrary .anamorph file (OS chooser, #3)
     void step (int delta);                           // prev/next with wrap-around
     bool saveUser (const juce::String& name);        // write + select; false on IO error
 
-    // Host state restore: adopt the remembered name + identity WITHOUT applying anything.
-    // `restoredSel` is whatever the session carried -- `Selection()` (unknown) for a pre-0.9.2
-    // session, which is the name fallback -- and it is METADATA ONLY: it never touches a
-    // parameter, so the sound
-    // restores identically whether or not the identity resolves. Its baseline is derived from the
-    // live sound, so the same "apply the parameters first" precondition as setMeta applies. Like
-    // setMeta it takes the identity explicitly -- the one-argument overload was removed with
-    // setMeta's for the same reason.
-    void adoptRestoredState (const juce::String& name, const Selection& restoredSel);
+    // REMOVED in D-2 round 15 (ADR-0036 §22): `adoptRestoredState (name, sel)`, the host-restore
+    // entry point for a session that carried no `presetBaseline`. It derived the baseline from a
+    // LIVE read of the parameters at the moment it was called -- which for a host thread's restore
+    // is an unbounded window after the restore itself -- so every sound edit made in that window
+    // was absorbed into the clean baseline and the indicator reported the user's own edits as
+    // clean. The caller now resolves that baseline from the restore's own bytes, at decode time
+    // (`AnamorphAudioProcessor::baselineOfRestore`), and adopts it through `setMeta` like every
+    // other restore. The entry point is gone rather than fixed so the live-read rule cannot come
+    // back through it: the only side that can name a restore's own sound is the side holding the
+    // restore.
 
     // Undo bracketing (set by the processor). onAboutToLoad fires BEFORE any parameter changes
     // (flush a settled edit into its own step); onLoaded fires AFTER the new name/baseline are set
@@ -183,6 +249,80 @@ public:
     // sound change. Empty when no processor wires it up (safe to skip).
     std::function<void()> onSaved;
 
+    // D-2 round 10 (ADR-0036 §18). Fired before this manager DERIVES a decision from its
+    // own current selection -- step()'s "the row after this one" -- so the processor can
+    // adopt a host restore that is still pending from another thread first. The same rule
+    // as the A/B toggle's: a relative target computed from a selection a pending restore
+    // is about to replace is a decision about the wrong session, and load()'s own drain
+    // (through onAboutToLoad) comes AFTER the index has been chosen, too late to help.
+    // onAboutToSave below is the save path's instance of the same rule. Empty when no
+    // processor wires it up (safe to skip: the manager then has no restores to adopt).
+    std::function<void()> adoptPending;
+
+    // Test seam: fires inside `step`, at its LAST OBSERVATION POINT -- after the drain that
+    // makes the selection authoritative and before the target row is derived from it. A test
+    // lands a restore here to prove the row it loads cannot come from a session the step never
+    // observed. Empty in every shipping path.
+    std::function<void()> beforeRelativeTarget;
+
+    // THE OWNER'S WHOLE-SOUND REPLACEMENT LOCK (ADR-0036 §24, round 17), set by the processor at
+    // construction. A preset load replaces the live sound one parameter at a time, and the sound
+    // half of a host thread's restore decode does the same on ITS thread: unexcluded, the two
+    // interleave and the live parameter set ends up holding values from both sessions. Held for
+    // exactly as long as a replacement is writing -- the tree-shaped one in `applySoundTree`, and
+    // the two-part factory apply in `loadAdopted` (defaults, then the table's overrides), which is
+    // one replacement and not two. Never taken by the audio thread; null only in a unit context
+    // that constructs a manager with no processor behind it.
+    const juce::CriticalSection* soundReplacementLock = nullptr;
+
+    // Test seam: fired from inside a whole-sound replacement's write loop, wired by the processor
+    // to its own `seams.insideSoundReplacement` so ONE seam covers every replacement the plug-in
+    // performs, wherever the loop lives. **It fires with the §24 replacement lock HELD**: a harness
+    // may sample state or ARM another thread from here, but must never join or wait on a thread
+    // that itself performs a whole-sound replacement -- that thread is blocked on this one.
+    // Empty in every shipping path.
+    std::function<void()> insideReplacement;
+
+    // Completion of a whole-sound replacement -- the processor's soundSetGen bump (§14). Called
+    // from INSIDE the §24 scope at the end of each preset write loop, never from `onLoaded`
+    // afterwards: a host thread released from the lock in the gap between the two would sample a
+    // `begin` this load had already invalidated, read a CLEAN token for a sound it no longer owns,
+    // and the adoption would then re-install its restore over the preset. Empty when no processor
+    // wires it up.
+    std::function<void()> noteReplaced;
+
+    // D-2 (RISK-007). Fired by saveUser() AFTER the file is written and BEFORE any of
+    // this manager's metadata moves, so the processor can adopt a host restore that is
+    // still pending from another thread first: the save then lands on top of the
+    // restore, in the order the two events actually happened. (load()/loadFile() are
+    // covered by onAboutToLoad, which already fires before their first mutation.)
+    std::function<void()> onAboutToSave;
+
+    // TEST SEAM (D-2 round 9, widened in round 10). Fired immediately before a clean
+    // BASELINE is fixed: by saveUser() before the ONE state capture the file and its
+    // baseline are both derived from, and by load()/loadFile() after the preset's sound
+    // has been applied and before its baseline is set. Empty in production: one null
+    // check, on a non-audio path, exactly like the processor's own seams.
+    //
+    // It exists because the defect this round closed lived in the gap between two reads,
+    // and a test that can only hope to land a mutation in that gap is a race to lose.
+    // With the seam the interleaving is exact and repeatable: State test 52 mutates a
+    // sound parameter here, which in the DEFECTIVE implementation falls between the
+    // signature read and the state copy (bytes and baseline then describe different
+    // sounds), and in the fixed one falls before the single capture, where it is simply
+    // part of what gets saved. The seam therefore discriminates rather than merely
+    // executing -- which is the property a regression for an ordering defect has to have.
+    std::function<void()> beforeStateCapture;
+
+    // D-2 (RISK-007). Fired on the message thread after ANY change to the metadata
+    // this manager owns -- the name, the identity and the clean baseline -- from
+    // every path that changes them: load, loadFile, saveUser and setMeta (which is
+    // also how a host restore adopts). The processor republishes its snapshot from here,
+    // so an off-message-thread save can never read a stale name or identity.
+    // Fired after the fields are set and before onLoaded / onSaved. Empty when no
+    // processor wires it up (safe to skip).
+    std::function<void()> onMetaChanged;
+
     // S10: set by the processor -- generation counter of the sound-parameter
     // values, bumped on every value change. Lets isDirty() reuse its last
     // BUILT signature while provably nothing changed (the comparison against
@@ -191,6 +331,20 @@ public:
     std::function<juce::uint32 ()> soundParamGeneration;
 
 private:
+    // Stands in when no processor wired one up, so the ScopedLock always has an object to take.
+    // Never contended in that case: without a processor there is no host restore thread.
+    juce::CriticalSection fallbackSoundLock;
+
+    // The §24 lock to take: the processor's. The stand-in exists only so the ScopedLock always
+    // has an object, and taking it would mean this manager is excluding against NOTHING -- a
+    // wiring mistake that would otherwise be invisible, since the lock still succeeds. Asserted
+    // rather than tolerated: every manager this plug-in builds has a processor behind it.
+    const juce::CriticalSection& replacementLock() const noexcept
+    {
+        jassert (soundReplacementLock != nullptr);   // the processor must have wired it (§24)
+        return soundReplacementLock != nullptr ? *soundReplacementLock : fallbackSoundLock;
+    }
+
     void applyDefaults();
     // Parse a preset file into its sound tree, or return an INVALID tree if the
     // file is not an Anamorph preset. Both loaders resolve through this, so the

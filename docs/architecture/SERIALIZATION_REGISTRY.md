@@ -9,17 +9,17 @@ Field-level ledger of everything written to session state. Companion to
 > migration support (a read path for the old field). Adding a field is allowed only if absence
 > is handled (a default), so older sessions still load.
 
-Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:1037-1040 (pre-0.8.4 `migrateFromLegacyApvts`), :652-693 (pre-0.6.4 `readSlot`), :700-705 (v0.2 bare APVTS);
-src/InternalState.h:197-286.
+Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:1585-1588 (pre-0.8.4, `resolveLegacy`), :1287-1360 (pre-0.6.4 `readSlot`), :1388-1410 (v0.2 bare APVTS);
+src/InternalState.h:198-433.
 
 ## `AnamorphRoot` properties
 
 | Field | Type | Introduced | Migration Required | Required | Default if absent |
 |---|---|---|---|---|---|
 | `presetName` | String | ≥0.6 (Unverified exact) | No | No | `PresetManager::defaultName()` — **absent ≠ empty**, see below |
-| `presetBaseline` | String | 0.6.x (#6) [Partially Verified] | No | No | `adoptRestoredState` clean baseline |
+| `presetBaseline` | String | 0.6.x (#6) [Partially Verified] | No | No | `baselineOfRestore` clean baseline |
 
-Source: src/PluginProcessor.cpp:968-969 (write), :633-642 (read), :727-741 (adoption).
+Source: src/PluginProcessor.cpp:1400-1408 (write), :1268-1277 (read), :1104-1105 (adoption).
 
 **`presetName`: absent and empty are different answers.** The property is *absent* only in a session
 that predates it (< 0.6); it resolves to `PresetManager::defaultName()`, whose name-fallback tick is
@@ -28,12 +28,12 @@ real state — "this state has no preset" — and is adopted verbatim; since 0.9
 sitting on a nameless A/B slot stores exactly that, so turning it back into a name would invent one.
 Neither case may fall back to `presets.currentName()`: `presets` is a processor member and a host
 reuses one instance across `setStateInformation` calls, so the live name is the **previous project's**
-— the same rule `readSlot` follows for the A/B slots. `adoptRestoredState` therefore assigns the name
+— the same rule `readSlot` follows for the A/B slots. The adoption therefore assigns the name
 unconditionally, and only `setStateInformation` (which can see `hasProperty`) resolves absence.
-Source: src/PresetManager.h:103-108 (`defaultName`); src/PresetManager.cpp:403-414
-(`adoptRestoredState`).
+Source: src/PresetManager.h:103-108 (`defaultName`); src/PluginProcessor.cpp:1340
+(`adoptRestoreTail`'s adoption).
 
-**A malformed legacy Setting resolves to a valid setting, deterministically** (2026-09-01, ER-STATE-17). Pre-0.8.4 sessions carry Oversampling, UI Scale and Scope Persistence as APVTS `PARAM`s that `InternalState::migrateFromLegacyApvts` converts. Each value now passes the same usability predicate as the session and preset paths (`SerializedNumber.h`: plain decimal text, finite after float narrowing) — anything else means the field's **default**, exactly as an absent node does — and the choice indices are clamped into the ComboBox domain (`oversample` ids 1..4, `uiScale` 1..5; `scopePersist` to 0..1) in double **before** the integer conversion, so that conversion is defined for every input and the `+ 1` cannot overflow. Before this the value went straight into `(int)`, which is undefined for NaN, ±inf and out-of-range doubles, and JUCE's parser accepts "nan"/"inf": measured on x86-64 every such value became −2147483647 in the tree and was written back out on the next save; "2147483647" wrapped to INT_MIN through a second UB; AArch64 saturated the same inputs differently. Valid legacy values convert exactly as before (State tests 5 and 6 unchanged); State test 28 pins 88 synthetic cases over both legacy shapes, plus 36 on the real frozen pre-0.8.4 fixture mutated in place with its surrounding session asserted intact (round 13). Source: src/InternalState.h:234-279.
+**A malformed legacy Setting resolves to a valid setting, deterministically** (2026-09-01, ER-STATE-17). Pre-0.8.4 sessions carry Oversampling, UI Scale and Scope Persistence as APVTS `PARAM`s that `InternalState::migrateFromLegacyApvts` converts. Each value now passes the same usability predicate as the session and preset paths (`SerializedNumber.h`: plain decimal text, finite after float narrowing) — anything else means the field's **default**, exactly as an absent node does — and the choice indices are clamped into the ComboBox domain (`oversample` ids 1..4, `uiScale` 1..5; `scopePersist` to 0..1) in double **before** the integer conversion, so that conversion is defined for every input and the `+ 1` cannot overflow. Before this the value went straight into `(int)`, which is undefined for NaN, ±inf and out-of-range doubles, and JUCE's parser accepts "nan"/"inf": measured on x86-64 every such value became −2147483647 in the tree and was written back out on the next save; "2147483647" wrapped to INT_MIN through a second UB; AArch64 saturated the same inputs differently. Valid legacy values convert exactly as before (State tests 5 and 6 unchanged); State test 28 pins 88 synthetic cases over both legacy shapes, plus 36 on the real frozen pre-0.8.4 fixture mutated in place with its surrounding session asserted intact (round 13). Source: src/InternalState.h:254-299.
 
 **A recognised root with no sound child is not a restore either** (2026-09-01, ER-STATE-15). An
 `AnamorphRoot` whose `ANAMORPH` child is absent restores no parameter at all, so `setStateInformation`
@@ -44,7 +44,7 @@ moved — "metadata describing a session that was never loaded", which is the sa
 paragraph exists to prevent. `getStateInformation` appends the child unconditionally, so no session
 this plug-in has ever written reaches that branch and no valid session changes behaviour; what
 reaches it is a truncated, hand-edited or forward-version blob. Source:
-src/PluginProcessor.cpp:999-1018; State test 27.
+src/PluginProcessor.cpp:1446-1553; State test 27.
 
 **A chunk of neither recognised shape is not a restore at all.** `setStateInformation` handles two
 root shapes — `AnamorphRoot` and the bare v0.2 APVTS tree. Anything else (a foreign or
@@ -52,7 +52,7 @@ forward-version root) matches neither, so no parameter, Settings value or A/B sl
 the function **returns before the adoption block**: preset name, identity, checkmark and dirty
 baseline all stay exactly as they were. That is the same answer the guard at the top already gives a
 blob `getXmlFromBinary` cannot parse — input we do not recognise never becomes state. Source:
-src/PluginProcessor.cpp:1170-1204 (the else-branch), :607 (the unparsable-blob guard).
+src/PluginProcessor.cpp:1711-1745 (the else-branch), :607 (the unparsable-blob guard).
 
 ### The preset **indicator identity** (0.9.2, ADR-0024 as amended)
 
@@ -92,8 +92,8 @@ fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
 same-named preset. Source: src/PresetManager.h:54-76 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
-src/PresetManager.cpp:420-473 (`encodeSelection` / `decodeSelection`);
-src/PluginProcessor.cpp:941-962 (`writeSelection`/`readSelection`), :585 (root write),
+src/PresetManager.cpp:708-761 (`encodeSelection` / `decodeSelection`);
+src/PluginProcessor.cpp:1125-1147 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
 ## `ANAMORPH` child (APVTS)
@@ -163,7 +163,7 @@ states, so the test is on the root and it runs before any per-parameter fallback
 document.
 
 This is the same rule the `AB` child already applies to a slot payload (ER-STATE-02: `readSlot`
-accepts only `apvts.state.getType()` and refuses a foreign-typed tree precisely as it refuses an
+accepts only `apvtsStateType` (the APVTS root type, captured once at construction) and refuses a foreign-typed tree precisely as it refuses an
 unparsable one). **Unchanged by it:** a valid `<ANAMORPH>` root with genuinely missing `PARAM` nodes
 keeps the documented per-parameter default behaviour above, and a malformed value inside a matched
 node keeps its `SerializedNumber.h` fallback. State test 34 pins all three cases apart.
@@ -191,7 +191,7 @@ loop wrote unconditionally (`--partial-settings-probe`): a modern session omitti
 inherited the previous project's value in **6 cases out of 6**, while the pre-0.8.4/v0.2 path —
 `migrateFromLegacyApvts`, which has always written all six — inherited in **0**. A session that
 carries the field is unaffected. State test 29 pins all four cases (omitted, explicitly present,
-legacy, malformed). Source: src/InternalState.h:192-228.
+legacy, malformed). Source: src/InternalState.h:194-248.
 
 **‡** Sessions saved **before** 0.8.4 have no `ANAMORPH_INTERNAL` child; these values are
 recovered from the legacy APVTS PARAM nodes by `migrateFromLegacyApvts` (choice indices are
@@ -248,7 +248,7 @@ default, which is also what an ABSENT field resolves to. Booleans are the one Ki
 them; the ComboBox and unit-range fields keep their clamps unchanged. Nine cases were added to
 State test 33 for this (30 → 39); **12 of its checks fail against the `v != 0.0` build.**
 
-0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:235-286;
+0-based legacy → 1-based ComboBox). Evidence [Verified]: src/InternalState.h:255-309;
 [Partially Verified] introduced-0.8.4: CHANGELOG.md [0.8.4].
 
 ## `AB` child
@@ -272,7 +272,7 @@ default rather than "whatever the previous session left" — and that has to hol
 **whole**, not field by field, or the two halves of one slot come out of two different projects.
 Concretely: an `AB` node that exists but whose slot params cannot be read (no `slotAParams` *and* no
 pre-0.6.4 `slotA`, a payload that fails to parse, **or — since 2026-08-31, ER-STATE-02 — a payload
-that parses to a tree of the wrong type**: `readSlot` accepts only `apvts.state.getType()`, because
+that parses to a tree of the wrong type**: `readSlot` accepts only `apvtsStateType`, because
 a foreign-typed tree applied via `replaceState` silently re-typed the live APVTS and every later
 save then wrote a params child a fresh instance's restore skipped) would otherwise keep the previous
 restore's **sound** while its name, baseline and identity were reset around it.
@@ -299,12 +299,14 @@ node, since it is called from inside that node's branch. Two restore paths carry
 an `AnamorphRoot` with no `AB` child (every field in the table above is "Required: No", so the node
 itself is optional) and a **v0.2** bare-APVTS session, which predates the feature — and both left
 `abSlot[]` and `active` holding the PREVIOUS restore's values on a reused instance, so the next A/B
-switch recalled the previous project's sound underneath the restored one. `abResetToDefaults()`
-now applies the documented defaults (`active` → 0, both slots → invalid, i.e. "lazily initialised
-from current") on those two paths, and the existing `abEnsureInit()` re-seeds from the state that
-was just restored. A blob that DOES carry an `AB` node is unaffected: its slots restore as before.
-Source: src/PluginProcessor.cpp:874-904 (`abResetToDefaults`, beside `abEnsureInit`), :1027 (the
-v0.2 branch) and :955 (the `AB`-absent branch); State test 26.
+switch recalled the previous project's sound underneath the restored one. The restore's decode
+(`decodeRestore`, since D-2; `abResetToDefaults()` before it) now yields the documented defaults
+(`active` → 0, both slots → invalid, i.e. "lazily initialised from current") on those two paths,
+`adoptRestoreTail` assigns the slot set as a whole, and the existing `abEnsureInit()` re-seeds from
+the state that was just restored. A blob that DOES carry an `AB` node is unaffected: its slots restore as before.
+Source: src/PluginProcessor.cpp:1684-1708 (the `AB`-absent branch of `decodeRestore`), :1388-1410 (the
+v0.2 branch) and :1063-1108 (`adoptRestoreTail`, which assigns the slot set and resets the
+Level-Match memory); State test 26.
 
 **The per-slot Level-Match gain is part of the slot, and resets with it** (2026-09-02,
 ER-STATE-20). `abMatchGain[]` is the one piece of a slot that is **never serialized** — it is a
@@ -314,9 +316,9 @@ absent from the format, nothing on the restore path ever overwrote it, so it sur
 on a reused instance and handed the NEW project's matcher the OLD project's figure. Measured on the
 real restore paths: the first switch injected the previous project's remembered value verbatim —
 −1.040 dB for slot B, −2.438 dB for slot A, against the 0 dB a fresh instance injects. It is now
-reset alongside the slot itself in **both** places a slot is reset: `abResetToDefaults()` (the two
+reset alongside the slot itself in **both** places a slot is reset: the decode's defaults (the two
 paths that carry no `AB` node) and `readSlot` (per slot, so an `AB` node that exists but carries no
-usable payload is covered too — that path never reaches `abResetToDefaults`, and with `active` = 1
+usable payload is covered too — that path never took the defaults, and with `active` = 1
 it is the only one that exposes slot A, since the first switch overwrites the slot it leaves before
 reading the one it enters). 0 dB is not a chosen sentinel but the member's initialiser, which is
 what makes a reused instance behave exactly like a fresh one. **Not a format change**, and nothing a
@@ -325,36 +327,41 @@ sound, name, baseline and identity restore exactly as before and the matcher re-
 always has. The *audible* consequence of the stale injection was measured separately in round 9 and
 found inert (`--legacy-match-probe`: `setParameters` re-targets the smoother from the live
 measurement every block); what was wrong, and is fixed here, is the state. Source:
-src/PluginProcessor.cpp (`abResetToDefaults`, `readSlot`); State test 31.
+src/PluginProcessor.cpp (`adoptRestoreTail`, which resets it for the whole set on every restore since D-2; `readSlot`); State test 31.
 
 **Both slots get that same answer.** Slot B used to be seeded from a *copy of slot A* instead. On the
 path that runs every time — construction, where both slots are invalid — the two are
 indistinguishable, since slot A has just been seeded from the same live state. They diverged only
 when slot A was valid and slot B was not, i.e. an `AB` node whose `slotBParams` alone was missing or
 unparsable: slot B came back as a **duplicate of slot A** rather than as the state just restored, and
-a later save wrote that duplicate out. Source: src/PluginProcessor.cpp:1066-1153
-(`readSlot`), :752-770 (`abEnsureInit`); src/PluginProcessor.h:150-163 (`StateSet::isValid`).
+a later save wrote that duplicate out. Source: src/PluginProcessor.cpp:1609-1682
+(`readSlot`), :904-932 (`abEnsureInit`); src/PluginProcessor.h:215-228 (`StateSet::isValid`).
 
 An empty `slotABase` / `slotBBase` means **"no baseline was recorded"**, which is *not* the same as
 "modified". Only a pre-0.6.4 slot can produce it — every in-memory producer fills it — and
-`PresetManager::setMeta` resolves it the way `adoptRestoredState` resolves an absent root
-`presetBaseline`: the state being applied becomes its own **clean** baseline. A literal `""` would
+`PresetManager::setMeta` resolves it the way the ROOT `presetBaseline` is resolved: the state being
+applied becomes its own **clean** baseline. A literal `""` would
 compare unequal to every possible `soundSig()`, so such a slot would read as permanently edited and
 the top bar would render a bare ` *` — a modified-marker against a preset the slot does not have
-(its name is empty by the same rule). Source: src/PresetManager.h:127-155 (`setMeta`);
-src/PresetManager.cpp:403-414 (`adoptRestoredState`, the root-side rule).
+(its name is empty by the same rule). The root-side rule no longer goes through this fallback: since
+round 15 (ADR-0036 §22) it is resolved from the restore's OWN bytes at decode time, because the
+adoption can run an unbounded time after a host thread's restore and the live read absorbed every
+edit made in between. The slot side keeps the fallback — its apply and its `setMeta` are adjacent
+statements on one thread — and ADR-0036 §22 records what closing it would take.
+Source: src/PresetManager.h:127-162 (`setMeta`);
+src/PluginProcessor.cpp:1365 (`baselineOfRestore`, the root-side rule).
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
-Evidence [Verified]: src/PluginProcessor.cpp:1131-1132 (the legacy-key fallback inside `readSlot`, :991-1078);
+Evidence [Verified]: src/PluginProcessor.cpp:1656-1657 (the legacy-key fallback inside `readSlot`, :991-1078);
 the per-slot identity is written at :831 / :835 and read at :918.
 
 ## Legacy root formats (read-only compatibility)
 
 | Format | Detection | Handling |
 |---|---|---|
-| v0.2 bare APVTS tree | `xml->hasTagName(apvts.state.getType())` | `apvts.replaceState` |
+| v0.2 bare APVTS tree | `xml->hasTagName(apvtsStateType)` | repair on a private copy → `apvts.replaceState` → `reassertParameters` (`applySoundTree`) |
 
-Source: src/PluginProcessor.cpp:1155-1169.
+Source: src/PluginProcessor.cpp:1710-1733.
 
 ## Notes
 

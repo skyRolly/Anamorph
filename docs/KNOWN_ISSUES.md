@@ -172,7 +172,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:1980-1982 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:2006-2008 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -324,13 +324,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2147-2155; declared src/PluginEditor.h:258). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2160-2168; declared src/PluginEditor.h:258). This shipped in
   the v0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are src/PluginEditor.cpp:2116 (the on-open call) / src/PluginEditor.cpp:2147-2155 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
+  the only focus calls are src/PluginEditor.cpp:2129 (the on-open call) / src/PluginEditor.cpp:2160-2168 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -607,7 +607,7 @@ keys fine":
   (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
-  src/PluginEditor.cpp:378-388 (the field), src/PluginEditor.cpp:2105-2155 (show + focus);
+  src/PluginEditor.cpp:381-391 (the field), src/PluginEditor.cpp:2118-2168 (show + focus);
   `juce_NSViewComponentPeer_mac.mm:1655-1668, 2396-2435`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,
@@ -864,7 +864,7 @@ a single output bit.
 adversarial verifications against the pinned JUCE 9.0.1 tree).**
 
 The processor registers itself as the APVTS listener for `pid::drive` and `pid::algorithm`
-(`src/PluginProcessor.cpp:28-29`), and `parameterChanged` → `updateLatency()` →
+(`src/PluginProcessor.cpp:33-34`), and `parameterChanged` → `updateLatency()` →
 `setLatencySamples()` runs **synchronously on whatever thread changes the parameter**. Under VST3
 host automation that thread is the audio thread (`JuceVST3Component::process` →
 `processParameterChanges` → `setValueAndNotifyIfChanged`), and JUCE dispatches parameter listeners
@@ -918,7 +918,7 @@ APVTS `LockedListeners` mutex).
   in `setParameters`' own body either — `check-realtime.py` now seeds `setParameters`/`toEngine`
   (with self-test liveness), closing the static half; RTSan still enforces only from the
   `process` annotation down.
-- **Evidence [Verified]:** src/PluginProcessor.cpp:28-29, :117-134; pinned JUCE
+- **Evidence [Verified]:** src/PluginProcessor.cpp:33-34, :117-134; pinned JUCE
   `juce_audio_plugin_client_VST3.cpp:3563/:3591/:3537`, `juce_AudioProcessorParameter.cpp:110-121`,
   `juce_AudioProcessorValueTreeState.cpp:148-203`, `juce_AudioProcessor.cpp:415-436`,
   `juce_VST3Common.h:1642-1653`, `juce_Messaging_linux.cpp:79-96`.

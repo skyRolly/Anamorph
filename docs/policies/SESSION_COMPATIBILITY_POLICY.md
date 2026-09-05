@@ -17,6 +17,22 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
    which is metadata: the sound must restore identically even when the identity does not resolve.
 5. **View params are preserved on restore.** `applyStatePreservingView` keeps the current
    `pid::viewParams` (Bypass) across an A/B/undo/preset apply.
+6. **`presetBaseline` is a comparison key, not a value the plug-in must reproduce.** It carries a
+   signature of the sound a state set was clean at, so `isDirty()` can answer "has the sound moved
+   since". Rule 1 governs the FIELD — it is still written, still read, still tolerates absence — and
+   nothing about the sound, the name or the identity depends on it. What it is compared against may
+   therefore change when the definition of "the same sound" is corrected, and the only consequence
+   is which way a modified-marker points. **Recorded change (0.9.7, ADR-0036 §17):** the signature is
+   now taken on the grid the plug-in actually renders and stores
+   (`anamorph::normalisedAsRendered` = `convertTo0to1(convertFrom0to1(v))`), which is a no-op for
+   every stock parameter and snaps the custom `RawChoice`/`RawBool` values. A session saved by an
+   older build can therefore restore showing a modified-marker it did not show before, in **two**
+   cases: a host-automated sub-step value on a discrete parameter (always), and any of the four
+   custom-mapped frequency parameters at a value where the float round trip crosses a 5-decimal
+   boundary (roughly 1 value in 500). Cosmetic, no sound change, no field change, and self-correcting
+   on the next save or preset load — both recompute the baseline under the new definition. The
+   corrected definition is the point: the old one marked a preset clean against a sound its own file
+   could not hold.
 
 ## Required verification before release
 
@@ -26,8 +42,8 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
 These same checks are enforced at release time via the release compatibility checklist
 (`docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`).
 
-Evidence [Verified]: src/PluginProcessor.cpp:954-984 (write), :595-685 (read), :540-561
-(the identity helpers); src/InternalState.h:195-286.
+Evidence [Verified]: src/PluginProcessor.cpp:1139-1431 (write), :595-685 (read), :540-561
+(the identity helpers); src/InternalState.h:197-321.
 
 ## Enforcement
 
