@@ -3,14 +3,15 @@
 
 PROVENANCE: adopted verbatim from the sibling product Anabasis
 (`scripts/check-docs.py`) apart from this paragraph and the product name above.
-The four checks below are structural properties of GitHub-Flavored Markdown, not
-of either product, so there was nothing to adapt -- and a diverged copy of a
-checker is worse than a shared one. The defects each check names happened in
+The first four checks below are structural properties of GitHub-Flavored Markdown,
+not of either product, so there was nothing to adapt -- and a diverged copy of a
+checker is worse than a shared one. The CHANGELOG rules (5) are this repository's
+own, and are shared with `release.yml`'s extractor rather than with the sibling. The defects each check names happened in
 Anabasis; they are reproducible in any document set written the same way, which
 this one is (same directory layout, same navigation documents, same ADR index).
 
 
-Four checks, all mechanical and deterministic. Each exists because the defect it
+Five checks, all mechanical and deterministic. Each exists because the defect it
 catches shipped at least once in this repository and was invisible in the source
 diff that introduced it:
 
@@ -32,6 +33,13 @@ diff that introduced it:
      is absorbed into the quote by CommonMark's lazy-continuation rule. This
      happened to ADR-0011: two sentences of binding contract rendered as part of a
      historical correction note, which a reader could reasonably skip.
+
+  5. CHANGELOG STRUCTURE (`CHANGELOG.md` only, four checks that share one parser)
+     -- the entry-boundary rule `release.yml`'s note extractor depends on, the
+     entry-heading grammar and newest-first order, Keep a Changelog's six category
+     names in their specified order once each per release, and the version link
+     definitions. See `parse_changelog` and the three `check_changelog_*` rules
+     below it; the contract they enforce is `docs/policies/CHANGELOG_POLICY.md`.
 
   4. UNCLOSED FENCE -- an opening code fence with no closer makes the rest of the
      file render as code on GitHub. It is a real rendering defect on its own, and
@@ -577,7 +585,9 @@ def check_changelog_notes_boundary(path: Path, lines: list[str], skip: list[bool
                 f"{path}:{i + 1}: `## ` heading that is not an entry heading (`## [`), below "
                 f"the first entry (line {first + 1}) -- release.yml ends a release's notes at "
                 f"the next `## [`, so this section is published inside whichever entry it "
-                f"happens to sit under. Use `### ` or deeper"
+                f"happens to sit under. Move it ABOVE the first entry heading, or into an "
+                f"entry's lead as a bold note (CHANGELOG_POLICY.md rule 6) -- demoting it to "
+                f"`### ` only makes it an invented category"
             )
     return findings
 
@@ -646,7 +656,39 @@ RECONSTRUCTED_HEADINGS = (
 # cut), so a definition for one of those would be a link to a page that will
 # never exist. A constant, because the fact is: it never changes.
 FIRST_TAGGED_VERSION = (0, 9, 7)
-LINK_DEFINITION = re.compile(r"^\[([^\]]+)\]:\s*(\S+)\s*$")
+# The one repository a version link may point into. Checked because a definition
+# is a citation: `https://example.com/x/compare/v0.9.7...v0.9.8` satisfied every
+# earlier spelling of the rule and resolves to nothing.
+REPO_URL = "https://github.com/skyRolly/Anamorph"
+# A CommonMark link reference definition (§4.7): up to three columns of
+# indentation, the label, a destination that may be angle-bracketed, and an
+# optional title. The first spelling of this required column 0 and a bare
+# destination, so `  [0.9.7]: <url> "title"` -- a working link in every renderer --
+# was reported as a MISSING definition. A false "add what is already there" is the
+# fail-closed direction, which is why it blocked a push rather than shipping a
+# broken link, but it is still the script telling the truth about its own regex
+# rather than about the document.
+LINK_DEFINITION = re.compile(
+    r"""^ {0,3}\[([^\]]+)\]:[ \t]*(<[^>\n]*>|\S+)(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$"""
+)
+# The one spelling `release.yml` can publish: `## [` at column 0, exactly one
+# space. Everything else -- a leading indent, a tab or a second space after the
+# `##` -- renders as a heading and is invisible to the extractor's `^## \[`, so a
+# release written that way could never be published and an OLDER entry written
+# that way does not terminate the entry above it (its whole body is then
+# published inside its predecessor's notes). Testing this by counting leading
+# spaces missed both whitespace forms; testing the literal prefix cannot.
+PUBLISHABLE_ENTRY_PREFIX = "## ["
+# A heading indented four columns or more. CommonMark calls that an indented code
+# block -- EXCEPT inside a list item, where the indent belongs to the container
+# and `### Fixed` still renders as a heading. `indented_code_mask` deliberately
+# leaves list-context indentation unmasked (its docstring says so), so such a line
+# was neither masked as code nor matched as a heading: a duplicated or invented
+# category could hide there. It is matched here and reported.
+DEEP_HEADING = re.compile(r"^ {4,}(#{1,6})[ \t]+(\S.*?)[ \t]*$")
+# A setext underline (§4.3): `Changed` over `---` renders as a heading too, and
+# `release.yml`'s extractor stops at neither it nor a setext version heading.
+SETEXT_UNDERLINE = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
 
 
 class ChangelogEntry:
@@ -691,20 +733,43 @@ def parse_changelog(lines: list[str], skip: list[bool]
             continue
         d = LINK_DEFINITION.match(line)
         if d:
-            definitions.append((i + 1, d.group(1), d.group(2)))
+            destination = d.group(2)
+            if destination.startswith("<") and destination.endswith(">"):
+                destination = destination[1:-1]     # CommonMark §4.7: `<...>` is a wrapper
+            definitions.append((i + 1, d.group(1), destination))
+            continue
+        deep = DEEP_HEADING.match(line)
+        if deep and entries:
+            level, text = len(deep.group(1)), deep.group(2)
+            if level == 3:
+                findings.append(
+                    f"CHANGELOG.md:{i + 1}: `### {text}` is indented "
+                    f"{len(line) - len(line.lstrip(' '))} columns. Inside a list item that "
+                    f"still renders as a heading, so a category can hide there; a category "
+                    f"heading belongs at column 0"
+                )
+                entries[-1].categories.append((text, i + 1))
+            continue
+        if SETEXT_UNDERLINE.match(line) and i and lines[i - 1].strip() and not skip[i - 1] \
+                and not lines[i - 1].lstrip().startswith(("|", ">", "-", "*", "+", "#")):
+            findings.append(
+                f"CHANGELOG.md:{i + 1}: `{lines[i - 1].strip()}` underlined by `{line.strip()}` "
+                f"is a setext heading. `release.yml` extracts and terminates release notes on "
+                f"`^## \\[` alone and cannot see it -- write headings as `##` / `###`"
+            )
             continue
         h = atx_heading(line)
         if h is None:
             continue
         level, text = h
         if level == 2 and text.startswith("["):
-            indent = len(line) - len(line.lstrip(" "))
-            if indent:
+            if not line.startswith(PUBLISHABLE_ENTRY_PREFIX):
                 findings.append(
-                    f"CHANGELOG.md:{i + 1}: version heading is indented {indent} space(s) -- "
-                    f"it renders as a heading but `release.yml` extracts release notes by "
-                    f"`^## \\[` at column 0, so this release could never be published. "
-                    f"Start it at column 0"
+                    f"CHANGELOG.md:{i + 1}: `{line.strip()}` renders as an entry heading but "
+                    f"is not written `## [` at column 0 with a single space, which is the only "
+                    f"form `release.yml` extracts (`^## \\[`) -- this release could not be "
+                    f"published, and an older entry written this way does not terminate the "
+                    f"entry above it"
                 )
             m = VERSION_HEADING_TEXT.match(text)
             if m:
@@ -865,6 +930,17 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
                 findings.append(f"{path}:{line_no}: `[{label}]` is defined twice")
             defined[key] = (line_no, url)
     versions = {".".join(map(str, e.version)): e for e in entries if e.kind == "version"}
+    ordered = [k for k in versions]
+    previous_of = {k: ordered[n + 1] for n, k in enumerate(ordered) if n + 1 < len(ordered)}
+    # A label whose heading EXISTS but is malformed (`## [0.9.8] — <YYYY-MM-DD>`)
+    # is not an orphaned definition: the entry is there, its heading text is
+    # wrong, and `check_changelog_headings` already says so. Reporting the
+    # definition too pointed the author at the wrong line.
+    claimed = {
+        e.text[1:e.text.index("]")]
+        for e in entries
+        if e.kind == "malformed" and e.text.startswith("[") and "]" in e.text
+    }
     has_unreleased = any(e.kind == "unreleased" for e in entries)
 
     for key, (line_no, url) in defined.items():
@@ -874,17 +950,19 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
                     f"{path}:{line_no}: `[Unreleased]` is defined but there is no "
                     f"`## [Unreleased]` entry"
                 )
-            elif not url.endswith("...HEAD"):
+            elif not re.fullmatch(rf"{re.escape(REPO_URL)}/compare/v\d+\.\d+\.\d+\.\.\.HEAD",
+                                  url):
                 findings.append(
-                    f"{path}:{line_no}: the `[Unreleased]` definition must compare the last "
-                    f"tag to HEAD (`.../compare/v<x.y.z>...HEAD`)"
+                    f"{path}:{line_no}: the `[Unreleased]` definition must be "
+                    f"`{REPO_URL}/compare/v<last tag>...HEAD`; got `{url}`"
                 )
             continue
         e = versions.get(key)
         if e is None:
-            findings.append(
-                f"{path}:{line_no}: `[{key}]` is defined but there is no `## [{key}]` entry"
-            )
+            if key not in claimed:
+                findings.append(
+                    f"{path}:{line_no}: `[{key}]` is defined but there is no `## [{key}]` entry"
+                )
             continue
         if e.version is not None and e.version < FIRST_TAGGED_VERSION:
             findings.append(
@@ -894,12 +972,22 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
             )
             continue
         tag = f"v{key}"
-        if not (url.endswith(f"/releases/tag/{tag}")
-                or re.search(rf"/compare/v\d+\.\d+\.\d+\.\.\.{re.escape(tag)}$", url)):
+        # WHICH form, not merely "one of the two". The first version this line
+        # tags has no predecessor to compare against, so it points at its own tag
+        # page; every later one compares against the version directly above it in
+        # the file. Accepting either for any version -- the first spelling of this
+        # check -- let `[0.9.7]: .../compare/v0.9.6...v0.9.7` pass, a comparison
+        # against a tag that was never cut, which is a dead link in the one place
+        # the specification asks to be linkable.
+        want = (f"{REPO_URL}/releases/tag/{tag}" if e.version == FIRST_TAGGED_VERSION
+                else f"{REPO_URL}/compare/v{previous_of.get(key, '?')}...{tag}")
+        if url != want:
+            why = ("the line's first tag has no predecessor to compare against"
+                   if e.version == FIRST_TAGGED_VERSION
+                   else "a comparison against the entry directly above it")
             findings.append(
-                f"{path}:{line_no}: the `[{key}]` definition must point at its own tag -- "
-                f"`.../releases/tag/{tag}` for the line's first tag, "
-                f"`.../compare/v<previous>...{tag}` after it; got `{url}`"
+                f"{path}:{line_no}: the `[{key}]` definition must be `{want}` ({why}); "
+                f"got `{url}`"
             )
 
     for key, e in versions.items():
@@ -1067,11 +1155,14 @@ def self_test() -> int:
     # the two ways a future edit breaks it.
     # Fixture conventions: versions BELOW the first tagged version (0.9.7) need no
     # link definition, so structural cases use `[0.5.0]` / `[0.4.0]`; the link
-    # cases use `[1.0.0]`, which does. `V5` / `V4` are valid dated headings.
+    # cases use `[0.9.7]` (the first tag, a tag page) and `[0.9.8]` (the one after
+    # it, a comparison). `V5` / `V4` are valid dated headings.
     V5 = "## [0.5.0] — 2026-01-02"
     V4 = "## [0.4.0] — 2026-01-01"
-    V1 = "## [1.0.0] — 2026-02-01"
-    L1 = "[1.0.0]: https://github.com/skyRolly/Anamorph/releases/tag/v1.0.0"
+    V7 = "## [0.9.7] — 2026-09-05"
+    V8 = "## [0.9.8] — 2026-09-06"
+    D7 = "[0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7"
+    D8 = "[0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8"
     for label, expected, lines in [
         # -- the notes-boundary rule, as before --------------------------------
         ("entry sub-sections at ### are fine", 0,
@@ -1150,6 +1241,14 @@ def self_test() -> int:
           "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.4.0...HEAD"]),
         ("`## [Unreleased]` without a definition is a finding", 1,
          ["# Changelog", "## [Unreleased]", "### Added", "- x"]),
+        # The FORM, not merely the `...HEAD` suffix: a definition pointing at
+        # another repository, or at no tag at all, satisfied the suffix test.
+        ("an `[Unreleased]` definition on another host is a finding", 1,
+         ["# Changelog", "## [Unreleased]", "### Added", "- x",
+          "[Unreleased]: https://example.com/x/compare/v0.5.0...HEAD"]),
+        ("an `[Unreleased]` definition that names no tag is a finding", 1,
+         ["# Changelog", "## [Unreleased]", "### Added", "- x",
+          "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/main...HEAD"]),
         ("`## [Unreleased]` below a release is a finding", 1,
          ["# Changelog", V5, "### Fixed", "- x", "## [Unreleased]", "### Added", "- y",
           "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.5.0...HEAD"]),
@@ -1182,25 +1281,71 @@ def self_test() -> int:
          ["# Changelog", "## [0.5.10] — 2026-01-03", "### Fixed", "- x",
           "## [0.5.9] — 2026-01-02", "### Fixed", "- y"]),
         # -- link definitions --------------------------------------------------------
-        ("a tagged-era version with its tag-page definition passes", 0,
-         ["# Changelog", V1, "### Fixed", "- x", L1]),
-        ("a tagged-era version with a comparison definition passes", 0,
-         ["# Changelog", V1, "### Fixed", "- x",
-          "[1.0.0]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v1.0.0"]),
+        # `V7`/`D7` are the line's FIRST tag, which points at its own tag page;
+        # `V8`/`D8` is the release after it, which compares against the entry
+        # directly above it. Accepting either form for either version -- the first
+        # spelling of the rule -- let a comparison against a never-cut tag pass.
+        ("the first tagged version with its tag-page definition passes", 0,
+         ["# Changelog", V7, "### Fixed", "- x", D7]),
+        ("a later version comparing against the entry above it passes", 0,
+         ["# Changelog", V8, "### Fixed", "- x", V7, "### Fixed", "- y", D8, D7]),
+        ("the first tag written as a comparison is a finding", 1,
+         ["# Changelog", V7, "### Fixed", "- x",
+          "[0.9.7]: https://github.com/skyRolly/Anamorph/compare/v0.9.6...v0.9.7"]),
+        ("a later version written as a tag page is a finding", 1,
+         ["# Changelog", V8, "### Fixed", "- x", V7, "### Fixed", "- y",
+          "[0.9.8]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.8", D7]),
+        ("a comparison against the wrong predecessor is a finding", 1,
+         ["# Changelog", V8, "### Fixed", "- x", V7, "### Fixed", "- y",
+          "[0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.2...v0.9.8", D7]),
+        ("a definition on another host is a finding", 1,
+         ["# Changelog", V7, "### Fixed", "- x",
+          "[0.9.7]: https://example.com/x/releases/tag/v0.9.7"]),
         ("a tagged-era version WITHOUT a definition is a finding", 1,
-         ["# Changelog", V1, "### Fixed", "- x"]),
+         ["# Changelog", V7, "### Fixed", "- x"]),
         ("a definition that names another version's tag is a finding", 1,
-         ["# Changelog", V1, "### Fixed", "- x",
-          "[1.0.0]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.9"]),
+         ["# Changelog", V7, "### Fixed", "- x",
+          "[0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.9"]),
         ("a definition for a version with no entry is a finding", 1,
-         ["# Changelog", V1, "### Fixed", "- x", L1,
-          "[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.9"]),
+         ["# Changelog", V7, "### Fixed", "- x", D7,
+          "[1.0.0]: https://github.com/skyRolly/Anamorph/releases/tag/v1.0.0"]),
         ("a definition for a never-tagged version is a finding", 1,
          ["# Changelog", V5, "### Fixed", "- x",
           "[0.5.0]: https://github.com/skyRolly/Anamorph/releases/tag/v0.5.0"]),
         ("non-version definitions are not the checker's business", 0,
          ["# Changelog", V5, "### Fixed", "- x",
           "[Keep a Changelog]: https://keepachangelog.com/en/1.1.0/"]),
+        # A definition the RENDERER accepts must not be reported as missing:
+        # CommonMark allows 0-3 columns of indent, a title, and `<...>`.
+        ("an indented definition is still a definition", 0,
+         ["# Changelog", V7, "### Fixed", "- x", "  " + D7]),
+        ("a definition with a title is still a definition", 0,
+         ["# Changelog", V7, "### Fixed", "- x", D7 + ' "the 0.9.7 tag"']),
+        ("an angle-bracketed destination is read without the brackets", 0,
+         ["# Changelog", V7, "### Fixed", "- x",
+          "[0.9.7]: <https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7>"]),
+        # -- a malformed heading does not orphan its own definition ----------------
+        ("a malformed heading is reported once, not twice", 1,
+         ["# Changelog", "## [0.9.7] — <YYYY-MM-DD>", "### Fixed", "- x", D7]),
+        # -- headings that render but cannot be extracted --------------------------
+        ("a tab after `##` renders but cannot be published: a finding", 1,
+         ["# Changelog", "##\t[0.9.7] — 2026-09-05", "### Fixed", "- x", D7]),
+        ("two spaces after `##` are the same defect", 1,
+         ["# Changelog", "##  [0.9.7] — 2026-09-05", "### Fixed", "- x", D7]),
+        ("an older entry in that form is reported where it stands", 1,
+         ["# Changelog", V8, "### Fixed", "- x", "##\t[0.9.7] — 2026-09-05", "### Fixed",
+          "- y", D8, D7]),
+        # -- a heading indented into a list item still renders ---------------------
+        ("a category indented four columns under a bullet is reported", 1,
+         ["# Changelog", V7, "### Fixed", "- x", "    ### Security", "- y", D7]),
+        ("...and its duplicate is caught there too", 2,
+         ["# Changelog", V7, "### Fixed", "- x", "    ### Fixed", "- y", D7]),
+        # -- setext headings are invisible to the extractor ------------------------
+        ("a setext heading inside an entry is a finding", 1,
+         ["# Changelog", V7, "### Fixed", "- x", D7, "", "Acknowledgements", "---"]),
+        ("a table delimiter row is not a setext heading", 0,
+         ["# Changelog", V7, "### Fixed", "- x", "", "| a | b |", "|---|---|", "| 1 | 2 |",
+          D7]),
     ]:
         got = len(analyse(root / "CHANGELOG.md", lines, root))
         checked += 1

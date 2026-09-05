@@ -41,13 +41,16 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    time. Two reconstructed headings at the foot, `[0.7.5] – [0.7.0]` and `[0.6.x] and earlier`,
    predate this policy and are accepted by exact text; no new heading may take that form.
 8. **Version headings are linkable.** The bracketed version is a link reference, and from `0.9.7` —
-   the first version this line tags — every one has a definition at the foot of the file naming its
-   own tag: `.../releases/tag/v<x.y.z>` for the first tag, `.../compare/v<previous>...v<x.y.z>` after
-   it. The definition is written **in the release commit**, before the tag exists, because a tag can
-   only point at a commit that already does (`RELEASE_PROCESS.md` §Tagging gives the sequence); the
-   name is deterministic, `release.yml` refusing any tag other than `v` + the CMake version. Versions
-   older than `0.9.7` were never tagged and must have no definition — there is no page to link.
-   `check-docs.py` enforces both directions and the URL form.
+   the first version this line tags — every one has a definition at the foot of the file, into this
+   repository (`https://github.com/skyRolly/Anamorph`), naming its own tag:
+   `/releases/tag/v0.9.7` for that first tag, which has no predecessor to compare against, and
+   `/compare/v<the entry directly above>...v<x.y.z>` for every version after it. An `[Unreleased]`
+   section's definition is `/compare/v<last tag>...HEAD`. The definition is written **in the release
+   commit**, before the tag exists, because a tag can only point at a commit that already does
+   (`RELEASE_PROCESS.md` §Tagging gives the sequence); the name is deterministic, `release.yml`
+   refusing any tag other than `v` + the CMake version. Versions older than `0.9.7` were never tagged
+   and must have no definition — there is no page to link. `check-docs.py` requires exactly the form
+   the version calls for, in both directions.
 
 ## Writing an entry
 
@@ -69,27 +72,40 @@ Establish the facts from the repository, then write for the reader:
 
 ## Entry template
 
-Angle brackets mark placeholders; everything else is literal. Only the categories that have entries
-appear, in this order, once each. The template is the shape `check-docs.py` accepts.
+`<...>` marks a placeholder and `<a|b>` a choice between the spellings inside it; everything else is
+literal. Only the categories that have entries appear, and in this order. The template is the shape
+`check-docs.py` accepts.
 
 ```markdown
 ## [<x.y.z>] — <YYYY-MM-DD>
 ### Added
 - **<What is new, as the user meets it>.** <One or two sentences on what it does.>
-  Evidence: PR #<NN> (or commit <sha>). [Verified]
+  Evidence: <PR #NN|commit sha>. [Verified]
 ### Changed
 - **<What behaves differently>.** <What it did; what it does now; what the user notices.>
-  Evidence: PR #<NN>. [Verified]
+  Evidence: <PR #NN|commit sha>. [<Verified|Partially Verified|Unverified Historical Reconstruction>]
 ### Fixed
 - **<What went wrong, in the user's terms, and no longer does>.** <Cause in one sentence, if it helps.>
-  Evidence: PR #<NN>. [Verified | Partially Verified | Unverified Historical Reconstruction]
+  Evidence: <PR #NN|commit sha>. [Verified]
 
-[<x.y.z>]: https://github.com/skyRolly/Anamorph/compare/v<previous>...v<x.y.z>
+[<x.y.z>]: https://github.com/skyRolly/Anamorph/compare/v<previous version>...v<x.y.z>
 ```
+
+The definition line belongs with the others at the **foot of the file**, not under the entry — it is
+shown here so the template is complete.
+
+The link definition has one exception, and it is the next release: `v0.9.7` is the line's **first**
+tag, so it has no predecessor to compare against and its definition is
+`[0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7`. Every version after it uses the
+comparison form shown above, against the entry directly above it in the file. `check-docs.py`
+requires exactly the form the version calls for.
 
 Work not yet released goes under `## [Unreleased]` in the same shape, with
 `[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v<last tag>...HEAD`; the release commit
-renames the heading to `## [<x.y.z>] — <date>` and re-points the definition (rules 7 and 8).
+renames the heading to `## [<x.y.z>] — <YYYY-MM-DD>` and re-points the definition (rules 7 and 8).
+That definition needs a tag to compare against, so an `## [Unreleased]` section is available from
+`v0.9.7` onward — until then unreleased work simply sits in the dated entry it will ship in, which
+is how every entry in this file was written.
 
 ## Source of truth for history
 

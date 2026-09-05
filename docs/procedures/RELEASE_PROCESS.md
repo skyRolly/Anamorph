@@ -53,7 +53,8 @@ itself (`PACKAGING.md`).
 
 `MAJOR.MINOR.PATCH`, pre-1.0 (< 1.0.0 = pre-release line); the version lives in
 `CMakeLists.txt` and the About box. Evidence [Verified]: CMakeLists.txt:14 (`project VERSION`),
-:306-331 (the versioning comment, `ANAMORPH_BUILD_NUMBER`, and the two version compile definitions).
+:467-469 (the versioning comment and `ANAMORPH_BUILD_NUMBER`), :492 and :495 (the two version
+compile definitions).
 
 ## Tagging + release pipeline (RH-PR-8)
 
@@ -76,7 +77,7 @@ carry, and the tag is pushed straight after. The name is not a guess: `release.y
 that is not `v` + the CMake `project VERSION`, so `v<x.y.z>` is fixed before the tag exists. The
 sequence, literally:
 
-1. In the release commit (the one step 2 above dates): the `## [x.y.z] — YYYY-MM-DD` heading, the
+1. In the release commit (the one **pre-release step 2** dates): the `## [x.y.z] — YYYY-MM-DD` heading, the
    CMake version bump, and one line among the definitions at the foot of `CHANGELOG.md` —
 
    ```markdown
@@ -92,6 +93,10 @@ sequence, literally:
    which the dated heading names a release that does not exist yet.
 3. Tag that commit and push the tag (the `git tag -a` / `git push` pair above). The definition
    resolves the moment GitHub sees the tag; nothing is moved, amended or rewritten afterwards.
+
+(Those three are the steps of THIS section. References to "pre-release step *n*" — including the
+ones `release.yml` prints in its error messages — mean the numbered checklist at the top of this
+file.)
 
 If an `## [Unreleased]` section is kept between releases, its definition is
 `[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v<last tag>...HEAD`, and the release
@@ -115,8 +120,11 @@ Pushing the tag triggers `.github/workflows/release.yml`, which:
 
 1. **Validates release metadata fail-closed** — the tag must be annotated, must equal the
    `CMakeLists.txt` `project VERSION`, `CHANGELOG.md` must already carry the `## [x.y.z]`
-   section **carrying an ISO release date** (i.e. steps 1–2 above are enforced, not assumed).
-   An undated heading — `— Unreleased` or bare — is rejected.
+   section **carrying an ISO release date**, and that section must actually EXTRACT — the same
+   fence-aware pass that builds the notes runs here, so a `## [x.y.z]` line that only appears inside
+   a fenced example fails now rather than after the build matrix (i.e. **pre-release steps 1–2** are
+   enforced, not assumed). An undated heading — `— Unreleased` or bare — is rejected. The link
+   definition is not re-checked here: `check-docs.py` has already gated it on every push.
 2. **Runs the full existing gate exactly once** by *calling* `build.yml` (`workflow_call`) —
    the same 3-OS matrix, DSP + state suites, pluginval strictness 10 both modes ×3, symbol
    retain-then-strip, fail-closed artifact gating. Tag pushes do not trigger `build.yml`

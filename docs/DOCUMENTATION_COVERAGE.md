@@ -6,8 +6,9 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **changelog audit against Keep a Changelog 1.1.0**
-(2026-09-05), whose entry is LAST in the body; before it the **`Vectorscope Persist` →
+Last updated: for the **0.9.7 change set** — the **changelog system round 2** (2026-09-05), whose
+entry is LAST in the body; before it the **changelog audit against Keep a Changelog 1.1.0**
+(2026-09-05); before it the **`Vectorscope Persist` →
 `Vectorscope Persistence` Settings relabel** (2026-09-05); before it
 (the 0.9.7 change set, whose CHANGELOG heading is dated 2026-09-05) **D-2 / RISK-007 resolved as ADR-0036** (program state
 is message-thread-owned; host threads exchange immutable snapshots; the `tsan` CI lane), whose
@@ -8659,3 +8660,73 @@ live rather than trusted silent.
 
 **Drift.** One stale claim corrected in this document: its header said the 0.9.7 change set was
 "2026-09-03, matching the CHANGELOG heading", which the re-dating made false.
+
+## Changelog system round 2 (2026-09-05) — the review's five findings, and twelve more the audit added
+
+**What the review found, all five genuine.** (1) `RELEASE_PROCESS.md` required the version's link
+definition in the tagged commit AND forbade writing it before the tag was pushed — unsatisfiable,
+since a tag points at a commit that already exists. (2) The entry template was `## [0.8.7] — Fixed`:
+a category in the heading, no date, so following it produced a file the project's own validator
+rejects. (3) `CHANGELOG_CATEGORY_HEADING` matched `^### ` only, so a category indented one to three
+spaces — a heading to every renderer — bypassed the duplicate/invented/misorder rules. (4) Every
+`## ` line started an "entry", so a preamble section's `###` sub-headings were reported as invented
+categories. (5) The policy required newest-first and ISO dates and nothing checked either outside
+`release.yml`'s tag-time grep of the one selected version.
+
+**The enforcement boundary, stated once.** Machine-checked: entry-heading grammar and the one
+publishable spelling, calendar-valid dates, strictly decreasing versions, `[Unreleased]` first and
+once, category names/order/uniqueness, link-definition presence and exact form. Left with the
+author, as `CHANGELOG_POLICY.md` says: whether a bullet belongs under Added, Changed or Fixed;
+whether a change is notable; wording; whether a date is the right date.
+
+**The sequence that replaces the impossible one.** The definition is written in the **release
+commit**, naming the tag that commit is about to carry — deterministic, because `release.yml`
+refuses any tag other than `v` + the CMake `project VERSION` — and the tag is pushed straight after.
+The link is unresolvable only between that commit and the tag push, the same interval in which the
+dated heading names a release that does not exist yet. `CHANGELOG.md` gains
+`[0.9.7]: .../releases/tag/v0.9.7`; rule 8, pre-release step 2 and §Tagging all state the same
+three steps.
+
+**One parser now serves four rules.** `parse_changelog` reads the ATX grammar (0–3 columns, 1–6
+`#`, space or end of line, optional closing run), starts an entry only at a column-0 `## [` heading
+— exactly where `release.yml` starts one — and leaves the preamble alone. `check_changelog_headings`,
+`check_changelog_categories`, `check_changelog_links` and the notes-boundary rule all read its
+result, so they cannot disagree about what a heading is.
+
+**Twelve more defects, found by an adversarial read-only audit of the fixed chain** (four lenses,
+three independent refuters per finding; 27 raised, 17 confirmed, 10 refuted). The ones that mattered
+most were bypasses the first fix did not close: `##\t[0.9.7]` and `##  [0.9.7]` (tab or second space
+after the `##`) render as entry headings, are invisible to `release.yml`'s `^## \[`, and — as an
+older entry — do not terminate the entry above them, so that entry's notes run on into the next
+release's; a `### Fixed` indented four columns under a list bullet renders as a heading but fell in
+the gap between `atx_heading` (which stops at three) and `indented_code_mask` (which deliberately
+does not mask list-context indentation); and a setext heading (`Acknowledgements` over `---`) is
+invisible to both the checker and the extractor. All three are now reported. `LINK_DEFINITION` was
+also too strict in the other direction, reporting a definition that CommonMark accepts (indented,
+titled, angle-bracketed) as missing.
+
+**The link rule now is what rule 8 says it is.** The first spelling accepted either URL form for any
+version and never checked the compare base or the host, so `[0.9.7]: .../compare/v0.9.6...v0.9.7` —
+a comparison against a tag that was never cut — passed. It now requires exactly the form the version
+calls for: the tag page for `0.9.7`, a comparison against the entry directly above for everything
+after, `[Unreleased]` against the last tag, all inside this repository.
+
+**Content.** The `[0.9.7]` entry recorded the A/B-button / preset-arrow fix twice: once as its own
+entry (ADR-0036 §23, State test 61) and again inside the long D-2 bullet, as the earlier partial pass
+at the same symptom (State tests 53 and 56). Removed from the transcript; the dedicated entry stands.
+No entry was reworded or removed — the 153 bullet leads are identical before and after.
+
+**Tag-time validation is fence-aware.** `release.yml`'s two greps are not, so a `## [x.y.z]` line
+inside a fenced example satisfied them and the job died on `[ -s notes.md ]` after the full 3-OS
+matrix. The validate step now runs the extractor's own entry test in the same fence state machine
+and fails in seconds.
+
+**Measured.** `check-docs.py` self-test 108 → 125 cases; twenty single-rule mutations (twelve from
+round 1, eight new) each fail at least one case — the reverted rule is named in the worklog of this
+round. `check-docs` 120 files clean, `check-citations` 415 anchors clean against `origin/main` and
+the round-1 head, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**Drift found while auditing, corrected here:** `RELEASE_PROCESS.md`'s Versioning section cited
+`CMakeLists.txt:306-331` for the versioning comment and `ANAMORPH_BUILD_NUMBER`; those lines are the
+LTO linker options. The real anchors are `:467-469` and `:492`, `:495`. The citation gate could not
+see it — `origin/main` carries the same stale text, so there was nothing to drift from.
