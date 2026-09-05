@@ -1022,8 +1022,9 @@ def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> lis
         tag = f"v{key}"
         # WHICH form, not merely "one of the two". The first version this line
         # tags has no predecessor to compare against, so it points at its own tag
-        # page; every later one compares against the version directly above it in
-        # the file. Accepting either for any version -- the first spelling of this
+        # page; every later one compares against its PREDECESSOR, which in a
+        # newest-first file is the entry directly BELOW it (`previous_of`, built
+        # from the entry order). Accepting either for any version -- the first spelling of this
         # check -- let `[0.9.7]: .../compare/v0.9.6...v0.9.7` pass, a comparison
         # against a tag that was never cut, which is a dead link in the one place
         # the specification asks to be linkable.
@@ -1354,12 +1355,13 @@ def self_test() -> int:
           "## [0.5.9] — 2026-01-02", "### Fixed", "- y"]),
         # -- link definitions --------------------------------------------------------
         # `V7`/`D7` are the line's FIRST tag, which points at its own tag page;
-        # `V8`/`D8` is the release after it, which compares against the entry
-        # directly above it. Accepting either form for either version -- the first
+        # `V8`/`D8` is the release after it, which compares against its
+        # predecessor -- the entry directly BELOW it in this newest-first file,
+        # which is `V7`. Accepting either form for either version -- the first
         # spelling of the rule -- let a comparison against a never-cut tag pass.
         ("the first tagged version with its tag-page definition passes", 0,
          ["# Changelog", V7, "### Fixed", "- x", D7]),
-        ("a later version comparing against the entry above it passes", 0,
+        ("a later version comparing against the entry below it passes", 0,
          ["# Changelog", V8, "### Fixed", "- x", V7, "### Fixed", "- y", D8, D7]),
         ("the first tag written as a comparison is a finding", 1,
          ["# Changelog", V7, "### Fixed", "- x",
