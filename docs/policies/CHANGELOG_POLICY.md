@@ -9,10 +9,11 @@ does, on what is notable enough to record). Where the two agree, the spec's word
 
 ## Rules
 
-1. **Format: Keep a Changelog.** Sections per version: Added / Changed / Deprecated / Removed /
-   Fixed / Security, newest first — the specification's own order, and the order rule 6 enforces.
-   (This line read `Added / Changed / Fixed / Removed / Deprecated / Security` until 2026-09-05,
-   which is where the file's misordered entries came from.) `MAJOR.MINOR.PATCH` per
+1. **Format: Keep a Changelog.** Sections per version, in this order: Added / Changed /
+   Deprecated / Removed / Fixed / Security — the specification's own order, and the order rule 6
+   enforces. (Versions themselves run newest first; that is rule 7.) This line read
+   `Added / Changed / Fixed / Removed / Deprecated / Security` until 2026-09-05, which is where
+   the file's misordered entries came from. `MAJOR.MINOR.PATCH` per
    [Semantic Versioning](https://semver.org/): pre-1.0, so a `0.y.z` release may change behaviour.
 2. **No invented history.** Never infer that a past version contained a feature by reasoning
    backward from current code. Each entry cites an **Evidence Source** — a commit SHA, commit
@@ -38,13 +39,15 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    `## [Unreleased]`, which sits above the first version and nowhere else — a version heading that
    reads `— Unreleased` or has no date is not a release and is rejected. `check-docs.py` enforces
    all of this on every push; `release.yml` re-checks the tagged version's heading and date at tag
-   time. Two reconstructed headings at the foot, `[0.7.5] – [0.7.0]` and `[0.6.x] and earlier`,
-   predate this policy and are accepted by exact text; no new heading may take that form.
+   time. Two reconstructed headings at the foot predate this policy and are accepted by
+   their exact text — `## [0.7.5] – [0.7.0] — 2026-06-21…22` and
+   `## [0.6.x] and earlier — 2026-06 (reconstructed)`; no new heading may take either form.
 8. **Version headings are linkable.** The bracketed version is a link reference, and from `0.9.7` —
    the first version this line tags — every one has a definition at the foot of the file, into this
    repository (`https://github.com/skyRolly/Anamorph`), naming its own tag:
    `/releases/tag/v0.9.7` for that first tag, which has no predecessor to compare against, and
-   `/compare/v<the entry directly above>...v<x.y.z>` for every version after it. An `[Unreleased]`
+   `/compare/v<the previous release>...v<x.y.z>` for every version after it — the previous release
+   being the next-older entry, which in a newest-first file is the one directly **below** it. An `[Unreleased]`
    section's definition is `/compare/v<last tag>...HEAD`. The definition is written **in the release
    commit**, before the tag exists, because a tag can only point at a commit that already does
    (`RELEASE_PROCESS.md` §Tagging gives the sequence); the name is deterministic, `release.yml`
@@ -73,8 +76,9 @@ Establish the facts from the repository, then write for the reader:
 ## Entry template
 
 `<...>` marks a placeholder and `<a|b>` a choice between the spellings inside it; everything else is
-literal. Only the categories that have entries appear, and in this order. The template is the shape
-`check-docs.py` accepts.
+literal. Only the categories that have entries appear, and in this order. This is the shape
+`check-docs.py` accepts for a release that has a predecessor; the very first tag takes the other
+link form, immediately below.
 
 ```markdown
 ## [<x.y.z>] — <YYYY-MM-DD>
@@ -97,8 +101,9 @@ shown here so the template is complete.
 The link definition has one exception, and it is the next release: `v0.9.7` is the line's **first**
 tag, so it has no predecessor to compare against and its definition is
 `[0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7`. Every version after it uses the
-comparison form shown above, against the entry directly above it in the file. `check-docs.py`
-requires exactly the form the version calls for.
+comparison form shown above, against the release before it — the entry directly **below** it in this
+newest-first file. `check-docs.py` requires exactly the form the version calls for, and rejects the
+other one.
 
 Work not yet released goes under `## [Unreleased]` in the same shape, with
 `[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v<last tag>...HEAD`; the release commit

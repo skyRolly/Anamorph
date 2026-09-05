@@ -34,13 +34,6 @@ diff that introduced it:
      happened to ADR-0011: two sentences of binding contract rendered as part of a
      historical correction note, which a reader could reasonably skip.
 
-  5. CHANGELOG STRUCTURE (`CHANGELOG.md` only, four checks that share one parser)
-     -- the entry-boundary rule `release.yml`'s note extractor depends on, the
-     entry-heading grammar and newest-first order, Keep a Changelog's six category
-     names in their specified order once each per release, and the version link
-     definitions. See `parse_changelog` and the three `check_changelog_*` rules
-     below it; the contract they enforce is `docs/policies/CHANGELOG_POLICY.md`.
-
   4. UNCLOSED FENCE -- an opening code fence with no closer makes the rest of the
      file render as code on GitHub. It is a real rendering defect on its own, and
      it is also this script's worst failure mode: an unclosed fence exempts every
@@ -49,6 +42,18 @@ diff that introduced it:
      1401 lines while the run still printed "clean". A checker that reports
      success without having read the file is worse than no checker, so an
      unterminated fence is now a finding rather than a silent exemption.
+
+  5. CHANGELOG STRUCTURE (`CHANGELOG.md` only, four rules that share one parser)
+     -- the entry-boundary rule `release.yml`'s note extractor depends on, the
+     entry-heading grammar and newest-first order, Keep a Changelog's six category
+     names in their specified order once each per release, and the version link
+     definitions. See `parse_changelog` and the four `check_changelog_*` rules
+     below it; the contract they enforce is `docs/policies/CHANGELOG_POLICY.md`.
+     The extractor those rules protect is `scripts/changelog-section.awk`, and
+     `--self-test` RUNS it: the entry-boundary rule's premise -- that a stray
+     `## ` heading below an entry lands in the published notes, and that a fenced
+     `## [` line does not -- is proved on fixtures rather than asserted in a
+     comment, so a regression in the extractor fails here instead of at tag time.
 
 FALSE POSITIVES ARE THE OTHER FAILURE MODE THAT MATTERS. A lint that invents
 findings gets ignored, and the real ones are lost with it -- so each check is
@@ -149,6 +154,8 @@ import contextlib
 import datetime
 import io
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -1552,6 +1559,115 @@ def self_test() -> int:
         if rc == 0:
             failures += 1
             print("self-test FAIL: an empty scan set reported a clean run", file=sys.stderr)
+
+
+    # ------------------------------------------------------------------
+    # THE OTHER HALF OF THE CONTRACT, EXECUTED RATHER THAN ASSERTED.
+    #
+    # `check_changelog_notes_boundary` exists to protect `release.yml`'s notes
+    # extractor, and until now this script only DESCRIBED what that extractor
+    # does. A description is not a proof: if the extractor's fence handling
+    # regressed, every rule above would keep passing while the published notes
+    # went wrong. The extractor is one file -- `scripts/changelog-section.awk`,
+    # which `release.yml` runs twice, in `validate` and in `draft-release` --
+    # so it can simply be RUN here, on inputs whose correct extraction is known.
+    #
+    # Skipped WITH A NOTE, never silently, where there is no `awk` (Windows
+    # developer machines); the `docs` job and `preflight.sh` both have one.
+    # ------------------------------------------------------------------
+    extractor = Path(__file__).resolve().parent / "changelog-section.awk"
+    awk = shutil.which("awk")
+    if awk is None:
+        print("check-docs: NOTE -- no `awk` on PATH, so the release-notes "
+              "extractor's cases were not run (they run in CI and in preflight.sh).",
+              file=sys.stderr)
+    elif not extractor.is_file():
+        failures += 1
+        checked += 1
+        print(f"self-test FAIL: {extractor.name} is missing -- `release.yml` runs it "
+              f"in two steps and would fail at tag time", file=sys.stderr)
+    else:
+        F = "```"
+        F4 = "````"
+        entry = ["## [0.9.8] — 2026-10-01", "### Fixed", "- b"]
+        older = ["## [0.9.7] — 2026-09-05", "### Added", "- a"]
+        extractor_cases: list[tuple[str, str, list[str], list[str]]] = [
+            # (name, version, document, expected extraction)
+            ("the entry is extracted verbatim, heading included",
+             "0.9.8", ["# Changelog", *entry, *older], entry),
+            ("extraction stops at the next entry heading",
+             "0.9.8", ["# Changelog", *entry, *older, "## [0.9.6] — 2026-08-01"], entry),
+            ("the oldest entry extracts to EOF",
+             "0.9.7", ["# Changelog", *entry, *older], older),
+            ("a version with no entry extracts to nothing",
+             "0.9.9", ["# Changelog", *entry, *older], []),
+            # Clause: a fenced block is DATA. The preamble template is the case
+            # that actually exists in this repository's policy document.
+            ("a heading inside a fenced example is not an entry",
+             "0.9.8", ["# Changelog", F + "markdown", "## [0.9.8] — 2026-10-01", F, *older],
+             []),
+            ("a fenced heading inside a real entry does not cut it short",
+             "0.9.8", ["# Changelog", *entry, F, "## [0.9.7] — 2026-09-05", F, "- c", *older],
+             [*entry, F, "## [0.9.7] — 2026-09-05", F, "- c"]),
+            # Clause 1: the SAME character closes a fence.
+            ("a `~~~` line inside a ``` block is data",
+             "0.9.8", ["# Changelog", *entry, F, "~~~", "## [0.9.7] — 2026-09-05", F, *older],
+             [*entry, F, "~~~", "## [0.9.7] — 2026-09-05", F]),
+            # Clause 2 + 3: length, and an info string can never close.
+            ("a nested ```cpp inside a ```` example does not close it",
+             "0.9.8",
+             ["# Changelog", *entry, F4 + "markdown", F + "cpp", "int x;", F,
+              "## [0.9.7] — 2026-09-05", F4, *older],
+             [*entry, F4 + "markdown", F + "cpp", "int x;", F,
+              "## [0.9.7] — 2026-09-05", F4]),
+            # Clause 3 ALONE: a nested fence of the SAME character and the SAME
+            # length as its opener, carrying an info string. Clause 2 cannot
+            # decide this one -- only "an opening fence can never be a closer"
+            # can -- and without it the example's body is scanned as structure
+            # and the real closer re-opens the block, inverting the mask.
+            ("a same-length ```cpp inside a ```markdown example does not close it",
+             "0.9.8",
+             ["# Changelog", *entry, F + "markdown", F + "cpp", "int x;", F, *older],
+             [*entry, F + "markdown", F + "cpp", "int x;", F]),
+            # `index(...) == 1` is a PREFIX test, not a substring search: a
+            # sentence that merely mentions the heading is prose.
+            ("a mid-line mention of the heading does not start an extraction",
+             "0.9.8",
+             ["# Changelog", "## [0.9.9] — 2026-11-01", "### Fixed",
+              "- see ## [0.9.8] — 2026-10-01 for the original", *entry],
+             entry),
+            # Four columns is an indented code block, not a fence: it must not
+            # open one and swallow the rest of the file.
+            ("a four-space-indented ``` does not open a fence",
+             "0.9.8", ["# Changelog", *entry, "    " + F, *older],
+             [*entry, "    " + F]),
+            # WHY check_changelog_notes_boundary EXISTS, demonstrated: a `## `
+            # heading below the first entry that is not an entry heading does
+            # not terminate anything, so it and everything under it land in the
+            # published notes of the release above it.
+            ("a stray `## ` heading below an entry lands in that entry's notes",
+             "0.9.8", ["# Changelog", *entry, "## Appendix", "- not part of 0.9.8", *older],
+             [*entry, "## Appendix", "- not part of 0.9.8"]),
+        ]
+        for name, version, document, expected in extractor_cases:
+            checked += 1
+            with tempfile.TemporaryDirectory() as tmp:
+                doc = Path(tmp) / "CHANGELOG.md"
+                doc.write_text("\n".join(document) + "\n", encoding="utf-8")
+                run = subprocess.run(
+                    [awk, "-v", f"ver={version}", "-f", str(extractor), str(doc)],
+                    capture_output=True, text=True, encoding="utf-8",
+                )
+            if run.returncode != 0:
+                failures += 1
+                print(f"self-test FAIL [extractor]: {name} -- awk exited "
+                      f"{run.returncode}: {run.stderr.strip()}", file=sys.stderr)
+                continue
+            got = run.stdout.splitlines()
+            if got != expected:
+                failures += 1
+                print(f"self-test FAIL [extractor]: {name}\n  expected: {expected}\n"
+                      f"  got:      {got}", file=sys.stderr)
 
     # Counted as they run, never hand-maintained: the previous literal
     # (`len(cases) + 2 + 5 + 3`) drifted the moment a case was added, and the

@@ -6,8 +6,9 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **changelog system round 2** (2026-09-05), whose
-entry is LAST in the body; before it the **changelog audit against Keep a Changelog 1.1.0**
+Last updated: for the **0.9.7 change set** — the **changelog system round 2c** (2026-09-05), whose
+entry is LAST in the body; before it **changelog system round 2** (2026-09-05); before it
+the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
 `Vectorscope Persistence` Settings relabel** (2026-09-05); before it
 (the 0.9.7 change set, whose CHANGELOG heading is dated 2026-09-05) **D-2 / RISK-007 resolved as ADR-0036** (program state
@@ -8708,8 +8709,11 @@ titled, angle-bracketed) as missing.
 **The link rule now is what rule 8 says it is.** The first spelling accepted either URL form for any
 version and never checked the compare base or the host, so `[0.9.7]: .../compare/v0.9.6...v0.9.7` —
 a comparison against a tag that was never cut — passed. It now requires exactly the form the version
-calls for: the tag page for `0.9.7`, a comparison against the entry directly above for everything
-after, `[Unreleased]` against the last tag, all inside this repository.
+calls for: the tag page for `0.9.7`, a comparison against the previous release for everything
+after, `[Unreleased]` against the last tag, all inside this repository. (This paragraph and rule 8
+both said "the entry directly **above**". The predecessor of a version is the entry directly
+**below** it in a newest-first file; the code was right, the prose inverted. Corrected in round 2c,
+below.)
 
 **Content.** The `[0.9.7]` entry recorded the A/B-button / preset-arrow fix twice: once as its own
 entry (ADR-0036 §23, State test 61) and again inside the long D-2 bullet, as the earlier partial pass
@@ -8718,8 +8722,10 @@ No entry was reworded or removed — the 153 bullet leads are identical before a
 
 **Tag-time validation is fence-aware.** `release.yml`'s two greps are not, so a `## [x.y.z]` line
 inside a fenced example satisfied them and the job died on `[ -s notes.md ]` after the full 3-OS
-matrix. The validate step now runs the extractor's own entry test in the same fence state machine
-and fails in seconds.
+matrix. The validate step now rejects that in seconds. (This round added a **second, simplified**
+fence tracker to do it — a plain toggle, blind to the fence character, its length and its info
+string — while `RELEASE_PROCESS.md` claimed "the same fence-aware pass that builds the notes runs
+here". Round 2c, below, made that claim true instead of correcting it downward.)
 
 **Measured.** `check-docs.py` self-test 108 → 125 cases; twenty single-rule mutations (twelve from
 round 1, eight new) each fail at least one case — the reverted rule is named in the worklog of this
@@ -8730,3 +8736,66 @@ the round-1 head, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
 `CMakeLists.txt:306-331` for the versioning comment and `ANAMORPH_BUILD_NUMBER`; those lines are the
 LTO linker options. The real anchors are `:467-469` and `:492`, `:495`. The citation gate could not
 see it — `origin/main` carries the same stale text, so there was nothing to drift from.
+
+
+## Changelog system round 2c (2026-09-05) — one extractor, and the contract executed instead of asserted
+
+**What the round is.** The round-2 fix left two kinds of residue: six inputs its new parser accepted
+or mis-reported, and a set of documentation claims about the enforcement chain that were not true of
+the code that had just been written. Both are closed here. No `CHANGELOG.md` content changed.
+
+**Six parser bypasses, each with a self-test that fails against the previous implementation.** The
+notes-boundary rule armed only on the *publishable* heading spelling, so one badly spelled entry
+heading at the top of the file disarmed the boundary check for everything below it — a second defect
+hiding behind the first. `DEEP_HEADING` measured indent in **characters**, so a tab-indented
+`### Fixed` (four columns, one character) slipped past its `^ {4,}` prefix; it now defers to
+`indent_columns`, which counts a tab as four. A **level-2** `## [x.y.z]` inside a list item was
+skipped entirely, although it renders as an entry heading, cannot be extracted by `release.yml`, and
+does not terminate the entry above it. The setext guard tested `startswith("-")`, which called a
+paragraph beginning `-not a list` a list item and called the thematic break under the file's own
+link definitions a heading; it now uses `LIST_MARKER`, `interrupts_paragraph` and `LINK_DEFINITION`.
+A tagged-era version with no older entry below it produced a literal `v?` inside the URL the author
+was told to write. And link labels are now compared after CommonMark's whitespace normalisation.
+The `[Unreleased]` definition is additionally pinned to the **newest released version** rather than
+any `v<x.y.z>`: a comparison from an older tag silently misreports what is unreleased.
+
+**One extractor, two callers.** `release.yml` held two implementations of "which lines are this
+release's section": a full CommonMark fence state machine in the notes step, and a simplified toggle
+in `validate` that ignored the fence character, its length and its info string — so a nested
+` ```cpp ` inside a ` ```markdown ` example inverted its mask, and the two steps could disagree about
+the same file. They are now one file, `scripts/changelog-section.awk`, run by both steps. The date
+test moved onto the **extracted** heading, which also removes the last fence-blind grep: a dated
+`## [x.y.z]` line inside an example can no longer vouch for an undated real entry.
+
+**The entry-boundary contract is now executed, not described.** `check_changelog_notes_boundary`
+exists to protect that extractor, and until now the script only asserted in a comment what the
+extractor does — so a regression in the extractor would have left every rule passing while the
+published notes went wrong. `--self-test` now RUNS the extractor on twelve fixtures: the three
+fence-closing clauses of CommonMark §4.5 separately, the four-column case that is an indented code
+block rather than a fence, the prefix-versus-substring entry test, and the boundary rule's own
+premise — that a stray `## ` heading below an entry lands in the published notes of the release
+above it, and a fenced `## [` line does not. Skipped **with a note** where there is no `awk`.
+
+**Documentation claims made true or corrected.** Pre-release step 2 said `check-docs.py` rejects the
+file until the entry is "well-formed"; it gates structure, and the evidence citation, the category a
+bullet belongs in and whether a change was worth recording stay with the author — the step now says
+so. Rule 8 and the template's closing paragraph said a version compares against "the entry directly
+above"; in a newest-first file the predecessor is the entry directly **below**. Rule 1 attached
+"newest first" to the category list rather than to the versions (rule 7 owns it). Rule 7 quoted the
+two grandfathered reconstructed headings by their bracketed part while accepting them by exact
+text — they are now quoted in full. The template claimed to be "the shape `check-docs.py` accepts",
+without the first-tag exception three paragraphs later. §Tagging's "those three are the steps of
+THIS section" was ambiguous about which numbering a bare step number means. And the module docstring
+listed its five checks in the order 1, 2, 3, 5, 4 and undercounted its own `check_changelog_*`
+rules.
+
+**Measured.** `check-docs.py` self-test 125 → 152 cases. Seven single-clause mutations of the
+extractor — drop each fence-closing clause, widen the indent guard, terminate on any `## ` heading,
+substring instead of prefix, remove fence suppression — each fail a **named** case; the six parser
+fixes carry the mutation proofs recorded with them. `check-docs` 120 files clean, `check-citations`
+415 anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**Reported, not fixed (outside this round's scope).** `LEVEL5_AUDITION.md:15-16` still says the
+2026-08-15 v0.9.4 audition "is invalid for **v0.9.6**"; the current version is 0.9.7, which
+`RELEASE_PROCESS.md:32` names correctly. The audition document is not part of the changelog
+enforcement chain and was left alone.

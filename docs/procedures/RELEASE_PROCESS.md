@@ -13,8 +13,12 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
    `--fix` cannot do it, because the declaration is what turned the comparison off.
 2. **CHANGELOG** — add a dated, evidence-cited entry per `docs/policies/CHANGELOG_POLICY.md`
    (commit/PR reference; mark reconstructions), and the version's link definition at the foot of the
-   file (rule 8; the exact line is under §Tagging below). `check-docs.py` rejects the file until both
-   are present and well-formed.
+   file (rule 8; the exact line is under §Tagging below). `check-docs.py` gates the *structure* of
+   both — the heading grammar and its ISO date, newest-first order, the category names and their
+   order, and a link definition of exactly the form the version calls for — and rejects the file
+   until each is right. What it cannot judge is the content: whether a bullet is in the right
+   category, whether the evidence citation is true, and whether the change was worth recording stay
+   with the author (policy rules 2, 3 and 6).
 3. **Tests green** — `scripts/run-tests.sh` passes; `scripts/run-pluginval.sh 10` passes on Linux in
    **both modes** (`deterministic` and `randomise` ×3) (`TESTING.md`).
 4. **Compatibility gate** — complete every item in `RELEASE_COMPATIBILITY_CHECKLIST.md`.
@@ -86,7 +90,9 @@ sequence, literally:
 
    for the line's first tag; from the second tag onward a comparison against the previous one,
    `[0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8` — the form the
-   specification's own example uses.
+   specification's own example uses. "The release commit" means the commit the tag will point at:
+   what is binding is that the tagged tree carries the dated heading and the definition, so work
+   that landed earlier on the branch already satisfies this and needs no re-commit.
 2. `check-docs.py` (every push) verifies that every `## [x.y.z]` from `0.9.7` onward has a
    definition naming its own tag, and that no older, never-tagged version has one. The link is
    unresolvable only between this commit and the tag push in step 3, which is the same interval in
@@ -94,9 +100,9 @@ sequence, literally:
 3. Tag that commit and push the tag (the `git tag -a` / `git push` pair above). The definition
    resolves the moment GitHub sees the tag; nothing is moved, amended or rewritten afterwards.
 
-(Those three are the steps of THIS section. References to "pre-release step *n*" — including the
-ones `release.yml` prints in its error messages — mean the numbered checklist at the top of this
-file.)
+(Steps 1–3 immediately above are this section's own. Everywhere else — including the
+"pre-release step *n*" references `release.yml` prints in its error messages — a bare step number
+means the **Pre-release checklist** at the top of this file.)
 
 If an `## [Unreleased]` section is kept between releases, its definition is
 `[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v<last tag>...HEAD`, and the release
@@ -120,11 +126,14 @@ Pushing the tag triggers `.github/workflows/release.yml`, which:
 
 1. **Validates release metadata fail-closed** — the tag must be annotated, must equal the
    `CMakeLists.txt` `project VERSION`, `CHANGELOG.md` must already carry the `## [x.y.z]`
-   section **carrying an ISO release date**, and that section must actually EXTRACT — the same
-   fence-aware pass that builds the notes runs here, so a `## [x.y.z]` line that only appears inside
-   a fenced example fails now rather than after the build matrix (i.e. **pre-release steps 1–2** are
-   enforced, not assumed). An undated heading — `— Unreleased` or bare — is rejected. The link
-   definition is not re-checked here: `check-docs.py` has already gated it on every push.
+   section **carrying an ISO release date**, and that section must actually EXTRACT — the notes
+   extractor itself runs here (`scripts/changelog-section.awk`, the same file the notes step runs,
+   not a second implementation of it), so a `## [x.y.z]` line that only appears inside a fenced
+   example fails now rather than after the build matrix (i.e. **pre-release steps 1–2** are
+   enforced, not assumed). The date is then read off the **extracted** heading, so a dated example
+   elsewhere in the file cannot vouch for an undated real entry; an undated heading — `— Unreleased`
+   or bare — is rejected. The link definition is not re-checked here: `check-docs.py` has already
+   gated it on every push.
 2. **Runs the full existing gate exactly once** by *calling* `build.yml` (`workflow_call`) —
    the same 3-OS matrix, DSP + state suites, pluginval strictness 10 both modes ×3, symbol
    retain-then-strip, fail-closed artifact gating. Tag pushes do not trigger `build.yml`
