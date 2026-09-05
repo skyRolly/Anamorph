@@ -957,7 +957,7 @@ def classify_heading(line: str) -> tuple[int, str, str] | None:
     exactly one place, this one, that answers either question.
 
     THREE INDEPENDENT PATHS ARE WHAT PUT THE DEFECTS HERE. `atx_heading`,
-    `deep_heading` and `CONTAINER_HIDDEN_HEADING` each used to be consulted
+    `deep_heading` and a container pattern of its own each used to be consulted
     separately, each with its own idea of which headings mattered, and each gap
     between them was a bypass: a container-prefixed release heading was invisible
     unless an entry already existed, a deep release heading was tested for a
