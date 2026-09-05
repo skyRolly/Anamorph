@@ -79,7 +79,7 @@ Host-hidden session/view state (not in APVTS).
 | `onChanged` | `std::function<void()>` | Fires on the message thread after any property change; the processor republishes its program snapshot from it. |
 | `onOversampleChanged` | `std::function<void()>` | Fires on the message thread so the wrapper re-reports PDC. |
 
-Evidence [Verified]: src/InternalState.h:165-420.
+Evidence [Verified]: src/InternalState.h:165-435.
 
 ## `PresetManager` — `src/PresetManager.h`
 

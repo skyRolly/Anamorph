@@ -259,9 +259,10 @@ private:
     // some other session's and the adoption must re-install its own, while a knob the
     // user turned means the restored session is still live with a newer edit in it,
     // which the adoption must not erase. Written by whichever thread performs the
-    // replacement (a decode runs on the host's), read on the message thread; relaxed,
-    // because it carries no payload -- the value that matters travels inside the
-    // RestoreDecode, whose cell provides the ordering.
+    // replacement (a restore's install runs on the host's), read on the message thread;
+    // relaxed, because every bump and every deciding read happen under the whole-sound
+    // replacement lock (§24), which provides the ordering -- and the value that matters
+    // travels inside the RestoreDecode, whose cell orders it too.
     std::atomic<juce::uint32> soundSetGen { 1 };
     // Allocates the token for ONE replacement and returns it. Two rules make the token
     // mean what the adoption needs it to mean (ADR-0036 §13, §14):
@@ -361,8 +362,9 @@ private:
     //  same contract JUCE's AudioProcessor already relies on.
     //
     //    H -> M  `pendingRestore`: the DECODED tail of an off-message-thread
-    //            restore. H publishes it after applying the sound (APVTS) and the
-    //            engine-config word synchronously; M adopts it in
+    //            restore. H publishes it after announcing its generation in the
+    //            engine-config word and THEN installing the sound (APVTS), both
+    //            synchronously and in that order (§25); M adopts it in
     //            adoptPendingHostState() with the code that runs inline on M. A
     //            restore superseded before adoption is freed by the H side that
     //            supersedes it, so at most one object ever exists.
@@ -421,9 +423,10 @@ private:
         StateSet abSlot[anamorph::kNumAbSlots];
     };
 
-    // What a restore DECODES from the blob before anything but the sound is applied:
-    // the exact inputs of the adoption tail, thread-neutral. Built on the caller's
-    // thread; adopted on M (inline when the caller IS M, else through the cell).
+    // What a restore DECODES from the blob before anything is applied: the sound tree
+    // to install and the exact inputs of the adoption tail, thread-neutral. Built on the
+    // caller's thread; the sound installed there by `installRestoredSound`; the rest
+    // adopted on M (inline when the caller IS M, else through the cell).
     struct RestoreDecode
     {
         juce::uint32 generation = 0;                   // set only for the H -> M handoff
@@ -563,10 +566,15 @@ private:
     // by the latency request (D-1) and the program-state handoff (D-2).
     static bool onMessageThreadOrNoMessageManager() noexcept;
 
-    // Decode a blob into a RestoreDecode, applying the SOUND (the APVTS) on the
-    // caller's thread as a side effect -- that half is JUCE-owned and thread-aware
-    // and must be synchronous for the ordinary setState-then-prepareToPlay order.
-    // Returns false for input that is not a restore (nothing was touched).
+    // Decode a blob into a RestoreDecode. PURE since round 18 (§25): it touches no
+    // parameter -- the sound half is `installRestoredSound`, run by the caller once the
+    // restore has announced itself, and it is still synchronous on the caller's thread
+    // for the ordinary setState-then-prepareToPlay order. Returns false for input that
+    // is not a restore (nothing was touched).
+    // The sound half of a restore as its own step: installs `d.soundParams` and records the
+    // token that install was handed (§13). Called by the message thread right after the
+    // decode, and by a host thread only AFTER it has announced its generation (§25).
+    void installRestoredSound (RestoreDecode& d);
     bool decodeRestore (const void* data, int sizeInBytes, RestoreDecode& out);
     // The adoption tail, message thread only: today's restore tail, verbatim.
     void adoptRestoreTail (const RestoreDecode&);

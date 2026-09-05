@@ -8243,7 +8243,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1058`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1077`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8276,7 +8276,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:1490`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:1525`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8313,6 +8313,50 @@ it never passed through `PresetManager::applySoundTree` and no document had ever
 names it, and its two loops are recorded as ONE replacement. §24 changes no publication, ownership,
 generation, baseline or signature semantics; rounds 12, 15 and 16 are re-asserted by the suite.
 
+## D-2 round 18 (2026-09-04) — a restore is authoritative from its announcement, and announces before it installs (ADR-0036 §25)
+
+**Code changed:** `src/PluginProcessor.h` / `.cpp` — `decodeRestore` no longer installs the sound;
+`installRestoredSound` does, as its own step; the off-message-thread branch of `setStateInformation`
+now announces (`++hostRestoreGen`, `publishEngineConfig`) BEFORE it installs and hands over; the
+adoption guard's code is unchanged and its comment now states why it is sound;
+`copyStateWithRawValues` takes the whole-sound replacement lock around the copy and its `raw`
+stamping, and `writeState` captures the live sound once per save. `src/InternalState.h` —
+`announceRestore`, the announcement as an unconditional operation of its own (asserted at the
+call; the host counter steps over zero at wrap). `tests/state_tests.cpp` — State tests 63 and 64.
+
+**Why.** The §24 residuals recorded as open. The install preceded the announcement, so an older
+restore's adoption, evaluating its guard inside that window, read its own generation from the
+engine-config word while the newer sound was already live and re-installed a superseded session over
+it — deterministically, once the round-17 lock woke it at the newer install's release — and a host
+save in that window persisted the newer session's metadata over the older session's sound. And the
+readers of the live sound were unsynchronised: for a PRESET-shaped replacement (no `replaceState`)
+a host save landing mid-loop recorded 3 preset parameters and 30 of the outgoing session.
+
+**Measured.** State suite 2439 / 0 (63 tests). Both defects reproduced deterministically on the
+round-17 tree BEFORE the fix (test 63: width 0.21 where 0.57 was the newer session's, live and in the
+host save; test 64: 3 / 30). Reverting install-before-announce fails **8** checks; removing the
+guard's announcement term alone fails **4**; removing the reader lock fails **1**, with the same
+3 / 30. An adversarial read-only review of the design (two of three lenses completed) corrected the
+invariant's wording to one of critical sections, made the announcement unconditional and asserted,
+found `writeState`'s three separate captures, and bounded the announce-to-parameters gap by one
+replacement with its host notifications rather than microseconds. The session-shaped replacements were measured
+reader-atomic already (22 exact, 11 round-tripped, 0 from the outgoing session), because
+`replaceState` and `copyState` share JUCE's APVTS lock — leg C keeps that as a property pin.
+
+**Documents updated:** `ADR-0036` (new §25 — what "a newer restore exists" has to mean, the
+authority rule, the ownership/visibility model, the two reader shapes measured, the remaining §24
+items reclassified: 1–3 fixed, 4 bounded, 5 non-defect); `THREADING_POLICY.md` and
+`THREAD_MODEL.md` (the announce-install-handoff order; the durable reader); `TESTING.md` (State
+tests 63–64, 63 tests); `README.md`, `TESTING_POLICY.md`, `HANDOVER.md`,
+`DOCUMENTATION_COVERAGE.md` and the worklog for the counts; `CHANGELOG.md` as a user-visible fix.
+
+**Drift.** Two corrections in documents that described the OLD order as a fact: `THREADING_POLICY`'s
+H→M row and `THREAD_MODEL`'s host-state-thread row both said the sound was applied and THEN the
+word published; both now state the announce-first order and why it is load-bearing. §8's "arrival"
+was always the announcement; it now precedes every effect of the restore, so the definition is
+tighter, not different. This is a threading-model change under `ARCHITECTURE_REVIEW_GATE.md`,
+commissioned as such by the owner for this round. Host serialization stays Disposition D.
+
 ## D-2 round 15 (2026-09-04) — a restore's clean baseline comes from its own bytes (ADR-0036 §22)
 
 **Code changed:** `src/PluginProcessor.h` / `.cpp` — `RestoreDecode` gains `restoredSoundSig`, filled
@@ -8322,7 +8366,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1311`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1340`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded

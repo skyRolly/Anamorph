@@ -15,6 +15,20 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.7] — 2026-09-03
 ### Fixed
+- **A project reopened from your DAW's own thread can no longer come up playing the sound of the
+  session it replaced, and an autosave can no longer capture a preset half-loaded.** Two closely
+  related fixes to how a session restore arriving from your DAW's own thread — Logic's autosave path,
+  and several VST3 hosts — is ordered against everything else. First, a restore used to load its
+  sound and only *then* declare itself the newest; if the plug-in was still finishing an older
+  restore at that instant, the older one could put its own sound back over the newer one, for up to
+  a twentieth of a second, and a project saved in that moment kept the new session's name and
+  settings around the old session's sound. A restore now declares itself first, so an older one can
+  never win. Second, saving from your DAW's own thread while you were clicking a preset could
+  capture the preset with some controls already changed and the rest not yet — a sound that was
+  never any preset — into the project file; a save now waits for the preset to finish loading, a few
+  microseconds. Playback is untouched: the audio path takes no lock. Decision: ADR-0036 §25.
+  Regression coverage: State tests 63 and 64.
+  Evidence: PR #137. [Verified]
 - **A session change arriving mid-swap can no longer leave you hearing two sounds at once.**
   Loading a preset, switching A/B, or undoing sets every sound control in turn, and your DAW can
   replace the whole session from its own thread while that is happening — Logic's autosave does, and

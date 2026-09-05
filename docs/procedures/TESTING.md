@@ -861,6 +861,44 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 64 — a durable capture never records a sound assembled from two replacements**
+  (round 18, ADR-0036 §25). §24 excluded two replacements from each other but left every READER of
+  the live parameters unsynchronised; whether that could persist a mixture depended on the shape of
+  the replacement, and this test measured both rather than assuming either. A session-shaped
+  replacement (`applySoundTree`, `applyStatePreservingView`) is `replaceState` — every parameter
+  moved under the APVTS lock that `copyState` shares — plus the exact-value reassert loop, so a host
+  save landing mid-loop already held one session (leg C, round-17 tree: 22 exact, 11 round-tripped,
+  **0 from the outgoing session**); that leg is kept as the property pin. A preset-shaped
+  replacement (`PresetManager::applySoundTree`, `applyDefaults` + the factory overrides) has no
+  `replaceState`, and a host save landing mid-loop recorded **3 parameters of the preset and 30 of
+  the outgoing session** into the project file (leg A). The save is landed through
+  `insideSoundReplacement` (lock held: the seam ARMS the save and waits bounded; the join comes
+  after the replacement returns). `writeState` also captures the live sound ONCE per save now and
+  copies it into the root and any lazily-seeded slot — it used to capture up to three times under
+  separate scopes. Mutation-tested — removing the lock from `copyStateWithRawValues` fails leg A
+  with the same 3 / 30 figure.
+
+* **State test 63 — an obsolete restore cannot reassert over a newer authoritative one** (round 18,
+  ADR-0036 §25). A host thread's restore used to INSTALL its sound and only then ANNOUNCE its
+  generation; the adoption of an older, still-pending restore evaluated its guard inside that window
+  — the word carried its own generation, the counter had moved — and re-installed a superseded
+  session over the newer one, deterministically once round 17's lock woke it at the newer install's
+  release. Four cases over sessions that differ in sound, oversampling and active slot: one restore
+  (A); the older taken and the newer completing whole while it is in hand (B); **the critical case**
+  — the newer sound installed and its thread held at `afterRestoreSoundApplied` while the older
+  restore's guard runs (C), asserting the newer sound stands, that a host save taken there persists
+  the newer sound, and that the newer adoption then settles sound, Settings and A/B state together;
+  and three restores in sequence each held after its install (E) — C and E also read the
+  engine-config word at the seam and require it to carry the installing restore's oversampling
+  already, the ordering rule observed directly; and a Settings edit landed while a restore is
+  mid-install (through `insideSoundReplacement`, lock held, so the seam only signals and waits
+  bounded), required to survive that restore's adoption (F, the boundary that moves with the
+  announcement). The oracle is the authored sessions. Scenario D as stated needs two host state
+  calls in flight (outside §11) and is structurally impossible under the new order.
+  Mutation-tested — reverting to install-then-announce fails **8** checks (C, E, F): width 0.21
+  where 0.57 is the newer session's, in the live sound and in the host save; removing the guard's
+  announcement term alone fails **4** (C, E), which is the term shown load-bearing.
+
 * **State test 62 — a settled sound is one session's, never a mixture** (round 17, ADR-0036 §24).
   A whole-sound replacement is `apvts.replaceState` (locked by JUCE) followed by a LOOP of
   per-parameter writes that was locked by nothing, so a host thread's restore install and a
@@ -990,7 +1028,7 @@ is wrong with any of those tests; the harness assumes exclusive use of the folde
 give it (one suite per runner). Locally: never run the suite beside a sanitizer lane or a second
 copy of itself.
 
-`tests/state_tests.cpp` (**61 tests**, own console target `AnamorphStateTests`) automates the
+`tests/state_tests.cpp` (**63 tests**, own console target `AnamorphStateTests`) automates the
 COMPATIBILITY policy family against the **real `AnamorphAudioProcessor`** (the target compiles
 the plugin sources; since 2026-08-21 it also constructs and destroys the real editor, headlessly
 and without ever showing it — no peer, no message loop, no interaction):

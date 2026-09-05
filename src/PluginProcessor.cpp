@@ -532,6 +532,25 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
 // compatible: the APVTS `value` is unchanged, old sessions/plugins ignore `raw` (no removal/rename).
 juce::ValueTree AnamorphAudioProcessor::copyStateWithRawValues()
 {
+    // A DURABLE READER TAKES THE REPLACEMENT LOCK (D-2 round 18, ADR-0036 §25). This is the
+    // capture behind every session save (`writeState`, both threads) and every A/B slot,
+    // undo step and committed baseline (`currentStateSet`). A preset-shaped replacement --
+    // `PresetManager::applySoundTree`, `applyDefaults` + the factory overrides -- has no
+    // `replaceState`: its per-parameter loop is the only write, so a host thread's save
+    // landing mid-loop used to record k parameters of the preset and n-k of the outgoing
+    // session, a sound that was never any session, into the project file (measured: 3 and
+    // 30, State test 64). The session-shaped replacements were already reader-atomic up to
+    // round-trip noise, because `replaceState` moves every parameter under the APVTS lock
+    // that `copyState` shares; this makes the two shapes alike, and puts the `raw` stamping
+    // sweep below inside the same scope as the copy it stamps. Lock order is unchanged --
+    // this lock, then the APVTS lock inside copyState -- and the AUDIO THREAD NEVER TAKES
+    // IT. A host save now waits for a message-thread replacement to finish, which is the
+    // relationship JUCE's own `replaceState` (APVTS lock held while notifying the host) and
+    // `copyState` already have. ONE OBLIGATION WIDENS WITH IT: nothing that takes this lock may
+    // run from a parameter listener callback (THREADING_POLICY), and every caller of
+    // `currentStateSet` -- the A/B paths, undo/redo, the undo poll, `syncCommitted` -- now takes
+    // it; none is reached from a listener today, and none may be in future.
+    const juce::ScopedLock oneAtATime (soundReplacement);
     auto tree = apvts.copyState();
     for (auto param : tree)
         if (param.hasType ("PARAM"))
@@ -1221,7 +1240,8 @@ void AnamorphAudioProcessor::adoptPendingHostState()
 void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
 {
     // SESSION COHERENCE (D-2 round 4, ADR-0036 §10). A restore handed over from a host
-    // thread applied its sound there, at decode time, and its metadata lands HERE. In
+    // thread applied its sound there -- at its install, after announcing (§25) -- and its
+    // metadata lands HERE. In
     // between, this thread may have run an A/B switch, a Copy, an undo or a preset load
     // that replaced the live parameters -- the message thread cannot see a restore whose
     // decode has applied its sound but whose handoff is not in the cell yet, so it acts
@@ -1242,15 +1262,24 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
     // nothing has been replaced the re-install is skipped, so an ordinary restore also
     // costs no redundant burst of setValueNotifyingHost, as before.
     // And the engine-config word's generation identifies the LATEST restore that has
-    // arrived: when a newer one has already published its sound, this older restore's
-    // adoption must not resurrect its own (ADR-0036 §8's rule, applied to the sound).
-    // An inline restore (generation 0) applied its sound on this thread with nothing
-    // able to run in between, so it never needs this.
-    // THE GUARD AND THE WRITE UNDER ONE LOCK (§24, round 17). Both terms it tests are moved by a
-    // host thread's decode -- `engineConfigGeneration()` when that restore announces itself, and
-    // `soundSetGen` when it installs its sound -- so checking them and then writing outside the
-    // lock decides on a state that can be gone before the first parameter moves. The lock is
-    // recursive, so `applySoundTree` re-entering it below is free.
+    // ANNOUNCED: when a newer one has, this older restore's adoption must not resurrect
+    // its own sound (ADR-0036 §8's rule, applied to the sound). An inline restore
+    // (generation 0) applied its sound on this thread with nothing able to run in
+    // between, so it never needs this.
+    //
+    // WHY THE TERM IS SOUND (§25, round 18). A host thread's restore announces BEFORE it
+    // installs, and installing takes this same lock. So, evaluated here with the lock held:
+    // "the word still carries my generation" means no newer restore has announced, hence
+    // none has installed any sound, hence none can before this thread releases the lock --
+    // the re-install below can never overwrite a newer session. "The word carries a newer
+    // generation" means a newer restore is authoritative; its own adoption settles the
+    // sound, and this one must not touch it. Until round 18 the install came first, so the
+    // first reading could be true while the newer sound was already live, and the guard
+    // re-installed a superseded session over it. Round 17's lock had made that deterministic.
+    // THE GUARD AND THE WRITE UNDER ONE LOCK (§24, round 17): `soundSetGen` is moved by
+    // every install, so checking it and then writing outside the lock decides on a state
+    // that can be gone before the first parameter moves. The lock is recursive, so
+    // `applySoundTree` re-entering it below is free.
     {
         const juce::ScopedLock oneAtATime (soundReplacement);
         if (d.generation != 0
@@ -1377,7 +1406,12 @@ void AnamorphAudioProcessor::writeState (const ProgramSnapshot& s, const juce::V
     // from the APVTS child below and is restored identically whether or not these resolve.
     // Nothing here is written into a user preset FILE -- that format is untouched.
     writeSelection (root, s.presetSelection, "presetSource", "presetFactoryId", "presetUserFile");
-    root.appendChild (copyStateWithRawValues(), nullptr); // APVTS state + exact "raw" values per PARAM
+    // ONE capture of the live sound per save (D-2 round 18, ADR-0036 §25). The root's parameters
+    // and any lazily-seeded A/B slot below used to be captured separately, each under its own
+    // lock scope, so a replacement completing between the two left one blob describing two
+    // sounds. Copied for each append, because appending re-parents a tree.
+    const auto live = copyStateWithRawValues();        // APVTS state + exact "raw" values per PARAM
+    root.appendChild (live.createCopy(), nullptr);
     // A fresh copy, because appending re-parents a tree and the snapshot's must stay
     // free for the next save.
     root.appendChild (settings.createCopy(), nullptr); // host-hidden Settings / view state
@@ -1385,11 +1419,12 @@ void AnamorphAudioProcessor::writeState (const ProgramSnapshot& s, const juce::V
     // A slot the snapshot carries as INVALID is "lazily initialised from current"
     // (SERIALIZATION_REGISTRY.md, `AB` child): the live parameters plus the
     // snapshot's own preset metadata -- what abEnsureInit() seeds on the message
-    // thread, resolved here at save time exactly as it resolves there.
+    // thread, resolved here at save time exactly as it resolves there, from the ONE
+    // capture above.
     auto resolved = [&] (int i) -> StateSet
     {
         if (s.abSlot[i].isValid()) return s.abSlot[i];
-        return { copyStateWithRawValues(), s.presetName, s.presetBaseline, s.presetSelection };
+        return { live.createCopy(), s.presetName, s.presetBaseline, s.presetSelection };
     };
     const StateSet slotA = resolved (0), slotB = resolved (1);
 
@@ -1531,15 +1566,10 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
             return false;
         }
 
-        // The token this restore's OWN sound install was handed (§13). Taken from the
-        // call rather than read back from the counter afterwards: a wholesale
-        // replacement that lands between the two -- an A/B apply, a preset load, an
-        // undo on the message thread while this decode runs on a host thread -- would
-        // otherwise be recorded as this restore's own, and the adoption would then take
-        // that replacement's sound for the restored session's and pair it with the
-        // restored metadata. The seam below is where a test lands exactly that.
-        d.soundSetGen  = applySoundTree (params);
-        if (seams.afterRestoreSoundApplied) seams.afterRestoreSoundApplied();
+        // THE DECODE NO LONGER INSTALLS (D-2 round 18, ADR-0036 §25). It records the sound
+        // tree; `installRestoredSound` installs it, and the caller decides WHEN -- on a host
+        // thread, only after the restore has ANNOUNCED its generation, so that no restore's
+        // sound is ever live before the adoption guard can see that it exists.
         d.soundParams  = params;
         // ...and THIS restore's clean baseline, for a session that carries none of its own
         // (§22). From the tree, not from the parameters: a live read here would describe
@@ -1680,9 +1710,7 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
     else if (xml->hasTagName (apvtsStateType)) // backward-compat (v0.2)
     {
         auto legacy = juce::ValueTree::fromXml (*xml);
-        d.soundSetGen  = applySoundTree (legacy);   // this restore's own token (§13)
-        if (seams.afterRestoreSoundApplied) seams.afterRestoreSoundApplied();
-        d.soundParams  = legacy;
+        d.soundParams  = legacy;                    // installed by the caller, after the announcement (§25)
         d.restoredSoundSig = anamorph::PresetManager::soundSignatureAfterLoading (apvts, legacy);   // §22
 
         // A v0.2 session is older than 0.8.4, so it can only carry the host-hidden Settings the
@@ -1724,6 +1752,17 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
     return true;
 }
 
+// THE SOUND HALF OF A RESTORE, as its own step (D-2 round 18, ADR-0036 §25). The token this
+// install is handed is recorded from the call itself, never read back from the counter
+// afterwards (§13): a wholesale replacement landing between the two would otherwise be
+// recorded as this restore's own. The seam is where a test lands exactly that -- and, since
+// this round, where it can hold a restore between its install and its handoff.
+void AnamorphAudioProcessor::installRestoredSound (RestoreDecode& d)
+{
+    d.soundSetGen = applySoundTree (d.soundParams);
+    if (seams.afterRestoreSoundApplied) seams.afterRestoreSoundApplied();
+}
+
 void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (onMessageThreadOrNoMessageManager())
@@ -1742,6 +1781,7 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
         RestoreDecode d;
         if (! decodeRestore (data, sizeInBytes, d))
             return;
+        installRestoredSound (d);   // generation 0: the newest arrival by definition, no announcement needed
 
         {
             const juce::ScopedValueSetter<bool> adopting (adoptingRestore, true);
@@ -1760,20 +1800,47 @@ void AnamorphAudioProcessor::setStateInformation (const void* data, int sizeInBy
             return;
 
         // Another thread (the macOS AU autosave shape, pluginval's AU background-
-        // thread state test, an out-of-spec VST3 host): the sound is already applied
-        // above. Two things happen HERE, synchronously, because a prepareToPlay that
-        // follows on this same thread -- the ordinary setState-then-activate order --
-        // reads them: the engine-config word (the oversampling), and the latency request at
-        // the bottom. Everything else is handed to the message thread as one immutable
-        // value, and this side keeps its own view of it for a save that arrives
-        // before the adoption.
-        // This restore's generation: this side's own count, monotonic. It tags the
-        // engine-config publication (so no older restore's completion can overwrite
-        // it), rides inside the decode to the message thread, and is what this
-        // side's next save compares the published snapshot's generation against.
-        const auto generation = ++hostRestoreGen;
-        internal.publishEngineConfig (d.internalResolved, generation);
-        hostRestoreView = viewOfRestore (d);
+        // thread state test, an out-of-spec VST3 host). Three things happen HERE,
+        // synchronously and IN THIS ORDER, because a prepareToPlay that follows on this
+        // same thread -- the ordinary setState-then-activate order -- reads the first
+        // two, and because the message thread's adoption guard reads the first:
+        //
+        //   1. ANNOUNCE. This restore's generation -- this side's own count, monotonic --
+        //      is published in the engine-config word together with the restored
+        //      oversampling (a CAS: it lands only if no newer restore has). From this
+        //      instant the restore is AUTHORITATIVE (ADR-0036 §25): every older restore is
+        //      obsolete, and the adoption guard, which asks "does the word still carry MY
+        //      generation?", can see that a newer one exists.
+        //   2. INSTALL the sound, under the replacement lock.
+        //   3. HAND OVER the decoded tail to the message thread as one immutable value,
+        //      keeping this side's own view of it for a save that arrives first.
+        //
+        // ANNOUNCE-BEFORE-INSTALL IS THE ROUND-18 FIX. Until then the order was install,
+        // then announce, and the adoption of an OLDER restore still pending evaluated its
+        // guard inside that window: the word carried the older generation (the newer had
+        // not announced), the replacement counter had moved (the newer had installed), so
+        // the older restore RE-INSTALLED its own sound over the newer one -- a superseded
+        // session resurrected until the newer restore's own adoption, up to one 20 Hz
+        // period later; and round 17's lock made the timing deterministic, waking the
+        // older adoption exactly at the newer install's release. With the announcement
+        // first, "the word still carries my generation", read under the lock, means no
+        // newer restore has installed or can install before the lock is released.
+        //
+        // Consequence, stated: the oversampling word now flips a few microseconds BEFORE
+        // the parameters land instead of after -- neither order was ever atomic with the
+        // sound, both windows are the install's own duration, and only the old one could
+        // also carry a wrong-direction re-install.
+        // 0 means "inline" to every consumer of a generation (the guard, the per-field edit
+        // predicate, the word's constructor publication), so the counter never hands it to a
+        // host restore: at wrap it steps over 0. Unreachable in practice (2^32 restores on one
+        // instance); one branch closes the cliff.
+        if (++hostRestoreGen == 0) ++hostRestoreGen;
+        const auto generation = hostRestoreGen;
+        d.generation = generation;
+        [[maybe_unused]] const bool announced = internal.announceRestore (d.internalResolved, generation);   // 1. announce
+        jassert (announced);   // refused only if a HIGHER generation stands: two host state calls in flight (§11)
+        installRestoredSound (d);                                         // 2. install
+        hostRestoreView = viewOfRestore (d);                              // 3. hand over (below)
 
         auto* handoff = new RestoreDecode (d);
         handoff->generation = generation;

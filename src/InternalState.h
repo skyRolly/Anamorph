@@ -402,6 +402,21 @@ public:
         return publishOversample (juce::jlimit (0, 3, (int) resolved[iid::oversample] - 1), generation);
     }
 
+    // THE ANNOUNCEMENT (D-2 round 18, ADR-0036 §25). A host thread's restore publishes its
+    // generation in the engine-config word BEFORE it installs its sound, and the word is the
+    // authority register the adoption guard reads. It must land whether or not the restore
+    // carries a usable Settings tree -- an installed-but-unannounced restore is exactly the
+    // shape round 18 removed -- so an invalid tree announces the CURRENT index under the new
+    // generation rather than announcing nothing. Returns whether it landed: false only when a
+    // HIGHER generation already stands, which one serialized host state thread cannot produce
+    // (§11); the caller asserts it.
+    bool announceRestore (const juce::ValueTree& resolved, juce::uint32 generation) noexcept
+    {
+        const int index = resolved.isValid() ? juce::jlimit (0, 3, (int) resolved[iid::oversample] - 1)
+                                             : oversampleIndex();
+        return publishOversample (index, generation);
+    }
+
     // Message thread: the generation of the last host restore it adopted, which tags
     // every publication the TREE makes from here on -- a Settings edit, an inline
     // restore, an adoption. Set BEFORE an adoption writes the tree, so the tail's

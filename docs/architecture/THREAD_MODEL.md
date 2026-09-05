@@ -11,7 +11,7 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 | **Message / GUI** | JUCE message loop; editor `juce::Timer` (24 Hz) + editor `meterVBlank` + per-visualizer `FrameClock` (display-rate vblank, capped ~120 Hz) | Painting, parameter writes (APVTS + InternalState), Undo coalesce, FFT, meter/scope *consumption*. |
 | **OpenGL render** | `openGLContext.attachTo(*this)` — **macOS/Windows only** | GPU compositing of the editor's paint. Absent on Linux/BSD. |
 | **Worker / background** | none | No `std::thread`/`Thread`/`ThreadPool`. FFT runs on the GUI thread. |
-| **Host state thread** (external) | host → `getStateInformation` / `setStateInformation` on a thread that is not the message thread: macOS AU `SaveState`/`RestoreState` (autosave), pluginval's AU background-thread state test, an out-of-spec VST3 host, JUCE's Linux VST3 wrapper before the host registers an `IRunLoop` | Applies the sound (the APVTS, JUCE-locked) and the oversampling atomic synchronously; exchanges the program metadata with the message thread through the two D-2 cells below. Owns nothing of the program state (ADR-0036). |
+| **Host state thread** (external) | host → `getStateInformation` / `setStateInformation` on a thread that is not the message thread: macOS AU `SaveState`/`RestoreState` (autosave), pluginval's AU background-thread state test, an out-of-spec VST3 host, JUCE's Linux VST3 wrapper before the host registers an `IRunLoop` | Announces its generation in the engine-config word (the oversampling atomic, ADR-0036 §25), THEN installs the sound (the APVTS, JUCE-locked, under the replacement lock), synchronously and in that order; exchanges the program metadata with the message thread through the two D-2 cells below. Owns nothing of the program state (ADR-0036). |
 | **Host prepare thread** (external) | host → `prepareToPlay` off the message thread (JUCE Linux VST3 pre-`IRunLoop`, FL Studio's Patcher, an AU `Initialize` off main) | Engine prepare under the format contract that no `processBlock` runs concurrently; latency through the D-1 request (round 15). |
 
 Evidence [Verified]:
@@ -115,7 +115,15 @@ freed while another thread can reach it, because a pointer is reachable from exa
   undo / redo / A/B apply, a user preset load, and both halves of a factory preset apply) take this
   one lock. `PresetManager` takes the same object through a pointer the processor supplies.
   Ordering is one-directional — `soundReplacement` → the APVTS lock → `listenerLock` — and **the
-  audio thread never takes it**, so the no-locking rule above is untouched.
+  audio thread never takes it**, so the no-locking rule above is untouched. Since round 18 (§25)
+  the one DURABLE reader of the live sound, `copyStateWithRawValues` (session saves on either
+  thread; A/B slots, undo steps and the committed baseline), takes it too, so a host save waits for
+  a message-thread replacement rather than capturing a preset-shaped one mid-loop.
+- **Restore authority = announcement, announce-before-install** (ADR-0036 §25). A host thread's
+  restore publishes its generation in the engine-config word BEFORE it installs its sound, so the
+  adoption guard's "the word still carries my generation", read under the replacement lock, means
+  no newer restore has installed or can before the lock is released; an obsolete restore cannot
+  re-install over a newer one.
 - No host thread reads or writes program metadata directly (ADR-0036): a restore off the message
   thread hands its decoded tail over; a save off the message thread reads a published snapshot.
 - `ScopeBuffer` is single-producer / single-reader-thread: exactly one audio writer; all reads

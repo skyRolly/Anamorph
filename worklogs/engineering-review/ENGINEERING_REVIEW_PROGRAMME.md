@@ -1325,6 +1325,108 @@ moved only by the added non-vacuity checks (2261 → 2271).
 round adds no caller, no thread, no timer, no async or background path, and touches neither the
 host-side members nor the off-thread tripwire — `src/` is not modified at all.
 
+## D-2 / RISK-007 round 18 — 2026-09-04 — a restore is authoritative from its announcement, and announces before it installs
+
+> Round 17's adversarial audit left five §24 residuals open; the owner commissioned this round to
+> fix the first of them as a correctness problem — *"the guard's `engineConfigGeneration()` term
+> still publishes outside the lock and asks 'has a newer restore announced' rather than 'is one
+> live'; the lock makes the resulting re-install of a superseded restore deterministic rather than
+> rare"* — and to reassess the rest with evidence.
+
+**The ordering, reconstructed.** An off-message-thread restore was: decode → **install** the sound
+(under §24's lock) → `++hostRestoreGen` → **announce** (`publishEngineConfig`, a CAS on the
+engine-config word) → build the host-side view → **hand over** (`pendingRestore.put`). The
+adoption of an older restore asks the word "does it still carry MY generation?" and the counter
+"has anything replaced my sound?", and re-installs its own sound when both are yes.
+
+| | thread | what happened (round-17 tree) |
+|---|---|---|
+| t0 | H | R1: install, announce g1, hand over. M has not drained. |
+| t1 | H | R2: **install** — R2's sound is live; `soundSetGen` moved; the word still says g1 |
+| t2 | M | drain takes R1; guard blocks on the lock R2's install holds; **wakes at its release** |
+| t3 | M | word == g1 (R2 unannounced) and counter moved (R2 installed) → **re-installs R1 over R2** |
+| t4 | H | R2 announces g2, hands over |
+| t5 | — | R1's sound live under R2's oversampling; a host save here = R2's metadata over R1's sound |
+| t6 | M, ≤ 50 ms | R2's adoption re-installs R2 |
+
+Measured before the fix (State test 63, case C): width 0.21 where 0.57 was the newer session's, in
+the live sound AND in the host save taken at t5. Case E (three restores) shows it at every step.
+
+**Scenario D as the round states it** — a second restore arriving before the first has announced —
+needs two host state calls in flight and is outside §11 (Disposition D). Under the new order it is
+also structurally impossible: no restore is ever installed-but-unannounced.
+
+**The invariant (§25).** *A restore is AUTHORITATIVE from the instant its generation is announced,
+and it announces BEFORE it installs.* Under the replacement lock, "the word still carries my
+generation" then means no newer restore has announced, hence none has installed, hence none can
+before this thread releases the lock — because installing takes the lock and a newer restore
+announces before trying to. The guard's two terms are unchanged in code; the ordering is what makes
+the first one answer the question the decision needs.
+
+**Ownership and visibility.** `hostRestoreGen`: written and read by the one host state thread only
+(§11). The engine-config word: written by H at the announcement and by M's tree writes, both through
+one acq_rel CAS keeping the highest generation; read by audio (low byte, relaxed), `prepareToPlay`,
+and the guard (acquire, under the lock). `soundSetGen`: bumped under the lock at each install's
+completion, read under it by the guard. H's CAS is sequenced before its lock acquisition and its
+unlock synchronises with the guard's acquisition, so whenever the install completed before the guard
+took the lock the announcement is visible; otherwise the guard either already sees it or the newer
+install cannot begin until the guard releases — correct either way.
+
+**The fix.** `decodeRestore` records the sound tree and no longer installs; `installRestoredSound`
+installs it and takes the token (§13) as its own step. M calls it right after the decode (generation
+0: authoritative by thread ownership and the drain, never by the word). H calls it after
+`++hostRestoreGen` (stepping over zero at wrap) and `InternalState::announceRestore` — the
+announcement as an operation of its own, landing whether or not the restore carries a usable
+Settings tree, its return asserted — before `viewOfRestore` and the handoff. Stated exactly, the
+invariant is one of critical sections: no obsolete restore's replacement can COMPLETE after a newer
+install has begun; both lock orders are safe. Stated consequence: the oversampling word flips BEFORE
+the parameters land rather than after, and the gap is bounded by one replacement including its
+per-parameter host notifications (`replaceState` notifies the host through `setNewState`) — not
+microseconds; neither order was atomic with the sound, and only the old one carried a
+wrong-direction re-install. A Settings edit landed during an install is now ordered after that
+restore (case F pins the boundary shift). Reverting the order fails **8** checks; removing the
+guard's announcement term alone fails **4**, which is the term shown load-bearing.
+
+**The reader side, measured rather than argued.** State test 64 lands a host save inside a
+replacement's write loop through the round-17 seam, for both shapes, on the round-17 tree:
+
+| replacement shape | mechanism | host save mid-loop recorded |
+|---|---|---|
+| session-shaped (`applySoundTree`, `applyStatePreservingView`) | `replaceState` moves EVERY parameter under JUCE's `valueTreeChanging`, the lock `copyState` shares; the reassert loop then fixes exact values | 22 exact + 11 round-tripped, **0 from the outgoing session** — one session |
+| preset-shaped (`PresetManager::applySoundTree`, `applyDefaults` + overrides) | the loop is the only write | **3 preset + 30 outgoing** — a sound that was never any session |
+
+The second is a persistence defect (in spec: an AU autosave during a preset click). Fix: the one
+durable reader, `copyStateWithRawValues` — behind `writeState` on both threads and behind
+`currentStateSet` (A/B slots, undo, committed baseline) — takes `soundReplacement` around the copy
+and its `raw` stamping; and `writeState` captures once per save and copies, where it used to capture
+up to three times under separate scopes. Lock order unchanged (this lock → APVTS lock inside `copyState`); audio never
+takes it. A host save now waits for a message-thread replacement — the relationship JUCE's own
+`replaceState` (APVTS lock held while `setNewState → setValueNotifyingHost` notifies the host) and
+`copyState` already have, verified in the pinned source, so not a new hazard class. Removing the lock
+fails **1** check with the same 3 / 30. `saveUser`'s `copyState` stays as it is: on M it can meet
+only H's session-shaped install. `soundSignature` / `isDirty` are transient, recomputed every poll.
+
+**The other §24 items.** Item 4 (the reader's window lengthens) is now bounded: a durable reader
+waits for at most one replacement. Item 5 (the A/B duck under contention): `requestDuck()` sets a
+flag consumed at the audio thread's next `setParameters`; a forced swap landing during the fade-out
+takes the tighten branch and keeps forced semantics, one landing during the fade-in takes the
+ordinary re-duck path (no snap, no dry fill); the window is bounded by up to two host installs with
+their per-parameter notifications (the slot capture and the apply each take the lock). A masking
+miss, never a click: intentionally accepted, bound stated.
+
+**An adversarial review of the design (read-only, two of three lenses completed) changed four
+things before the code was final**: the invariant's wording (critical sections, not instants); the
+announcement made unconditional and asserted, with the wrap step; `writeState`'s single capture;
+and the bounds and the widened listener rule written down.
+
+**Measured.** State suite 2439 / 0 (63 tests), repeated; the two new tests fail on the round-17
+tree exactly as described, and each fix is caught by its own regression alone (8 / 1 / 4).
+
+**Host serialization: Disposition D, unchanged, no new evidence.** No new caller, thread, timer,
+async or background path; two operations reordered on the one host state thread, and a wait added
+to a reader that never runs on the audio thread. This is a threading-model change under
+`ARCHITECTURE_REVIEW_GATE.md`, commissioned as such by the owner for this round.
+
 ## D-2 / RISK-007 round 17 — 2026-09-04 — one whole-sound replacement at a time
 
 > *"Overlapping restores expose mixed sound. When a restore overlaps earlier adoption,

@@ -10094,7 +10094,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1311).
+//  baseline", src/PluginProcessor.cpp:1340).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -10327,7 +10327,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1058).
+//  targets", src/PluginProcessor.cpp:1077).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -10704,7 +10704,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1490).
+//  mixed sound", src/PluginProcessor.cpp:1525).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -11117,6 +11117,368 @@ static void testOverlappingReplacementsCannotMixTwoSessions()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 63 -- an obsolete restore cannot reassert its sound over a newer,
+//  authoritative one (D-2 round 18, ADR-0036 §25; the pre-announce residual §24
+//  recorded as open).
+//
+//  A host thread's restore used to INSTALL its sound and only then ANNOUNCE its
+//  generation in the engine-config word. The adoption of an OLDER restore, still
+//  pending, tests that word: "has a newer restore announced?" -- and in the window
+//  between the newer restore's install and its announcement the answer was no
+//  while the newer sound was already live. Its second term ("has a replacement
+//  moved the counter since my install?") was true, because the newer install had,
+//  so the older restore RE-INSTALLED its own sound over the newer one. Round 17's
+//  lock made that deterministic rather than rare: the older adoption blocked on the
+//  lock the newer install held and woke exactly at its release, inside the window.
+//
+//  The rule (§25): a restore is AUTHORITATIVE from the instant its generation is
+//  announced, and it announces BEFORE it installs. So under the replacement lock
+//  "the word still carries my generation" means "no newer restore has installed,
+//  nor can before I release", and the guard is sound.
+//
+//  The seam `afterRestoreSoundApplied` fires right after the install, so on the old
+//  tree it sits INSIDE the install->announce window and on the new tree AFTER both.
+//  The test holds the newer restore there and runs the older one's adoption. The
+//  sessions differ in sound (width), Settings (oversampling) and A/B state (active
+//  slot), and the oracle is the AUTHORED sessions, never a production helper.
+// ---------------------------------------------------------------------------
+namespace r18
+{
+    static int oversampleInTree (AnamorphAudioProcessor& p)
+    {
+        return (int) p.getInternal().copyState()[anamorph::iid::oversample];
+    }
+
+    // The width a blob restores to, read from an instance that restored it and nothing else.
+    static float widthOf (const juce::MemoryBlock& blob)
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        owned->prepareToPlay (48000.0, 512);
+        d2::restoreFrom (*owned, blob);
+        owned->pollUndoCoalesce();
+        return rawOf (*owned, "width");
+    }
+}
+
+static void testObsoleteRestoreCannotReassertOverNewerOne()
+{
+    std::printf ("State test 63: an obsolete restore cannot reassert over a newer authoritative one (D-2 r18)\n");
+
+    const auto R1 = d2::author ("D2-R18-1", 0.21f, 0.79f, 0, 1);
+    const auto R2 = d2::author ("D2-R18-2", 0.43f, 0.57f, 1, 3);
+    const auto R3 = d2::author ("D2-R18-3", 0.65f, 0.35f, 0, 2);
+    const float w1 = R1.active == 0 ? R1.widthA : R1.widthB;
+    const float w2 = R2.active == 0 ? R2.widthA : R2.widthB;
+    const float w3 = R3.active == 0 ? R3.widthA : R3.widthB;
+    check (! juce::exactlyEqual (w1, w2) && ! juce::exactlyEqual (w2, w3), "non-vacuity: the sessions' live sounds differ");
+    check (R1.oversampleId != R2.oversampleId && R1.active != R2.active,
+           "non-vacuity: the sessions differ in Settings and A/B state too");
+
+    // --- A. one restore, announced, adopted: the ordinary shape. -----------------------
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, R1.blob); });
+        p.pollUndoCoalesce();
+        checkNear ((double) rawOf (p, "width"), (double) w1, 1.0e-6, "case A: the restored sound is live");
+        check (d2::View::of (p).matches (R1), "case A: the restored program is live");
+        check (r18::oversampleInTree (p) == R1.oversampleId, "case A: the restored Settings are live");
+    }
+
+    // --- C. THE CRITICAL CASE. R1 is pending and untaken; R2's sound is installed and the
+    //        restoring thread is held right after the install; the message thread then
+    //        drains, so R1's adoption guard runs THERE. -------------------------------------
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, R1.blob); });   // R1: installed, announced, pending
+        checkNear ((double) rawOf (p, "width"), (double) w1, 1.0e-6, "R1's sound is live and R1 is pending");
+
+        std::atomic<bool> installed { false }, adopted { false };
+        p.seams.afterRestoreSoundApplied = [&]
+        {
+            installed.store (true, std::memory_order_release);
+            r17::waitBounded (adopted, 4000);        // hold the restoring thread here while M adopts
+        };
+        std::thread host ([&] { d2::restoreFrom (p, R2.blob); });
+        check (r17::waitBounded (installed, 4000), "non-vacuity: R2's sound was installed and its thread is held");
+        checkNear ((double) rawOf (p, "width"), (double) w2, 1.0e-6, "at the seam, R2's sound is live");
+        // THE ORDERING RULE ITSELF, observed directly: by the time the sound is installed the
+        // engine-config word already carries the installing restore's generation -- readable here
+        // as its oversampling. On the old ordering the word still carried R1's at this instant.
+        check (p.getInternal().oversampleIndex() == R2.oversampleId - 1,
+               "case C: the announcement preceded the install -- the word already carries R2's oversampling at the seam");
+
+        p.pollUndoCoalesce();                        // drains R1: its guard runs against R2's live sound
+        adopted.store (true, std::memory_order_release);
+        host.join();
+        p.seams.afterRestoreSoundApplied = nullptr;
+
+        // BEFORE any further adoption: the newer restore's sound must still be live. On the
+        // old ordering R1's guard read its own generation from the word (R2 had not announced)
+        // and a moved counter (R2 had installed), and re-installed R1 over R2.
+        checkNear ((double) rawOf (p, "width"), (double) w2, 1.0e-6,
+                   "case C: the obsolete restore did NOT reassert its sound over the newer one");
+
+        // ...and what a host save taken right now persists. It describes R2 (the view built
+        // at R2's decode) -- so its SOUND must be R2's, or the project file holds one
+        // session's metadata over another session's sound.
+        juce::MemoryBlock hostSave;
+        d2::offMessageThread ([&] { hostSave = d2::saveOf (p); });
+        checkNear ((double) r18::widthOf (hostSave), (double) w2, 1.0e-6,
+                   "case C: a host save taken in the window persists the newer session's sound");
+
+        // R2's own adoption then settles the whole session: sound, Settings and A/B state.
+        p.pollUndoCoalesce();
+        checkNear ((double) rawOf (p, "width"), (double) w2, 1.0e-6, "case C: after the adoption the sound is R2's");
+        check (d2::View::of (p).matches (R2), "case C: ...and the program is R2's");
+        check (r18::oversampleInTree (p) == R2.oversampleId, "case C: ...and the Settings are R2's");
+        check (p.getInternal().oversampleIndex() == R2.oversampleId - 1, "case C: ...and the engine-config word is R2's");
+    }
+
+    // --- B. R1 is TAKEN by the message thread, then R2 completes entirely (installed,
+    //        announced, pending) before R1's tail runs. R1 is obsolete: its guard must skip,
+    //        and the same drain then adopts R2 (the fixed point). -------------------------
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, R1.blob); });
+
+        int fires = 0;
+        p.seams.afterRestoreTake = [&]
+        {
+            if (fires++ == 0)                        // only around R1's take: R2's take fires this too
+                d2::offMessageThread ([&] { d2::restoreFrom (p, R2.blob); });   // R2, whole, while R1 is in hand
+        };
+        p.pollUndoCoalesce();
+        p.seams.afterRestoreTake = nullptr;
+        check (fires == 2, "non-vacuity: both restores were taken by the one drain");
+        checkNear ((double) rawOf (p, "width"), (double) w2, 1.0e-6, "case B: the newer restore's sound stands");
+        check (d2::View::of (p).matches (R2), "case B: the drain reached the newer session");
+        check (r18::oversampleInTree (p) == R2.oversampleId, "case B: ...with its Settings");
+    }
+
+    // --- E. three restores in sequence, each held after its install while the message
+    //        thread drains whatever is pending -- the previous restore's guard runs inside
+    //        every successor's window. Generation ordering must stay coherent throughout.
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        const juce::MemoryBlock* blobs[3] = { &R1.blob, &R2.blob, &R3.blob };
+        const float widths[3] = { w1, w2, w3 };
+        for (int k = 0; k < 3; ++k)
+        {
+            std::atomic<bool> installed { false }, adopted { false };
+            p.seams.afterRestoreSoundApplied = [&]
+            {
+                installed.store (true, std::memory_order_release);
+                r17::waitBounded (adopted, 4000);
+            };
+            std::thread host ([&] { d2::restoreFrom (p, *blobs[k]); });
+            check (r17::waitBounded (installed, 4000), "non-vacuity: the restore was installed and held");
+            const int expectedOs = (k == 0 ? R1 : k == 1 ? R2 : R3).oversampleId - 1;
+            check (p.getInternal().oversampleIndex() == expectedOs,
+                   "case E: at each install the word already carries that restore's generation");
+            p.pollUndoCoalesce();                    // adopts R(k-1) if still pending, inside Rk's window
+            adopted.store (true, std::memory_order_release);
+            host.join();
+            p.seams.afterRestoreSoundApplied = nullptr;
+            checkNear ((double) rawOf (p, "width"), (double) widths[k], 1.0e-6,
+                       "case E: after each restore the NEWEST install stands, whatever the drain adopted");
+        }
+        p.pollUndoCoalesce();
+        check (d2::View::of (p).matches (R3), "case E: the final program is the last restore's");
+        check (r18::oversampleInTree (p) == R3.oversampleId, "case E: ...with its Settings");
+        checkNear ((double) rawOf (p, "width"), (double) w3, 1.0e-6, "case E: ...and its sound");
+    }
+
+    // --- F. THE BOUNDARY THAT MOVES WITH THE ANNOUNCEMENT. A Settings edit records, against its
+    //        field, the generation of the latest restore that had ARRIVED (§9), read from the
+    //        engine-config word. "Arrived" is the announcement, which now precedes the install:
+    //        an edit made WHILE a restore is installing is therefore ordered after that restore
+    //        and survives its adoption. On the old ordering the same edit read the previous
+    //        generation and was replaced -- a user's explicit action undone by a restore that had
+    //        already begun. Pinned here because it is a stated consequence of §25, not a side
+    //        effect. The seam fires on the restoring thread with the replacement lock HELD, so
+    //        it only signals and waits bounded; the edit is a tree write, which takes no lock.
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::offMessageThread ([&] { d2::restoreFrom (p, R1.blob); });
+        p.pollUndoCoalesce();
+
+        const int restoredUiScale = r3::read (p.getInternal()).uiScale;   // what R2 restores to (R1's, R2's: authored alike)
+        const int edited = restoredUiScale == 5 ? 4 : 5;                  // a value R2 does NOT carry
+
+        std::atomic<bool> midInstall { false }, editDone { false }, armed { true };
+        p.seams.insideSoundReplacement = [&]
+        {
+            if (! r17::fireOnce (armed)) return;
+            midInstall.store (true, std::memory_order_release);
+            r17::waitBounded (editDone, 4000);       // hold R2's install open while M edits
+        };
+        std::thread host ([&] { d2::restoreFrom (p, R2.blob); });
+        check (r17::waitBounded (midInstall, 4000), "non-vacuity: R2 is mid-install and its thread is held");
+        r3::setField (p.getInternal(), 1, r3::SettingsSet { 0, edited, 0.0, false, false, false });   // uiScale := edited
+        editDone.store (true, std::memory_order_release);
+        host.join();
+        p.seams.insideSoundReplacement = nullptr;
+        check (! armed.load(), "non-vacuity: the edit landed inside R2's install");
+
+        p.pollUndoCoalesce();                        // adopts R2
+        check (r3::read (p.getInternal()).uiScale == edited,
+               "case F: a Settings edit made while a restore was installing is ordered AFTER it and survives its adoption");
+        check (r18::oversampleInTree (p) == R2.oversampleId, "case F: ...while the fields the user did not touch are the restore's");
+        check (d2::View::of (p).matches (R2), "case F: ...and the program is the restore's");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 64 -- a DURABLE capture of the live sound never records a set
+//  assembled from two replacements (D-2 round 18, ADR-0036 §25; the reader-side
+//  residual §24 recorded as open).
+//
+//  §24 made two whole-sound replacements mutually exclusive but left every READER
+//  of the live parameters unsynchronised. Whether that can persist a mixture
+//  depends on the SHAPE of the replacement, and this test measures both shapes
+//  rather than assuming either:
+//
+//   * A session-shaped replacement (`applySoundTree`, `applyStatePreservingView`)
+//     is `apvts.replaceState` -- which moves EVERY parameter under JUCE's APVTS
+//     lock, the same lock `copyState` takes -- followed by the exact-value
+//     reassert loop. A save that lands mid-loop therefore sees one session
+//     already (with round-trip noise on the parameters not yet reasserted), not
+//     two. Leg C pins that property.
+//   * A preset-shaped replacement (`PresetManager::applySoundTree`,
+//     `applyDefaults` + the factory overrides) has NO replaceState: the loop is
+//     the only write. A save that lands mid-loop records k parameters of the
+//     preset and n-k of the outgoing session -- a sound that was never any
+//     session, in the project file. Leg A constructs exactly that.
+//
+//  The competing save is landed mid-loop through `insideSoundReplacement`, which
+//  fires with the replacement lock HELD, so the seam ARMS the save and waits
+//  bounded; the join comes after the replacement has returned. Before the fix the
+//  save completes inside the window; after it the save waits for the replacement
+//  and the wait expires, which is the intended outcome.
+// ---------------------------------------------------------------------------
+namespace r18
+{
+    // Every preset-carried parameter driven to `t` of its range, on the live instance.
+    static void writeAll (AnamorphAudioProcessor& p, float t)
+    {
+        for (auto* raw : p.getParameters())
+            if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (raw))
+                if (! pid::isPresetExcluded (wid->paramID))
+                    if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (raw))
+                        rp->setValueNotifyingHost (t);
+    }
+
+    // The sound a saved blob restores to, as a vector, from an instance of its own.
+    static std::vector<float> soundOf (const juce::MemoryBlock& blob)
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        owned->prepareToPlay (48000.0, 512);
+        d2::restoreFrom (*owned, blob);
+        owned->pollUndoCoalesce();
+        return r17::soundVector (*owned);
+    }
+}
+
+static void testDurableCaptureNeverRecordsTwoReplacements()
+{
+    std::printf ("State test 64: a durable capture never records a sound assembled from two replacements (D-2 r18)\n");
+
+    const auto blobA = r17::authorAt (0.20f);
+    const auto soundA = r18::soundOf (blobA);
+
+    // --- A. a host save lands INSIDE a factory preset load: the preset-shaped loop. -------
+    {
+        // The preset's own sound, from an instance that loads it and nothing else.
+        std::vector<float> presetVec;
+        {
+            const auto ctl = std::make_unique<AnamorphAudioProcessor>();
+            ctl->prepareToPlay (48000.0, 512);
+            d2::restoreFrom (*ctl, blobA); ctl->pollUndoCoalesce();
+            ctl->getPresets().load (0);    ctl->pollUndoCoalesce();
+            presetVec = r17::soundVector (*ctl);
+        }
+        const auto idx = r17::discriminating (presetVec, soundA);
+        std::printf ("  %d of %d sound parameters distinguish the preset from the session\n",
+                     (int) idx.size(), (int) presetVec.size());
+        check (idx.size() >= 10, "non-vacuity: the preset and the session differ in at least ten parameters");
+
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, blobA);
+        p.pollUndoCoalesce();
+
+        std::atomic<bool> saved { false }, armed { true };
+        juce::MemoryBlock captured;
+        std::thread host;
+        p.seams.insideSoundReplacement = [&]
+        {
+            if (! r17::fireOnce (armed)) return;
+            host = std::thread ([&] { captured = d2::saveOf (p); saved.store (true, std::memory_order_release); });
+            r17::waitBounded (saved);                // expires on the fixed tree: the save is waiting
+        };
+        p.getPresets().load (0);
+        if (host.joinable()) host.join();
+        p.seams.insideSoundReplacement = nullptr;
+        check (! armed.load(), "non-vacuity: the save was armed inside the preset load's write loop");
+        check (captured.getSize() > 0, "non-vacuity: the host thread captured a session");
+
+        const auto v = r17::classify (r18::soundOf (captured), presetVec, soundA, idx);
+        std::printf ("  host save across a preset load: %d parameter(s) from the preset, %d from the session, %d from neither\n",
+                     v.fromA, v.fromB, v.fromNeither);
+        check (v.fromNeither == 0, "case A: the saved sound holds no value from outside both candidates");
+        check (v.fromA == 0 || v.fromB == 0,
+               "case A: a host save taken across a preset load holds ONE sound -- never part preset, part session");
+    }
+
+    // --- C. a host save lands inside a SESSION-shaped replacement (an A/B apply): the
+    //        property pin. replaceState has already moved every parameter under the lock
+    //        copyState shares, so the save may hold round-trip noise on the not-yet-reasserted
+    //        parameters but NOTHING of the outgoing session. -------------------------------
+    {
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        d2::restoreFrom (p, blobA);
+        p.pollUndoCoalesce();
+        p.abCopyToOther();                           // slot 1 := A
+        r18::writeAll (p, 0.80f);                    // live := B (the outgoing session for the apply)
+        const auto soundB = r17::soundVector (p);
+        const auto idx = r17::discriminating (soundA, soundB);
+        check (idx.size() >= 10, "non-vacuity: the incoming and outgoing sounds differ");
+
+        std::atomic<bool> saved { false }, armed { true };
+        juce::MemoryBlock captured;
+        std::thread host;
+        p.seams.insideSoundReplacement = [&]
+        {
+            if (! r17::fireOnce (armed)) return;
+            host = std::thread ([&] { captured = d2::saveOf (p); saved.store (true, std::memory_order_release); });
+            r17::waitBounded (saved);
+        };
+        p.abSwitchTo (1);                            // the apply writes A over live B
+        if (host.joinable()) host.join();
+        p.seams.insideSoundReplacement = nullptr;
+        check (! armed.load(), "non-vacuity: the save was armed inside the A/B apply's write loop");
+
+        const auto v = r17::classify (r18::soundOf (captured), soundA, soundB, idx);
+        std::printf ("  host save across an A/B apply: %d parameter(s) from the incoming, %d from the outgoing, %d round-tripped\n",
+                     v.fromA, v.fromB, v.fromNeither);
+        check (v.fromB == 0, "case C: a save across a session-shaped replacement holds nothing of the outgoing session");
+    }
+}
+
+// ---------------------------------------------------------------------------
 //  D-2 stress probe (contract F): every thread the model names, at once, under
 //  ThreadSanitizer. NOT part of the suite, like the other three TSan probes:
 //  on the pre-D-2 tree its execution IS the undefined behaviour it measures.
@@ -11381,6 +11743,8 @@ int main (int argc, char* argv[])
     testRestoreWithoutBaselineIsCleanAgainstItsOwnSound();
     testRelativeNavigationActsOnTheSessionItObserved();
     testOverlappingReplacementsCannotMixTwoSessions();
+    testObsoleteRestoreCannotReassertOverNewerOne();
+    testDurableCaptureNeverRecordsTwoReplacements();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 
