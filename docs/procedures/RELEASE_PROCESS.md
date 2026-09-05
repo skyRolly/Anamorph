@@ -66,6 +66,19 @@ git tag -a v0.9.7 -m "Anamorph 0.9.7"
 git push origin v0.9.7
 ```
 
+**Add the version's link definition in the same commit.** Keep a Changelog 1.1.0 asks for linkable
+versions, and `CHANGELOG.md` writes every heading as `## [x.y.z]` — a link reference whose definition
+can only exist once the tag does. So, in the commit the tag points at, append one line to the
+definitions at the foot of the file:
+
+```markdown
+[0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7
+```
+
+From the second tag onward make it a comparison against the previous tag
+(`.../compare/v0.9.7...v0.9.8`) — the form the specification's own example uses. Never add a
+definition for a tag that has not been pushed (`CHANGELOG_POLICY.md` rule 8).
+
 **Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`
 extracts the `## [x.y.z]` section **verbatim, heading included**, as the release **notes body**
 (the release *title* is set separately to `Anamorph <version>`), so a heading still reading

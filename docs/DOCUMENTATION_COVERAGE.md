@@ -6,9 +6,10 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **`Vectorscope Persist` → `Vectorscope
-Persistence` Settings relabel** (2026-09-05), whose entry is LAST in the body; before it
-(2026-09-03, matching the CHANGELOG heading) **D-2 / RISK-007 resolved as ADR-0036** (program state
+Last updated: for the **0.9.7 change set** — the **changelog audit against Keep a Changelog 1.1.0**
+(2026-09-05), whose entry is LAST in the body; before it the **`Vectorscope Persist` →
+`Vectorscope Persistence` Settings relabel** (2026-09-05); before it
+(the 0.9.7 change set, whose CHANGELOG heading is dated 2026-09-05) **D-2 / RISK-007 resolved as ADR-0036** (program state
 is message-thread-owned; host threads exchange immutable snapshots; the `tsan` CI lane), whose
 round-11 entry is the section above it; before it the
 **scanner-SARIF artifact change** (2026-09-03) — `codeql.yml` and `msvc.yml` now also publish
@@ -8590,3 +8591,68 @@ Reported and NOT changed: `CHANGELOG.md`'s `[0.9.7]` section carries two separat
 headings around one `### Changed`, where every other release section uses one heading per type.
 Merging them would reorder published entries, which is a `CHANGELOG_POLICY` question rather than
 part of a relabel.
+
+## Changelog audit (2026-09-05) — Keep a Changelog 1.1.0 compliance, and a checker that keeps it
+
+**Specification consulted:** [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) (published
+2019-02-15), read for this audit rather than recalled. The rules applied: latest version first, every
+entry dated ISO `YYYY-MM-DD`, the six change types `Added, Changed, Deprecated, Removed, Fixed,
+Security` in that order and grouped, versions linkable, an `Unreleased` section above the first entry
+if used, and the "bad practices" it names — commit-log dumps, undated or ambiguously dated headings,
+and selectively omitted changes.
+
+**Release date.** `[0.9.7]` is dated **2026-09-05**, the day its last content merged to `main`
+(PR #137 at 02:36 UTC, PR #138, and the relabel of PR #139), on the maintainer's instruction. The
+previous heading said 2026-09-03, the day the section was first written. `release.yml` validates the
+heading against `^## \[x.y.z\][^0-9]*[0-9]{4}-[0-9]{2}-[0-9]{2}`, which this still satisfies.
+
+**Structure, measured against the spec.** `[0.9.7]` carried **two** `### Fixed` sections either side
+of its `### Changed` — round after round appended a heading instead of a bullet — so one release told
+its story as Fixed, Changed, Fixed. Six further entries (`[0.9.4]`, `[0.9.2]`, `[0.8.9]`, `[0.8.6]`,
+`[0.8.2]`, `[0.8.1]`) put Fixed above Changed. Four sections carried invented names: `[0.9.0]`'s
+`Compatibility`, `Documentation` and `Build / Release`, and `[0.8.10]`'s `Known issues`. All are now
+canonical: the duplicate merged, the orders corrected, `Documentation` filed under `Changed`,
+`Build / Release` under `Added`, and the two that record no change at all (a compatibility statement,
+a known issue) moved to their entry's lead as bold notes. **No entry was reworded and none moved
+between releases** — verified mechanically: the 153 bullet leads and every non-heading line are
+identical before and after, so the change is entirely where the section boundaries fall.
+
+**Content, measured against the repository.** The `[0.9.7]` window is `9e24952..HEAD` — every commit
+after the one that opened the section. Ten notable changes, ten entries: ADR-0034's reported-latency
+change and ADR-0035's path crossfade (Changed), the relabel (Changed), and seven fixes (the bypassed
+Drive-crossing click, the Oversampling→Off dropout, and the five D-2 / ADR-0036 state-race entries).
+Nothing was missing and nothing is listed that did not happen. Two evidence defects were corrected:
+the relabel cited PR #137 when it lands in **PR #139**, and the D-2 entry carried no Evidence Source
+at all (policy rule 2) — it is PR #137, the merge that introduced the entry. Correctly absent, and
+checked rather than assumed: PR #136 (raw scanner SARIF as an Actions artifact) and the two Dependabot
+action bumps touch no `src/` file and change nothing a user can observe; `PluginParameters.h` gained
+only two helper functions, so the parameter surface did not move.
+
+**`[0.9.6]` and the rest of the recent line.** Audited, not corrected. Its 32 entries are all genuine
+`Fixed` bullets under one heading; `[0.9.5]`, `[0.9.3]` and `[0.9.1]` were already canonical. The
+defect was systemic in ORDER and in invented headings, not in what the entries claim.
+
+**Linkable versions — the one spec item still open, deliberately.** Every heading is written `## [x.y.z]`,
+a link reference, and the file defines none: this line has no tags yet, so there is no release to point
+at and inventing a URL would be a fabricated citation. `RELEASE_PROCESS.md` now carries the step that
+adds the definition in the commit the tag points at, and `CHANGELOG_POLICY.md` rule 8 states the rule.
+
+**Documents updated:** `CHANGELOG.md` (the date, the two evidence corrections, the structure, and a
+preamble that now names the spec version and links Semantic Versioning); `CHANGELOG_POLICY.md` (the
+format authority, rules 6-8, and a "Writing an entry" section covering audit-before-writing, the git
+log not being the changelog, no fabrication, user-visible versus internal, and minimal correction);
+`RELEASE_PROCESS.md` (the link-definition step); `CLAUDE.md` (one clause pointing at the policy, since
+that file is what an agent reads first); this document.
+
+**Automated protection.** A guard already existed for the half that breaks releases —
+`check_changelog_notes_boundary` in `check-docs.py`, which keeps a stray `## ` heading from running
+into a release's published notes, and `release.yml`'s fail-closed date check at tag time. Neither can
+see a duplicated or misordered category, which is exactly what went wrong, so `check-docs.py` gains
+`check_changelog_categories`: inside one entry, a `### ` heading must be one of the six names, appear
+once, and follow the spec's order. It deliberately does not judge whether a bullet sits in the right
+category — no parser should — and that stays with the author and the policy. Seven self-test cases
+were added (75 total, all passing), three of them the exact shapes found here, so the gate is proved
+live rather than trusted silent.
+
+**Drift.** One stale claim corrected in this document: its header said the 0.9.7 change set was
+"2026-09-03, matching the CHANGELOG heading", which the re-dating made false.

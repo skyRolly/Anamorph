@@ -576,6 +576,84 @@ def check_changelog_notes_boundary(path: Path, lines: list[str], skip: list[bool
     return findings
 
 
+# Keep a Changelog 1.1.0's six change types, in the order the specification
+# lists them. The order is part of the format, not a preference: a reader who
+# knows the spec scans for `Removed` between `Deprecated` and `Fixed`, and a
+# release that shuffles them makes every release harder to skim than the one
+# above it.
+KAC_CATEGORIES = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Security")
+CHANGELOG_CATEGORY_HEADING = re.compile(r"^### +(\S.*?)\s*$")
+
+
+def check_changelog_categories(path: Path, lines: list[str], skip: list[bool]) -> list[str]:
+    """Inside one CHANGELOG entry, `### ` headings must be Keep a Changelog
+    categories, each at most once, in the specification's order.
+
+    WHAT THIS CAUGHT, and why a checker rather than a rule in a document: the
+    `[0.9.7]` entry had grown TWO `### Fixed` sections either side of its
+    `### Changed` -- each round appended its own heading rather than adding a
+    bullet to the one already there -- so the same release told its story as
+    Fixed, then Changed, then Fixed again. Six other entries had Fixed above
+    Changed, and four sections carried invented names (`Compatibility`,
+    `Documentation`, `Build / Release`, `Known issues`) that no reader of the
+    spec would look for. None of it is visible while writing ONE entry; all of
+    it is obvious to a checker that reads the whole file.
+
+    The rule is deliberately narrow. It says nothing about what belongs in a
+    category -- that is a judgement no parser should make, and it stays with
+    `CHANGELOG_POLICY.md` and the author. It only asserts the three things the
+    format fixes: the NAME is one of the six, it appears ONCE, and the order is
+    the spec's. A release-level note that is not a change (a compatibility
+    statement, a known issue) is not a category and belongs in the entry's lead,
+    which is why an unknown `### ` name is reported rather than tolerated.
+    """
+    if path.name != "CHANGELOG.md":
+        return []
+    findings: list[str] = []
+    entry: str | None = None
+    seen: list[tuple[str, int]] = []
+
+    def close_entry() -> None:
+        for pos, (cat, line_no) in enumerate(seen):
+            if cat not in KAC_CATEGORIES:
+                findings.append(
+                    f"{path}:{line_no}: `### {cat}` is not a Keep a Changelog category "
+                    f"({', '.join(KAC_CATEGORIES)}). Put a release-level note in the entry's "
+                    f"lead instead, or file the bullets under the category they belong to"
+                )
+                continue
+            earlier = [c for c, _ in seen[:pos] if c in KAC_CATEGORIES]
+            if cat in earlier:
+                findings.append(
+                    f"{path}:{line_no}: second `### {cat}` in {entry} -- one section per "
+                    f"category per release; add the bullet to the existing section"
+                )
+                continue
+            out_of_order = [
+                c for c in earlier if KAC_CATEGORIES.index(c) > KAC_CATEGORIES.index(cat)
+            ]
+            if out_of_order:
+                findings.append(
+                    f"{path}:{line_no}: `### {cat}` comes after `### {out_of_order[0]}` in "
+                    f"{entry} -- Keep a Changelog orders them "
+                    f"{' > '.join(KAC_CATEGORIES)}"
+                )
+
+    for i, line in enumerate(lines):
+        if skip[i]:
+            continue
+        if line.startswith("## "):
+            close_entry()
+            entry = line.strip()
+            seen = []
+            continue
+        m = CHANGELOG_CATEGORY_HEADING.match(line)
+        if m and entry is not None:
+            seen.append((m.group(1), i + 1))
+    close_entry()
+    return findings
+
+
 def analyse(path: Path, lines: list[str], root: Path) -> list[str]:
     """Run every check over one document's lines."""
     fenced, unclosed = fence_mask(lines)
@@ -592,6 +670,7 @@ def analyse(path: Path, lines: list[str], root: Path) -> list[str]:
     findings += check_links(path, text, skip, root)
     findings += check_lazy_continuation(path, text, skip)
     findings += check_changelog_notes_boundary(path, text, skip)
+    findings += check_changelog_categories(path, text, skip)
     return findings
 
 
@@ -742,6 +821,30 @@ def self_test() -> int:
         ("a non-semver ENTRY heading still terminates, so it is not a finding", 0,
          ["# Changelog", "## [1.0.0] - d", "### Added",
           "## [0.7.5] - [0.7.0] - e", "## [0.6.x] and earlier - f"]),
+        # The category rule, both directions. The first case is the shape the
+        # whole file now has; the next three are the three ways `[0.9.7]` and
+        # its neighbours were wrong before this checker existed.
+        ("the six categories in the spec's order pass", 0,
+         ["# Changelog", "## [1.0.0] - d", "### Added", "- x", "### Changed", "- y",
+          "### Deprecated", "- z", "### Removed", "- w", "### Fixed", "- v",
+          "### Security", "- u"]),
+        ("a second section for the same category is a finding", 1,
+         ["# Changelog", "## [1.0.0] - d", "### Changed", "- x", "### Fixed", "- y",
+          "### Fixed", "- z"]),
+        # `[0.9.7]`'s actual shape: Fixed, Changed, Fixed is BOTH misordered and
+        # duplicated, and the two are separate defects with separate remedies.
+        ("Fixed / Changed / Fixed reports the order and the duplicate", 2,
+         ["# Changelog", "## [1.0.0] - d", "### Fixed", "- x", "### Changed", "- y",
+          "### Fixed", "- z"]),
+        ("Fixed above Changed is a finding", 1,
+         ["# Changelog", "## [1.0.0] - d", "### Fixed", "- x", "### Changed", "- y"]),
+        ("an invented category name is a finding", 1,
+         ["# Changelog", "## [1.0.0] - d", "### Changed", "- x", "### Known issues", "- y"]),
+        ("each entry is judged on its own", 0,
+         ["# Changelog", "## [1.0.0] - d", "### Changed", "- x", "### Fixed", "- y",
+          "## [0.9.0] - e", "### Changed", "- z", "### Fixed", "- w"]),
+        ("a category heading inside a fence is data", 0,
+         ["# Changelog", "## [1.0.0] - d", "### Fixed", "- x", "```", "### Changed", "```"]),
     ]:
         got = len(analyse(root / "CHANGELOG.md", lines, root))
         checked += 1
