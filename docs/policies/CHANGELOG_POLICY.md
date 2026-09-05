@@ -37,8 +37,10 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    specification's own spelling; ` [YANKED]` may follow), at column 0, versions strictly decreasing
    down the file, the date a real calendar date. Work that is not yet released goes under
    `## [Unreleased]`, which sits above the first version and nowhere else — a version heading that
-   reads `— Unreleased` or has no date is not a release and is rejected. `check-docs.py` enforces
-   all of this on every push; `release.yml` re-checks the tagged version's heading and date at tag
+   reads `— Unreleased` or has no date is not a release and is rejected. A heading that only
+   **reads** as a release — one that lost a bracket, or names a version at another heading level —
+   is held to the same grammar rather than passing as prose (§The structural grammar,
+   restriction 3). `check-docs.py` enforces all of this on every push; `release.yml` re-checks the tagged version's heading and date at tag
    time. Two reconstructed headings at the foot predate this policy and are accepted by
    their exact text — `## [0.7.5] – [0.7.0] — 2026-06-21…22` and
    `## [0.6.x] and earlier — 2026-06 (reconstructed)`; no new heading may take either form.

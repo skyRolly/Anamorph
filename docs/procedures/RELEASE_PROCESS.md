@@ -13,7 +13,9 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
    `--fix` cannot do it, because the declaration is what turned the comparison off.
 2. **CHANGELOG** — add a dated, evidence-cited entry per `docs/policies/CHANGELOG_POLICY.md`
    (commit/PR reference; mark reconstructions), and the version's link definition at the foot of the
-   file (rule 8; the exact line is under §Tagging below). `check-docs.py` gates the *structure* of
+   file (rule 8; the exact line is under §Tagging below). That policy's §The structural grammar
+   states the restricted Markdown subset both `check-docs.py` and the notes extractor enforce, and
+   why each restriction exists. `check-docs.py` gates the *structure* of
    both — the heading grammar and its ISO date, newest-first order, the category names and their
    order, and a link definition of exactly the form the version calls for — and rejects the file
    until each is right. What it cannot judge is the content: whether a bullet is in the right

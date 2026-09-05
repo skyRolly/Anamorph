@@ -6,8 +6,8 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **changelog system round 2d** (2026-09-05), whose
-entry is LAST in the body; before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
+Last updated: for the **0.9.7 change set** — the **changelog system round 3** (2026-09-05), whose
+entry is LAST in the body; before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
 `Vectorscope Persistence` Settings relabel** (2026-09-05); before it
@@ -8870,3 +8870,81 @@ Round 2 already removed the passages that were duplicated elsewhere in the entry
 is a stylistic rewrite of an accurate entry, which the same policy's "correct minimally" forbids.
 (c) `LEVEL5_AUDITION.md:15-16` still says the 2026-08-15 v0.9.4 audition "is invalid for v0.9.6";
 the current version is 0.9.7, which `RELEASE_PROCESS.md:32-33` names correctly.
+
+
+## Changelog system round 3 (2026-09-05) — one Markdown grammar, in both tools, proved against a renderer
+
+**What the round is.** Three review findings, all real bypasses, and all of the same shape: the
+changelog system held more than one interpretation of Markdown, and a line could satisfy one
+interpretation while defeating another. The fixes replace the second interpretation rather than
+patching it, and the grammar is now written down.
+
+**Finding 1 — closing hashes bypassed category enforcement.** `### Fixed ###` is the heading
+`Fixed`: the closing run is decoration, and CommonMark §4.2 says the renderer strips it.
+`atx_heading` had stripped it since round 2, but `deep_heading` — the rule that catches a category
+hidden four columns deep inside a list item — carried a regex of its own and captured the text RAW.
+So the comparison saw `Fixed ###`, matched none of the six category names, and the duplicate,
+invented and misordered rules never saw the heading at all: three characters defeated all three.
+It now dedents the line and hands it to `atx_heading`, the function every other heading here goes
+through. Seven fixtures pin the grammar (a run with and without a preceding space, a run followed by
+text, trailing spaces, and duplicate/misordered/invented categories each hidden behind one).
+
+**Finding 2 — invalid fences merged release notes.** CommonMark §4.5: a BACKTICK fence's info
+string may not contain a backtick, so ` ```a`b ` is a paragraph and everything after it is document
+structure. Both tools opened a fence there and hid every line to the next delimiter — a whole
+release heading included, which runs two releases together in the published notes. The second half
+was worse because it was a genuine disagreement: `FENCE` measured its three-column indent allowance
+in CHARACTERS (`\s{0,3}` matches a tab), so a tab-indented delimiter opened a fence in the checker
+while `changelog-section.awk`, which has counted columns since round 2d, correctly called it an
+indented code block and still saw the heading. `fence_delimiter` now states both rules for the
+checker; the awk applies the same two.
+
+**Finding 3 — malformed release headings escaped validation.** Only a leading `[` started an entry.
+A heading that lost one was therefore preamble: its `### ` sections were charged to the release
+ABOVE it, and when it was the file's first entry nothing reported it at all — `release.yml`'s
+`^## \[` grep at tag time was the first stage to notice, by which point the tag exists.
+`release_like()` now recognises an entry ATTEMPT — a leading bracket, a leading version number,
+`Unreleased`, or a version and an ISO date in the same heading — at every heading level, says what
+is actually wrong with it, and records it as a malformed ENTRY so its categories are charged to
+itself. The other half is tested too: an ordinary preamble heading, and one that merely contains a
+number, are untouched. A rule that caught the first set by banning `## ` headings in the preamble
+would pass every malformed fixture and make the file unwritable.
+
+**The grammar is written down.** `CHANGELOG_POLICY.md` gains §The structural grammar: CommonMark
+decides what a line IS, the policy decides which forms this file may USE, `check-docs.py` gates them
+on every push, and `changelog-section.awk` — one implementation, called twice by `release.yml` —
+consumes them. Six restrictions, each traced to `release.yml` boundarying on the literal `^## [`,
+and the fence rules stated once for both tools.
+
+**Measured against a renderer, not against belief.** Every expectation added this round was derived
+by asking `markdown-it-py` in CommonMark mode what each line is, then written down as a literal —
+the self-test must keep running on a bare `python3` with nothing to install, so the oracle is an
+authoring-time instrument, not a dependency. Over a 47-fixture grammar matrix the checker never sees
+LESS structure than the renderer does; the two fixtures where it sees more are the indented-code
+ambiguity (no blank line, no list container), which is documented and errs toward reporting, because
+under-reporting is the bypass and over-reporting costs an author one blank line. On the real
+`CHANGELOG.md` the parser and the extractor agree line-for-line on the boundaries of all 22
+versioned entries.
+
+**Enforcement boundary, re-audited.** Sixteen structural rules were each driven with an input that
+violates them and each produced a finding: release-heading grammar, the publishable spelling,
+release ordering, date syntax, calendar validity, category names, uniqueness and order,
+`[Unreleased]` placement, the structural boundary, link-definition presence and form, malformed
+release headings, wrong heading level, setext headings, and the reconstructed headings' terminal
+position. The editorial half is unchanged and stays with the author: whether a change is notable,
+which category a bullet belongs in, wording, and whether a date is the right date.
+
+**Measured.** Self-test 160 → 187 cases. Five mutations each fail a named case: the old
+deep-heading regex, the info-string rule dropped from the checker, the same rule dropped from the
+extractor, the column-measured indent guard, and bracket-only entry detection. `check-docs` 120
+files clean, `check-citations` 415 anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**Residuals.** The Unicode-whitespace divergence recorded in round 2d is **resolved** rather than
+carried: `FENCE` no longer uses `\s`, so both tools now accept spaces and tabs only and measure the
+allowance in columns. The consequence is that `fence_mask` and `FENCE` have DIVERGED from the
+Anabasis copy they were adopted from — deliberately, because only this repository has a second
+implementation of the same grammar to disagree with; the sibling carries the same latent defect
+harmlessly, and porting it back is a decision for that repository. Seven functions remain
+byte-for-byte identical and are named in the module docstring. `LEVEL5_AUDITION.md:15-16` still
+refers to v0.9.6 and is deliberately untouched: it is outside the changelog compliance chain and is
+recorded here as a separate documentation follow-up.
