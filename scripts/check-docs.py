@@ -885,6 +885,51 @@ def deep_heading(line: str) -> tuple[int, str] | None:
 CONTAINER_HIDDEN_HEADING = re.compile(
     r"^ {0,3}((?:>[ \t]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+)+)(#{1,6})(?:[ \t]+(.*?))?[ \t]*$"
 )
+
+
+def classify_heading(line: str) -> tuple[int, str, str] | None:
+    """(level, text, PLACEMENT) for any line the renderer shows as an ATX heading.
+
+    PLACEMENT is where the heading sits, and it is the whole point of this
+    function: `column0`, `indented` (1-3 columns), `deep` (4+), or `container`
+    (behind a `>` or a list marker on the same line). Everything downstream
+    decides from the pair (what the heading SAYS, where it SITS) -- and there is
+    exactly one place, this one, that answers either question.
+
+    THREE INDEPENDENT PATHS ARE WHAT PUT THE DEFECTS HERE. `atx_heading`,
+    `deep_heading` and `CONTAINER_HIDDEN_HEADING` each used to be consulted
+    separately, each with its own idea of which headings mattered, and each gap
+    between them was a bypass: a container-prefixed release heading was invisible
+    unless an entry already existed, a deep release heading was tested for a
+    leading `[` where the column-0 path tested `release_like`, and a category
+    indented one to three columns -- forbidden by the policy -- reached the
+    category list through the plain ATX path without anyone looking at its
+    indent. Composing the three here, once, is what closes that class rather than
+    its instances.
+    """
+    plain = atx_heading(line)
+    if plain is not None:
+        level, text = plain
+        return level, text, ("column0" if indent_columns(line) == 0 else "indented")
+    deep = deep_heading(line)
+    if deep is not None:
+        return deep[0], deep[1], "deep"
+    hidden = CONTAINER_HIDDEN_HEADING.match(line)
+    if hidden is not None:
+        text = re.sub(r"(?:^|[ \t]+)#+$", "", hidden.group(3) or "").strip()
+        return len(hidden.group(2)), text, "container"
+    return None
+
+
+def placement_phrase(line: str, placement: str) -> str:
+    """How to describe where a heading sits, in a finding."""
+    if placement == "container":
+        marker = CONTAINER_HIDDEN_HEADING.match(line).group(1).strip()
+        return f"sits behind `{marker}` on the same line"
+    columns = indent_columns(line)
+    return f"is indented {columns} column{'' if columns == 1 else 's'}"
+
+
 # A setext underline (§4.3): `Changed` over `---` renders as a heading too, and
 # `release.yml`'s extractor stops at neither it nor a setext version heading. Only
 # a PARAGRAPH can carry one, which is what `NOT_A_SETEXT_SUBJECT` excludes: a list
@@ -985,52 +1030,6 @@ def parse_changelog(lines: list[str], skip: list[bool]
                 destination = destination[1:-1]     # CommonMark §4.7: `<...>` is a wrapper
             definitions.append((i + 1, " ".join(d.group(1).split()), destination))
             continue
-        hidden = CONTAINER_HIDDEN_HEADING.match(line)
-        if hidden and entries:
-            marker = hidden.group(1).strip()
-            level = len(hidden.group(2))
-            text = re.sub(r"(?:^|[ \t]+)#+$", "", hidden.group(3) or "").strip()
-            if level == 3 and text in KAC_CATEGORIES:
-                findings.append(
-                    f"CHANGELOG.md:{i + 1}: `### {text}` sits behind `{marker}` on the same "
-                    f"line. It still renders as a heading, so a category can hide there; a "
-                    f"category heading belongs at column 0"
-                )
-                entries[-1].categories.append((text, i + 1))
-                continue
-            if level == 2 and release_like(text):
-                findings.append(
-                    f"CHANGELOG.md:{i + 1}: `{line.strip()}` sits behind `{marker}` on the "
-                    f"same line. It renders as an entry heading, which `release.yml` cannot "
-                    f"extract (`^## \\[`) and which does not terminate the entry above it; "
-                    f"write it at column 0"
-                )
-                continue
-        deep = deep_heading(line)
-        # No `deep_fence` guard here: the tracking block above already skipped
-        # every line inside one. A second test would read as defence and be dead
-        # code -- and dead code is what a mutation test cannot tell from a rule.
-        if deep and entries:
-            level, text = deep
-            if level == 3 and text in KAC_CATEGORIES:
-                findings.append(
-                    f"CHANGELOG.md:{i + 1}: `### {text}` is indented "
-                    f"{indent_columns(line)} columns. Inside a list item that still renders "
-                    f"as a heading, so a category can hide there; a category heading belongs "
-                    f"at column 0"
-                )
-                entries[-1].categories.append((text, i + 1))
-                continue
-            if level == 2 and text.startswith("["):
-                findings.append(
-                    f"CHANGELOG.md:{i + 1}: `{line.strip()}` is indented "
-                    f"{indent_columns(line)} columns. Inside a list item it renders as an "
-                    f"entry heading, which `release.yml` cannot extract (`^## \\[`) and which "
-                    f"does not terminate the entry above it; write it at column 0"
-                )
-                continue
-            # anything else at that depth is a sample, not structure: leave it be,
-            # and let the branches below have their turn at the line.
         if SETEXT_UNDERLINE.match(line) and i and lines[i - 1].strip() and not skip[i - 1] \
                 and not LIST_MARKER.match(lines[i - 1]) \
                 and not interrupts_paragraph(lines[i - 1]) \
@@ -1042,10 +1041,28 @@ def parse_changelog(lines: list[str], skip: list[bool]
                 f"`^## \\[` alone and cannot see it -- write headings as `##` / `###`"
             )
             continue
-        h = atx_heading(line)
+        h = classify_heading(line)
         if h is None:
             continue
-        level, text = h
+        level, text, placement = h
+        # ---- RELEASE HEADINGS ------------------------------------------------
+        # A release heading is a structural BOUNDARY: `release.yml` starts and
+        # ends a release's notes at `^## [`, at column 0, and at nothing else. So
+        # a heading that names a release and does not sit there is not a release
+        # the pipeline can publish -- it is hidden release structure, whatever
+        # hides it. Recorded as a malformed ENTRY, never skipped: skipping it was
+        # how the FIRST such heading in a file escaped entirely (the old rule
+        # required `entries` to be non-empty already) and how its `### ` sections
+        # were charged to a release above it that may not exist.
+        if level == 2 and release_like(text) and placement != "column0":
+            findings.append(
+                f"CHANGELOG.md:{i + 1}: `{line.strip()}` {placement_phrase(line, placement)}. "
+                f"It renders as an entry heading, which `release.yml` cannot extract "
+                f"(`^## \\[`) and which does not terminate the entry above it; write it at "
+                f"column 0"
+            )
+            entries.append(ChangelogEntry(i + 1, text, "malformed", None, None))
+            continue
         if level != 2 and names_a_release(text):
             # An entry heading at the wrong level. `release.yml` terminates a
             # release's notes at `^## [` and at nothing else, so this heading and
@@ -1102,7 +1119,22 @@ def parse_changelog(lines: list[str], skip: list[bool]
                     f"(`release.yml` refuses to publish it)"
                 )
             continue
+        # ---- CATEGORY HEADINGS ----------------------------------------------
         if level == 3 and entries:
+            # At four columns or behind a marker, a `### Something` is as likely a
+            # code sample as a heading -- no parser can tell without a container
+            # stack -- so only a heading that carries a Keep a Changelog CATEGORY
+            # name is treated as structure there. That is the shape a real bypass
+            # takes; a sample called `### Fixed` is not one anybody writes.
+            if placement in ("deep", "container") and text not in KAC_CATEGORIES:
+                continue
+            if placement != "column0":
+                findings.append(
+                    f"CHANGELOG.md:{i + 1}: `### {text}` "
+                    f"{placement_phrase(line, placement)}. It still renders as a heading, so "
+                    f"a category can hide there; a category heading belongs at column 0 "
+                    f"(CHANGELOG_POLICY.md §The structural grammar, restriction 4)"
+                )
             entries[-1].categories.append((text, i + 1))
     return entries, definitions, findings
 
@@ -1110,7 +1142,7 @@ def parse_changelog(lines: list[str], skip: list[bool]
 def check_changelog_headings(path: Path, lines: list[str], skip: list[bool]) -> list[str]:
     """Entry headings: valid grammar, a real calendar date, `[Unreleased]` first
     and only once, versions strictly newest-first, the reconstructed history
-    last.
+    last -- each of those two headings once, and in their own newest-first order.
 
     This is the machine-checkable half of `CHANGELOG_POLICY.md` rule 7. What it
     does NOT decide: whether a date is the RIGHT date, or whether a version
@@ -1123,9 +1155,25 @@ def check_changelog_headings(path: Path, lines: list[str], skip: list[bool]) -> 
     findings = [f.replace("CHANGELOG.md:", f"{path}:", 1) for f in findings]
     previous: ChangelogEntry | None = None
     seen_reconstructed = False
+    # `[Unreleased]` AND the two reconstructed headings are each at most-once,
+    # and the reconstructed pair is ORDERED. Both facts were promised by this
+    # function's docstring and by `VERSION_HEADING_TEXT`'s comment and enforced by
+    # neither: a second `## [Unreleased]` was reported only as "must be the first
+    # entry", which is not the violated invariant and whose remedy (move it to the
+    # top) makes the file worse; and the reconstructed pair could be reversed or
+    # duplicated in silence.
+    unreleased_seen = 0
+    reconstructed_seen: list[int] = []
     for pos, e in enumerate(entries):
         if e.kind == "unreleased":
-            if pos != 0:
+            unreleased_seen += 1
+            if unreleased_seen > 1:
+                findings.append(
+                    f"{path}:{e.line_no}: a second `## [Unreleased]` entry -- there is one "
+                    f"set of unreleased work, so there is one section for it; merge this "
+                    f"one into the first"
+                )
+            elif pos != 0:
                 findings.append(
                     f"{path}:{e.line_no}: `## [Unreleased]` must be the first entry -- it "
                     f"tracks what the NEXT release will contain, so nothing released sits "
@@ -1134,6 +1182,20 @@ def check_changelog_headings(path: Path, lines: list[str], skip: list[bool]) -> 
             continue
         if e.kind == "reconstructed":
             seen_reconstructed = True
+            rank = RECONSTRUCTED_HEADINGS.index(e.text)
+            if rank in reconstructed_seen:
+                findings.append(
+                    f"{path}:{e.line_no}: `## {e.text}` appears twice -- each reconstructed "
+                    f"heading covers its own span of history and stands once"
+                )
+            elif reconstructed_seen and rank < max(reconstructed_seen):
+                findings.append(
+                    f"{path}:{e.line_no}: `## {e.text}` sits BELOW "
+                    f"`## {RECONSTRUCTED_HEADINGS[max(reconstructed_seen)]}`, which covers "
+                    f"older history -- the reconstructed headings run newest first like "
+                    f"every other entry (rule 7)"
+                )
+            reconstructed_seen.append(rank)
             continue
         if e.kind != "version":
             continue
@@ -1528,6 +1590,8 @@ def self_test() -> int:
     V8 = "## [0.9.8] — 2026-09-06"
     D7 = "[0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7"
     D8 = "[0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8"
+    RECON1, RECON2 = ("## " + t for t in RECONSTRUCTED_HEADINGS)
+    UDEF = "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.5.0...HEAD"
     for label, expected, lines in [
         # -- the notes-boundary rule, as before --------------------------------
         ("entry sub-sections at ### are fine", 0,
@@ -1591,13 +1655,20 @@ def self_test() -> int:
          ["# Changelog", V5, "### Changed ##", "- x", "### Fixed ###", "- y"]),
         # -- indentation: CommonMark reads 0-3 columns as a heading ---------------
         # The first rule matched `^### ` only, so an indented heading bypassed it.
-        ("categories indented 1, 2 and 3 spaces are read as headings (valid order)", 0,
+        # These four were written when 1-3 columns of indent were ACCEPTED, which
+        # `CHANGELOG_POLICY.md` restriction 4 has never allowed ("at column 0").
+        # The policy and the parser disagreed and the parser was the permissive
+        # one, so the indent is now a finding IN ITS OWN RIGHT -- and the heading
+        # is still counted, so the category rules go on seeing what they saw. The
+        # counts below are the sum of the two, which is what makes them evidence
+        # of both halves at once.
+        ("categories indented 1, 2 and 3 columns are three findings, not zero", 3,
          ["# Changelog", V5, " ### Added", "- x", "  ### Changed", "- y", "   ### Fixed", "- z"]),
-        ("a duplicate hidden by one space of indentation is a finding", 1,
+        ("a duplicate hidden by one space of indentation is still a duplicate", 2,
          ["# Changelog", V5, "### Fixed", "- x", " ### Fixed", "- y"]),
-        ("an invented category hidden by two spaces is a finding", 1,
+        ("an invented category hidden by two spaces is still invented", 2,
          ["# Changelog", V5, "### Fixed", "- x", "  ### Known issues", "- y"]),
-        ("a misorder hidden by three spaces is a finding", 1,
+        ("a misorder hidden by three spaces is still a misorder", 2,
          ["# Changelog", V5, "### Fixed", "- x", "   ### Changed", "- y"]),
         ("four spaces after a blank line is an indented code block, not a heading", 0,
          ["# Changelog", V5, "### Fixed", "- x", "", "text", "", "    ### Bogus"]),
@@ -1878,6 +1949,91 @@ def self_test() -> int:
          ["# Changelog", V5, "### Added", "```", "### Added", "```x", "- y", "```"]),
         ("a closer shorter than its opener does not close", 0,
          ["# Changelog", V5, "### Added", "````", "### Added", "```", "- y", "````"]),
+        # ===================================================================
+        # ROUND 4: one classifier, and the four gaps between the three paths it
+        # replaced. Each fixture names WHERE the heading sits as well as what it
+        # says -- the pair is what the parser now decides from.
+        # ===================================================================
+
+        # -- hidden release headings (forbidden structure, Option A) ----------
+        # `release.yml` boundaries on `^## [` at column 0. A release heading
+        # anywhere else is not a release the pipeline can publish, so it is
+        # reported AND recorded as a malformed entry -- the FIRST one included,
+        # which the old rule skipped because no entry existed yet to hang it on.
+        ("a first release heading behind a `>` is a finding", 1,
+         ["# Changelog", "> " + V5, "### Added", "- a"]),
+        ("a first release heading behind a list marker is a finding", 1,
+         ["# Changelog", "- " + V5, "### Added", "- a"]),
+        ("a first release heading behind an ordered marker is a finding", 1,
+         ["# Changelog", "1. " + V5, "### Added", "- a"]),
+        ("a release heading indented two columns is a finding", 1,
+         ["# Changelog", "  " + V5, "### Added", "- a"]),
+        ("a DEEP UNBRACKETED version heading is a finding", 1,
+         ["# Changelog", V5, "- b", "", "    ## 0.4.0 — 2026-01-01", "", "- c"]),
+        # THE MESSAGE, not the count. Drop the placement test and the heading
+        # falls through to the column-0 entry path, which reports its own defect
+        # ("not written `## [` at column 0 with a single space") -- one finding
+        # either way, naming the wrong thing. Only the text separates a rule that
+        # sees hidden release structure from one that does not.
+        ("...and the container is named in the finding", 0,
+         ["# Changelog", "> " + V5, "### Added", "- a",
+          "@@says:sits behind `>` on the same line@@"]),
+        ("...as is the indent, for a deep unbracketed version", 0,
+         ["# Changelog", V5, "- b", "", "    ## 0.4.0 — 2026-01-01", "", "- c",
+          "@@says:is indented 4 columns@@"]),
+        ("...and for a release indented two columns", 0,
+         ["# Changelog", "  " + V5, "### Added", "- a",
+          "@@says:is indented 2 columns@@"]),
+        # ...and it is an ENTRY, so what follows is charged to it and not to the
+        # release above it: `### Added` after `### Fixed` here is the malformed
+        # entry's own misorder, which is only visible if the entry exists.
+        ("a hidden release heading takes its own categories", 2,
+         ["# Changelog", "> " + V5, "### Fixed", "- a", "### Added", "- b"]),
+
+        # -- categories live at column 0 (restriction 4) ----------------------
+        ("a category indented one column is a finding", 1,
+         ["# Changelog", V5, " ### Added", "- a"]),
+        ("a category indented three columns is a finding", 1,
+         ["# Changelog", V5, "   ### Added", "- a"]),
+        ("a category at column 0 is not", 0,
+         ["# Changelog", V5, "### Added", "- a"]),
+
+        # -- the reconstructed footer is ordered, and each heading stands once -
+        ("the reconstructed headings in their own order pass", 0,
+         ["# Changelog", V5, "### Added", "- a", RECON1, "- b", RECON2, "- c"]),
+        ("...reversed is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", RECON2, "- b", RECON1, "- c"]),
+        ("...the first one twice is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", RECON1, "- b", RECON1, "- c"]),
+        ("...the second one twice is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", RECON2, "- b", RECON2, "- c"]),
+        ("...only one of them present is fine", 0,
+         ["# Changelog", V5, "### Added", "- a", RECON2, "- b"]),
+        ("...neither present is fine", 0,
+         ["# Changelog", V5, "### Added", "- a"]),
+
+        # -- `[Unreleased]`: at most one, and first ---------------------------
+        # Two distinct invariants, and the diagnostic must name the one that was
+        # broken: a second section reported as "must be the first entry" tells
+        # the author to move it to the top, which makes the file worse.
+        ("a second `## [Unreleased]` is reported as a duplicate", 1,
+         ["# Changelog", "## [Unreleased]", "### Added", "- a", "## [Unreleased]",
+          "### Fixed", "- b", V5, "### Added", "- c", UDEF]),
+        # ...and the MESSAGE is the point: the old rule reported the same COUNT
+        # while naming the wrong invariant, so only the text can tell them apart.
+        ("...and the message names duplication, not placement", 0,
+         ["# Changelog", "## [Unreleased]", "### Added", "- a", "## [Unreleased]",
+          "### Fixed", "- b", V5, "### Added", "- c", UDEF,
+          "@@says:a second `## [Unreleased]` entry@@"]),
+        ("one `## [Unreleased]` below a release is a placement finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "## [Unreleased]", "### Fixed", "- b",
+          UDEF]),
+        ("one `## [Unreleased]` first is fine", 0,
+         ["# Changelog", "## [Unreleased]", "### Added", "- a", V5, "### Fixed", "- b",
+          UDEF]),
+        ("no `## [Unreleased]` at all is fine", 0,
+         ["# Changelog", V5, "### Added", "- a"]),
+
         ("a fenced entry heading is data, not a boundary", 0,
          ["# Changelog", V5, "### Added", "```", "## [9.9.9] — 2026-01-03", "```"]),
         # A closer may be followed by SPACES AND TABS and by nothing else
@@ -1967,6 +2123,21 @@ def self_test() -> int:
         # the findings instead of their count: the defect it pins is a sentinel
         # (`v?`) leaking into the URL a finding tells the author to write, which
         # no count can see.
+        # `@@says:<text>@@` asserts that some finding CONTAINS that text. Where a
+        # broken rule and a working one produce the same NUMBER of findings and
+        # differ only in which invariant they name, a count cannot see the defect
+        # -- and naming the wrong invariant is itself the defect (a duplicate
+        # `## [Unreleased]` reported as "must be the first entry" tells the author
+        # to move it to the top, which makes the file worse).
+        if lines and lines[-1].startswith("@@says:"):
+            want_text = lines[-1][len("@@says:"):-2]
+            found = analyse(root / "CHANGELOG.md", lines[:-1], root)
+            checked += 1
+            if not any(want_text in f for f in found):
+                failures += 1
+                print(f"self-test FAIL: changelog {label}: no finding said "
+                      f"{want_text!r}: {found}", file=sys.stderr)
+            continue
         if lines and lines[-1] == "@@no-placeholder@@":
             found = analyse(root / "CHANGELOG.md", lines[:-1], root)
             checked += 1

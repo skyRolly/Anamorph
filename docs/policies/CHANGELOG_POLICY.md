@@ -70,27 +70,66 @@ tools implement it and neither invents. This policy decides which of those forms
 `CHANGELOG.md` may *use*. `check-docs.py` is the gate: it is the only stage that reads the
 whole file on every push, and every restriction below is machine-checked there.
 
-**The restricted subset.** Ordinary CommonMark everywhere, with six restrictions, each of
-which exists because `release.yml` boundaries a release's notes on the literal `^## [` and
-on nothing else:
+**Where each rule comes from.** Three kinds, and the distinction is not decoration: a
+CommonMark-derived rule is not ours to relax, a workflow-specific one changes only if
+`release.yml` changes, and a project-restricted one is a choice this policy made and could
+unmake. Nothing below is a CommonMark requirement dressed up as a project rule, or the
+reverse.
 
-| # | Restriction | Why |
-|---|---|---|
-| 1 | An entry heading is level 2, at **column 0**, written `## [` with exactly one space | the only form the extractor's `^## \[` matches. `##\t[`, `##  [` and an indented `## [` all render as entry headings and none of them can be published |
-| 2 | Below the first entry, every level-1 and level-2 heading is an entry heading | anything else does not terminate the entry above it, so it is published inside that release's notes |
-| 3 | A heading that **names a release** — a version number (with or without a leading `v`), or `Unreleased` — must be a valid entry heading, at any level. At level 2 the **bracket** is reserved as well | a bracket lost from `## [0.9.7] — …` used to make it preamble: its categories were charged to the release above it. Release-like means it starts with `[`, or starts with a version number, or is `Unreleased`, or carries both a version and an ISO date |
-| 4 | Category headings are level 3, at column 0, one of the six names, in the specification's order, once each per release | rule 6 |
-| 5 | Headings are ATX (`##`), never setext (text over `---`) | the extractor cannot see a setext heading, and neither can `^## \[` |
-| 6 | An entry heading is never written inside a fenced code block as a live heading | a fence is data; the extractor and the checker both skip it, so a heading there is a sample and nothing more |
+- **CommonMark-derived** — what a line *is*. Heading levels and the closing-`#` run, the
+  0–3 column allowance, fence delimiters and their info strings, indented code blocks,
+  setext underlines, link reference definitions. Both tools implement these; neither
+  invents.
+- **Workflow-specific** — required because `release.yml` boundaries a release's notes on
+  the literal `^## [`, at column 0, and on nothing else. Restrictions 1, 2, 3 and 5.
+- **Project-restricted** — stricter than CommonMark, and stricter than the workflow needs.
+  Restrictions 4 and 6, and the container rule below.
+
+**The restricted subset.** Ordinary CommonMark everywhere, with six restrictions:
+
+| # | Restriction | Kind | Why |
+|---|---|---|---|
+| 1 | An entry heading is level 2, at **column 0**, written `## [` with exactly one space | workflow | the only form the extractor's `^## \[` matches. `##\t[`, `##  [` and an indented `## [` all render as entry headings and none of them can be published |
+| 2 | Below the first entry, every level-1 and level-2 heading is an entry heading | workflow | anything else does not terminate the entry above it, so it is published inside that release's notes |
+| 3 | A heading that **names a release** — a version number (with or without a leading `v`), or `Unreleased` — must be a valid entry heading, at any level and at any indent. At level 2 the **bracket** is reserved as well | workflow | a bracket lost from `## [0.9.7] — …` used to make it preamble: its categories were charged to the release above it. A release heading the extractor cannot reach is not a release |
+| 4 | Category headings are level 3, **at column 0**, one of the six names, in the specification's order, once each per release | project | rule 6. CommonMark allows 0–3 columns and GitHub renders all four identically; requiring column 0 keeps one rule for every heading in the file and stops the drift toward the four-column case, which IS a bypass |
+| 5 | Headings are ATX (`##`), never setext (text over `---`) | workflow | the extractor cannot see a setext heading, and neither can `^## \[` |
+| 6 | An entry heading is never written inside a fenced code block as a live heading | project | a fence is data; the extractor and the checker both skip it, so a heading there is a sample and nothing more |
 
 **Line endings.** `\n` or `\r\n`. A **lone** carriage return is a line ending to CommonMark
 and not to `awk`, so the two tools would split the file differently; both follow `awk`, and
 `check-docs.py` reports the character rather than resolving the disagreement silently.
 
-**Container markers.** A heading written on the same line as a `>` or a list marker
-(`> ### Fixed`, `- ## [0.9.7] — …`) still renders as a heading, and `release.yml`'s `^## \[`
-cannot see through the marker — so a category hidden there is reported and counted, and an
-entry heading there is reported as unpublishable. Ordinary quoted prose is untouched.
+**Container markers: forbidden, not half-supported.** A heading written on the same line as
+a `>` or a list marker (`> ### Fixed`, `- ## [0.9.7] — …`) still renders as a heading, and
+`release.yml`'s `^## \[` cannot see through the marker. The decision, taken once and stated
+here: a release heading inside a container is **forbidden structure**, reported as such,
+and recorded as a malformed entry so that what follows it is charged to it and not to the
+release above. Supporting it instead would mean changing the extractor's boundary, which
+changes what every release publishes; half-supporting it — the checker seeing one thing and
+the extractor another — is what this whole section exists to prevent. A category behind a
+marker is reported and still counted, so the order and uniqueness rules see it. Ordinary
+quoted prose is untouched: only a Keep a Changelog category name or a release-naming
+heading is reported.
+
+**Where a heading SITS is half of what it is.** `classify_heading` answers both questions
+at once — the level and text, and whether the line is at column 0, indented 1–3 columns,
+indented 4 or more, or behind a container marker — and every rule decides from the pair.
+There is no second opinion available: three separate paths used to answer these questions
+differently, and every gap between them was a bypass (a container-prefixed release heading
+was invisible unless an entry already existed above it; a deep release heading was tested
+for a leading bracket where the column-0 path tested for a release name; a category
+indented one to three columns reached the category list without anyone looking at its
+indent).
+
+**`[Unreleased]` and the reconstructed footer.** `## [Unreleased]` appears **at most once**,
+and when it appears it is the **first** entry — two distinct invariants, each with its own
+diagnostic, because a second section reported as "must be the first entry" tells the author
+to move it to the top and make the file worse. The two grandfathered reconstructed headings
+appear **at most once each** and in **their own order** (`[0.7.5] – [0.7.0]` above
+`[0.6.x] and earlier`): they are release entries in a newest-first file, so rule 7's
+ordering governs them as it governs every other entry. Their *presence* is not required —
+a file without them is well-formed.
 
 **Fenced code blocks** follow CommonMark §4.5 exactly, in both tools: three backticks or
 three tildes minimum, at most **three columns** of indent (one tab is four columns, so a

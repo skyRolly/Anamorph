@@ -31,8 +31,10 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
 7. **Manual audition** — Level 5 (audio/visual) signed off in a DAW; a green build is "ready to
    audition," not final. **Scope, per-item checks and the record format are in
    `LEVEL5_AUDITION.md`**, which also states when a previous audition stops counting (a machine-code
-   or audible-behaviour change invalidates it — the 2026-08-15 v0.9.4 audition does not carry over
-   to v0.9.7). It requires a human; no CI job and no automated agent can supply it.
+   or audible-behaviour change invalidates it — the **v0.9.6 audition of 2026-09-01**, the most
+   recent PASS on record, does not carry over to v0.9.7, because ADR-0034 changed the reported
+   latency and the Drive-crossing swap behaviour). It requires a human; no CI job and no automated
+   agent can supply it.
 
 ## Build the release artifacts
 

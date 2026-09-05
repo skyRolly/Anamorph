@@ -6,8 +6,8 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **changelog system round 3b** (2026-09-05), whose
-entry is LAST in the body; before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
+Last updated: for the **0.9.7 change set** — the **changelog system round 4** (2026-09-05), whose
+entry is LAST in the body; before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
 `Vectorscope Persistence` Settings relabel** (2026-09-05); before it
@@ -9024,3 +9024,83 @@ exists in this file. A link reference definition written directly under preamble
 interrupt a paragraph in CommonMark but is counted as a definition here. Two `## [Unreleased]`
 headings are reported as a placement defect rather than as a duplicate. `LEVEL5_AUDITION.md:15-16`
 still refers to v0.9.6 and remains a separate documentation follow-up outside this chain.
+
+
+## Changelog system round 4 (2026-09-05) — one classifier, and the last four review findings
+
+**What the round is.** Four findings, two of them bypasses. The cause of both was structural and
+the same one round 3b had already been told about in a different form: **heading classification had
+three independent paths**, and every gap between them was a hole. This round replaces them with one
+function and closes the findings as a consequence rather than one at a time.
+
+**Finding 1 — hidden release headings passed validation (genuine bug).** The container rule fired
+only `if hidden and entries`, so the FIRST release heading in a file, written behind a `>` or a list
+marker, was ignored entirely — nothing above it to hang it on. And the deep path tested
+`text.startswith("[")` where the column-0 path tested `release_like`, so an indented UNBRACKETED
+version heading was invisible too. In both cases CI accepted a changelog whose apparent release
+boundaries `release.yml` cannot reach. Demonstrated end to end: given a file with a `>`-prefixed and
+a nested-list release heading, the extractor publishes all three releases as ONE section and neither
+hidden version extracts to anything at all.
+
+**The decision, taken explicitly (Option A).** A release heading inside a container, or at any
+indent, is **forbidden structure** — reported, and recorded as a malformed ENTRY so what follows is
+charged to it rather than to the release above. The alternative (supporting it) would mean changing
+the extractor's `^## [` boundary, which changes what every release publishes; half-supporting it is
+the failure mode this whole section exists to prevent. Recorded in `CHANGELOG_POLICY.md` §The
+structural grammar.
+
+**Finding 2 — indented categories passed forbidden syntax (genuine bug).** Restriction 4 has always
+said category headings sit at column 0. The plain ATX path accepted 0–3 columns and never looked at
+the indent, so the policy and the parser disagreed and the parser was the permissive one. Now
+reported — and the heading is still COUNTED, so the duplicate, order and name rules go on seeing
+what they saw. The four round-2 fixtures that encoded the permissive behaviour were rewritten to the
+enforced contract rather than deleted; their counts are now the sum of both halves, which is what
+makes them evidence of each.
+
+**The pipeline.** `classify_heading` answers one question — (level, text, PLACEMENT), where
+placement is `column0`, `indented`, `deep` or `container` — by composing `atx_heading`,
+`deep_heading` and `CONTAINER_HIDDEN_HEADING`. `parse_changelog` then has ONE decision table:
+release heading not at column 0 → forbidden; release name at the wrong level → forbidden; release
+heading at column 0 → the entry grammar; level 3 inside an entry → a category, reported if it is not
+at column 0, and skipped at depth or behind a marker unless it carries a category name. No rule
+consults a heading regex of its own any more.
+
+**Finding 3 — reconstructed footer ordering (valid concern; order IS normative).** Established
+rather than assumed: the two headings sit in `CHANGELOG.md` newest-first (`[0.7.5] – [0.7.0]` at
+1967, `[0.6.x] and earlier` at 1978); `release.yml` never names them and cannot extract either, so
+the workflow does not depend on their order — but they ARE release entries in a newest-first file,
+so rule 7's ordering governs them exactly as it governs every other entry, and reversing them would
+put older content above newer. Each now appears at most once, in `RECONSTRUCTED_HEADINGS` order.
+Their PRESENCE is not required: a file without them is well-formed, and the fixtures say so.
+
+**Finding 4 — duplicate `[Unreleased]` diagnostic (valid concern; the contract is BOTH).** The
+project promises two distinct invariants — `check_changelog_headings`' docstring says "first and
+only once" and the grammar comment says "at most once" — and only the placement half was enforced.
+A second section was therefore reported as "must be the first entry", whose remedy (move it to the
+top) makes the file worse. Both invariants now have their own diagnostic. The regression is a TEXT
+assertion, not a count: the broken rule and the fixed one produce exactly one finding either way and
+differ only in which invariant they name, so a count cannot see the defect — and naming the wrong
+invariant IS the defect. `@@says:<text>@@` fixtures were added for that class.
+
+**Measured.** Self-test 207 → 230 cases. Nine mutations each fail a named case: the `entries`
+precondition on hidden releases, the bracket-only test on that path, dropping hidden-release
+detection entirely, the alternate indented-category path, permissive reconstructed ordering,
+permissive reconstructed duplication, the old `[Unreleased]` diagnostic, and classifying a container
+or an indented heading as `column0`. Three of them are killed only by text assertions, because the
+broken and fixed rules report the same COUNT. A 23-fixture classification matrix pins the parsed
+KIND and the collected CATEGORY list, not just a number. `check-docs` 120 files clean,
+`check-citations` 415 anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**The real `CHANGELOG.md` is byte-unchanged this round** and still passes: 23 entries (21 versions
++ the 2 reconstructed, in their canonical order), 0 `[Unreleased]`, 40 category headings all at
+column 0, no parse findings, and the parser and the extractor still agree line-for-line on all 22
+versioned entries' boundaries.
+
+**Also in this round, on the owner's instruction:** the `LEVEL5_AUDITION.md` version drift, which
+three previous rounds recorded as a deliberate out-of-scope residual, is corrected. §When a previous
+audition stops counting now applies the rule to the release it currently blocks — the v0.9.6
+audition of 2026-09-01 does not carry over to v0.9.7, because ADR-0034 changed the reported latency
+and the Drive-crossing swap behaviour — and keeps the v0.9.4 → v0.9.6 case as the worked example the
+rule was first written from. §Scope for v0.9.6 is kept as written (it is the record of a completed
+audition) with a note that a v0.9.7 audition needs its own scope. `RELEASE_PROCESS.md` step 7 now
+names the same audition the audition document does.
