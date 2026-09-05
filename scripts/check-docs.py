@@ -138,6 +138,7 @@ Exit:   0 = clean, 1 = findings printed to stderr.
 from __future__ import annotations
 
 import contextlib
+import datetime
 import io
 import re
 import sys
@@ -560,12 +561,17 @@ def check_changelog_notes_boundary(path: Path, lines: list[str], skip: list[bool
     findings = []
     first: int | None = None
     for i, line in enumerate(lines):
-        if skip[i] or not line.startswith("## "):
+        if skip[i]:
+            continue
+        h = atx_heading(line)
+        if h is None or h[0] != 2:
             continue
         if CHANGELOG_VERSION_HEADING.match(line):
             if first is None:
                 first = i
             continue
+        if h[1].startswith("["):
+            continue             # an INDENTED entry heading: check_changelog_headings reports it
         if first is not None:
             findings.append(
                 f"{path}:{i + 1}: `## ` heading that is not an entry heading (`## [`), below "
@@ -582,7 +588,198 @@ def check_changelog_notes_boundary(path: Path, lines: list[str], skip: list[bool
 # release that shuffles them makes every release harder to skim than the one
 # above it.
 KAC_CATEGORIES = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Security")
-CHANGELOG_CATEGORY_HEADING = re.compile(r"^### +(\S.*?)\s*$")
+
+# An ATX heading as CommonMark §4.2 defines it: up to THREE columns of
+# indentation, one to six `#`, then a space or the end of the line, then the
+# text, then an optional closing run of `#` preceded by a space. Four or more
+# columns is an indented code block, not a heading, and `indented_code_mask`
+# already handles that case.
+#
+# WHY THE INDENT IS ACCEPTED HERE and the version-heading rule below still
+# rejects it: the first version of the category rule matched `^### ` only, so
+# `   ### Fixed` -- a heading to every Markdown renderer -- was invisible to it,
+# and a duplicated or invented category could bypass CI by being indented one
+# space. A checker that reads Markdown must read the grammar the renderer
+# reads. The release extractor in `release.yml`, on the other hand, matches
+# `^## \[` at column 0 and nothing else, so a version heading that renders but
+# does not extract is a defect in its own right, reported as one.
+ATX_HEADING = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$")
+
+
+def atx_heading(line: str) -> tuple[int, str] | None:
+    """(level, text) for an ATX heading, else None. The closing `#` run is
+    stripped, as the renderer strips it; `###` alone is a heading with empty
+    text; `####x` (no space) is not a heading at all."""
+    m = ATX_HEADING.match(line)
+    if not m:
+        return None
+    text = m.group(2) or ""
+    text = re.sub(r"(?:^|\s+)#+$", "", text).strip()
+    return len(m.group(1)), text
+
+
+# The version-heading grammar this repository writes, and the only forms the
+# checks below accept as an ENTRY:
+#
+#   ## [Unreleased]                     -- at most once, and only as the first entry
+#   ## [x.y.z] — YYYY-MM-DD             -- a released version; `-` for the dash is
+#                                          also accepted (the spec's own example
+#                                          uses it), an optional ` [YANKED]` too
+#
+# plus, by exact text, the two RECONSTRUCTED headings at the foot of the file
+# (`RECONSTRUCTED_HEADINGS`), which predate the policy and are grandfathered
+# rather than rewritten. The bracket alone (`^## \[`) is what `release.yml`
+# terminates a release's notes at, so that stays the boundary rule; THIS grammar
+# is what the checker demands of the text inside the bracket.
+VERSION_HEADING_TEXT = re.compile(
+    r"^\[(\d+)\.(\d+)\.(\d+)\] (?:—|-) (\d{4}-\d{2}-\d{2})( \[YANKED\])?$"
+)
+UNRELEASED_HEADING_TEXT = "[Unreleased]"
+RECONSTRUCTED_HEADINGS = (
+    "[0.7.5] – [0.7.0] — 2026-06-21…22",
+    "[0.6.x] and earlier — 2026-06 (reconstructed)",
+)
+# The first version this line ever tagged. Versions from here on are released
+# by `release.yml` from an annotated `v<x.y.z>` tag, so every one of them has a
+# tag page or a comparison to point its `[x.y.z]` heading at; nothing older does
+# (0.9.0 through 0.9.6 were each written up and superseded before a tag was
+# cut), so a definition for one of those would be a link to a page that will
+# never exist. A constant, because the fact is: it never changes.
+FIRST_TAGGED_VERSION = (0, 9, 7)
+LINK_DEFINITION = re.compile(r"^\[([^\]]+)\]:\s*(\S+)\s*$")
+
+
+class ChangelogEntry:
+    __slots__ = ("line_no", "text", "kind", "version", "date", "categories")
+
+    def __init__(self, line_no: int, text: str, kind: str,
+                 version: tuple[int, int, int] | None, date: str | None) -> None:
+        self.line_no = line_no
+        self.text = text
+        self.kind = kind          # "unreleased" | "version" | "reconstructed" | "malformed"
+        self.version = version
+        self.date = date
+        self.categories: list[tuple[str, int]] = []
+
+
+def parse_changelog(lines: list[str], skip: list[bool]
+                    ) -> tuple[list[ChangelogEntry], list[tuple[int, str, str]], list[str]]:
+    """(entries, link_definitions, findings) for CHANGELOG.md's structure.
+
+    THE BOUNDARY IS THE ENTRY HEADING, NOT ANY LEVEL-TWO HEADING. The first
+    version of the category rule started a new "entry" at every `## ` line, so a
+    preamble section such as `## How to read this file` became an entry and its
+    `### ` sub-headings were reported as invented categories -- the checker
+    rejected a shape the format allows. Now an entry begins only at a
+    column-0 `## [` heading, exactly where `release.yml` begins one; every
+    heading before the first such line is preamble and is left alone, and a
+    stray `## Foo` AFTER the first entry does not start one either (the extractor
+    does not stop there, so its sub-headings really do belong to the running
+    entry -- `check_changelog_notes_boundary` reports the heading itself).
+
+    Category headings are level-3 ATX headings at 0-3 columns of indentation,
+    inside an entry. Link definitions are `[label]: url` lines anywhere in the
+    file. Findings raised HERE are the ones about the entry headings themselves
+    (grammar, indentation); the ordering, category and link rules read the
+    parsed result.
+    """
+    entries: list[ChangelogEntry] = []
+    definitions: list[tuple[int, str, str]] = []
+    findings: list[str] = []
+    for i, line in enumerate(lines):
+        if skip[i]:
+            continue
+        d = LINK_DEFINITION.match(line)
+        if d:
+            definitions.append((i + 1, d.group(1), d.group(2)))
+            continue
+        h = atx_heading(line)
+        if h is None:
+            continue
+        level, text = h
+        if level == 2 and text.startswith("["):
+            indent = len(line) - len(line.lstrip(" "))
+            if indent:
+                findings.append(
+                    f"CHANGELOG.md:{i + 1}: version heading is indented {indent} space(s) -- "
+                    f"it renders as a heading but `release.yml` extracts release notes by "
+                    f"`^## \\[` at column 0, so this release could never be published. "
+                    f"Start it at column 0"
+                )
+            m = VERSION_HEADING_TEXT.match(text)
+            if m:
+                version = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                entries.append(ChangelogEntry(i + 1, text, "version", version, m.group(4)))
+            elif text == UNRELEASED_HEADING_TEXT:
+                entries.append(ChangelogEntry(i + 1, text, "unreleased", None, None))
+            elif text in RECONSTRUCTED_HEADINGS:
+                entries.append(ChangelogEntry(i + 1, text, "reconstructed", None, None))
+            else:
+                entries.append(ChangelogEntry(i + 1, text, "malformed", None, None))
+                findings.append(
+                    f"CHANGELOG.md:{i + 1}: `## {text}` is not a valid entry heading -- write "
+                    f"`## [x.y.z] — YYYY-MM-DD` (optionally ` [YANKED]`), or `## [Unreleased]` "
+                    f"as the first entry. An undated version heading is not a release "
+                    f"(`release.yml` refuses to publish it)"
+                )
+            continue
+        if level == 3 and entries:
+            entries[-1].categories.append((text, i + 1))
+    return entries, definitions, findings
+
+
+def check_changelog_headings(path: Path, lines: list[str], skip: list[bool]) -> list[str]:
+    """Entry headings: valid grammar, a real calendar date, `[Unreleased]` first
+    and only once, versions strictly newest-first, the reconstructed history
+    last.
+
+    This is the machine-checkable half of `CHANGELOG_POLICY.md` rule 7. What it
+    does NOT decide: whether a date is the RIGHT date, or whether a version
+    number is the right bump -- both are facts about the release, not about the
+    file, and stay with the maintainer.
+    """
+    if path.name != "CHANGELOG.md":
+        return []
+    entries, _, findings = parse_changelog(lines, skip)
+    findings = [f.replace("CHANGELOG.md:", f"{path}:", 1) for f in findings]
+    previous: ChangelogEntry | None = None
+    seen_reconstructed = False
+    for pos, e in enumerate(entries):
+        if e.kind == "unreleased":
+            if pos != 0:
+                findings.append(
+                    f"{path}:{e.line_no}: `## [Unreleased]` must be the first entry -- it "
+                    f"tracks what the NEXT release will contain, so nothing released sits "
+                    f"above it"
+                )
+            continue
+        if e.kind == "reconstructed":
+            seen_reconstructed = True
+            continue
+        if e.kind != "version":
+            continue
+        try:
+            datetime.date.fromisoformat(e.date or "")
+        except ValueError:
+            findings.append(
+                f"{path}:{e.line_no}: `{e.date}` is not a calendar date -- the release date "
+                f"is ISO 8601, `YYYY-MM-DD`"
+            )
+        if seen_reconstructed:
+            findings.append(
+                f"{path}:{e.line_no}: a versioned entry below the reconstructed history -- "
+                f"the two reconstructed headings are the foot of the file, nothing goes "
+                f"under them"
+            )
+        if previous is not None and previous.version is not None and e.version is not None:
+            if e.version >= previous.version:
+                findings.append(
+                    f"{path}:{e.line_no}: [{'.'.join(map(str, e.version))}] follows "
+                    f"[{'.'.join(map(str, previous.version))}] -- entries run newest first, "
+                    f"strictly (Keep a Changelog: the latest version comes first)"
+                )
+        previous = e
+    return findings
 
 
 def check_changelog_categories(path: Path, lines: list[str], skip: list[bool]) -> list[str]:
@@ -609,12 +806,10 @@ def check_changelog_categories(path: Path, lines: list[str], skip: list[bool]) -
     """
     if path.name != "CHANGELOG.md":
         return []
+    entries, _, _ = parse_changelog(lines, skip)
     findings: list[str] = []
-    entry: str | None = None
-    seen: list[tuple[str, int]] = []
-
-    def close_entry() -> None:
-        for pos, (cat, line_no) in enumerate(seen):
+    for e in entries:
+        for pos, (cat, line_no) in enumerate(e.categories):
             if cat not in KAC_CATEGORIES:
                 findings.append(
                     f"{path}:{line_no}: `### {cat}` is not a Keep a Changelog category "
@@ -622,10 +817,10 @@ def check_changelog_categories(path: Path, lines: list[str], skip: list[bool]) -
                     f"lead instead, or file the bullets under the category they belong to"
                 )
                 continue
-            earlier = [c for c, _ in seen[:pos] if c in KAC_CATEGORIES]
+            earlier = [c for c, _ in e.categories[:pos] if c in KAC_CATEGORIES]
             if cat in earlier:
                 findings.append(
-                    f"{path}:{line_no}: second `### {cat}` in {entry} -- one section per "
+                    f"{path}:{line_no}: second `### {cat}` in ## {e.text} -- one section per "
                     f"category per release; add the bullet to the existing section"
                 )
                 continue
@@ -635,22 +830,91 @@ def check_changelog_categories(path: Path, lines: list[str], skip: list[bool]) -
             if out_of_order:
                 findings.append(
                     f"{path}:{line_no}: `### {cat}` comes after `### {out_of_order[0]}` in "
-                    f"{entry} -- Keep a Changelog orders them "
+                    f"## {e.text} -- Keep a Changelog orders them "
                     f"{' > '.join(KAC_CATEGORIES)}"
                 )
+    return findings
 
-    for i, line in enumerate(lines):
-        if skip[i]:
+
+def check_changelog_links(path: Path, lines: list[str], skip: list[bool]) -> list[str]:
+    """Every `[x.y.z]` heading is a link reference. From `FIRST_TAGGED_VERSION`
+    on, each one must have a definition and the definition must name that
+    version's own tag; below it, none may (there is no tag to point at). An
+    `[Unreleased]` heading needs a `...HEAD` comparison.
+
+    The definition is written in the RELEASE COMMIT, naming the tag that commit
+    is about to carry -- `v<x.y.z>`, fixed by `release.yml`'s rule that the tag
+    equals the CMake project version -- and the tag is pushed straight after.
+    That is the sequence the specification's own example implies (its link
+    definitions exist in the tagged tree), and the only one that is satisfiable:
+    a tag points at an existing commit, so the definition cannot wait for it.
+    What this check therefore asserts is not that the URL resolves today but
+    that it is the deterministic one: the right version, the right form
+    (`/releases/tag/v<x.y.z>` for a first tag, `/compare/v<a.b.c>...v<x.y.z>`
+    after), and no definition for a version this line never tagged.
+    """
+    if path.name != "CHANGELOG.md":
+        return []
+    entries, definitions, _ = parse_changelog(lines, skip)
+    findings: list[str] = []
+    defined: dict[str, tuple[int, str]] = {}
+    for line_no, label, url in definitions:
+        if re.fullmatch(r"\d+\.\d+\.\d+", label) or label.lower() == "unreleased":
+            key = label.lower() if label.lower() == "unreleased" else label
+            if key in defined:
+                findings.append(f"{path}:{line_no}: `[{label}]` is defined twice")
+            defined[key] = (line_no, url)
+    versions = {".".join(map(str, e.version)): e for e in entries if e.kind == "version"}
+    has_unreleased = any(e.kind == "unreleased" for e in entries)
+
+    for key, (line_no, url) in defined.items():
+        if key == "unreleased":
+            if not has_unreleased:
+                findings.append(
+                    f"{path}:{line_no}: `[Unreleased]` is defined but there is no "
+                    f"`## [Unreleased]` entry"
+                )
+            elif not url.endswith("...HEAD"):
+                findings.append(
+                    f"{path}:{line_no}: the `[Unreleased]` definition must compare the last "
+                    f"tag to HEAD (`.../compare/v<x.y.z>...HEAD`)"
+                )
             continue
-        if line.startswith("## "):
-            close_entry()
-            entry = line.strip()
-            seen = []
+        e = versions.get(key)
+        if e is None:
+            findings.append(
+                f"{path}:{line_no}: `[{key}]` is defined but there is no `## [{key}]` entry"
+            )
             continue
-        m = CHANGELOG_CATEGORY_HEADING.match(line)
-        if m and entry is not None:
-            seen.append((m.group(1), i + 1))
-    close_entry()
+        if e.version is not None and e.version < FIRST_TAGGED_VERSION:
+            findings.append(
+                f"{path}:{line_no}: `[{key}]` predates this line's first tag "
+                f"(v{'.'.join(map(str, FIRST_TAGGED_VERSION))}) and was never tagged -- "
+                f"there is no release page to link, so it must not be defined"
+            )
+            continue
+        tag = f"v{key}"
+        if not (url.endswith(f"/releases/tag/{tag}")
+                or re.search(rf"/compare/v\d+\.\d+\.\d+\.\.\.{re.escape(tag)}$", url)):
+            findings.append(
+                f"{path}:{line_no}: the `[{key}]` definition must point at its own tag -- "
+                f"`.../releases/tag/{tag}` for the line's first tag, "
+                f"`.../compare/v<previous>...{tag}` after it; got `{url}`"
+            )
+
+    for key, e in versions.items():
+        if e.version is not None and e.version >= FIRST_TAGGED_VERSION and key not in defined:
+            findings.append(
+                f"{path}:{e.line_no}: `## [{key}]` has no link definition -- add "
+                f"`[{key}]: <url>` at the foot of the file in the release commit "
+                f"(CHANGELOG_POLICY.md rule 8, RELEASE_PROCESS.md §Tagging)"
+            )
+    if has_unreleased and "unreleased" not in defined:
+        e = next(e for e in entries if e.kind == "unreleased")
+        findings.append(
+            f"{path}:{e.line_no}: `## [Unreleased]` has no link definition -- add "
+            f"`[Unreleased]: .../compare/v<last tag>...HEAD` at the foot of the file"
+        )
     return findings
 
 
@@ -670,7 +934,9 @@ def analyse(path: Path, lines: list[str], root: Path) -> list[str]:
     findings += check_links(path, text, skip, root)
     findings += check_lazy_continuation(path, text, skip)
     findings += check_changelog_notes_boundary(path, text, skip)
+    findings += check_changelog_headings(path, text, skip)
     findings += check_changelog_categories(path, text, skip)
+    findings += check_changelog_links(path, text, skip)
     return findings
 
 
@@ -799,52 +1065,142 @@ def self_test() -> int:
     # The CHANGELOG boundary rule is file-scoped, so it cannot ride the `x.md`
     # loop above. Both directions again: the shape the extractor relies on, and
     # the two ways a future edit breaks it.
+    # Fixture conventions: versions BELOW the first tagged version (0.9.7) need no
+    # link definition, so structural cases use `[0.5.0]` / `[0.4.0]`; the link
+    # cases use `[1.0.0]`, which does. `V5` / `V4` are valid dated headings.
+    V5 = "## [0.5.0] — 2026-01-02"
+    V4 = "## [0.4.0] — 2026-01-01"
+    V1 = "## [1.0.0] — 2026-02-01"
+    L1 = "[1.0.0]: https://github.com/skyRolly/Anamorph/releases/tag/v1.0.0"
     for label, expected, lines in [
+        # -- the notes-boundary rule, as before --------------------------------
         ("entry sub-sections at ### are fine", 0,
-         ["# Changelog", "## [Unreleased]", "## [1.0.0] - d", "### Added", "- x"]),
-        ("`## [Unreleased]` above the first entry is not a subject", 0,
-         ["# Changelog", "## [Unreleased]", "## [1.0.0] - d", "### Added"]),
+         ["# Changelog", V5, "### Added", "- x"]),
         ("a fenced ## sample is data", 0,
-         ["# Changelog", "## [1.0.0] - d", "### Added", "```", "## [x.y.z] - date", "```"]),
-        ("no version entry yet", 0, ["# Changelog", "## [Unreleased]"]),
+         ["# Changelog", V5, "### Added", "```", "## [x.y.z] - date", "```"]),
         ("a trailing section truncates the oldest entry's notes", 1,
-         ["# Changelog", "## [1.0.0] - d", "### Added", "## Acknowledgements"]),
+         ["# Changelog", V5, "### Added", "## Acknowledgements"]),
+        ("an INDENTED trailing section is the same defect", 1,
+         ["# Changelog", V5, "### Added", "  ## Acknowledgements"]),
         ("a demoted sub-section ends them early", 1,
-         ["# Changelog", "## [1.0.0] - d", "### Added", "## Fixed", "- y"]),
+         ["# Changelog", V5, "### Added", "## Fixed", "- y"]),
         ("an older version entry is the mechanism working, not a finding", 0,
-         ["# Changelog", "## [1.0.0] - d", "### Added", "## [0.9.0] - e", "### Fixed"]),
+         ["# Changelog", V5, "### Added", V4, "### Fixed"]),
         # THE ADAPTATION FROM THE SIBLING, asserted rather than assumed. This
-        # file's reconstructed history uses entry headings that are not a bare
-        # semver -- `## [0.6.x] and earlier`, `## [0.7.5] - [0.7.0]`. They carry
-        # the bracket, so this repository's extractor stops at them, so they must
-        # not be findings. Under the sibling's `\d+\.\d+\.\d+` spelling both were.
-        ("a non-semver ENTRY heading still terminates, so it is not a finding", 0,
-         ["# Changelog", "## [1.0.0] - d", "### Added",
-          "## [0.7.5] - [0.7.0] - e", "## [0.6.x] and earlier - f"]),
-        # The category rule, both directions. The first case is the shape the
-        # whole file now has; the next three are the three ways `[0.9.7]` and
-        # its neighbours were wrong before this checker existed.
+        # file's reconstructed history uses two entry headings that are not a
+        # bare semver. They carry the bracket, so this repository's extractor
+        # stops at them; they are grandfathered by exact text, so neither the
+        # boundary rule nor the grammar rule reports them.
+        ("the two reconstructed ENTRY headings are accepted by exact text", 0,
+         ["# Changelog", V5, "### Added",
+          "## [0.7.5] – [0.7.0] — 2026-06-21…22", "## [0.6.x] and earlier — 2026-06 (reconstructed)"]),
+        ("a NEW heading in the reconstructed style is not accepted", 1,
+         ["# Changelog", V5, "### Added", "## [0.3.x] and earlier — 2025-12 (reconstructed)"]),
+        ("a version below the reconstructed history is a finding", 1,
+         ["# Changelog", V5, "## [0.6.x] and earlier — 2026-06 (reconstructed)", V4]),
+        # -- the category rule ---------------------------------------------------
         ("the six categories in the spec's order pass", 0,
-         ["# Changelog", "## [1.0.0] - d", "### Added", "- x", "### Changed", "- y",
+         ["# Changelog", V5, "### Added", "- x", "### Changed", "- y",
           "### Deprecated", "- z", "### Removed", "- w", "### Fixed", "- v",
           "### Security", "- u"]),
         ("a second section for the same category is a finding", 1,
-         ["# Changelog", "## [1.0.0] - d", "### Changed", "- x", "### Fixed", "- y",
-          "### Fixed", "- z"]),
+         ["# Changelog", V5, "### Changed", "- x", "### Fixed", "- y", "### Fixed", "- z"]),
         # `[0.9.7]`'s actual shape: Fixed, Changed, Fixed is BOTH misordered and
         # duplicated, and the two are separate defects with separate remedies.
         ("Fixed / Changed / Fixed reports the order and the duplicate", 2,
-         ["# Changelog", "## [1.0.0] - d", "### Fixed", "- x", "### Changed", "- y",
-          "### Fixed", "- z"]),
+         ["# Changelog", V5, "### Fixed", "- x", "### Changed", "- y", "### Fixed", "- z"]),
         ("Fixed above Changed is a finding", 1,
-         ["# Changelog", "## [1.0.0] - d", "### Fixed", "- x", "### Changed", "- y"]),
+         ["# Changelog", V5, "### Fixed", "- x", "### Changed", "- y"]),
         ("an invented category name is a finding", 1,
-         ["# Changelog", "## [1.0.0] - d", "### Changed", "- x", "### Known issues", "- y"]),
+         ["# Changelog", V5, "### Changed", "- x", "### Known issues", "- y"]),
         ("each entry is judged on its own", 0,
-         ["# Changelog", "## [1.0.0] - d", "### Changed", "- x", "### Fixed", "- y",
-          "## [0.9.0] - e", "### Changed", "- z", "### Fixed", "- w"]),
+         ["# Changelog", V5, "### Changed", "- x", "### Fixed", "- y",
+          V4, "### Changed", "- z", "### Fixed", "- w"]),
         ("a category heading inside a fence is data", 0,
-         ["# Changelog", "## [1.0.0] - d", "### Fixed", "- x", "```", "### Changed", "```"]),
+         ["# Changelog", V5, "### Fixed", "- x", "```", "### Changed", "```"]),
+        ("a closing-# run is stripped, so `### Fixed ###` is Fixed", 0,
+         ["# Changelog", V5, "### Changed ##", "- x", "### Fixed ###", "- y"]),
+        # -- indentation: CommonMark reads 0-3 columns as a heading ---------------
+        # The first rule matched `^### ` only, so an indented heading bypassed it.
+        ("categories indented 1, 2 and 3 spaces are read as headings (valid order)", 0,
+         ["# Changelog", V5, " ### Added", "- x", "  ### Changed", "- y", "   ### Fixed", "- z"]),
+        ("a duplicate hidden by one space of indentation is a finding", 1,
+         ["# Changelog", V5, "### Fixed", "- x", " ### Fixed", "- y"]),
+        ("an invented category hidden by two spaces is a finding", 1,
+         ["# Changelog", V5, "### Fixed", "- x", "  ### Known issues", "- y"]),
+        ("a misorder hidden by three spaces is a finding", 1,
+         ["# Changelog", V5, "### Fixed", "- x", "   ### Changed", "- y"]),
+        ("four spaces after a blank line is an indented code block, not a heading", 0,
+         ["# Changelog", V5, "### Fixed", "- x", "", "text", "", "    ### Bogus"]),
+        ("`####x` and `###x` without a space are not headings", 0,
+         ["# Changelog", V5, "### Fixed", "- x", "###Bogus", "####Bogus"]),
+        # -- preamble versus entries ----------------------------------------------
+        # The first rule started an "entry" at every `## `, so a preamble section
+        # became one and its sub-headings were reported as invented categories.
+        ("a plain preamble is not an entry", 0,
+         ["# Changelog", "", "All notable changes.", "", V5, "### Fixed", "- x"]),
+        ("a preamble level-two section with level-three sub-headings is not an entry", 0,
+         ["# Changelog", "## How to read this file", "### Conventions", "- a", "### Evidence",
+          "- b", V5, "### Fixed", "- x"]),
+        ("`## [Unreleased]` above the first release, with its definition", 0,
+         ["# Changelog", "## [Unreleased]", "### Added", "- x", V5, "### Fixed", "- y",
+          "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.5.0...HEAD"]),
+        ("`## [Unreleased]` alone, with its definition", 0,
+         ["# Changelog", "## [Unreleased]",
+          "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.4.0...HEAD"]),
+        ("`## [Unreleased]` without a definition is a finding", 1,
+         ["# Changelog", "## [Unreleased]", "### Added", "- x"]),
+        ("`## [Unreleased]` below a release is a finding", 1,
+         ["# Changelog", V5, "### Fixed", "- x", "## [Unreleased]", "### Added", "- y",
+          "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.5.0...HEAD"]),
+        ("several releases in order pass", 0,
+         ["# Changelog", "## [0.6.0] — 2026-01-03", "### Added", "- a", V5, "### Fixed", "- b",
+          V4, "### Changed", "- c"]),
+        # -- entry-heading grammar -------------------------------------------------
+        ("an undated version heading is a finding", 1,
+         ["# Changelog", "## [0.5.0]", "### Fixed", "- x"]),
+        ("`— Unreleased` on a version heading is a finding (use `## [Unreleased]`)", 1,
+         ["# Changelog", "## [0.5.0] — Unreleased", "### Fixed", "- x"]),
+        ("a two-part version is a finding", 1,
+         ["# Changelog", "## [0.5] — 2026-01-02", "### Fixed", "- x"]),
+        ("a non-ISO date is a finding", 1,
+         ["# Changelog", "## [0.5.0] — 02/01/2026", "### Fixed", "- x"]),
+        ("an ISO-shaped date that is not a calendar date is a finding", 1,
+         ["# Changelog", "## [0.5.0] — 2026-13-02", "### Fixed", "- x"]),
+        ("the spec's own hyphen separator is accepted", 0,
+         ["# Changelog", "## [0.5.0] - 2026-01-02", "### Fixed", "- x"]),
+        ("`[YANKED]` is accepted", 0,
+         ["# Changelog", "## [0.5.0] — 2026-01-02 [YANKED]", "### Fixed", "- x"]),
+        ("an indented version heading renders but cannot be published: a finding", 1,
+         ["# Changelog", " ## [0.5.0] — 2026-01-02", "### Fixed", "- x"]),
+        # -- newest first ----------------------------------------------------------
+        ("an older version above a newer one is a finding", 1,
+         ["# Changelog", V4, "### Fixed", "- x", V5, "### Fixed", "- y"]),
+        ("the same version twice is a finding", 1,
+         ["# Changelog", V5, "### Fixed", "- x", V5, "### Fixed", "- y"]),
+        ("a patch bump is compared numerically, not textually", 0,
+         ["# Changelog", "## [0.5.10] — 2026-01-03", "### Fixed", "- x",
+          "## [0.5.9] — 2026-01-02", "### Fixed", "- y"]),
+        # -- link definitions --------------------------------------------------------
+        ("a tagged-era version with its tag-page definition passes", 0,
+         ["# Changelog", V1, "### Fixed", "- x", L1]),
+        ("a tagged-era version with a comparison definition passes", 0,
+         ["# Changelog", V1, "### Fixed", "- x",
+          "[1.0.0]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v1.0.0"]),
+        ("a tagged-era version WITHOUT a definition is a finding", 1,
+         ["# Changelog", V1, "### Fixed", "- x"]),
+        ("a definition that names another version's tag is a finding", 1,
+         ["# Changelog", V1, "### Fixed", "- x",
+          "[1.0.0]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.9"]),
+        ("a definition for a version with no entry is a finding", 1,
+         ["# Changelog", V1, "### Fixed", "- x", L1,
+          "[0.9.9]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.9"]),
+        ("a definition for a never-tagged version is a finding", 1,
+         ["# Changelog", V5, "### Fixed", "- x",
+          "[0.5.0]: https://github.com/skyRolly/Anamorph/releases/tag/v0.5.0"]),
+        ("non-version definitions are not the checker's business", 0,
+         ["# Changelog", V5, "### Fixed", "- x",
+          "[Keep a Changelog]: https://keepachangelog.com/en/1.1.0/"]),
     ]:
         got = len(analyse(root / "CHANGELOG.md", lines, root))
         checked += 1

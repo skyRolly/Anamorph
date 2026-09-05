@@ -12,7 +12,9 @@ the hard compatibility gate is `RELEASE_COMPATIBILITY_CHECKLIST.md`.
    line ever MOVES, the run fails and the declaration's line number must be re-derived —
    `--fix` cannot do it, because the declaration is what turned the comparison off.
 2. **CHANGELOG** — add a dated, evidence-cited entry per `docs/policies/CHANGELOG_POLICY.md`
-   (commit/PR reference; mark reconstructions).
+   (commit/PR reference; mark reconstructions), and the version's link definition at the foot of the
+   file (rule 8; the exact line is under §Tagging below). `check-docs.py` rejects the file until both
+   are present and well-formed.
 3. **Tests green** — `scripts/run-tests.sh` passes; `scripts/run-pluginval.sh 10` passes on Linux in
    **both modes** (`deterministic` and `randomise` ×3) (`TESTING.md`).
 4. **Compatibility gate** — complete every item in `RELEASE_COMPATIBILITY_CHECKLIST.md`.
@@ -66,18 +68,34 @@ git tag -a v0.9.7 -m "Anamorph 0.9.7"
 git push origin v0.9.7
 ```
 
-**Add the version's link definition in the same commit.** Keep a Changelog 1.1.0 asks for linkable
-versions, and `CHANGELOG.md` writes every heading as `## [x.y.z]` — a link reference whose definition
-can only exist once the tag does. So, in the commit the tag points at, append one line to the
-definitions at the foot of the file:
+**The release commit carries the version's link definition; the tag follows it.** Keep a
+Changelog 1.1.0 asks for linkable versions, and `CHANGELOG.md` writes every heading as `## [x.y.z]`,
+a link reference. A tag can only point at a commit that already exists, so the definition cannot
+wait for the tag — it is written **in the release commit**, naming the tag that commit is about to
+carry, and the tag is pushed straight after. The name is not a guess: `release.yml` refuses any tag
+that is not `v` + the CMake `project VERSION`, so `v<x.y.z>` is fixed before the tag exists. The
+sequence, literally:
 
-```markdown
-[0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7
-```
+1. In the release commit (the one step 2 above dates): the `## [x.y.z] — YYYY-MM-DD` heading, the
+   CMake version bump, and one line among the definitions at the foot of `CHANGELOG.md` —
 
-From the second tag onward make it a comparison against the previous tag
-(`.../compare/v0.9.7...v0.9.8`) — the form the specification's own example uses. Never add a
-definition for a tag that has not been pushed (`CHANGELOG_POLICY.md` rule 8).
+   ```markdown
+   [0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7
+   ```
+
+   for the line's first tag; from the second tag onward a comparison against the previous one,
+   `[0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8` — the form the
+   specification's own example uses.
+2. `check-docs.py` (every push) verifies that every `## [x.y.z]` from `0.9.7` onward has a
+   definition naming its own tag, and that no older, never-tagged version has one. The link is
+   unresolvable only between this commit and the tag push in step 3, which is the same interval in
+   which the dated heading names a release that does not exist yet.
+3. Tag that commit and push the tag (the `git tag -a` / `git push` pair above). The definition
+   resolves the moment GitHub sees the tag; nothing is moved, amended or rewritten afterwards.
+
+If an `## [Unreleased]` section is kept between releases, its definition is
+`[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v<last tag>...HEAD`, and the release
+commit renames the section to the version heading and re-points it.
 
 **Date the CHANGELOG heading before tagging — the pipeline now enforces it.** `release.yml`
 extracts the `## [x.y.z]` section **verbatim, heading included**, as the release **notes body**

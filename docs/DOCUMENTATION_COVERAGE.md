@@ -8632,10 +8632,13 @@ only two helper functions, so the parameter surface did not move.
 `Fixed` bullets under one heading; `[0.9.5]`, `[0.9.3]` and `[0.9.1]` were already canonical. The
 defect was systemic in ORDER and in invented headings, not in what the entries claim.
 
-**Linkable versions — the one spec item still open, deliberately.** Every heading is written `## [x.y.z]`,
-a link reference, and the file defines none: this line has no tags yet, so there is no release to point
-at and inventing a URL would be a fabricated citation. `RELEASE_PROCESS.md` now carries the step that
-adds the definition in the commit the tag points at, and `CHANGELOG_POLICY.md` rule 8 states the rule.
+**Linkable versions — left open by this round on a wrong premise, closed by the next.** Every heading
+is written `## [x.y.z]`, a link reference, and this round defined none, reasoning that a URL for a
+tag not yet pushed would be a fabricated citation while also telling the release process to add the
+definition "in the commit the tag points at" — two instructions that cannot both hold, since a tag
+points at a commit that already exists. The round-2 entry below records the corrected sequence: the
+definition is written in the release commit, naming the deterministic tag `v` + CMake version, and
+the tag follows.
 
 **Documents updated:** `CHANGELOG.md` (the date, the two evidence corrections, the structure, and a
 preamble that now names the spec version and links Semantic Versioning); `CHANGELOG_POLICY.md` (the

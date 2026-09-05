@@ -31,13 +31,23 @@ does, on what is notable enough to record). Where the two agree, the spec's word
    statement, a known issue) goes in the entry's lead, above the first category, not in a category of
    its own. `check-docs.py` enforces the name, the order and the once-each rule; it cannot judge
    whether a bullet is in the right category, and that stays with the author.
-7. **Latest version first; every entry carries an ISO `YYYY-MM-DD` release date** in its `## [x.y.z]`
-   heading (`release.yml` fails closed on an undated heading at tag time). An `## [Unreleased]`
-   section, if used, sits above the first entry — never between two releases.
-8. **Version headings are linkable.** The bracketed version is a link reference; add its definition
-   at the foot of the file when the tag is cut (`RELEASE_PROCESS.md` §Tagging). Until this line's
-   first tag exists there is nothing to point at, so the definitions are absent by design rather than
-   broken — do not invent a URL for a tag that has not been pushed.
+7. **Latest version first; every version heading carries an ISO `YYYY-MM-DD` release date.** The
+   heading grammar is `## [x.y.z] — YYYY-MM-DD` (a plain `-` for the dash is accepted, being the
+   specification's own spelling; ` [YANKED]` may follow), at column 0, versions strictly decreasing
+   down the file, the date a real calendar date. Work that is not yet released goes under
+   `## [Unreleased]`, which sits above the first version and nowhere else — a version heading that
+   reads `— Unreleased` or has no date is not a release and is rejected. `check-docs.py` enforces
+   all of this on every push; `release.yml` re-checks the tagged version's heading and date at tag
+   time. Two reconstructed headings at the foot, `[0.7.5] – [0.7.0]` and `[0.6.x] and earlier`,
+   predate this policy and are accepted by exact text; no new heading may take that form.
+8. **Version headings are linkable.** The bracketed version is a link reference, and from `0.9.7` —
+   the first version this line tags — every one has a definition at the foot of the file naming its
+   own tag: `.../releases/tag/v<x.y.z>` for the first tag, `.../compare/v<previous>...v<x.y.z>` after
+   it. The definition is written **in the release commit**, before the tag exists, because a tag can
+   only point at a commit that already does (`RELEASE_PROCESS.md` §Tagging gives the sequence); the
+   name is deterministic, `release.yml` refusing any tag other than `v` + the CMake version. Versions
+   older than `0.9.7` were never tagged and must have no definition — there is no page to link.
+   `check-docs.py` enforces both directions and the URL form.
 
 ## Writing an entry
 
@@ -59,11 +69,27 @@ Establish the facts from the repository, then write for the reader:
 
 ## Entry template
 
+Angle brackets mark placeholders; everything else is literal. Only the categories that have entries
+appear, in this order, once each. The template is the shape `check-docs.py` accepts.
+
+```markdown
+## [<x.y.z>] — <YYYY-MM-DD>
+### Added
+- **<What is new, as the user meets it>.** <One or two sentences on what it does.>
+  Evidence: PR #<NN> (or commit <sha>). [Verified]
+### Changed
+- **<What behaves differently>.** <What it did; what it does now; what the user notices.>
+  Evidence: PR #<NN>. [Verified]
+### Fixed
+- **<What went wrong, in the user's terms, and no longer does>.** <Cause in one sentence, if it helps.>
+  Evidence: PR #<NN>. [Verified | Partially Verified | Unverified Historical Reconstruction]
+
+[<x.y.z>]: https://github.com/skyRolly/Anamorph/compare/v<previous>...v<x.y.z>
 ```
-## [0.8.7] — Fixed
-- <user-visible change>.
-  Evidence: commit 6a24b82 (or PR #NN). [Verified | Partially Verified | Unverified Historical Reconstruction]
-```
+
+Work not yet released goes under `## [Unreleased]` in the same shape, with
+`[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v<last tag>...HEAD`; the release commit
+renames the heading to `## [<x.y.z>] — <date>` and re-points the definition (rules 7 and 8).
 
 ## Source of truth for history
 
