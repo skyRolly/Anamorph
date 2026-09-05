@@ -194,7 +194,7 @@ private:
         // ::mouseMagnify are NOT empty in the base class: each forwards the event to the nearest
         // enabled ancestor (:2316-2328), which for this shield is the editor itself. Without these,
         // a scroll or a pinch over a raised shield would arrive at
-        // AnamorphAudioProcessorEditor::mouseWheelMove -- harmless today, since the Persist-reveal
+        // AnamorphAudioProcessorEditor::mouseWheelMove -- harmless today, since the Persistence-reveal
         // branch there keys on `e.eventComponent == &scopePersistK`, but it makes "the shield
         // consumes the gesture" false in a way that only holds by luck. Overriding them costs
         // nothing and makes the contract literal.
@@ -212,7 +212,7 @@ private:
         std::function<void()> onDismiss;
         juce::Rectangle<int>  panel;
         bool   aboutText = false;
-        float  reveal = 0.0f;   // 0 = solid, 1 = see-through (Persist drag, #26)
+        float  reveal = 0.0f;   // 0 = solid, 1 = see-through (Persistence drag, #26)
         bool   dropShadow = false;       // soft feathered outer shadow (Settings, #14)
         bool   lensFlare  = false;       // STATIC anamorphic flare near the top edge (About, #2/#13)
         void paint (juce::Graphics&) override;
@@ -250,7 +250,7 @@ private:
     void stepMeterReveal (double dt);    // vsync-driven meter reveal animation (#6/#3)
     void stepMicroAnims (double dt);     // eased hover/press/toggle micro-animations (F3)
     void registerAnimated (juce::Component&);
-    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override; // Persist scroll reveal (#1)
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override; // Persistence scroll reveal (#1)
     void applyUiScale();                 // whole-window XS..XL transform scale (F4)
     void refreshPresetDisplay();         // preset name + dirty mark (F2)
     void showPresetMenu();
@@ -480,7 +480,7 @@ private:
     juce::ToggleButton tooltipsToggle;
     juce::ToggleButton animToggle;  // micro-animation switch (F3)
     juce::Label settingsTitle;
-    juce::Label persistLabel;   // Persist moved into Settings as a bar (#21)
+    juce::Label persistLabel;   // Persistence moved into Settings as a bar (#21)
 
     // Save-preset overlay (F2) + the OS Load chooser (#3)
     Backdrop savePresetBackdrop;
@@ -513,8 +513,8 @@ private:
     bool  comboHoverLit = false;       // some box's "hov" property is currently set
     float shownMatchGainDb = -1.0e9f;  // raw getMatchGainDb() last formatted
     float meterAnim = 0.0f;     // 0..1 eased meter reveal (#19)
-    bool  persistDragging = false; // dragging the Settings Persist bar (#26)
-    int   persistHold = 0;      // frames the Persist bar has been held (anti-flicker, #7)
+    bool  persistDragging = false; // dragging the Settings Persistence bar (#26)
+    int   persistHold = 0;      // frames the Persistence bar has been held (anti-flicker, #7)
     // Non-drag (scroll / type) reveal: a sustained adjustment turns the window
     // see-through and holds it ~0.5 s after the last change; a single nudge does
     // not trigger it (#1).

@@ -80,6 +80,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:986-1056; src/PluginProcessor.cp
 ## Host-hidden (InternalState — see `PARAMETER_REGISTRY.md`)
 
 Oversampling (drives DSP + PDC), UI Scale (`int_uiScale`; labelled *Window Size* before 0.9.2 —
-display name only, the identifier is immutable), Scope Persistence, Tooltips, UI Animations,
-Show Meters. Two-way bound to the GUI via `juce::Value`; never automatable, never in
-A/B/Undo/presets. Evidence [Verified]: src/InternalState.h:13-42, :60-82.
+display name only, the identifier is immutable), Vectorscope Persistence (`int_scopePersist`;
+labelled *Vectorscope Persist* before 0.9.7 — display name only, the identifier is immutable),
+Tooltips, UI Animations, Show Meters. Two-way bound to the GUI via `juce::Value`; never
+automatable, never in A/B/Undo/presets. Evidence [Verified]: src/InternalState.h:13-42, :60-82.

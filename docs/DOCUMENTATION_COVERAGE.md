@@ -6,9 +6,11 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** (2026-09-03, matching the CHANGELOG heading) — **D-2 /
-RISK-007 resolved as ADR-0036** (program state is message-thread-owned; host threads exchange
-immutable snapshots; the `tsan` CI lane), whose round-11 entry is LAST in the body; before it the
+Last updated: for the **0.9.7 change set** — the **`Vectorscope Persist` → `Vectorscope
+Persistence` Settings relabel** (2026-09-05), whose entry is LAST in the body; before it
+(2026-09-03, matching the CHANGELOG heading) **D-2 / RISK-007 resolved as ADR-0036** (program state
+is message-thread-owned; host threads exchange immutable snapshots; the `tsan` CI lane), whose
+round-11 entry is the section above it; before it the
 **scanner-SARIF artifact change** (2026-09-03) — `codeql.yml` and `msvc.yml` now also publish
 their raw SARIF as Actions artifacts; before it ADR-0035,
 the oversampling path crossfade; before it ADR-0034,
@@ -879,7 +881,10 @@ suite, plus the real ABI gate against the local build.
 **Tooltip source-of-truth round (2026-08-20): the third attempt at this defect, and the first with
 a deterministic reproduction. The two earlier attempts are reverted (they are the two entries below
 this one, retracted in place rather than deleted). Root cause is in shared JUCE code, not in this
-tree's geometry and not in dwell. No ADR: no decision is made or reopened.**
+tree's geometry and not in dwell. No ADR: no decision is made or reopened.** (The Settings row
+this entry calls *Vectorscope Persist* was relabelled **Vectorscope Persistence** on 2026-09-05;
+the entry keeps the name the control carried when the round ran, as the record requires. Same
+control, same geometry, same `int_scopePersist`.)
 
 **A user screenshot ended the guessing.** Cursor on the UI Scale combo; the hint box labelled with
 the OVERSAMPLING text; and the box sitting in the GAP between the two rows, covering neither
@@ -8512,3 +8517,76 @@ toolchain rationale as settled. §19 says plainly that the rationale was wrong a
 mechanism; §18's own text is left as written, since it was an accurate record of what round 10 did
 and believed, and §19 names it as superseded on that one point.
 
+## Settings relabel (2026-09-05) — `Vectorscope Persist` → `Vectorscope Persistence`
+
+**Code changed:** `src/PluginEditor.cpp` — the Settings row's label text (`persistLabel`), plus the
+six comments that name the control by its display name (the reveal-while-dragging cases, the wheel
+listener, the drag flags). `src/PluginEditor.h` and `src/PluginProcessor.h` — five more such
+comments. `tests/state_tests.cpp` — the tooltip-geometry row and its check message in State test 25,
+which name the Settings rows as the user reads them. **No identifier moved**: `int_scopePersist`,
+its pre-0.8.4 legacy APVTS id `scopePersist`, `persistLabel`, `scopePersistK`, `scopePersistValue`,
+`InternalState::scopePersist` and `Vectorscope::setPersistence` are all untouched, so this is a
+display-name change under `PARAMETER_COMPATIBILITY_POLICY` rule 2 — not a serialization change, not
+a parameter rename, and not an Architecture Review Gate item. Sessions written by any version read
+and write the same bytes.
+
+**Why.** The label was the only place in the product that called the setting *Persist*. The
+registry, the parameter reference, the repository map and the README already called it
+*persistence*, and the user manual used both spellings in two adjacent sections. The rename closes
+that gap in the direction the rest of the documentation already pointed.
+
+**Measured.** State suite 2439 / 0 (63 tests) and DSP suite 396 / 0 on the renamed tree, both
+unchanged in count — the two test strings that moved are labels in the tooltip-geometry fixture,
+not assertions. The state suite is green under `ulimit -s 1024` (the Windows-parity guard).
+`check-realtime` 47 / 0, `check-portability` 57 / 0, `check-docs` 120 clean, `check-citations`
+self-test 161 cases and clean against `origin/main` and against the round-18 head; `preflight.sh`
+exit 0. **The longer label still fits without being squeezed.** `persistLabel` is a plain
+`juce::Label` that never calls `setFont`, and the look-and-feel's `drawLabel` honours the label's
+own font rather than `getLabelFont`, so it draws at JUCE's Label default 15 px — not the 13 px
+`getLabelFont` returns for the in-place editor path. Row 312 × 16 px (`resized`), text area
+302 × 14 px after the default `{1,5,1,5}` border, one line: the new string measures ≈ 214 px against
+≈ 176 px for the old one, so `drawFittedText` lays it out at full size with ≈ 88 px to spare and no
+horizontal squeeze. No layout constant changed.
+
+**Documents updated:** `PARAMETER_REGISTRY.md` (the `int_scopePersist` row now carries the ※
+display-rename footnote, which became a two-item list); `PARAMETER_REFERENCE.md` (the host-hidden
+paragraph, in the same shape as the `UI Scale` note beside it); `USER_MANUAL.md` (the Settings
+overlay table row, with the "labelled X before 0.9.7" parenthetical the `UI Scale` row already uses,
+and §3.2's sentence about the afterglow, which had been using the short form); `CHANGELOG.md` (a
+`[0.9.7]` **Changed** entry, per `CHANGELOG_POLICY` rule 4); `HANDOVER.md` (the `[0.9.7]` entry
+counts); this document (this entry, the header's newest-change line, and the dated 2026-08-20
+tooltip entry's naming note).
+
+**Not changed, deliberately.** Dated historical records keep the wording that was true when they
+were written, per `CHANGELOG_POLICY` rule 2 ("no invented history"): the `[0.8.x]` CHANGELOG entries
+that name the *Persist* bar, `worklogs/MOUSE_RELEASE_STATE_FIX_v0.8.12.md`, and this document's own
+2026-08 tooltip and hover-occlusion entries, which describe the Settings rows as they were labelled
+then. The tooltip entry now opens with a one-sentence note naming the rename, so a reader meeting
+*Vectorscope Persist* there knows it is the same row under its old label rather than a spelling this
+change missed — the same device the `UI Scale` row uses in `USER_MANUAL.md`. `REPOSITORY_MAP.md` and
+`README.md` say *Persistence* and *persistence* already and needed no edit. The serialized key and
+every identifier are immutable by policy.
+
+**Drift.** Two pre-existing errors in the ※ footnote this change had to extend, both reported
+before being touched, both aimed at UI Scale rather than at the renamed control. (1) The footnote's
+label anchor `src/PluginEditor.cpp:580` pointed at `aboutLink.setFont` in `origin/main` and at
+`aboutBackdrop.onDismiss` here — an anchor already aimed wrong when the citation gate adopted it,
+which is the blind spot `check-citations.py`'s own header describes: the base-text test cannot see
+an anchor that was wrong at the base. (2) `src/InternalState.h:123` cited
+`return stored; // already a real boolean`, inside `repairedValue`, while the sentence it supports
+says "the pre-0.8.4 legacy APVTS id `uiScale` its migration reads" — so the line it means is the
+migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:609`) and onto the
+legacy write (`src/InternalState.h:302`), which makes the UI Scale bullet the same shape as the
+new one beside it. No `DELIBERATE_REAIMS` declaration was needed: the gate accepts both against
+`origin/main` and against the round-18 head, because restructuring the footnote changed the
+document's citation counts for those files and the added anchors are not mappable to the base.
+What replaces that declaration is the gloss: `PARAMETER_REGISTRY.md` is in `GLOSS_CHECKED_DOCS`, so
+every anchor here now names the symbol it is aimed at and `verify_glossed_anchors` resolves it on
+every run. Proved live rather than assumed — aiming the `persistLabel` anchor at an unrelated line
+fails the self-test with "the cited lines start with: '}'", and the aim is restored. `HANDOVER.md`'s
+`[0.9.7]` counts were stale before this change as well (they read "two Changed and four Fixed"
+against three and seven in the tree); corrected in the same sentence this change had to touch.
+Reported and NOT changed: `CHANGELOG.md`'s `[0.9.7]` section carries two separate `### Fixed`
+headings around one `### Changed`, where every other release section uses one heading per type.
+Merging them would reorder published entries, which is a `CHANGELOG_POLICY` question rather than
+part of a relabel.
