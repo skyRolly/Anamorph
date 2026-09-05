@@ -100,17 +100,31 @@ reverse.
 and not to `awk`, so the two tools would split the file differently; both follow `awk`, and
 `check-docs.py` reports the character rather than resolving the disagreement silently.
 
-**Container markers: forbidden, not half-supported.** A heading written on the same line as
-a `>` or a list marker (`> ### Fixed`, `- ## [0.9.7] — …`) still renders as a heading, and
-`release.yml`'s `^## \[` cannot see through the marker. The decision, taken once and stated
-here: a release heading inside a container is **forbidden structure**, reported as such,
-and recorded as a malformed entry so that what follows it is charged to it and not to the
-release above. Supporting it instead would mean changing the extractor's boundary, which
-changes what every release publishes; half-supporting it — the checker seeing one thing and
-the extractor another — is what this whole section exists to prevent. A category behind a
-marker is reported and still counted, so the order and uniqueness rules see it. Ordinary
-quoted prose is untouched: only a Keep a Changelog category name or a release-naming
-heading is reported.
+**Container markers: forbidden, not half-supported.** A heading inside a block quote or a
+list item (`> ### Fixed`, `- ## [0.9.7] — …`, `> [0.9.7]` over `> -------`) still renders as
+a heading, and `release.yml`'s `^## \[` cannot see through the marker. The decision, taken
+once and stated here: a release heading inside a container is **forbidden structure**,
+reported as such, and recorded as a malformed entry so that what follows it is charged to it
+and not to the release above. Supporting it instead would mean changing the extractor's
+boundary, which changes what every release publishes; half-supporting it — the checker
+seeing one thing and the extractor another — is what this whole section exists to prevent.
+A category behind a marker is reported and still counted, so the order and uniqueness rules
+see it. Ordinary quoted prose is untouched: only a Keep a Changelog category name or a
+release-naming heading is reported.
+
+**Forbidden is not ignored, and this is why the markers are normalised once.**
+`strip_containers` removes the container prefix and hands what is left to the SAME functions
+that read a top-level line — `atx_heading` for ATX, `SETEXT_UNDERLINE` and
+`interrupts_paragraph` for setext. A container does not change what a heading *is*; it
+changes the column its content starts at. Two container kinds are counted differently
+because CommonMark treats them differently: a `>` takes at most **one** space with it (§5.1),
+so `>  ## [0.9.7]` leaves one column of content indent and is still a heading — and the
+blockquote **depth**, not a column, is what pairs a setext underline with its subject
+(`> [0.9.7]` over `>-------` is one heading; depth 1 under depth 2 is none). A **list**
+marker establishes a content column instead, which a continuation line is indented to
+(`- [0.9.7]` over `  -------` is a heading; `- foo` over `- ---` is two list items). Both
+heading forms, ATX and setext, go through that one normalisation, and the boundaries were
+verified against a CommonMark renderer rather than reasoned about.
 
 **Where a heading SITS is half of what it is.** `classify_heading` answers both questions
 at once — the level and text, and whether the line is at column 0, indented 1–3 columns,

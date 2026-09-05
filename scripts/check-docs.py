@@ -882,9 +882,69 @@ def deep_heading(line: str) -> tuple[int, str] | None:
 # Only the shapes that MATTER are reported, for the same reason the deep rule is
 # narrow: a quoted `### Something` is ordinary quoted prose, and a checker that
 # reported it would be wrong far more often than right.
-CONTAINER_HIDDEN_HEADING = re.compile(
-    r"^ {0,3}((?:>[ \t]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+)+)(#{1,6})(?:[ \t]+(.*?))?[ \t]*$"
-)
+# ONE CONTAINER MARKER, matched repeatedly. `>` takes at most ONE space or tab
+# with it (CommonMark 5.1: "followed by an optional space of indentation"); a
+# list marker takes at least one. Up to three columns of indentation may precede
+# either. What is left after the markers is content, measured from ITS OWN
+# column -- which is the whole point, and what the previous spelling got wrong:
+# a single regex tried to match marker-and-heading together with `>[ \t]?`
+# hard-coded, so `>  ## [0.9.7]` -- two spaces, a heading to every renderer --
+# matched nothing and became ordinary prose to this checker while the extractor
+# folded the release into the notes above it.
+# `^[ \t]*`, not `^ {0,3}`: four columns of indent is an indented code block at
+# TOP level and a container's own content INSIDE a list item, and telling those
+# apart needs a container stack this file does not keep. `indented_code_mask`
+# already draws that line the one way it can -- it masks a four-column line that
+# follows a blank line outside list context, and deliberately does not mask one
+# in list context -- so a line that reaches here at that depth is the list case,
+# where the renderer does show a heading. Erring toward seeing it is the same
+# choice `deep_heading` makes, and for the same reason: under-reporting is the
+# bypass, over-reporting costs an author one edit.
+CONTAINER_MARKER = re.compile(r"^[ \t]*(>[ \t]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+)")
+# A list marker ANYWHERE in the prefix, not only at its head: `> - ---` opens a
+# list inside the quote and so cannot continue the paragraph above it, exactly as
+# `- ---` cannot at top level. The renderer agrees on both.
+LIST_CONTAINER_MARKER = re.compile(r"(?:^|[ \t])(?:[-*+][ \t]|\d{1,9}[.)][ \t])")
+
+
+def strip_containers(line: str) -> tuple[str, str, int, int]:
+    """(prefix, content, quote_depth, list_columns) after removing container markers.
+
+    THE NORMALISATION EVERY CONTAINER RULE GOES THROUGH. Strip the markers once,
+    then hand what is left to the SAME functions that read a top-level line --
+    `atx_heading`, `SETEXT_UNDERLINE`, `interrupts_paragraph`. A container does
+    not change what a heading IS; it only changes the column its content starts
+    at. Every container defect this file has carried came from a rule that tried
+    to answer both questions in one pattern of its own.
+
+    THE TWO CONTAINER KINDS ARE COUNTED DIFFERENTLY, because CommonMark treats
+    them differently and a setext underline has to be matched with its subject:
+
+      * `quote_depth` counts `>` markers. The space after a `>` belongs to the
+        MARKER, not to the content (5.1), so `>[0.9.7]` over `>-------` is a
+        heading and so is `> [0.9.7]` over `>-------` -- the renderer says both.
+        Counting columns instead made the depth-1 pair look mismatched.
+      * `list_columns` is the content column a LIST marker establishes. A
+        continuation line carries no marker and is indented to that column
+        instead, which is how `- [0.9.7]` over `  -------` is one heading and
+        `- foo` over `- ---` is two list items.
+
+    Two lines are in the same container context when their quote depths are equal
+    (exactly -- depth 1 under depth 2 is not a heading, and the renderer agrees).
+    """
+    rest, depth, columns = line, 0, 0
+    while True:
+        m = CONTAINER_MARKER.match(rest)
+        if m is None:
+            break
+        marker = m.group(1)
+        if marker.startswith(">"):
+            depth += 1
+            columns = 0                    # content is measured inside the quote
+        else:
+            columns += indent_columns(rest) + len(marker)
+        rest = rest[m.end():]
+    return line[: len(line) - len(rest)], rest, depth, columns
 
 
 def classify_heading(line: str) -> tuple[int, str, str] | None:
@@ -914,17 +974,24 @@ def classify_heading(line: str) -> tuple[int, str, str] | None:
     deep = deep_heading(line)
     if deep is not None:
         return deep[0], deep[1], "deep"
-    hidden = CONTAINER_HIDDEN_HEADING.match(line)
-    if hidden is not None:
-        text = re.sub(r"(?:^|[ \t]+)#+$", "", hidden.group(3) or "").strip()
-        return len(hidden.group(2)), text, "container"
+    prefix, content, _, _ = strip_containers(line)
+    if prefix:
+        # The remainder is read by the TOP-LEVEL rule, and only by it. A remainder
+        # indented four columns or more is an indented code block inside the
+        # container, exactly as it would be at top level -- which is why
+        # `deep_heading` is deliberately not consulted here: `>` plus five spaces
+        # leaves four columns of indent and is code, not a heading, and the
+        # renderer agrees.
+        inner = atx_heading(content)
+        if inner is not None:
+            return inner[0], inner[1], "container"
     return None
 
 
 def placement_phrase(line: str, placement: str) -> str:
     """How to describe where a heading sits, in a finding."""
     if placement == "container":
-        marker = CONTAINER_HIDDEN_HEADING.match(line).group(1).strip()
+        marker = " ".join(strip_containers(line)[0].split())  # noqa: E501
         return f"sits behind `{marker}` on the same line"
     columns = indent_columns(line)
     return f"is indented {columns} column{'' if columns == 1 else 's'}"
@@ -1030,17 +1097,38 @@ def parse_changelog(lines: list[str], skip: list[bool]
                 destination = destination[1:-1]     # CommonMark §4.7: `<...>` is a wrapper
             definitions.append((i + 1, " ".join(d.group(1).split()), destination))
             continue
-        if SETEXT_UNDERLINE.match(line) and i and lines[i - 1].strip() and not skip[i - 1] \
-                and not LIST_MARKER.match(lines[i - 1]) \
-                and not interrupts_paragraph(lines[i - 1]) \
-                and not LINK_DEFINITION.match(lines[i - 1]) \
-                and not lines[i - 1].lstrip().startswith(("|", "<")):
-            findings.append(
-                f"CHANGELOG.md:{i + 1}: `{lines[i - 1].strip()}` underlined by `{line.strip()}` "
-                f"is a setext heading. `release.yml` extracts and terminates release notes on "
-                f"`^## \\[` alone and cannot see it -- write headings as `##` / `###`"
-            )
-            continue
+        # SETEXT, THROUGH THE SAME NORMALISATION. A setext heading continues a
+        # paragraph, so subject and underline must sit in the same container
+        # context: the same content column, and the underline may not introduce a
+        # LIST marker of its own (`- foo` over `- ---` is two list items and a
+        # thematic break, not a heading). Everything else is decided on the
+        # CONTENT of both lines, by the same helpers that read a top-level line --
+        # which is what makes `> [0.9.7]` over `> -------` visible at last. The
+        # old rule matched the raw line, so any container prefix hid the pair, and
+        # a quoted release name over a quoted rule became ordinary prose here
+        # while the renderer showed a level-2 heading and the extractor missed the
+        # boundary.
+        under_prefix, under_content, under_depth, _ = strip_containers(line)
+        if i and not skip[i - 1] and SETEXT_UNDERLINE.match(under_content) \
+                and not LIST_CONTAINER_MARKER.search(under_prefix):
+            _, subj_content, subj_depth, subj_cols = strip_containers(lines[i - 1])
+            # A continuation line is indented to the list's content column; with
+            # no list above it, CommonMark's own 0-3 allowance (already in
+            # `SETEXT_UNDERLINE`) is the whole rule.
+            aligned = (indent_columns(under_content) >= subj_cols
+                       and indent_columns(under_content) <= subj_cols + 3)
+            if subj_depth == under_depth and aligned and subj_content.strip() \
+                    and not LIST_MARKER.match(subj_content) \
+                    and not interrupts_paragraph(subj_content) \
+                    and not LINK_DEFINITION.match(subj_content) \
+                    and not subj_content.lstrip().startswith(("|", "<")):
+                findings.append(
+                    f"CHANGELOG.md:{i + 1}: `{lines[i - 1].strip()}` underlined by "
+                    f"`{line.strip()}` is a setext heading. `release.yml` extracts and "
+                    f"terminates release notes on "
+                    f"`^## \\[` alone and cannot see it -- write headings as `##` / `###`"
+                )
+                continue
         h = classify_heading(line)
         if h is None:
             continue
@@ -1591,6 +1679,7 @@ def self_test() -> int:
     D7 = "[0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7"
     D8 = "[0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8"
     RECON1, RECON2 = ("## " + t for t in RECONSTRUCTED_HEADINGS)
+    V7CONTENT = "## [0.9.7] — 2026-09-05"
     UDEF = "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.5.0...HEAD"
     for label, expected, lines in [
         # -- the notes-boundary rule, as before --------------------------------
@@ -1989,6 +2078,79 @@ def self_test() -> int:
         # entry's own misorder, which is only visible if the entry exists.
         ("a hidden release heading takes its own categories", 2,
          ["# Changelog", "> " + V5, "### Fixed", "- a", "### Added", "- b"]),
+
+        # ===================================================================
+        # ROUND 5: containers, normalised once. The two bugs here were two
+        # heading FORMS -- ATX and setext -- behind the same container prefix,
+        # and each had a pattern of its own that tried to match marker and
+        # heading together. Both now strip the prefix and hand the remainder to
+        # the top-level rule, so the boundaries below are CommonMark's, verified
+        # against `markdown-it-py`, not this file's guesses.
+        # ===================================================================
+
+        # A `>` takes at most ONE space with it (CommonMark 5.1), so the content
+        # keeps the rest: 0-4 spaces still leave 0-3 columns and a heading; five
+        # leave four columns and an indented code block. The old pattern
+        # hard-coded `>[ \t]?` and saw only the first two.
+        ("a release heading behind `>` with no space is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", ">" + V7CONTENT, "- b"]),
+        ("...with two spaces (the reported bypass) is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", ">  " + V7CONTENT, "- b"]),
+        ("...with four spaces is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", ">    " + V7CONTENT, "- b"]),
+        ("...with five spaces is indented code, and is not", 0,
+         ["# Changelog", V5, "### Added", "- a", ">     " + V7CONTENT, "- b"]),
+        ("...and the diagnostic names the container, not the spelling", 0,
+         ["# Changelog", V5, "### Added", "- a", ">  " + V7CONTENT, "- b",
+          "@@says:sits behind `>` on the same line@@"]),
+        ("a category behind `>` with two spaces is a finding", 2,
+         ["# Changelog", V5, "### Added", "- a", ">  ### Added", "- b"]),
+        ("nested `>>` hides a release heading no better", 1,
+         ["# Changelog", V5, "### Added", "- a", ">> " + V7CONTENT, "- b"]),
+        ("nor does `> -`", 1,
+         ["# Changelog", V5, "### Added", "- a", "> - " + V7CONTENT, "- b"]),
+        ("nor does `- >`", 1,
+         ["# Changelog", V5, "### Added", "- a", "- > " + V7CONTENT, "- b"]),
+        ("nor a tab after `>`", 1,
+         ["# Changelog", V5, "### Added", "- a", ">\t" + V7CONTENT, "- b"]),
+
+        # SETEXT, the second form. A quoted release name over a quoted rule is a
+        # level-2 heading to every renderer; the old rule matched the raw line, so
+        # any container prefix hid the pair completely.
+        ("a quoted setext release heading is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "> [0.9.7]", "> -------", "- b"]),
+        ("...with no space after the `>` on the underline", 1,
+         ["# Changelog", V5, "### Added", "- a", "> [0.9.7]", ">-------", "- b"]),
+        ("...and the diagnostic names it a setext heading", 0,
+         ["# Changelog", V5, "### Added", "- a", "> [0.9.7]", "> -------", "- b",
+          "@@says:is a setext heading@@"]),
+        ("a quoted setext CATEGORY is a finding too", 1,
+         ["# Changelog", V5, "### Added", "- a", "> Added", "> -----", "- b"]),
+        ("a nested `>>` setext pair is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", ">> [0.9.7]", ">> -------", "- b"]),
+        # ...and the shapes that are NOT headings, which is what stops the rule
+        # from firing on ordinary quoted prose and ordinary lists.
+        ("quote depths that differ are not a setext pair", 0,
+         ["# Changelog", V5, "### Added", "- a", "> [0.9.7]", ">> -------", "- b"]),
+        ("a blank quoted line breaks the pair", 0,
+         ["# Changelog", V5, "### Added", "- a", "> [0.9.7]", ">", "> -------", "- b"]),
+        ("`- foo` over `- ---` is two list items, not a heading", 0,
+         ["# Changelog", V5, "### Added", "- foo", "- ---", "- b"]),
+        # ...and the same inside a quote, where the alignment test cannot see it:
+        # `> - ---` opens a list in the quote rather than continuing the
+        # paragraph, so the marker has to be looked for anywhere in the prefix.
+        ("`> foo` over `> - ---` is a list in a quote, not a heading", 0,
+         ["# Changelog", V5, "### Added", "- a", "> foo", "> - ---", "- b"]),
+        ("a quoted `---` on its own is a thematic break", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "> ---", "", "- b"]),
+        ("ordinary quoted prose is untouched", 0,
+         ["# Changelog", V5, "### Added", "- a", "> a note", "- b"]),
+        # A list continuation line IS the underline's home when the subject is a
+        # list item: the column the marker established, not column 0.
+        ("a setext pair inside a list item is a finding", 1,
+         ["# Changelog", V5, "### Added", "- a", "", "- [0.9.7]", "  -------", "", "- b"]),
+        ("...but not when the underline misses that column", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "- [0.9.7]", "-------", "", "- b"]),
 
         # -- categories live at column 0 (restriction 4) ----------------------
         ("a category indented one column is a finding", 1,

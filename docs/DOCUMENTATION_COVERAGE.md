@@ -6,8 +6,8 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **changelog system round 4** (2026-09-05), whose
-entry is LAST in the body; before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
+Last updated: for the **0.9.7 change set** — the **changelog system round 5** (2026-09-05), whose
+entry is LAST in the body; before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
 `Vectorscope Persistence` Settings relabel** (2026-09-05); before it
@@ -9104,3 +9104,72 @@ and the Drive-crossing swap behaviour — and keeps the v0.9.4 → v0.9.6 case a
 rule was first written from. §Scope for v0.9.6 is kept as written (it is the record of a completed
 audition) with a note that a v0.9.7 audition needs its own scope. `RELEASE_PROCESS.md` step 7 now
 names the same audition the audition document does.
+
+
+## Changelog system round 5 (2026-09-05) — containers, normalised once
+
+**What the round is.** Two review findings, both real, and both the same defect in two of
+Markdown's heading forms: a heading behind a container marker was matched by a pattern that tried
+to recognise the marker AND the heading in one go, so the pattern's idea of a container had to be
+right for the heading to be seen at all. It was not.
+
+**Finding 1 — blockquoted ATX headings bypassed validation.** `CONTAINER_HIDDEN_HEADING` hard-coded
+`>[ \t]?` and then demanded a `#` immediately after. CommonMark 5.1 gives the marker at most ONE
+space, so `>  ## [0.9.7] — 2026-09-05` leaves one column of content indent and is a heading to every
+renderer — and was ordinary prose to this checker, while the extractor folded the release into the
+notes above it. The renderer's real boundary, measured rather than assumed: a heading at 0, 1, 2, 3
+and 4 spaces after the `>`; at five the content reaches four columns and becomes an indented code
+block. The checker now matches that exactly.
+
+**Finding 2 — blockquoted setext releases bypassed validation.** The setext rule matched the RAW
+line, so any container prefix hid the pair completely. `> [0.9.7]` over `> -------` is a level-2
+heading; it was invisible here and the release boundary was missed.
+
+**The fix is one normalisation, not two patterns.** `strip_containers` removes the container prefix
+and hands what is left to the SAME functions that read a top-level line — `atx_heading` for ATX,
+`SETEXT_UNDERLINE`, `LIST_MARKER`, `interrupts_paragraph` and `LINK_DEFINITION` for setext. A
+container does not change what a heading IS; it changes the column its content starts at. The two
+container kinds are counted differently because CommonMark treats them differently:
+
+- a `>` contributes **depth**, and its optional space belongs to the marker — which is why
+  `> [0.9.7]` over `>-------` is one heading (the renderer says so) and why counting columns instead
+  made that pair look mismatched. Depth must match exactly: depth 1 under depth 2 is not a heading.
+- a list marker contributes a **content column**, which a continuation line is indented to —
+  `- [0.9.7]` over `  -------` is a heading, `- [0.9.7]` over `-------` is not, and `- foo` over
+  `- ---` is two list items. A list marker anywhere in the underline's prefix disqualifies it,
+  because `> - ---` opens a list inside the quote rather than continuing the paragraph above it.
+
+`deep_heading` is deliberately NOT consulted for container content: four columns inside a container
+is that container's indented code block, exactly as at top level, and the renderer agrees.
+
+**Measured against the renderer, 37 shapes.** Every blockquote spacing from 0 to 5 for ATX and 0 to
+4 for setext; `>>`, `> >`, `> -`, `- >`, 3- and 4-column indents before the `>`, a tab after it;
+nested setext, mismatched depths in both directions, list setext at the right and the wrong column,
+`- foo`/`- ---`, `> foo`/`> - ---`, a quoted `---` alone, a blank quoted line inside a pair, a
+quoted `=` underline, nested and ordered list markers, and a continuation line. **37 of 37 agree
+with `markdown-it-py` on whether a heading exists**, and where one does the checker reports it.
+
+**The extractor needed no change, and that is the finding.** `changelog-section.awk` boundaries on
+`^## \[`, so it does not terminate at a container-hidden heading and cannot extract one — checked
+on a file carrying both defects: the extractor publishes all three "releases" as one section and
+neither hidden version extracts to anything, while the checker names both. Forbidden structure now
+fails closed on the validator side rather than being silently reinterpreted on the publishing side.
+
+**Measured.** Self-test 230 → 253 cases. Nine mutations each fail a named case: the old
+"heading must follow the marker immediately" rule, dropping container normalisation from
+`classify_heading`, matching setext on the raw underline, matching the setext subject on the raw
+line, ignoring quote depth, allowing a list marker on the underline, looking for that marker only at
+the head of the prefix, consulting `deep_heading` for container content, and counting a blockquote
+in columns instead of depth. Running the changelog rules over all 84 real documents gives identical
+results before and after this round, so nothing here fires on real prose. `check-docs` 120 files
+clean, `check-citations` 415 anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**The real `CHANGELOG.md` is byte-unchanged** and still parses to 23 entries (21 versions + the 2
+reconstructed, in order), 40 categories, no findings, with the parser and the extractor agreeing
+line-for-line on all 22 versioned boundaries.
+
+**Residuals unchanged from round 4**, plus one this round records: a list whose content column is 4
+or more puts its setext underline beyond `SETEXT_UNDERLINE`'s own `^ {0,3}` allowance, so such a
+pair is not detected. It is an under-report in a shape (a release name written as a setext heading
+inside a deeply indented list) that nothing in this repository writes, and closing it needs the
+container stack this file deliberately does not keep.
