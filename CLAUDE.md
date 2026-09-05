@@ -7,6 +7,10 @@
 > [`DSP_POLICY.md`](docs/policies/DSP_POLICY.md), and the **COMPATIBILITY** family. After modifying
 > code, you MUST sync the affected documentation per
 > [`DOCUMENTATION_LIFECYCLE_POLICY.md`](docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md).
+> Writing or editing a `CHANGELOG.md` entry is governed by
+> [`CHANGELOG_POLICY.md`](docs/policies/CHANGELOG_POLICY.md): read the current published
+> [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) spec first, audit the repository
+> before asserting what a release contains, and never write the git log into the changelog.
 
 **Hard-stop changes (stop and request human review — a green build does not clear these):** parameter
 ID rename/removal · serialization schema change · threading-model change · DSP signal-order change ·

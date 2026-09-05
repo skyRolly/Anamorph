@@ -1,7 +1,8 @@
 # Changelog
 
-All notable user-visible changes to Anamorph. Format follows [Keep a Changelog]; versions are
-`MAJOR.MINOR.PATCH` (pre-1.0). Entries up to and including `[0.8.12]` predate git tags and cite
+All notable user-visible changes to Anamorph. Format follows [Keep a Changelog] 1.1.0 — its six
+change categories (Added, Changed, Deprecated, Removed, Fixed, Security), in that order, once each
+per release; versions are `MAJOR.MINOR.PATCH` per [Semantic Versioning] (pre-1.0). Entries up to and including `[0.8.12]` predate git tags and cite
 their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`).
 The annotated-tag convention and the tag-triggered release pipeline exist
 (`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
@@ -13,7 +14,50 @@ Source. Until then every entry cites a commit SHA or a PR. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.7] — 2026-09-03
+## [0.9.7] — 2026-09-05
+
+### Changed
+- **The Settings row that sets the vectorscope's afterglow is now labelled *Vectorscope
+  Persistence*.** It read *Vectorscope Persist*. The control itself is untouched — same place in
+  the Settings overlay, same 0 … 100 % range, same default, same behaviour while you drag it — and
+  the value your projects already store is read and written exactly as before, so every saved
+  session opens the same as it did. Display name only: the identifier `int_scopePersist` is
+  unchanged, as the ID-immutability rule requires (`PARAMETER_COMPATIBILITY_POLICY` rule 2).
+  Evidence: PR #139. [Verified]
+- **Turning up Drive, or changing algorithm, no longer interrupts the sound when Oversampling is
+  on.** The latency the plug-in reports to your DAW used to depend on whether the oversampler was
+  actually running, and it only runs when it has something to do — so with Oversampling set to 2×,
+  4× or 8×, nudging Drive off zero (or switching to Chorus / Dimension-D) switched it on and changed
+  the reported latency mid-move. DAWs answer a latency change by restarting their audio graph, which
+  you hear as a dropout in the middle of an ordinary knob move. The reported latency now depends on
+  the **Oversampling setting and nothing else**, so it changes when you change that setting and at
+  no other time. Everything else about oversampling is unchanged, including the part that matters
+  for CPU: the oversampler is still switched off whenever there is no nonlinear work for it, and the
+  saving was measured to confirm it (2×/4×/8× with Drive at 0 cost the same as Oversampling Off,
+  within run-to-run noise). While it is off, a plain delay of the same few samples holds the timing
+  steady in its place, so the plug-in still delivers exactly the delay it declares.
+  **What changes for you:** selecting 2×/4×/8× now shows a few samples of latency in your DAW even on
+  a fully linear chain, where it used to show none — that is the price of the sound no longer being
+  interrupted, and the delay is compensated as it always was. One trade in the other direction: an
+  A/B, preset or undo switch **that changes the Oversampling setting itself** while Drive is at zero
+  now dips briefly, where it used to be seamless — the same short dip the Oversampling menu has
+  always had, so both ways of changing that setting now behave alike, and switching Oversampling is
+  the one moment a dip is expected. Sessions are unaffected — nothing in the saved file changed.
+  Decision: ADR-0034. Regression coverage: DSP test 52.
+  Evidence: PR #135. [Verified]
+- **Turning Drive through zero with Oversampling on is now seamless, not merely un-interrupted.**
+  Crossing that point switches the plug-in between two internal paths, and the short dip that used to
+  cover the switch could not actually cover it: the dip is applied at the very end of the chain,
+  *after* Haas and Velvet Noise, whose delay lines are 12–35 ms long. The switch's discontinuity went
+  into those delay lines at full level and came back out one delay later, with the dip already over —
+  which is why the interruption was reported specifically for Haas and Velvet Noise. The two paths
+  are now **crossfaded** instead, so there is nothing to cover and no dip at all. Measured on a steady
+  tone across every combination of 2×/4×/8×, Haas and Velvet Noise, Drive rising through zero and
+  falling through it, as an instant jump and as a 300 ms knob turn: the result is now identical to
+  the same move with Oversampling switched off. The oversampler is still switched off when there is
+  no nonlinear work for it, so the CPU saving is unchanged. Decision: ADR-0035.
+  Regression coverage: DSP test 53. Evidence: PR #135. [Verified]
+
 ### Fixed
 - **A project reopened from your DAW's own thread can no longer come up playing the sound of the
   session it replaced, and an autosave can no longer capture a preset half-loaded.** Two closely
@@ -66,50 +110,6 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   later on a named slot — were never affected, and their star still restores exactly as stored.
   Decision: ADR-0036 §22. Regression coverage: State test 60.
   Evidence: PR #137. [Verified]
-
-### Changed
-- **The Settings row that sets the vectorscope's afterglow is now labelled *Vectorscope
-  Persistence*.** It read *Vectorscope Persist*. The control itself is untouched — same place in
-  the Settings overlay, same 0 … 100 % range, same default, same behaviour while you drag it — and
-  the value your projects already store is read and written exactly as before, so every saved
-  session opens the same as it did. Display name only: the identifier `int_scopePersist` is
-  unchanged, as the ID-immutability rule requires (`PARAMETER_COMPATIBILITY_POLICY` rule 2).
-  Evidence: PR #137. [Verified]
-- **Turning up Drive, or changing algorithm, no longer interrupts the sound when Oversampling is
-  on.** The latency the plug-in reports to your DAW used to depend on whether the oversampler was
-  actually running, and it only runs when it has something to do — so with Oversampling set to 2×,
-  4× or 8×, nudging Drive off zero (or switching to Chorus / Dimension-D) switched it on and changed
-  the reported latency mid-move. DAWs answer a latency change by restarting their audio graph, which
-  you hear as a dropout in the middle of an ordinary knob move. The reported latency now depends on
-  the **Oversampling setting and nothing else**, so it changes when you change that setting and at
-  no other time. Everything else about oversampling is unchanged, including the part that matters
-  for CPU: the oversampler is still switched off whenever there is no nonlinear work for it, and the
-  saving was measured to confirm it (2×/4×/8× with Drive at 0 cost the same as Oversampling Off,
-  within run-to-run noise). While it is off, a plain delay of the same few samples holds the timing
-  steady in its place, so the plug-in still delivers exactly the delay it declares.
-  **What changes for you:** selecting 2×/4×/8× now shows a few samples of latency in your DAW even on
-  a fully linear chain, where it used to show none — that is the price of the sound no longer being
-  interrupted, and the delay is compensated as it always was. One trade in the other direction: an
-  A/B, preset or undo switch **that changes the Oversampling setting itself** while Drive is at zero
-  now dips briefly, where it used to be seamless — the same short dip the Oversampling menu has
-  always had, so both ways of changing that setting now behave alike, and switching Oversampling is
-  the one moment a dip is expected. Sessions are unaffected — nothing in the saved file changed.
-  Decision: ADR-0034. Regression coverage: DSP test 52.
-  Evidence: PR #135. [Verified]
-- **Turning Drive through zero with Oversampling on is now seamless, not merely un-interrupted.**
-  Crossing that point switches the plug-in between two internal paths, and the short dip that used to
-  cover the switch could not actually cover it: the dip is applied at the very end of the chain,
-  *after* Haas and Velvet Noise, whose delay lines are 12–35 ms long. The switch's discontinuity went
-  into those delay lines at full level and came back out one delay later, with the dip already over —
-  which is why the interruption was reported specifically for Haas and Velvet Noise. The two paths
-  are now **crossfaded** instead, so there is nothing to cover and no dip at all. Measured on a steady
-  tone across every combination of 2×/4×/8×, Haas and Velvet Noise, Drive rising through zero and
-  falling through it, as an instant jump and as a 300 ms knob turn: the result is now identical to
-  the same move with Oversampling switched off. The oversampler is still switched off when there is
-  no nonlinear work for it, so the CPU saving is unchanged. Decision: ADR-0035.
-  Regression coverage: DSP test 53. Evidence: PR #135. [Verified]
-
-### Fixed
 - **A click when Drive crossed zero while the plug-in was bypassed, with Oversampling on.** The same
   moving latency had a second effect nobody had reported: with Bypass engaged the output is the
   untouched input, held back by exactly the amount the plug-in declares — so when that amount changed
@@ -187,18 +187,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   focus choosers, the on/off switches) a preset can only store the step, so a value set part-way
   between steps — which only a host's automation can produce — was remembered as itself and the
   preset went modified the instant you loaded it back. Both now compare what a preset file can
-  actually hold (State test 52). A tenth pass closed three more. The A/B button decided which slot to
-  go to from what it had been showing, before the plug-in had taken on a project that was arriving
-  at that same moment — so when that project put you on the other slot, the button did nothing; the
-  plug-in now decides after taking the project on (State test 53). Changing an unrelated Setting —
+  actually hold (State test 52). A tenth pass closed two more. Changing an unrelated Setting —
   Meters, say — while such a project was arriving could briefly put the *previous* project's
   Oversampling back into the engine until the new one finished arriving; a Setting now only ever
   publishes itself (State test 54). And the case the ninth pass left open is closed: loading a preset
   while automation moved a control could mark it unchanged against a sound its file does not hold;
   the mark is now taken from what the preset actually contains, with no cost in spurious modified
-  dots (State test 55). The same pass's audit found the preset Prev/Next buttons had the A/B button's
-  problem — stepping from the row you had been on rather than the one an arriving project put you
-  on — and fixed it the same way (State test 56). An eleventh pass removed a tolerance that had
+  dots (State test 55). An eleventh pass removed a tolerance that had
   crept into the previous one: while a preset was loading, an automation move too small to see was
   being folded into the "unchanged" mark, so a frequency control nudged by a hair during the load
   left the preset looking untouched when it was not. Nothing is folded in any more — a change either
@@ -211,9 +206,10 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   the project had arrived with rather than the one you had just chosen. A save now describes the
   session as it will be once the arriving project has fully settled, setting by setting, so a change
   you have already made can only be absent from a save if a newer project arrived after it (State
-  test 59). [Verified]
+  test 59). Evidence: PR #137. [Verified]
 
 ## [0.9.6] — 2026-09-03
+
 ### Fixed
 - **A damaged value in a project file is now cleaned out of the file even when it happens to read as
   the setting you already had.** Opening a project with a damaged control value repairs it, and the
@@ -526,6 +522,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Evidence: PR #134. [Verified]
 
 ## [0.9.5] — 2026-08-30
+
 ### Changed
 - **The Windows build is now compiled for AVX2 too — same sound, and the same new minimum CPU
   requirement the Linux and Intel-macOS builds already carry.** The Windows plug-in now requires an
@@ -612,72 +609,6 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Evidence: PR #130. [Verified]
 
 ## [0.9.4] — 2026-08-21
-### Fixed
-- **A tooltip no longer shows the wrong control's text after it moves.** Hover a Settings control,
-  then move the pointer onto the hint box that appeared: the box steps aside as before, but its text
-  could change to a *neighbouring* control's — the *UI Scale* hint becoming the *Oversampling* one —
-  and stay wrong until you moved the mouse again, when it would snap back. The two halves of the
-  hint disagreed with each other: the text was taken from a remembered answer to "what is the
-  pointer on?", refreshed only when the mouse sends an event, while the box was placed at the
-  pointer's live position, read fresh every time. Move the pointer somewhere that produces no event
-  — onto the hint box, which is then taken off screen — and the remembered answer is left behind
-  while the box follows the pointer, so the box lands where you are and is labelled with where you
-  were. The remembered answer is now checked against the live pointer before it is used, and what
-  the pointer is really on is used when it disagrees. Nothing else about how hints appear,
-  disappear or move has changed.
-- **Controls under the Settings, About and Save Preset panels no longer light up either, and a
-  control can no longer stay lit after the pointer leaves.** Two follow-ons to the drop-down fix
-  below, with the same cause and two different second halves. The panels cover the editor but are
-  not menus, so the earlier fix did not reach them: a knob behind the dim still contained the
-  pointer and still glowed through it, on a control that a click would only dismiss the panel. What
-  counts as a covering panel is now **derived rather than listed** — a visible child of the editor
-  that takes the pointer away from what is behind it — so a panel added later is covered without
-  anyone remembering to add it, while the panel's *own* controls keep hovering normally and the
-  Bypass dim, which covers the editor but never takes the pointer, correctly leaves the controls
-  under it live. Separately, a control could stay glowing after the pointer left the plug-in window
-  in one movement: the idle check that keeps a still editor quiet asked "did anything move last
-  frame?", which reads the same whether a control is dark or fully lit, so it could go quiet on a
-  glowing one. It now also asks whether anything is *still* lit, and the fade is made to land on
-  zero instead of approaching it forever — without that second half the first would have kept the
-  editor busy permanently. **The idle cost is unchanged: measured 0 passes per second with the
-  pointer outside the window, before and after, including straight after a hover.** [Verified]
-- **Controls under an open drop-down no longer light up as if you were pointing at them.** With a
-  menu open — any of the seven drop-downs, or the preset list — moving the pointer **onto the menu**
-  lit whatever sat underneath it: a knob's arc glow and pointer halo, a switch's pill, the A/B
-  racetrack. The pointer was on the menu, so the highlight was claiming something untrue, and the
-  control it pointed at could not be clicked anyway (a click there just dismisses the menu). The
-  cause is that hover here is worked out from the pointer's **position** rather than from mouse
-  enter/exit events — deliberately, since v0.6.1, because those events were unreliable and left
-  highlights stuck on. A position, though, cannot tell that something has been drawn on top of it,
-  so a covered control kept containing the pointer exactly as before. It is now also tested against
-  the open menu, and a control the menu covers stays dark. **Nothing else changes**: the box you
-  opened keeps its own highlight (the list opens flush *below* it, so the pointer really is still on
-  the box), a control merely *beside* the menu is unaffected, and hover returns the instant the menu
-  closes. Measured on the running editor rather than argued: with the pointer on an open list, the
-  knob beneath it went from fully lit to fully dark, and with a preset library large enough to make
-  the preset menu tall, so did the A/B control under that. [Verified]
-- **The macOS Audio Unit is now covered by the release gate.** `Anamorph.component` — the build
-  Logic Pro and GarageBand load, and the only format they load — previously shipped having passed
-  **no automated format-conformance validation at all**: the gate located and validated
-  `Anamorph.vst3` on all three platforms and nothing else. The macOS job now runs pluginval against
-  the AU as well, at the same strictness, in both modes, three consecutive passes each. It is
-  installed into `~/Library/Audio/Plug-Ins/Components/` and the AudioComponent registry refreshed
-  first, because macOS resolves Audio Units through that registry and a never-installed `.component`
-  can report zero plugin types however correct it is. This closes the coverage gap
-  `docs/procedures/TESTING.md` recorded under "Gaps in the automated coverage". [Verified]
-- **The "deterministic" half of the pluginval release gate was not deterministic.** Both validation
-  scripts passed `--random-seed 0`, and pluginval reads 0 as *"generate a random seed"*
-  (`Source/PluginTests.h`; `Source/CommandLine.cpp` forwards the flag only when it differs from that
-  default), so the flag was equivalent to passing nothing and a failure in that mode could not be
-  reproduced from its log. Measured against pluginval 1.0.4 and this plug-in: seed 0 printed a
-  different `Random seed:` on every run, seed 1 printed `0x1` every time. The seed is now pinned to
-  the same nonzero value in `run-pluginval.sh` and `run-pluginval.ps1`, so all three platforms
-  validate against one seed. The gate still passes at strictness 10 in both modes ×3. [Verified]
-- **A non-universal macOS build could have shipped labelled universal.** The packaging step printed
-  `lipo -archs` output rather than checking it, and `lipo -archs` exits 0 for any valid Mach-O
-  including a thin one — so an arm64-only build would have produced a green run with the evidence
-  sitting unread in the log, and Intel users a plug-in that cannot load. Both slices are now
-  asserted per bundle. [Verified]
 
 ### Changed
 - **The Linux version is now built with Clang, and the compiler is chosen rather than inherited.**
@@ -779,7 +710,75 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Cross-link: `docs/architecture/design-decisions/ADR-0026-juce-9.0.1-upgrade.md`,
   `worklogs/JUCE901_UPGRADE_v0.9.4.md`. [Verified]
 
+### Fixed
+- **A tooltip no longer shows the wrong control's text after it moves.** Hover a Settings control,
+  then move the pointer onto the hint box that appeared: the box steps aside as before, but its text
+  could change to a *neighbouring* control's — the *UI Scale* hint becoming the *Oversampling* one —
+  and stay wrong until you moved the mouse again, when it would snap back. The two halves of the
+  hint disagreed with each other: the text was taken from a remembered answer to "what is the
+  pointer on?", refreshed only when the mouse sends an event, while the box was placed at the
+  pointer's live position, read fresh every time. Move the pointer somewhere that produces no event
+  — onto the hint box, which is then taken off screen — and the remembered answer is left behind
+  while the box follows the pointer, so the box lands where you are and is labelled with where you
+  were. The remembered answer is now checked against the live pointer before it is used, and what
+  the pointer is really on is used when it disagrees. Nothing else about how hints appear,
+  disappear or move has changed.
+- **Controls under the Settings, About and Save Preset panels no longer light up either, and a
+  control can no longer stay lit after the pointer leaves.** Two follow-ons to the drop-down fix
+  below, with the same cause and two different second halves. The panels cover the editor but are
+  not menus, so the earlier fix did not reach them: a knob behind the dim still contained the
+  pointer and still glowed through it, on a control that a click would only dismiss the panel. What
+  counts as a covering panel is now **derived rather than listed** — a visible child of the editor
+  that takes the pointer away from what is behind it — so a panel added later is covered without
+  anyone remembering to add it, while the panel's *own* controls keep hovering normally and the
+  Bypass dim, which covers the editor but never takes the pointer, correctly leaves the controls
+  under it live. Separately, a control could stay glowing after the pointer left the plug-in window
+  in one movement: the idle check that keeps a still editor quiet asked "did anything move last
+  frame?", which reads the same whether a control is dark or fully lit, so it could go quiet on a
+  glowing one. It now also asks whether anything is *still* lit, and the fade is made to land on
+  zero instead of approaching it forever — without that second half the first would have kept the
+  editor busy permanently. **The idle cost is unchanged: measured 0 passes per second with the
+  pointer outside the window, before and after, including straight after a hover.** [Verified]
+- **Controls under an open drop-down no longer light up as if you were pointing at them.** With a
+  menu open — any of the seven drop-downs, or the preset list — moving the pointer **onto the menu**
+  lit whatever sat underneath it: a knob's arc glow and pointer halo, a switch's pill, the A/B
+  racetrack. The pointer was on the menu, so the highlight was claiming something untrue, and the
+  control it pointed at could not be clicked anyway (a click there just dismisses the menu). The
+  cause is that hover here is worked out from the pointer's **position** rather than from mouse
+  enter/exit events — deliberately, since v0.6.1, because those events were unreliable and left
+  highlights stuck on. A position, though, cannot tell that something has been drawn on top of it,
+  so a covered control kept containing the pointer exactly as before. It is now also tested against
+  the open menu, and a control the menu covers stays dark. **Nothing else changes**: the box you
+  opened keeps its own highlight (the list opens flush *below* it, so the pointer really is still on
+  the box), a control merely *beside* the menu is unaffected, and hover returns the instant the menu
+  closes. Measured on the running editor rather than argued: with the pointer on an open list, the
+  knob beneath it went from fully lit to fully dark, and with a preset library large enough to make
+  the preset menu tall, so did the A/B control under that. [Verified]
+- **The macOS Audio Unit is now covered by the release gate.** `Anamorph.component` — the build
+  Logic Pro and GarageBand load, and the only format they load — previously shipped having passed
+  **no automated format-conformance validation at all**: the gate located and validated
+  `Anamorph.vst3` on all three platforms and nothing else. The macOS job now runs pluginval against
+  the AU as well, at the same strictness, in both modes, three consecutive passes each. It is
+  installed into `~/Library/Audio/Plug-Ins/Components/` and the AudioComponent registry refreshed
+  first, because macOS resolves Audio Units through that registry and a never-installed `.component`
+  can report zero plugin types however correct it is. This closes the coverage gap
+  `docs/procedures/TESTING.md` recorded under "Gaps in the automated coverage". [Verified]
+- **The "deterministic" half of the pluginval release gate was not deterministic.** Both validation
+  scripts passed `--random-seed 0`, and pluginval reads 0 as *"generate a random seed"*
+  (`Source/PluginTests.h`; `Source/CommandLine.cpp` forwards the flag only when it differs from that
+  default), so the flag was equivalent to passing nothing and a failure in that mode could not be
+  reproduced from its log. Measured against pluginval 1.0.4 and this plug-in: seed 0 printed a
+  different `Random seed:` on every run, seed 1 printed `0x1` every time. The seed is now pinned to
+  the same nonzero value in `run-pluginval.sh` and `run-pluginval.ps1`, so all three platforms
+  validate against one seed. The gate still passes at strictness 10 in both modes ×3. [Verified]
+- **A non-universal macOS build could have shipped labelled universal.** The packaging step printed
+  `lipo -archs` output rather than checking it, and `lipo -archs` exits 0 for any valid Mach-O
+  including a thin one — so an arm64-only build would have produced a green run with the evidence
+  sitting unread in the log, and Intel users a plug-in that cannot load. Both slices are now
+  asserted per bundle. [Verified]
+
 ## [0.9.3] — 2026-08-11
+
 ### Changed
 - **The Widen row's two drop-downs are now equal width.** *Widen* and the *Style* / *Focus* box beside
   it were noticeably different sizes, with the join between them sitting right of the panel's centre.
@@ -872,6 +871,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   manual re-install matrix pending on a Mac — `docs/procedures/TESTING.md`]
 
 ## [0.9.2] — 2026-08-07
+
+### Changed
+- **The Settings control "Window Size" is now labelled "UI Scale"** (and its tooltip with it).
+  Display name only: the XS…XL steps, what they scale, and the stored session value are
+  unchanged — the identifier `int_uiScale` is immutable and untouched, so saved sessions recall
+  exactly as before. Evidence: PR #100. [Verified]
+- **The installers name their components in title case.** macOS: *VST3 Plug-in*, *AU Plug-in*,
+  *Standalone Application* (was "VST3 plug-in" / "AU plug-in" / "Standalone application").
+  Windows: the two destination-page labels now read *VST3 Plug-in folder* and *Standalone
+  Application folder*. Wording only — what gets installed, and where, is unchanged.
+  Evidence: PR #100. [Verified]
+
 ### Fixed
 - **The preset drop-down no longer outlives the plug-in window — and clicking it afterwards no
   longer crashes.** With the preset menu open, closing the plug-in window (or switching to
@@ -908,18 +919,8 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   from. Sound and parameter values were never affected.
   Evidence: PR #100. [Verified]
 
-### Changed
-- **The Settings control "Window Size" is now labelled "UI Scale"** (and its tooltip with it).
-  Display name only: the XS…XL steps, what they scale, and the stored session value are
-  unchanged — the identifier `int_uiScale` is immutable and untouched, so saved sessions recall
-  exactly as before. Evidence: PR #100. [Verified]
-- **The installers name their components in title case.** macOS: *VST3 Plug-in*, *AU Plug-in*,
-  *Standalone Application* (was "VST3 plug-in" / "AU plug-in" / "Standalone application").
-  Windows: the two destination-page labels now read *VST3 Plug-in folder* and *Standalone
-  Application folder*. Wording only — what gets installed, and where, is unchanged.
-  Evidence: PR #100. [Verified]
-
 ## [0.9.1] — 2026-07-30
+
 ### Changed
 - **The manufacturer code is now `RTec` (was `Anmf`)** — the 4-character vendor identifier every
   RollyTech plug-in shares. It abbreviated the *product* rather than the company, which does not
@@ -935,6 +936,12 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Evidence: PR #97. [Verified]
 
 ## [0.9.0] — 2026-07-26
+**Compatibility**
+- **No parameter, preset, session or DSP behaviour changes in this release.** Sessions and
+  presets saved with any 0.8.x build load unchanged (and this is now regression-tested —
+  see Build / Release below). The engine's output and reported latency are bit-identical
+  to v0.8.12 across the JUCE 9 bump. Evidence: PR #82/#83 validation records. [Verified]
+
 ### Added
 - **User-installable packages for every platform**, published alongside the flat ZIP
   archive downloads (extracting any zip shows the packaged files directly — no wrapper
@@ -1000,52 +1007,6 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   per-platform installation guide (`docs/user/INSTALLATION.md`). `INSTALL.txt` is now
   included in the Linux and Windows zips (the macOS zip already shipped one).
   Evidence: PR #87 (v0.9.0 release prep). [Verified]
-
-### Changed
-- **JUCE framework 8.0.14 → 9.0.0**, pinned by the release tag's immutable commit SHA
-  `f8f8864172464b9adf9eba6101e1f784838d1597` instead of a mutable tag name (supply-chain
-  hardening; ADR-0022). Zero project C++ source changes were required. Behaviour proven
-  unchanged: 32-scenario engine twin-dump bit-identical (all hashes and reported latencies
-  equal under 8.0.14 and 9.0.0), 140-check DSP suite + 774-check state suite green, and the
-  parameter-registry snapshot frozen under 8.0.14 passes byte-for-byte under 9.0.0.
-  Source builds on Linux need one new package: `libegl-dev` (JUCE 9 creates GL contexts
-  via EGL). Cross-link: `docs/architecture/design-decisions/ADR-0022-juce-9.0.0-upgrade-sha-pin.md`,
-  `worklogs/JUCE9_MIGRATION_v0.8.13.md`. Evidence: PR #83 / commit `edcba14`. [Verified]
-
-### Fixed
-- **Per-push CI artifacts extract straight to the payload** — downloading `Anamorph-<OS>`
-  and extracting the artifact zip shows `Anamorph.vst3`, the Standalone and `INSTALL.txt`
-  directly: no nested archive, no wrapper folder. **Release downloads keep correct Unix
-  permissions**: the artifact transport strips file modes from directory trees, so the
-  release job restores the executable bits on the payload paths before archiving each
-  validated staging tree into `Anamorph-<version>-<OS>.zip`, then fails closed unless every
-  expected executable carries its mode inside the published zip. On the per-push loose-file
-  route the executable bits are dropped by the transport; `INSTALL.txt` documents the
-  `sh install.sh` / `chmod +x` fallbacks.
-  Evidence: PR #84 / commit `42dd8ae` (permission handling; verified against CI-built
-  bytes in `worklogs/release-hardening/RH_PR8_RELEASE_PIPELINE.md` §6c); PR #92 (flat
-  per-push artifacts); the artifact-cleanup pass (single artifact per platform). [Verified]
-
-### Compatibility
-- **No parameter, preset, session or DSP behaviour changes in this release.** Sessions and
-  presets saved with any 0.8.x build load unchanged (and this is now regression-tested —
-  see Build / Release below). The engine's output and reported latency are bit-identical
-  to v0.8.12 across the JUCE 9 bump. Evidence: PR #82/#83 validation records. [Verified]
-
-### Documentation
-- Post-v0.8.12 repository audit: drift corrections across ~20 developer documents, KI-013
-  recorded (macOS release-outside stuck-press reconcile is inert), and the product-readiness
-  roadmap that scheduled this release's packaging/user-docs work (including the newly
-  identified RH-R10 third-party licence-compliance item).
-  Evidence: PR #81 / commit `15c4159`; PR #86 / commits `96f2ae5`, `2a55b14`. [Verified]
-- The documentation set is now grouped into **four explicitly separated classes** — user,
-  internal/testing, legal/licensing and developer — with the authority rules for each in
-  `docs/SOURCE_OF_TRUTH.md` and the index in `README.md`. `docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`
-  gained documentation-only triggers so adding or reclassifying a document, or changing the
-  product/licensing status, forces the corresponding index updates.
-  Evidence: the internal-testing documentation pass. [Verified]
-
-### Build / Release
 - **Tag-triggered release pipeline** (`.github/workflows/release.yml`): pushing an annotated
   `vX.Y.Z` tag validates fail-closed (annotated tag ⇄ CMake `project VERSION` ⇄ CHANGELOG
   section), runs the full existing 3-OS build/validation matrix exactly once via
@@ -1068,7 +1029,44 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Evidence: PR #87 (v0.9.0 release prep); PR #89 (packaging rework); PR #92 (flat
   artifacts); the artifact-cleanup pass. [Verified]
 
+### Changed
+- **JUCE framework 8.0.14 → 9.0.0**, pinned by the release tag's immutable commit SHA
+  `f8f8864172464b9adf9eba6101e1f784838d1597` instead of a mutable tag name (supply-chain
+  hardening; ADR-0022). Zero project C++ source changes were required. Behaviour proven
+  unchanged: 32-scenario engine twin-dump bit-identical (all hashes and reported latencies
+  equal under 8.0.14 and 9.0.0), 140-check DSP suite + 774-check state suite green, and the
+  parameter-registry snapshot frozen under 8.0.14 passes byte-for-byte under 9.0.0.
+  Source builds on Linux need one new package: `libegl-dev` (JUCE 9 creates GL contexts
+  via EGL). Cross-link: `docs/architecture/design-decisions/ADR-0022-juce-9.0.0-upgrade-sha-pin.md`,
+  `worklogs/JUCE9_MIGRATION_v0.8.13.md`. Evidence: PR #83 / commit `edcba14`. [Verified]
+- Post-v0.8.12 repository audit: drift corrections across ~20 developer documents, KI-013
+  recorded (macOS release-outside stuck-press reconcile is inert), and the product-readiness
+  roadmap that scheduled this release's packaging/user-docs work (including the newly
+  identified RH-R10 third-party licence-compliance item).
+  Evidence: PR #81 / commit `15c4159`; PR #86 / commits `96f2ae5`, `2a55b14`. [Verified]
+- The documentation set is now grouped into **four explicitly separated classes** — user,
+  internal/testing, legal/licensing and developer — with the authority rules for each in
+  `docs/SOURCE_OF_TRUTH.md` and the index in `README.md`. `docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.md`
+  gained documentation-only triggers so adding or reclassifying a document, or changing the
+  product/licensing status, forces the corresponding index updates.
+  Evidence: the internal-testing documentation pass. [Verified]
+
+### Fixed
+- **Per-push CI artifacts extract straight to the payload** — downloading `Anamorph-<OS>`
+  and extracting the artifact zip shows `Anamorph.vst3`, the Standalone and `INSTALL.txt`
+  directly: no nested archive, no wrapper folder. **Release downloads keep correct Unix
+  permissions**: the artifact transport strips file modes from directory trees, so the
+  release job restores the executable bits on the payload paths before archiving each
+  validated staging tree into `Anamorph-<version>-<OS>.zip`, then fails closed unless every
+  expected executable carries its mode inside the published zip. On the per-push loose-file
+  route the executable bits are dropped by the transport; `INSTALL.txt` documents the
+  `sh install.sh` / `chmod +x` fallbacks.
+  Evidence: PR #84 / commit `42dd8ae` (permission handling; verified against CI-built
+  bytes in `worklogs/release-hardening/RH_PR8_RELEASE_PIPELINE.md` §6c); PR #92 (flat
+  per-push artifacts); the artifact-cleanup pass (single artifact per platform). [Verified]
+
 ## [0.8.12] — 2026-07-22
+
 ### Changed
 - **Advanced-mode GPU/rendering cost reduced (performance Wave 6; pixel-identical, no behaviour
   change).** The per-band solo-headphone glyph in the spectral band editor no longer wraps its
@@ -1115,6 +1113,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Evidence: PR #80 (v0.8.12 GUI interaction fix). [Verified]
 
 ## [0.8.11] — 2026-07-20
+
 ### Changed
 - **Per-block and settled-state CPU cost reduced further (performance Wave 5; no behaviour
   change by design).** Eight Class-A trims, all bit-exact on the 19-scenario engine
@@ -1246,6 +1245,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   `worklogs/release-hardening/RH_PR2_INVESTIGATION.md`). Evidence: PR #63. [Verified]
 
 ## [0.8.10] — 2026-07-14
+**Known issues**
+- **KI-009 (documented, not fixed):** in **REAPER on Linux/macOS**, the Save Preset text field
+  loses keyboard focus — pressing Space while it is active can trigger the DAW transport, and after
+  the field loses focus a click cannot restore editing until the Save Preset window is closed and
+  reopened. Other tested DAWs do not reproduce it; the root cause is not yet confirmed. Recorded as
+  a **host-specific issue pending manual investigation** (`docs/KNOWN_ISSUES.md` KI-009). No fix in
+  this release.
+
 ### Changed
 - **Alt/Option-click on an unsoloed Band Solo button now solos ONLY that band (exclusive
   solo)** — every other band's solo turns off — instead of soloing all bands at once (the 0.8.9
@@ -1428,15 +1435,8 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   bulk swap) / ≥ 0.65× (algorithm swap) of steady level — the pre-fix engine measures 0.000
   on both and fails. Evidence: this PR. [Verified]
 
-### Known issues
-- **KI-009 (documented, not fixed):** in **REAPER on Linux/macOS**, the Save Preset text field
-  loses keyboard focus — pressing Space while it is active can trigger the DAW transport, and after
-  the field loses focus a click cannot restore editing until the Save Preset window is closed and
-  reopened. Other tested DAWs do not reproduce it; the root cause is not yet confirmed. Recorded as
-  a **host-specific issue pending manual investigation** (`docs/KNOWN_ISSUES.md` KI-009). No fix in
-  this release.
-
 ## [0.8.9] — 2026-07-12
+
 ### Added
 - **Alt/Option-click on a Band Solo button acts on every band at once**: alt-clicking a soloed
   band's headphone icon clears the whole solo mask; alt-clicking an unsoloed band's icon solos
@@ -1446,42 +1446,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   treats it as one step, and preset recall (which clears the live solo) is unaffected. Validated
   headless across 1/2/3/4-band layouts × soloed/unsoloed/mixed masks, host-automation interplay,
   undo/redo and preset load (18/18 assertions). Evidence: PR #56. [Verified]
-### Fixed
-- **A destroyed plugin instance no longer leaves a dangling parameter listener registered.**
-  The Wave-2 micro-animation re-arm listener (`viewGenWatcher`, added for the Bypass view
-  parameter) was registered in the constructor but — unlike every other parameter listener in
-  the processor — was never unregistered in the destructor; the view parameter (owned by the
-  `AudioProcessor` base subobject, torn down after derived members) could then outlive the
-  watcher holding a dangling listener pointer. Registration and unregistration are now fully
-  symmetric across all three listener mechanisms. Internal-only: no DSP, latency, parameter,
-  automation, preset or serialization effect under normal operation. Validated with
-  `valgrind --tool=memcheck` across the self-test suite's ~20 processor construct/destruct
-  cycles (0 errors from 0 contexts). Evidence: PR #58 (commit f6a5d49). [Verified]
-- **The Band Solo tooltip reads `Solo this band` again.** The `- Alt-click solos / clears all
-  bands` suffix shipped alongside the alt-click feature was never requested wording and has been
-  removed; the alt-click behaviour itself is unchanged. UI copy is now covered by an explicit
-  rule in `AI_AGENT_POLICY.md` (user-visible text requires explicit instruction).
-  Evidence: PR #58. [Verified]
-- **Toggling Advanced mode no longer flashes a torn frame** (most controls appearing to jump or
-  shake for one frame). Both toggle paths resized the window before updating the mode's control
-  visibility; `setSize` notifies the host synchronously mid-handler, so a host that paints inside
-  that callback rendered the new layout with the old mode's visible-control set (entering
-  Advanced: grown window with empty Multiband/Input/Output tiers; leaving: Advanced controls
-  stacked over the Simple layout). The calls now run visibility-first (the order the constructor
-  always used); the tree is mode-consistent at every instant a host can observe it, with no added
-  layout work and no change to the resize/DPI/reopen paths. Reproduced and verified fixed under a
-  host-wrapper shim that paints at the `childBoundsChanged` instant (all three toggle paths);
-  post-toggle layout proven motionless across 30/30 sampled frames. Evidence: PR #56. [Verified]
-- **The Save Preset name field reliably receives typing — Space included — instead of the host**
-  (Space previously triggered host transport). The focus grab ran synchronously from inside the
-  preset-menu callback, while the menu's desktop window still owned the OS focus; JUCE abandons a
-  focus move when the peer is unfocused, so the grab was a silent no-op on hosts whose window
-  keeps focus, and every keystroke fell through to the host. The grab is now verified and
-  re-tried across the next message-loop passes (SafePointer-guarded, stops when the overlay
-  closes), by which time the menu window is gone and the peer can genuinely take OS focus. While
-  the field edits, it consumes its keys (Space inserts a space); with the overlay closed,
-  key routing to the host is exactly as before. Validated headless end-to-end through the real
-  preset menu with keys dispatched through the peer. Evidence: PR #56. [Verified]
+
 ### Changed
 - **The editor's micro-animation poll re-arms on change-generation counters (Wave 2 / H15)**:
   with the cursor outside the editor, no button held and the previous pass settled, the 60 Hz
@@ -1656,12 +1621,51 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   (−39 %), active default 45.4 → 30.4 µs/block (−33 %); every no-solo scenario drops ~15-20 µs.
   Evidence: PR #55. [Verified]
 
+### Fixed
+- **A destroyed plugin instance no longer leaves a dangling parameter listener registered.**
+  The Wave-2 micro-animation re-arm listener (`viewGenWatcher`, added for the Bypass view
+  parameter) was registered in the constructor but — unlike every other parameter listener in
+  the processor — was never unregistered in the destructor; the view parameter (owned by the
+  `AudioProcessor` base subobject, torn down after derived members) could then outlive the
+  watcher holding a dangling listener pointer. Registration and unregistration are now fully
+  symmetric across all three listener mechanisms. Internal-only: no DSP, latency, parameter,
+  automation, preset or serialization effect under normal operation. Validated with
+  `valgrind --tool=memcheck` across the self-test suite's ~20 processor construct/destruct
+  cycles (0 errors from 0 contexts). Evidence: PR #58 (commit f6a5d49). [Verified]
+- **The Band Solo tooltip reads `Solo this band` again.** The `- Alt-click solos / clears all
+  bands` suffix shipped alongside the alt-click feature was never requested wording and has been
+  removed; the alt-click behaviour itself is unchanged. UI copy is now covered by an explicit
+  rule in `AI_AGENT_POLICY.md` (user-visible text requires explicit instruction).
+  Evidence: PR #58. [Verified]
+- **Toggling Advanced mode no longer flashes a torn frame** (most controls appearing to jump or
+  shake for one frame). Both toggle paths resized the window before updating the mode's control
+  visibility; `setSize` notifies the host synchronously mid-handler, so a host that paints inside
+  that callback rendered the new layout with the old mode's visible-control set (entering
+  Advanced: grown window with empty Multiband/Input/Output tiers; leaving: Advanced controls
+  stacked over the Simple layout). The calls now run visibility-first (the order the constructor
+  always used); the tree is mode-consistent at every instant a host can observe it, with no added
+  layout work and no change to the resize/DPI/reopen paths. Reproduced and verified fixed under a
+  host-wrapper shim that paints at the `childBoundsChanged` instant (all three toggle paths);
+  post-toggle layout proven motionless across 30/30 sampled frames. Evidence: PR #56. [Verified]
+- **The Save Preset name field reliably receives typing — Space included — instead of the host**
+  (Space previously triggered host transport). The focus grab ran synchronously from inside the
+  preset-menu callback, while the menu's desktop window still owned the OS focus; JUCE abandons a
+  focus move when the peer is unfocused, so the grab was a silent no-op on hosts whose window
+  keeps focus, and every keystroke fell through to the host. The grab is now verified and
+  re-tried across the next message-loop passes (SafePointer-guarded, stops when the overlay
+  closes), by which time the menu window is gone and the peer can genuinely take OS focus. While
+  the field edits, it consumes its keys (Space inserts a space); with the overlay closed,
+  key routing to the host is exactly as before. Validated headless end-to-end through the real
+  preset menu with keys dispatched through the peer. Evidence: PR #56. [Verified]
+
 ## [0.8.8] — 2026-07-08
+
 ### Added
 - Documentation library under `docs/`: architecture reference + 12 ADRs, binding policies,
   procedures, and tracking docs (HANDOVER, POSTMORTEMS, KNOWN_ISSUES, FUTURE_RISKS, REPOSITORY_MAP,
   DOCUMENTATION_COVERAGE), plus this `CHANGELOG.md`. No plugin/behaviour change.
   Evidence: commits `c9b7fdf`, `a9e915e`, `97060b2`. [Verified]
+
 ### Changed
 - **Engine CPU micro-optimisations**: the drive waveshaper's peak-preserving makeup (1/tanh) and
   its gain/blend reads are hoisted out of the per-sample loop once both smoothers have settled
@@ -1776,6 +1780,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   guarded with `if: ${{ !cancelled() }}`, so a deterministic-mode failure no longer skips the randomise
   run — both modes report independently every CI run. The job still fails if either mode fails.
   Evidence: `.github/workflows/build.yml`; `docs/procedures/CI_CD.md`.
+
 ### Fixed
 - **A/B compare slots are independent from plugin open again.** The two A/B slots were snapshotted
   **lazily** on the *first* A/B switch (`abEnsureInit`), so editing A *before* ever visiting B made B
@@ -1885,6 +1890,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   `testAbActiveClampOnCorruptState`. [Verified]
 
 ## [0.8.7] — 2026-06-28
+
 ### Fixed
 - Audible click when toggling Multiband Enable while a Band Solo was active: the post-everything
   Band-Solo monitor now runs every block (mask driven from `mbEnable`) instead of being hard-gated,
@@ -1892,9 +1898,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   `testSoloMultibandEnableClickFree`. [Verified]
 
 ## [0.8.6] — 2026-06-28
-### Fixed
-- Alt/Option-click knob reset now animates like double-click (a `resetSweep` flag opts the eased
-  travel out of the button-held snap). Evidence: commit `10fbfa0`. [Partially Verified]
+
 ### Changed
 - Multiband Enable now transitions via a ~12 ms click-free output crossfade (warm crossover bank),
   not a duck-to-silence — no mute/dropout. Evidence: commit `10fbfa0`; test
@@ -1902,49 +1906,62 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 - Renamed the automation parameter display name **"Haas Side" → "Haas Focus"** (ID `haasSide`
   unchanged). Evidence: commit `10fbfa0`; `src/PluginParameters.cpp:135-136`. [Verified]
 
+### Fixed
+- Alt/Option-click knob reset now animates like double-click (a `resetSweep` flag opts the eased
+  travel out of the button-held snap). Evidence: commit `10fbfa0`. [Partially Verified]
+
 ## [0.8.5] — 2026-06-28
+
 ### Fixed
 - Linux editor crash under rapid open/close (OpenGL/X11 `XEmbedComponent` use-after-free): the
   editor now renders CPU-side on Linux/BSD (visually identical). Evidence: commit `c924ff8`. [Partially Verified] / code [Verified] (`src/PluginEditor.cpp:247-257`).
 
 ## [0.8.4] — 2026-06-27
+
 ### Changed
 - Oversampling, Window Size, Scope Persistence, Tooltips, UI Animations and Show Meters are hidden
   from the host parameter list (moved out of the APVTS into a host-hidden `InternalState`); pre-0.8.4
   sessions are migrated. Evidence: commit `6bd158b`. [Partially Verified] / code [Verified].
 
 ## [0.8.3] — 2026-06-27
+
 ### Changed
 - Bypass is a true click-free crossfade and the chain + Level-Match analysis always run (Bypass only
   changes the audio path). Confirmed there is no 0 dBFS output clipper. Evidence: commit `3686d12`;
   tests `testBypassCrossfadeClickFree`, `testLevelMatchRunsInBypass`. [Verified]
 
 ## [0.8.2] — 2026-06-27
+
+### Changed
+- Advanced state travels with A/B; Settings/Multiband-Bands/Solo de-cluttered from automation;
+  M/S-clarified automation names. Evidence: commit `f259a80`. [Partially Verified]
+
 ### Fixed
 - Multiband crossover automation no longer explodes near Nyquist (Nyquist-safe clamp + top-down
   ordering); meters recover from a NaN burst; Level Match reads ~0 at unity with Multiband on; clean
   Bypass transitions; meter holds reset on a transport seek. Evidence: commit `f259a80`; tests
   `testCrossoverAutomationSafe`, `testMeterRecoversFromNaN`, `testMultibandUnityMatch`. [Verified]
-### Changed
-- Advanced state travels with A/B; Settings/Multiband-Bands/Solo de-cluttered from automation;
-  M/S-clarified automation names. Evidence: commit `f259a80`. [Partially Verified]
 
 ## [0.8.1] — 2026-06-23
-### Fixed
-- Band Solo is click-free and ghost-free (warm monitor, no duck); Level Match no longer ratchets
-  toward −24 dB or slams at Mix=100% (Measure + absolute Predict). Evidence: commit `6d2023b`; tests
-  `testSoloNoGhostInSilence`, `testLevelMatchNoRatchet`, `testLevelMatchMixCouplingNoSlam`. [Verified]
+
 ### Changed
 - Folded the two outlier transitions into the one anti-click layer; band-pass preview is
   press-and-hold only. Evidence: commit `6d2023b`. [Partially Verified]
 
+### Fixed
+- Band Solo is click-free and ghost-free (warm monitor, no duck); Level Match no longer ratchets
+  toward −24 dB or slams at Mix=100% (Measure + absolute Predict). Evidence: commit `6d2023b`; tests
+  `testSoloNoGhostInSilence`, `testLevelMatchNoRatchet`, `testLevelMatchMixCouplingNoSlam`. [Verified]
+
 ## [0.8.0] — 2026-06-22
+
 ### Changed
 - Signal flow rebuilt as a strict serial chain: **Processing → Mix → Mono Maker (post-Mix) → Output
   → Band Solo monitor (post-everything)**, eliminating the solo/low-cut bug class. Evidence: commit
   `018dcdd`; tests `testMonoMakerPostMix`, `testSoloMonitor`. [Verified]
 
 ## [0.7.5] – [0.7.0] — 2026-06-21…22
+
 ### Changed
 - 0.7.5 (`6846c60`): Mono Maker lows follow band 0's solo. 0.7.4 (`818b22f`): keep Mono Maker lows
   present while a band is soloed. 0.7.3 (`37526da`): Multiband Solo obeys Mix; Windows window-size
@@ -1961,4 +1978,6 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
+[0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
+[Semantic Versioning]: https://semver.org/
