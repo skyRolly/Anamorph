@@ -9,8 +9,11 @@ does, on what is notable enough to record). Where the two agree, the spec's word
 
 ## Rules
 
-1. **Format: Keep a Changelog.** Sections per version: Added / Changed / Fixed / Removed /
-   Deprecated / Security, newest first. Semantic-ish `MAJOR.MINOR.PATCH` (pre-1.0 line).
+1. **Format: Keep a Changelog.** Sections per version: Added / Changed / Deprecated / Removed /
+   Fixed / Security, newest first — the specification's own order, and the order rule 6 enforces.
+   (This line read `Added / Changed / Fixed / Removed / Deprecated / Security` until 2026-09-05,
+   which is where the file's misordered entries came from.) `MAJOR.MINOR.PATCH` per
+   [Semantic Versioning](https://semver.org/): pre-1.0, so a `0.y.z` release may change behaviour.
 2. **No invented history.** Never infer that a past version contained a feature by reasoning
    backward from current code. Each entry cites an **Evidence Source** — a commit SHA, commit
    range, or PR (entries up to `[0.8.12]` predate git tags, so a release tag alone was never
