@@ -2,15 +2,19 @@
 
 All notable user-visible changes to Anamorph. Format follows [Keep a Changelog] 1.1.0 — its six
 change categories (Added, Changed, Deprecated, Removed, Fixed, Security), in that order, once each
-per release; versions are `MAJOR.MINOR.PATCH` per [Semantic Versioning] (pre-1.0). Entries up to and including `[0.8.12]` predate git tags and cite
-their **commit SHA + date** as the Evidence Source (per `docs/policies/CHANGELOG_POLICY.md`).
+per release; versions are `MAJOR.MINOR.PATCH` per [Semantic Versioning] (pre-1.0). Entries up to and
+including `[0.8.12]` predate git tags, so a release tag was never available as evidence for them
+(`docs/policies/CHANGELOG_POLICY.md` rule 2).
 The annotated-tag convention and the tag-triggered release pipeline exist
 (`docs/procedures/RELEASE_PROCESS.md` §Tagging), but **no tag has been cut yet**: `[0.9.0]` was
 written as a release entry and then superseded before it was tagged, so the first annotated
 `vX.Y.Z` tag will be **v0.9.7** (0.9.0 through 0.9.6 were each written up and superseded
 before tagging),
 and from that tag onward the tag is also a citable Evidence
-Source. Until then every entry cites a commit SHA or a PR. Entries for the
+Source. Until then an entry cites a PR or a commit SHA — with one historical
+exception, recorded rather than rewritten: eighteen citations — sixteen in `[0.8.8]`
+and two in `[0.9.0]` — name the source file they changed instead, which rule 2 does
+not accept and which those entries predate. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
@@ -623,7 +627,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   still fails the build. **The system requirement is unchanged — Ubuntu 23.10 / Debian 13 or newer**
   (see the entry above; an interim step through GCC 16 during this release would have raised it to
   Ubuntu 24.04, and building with Clang does not). Nothing about the audio changes: same source,
-  different compiler. [Verified]
+  different compiler. Evidence: PR #122 / commit `12c545d`. [Verified]
 - **The Linux installer and uninstaller can now be told what to do instead of asking.**
   `./install.sh --user` and `./install.sh --system` answer the question the script otherwise puts
   on screen, which is the only way to choose when there is no terminal to ask on — a piped or
@@ -636,7 +640,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   the install would land somewhere unpredictable. `-h` prints the usage. **With no options nothing
   changes**: an interactive run still asks and defaults to your own account, a run with no terminal
   still installs for the current user, and `sudo ./install.sh` still installs system-wide without
-  asking. Linux only. [Verified]
+  asking. Linux only. Evidence: PR #121 / commit `f967639`. [Verified]
 - **A copy of your previous plug-in left behind by an interrupted install is now kept rather than
   deleted, and the installer will not stage into a folder it cannot vouch for.** If an install is
   stopped in the moment between setting the old version aside and putting the new one in place, the
@@ -647,7 +651,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   accepted only when it is a real directory owned by the account doing the install and not writable
   by anyone else — a symlink, someone else's directory or a world-writable one is refused by name
   with the paths to inspect, rather than used. An install that cannot find a folder it trusts stops
-  without having changed anything. Linux only. [Verified]
+  without having changed anything. Linux only. Evidence: PR #121 / commit `f967639`. [Verified]
 - **The Linux build now states which systems it runs on, and can no longer raise that bar
   unnoticed.** The shipped Linux VST3 and Standalone record the glibc/libstdc++ versions of the
   machine they were linked on, and a distribution older than those cannot load them at all — the
@@ -660,7 +664,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   asserted on every build against the exact stripped bytes you receive, so a future toolchain move
   that drops more systems fails the build rather than a user's DAW. Lowering the floor needs an
   older toolchain or a sysroot and is a separate decision that has not been taken; tracked as
-  **KI-023**. Windows and macOS are unaffected. [Verified]
+  **KI-023**. Windows and macOS are unaffected. Evidence: PR #113 / commit `5034d8f`. [Verified]
 - **Building Anamorph from source now needs a C++23 compiler** (was C++17). The project compiles
   at `CMAKE_CXX_STANDARD 23` with compiler extensions still off; CMake ≥ 3.22 and the JUCE 9.0.1
   pin are unchanged, and the released binaries are unaffected — this changes the build
@@ -681,7 +685,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   A C++20 fallback was evaluated and not taken; the one Windows caveat (MSVC has no stable
   `/std:c++23`, so CMake requests `/std:c++latest`) is recorded in the ADR.
   Cross-link: `docs/architecture/design-decisions/ADR-0027-cxx23-language-standard.md`,
-  `worklogs/CXX23_MIGRATION_v0.9.4.md`. [Verified]
+  `worklogs/CXX23_MIGRATION_v0.9.4.md`. Evidence: PR #105 / commit `e974cb0`. [Verified]
 - **JUCE framework 9.0.0 → 9.0.1**, pinned by the release tag's immutable commit SHA
   `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` — the same SHA-pin mechanism the 9.0.0 bump
   introduced, so the dependency still cannot move under a re-pointed tag (ADR-0026).
@@ -708,7 +712,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   fractional display scaling. On **macOS**: guards in the Metal layer renderer and in the message
   manager during shutdown, plus a new CoreAudio path in the Standalone's device layer.
   Cross-link: `docs/architecture/design-decisions/ADR-0026-juce-9.0.1-upgrade.md`,
-  `worklogs/JUCE901_UPGRADE_v0.9.4.md`. [Verified]
+  `worklogs/JUCE901_UPGRADE_v0.9.4.md`. Evidence: PR #104 / commit `3ebdf69`. [Verified]
 
 ### Fixed
 - **A tooltip no longer shows the wrong control's text after it moves.** Hover a Settings control,
@@ -722,7 +726,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   while the box follows the pointer, so the box lands where you are and is labelled with where you
   were. The remembered answer is now checked against the live pointer before it is used, and what
   the pointer is really on is used when it disagrees. Nothing else about how hints appear,
-  disappear or move has changed.
+  disappear or move has changed. Evidence: PR #120 / commit `4fcc41c`. [Verified]
 - **Controls under the Settings, About and Save Preset panels no longer light up either, and a
   control can no longer stay lit after the pointer leaves.** Two follow-ons to the drop-down fix
   below, with the same cause and two different second halves. The panels cover the editor but are
@@ -738,7 +742,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   glowing one. It now also asks whether anything is *still* lit, and the fade is made to land on
   zero instead of approaching it forever — without that second half the first would have kept the
   editor busy permanently. **The idle cost is unchanged: measured 0 passes per second with the
-  pointer outside the window, before and after, including straight after a hover.** [Verified]
+  pointer outside the window, before and after, including straight after a hover.** Evidence: PR #119 / commit `e54e331`. [Verified]
 - **Controls under an open drop-down no longer light up as if you were pointing at them.** With a
   menu open — any of the seven drop-downs, or the preset list — moving the pointer **onto the menu**
   lit whatever sat underneath it: a knob's arc glow and pointer halo, a switch's pill, the A/B
@@ -753,7 +757,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   the box), a control merely *beside* the menu is unaffected, and hover returns the instant the menu
   closes. Measured on the running editor rather than argued: with the pointer on an open list, the
   knob beneath it went from fully lit to fully dark, and with a preset library large enough to make
-  the preset menu tall, so did the A/B control under that. [Verified]
+  the preset menu tall, so did the A/B control under that. Evidence: PR #117 / commit `06804e8`. [Verified]
 - **The macOS Audio Unit is now covered by the release gate.** `Anamorph.component` — the build
   Logic Pro and GarageBand load, and the only format they load — previously shipped having passed
   **no automated format-conformance validation at all**: the gate located and validated
@@ -762,7 +766,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   installed into `~/Library/Audio/Plug-Ins/Components/` and the AudioComponent registry refreshed
   first, because macOS resolves Audio Units through that registry and a never-installed `.component`
   can report zero plugin types however correct it is. This closes the coverage gap
-  `docs/procedures/TESTING.md` recorded under "Gaps in the automated coverage". [Verified]
+  `docs/procedures/TESTING.md` recorded under "Gaps in the automated coverage". Evidence: PR #108 / commit `6e57666`. [Verified]
 - **The "deterministic" half of the pluginval release gate was not deterministic.** Both validation
   scripts passed `--random-seed 0`, and pluginval reads 0 as *"generate a random seed"*
   (`Source/PluginTests.h`; `Source/CommandLine.cpp` forwards the flag only when it differs from that
@@ -770,12 +774,12 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   reproduced from its log. Measured against pluginval 1.0.4 and this plug-in: seed 0 printed a
   different `Random seed:` on every run, seed 1 printed `0x1` every time. The seed is now pinned to
   the same nonzero value in `run-pluginval.sh` and `run-pluginval.ps1`, so all three platforms
-  validate against one seed. The gate still passes at strictness 10 in both modes ×3. [Verified]
+  validate against one seed. The gate still passes at strictness 10 in both modes ×3. Evidence: PR #108 / commit `6e57666`. [Verified]
 - **A non-universal macOS build could have shipped labelled universal.** The packaging step printed
   `lipo -archs` output rather than checking it, and `lipo -archs` exits 0 for any valid Mach-O
   including a thin one — so an arm64-only build would have produced a green run with the evidence
   sitting unread in the log, and Intel users a plug-in that cannot load. Both slices are now
-  asserted per bundle. [Verified]
+  asserted per bundle. Evidence: PR #108 / commit `6e57666`. [Verified]
 
 ## [0.9.3] — 2026-08-11
 

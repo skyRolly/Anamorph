@@ -6,8 +6,8 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **changelog system round 2c** (2026-09-05), whose
-entry is LAST in the body; before it **changelog system round 2** (2026-09-05); before it
+Last updated: for the **0.9.7 change set** — the **changelog system round 2d** (2026-09-05), whose
+entry is LAST in the body; before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
 `Vectorscope Persistence` Settings relabel** (2026-09-05); before it
@@ -8797,5 +8797,76 @@ fixes carry the mutation proofs recorded with them. `check-docs` 120 files clean
 
 **Reported, not fixed (outside this round's scope).** `LEVEL5_AUDITION.md:15-16` still says the
 2026-08-15 v0.9.4 audition "is invalid for **v0.9.6**"; the current version is 0.9.7, which
-`RELEASE_PROCESS.md:32` names correctly. The audition document is not part of the changelog
+`RELEASE_PROCESS.md:32-33` names correctly. The audition document is not part of the changelog
 enforcement chain and was left alone.
+
+
+## Changelog system round 2d (2026-09-05) — the audit of the audit
+
+**What the round is.** An eight-lens adversarial read-only audit of the finished chain (policy ↔
+template ↔ parser ↔ extractor ↔ release process ↔ the documents that describe them), with the
+findings re-verified by hand. It found four behavioural defects the previous rounds' own fixes had
+introduced or left, and five false statements. The audit's refuter fleet stopped part-way on an
+account spend limit, so every finding recorded here was reproduced directly rather than accepted
+from an agent.
+
+**Four behavioural defects, each with a case that fails against the previous implementation.**
+
+- **CRLF killed every fence in the extractor.** `check-docs.py` reads with Python's universal
+  newlines and never sees a `\r`; `changelog-section.awk`'s closing-fence test required nothing but
+  spaces and tabs after the delimiter run, so on a CRLF `CHANGELOG.md` no fence could ever close.
+  The first fenced block ran to EOF and every older entry was published inside the newest one's
+  notes, with the checker reporting the file clean. The closer now accepts `\r`.
+- **A tab-indented ``` opened a fence it should not have.** The indent guard measured CHARACTERS
+  (`match(fl, /[^ \t]/) <= 4`), and one tab is four COLUMNS — an indented code block, not a fence.
+  It now counts columns exactly as `indent_columns` does, tab stops included.
+- **The entry-boundary rule looked at level 2 only.** The extractor terminates on `^## [` and on
+  nothing else, so a `# Appendix` below the entries is published inside the notes of the entry above
+  it exactly as `## Appendix` is. The more eye-catching spelling was the one the rule missed.
+- **A code span hid a heading from the rule whose job is to see it.** `blanked_lines` blanks inline
+  code spans for the prose checks, and a span may run across a line boundary, so a backtick opened in
+  one bullet blanked the `## ` heading two lines below. The four changelog rules now read the RAW
+  lines — the same view the extractor has, fences excluded and nothing else.
+
+**Five self-test cases that never distinguished a broken implementation.** The closing `]` in the
+extractor's entry test (without it `## [0.9.80]` answers to `ver=0.9.8`), the `^` anchor on its
+termination rule, the one-to-three-space fence indent, the tab-indent rule above, and the CRLF
+closer were all asserted in the header and exercised by nothing. Each now has a case, and each case
+is mutation-proved.
+
+**`[0.9.4]` cited no Evidence Source at all** — 12 bullets, 0 citations, the only entry in the file
+in that state (`[0.9.6]` cites 32 for 32 bullets). Rule 2 requires one. Each bullet was traced to
+the commit that introduced it AND whose subject describes the change, then to the merge that carried
+it: PR #122 / `12c545d` (Clang), #121 / `f967639` (installer hardening, twice), #113 / `5034d8f`
+(the ABI floor), #105 / `e974cb0` (C++23), #104 / `3ebdf69` (JUCE 9.0.1), #120 / `4fcc41c` (the
+tooltip), #119 / `e54e331` (panels and the idle gate), #117 / `06804e8` (drop-down occlusion), #108
+/ `6e57666` (the AU gate, pluginval determinism, the universal-build check). Twelve lines changed,
+each differing from its original only by the inserted clause — verified mechanically, not by eye.
+
+**Five false statements corrected.** The preamble said pre-`[0.8.12]` entries cite their
+"**commit SHA + date**"; no citation in the file carries a date, 47 of them in that range cite a PR,
+and the policy the sentence invokes never mentions a date. It also said "every entry cites a commit
+SHA or a PR" — eighteen (sixteen in `[0.8.8]`, two in `[0.9.0]`) name the source file they changed
+instead; that is now recorded as the historical exception it is rather than asserted away.
+`check-docs.py`'s PROVENANCE paragraph claimed the file was "adopted verbatim from the sibling
+product Anabasis apart from this paragraph and the product name": the two differ by 68 deletions and
+994 insertions, and the sibling has a `check_changelog_notes_boundary` of its own, so "the CHANGELOG
+rules are this repository's own" was false too. What IS true was measured and stated: six functions
+— `fence_mask`, `indented_code_mask`, `blanked_lines`, `check_tables`, `check_links`,
+`check_lazy_continuation` — are still byte-for-byte identical to the sibling's. The docstring also
+said the four `check_changelog_*` rules sit below `parse_changelog`; the boundary rule is above it.
+And `HANDOVER.md` still dated the `[0.9.7]` heading 2026-09-03.
+
+**Measured.** Self-test 152 → 160 cases. Twelve extractor mutations (E1–E12) and two parser
+mutations each fail a named case. `check-docs` 120 files clean, `check-citations` 415 anchors clean,
+`preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**Reported, not fixed.** (a) `check-docs.py`'s `FENCE` accepts Unicode whitespace (`\s{0,3}`) where
+the extractor accepts only spaces and tabs, so a non-breaking-space-indented fence is a fence to one
+and not the other. `FENCE` is one of the six functions still shared byte-for-byte with Anabasis;
+diverging it is a product-family decision, not a fix to make here. (b) The `[0.9.7]` D-2 bullet
+reads as a round-by-round transcript, which rule 3's "the git log is not the changelog" discourages.
+Round 2 already removed the passages that were duplicated elsewhere in the entry; rewriting the rest
+is a stylistic rewrite of an accurate entry, which the same policy's "correct minimally" forbids.
+(c) `LEVEL5_AUDITION.md:15-16` still says the 2026-08-15 v0.9.4 audition "is invalid for v0.9.6";
+the current version is 0.9.7, which `RELEASE_PROCESS.md:32-33` names correctly.

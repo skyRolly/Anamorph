@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 """Structural lint for the Anamorph documentation set.
 
-PROVENANCE: adopted verbatim from the sibling product Anabasis
-(`scripts/check-docs.py`) apart from this paragraph and the product name above.
-The first four checks below are structural properties of GitHub-Flavored Markdown,
-not of either product, so there was nothing to adapt -- and a diverged copy of a
-checker is worse than a shared one. The CHANGELOG rules (5) are this repository's
-own, and are shared with `release.yml`'s extractor rather than with the sibling. The defects each check names happened in
-Anabasis; they are reproducible in any document set written the same way, which
-this one is (same directory layout, same navigation documents, same ADR index).
+PROVENANCE, stated as it stands rather than as it started. Checks 1-4 were adopted
+from the sibling product Anabasis (`scripts/check-docs.py`) and are still BYTE-FOR-BYTE
+identical to it, function for function: `fence_mask`, `indented_code_mask`,
+`blanked_lines`, `check_tables`, `check_links`, `check_lazy_continuation`. They are
+structural properties of GitHub-Flavored Markdown, not of either product, so there was
+nothing to adapt -- and a diverged copy of a checker is worse than a shared one. The
+defects each of them names happened in Anabasis; they are reproducible in any document
+set written the same way, which this one is (same directory layout, same navigation
+documents, same ADR index).
+
+Check 5 is where the two files have diverged, deliberately and by about 930 lines. The
+sibling carries a single `check_changelog_notes_boundary` that reads raw `## ` prefixes;
+this file's version of that rule was rewritten to share `parse_changelog` with three
+further rules -- the heading grammar and ordering, the Keep a Changelog categories, and
+the version link definitions -- none of which the sibling has. Those four, the parser,
+and the self-test that RUNS `scripts/changelog-section.awk` are this repository's own,
+and their counterpart is `release.yml`'s extractor, not the sibling.
 
 
 Five checks, all mechanical and deterministic. Each exists because the defect it
@@ -48,7 +57,9 @@ diff that introduced it:
      entry-heading grammar and newest-first order, Keep a Changelog's six category
      names in their specified order once each per release, and the version link
      definitions. See `parse_changelog` and the four `check_changelog_*` rules
-     below it; the contract they enforce is `docs/policies/CHANGELOG_POLICY.md`.
+     that read it -- `check_changelog_notes_boundary` sits above the parser, the
+     other three below it; the contract they enforce is
+     `docs/policies/CHANGELOG_POLICY.md`.
      The extractor those rules protect is `scripts/changelog-section.awk`, and
      `--self-test` RUNS it: the entry-boundary rule's premise -- that a stray
      `## ` heading below an entry lands in the published notes, and that a fenced
@@ -579,9 +590,14 @@ def check_changelog_notes_boundary(path: Path, lines: list[str], skip: list[bool
         if skip[i]:
             continue
         h = atx_heading(line)
-        if h is None or h[0] != 2:
+        if h is None or h[0] > 2:
             continue
-        if CHANGELOG_VERSION_HEADING.match(line) or h[1].startswith("["):
+        # LEVEL 1 LEAKS EXACTLY AS LEVEL 2 DOES. The extractor terminates on
+        # `^## [` and on nothing else, so a `# Appendix` below the entries is
+        # published inside the notes of the entry above it just as `## Appendix`
+        # is. The rule looked at level 2 only, so the more eye-catching spelling
+        # was the one it missed.
+        if h[0] == 2 and (CHANGELOG_VERSION_HEADING.match(line) or h[1].startswith("[")):
             # Any entry-SHAPED heading arms the rule, even one spelled in a way
             # `release.yml` cannot extract: `check_changelog_headings` reports the
             # spelling, and this rule must still see that the entries have begun.
@@ -593,7 +609,7 @@ def check_changelog_notes_boundary(path: Path, lines: list[str], skip: list[bool
             continue
         if first is not None:
             findings.append(
-                f"{path}:{i + 1}: `## ` heading that is not an entry heading (`## [`), below "
+                f"{path}:{i + 1}: `{'#' * h[0]} ` heading that is not an entry heading (`## [`), below "
                 f"the first entry (line {first + 1}) -- release.yml ends a release's notes at "
                 f"the next `## [`, so this section is published inside whichever entry it "
                 f"happens to sit under. Move it ABOVE the first entry heading, or into an "
@@ -1083,10 +1099,18 @@ def analyse(path: Path, lines: list[str], root: Path) -> list[str]:
     findings += check_tables(path, text, skip)
     findings += check_links(path, text, skip, root)
     findings += check_lazy_continuation(path, text, skip)
-    findings += check_changelog_notes_boundary(path, text, skip)
-    findings += check_changelog_headings(path, text, skip)
-    findings += check_changelog_categories(path, text, skip)
-    findings += check_changelog_links(path, text, skip)
+    # THE CHANGELOG RULES READ THE RAW LINES, not `text`. `blanked_lines` blanks
+    # inline code spans for the prose checks, and a code span may run across a
+    # line boundary -- so a backtick opened in one bullet blanked the `## `
+    # heading two lines below it, and the one rule whose whole job is to see that
+    # heading did not. `release.yml`'s extractor has no notion of a code span
+    # either; it sees fences and nothing else, which is exactly what `skip`
+    # already carries. Feeding these four rules the same view the extractor has
+    # is what makes them speak about the same document.
+    findings += check_changelog_notes_boundary(path, lines, skip)
+    findings += check_changelog_headings(path, lines, skip)
+    findings += check_changelog_categories(path, lines, skip)
+    findings += check_changelog_links(path, lines, skip)
     return findings
 
 
@@ -1237,6 +1261,19 @@ def self_test() -> int:
          ["# Changelog", V5, "### Added", "  ## Acknowledgements"]),
         ("a demoted sub-section ends them early", 1,
          ["# Changelog", V5, "### Added", "## Fixed", "- y"]),
+        # A LEVEL-1 heading leaks identically -- the extractor terminates on
+        # `^## [` and on nothing else -- and the rule used to look at level 2
+        # only, so the more eye-catching spelling was the one it missed.
+        ("a trailing `# ` section is the same defect at level 1", 1,
+         ["# Changelog", V5, "### Added", "# Appendix", "- y"]),
+        ("a `### ` sub-section is still not one", 0,
+         ["# Changelog", V5, "### Added", "### Fixed", "- y"]),
+        # These rules read the RAW lines: a code span opened in one bullet used to
+        # blank the heading two lines below it, and the one rule whose job is to
+        # see that heading did not.
+        ("a code span opened above does not hide a stray heading", 1,
+         ["# Changelog", V5, "### Added", "- a `span opens here", "## Appendix",
+          "and closes here` done"]),
         ("an older version entry is the mechanism working, not a finding", 0,
          ["# Changelog", V5, "### Added", V4, "### Fixed"]),
         # THE ADAPTATION FROM THE SIBLING, asserted rather than assumed. This
@@ -1631,6 +1668,44 @@ def self_test() -> int:
              "0.9.8",
              ["# Changelog", *entry, F + "markdown", F + "cpp", "int x;", F, *older],
              [*entry, F + "markdown", F + "cpp", "int x;", F]),
+            # A CRLF file. `check-docs.py` reads with universal newlines and
+            # never sees the `\r`, so it called such a file clean while no fence
+            # in the extractor could ever close -- the first fenced block ran to
+            # EOF and every older entry was published inside the newest one's
+            # notes. Nothing else in the pipeline would have caught it.
+            ("a CRLF file still closes its fences", "0.9.8",
+             ["# Changelog\r", "## [0.9.8] — 2026-10-01\r", "```\r",
+              "## [0.9.7] — 2026-09-05\r", "```\r", "- z\r",
+              "## [0.9.6] — 2026-08-01\r", "- old\r"],
+             ["## [0.9.8] — 2026-10-01", "```", "## [0.9.7] — 2026-09-05", "```", "- z"]),
+            # The closing `]` in the entry test is load-bearing: without it,
+            # `## [0.9.80]` answers to `ver=0.9.8` and a real release's notes are
+            # taken from the wrong entry.
+            ("a longer version is not a prefix match",
+             "0.9.8",
+             ["# Changelog", "## [0.9.80] — 2026-12-01", "### Fixed", "- wrong",
+              *entry],
+             entry),
+            # The `^` anchor on the termination rule: a bullet that quotes an
+            # entry heading mid-line must not end the extraction.
+            ("a mid-line `## [` in a bullet does not terminate the entry",
+             "0.9.8",
+             ["# Changelog", *entry, "- see ## [0.9.7] for the original", *older],
+             [*entry, "- see ## [0.9.7] for the original"]),
+            # ONE TAB IS FOUR COLUMNS, so a tab-indented ``` is an indented code
+            # block and must not open a fence. Measured in characters it did, and
+            # the mask then ran on until the next delimiter -- merging the
+            # following entry into the release notes above it.
+            ("a tab-indented ``` does not open a fence", "0.9.8",
+             ["# Changelog", *entry, "\t" + F, *older],
+             [*entry, "\t" + F]),
+            # Up to three leading blanks is still a fence (CommonMark 4.5); the
+            # strip is what makes the delimiter comparable.
+            ("a three-space-indented fence is still a fence",
+             "0.9.8",
+             ["# Changelog", *entry, "   " + F, "## [0.9.7] — 2026-09-05", "   " + F,
+              *older],
+             [*entry, "   " + F, "## [0.9.7] — 2026-09-05", "   " + F]),
             # `index(...) == 1` is a PREFIX test, not a substring search: a
             # sentence that merely mentions the heading is prose.
             ("a mid-line mention of the heading does not start an extraction",

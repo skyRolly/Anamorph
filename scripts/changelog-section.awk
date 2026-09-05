@@ -37,21 +37,37 @@
 #      inside a ```markdown example does not end it. With only clause 1 it did:
 #      the example's body was then scanned as real structure and the real closer
 #      re-opened a block, inverting the mask from there to EOF.
-# Up to three leading spaces are allowed on either delimiter, matching
-# `check-docs.py`'s own FENCE pattern; four or more is an indented code block,
-# not a fence, so such a line falls through to the rules below as ordinary
-# content.
+#      A CARRIAGE RETURN COUNTS AS TRAILING WHITESPACE. `check-docs.py` reads the
+#      file with Python's universal newlines and never sees one, so on a CRLF
+#      CHANGELOG.md it reported the file clean while no fence here could ever
+#      close: the first fenced block ran to EOF and every older entry was
+#      published inside the newest one's notes.
+# Up to three leading COLUMNS are allowed on either delimiter; four or more is an
+# indented code block, not a fence, so such a line falls through to the rules
+# below as ordinary content. Columns, not characters: CommonMark advances a tab
+# to the next four-column tab stop, so ONE TAB is four columns and a tab-indented
+# ``` is a code block. Measuring characters instead let it open a fence here, and
+# the mask then ran on until the next delimiter -- merging the following entry
+# into the release notes above it. `check-docs.py`'s `indent_columns` counts the
+# same way, and its docstring records the same defect from the other direction.
 
 /^[ \t]*(```|~~~)/ {
     fl = $0
-    if (match (fl, /[^ \t]/) <= 4) {                 # <= 3 leading blanks
+    ind = 0                                          # indentation in COLUMNS
+    for (k = 1; k <= length (fl); k++) {
+        ch = substr (fl, k, 1)
+        if      (ch == " ")  ind++
+        else if (ch == "\t") ind += 4 - (ind % 4)
+        else break
+    }
+    if (ind <= 3) {
         sub (/^[ \t]+/, "", fl)
         fc = substr (fl, 1, 1)
         n  = 0
         while (substr (fl, n + 1, 1) == fc) n++
         rest = substr (fl, n + 1)
         if (! fence)                                            { fence = 1; f = fc; w = n }
-        else if (fc == f && n >= w && rest ~ /^[ \t]*$/)        { fence = 0 }
+        else if (fc == f && n >= w && rest ~ /^[ \t\r]*$/)      { fence = 0 }
         if (on) print
         next
     }
