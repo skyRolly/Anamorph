@@ -13,122 +13,208 @@
 # `index(...) == 1` is an exact prefix compare: version dots are not treated as
 # regex.
 #
-# A FENCED BLOCK IS DATA, NOT STRUCTURE, and that is what the fence tracking
-# below adds. Without it, a `## [x.y.z]` line inside a fenced sample -- an entry
-# template in the preamble, a quoted diff, a worked example -- would start the
-# extraction there, and a fenced `## [` line inside a real entry would cut that
-# entry short. Neither exists in CHANGELOG.md today (it currently carries no
-# fenced blocks at all), so this changes nothing about the notes any current
-# version produces; it stops the first fenced sample anyone adds from silently
-# corrupting them. This is the other half of a contract `scripts/check-docs.py`
-# gates: below the first entry, every `## ` heading must be a `## [` entry
-# heading, or a section lands in the published notes of a release it does not
-# belong to.
+# ---------------------------------------------------------------------------
+# WHAT THIS SCRIPT PROMISES, AND WHAT IT DOES NOT
 #
-# WHAT CLOSES A FENCE (CommonMark section 4.5), and all three clauses earn their
-# place -- an earlier version of this tracker had only the first and got nested
-# blocks wrong:
+# It is NOT a Markdown parser and does not try to be. It answers exactly one
+# question per line -- "is this a `## [` entry boundary at column 0, or is it
+# inside a fenced example?" -- and it implements just enough of CommonMark to
+# answer it the way `scripts/check-docs.py` answers it. The contract is external
+# and testable, and `--self-test` executes it:
+#
+#     For every document `check-docs.py` accepts, this script finds the same
+#     release boundaries: it never omits a real release, never merges two, and
+#     never publishes a fenced example as one.
+#
+# What that requires it to model, and all it models:
+#   * BLOCKQUOTE markers (`>` plus at most one space), counted as a depth;
+#   * LIST markers (`-`, `*`, `+`, `1.`, `1)` ...), each contributing a CONTENT
+#     COLUMN -- the marker plus its following whitespace, at most four columns of
+#     it, because a fifth means the item begins with an indented code block and
+#     the content column is the marker plus one (CommonMark 5.2);
+#   * TABS, expanded to four-column stops, so every measurement is a column;
+#   * FENCED blocks, with the container they were opened in.
+#
+# What it deliberately does NOT model, because no boundary decision needs it:
+#   setext headings, ATX heading levels, link reference definitions, HTML blocks,
+#   inline code spans, paragraph continuation, or loose/tight list semantics.
+#   `check-docs.py` gates every push and rejects the structures those would
+#   matter for -- a release heading behind a container marker is FORBIDDEN by
+#   `CHANGELOG_POLICY.md`, not something this script has to publish.
+# ---------------------------------------------------------------------------
+#
+# A FENCED BLOCK IS DATA, NOT STRUCTURE. Without the tracking below, a
+# `## [x.y.z]` line inside a fenced sample -- an entry template in the preamble,
+# a quoted diff, a worked example -- would start the extraction there, and a
+# fenced `## [` line inside a real entry would cut that entry short.
+#
+# WHAT OPENS AND CLOSES A FENCE (CommonMark 4.5), each clause earning its place:
 #   1. the SAME character. A `~~~` line inside a ``` block is data.
 #   2. at least AS LONG as the opener. A ``` line inside a ```` block is data --
-#      which is exactly how a Markdown example that itself contains a fence is
-#      written.
-#   3. NOTHING BUT TRAILING WHITESPACE after the run. A line carrying an info
-#      string is an OPENING fence and can never be a closer, so a nested ```cpp
-#      inside a ```markdown example does not end it. With only clause 1 it did:
-#      the example's body was then scanned as real structure and the real closer
-#      re-opened a block, inverting the mask from there to EOF.
-#   4. AND ONE RULE ABOUT OPENING: a BACKTICK fence's info string may not contain
-#      a backtick. ```a`b is a PARAGRAPH, not a fence, so nothing after it is
-#      code. Opening one here hid every following line until the next delimiter
-#      -- the next release's heading included, so two releases ran together in
-#      the published notes. A TILDE fence carries no such restriction: ~~~a`b IS
-#      a fence, and the difference is CommonMark's, not this script's.
-#      A CARRIAGE RETURN COUNTS AS TRAILING WHITESPACE. `check-docs.py` reads the
-#      file with Python's universal newlines and never sees one, so on a CRLF
-#      CHANGELOG.md it reported the file clean while no fence here could ever
-#      close: the first fenced block ran to EOF and every older entry was
+#      which is how a Markdown example that itself contains a fence is written.
+#   3. NOTHING BUT TRAILING WHITESPACE after the run, a CARRIAGE RETURN included.
+#      A line carrying an info string is an OPENING fence and can never be a
+#      closer, so a nested ```cpp inside a ```markdown example does not end it.
+#      `check-docs.py` reads the file with universal newlines and never sees a
+#      CR, so on a CRLF CHANGELOG.md it called the file clean while no fence here
+#      could close: the first block ran to EOF and every older entry was
 #      published inside the newest one's notes.
-# Up to three leading COLUMNS are allowed on either delimiter; four or more is an
-# indented code block, not a fence, so such a line falls through to the rules
-# below as ordinary content. Columns, not characters: CommonMark advances a tab
-# to the next four-column tab stop, so ONE TAB is four columns and a tab-indented
-# ``` is a code block. Measuring characters instead let it open a fence here, and
-# the mask then ran on until the next delimiter -- merging the following entry
-# into the release notes above it. `check-docs.py`'s `indent_columns` counts the
-# same way, and its docstring records the same defect from the other direction.
+#   4. A BACKTICK fence's info string may not contain a backtick. ```a`b is a
+#      PARAGRAPH, so nothing after it is code; opening one here hid every
+#      following line, the next release's heading included. A TILDE fence carries
+#      no such restriction, and the difference is CommonMark's, not this script's.
+#   5. THREE COLUMNS OF INDENT AT MOST, on either delimiter, measured from the
+#      CONTAINER's content column -- not from column 0. Four or more is an
+#      indented code block. Columns, not characters: one tab is four columns.
+#   6. An OPENER may be preceded by CONTAINER MARKERS; a CLOSER may be preceded
+#      by spaces and by nothing else, so `- ``` ` inside a fence is code text.
+#
+# AND WHAT ELSE ENDS ONE -- the half this script did not have, and the reason
+# three releases could vanish from a document `check-docs.py` calls clean:
+#   7. LEAVING THE CONTAINER THE FENCE WAS OPENED IN. A fence opened inside a
+#      blockquote ends where the quote does; one opened inside a list item ends
+#      at the first non-blank line indented less than that item's content column.
+#      Without this the fence stayed open forever: an unclosed `> ```text` in the
+#      preamble swallowed EVERY release below it, so `awk -v ver=...` printed
+#      nothing for any version and a release tag could not be cut. The rule is
+#      `check-docs.py`'s `fence_mask`, stated the same way and tested against it.
+# ---------------------------------------------------------------------------
 
-# A FENCE DELIMITER MAY SIT BEHIND CONTAINER MARKERS, and until this it did not.
-# A fenced example inside a list item -- `- ` then the delimiter -- was invisible
-# here, so the sample's own CLOSER was read as an OPENER and the mask ran to end
-# of file: NOTHING extracted, for any version, on a document `check-docs.py` calls
-# clean. The two tools now normalise the same way, and the asymmetry is
-# CommonMark's own (4.5): an OPENER may be preceded by container markers, a CLOSER
-# by up to three columns of SPACES and by nothing else -- so `- ``` ` inside a
-# fence is code text, not a closer. `fbase` is the opener's container content
-# column and `fdepth` its blockquote depth, which is what the closer's three-column
-# allowance is measured from, exactly as `open_col` and `depth` are in
-# `check-docs.py`'s `fence_mask`.
+function expand(s,   out, col, k, ch, wid) {          # tabs to four-column stops
+    out = ""; col = 0
+    for (k = 1; k <= length (s); k++) {
+        ch = substr (s, k, 1)
+        if (ch == "\t") { wid = 4 - (col % 4); while (wid-- > 0) { out = out " "; col++ } }
+        else            { out = out ch; col++ }
+    }
+    return out
+}
+function lead(s,   n) {                               # leading SPACES == columns
+    n = 0
+    while (substr (s, n + 1, 1) == " ") n++
+    return n
+}
+function blank(s) { return s ~ /^[ \t\r]*$/ }
+# `s` after exactly `k` blockquote markers, or SENT when it does not carry that
+# many -- which is a dedent past every column, not a zero.
+function qrest(s, k,   i) {
+    for (i = 0; i < k; i++) {
+        if (match (s, /^ *>( ?)/)) s = substr (s, RLENGTH + 1)
+        else                       return SENT
+    }
+    return s
+}
+
+BEGIN { SENT = "\001no-such-container\001" }
+
 {
-    # Tab-expanded copy: a tab advances to the next four-column stop, so after
-    # this COLUMN == INDEX and every measurement below is a column count.
-    xl = ""; col = 0
-    for (k = 1; k <= length ($0); k++) {
-        ch = substr ($0, k, 1)
-        if (ch == "\t") { w = 4 - (col % 4); while (w-- > 0) { xl = xl " "; col++ } }
-        else            { xl = xl ch; col++ }
+    xl = expand ($0)
+
+    # ---- THIS LINE'S CONTAINERS: quote depth, and the chain of list items ----
+    rest = xl; d = 0; base = 0; n = 0
+    split ("", lid); split ("", lic)
+    while (1) {
+        if (match (rest, /^ *>( ?)/)) {
+            rest = substr (rest, RLENGTH + 1); d++; base = 0   # content restarts inside the quote
+            continue
+        }
+        if (match (rest, /^ *([-*+]|[0-9]+[.)]) +/)) {
+            pre = substr (rest, 1, RLENGTH)
+            sp = 0                                             # the marker's following whitespace
+            while (substr (pre, length (pre) - sp, 1) == " ") sp++
+            mk = RLENGTH - sp                                  # indent + the marker itself
+            tail = substr (rest, RLENGTH + 1)
+            # 5.2: four columns of padding at most. A fifth -- or nothing but
+            # whitespace to end of line -- leaves the content one column past the
+            # marker, and the rest of that run is the item's own indentation. Read
+            # greedily instead, `-     ```text` (a code block to every renderer)
+            # opened a fence here and every release below it was swallowed.
+            if (sp >= 5 || tail == "") wid = 1; else wid = sp
+            base += mk + wid
+            n++; lid[n] = d; lic[n] = base
+            rest = substr (rest, mk + wid + 1)
+            continue
+        }
+        break
     }
-    fl = xl; base = 0; item = 0; d = 0
-    if (! fence) {
-        while (1) {
-            if (match (fl, /^ *>( ?)/)) {
-                fl = substr (fl, RLENGTH + 1); d++; base = 0   # content restarts inside the quote
-                continue
-            }
-            if (match (fl, /^ *([-*+]|[0-9]+[.)]) +/)) {
-                base += RLENGTH; item = base   # the INNERMOST item, in its own frame
-                fl = substr (fl, RLENGTH + 1)
-                continue
-            }
-            break
+
+    # ---- THE ITEMS THIS LINE SITS IN, carried across lines -------------------
+    # A fence may be opened on a CONTINUATION line -- `- an item`, and indented
+    # under it the delimiter -- and then the chain is not on that line at all. A
+    # line with markers restates it; one without keeps as much as its indentation
+    # still reaches; a blank changes nothing, because a blank does not end an item.
+    if (n > 0) {
+        cn = n
+        for (i = 1; i <= n; i++) { cd[i] = lid[i]; cc[i] = lic[i] }
+    } else if (! blank (xl)) {
+        keep = 0
+        for (i = 1; i <= cn; i++) {
+            r = qrest (xl, cd[i])
+            if (r == SENT || lead (r) < cc[i]) break
+            keep = i
         }
-    } else {
-        for (q = 0; q < fdepth; q++) {
-            if (match (fl, /^ *>( ?)/)) fl = substr (fl, RLENGTH + 1)
-            else                        { fl = ""; break }
-        }
+        cn = keep
     }
-    ind = 0
-    while (substr (fl, ind + 1, 1) == " ") ind++
-    fl = substr (fl, ind + 1)
-    if (fl ~ /^(```|~~~)/) {
-        fc = substr (fl, 1, 1)
-        n  = 0
-        while (substr (fl, n + 1, 1) == fc) n++
-        rest = substr (fl, n + 1)
-        if (! fence) {
-            if (ind <= 3) {
-                # An info string with a backtick makes a BACKTICK delimiter no
-                # delimiter at all (clause 4). Fall through to the rules below, so
-                # the line is scanned as the ordinary content CommonMark says it is.
-                if (fc == "`" && index (rest, "`")) { if (on) print; next }
-                # The closer's allowance is measured from the ITEM's content
-                # column, exactly as `check-docs.py` measures it from `open_col`
-                # -- and that column keeps the frame the item was read in, which a
-                # later `>` inside the same item does not move.
-                fence = 1; f = fc; w = n; fbase = item; fdepth = d
-                if (on) print
-                next
+
+    # ---- INSIDE A FENCE ------------------------------------------------------
+    if (fence) {
+        ended = (d < fdepth)                       # left the blockquote
+        if (! ended) {
+            for (i = 1; i <= fn; i++) {            # left an enclosing list item
+                r = qrest (xl, fid[i])
+                if (r == SENT)     { ended = 1; break }
+                if (blank (r))     continue        # blank in that frame is not a dedent
+                if (lead (r) < fic[i]) { ended = 1; break }
             }
         }
-        else if (ind - fbase <= 3 && fc == f && n >= w && rest ~ /^[ \t\r]*$/) {
-            fence = 0
+        if (! ended) {
+            cr = qrest (xl, fdepth)                # a closer sits behind SPACES only
+            if (cr != SENT) {
+                ci = lead (cr); ct = substr (cr, ci + 1)
+                if (ct ~ /^(```|~~~)/) {
+                    fc = substr (ct, 1, 1); nn = 0
+                    while (substr (ct, nn + 1, 1) == fc) nn++
+                    info = substr (ct, nn + 1)
+                    if (ci - fbase <= 3 && fc == f && nn >= w && blank (info)) fence = 0
+                }
+            }
             if (on) print
             next
         }
-        else if (fence) { if (on) print; next }
+        # The fence ended HERE by leaving its container, so this line is outside
+        # it: not content, not a closer, and read from scratch below -- opener
+        # test included, because a line that ends one fence may open the next.
+        fence = 0
+    }
+
+    # ---- NO FENCE ACTIVE: may this line open one? ----------------------------
+    if (n > 0) { ind = lead (rest); body = substr (rest, ind + 1) }
+    else {
+        r = qrest (xl, d)
+        if (r == SENT) { ind = 4; body = "" }
+        else {
+            # The allowance is counted from the item's content column, which for a
+            # continuation line is on an earlier line: four columns into a `10. `
+            # item is an ordinary nested sample, and counting from column 0 opened
+            # nothing there.
+            ind = lead (r) - ((cn > 0 && cd[cn] == d) ? cc[cn] : 0)
+            body = substr (r, lead (r) + 1)
+        }
+    }
+    if (ind <= 3 && body ~ /^(```|~~~)/) {
+        fc = substr (body, 1, 1); nn = 0
+        while (substr (body, nn + 1, 1) == fc) nn++
+        info = substr (body, nn + 1)
+        if (! (fc == "`" && index (info, "`"))) {
+            fence = 1; f = fc; w = nn; fdepth = d
+            fbase = (cn > 0 && cd[cn] == d) ? cc[cn] : 0
+            fn = cn
+            for (i = 1; i <= cn; i++) { fid[i] = cd[i]; fic[i] = cc[i] }
+            if (on) print
+            next
+        }
     }
 }
-fence                          { if (on) print; next }
 index($0, "## [" ver "]") == 1 { on = 1; print; next }
 on && /^## \[/                 { exit }
 on                             { print }

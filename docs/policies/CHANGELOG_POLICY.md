@@ -196,9 +196,24 @@ opens the next fence. Two consequences follow and both are CommonMark's. A **clo
 may be preceded by up to three columns of SPACES and by nothing else, so a list marker disqualifies
 it — `- ``` ` inside a fenced example is code text, not a closer. And a fence opened inside NESTED
 items belongs to every one of them: a line that leaves an outer item takes the inner containers,
-and the fence, with it, whichever frame the inner one was measured in. Blankness is read in that
+and the fence, with it, whichever frame the inner one was measured in — and **a fence ends where
+its container does**, in both tools: one opened inside a blockquote ends where the quote does, one
+opened inside a list item at the first non-blank line indented less than that item's content column.
+Without that rule the extractor kept a fence open forever, so an unclosed `> ```text` in the
+preamble swallowed every release below it and no version extracted at all. Blankness is read in that
 frame too: `>` alone is a quoted blank and stays inside a fence opened in a quoted item, exactly as
 a bare blank line stays inside one opened at top level.
+
+**The extractor's own contract, stated exactly.** `changelog-section.awk` is not a Markdown parser
+and does not claim to be. It answers one question per line — is this a `## [` entry boundary at
+column 0, or is it inside a fenced example — and models only what that needs: blockquote markers as
+a depth, list markers as content columns (with CommonMark 5.2's four-column padding limit), tabs as
+columns, and fenced blocks *with the container they were opened in*. It models no setext headings,
+no ATX levels, no link definitions, no HTML blocks, no inline code spans. The external contract is
+the testable one, and `--self-test` executes it: **for every document `check-docs.py` accepts, the
+extractor finds the same release boundaries — it never omits a real release, never merges two, and
+never publishes a fenced example as one.** That is what the two tools promise each other; identical
+internals are not.
 
 **The extractor applies the same asymmetry.** `changelog-section.awk` did not look behind container
 markers at all, so a fence opened on `- ` was invisible to it: the sample's own closer read as an
@@ -216,16 +231,14 @@ an item from one indented two columns at top level. Both the opening and the clo
 allowances are counted from the item's content column, read in the fence's own blockquote frame; an
 item recorded at a shallower depth imposes no column inside a quote.
 
-**What that chain does not yet reach.** The HEADING rules — `classify_heading` and the setext
-alignment — still measure a container-prefixed line from column 0, so three shapes are known to be
-under-reported and are written down rather than left to be re-found: an ATX release heading four
-columns after `> -   item` (two columns inside that item, and a heading to the renderer); a setext
-release pair written as two continuation lines inside a nested item; and a `>` indented four
-columns, which is literal text inside an indented code block but is read here as a blockquote. The
-last is why the blockquote marker carries no three-column bound: counted from column 0 the bound
-breaks `10. > [0.9.7]` over `    > -------`, which IS a heading. All three are the same question —
-the heading rules need the container chain the fence rules carry — and all three are
-under-reports, which is the direction this section exists to close.
+**The heading rules read that chain too.** `classify_heading` and the setext alignment measure a
+container-prefixed line from the enclosing item's content column, not from column 0, and one guard
+follows from the same number: a `>` more than three columns past its container's content column is
+literal text inside an indented code block, so the fence it appears to open is not there. Those
+three rules closed the three under-reports round 9 recorded — an ATX release heading inside a quoted
+item, a setext release pair written as two continuation lines inside a nested item, and the phantom
+blockquote — each of which hid structure the renderer shows. `container_chains` is the single place
+that computes the chain, and the fence rules and the heading rules both read it from there.
 
 **Where the two tools deliberately differ from the renderer**, they differ in one
 direction only: `check-docs.py` may see structure the renderer treats as an indented code

@@ -353,6 +353,51 @@ def opens_fence(run: tuple[str, int, str] | None) -> bool:
     return run is not None and not (run[0] == "`" and "`" in run[2])
 
 
+def container_chains(lines: list[str]) -> list[tuple[tuple[int, int], ...]]:
+    """Per line, the chain of LIST ITEMS it sits in, as `(quote_depth, column)`.
+
+    THE ONE PIECE OF CROSS-LINE CONTAINER STATE THIS FILE KEEPS, and both the
+    fence rules and the heading rules read it from here rather than each building
+    their own. A line carrying markers RESTATES the chain; one without keeps as
+    much of it as its indentation still reaches, each item read in its own frame;
+    a blank line changes nothing, because a blank does not end a list item.
+
+    It is what tells a line indented two columns INSIDE an item from one indented
+    two columns at top level -- a distinction the renderer makes and no
+    single-line rule can. Without it a fence opened on a continuation line had no
+    column at all, and a release heading four columns after `> -   item` -- two
+    columns inside that item, and a heading to every renderer -- was read as an
+    indented code block.
+    """
+    out: list[tuple[tuple[int, int], ...]] = []
+    context: tuple[tuple[int, int], ...] = ()
+    for line in lines:
+        line_items = strip_containers(line)[4]
+        if line_items:
+            context = line_items
+        elif line.strip():
+            keep: list[tuple[int, int]] = []
+            for ctx_depth, ctx_col in context:
+                ctx_rest = quote_rest(line, ctx_depth)
+                if ctx_rest is None or indent_of(ctx_rest) < ctx_col:
+                    break
+                keep.append((ctx_depth, ctx_col))
+            context = tuple(keep)
+        out.append(context)
+    return out
+
+
+def chain_column(chain: tuple[tuple[int, int], ...], depth: int) -> int:
+    """The innermost item's content column IN THIS QUOTE FRAME, or 0.
+
+    An item recorded at a shallower depth imposes no column inside the quote:
+    `- > ` puts one at depth 0 while the line's own content sits at depth 1, and
+    subtracting a document column from a quote-relative one stretched every
+    allowance measured with it.
+    """
+    return chain[-1][1] if chain and chain[-1][0] == depth else 0
+
+
 def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
     """(mask, unclosed_opener_line) — True for lines inside or delimiting a fence.
 
@@ -378,37 +423,12 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
     opened_at: int | None = None
     depth = 0
     items: tuple[tuple[int, int], ...] = ()  # the list items the fence was opened in
-    context: tuple[tuple[int, int], ...] = ()   # the list items THIS line sits in
     open_col = 0
+    chains = container_chains(lines)
     for i, line in enumerate(lines):
         prefix, content, line_depth, _, line_items = strip_containers(line)
+        context = chains[i]
         run = fence_run(content.lstrip(" \t"))
-        # WHICH ITEMS THIS LINE IS IN, carried across lines because a fence may be
-        # opened on a CONTINUATION line: `- an item` and then, indented under it,
-        # the delimiter. Such a line carries no marker of its own, so reading the
-        # item chain off the opener alone left the fence with no column at all --
-        # no dedent could end it and the item's own closer, four or five columns
-        # in, was rejected. Measured on the generated corpus: 98 documents masked a
-        # real `## [x.y.z]` release heading with no finding whatsoever, which is
-        # the bypass direction.
-        #
-        # A line carrying markers RESTATES the chain; one without keeps as much of
-        # it as its indentation still reaches, each item read in its own frame; a
-        # blank line changes nothing, because a blank does not end a list item.
-        # That is the whole of the container state this file keeps, and it is what
-        # tells a fence indented two columns INSIDE an item from one indented two
-        # columns at top level -- a distinction the renderer makes and no
-        # single-line rule can.
-        if line_items:
-            context = line_items
-        elif line.strip():
-            keep: list[tuple[int, int]] = []
-            for ctx_depth, ctx_col in context:
-                ctx_rest = quote_rest(line, ctx_depth)
-                if ctx_rest is None or indent_of(ctx_rest) < ctx_col:
-                    break
-                keep.append((ctx_depth, ctx_col))
-            context = tuple(keep)
         if char is not None:
             # ---- INSIDE A FENCE: does this line leave the container? ----------
             #
@@ -531,9 +551,17 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
             open_indent = indent_columns(content)
         else:
             open_rest = quote_rest(line, line_depth)
-            open_indent = 4 if open_rest is None else indent_of(open_rest) - (
-                context[-1][1] if context and context[-1][0] == line_depth else 0)
-        if line.strip() and opens_fence(run) and open_indent <= 3:
+            open_indent = 4 if open_rest is None else \
+                indent_of(open_rest) - chain_column(context, line_depth)
+        # AND THE CONTAINERS THEMSELVES HAVE TO BE REAL. A `>` more than three
+        # columns past the content column of whatever encloses it is literal text
+        # inside an INDENTED CODE BLOCK (CommonMark 5.1), not a marker -- so
+        # `    > ```text` at top level opened a blockquote that is not there, and
+        # the fence inside that phantom quote masked a `> ## [x.y.z]` the renderer
+        # shows. `strip_containers` reads one line and cannot know that column;
+        # the chain does, and this is the one place that needs it.
+        real = not prefix or indent_columns(line) <= chain_column(context, 0) + 3
+        if line.strip() and real and opens_fence(run) and open_indent <= 3:
             char, width, depth, items = run[0], run[1], line_depth, context
             # THE CLOSER'S ALLOWANCE IS COUNTED IN THE FENCE'S OWN QUOTE FRAME, so
             # the column it is counted from has to live in that frame too. An item
@@ -542,7 +570,7 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
             # quote, and using its document column stretched the three-column
             # allowance to five: the checker then closed on a line the renderer
             # calls code and read the code as structure.
-            open_col = items[-1][1] if items and items[-1][0] == depth else 0
+            open_col = chain_column(items, depth)
             opened_at, mask[i] = i + 1, True
     return mask, opened_at
 
@@ -1263,7 +1291,7 @@ def strip_containers(line: str) -> tuple[str, str, int, int, tuple[tuple[int, in
     return expanded[:pos], rest, depth, columns, tuple(items)
 
 
-def classify_heading(line: str) -> tuple[int, str, str] | None:
+def classify_heading(line: str, chain: tuple[tuple[int, int], ...] = ()) -> tuple[int, str, str] | None:
     """(level, text, PLACEMENT) for any line the renderer shows as an ATX heading.
 
     PLACEMENT is where the heading sits, and it is the whole point of this
@@ -1290,7 +1318,7 @@ def classify_heading(line: str) -> tuple[int, str, str] | None:
     deep = deep_heading(line)
     if deep is not None:
         return deep[0], deep[1], "deep"
-    prefix, content, _, _, _ = strip_containers(line)
+    prefix, content, depth, _, line_items = strip_containers(line)
     if prefix:
         # The remainder is read by the TOP-LEVEL rule, and only by it. A remainder
         # indented four columns or more is an indented code block inside the
@@ -1298,7 +1326,19 @@ def classify_heading(line: str) -> tuple[int, str, str] | None:
         # `deep_heading` is deliberately not consulted here: `>` plus five spaces
         # leaves four columns of indent and is code, not a heading, and the
         # renderer agrees.
+        #
+        # ...MEASURED FROM THE ITEM'S CONTENT COLUMN, when this line sits in one it
+        # does not restate. `> -   item` puts its item at column 2 INSIDE the
+        # quote, so `>     ## [0.9.7]` is two columns into that item and a heading
+        # to every renderer -- read from the quote's own content it looked like
+        # four columns of indented code, and a release heading behind a container
+        # marker went unreported. The chain says which column to count from; where
+        # there is none this is the same test it has always been.
         inner = atx_heading(content)
+        if inner is None and not line_items:
+            column = chain_column(chain, depth)
+            if column and indent_columns(content) >= column:
+                inner = atx_heading(content[column:])
         if inner is not None:
             return inner[0], inner[1], "container"
     return None
@@ -1383,6 +1423,7 @@ def parse_changelog(lines: list[str], skip: list[bool]
     # deep delimiter run is the clearest signal there is that what follows is a
     # sample. Nothing else in this file changes its answer because of it.
     deep_fence: tuple[str, int, int] | None = None   # character, run, opener indent
+    chains = container_chains(lines)                 # the items each line sits in
     for i, line in enumerate(lines):
         # A LONE CARRIAGE RETURN, reported rather than silently resolved.
         # CommonMark 2.1 calls it a line ending; `awk` does not, and
@@ -1451,7 +1492,14 @@ def parse_changelog(lines: list[str], skip: list[bool]
         under_prefix, under_content, under_depth, _, _ = strip_containers(line)
         if i and not skip[i - 1] and SETEXT_UNDERLINE.match(under_content.lstrip(" \t")) \
                 and not LIST_CONTAINER_MARKER.search(under_prefix):
-            _, subj_content, subj_depth, subj_cols, _ = strip_containers(lines[i - 1])
+            _, subj_content, subj_depth, subj_cols, subj_items = strip_containers(lines[i - 1])
+            # A SUBJECT THAT RESTATES NO MARKER still sits in an item, and the
+            # chain is where its column comes from. `- 1. ```text` over an indented
+            # `[0.9.7]` and `-----` is two CONTINUATION lines: measured from
+            # column 0 the pair fell outside the 0-3 allowance and the release
+            # heading the renderer shows went unreported.
+            if not subj_items:
+                subj_cols = chain_column(chains[i - 1], subj_depth)
             # A continuation line is indented to the list's CONTENT COLUMN, and
             # CommonMark's 0-3 allowance is counted from there -- not from the
             # container's start. The column is the marker's full width including
@@ -1473,7 +1521,7 @@ def parse_changelog(lines: list[str], skip: list[bool]
                     f"`^## \\[` alone and cannot see it -- write headings as `##` / `###`"
                 )
                 continue
-        h = classify_heading(line)
+        h = classify_heading(line, chains[i])
         if h is None:
             continue
         level, text, placement = h
@@ -3063,6 +3111,48 @@ def self_test() -> int:
          ["# Changelog", V5, "### Added", "- ```text", "  ### Fixed", "",
           "  ## [0.9.7] — 2026-09-05", "  ```"]),
 
+        # -- ROUND 10: THE HEADING RULES READ THE CONTAINER CHAIN TOO ---------
+        # Three under-reports round 9 named and did not close, all one question:
+        # `classify_heading` and the setext alignment measured a container-prefixed
+        # line from column 0, while `fence_mask` had the chain. They read it from
+        # `container_chains` now, and the boundaries below were taken from the
+        # renderer: `> -   item` puts its item's content at a column where three
+        # to EIGHT spaces after the `>` are a heading and nine are not.
+        ("a release heading inside a quoted item is reported", 1,
+         ["# Changelog", V5, "### Added", "> -   item",
+          ">     ## [0.9.7] — 2026-09-01"]),
+        ("...at the far end of the allowance too", 1,
+         ["# Changelog", V5, "### Added", "> -   item",
+          ">        ## [0.9.7] — 2026-09-01"]),
+        ("...but one column past it is indented code", 0,
+         ["# Changelog", V5, "### Added", "> -   item",
+          ">         ## [0.9.7] — 2026-09-01"]),
+        # A setext pair written as two CONTINUATION lines inside a nested item:
+        # neither line restates a marker, so measured from column 0 the pair fell
+        # outside the 0-3 allowance and the release heading went unreported.
+        ("a setext release pair on continuation lines is reported", 1,
+         ["# Changelog", V5, "### Added", "- 1. item", "",
+          "    [0.9.7] — 2026-09-05", "    -----"]),
+        ("...and four columns past the item's column is not a heading", 0,
+         ["# Changelog", V5, "### Added", "- 1. item", "",
+          "    [0.9.7] — 2026-09-05", "        -----"]),
+        # A `>` more than three columns past its container's content column is
+        # literal text inside an indented code block, so the fence it seemed to
+        # open is not there -- and the heading the phantom fence masked is real.
+        # A COUNT CANNOT SEE THIS ONE: opening the phantom fence reports it as
+        # never closed -- one finding, just like naming the heading it masks -- so
+        # the fixture asserts WHICH invariant is named.
+        ("a quote four columns in opens no fence", 1,
+         ["# Changelog", V5, "### Added", "    > ```text",
+          "> ## [0.9.9] — 2026-10-02",
+          "@@says:sits behind `>` on the same line@@"]),
+        ("...but three columns in is a real quote", 0,
+         ["# Changelog", V5, "### Added", "   > ```text", "   > ### Fixed",
+          "   > ```"]),
+        ("...and four columns inside a `10. ` item is too", 0,
+         ["# Changelog", V5, "### Added", "10. item", "    > ```text",
+          "    > ### Fixed", "    > ```"]),
+
         # -- a bare CR is named, not silently resolved ------------------------
         ("a bare carriage return inside a line is a finding", 1,
          ["# Changelog", V5, "### Added", "- a. Evidence: PR #2.\r### Fixed", "- b"]),
@@ -3339,11 +3429,17 @@ def self_test() -> int:
              [*entry, "\t" + F]),
             # Up to three leading blanks is still a fence (CommonMark 4.5); the
             # strip is what makes the delimiter comparable.
+            # ...and it is a fence INSIDE `- b`'s list item, three columns being one
+            # column past that item's content column. The column-0 heading below it
+            # leaves the item, so the fence ends there and the heading is a real
+            # boundary -- which is what the renderer shows and what `fence_mask`
+            # masks. The extractor used to keep the fence open and publish the
+            # older release inside the newer one's notes.
             ("a three-space-indented fence is still a fence",
              "0.9.8",
              ["# Changelog", *entry, "   " + F, "## [0.9.7] — 2026-09-05", "   " + F,
               *older],
-             [*entry, "   " + F, "## [0.9.7] — 2026-09-05", "   " + F]),
+             [*entry, "   " + F]),
             # `index(...) == 1` is a PREFIX test, not a substring search: a
             # sentence that merely mentions the heading is prose.
             ("a mid-line mention of the heading does not start an extraction",
@@ -3387,13 +3483,82 @@ def self_test() -> int:
             # stays open and NOTHING extracts -- which is what the checker says too
             # ("code fence opened here is never closed"). Both tools fail closed on
             # the same document, which is the property that matters.
+            # The delimiter four columns into the item is not a closer, so the fence
+            # is unclosed -- and the line after it leaves the blockquote, which ends
+            # the fence anyway. Both tools agree: `fence_mask` masks the two quoted
+            # lines and nothing else, and the entry below extracts normally. Before
+            # the container-exit rule the extractor masked to EOF and published
+            # nothing for any version.
             ("a delimiter four columns into its item is not a closer",
              "0.9.8", ["# Changelog", "> - " + F + "text", ">       " + F, *entry, *older],
-             []),
+             entry),
             ("a bullet inside a list-item fence does not close it",
              "0.9.8", ["# Changelog", "- " + F + "text", "  - item",
                        "  ## [1.2.3] — 2026-01-01", "  " + F, *entry, *older],
              entry),
+            # ROUND 10: A FENCE ENDS WHERE ITS CONTAINER DOES. Each of these
+            # documents is one the checker ACCEPTS, and before the container-exit
+            # rule the extractor swallowed every release below the fence: `0.9.8`
+            # published both entries as one section and `0.9.7` extracted NOTHING,
+            # so a release tag could not be cut. One transition per fixture.
+            ("a list-item fence ends at a dedent, not at EOF",
+             "0.9.8", ["# Changelog", "- " + F + "text", "  ## [9.9.9] — 2999-01-01",
+                       *entry, *older],
+             entry),
+            ("a blockquote fence ends where the quote does",
+             "0.9.8", ["# Changelog", "> " + F + "text", "> ## [9.9.9] — 2999-01-01",
+                       *entry, *older],
+             entry),
+            ("...and a nested quote ends at top level too",
+             "0.9.8", ["# Changelog", ">> " + F + "text", ">> ## [9.9.9] — 2999-01-01",
+                       *entry, *older],
+             entry),
+            ("a nested list item's fence ends at a dedent",
+             "0.9.8", ["# Changelog", "- - " + F + "text", "    ## [9.9.9] — 2999-01-01",
+                       *entry, *older],
+             entry),
+            ("a quote+list fence ends at top level",
+             "0.9.8", ["# Changelog", "> - " + F + "text", ">   ## [9.9.9] — 2999-01-01",
+                       *entry, *older],
+             entry),
+            ("a list+quote fence ends at top level",
+             "0.9.8", ["# Changelog", "- > " + F + "text", "  > ## [9.9.9] — 2999-01-01",
+                       *entry, *older],
+             entry),
+            ("a fence opened on a continuation line ends at a dedent",
+             "0.9.8", ["# Changelog", "- an item", "  " + F + "text",
+                       "  ## [9.9.9] — 2999-01-01", *entry, *older],
+             entry),
+            ("a tab-marked item's fence ends at a dedent",
+             "0.9.8", ["# Changelog", "-\t" + F + "text", "    ## [9.9.9] — 2999-01-01",
+                       *entry, *older],
+             entry),
+            # ...AND THE PADDING RULE (5.2), which decides whether there is a fence
+            # to end at all: four columns after the marker is content, a fifth is
+            # an indented code block whose delimiter opens nothing.
+            ("five columns of marker padding open no fence",
+             "0.9.8", ["# Changelog", "-     " + F + "text", *entry, *older],
+             entry),
+            ("...for a multi-digit marker as well",
+             "0.9.8", ["# Changelog", "10.     " + F + "text", *entry, *older],
+             entry),
+            # THE PADDING RULE IS OBSERVABLE AT A BOUNDARY, and this is the shape
+            # that shows it. Read greedily, the marker takes all five columns and
+            # a fence opens at the item's column 6; the `  ``` ` below it is a
+            # dedent, so that fence ends and the delimiter OPENS A SECOND fence --
+            # this one at top level, with no container to end it -- which then
+            # masks to end of file and publishes nothing for any version. Read the
+            # way CommonMark 5.2 says, the first line opens nothing (it is an
+            # indented code block) and the `  ``` ` is the item's own fence,
+            # which the entry heading below ends.
+            ("five columns of padding, then a delimiter at the item's column",
+             "0.9.8", ["# Changelog", "-     " + F + "text", "  " + F, *entry, *older],
+             entry),
+            ("four columns of padding still open one",
+             "0.9.8", ["# Changelog", "-    " + F + "text",
+                       "     ## [9.9.9] — 2999-01-01", "     " + F, *entry, *older],
+             entry),
+
             ("a stray `## ` heading below an entry lands in that entry's notes",
              "0.9.8", ["# Changelog", *entry, "## Appendix", "- not part of 0.9.8", *older],
              [*entry, "## Appendix", "- not part of 0.9.8"]),

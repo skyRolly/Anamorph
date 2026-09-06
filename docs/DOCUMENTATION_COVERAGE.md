@@ -9616,3 +9616,107 @@ v0.9.6 PASS with its deliberately blank rows (`:112`-`:149`). `RELEASE_PROCESS.m
 audition. Repository version metadata cross-checked: `CMakeLists.txt:14` `VERSION 0.9.7`, the newest
 CHANGELOG entry `[0.9.7]`, `HANDOVER.md` Current Version **0.9.7**. No further edit was needed and
 none was made. [Verified]
+
+
+## Changelog system round 10 (2026-09-06) — the extractor's own container state, and the chain the heading rules were missing
+
+**What the round is.** Three defects in the AWK release extractor, all one root cause, and the
+three heading-rule under-reports round 9 named and deferred. Every one is closed.
+
+**The extractor recorded a fence's container and then never asked about it again.** It stored the
+opener's blockquote depth and item column at open time -- and from then on only a closing delimiter
+could clear `fence`. So a fence opened inside any container stayed open to end of file:
+
+- `> ```text` unclosed in the preamble, or `- ```text`, or `>> ```text`, or `- > `, or `> - `:
+  every release below it was swallowed. Measured on documents `check-docs.py` calls CLEAN and the
+  renderer shows as one code block plus two real entry headings: `awk -v ver=0.9.8` published BOTH
+  entries as one section and `awk -v ver=0.9.7` printed **nothing**, which is a release tag that
+  cannot be cut.
+- `-     ```text` -- five columns of marker padding, an indented code block to CommonMark 5.2 --
+  opened a phantom fence with the same consequence. The checker fixed that rule in round 8; the
+  extractor still read the padding greedily.
+
+**One state model, mirroring `fence_mask`.** The extractor now walks each line's containers in
+columns (tabs expanded to four-column stops), carries the chain of enclosing list items across lines
+(a line with markers restates it, one without keeps as much as its indentation reaches, a blank
+changes nothing), and ends a fence when the line drops below the fence's blockquote depth or below
+any enclosing item's content column -- reading blankness in each item's own frame, exactly as the
+checker does. The terminating line is then re-classified from scratch, so a line that ends one fence
+may open the next. Openers may sit behind container markers; closers may be preceded by spaces and
+nothing else, with the three-column allowance counted from the item's content column.
+
+**The contract is now stated exactly, and it is smaller than the checker's.** The extractor answers
+one question per line -- is this a `## [` boundary at column 0, or is it inside a fenced example --
+and models blockquote depth, list content columns, tabs and fences with their containers, and
+nothing else: no setext, no ATX levels, no link definitions, no HTML blocks, no code spans. The
+header says so, and says why: `check-docs.py` gates every push and REJECTS the structures those
+would matter for. The external contract is the testable one and `--self-test` executes it -- for
+every document the checker accepts, the extractor finds the same boundaries.
+
+**Differential coverage extended to the transitions it was missing.** 34 documents built from the
+state transitions themselves rather than from shapes: twelve CONTAINER EXITS (blockquote to top
+level, nested quote to outer quote and to top level, list to top level, nested list to outer list
+and to top level, quote+list, list+quote, ordered, tab-marked, a fence opened on a continuation
+line, and an exit carrying a release-like line) and thirteen MARKER PADDINGS (one through six
+columns, ordered and multi-digit and four-digit markers, tab and space+tab padding, three spaces and
+a tab, a paren marker), plus nine masking controls. For each, the checker's parsed entry span and
+the extractor's output are compared LINE FOR LINE, for every version in the file. **32 agree, 2 are
+rejected by the checker (so outside the contract), 0 mismatch. Against the previous extractor: 25
+of 34 mismatched.**
+
+**Mutation proofs.** Twelve on the extractor: greedy marker padding, dropping either half of the
+padding rule, never ending at a list dedent, never ending at a quote exit, reading the item chain
+from the opener line only, blankness on the raw line, the closer allowance from column 0, the closer
+read after list markers, the opener allowance without the carried column, treating an unreachable
+frame as column 0, not recording the fence's quote depth, and not re-classifying the terminating
+line. **Seven are killed by named cases.** The other five -- and this is the round's most useful
+negative result -- are **equivalent with respect to the extractor's contract, proved rather than
+argued**: every release boundary sits at column 0, and column 0 leaves every container, so any
+refinement that only changes WHEN a container fence ends earlier cannot change a boundary. Searched
+over **6 144 extractions** (3 072 documents x 2 versions, 24 container prefixes x 8 inner prefixes x
+8 payloads) with zero differing outputs. The same search FOUND the distinguishing document for the
+padding rule -- `-     ```text` over `  ``` `, where greedy padding opens a fence, the delimiter
+below it dedents out, and that delimiter then opens a SECOND fence at top level with no container to
+end it -- so that mutation is killed by a fixture rather than excused.
+
+**The three heading-rule under-reports, closed.** Round 9 named them and recorded that they were one
+question: `classify_heading` and the setext alignment measured a container-prefixed line from column
+0 while `fence_mask` carried the container chain. `container_chains` is now the single place that
+computes the chain and all three rules read it:
+
+- an ATX release heading inside a quoted item (`> -   item` over `>     ## [0.9.7]`) is measured
+  from the item's content column. The renderer's window is three to EIGHT spaces after the `>`, and
+  the checker now matches it at both ends -- eight reports, nine does not.
+- a setext release pair written as two CONTINUATION lines inside a nested item takes its subject
+  column from the chain, so the 0-3 allowance is counted from the item rather than from column 0.
+- a `>` more than three columns past its container's content column is literal text inside an
+  indented code block, so the fence it appeared to open is not there. That guard needs the chain,
+  which is why round 9 could not apply it: counted from column 0 it broke `10. > [0.9.7]` over
+  `    > -------`, which IS a heading. Counted from the item's column both are right, and both are
+  pinned.
+
+Eleven mutations on those three rules, each killed by a named case -- including two that a COUNT
+cannot see (opening the phantom fence reports it as never closed, one finding either way), so the
+fixture asserts which invariant is named.
+
+**Measured.** Self-test 405 -> 425 cases: 12 new extractor-contract fixtures and 8 heading fixtures,
+each pinning one transition and its control. 23 mutations added this round (11 checker, 12
+extractor), 18 killed by named cases and 5 proved equivalent by exhaustive search. `check-docs` 120
+files clean, `check-citations` 415 anchors clean, `preflight.sh` exit 0.
+
+**No regression.** Every check over all 120 real documents gives results identical to the previous
+head. The round-5 (37), round-6 (33), round-7 (31), round-8 (99 and 160) and round-9 (372 data and
+186 closer) matrices all still agree with the renderer, all 32 previously closed classes are still
+closed, and the 160-document three-way differential still agrees on every one.
+
+**The real `CHANGELOG.md` is byte-unchanged** and still parses to 23 entries (21 versioned + the 2
+reconstructed, in order), 40 categories, 0 findings, with the parser and the extractor agreeing
+line-for-line on all 21 versioned entries -- the extraction path `release.yml` actually runs, not
+only the validator.
+
+**Two extractor fixtures moved by design, and the renderer settles both.** A three-space-indented
+fence inside `- b`'s item now ends at the column-0 heading below it, so `[0.9.8]` no longer publishes
+the older release inside its notes; and a delimiter four columns into a quoted item is not a closer,
+but the line after it leaves the quote, so the entry below extracts normally where the old extractor
+published nothing. In both cases the new output is what `fence_mask` and `markdown-it-py` already
+said. [Verified]
