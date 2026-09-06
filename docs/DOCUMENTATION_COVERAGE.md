@@ -9305,3 +9305,101 @@ one to three columns at top level cannot be told apart from one at a list's cont
 content stays masked until the closer — the direction that keeps a sample a sample. HTML blocks
 remain unmodelled, the preamble link-definition behaviour stands, the four-column `### Fixed`
 over-report stands, and the editorial rules stay with the author.
+
+
+## Changelog system round 8 (2026-09-06) — one column model, and the two ways it was wrong
+
+**What the round is.** Two findings, and they are the same defect measured twice: indentation
+counted in CHARACTERS where CommonMark counts COLUMNS. One let invalid structure through, the other
+rejected a valid document, and both lived in `strip_containers`.
+
+**Defect 1 — list code opened phantom fences.** `CONTAINER_MARKER` spelled a list marker as
+`[-*+][ \t]+`, so the greedy run swallowed whatever whitespace followed it as marker padding.
+CommonMark 5.2 gives a marker at most FOUR columns of following whitespace; a fifth means the item's
+first block is an INDENTED CODE BLOCK whose content column is the marker plus one. So `-     ```text`
+is code to every renderer and was a fence delimiter here: `fence_mask` entered a fence state, and
+every line after it — a real `## [x.y.z]` entry heading included — was masked as that fence's
+content. Measured: `-`, `1.`, `10.` and `- -` all bypassed at five spaces, and `-   \t` bypassed at
+three spaces and a tab, which reaches column 8. The extractor never shared the bug (its fence rule is
+`/^[ \t]*(```|~~~)/`, and a marker is not whitespace), so the two tools disagreed about the document.
+
+**Defect 2 — tabbed markers hid setext releases.** The same function added `len(marker)`, a character
+count, to its content column. A tab is not one column: it advances to the next four-column stop, so
+`-\t[0.9.7]` puts content at column 4 and was recorded as 2. The setext underline's 0-3 allowance was
+then counted from column 2, and an underline at six or seven columns — a level-2 heading to every
+renderer — was invisible here while `release.yml` would publish the release inside the notes above
+it. Reproduced on three shapes the checker did not see: `-\t` at +3, `- \t` at +3, and `-\t-\t`
+(content column 8) at every column in its window.
+
+**One fix, because it is one model.** `expand_tabs` advances every tab to its four-column stop once,
+at the top of `strip_containers`, after which COLUMN == INDEX and no later measurement can disagree
+with an earlier one. The walk then reads containers in columns: a `>` takes its one optional space
+and restarts the list column inside the quote; a list marker takes at most four columns of following
+whitespace, one if there is a fifth or if nothing but whitespace follows. Nothing is special-cased
+per marker and no arbitrary "four spaces" rule was added — the model is CommonMark's, and every
+expectation in the new tests was read off `markdown-it-py` first.
+
+**Two false positives closed by the column the fix now has.** A fence opened on a LIST line records
+that item's content column, so (a) its closer's three-column allowance is counted from there —
+`-    ```text` is closed by a delimiter five columns in, which measuring from column 0 called
+unclosed and turned every line below it into code, on five of the eight marker widths tested — and
+(b) a non-blank line BELOW that column leaves the item and ends the fence without masking, which is
+what the renderer shows and what the extractor (boundaries on `^## \[` at column 0) would do. A blank
+line is not a dedent. Round 7 recorded (b) as a residual because the column was not available; it is
+available now, so it is closed rather than re-deferred. The residual that remains is genuinely
+undecidable without a container stack and is stated as such: where the opening line carries no
+marker, a delimiter one to three columns in cannot be told from one at a list's content column —
+and the renderer confirms masking is the right answer there.
+
+**Bounded audit, 99 shapes against the renderer.** 76 setext shapes (unordered `- ` through `-    `,
+tab, space+tab, 2sp+tab, ordered `1. ` and `1.\t`, `9. `, `10. `, `10.\t`, `100. `, `1000. `,
+`10) `, nested `- - `, `-\t-\t`, `- \t- `, `1. 1. `), each at the bottom of its window, at +3, at
++4 and one below — so the NEGATIVES are audited as heavily as the positives; 12 code-vs-fence shapes
+(five- and six-space padding, `3sp+tab`, ordered, multi-digit and nested code against genuine fences
+at one, four and tab widths, ordered, multi-digit and nested); 11 heading-in-list shapes including
+quote+list, list+quote and the two that ARE code. **All 99 agree with `markdown-it-py`** on whether a
+hidden heading exists, and where one does the checker reports it. Against the pre-fix implementation
+the same matrix shows **12 under-reports**.
+
+**Every previously closed class re-run: 32/32.** Closing hashes, fence info strings (backtick and
+tilde), malformed and wrong-level release headings, indented categories, the four-column heading in
+both its code and its lazy form, blockquoted ATX at every spacing plus `>>` and `> >`, blockquoted
+setext, mismatched depth, quote+list setext, wide ordered markers `10. `/`100. `/`1000. `, `- foo`
+over `- ---`, the round-7 container fences, a bad info string in a quote, the lone carriage return
+and the duplicate `[Unreleased]`. That matrix passes on the PRE-fix implementation too, which is what
+makes it a regression check rather than a description of the new code.
+
+**Measured.** Self-test 298 → 362 cases: 23 changelog fixtures (15 of which fail against the pre-fix
+implementation) and 39 unit cases pinning the column model itself — every content column in the table
+read off the renderer by asking where a setext window opens, plus the tab-expansion table. Thirteen
+mutations, each killed by a NAMED case: greedy marker padding, no tab expansion, a tab as one column,
+a tab as always four, dropping either half of the five-column rule, dropping the dedent rule, letting
+a blank line count as a dedent, measuring the closer from column 0, measuring list columns from the
+line instead of the quote, ignoring a line's own marker column, forgetting the opener's column, and
+dropping the marker's required following space. Two of them survived the first pass and neither was
+argued away: the empty-item column was pinned in the unit table (the renderer puts the last openable
+fence at column 5 for `-`, `-  ` and `-    ` alike, so the content column is 2), and the last was
+killed by an `@@says:` assertion because keeping the fence open reports the opener as never closed —
+one finding either way, and only the invariant NAMED distinguishes them.
+
+**No regression, measured over the whole corpus.** Running EVERY check over all 120 real documents
+gives results identical to the previous head — not just the changelog rules, which matters because
+`fence_mask` and `strip_containers` feed the table, link and lazy-continuation rules as well.
+`check-docs` 120 files clean, `check-citations` 415 anchors clean, `preflight.sh` exit 0.
+
+**The real `CHANGELOG.md` is byte-unchanged** and still parses to 23 entries (21 versioned + the 2
+reconstructed, in order), 40 categories, 0 findings, with the parser and the extractor agreeing
+line-for-line on all 21 versioned entries.
+
+**CI documentation contract, dispositioned rather than waved through.**
+`DOCUMENTATION_LIFECYCLE_POLICY.md`'s trigger map row **CI workflow → `CI_CD.md`, `TESTING.md`**
+applies: `release.yml`'s `validate` job changed behaviour in this change set (it now runs
+`scripts/changelog-section.awk` — the same file the notes step runs — and reads the ISO date off the
+EXTRACTED heading). `CI_CD.md` described the older `grep`-only validation and is corrected, with the
+rehearsal behaviour and the division of labour against the `docs` gate stated. `TESTING.md` is NOT
+changed, and the reason is its actual content rather than convenience: the only CI material it
+carries is the per-job command table (`docs`, `source-lint`, the build jobs), all of which belong to
+`build.yml` and none of which this change touches; it has never described `release.yml`'s validate
+job, so there is nothing in it to re-sync. Adding a description there would be new prose, not a sync.
+`RELEASE_PROCESS.md` already carries the corrected description (written in the same change set).
+[Verified]

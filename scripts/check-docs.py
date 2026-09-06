@@ -378,9 +378,15 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
     opened_at: int | None = None
     depth = 0
     in_list = False
+    open_col = 0
     for i, line in enumerate(lines):
-        prefix, content, line_depth, _ = strip_containers(line)
+        prefix, content, line_depth, line_cols = strip_containers(line)
         marked = bool(LIST_CONTAINER_MARKER.search(prefix))
+        # The column this line's own content starts at, inside whatever quote it
+        # is in: the list marker's content column where it carries one, its plain
+        # indent where it does not (a continuation line is indented to the column,
+        # it does not re-state the marker).
+        line_col = line_cols if prefix else indent_columns(content)
         run = fence_run(content.lstrip(" \t"))
         if char is None:
             # A fence opens where its delimiter sits: inside a quote, inside a
@@ -390,6 +396,7 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
             # was rejected -- the mirror image of every earlier bypass.
             if line.strip() and opens_fence(run) and indent_columns(content) <= 3:
                 char, width, depth, in_list = run[0], run[1], line_depth, marked
+                open_col = line_cols if marked else 0
                 opened_at, mask[i] = i + 1, True
             continue
         # HAS THE LINE LEFT THE BLOCKQUOTE THE FENCE WAS OPENED IN? A quote ends
@@ -413,7 +420,20 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
         # renderer shows the heading. Where the opener carried no marker, a
         # `> - foo` INSIDE the fence is ordinary code text and must stay masked --
         # which is why the test is on the opener, not on the line.
-        if line_depth < depth or (in_list and marked):
+        # ...and a LINE THAT FALLS BELOW THE ITEM'S CONTENT COLUMN ends it as well,
+        # for a fence opened on a list line. Content inside such a fence is
+        # indented to the item's column; a shallower line leaves the item, so the
+        # renderer ends both the item and the fence there and shows what follows
+        # -- `- ```text` over a column-0 `## [x.y.z]` is a real entry heading, and
+        # masking it was an under-report the extractor did not share (it
+        # boundaries on `^## \[` at column 0 and would have cut there). Only where
+        # the opener carried a marker: a top-level fence indented one to three
+        # columns may legitimately hold content at column 0, which the renderer
+        # confirms, and telling those two apart is what needs the marker. A blank
+        # line is not a dedent -- it stays inside the fence, as it does in the
+        # renderer.
+        if line_depth < depth or (in_list and marked) \
+                or (in_list and line.strip() and line_col < open_col):
             char, width, opened_at, in_list = None, 0, None, False
             continue
         mask[i] = True                       # inside the fence, including its closer
@@ -427,8 +447,15 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
         #
         # The closer's allowance is three columns measured inside its own
         # container, exactly as the opener's is -- `>    ``` ` closes and
-        # `>     ``` ` does not, which is what the renderer says.
-        if run and line_depth == depth and indent_columns(content) <= 3 \
+        # `>     ``` ` does not, which is what the renderer says. Inside a LIST
+        # item that container's content column is `open_col`, so the allowance is
+        # counted from there: `-    ```text` is closed by a delimiter five columns
+        # in, and measuring from column 0 called the block unclosed and every line
+        # below it code -- a false positive on a valid document, which is the
+        # failure this whole family runs toward. `open_col` is 0 wherever no list
+        # marker opened the fence, and the test is then the top-level one it has
+        # always been.
+        if run and line_depth == depth and indent_columns(content) - open_col <= 3 \
                 and run[0] == char and run[1] >= width and not run[2].strip(" \t"):
             char, width, opened_at = None, 0, None
     return mask, opened_at
@@ -465,6 +492,40 @@ def blanked_lines(lines: list[str], fenced: list[bool]) -> list[str]:
 
 
 LIST_MARKER = re.compile(r"^\s*([-*+]|\d{1,9}[.)])(\s|$)")
+
+
+def expand_tabs(text: str) -> str:
+    """`text` with every tab advanced to the next four-column tab stop.
+
+    ONE COLUMN MODEL, AND THIS IS WHERE IT STARTS. CommonMark measures every
+    block-structure decision in COLUMNS, and a tab is not one column: it is
+    however many take the line to the next multiple of four. Anything that
+    measures a marker in CHARACTERS is therefore wrong the moment a tab appears
+    before it, and mixing the two -- some indentation in columns, some in
+    characters -- is what let a renderer-visible setext release heading escape
+    validation: `-\tname` puts its content at column 4, `strip_containers`
+    called it 2, and the underline's 0-3 allowance was then measured from the
+    wrong place.
+
+    After this call COLUMN == INDEX, so every later measurement is a character
+    count that is also a column count and the two representations cannot
+    diverge. Applied once, in `strip_containers`, because that is the only place
+    that walks a line column by column; `indent_columns` does its own expansion
+    for the callers that only need the leading run.
+    """
+    if "\t" not in text:
+        return text
+    out: list[str] = []
+    col = 0
+    for char in text:
+        if char == "\t":
+            width = 4 - (col % 4)
+            out.append(" " * width)
+            col += width
+        else:
+            out.append(char)
+            col += 1
+    return "".join(out)
 
 
 def indent_columns(line: str) -> int:
@@ -962,7 +1023,15 @@ def deep_heading(line: str) -> tuple[int, str] | None:
 # where the renderer does show a heading. Erring toward seeing it is the same
 # choice `deep_heading` makes, and for the same reason: under-reporting is the
 # bypass, over-reporting costs an author one edit.
-CONTAINER_MARKER = re.compile(r"^[ \t]*(>[ \t]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+)")
+# The marker HEAD only. Whether the run of spaces after it belongs to the marker
+# or to the content is a column question, not a pattern one -- CommonMark 5.2
+# gives the marker at most FOUR columns of following whitespace, and a fifth
+# means the item's first block is INDENTED CODE whose content column is the
+# marker plus one. Baked into a `[ \t]+` here, that greedy run swallowed the code
+# indentation as marker padding, so `-     ```text` -- which every renderer shows
+# as a code block -- opened a fence in `fence_mask`, and every line after it,
+# a real `## [x.y.z]` entry heading included, was masked as its content.
+LIST_MARKER_HEAD = re.compile(r"^([-*+]|\d{1,9}[.)])")
 # A list marker ANYWHERE in the prefix, not only at its head: `> - ---` opens a
 # list inside the quote and so cannot continue the paragraph above it, exactly as
 # `- ---` cannot at top level. The renderer agrees on both.
@@ -993,20 +1062,52 @@ def strip_containers(line: str) -> tuple[str, str, int, int]:
 
     Two lines are in the same container context when their quote depths are equal
     (exactly -- depth 1 under depth 2 is not a heading, and the renderer agrees).
+
+    EVERYTHING HERE IS MEASURED IN COLUMNS, on a tab-expanded copy of the line, so
+    that column == index for the whole walk. Measuring a marker with `len()`
+    instead made `-\tname` four columns wide to the renderer and two here, and the
+    setext underline's 0-3 allowance was then counted from column 2: an underline
+    at six or seven columns is a heading the renderer shows and this file did not.
+    The returned `prefix` and `content` are slices of that expanded copy for the
+    same reason -- a caller that measured them again would otherwise re-introduce
+    the character count this function just removed.
+
+    A LIST MARKER'S WIDTH IS NOT WHATEVER WHITESPACE FOLLOWS IT (CommonMark 5.2).
+    One to four columns of following space put the content there; a fifth means
+    the item begins with an INDENTED CODE BLOCK, and then the content column is
+    the marker plus one and the rest of that whitespace belongs to the content.
+    Consuming it as marker padding is what made `-     ```text` -- a code block to
+    every renderer -- open a fence here.
     """
-    rest, depth, columns = line, 0, 0
+    expanded = expand_tabs(line)
+    rest, pos, base, depth, columns = expanded, 0, 0, 0, 0
     while True:
-        m = CONTAINER_MARKER.match(rest)
+        indent = len(rest) - len(rest.lstrip(" "))
+        body = rest[indent:]
+        if body[:1] == ">":
+            # 5.1: the marker is `>` plus AT MOST ONE space, and that space
+            # belongs to the marker. Content is measured inside the quote, so the
+            # list column restarts from here.
+            take = indent + 1 + (1 if body[1:2] == " " else 0)
+            rest, pos = rest[take:], pos + take
+            base, depth, columns = pos, depth + 1, 0
+            continue
+        m = LIST_MARKER_HEAD.match(body)
         if m is None:
             break
-        marker = m.group(1)
-        if marker.startswith(">"):
-            depth += 1
-            columns = 0                    # content is measured inside the quote
-        else:
-            columns += indent_columns(rest) + len(marker)
-        rest = rest[m.end():]
-    return line[: len(line) - len(rest)], rest, depth, columns
+        after = m.end()
+        tail = body[after:]
+        spaces = len(tail) - len(tail.lstrip(" "))
+        if spaces == 0:
+            break                          # `-foo` and `1.5 foo` are not list items
+        # Four columns of following space at most; a fifth, or nothing but
+        # whitespace to the end of the line, leaves the content one column past
+        # the marker and the remainder as the item's own indentation.
+        width = 1 if (spaces >= 5 or not tail[spaces:]) else spaces
+        take = indent + after + width
+        columns = pos + take - base        # relative to the innermost quote
+        rest, pos = rest[take:], pos + take
+    return expanded[:pos], rest, depth, columns
 
 
 def classify_heading(line: str) -> tuple[int, str, str] | None:
@@ -2508,6 +2609,107 @@ def self_test() -> int:
         ("a malformed entry does not orphan its own definition", 1,
          ["# Changelog", "## 0.9.7] — 2026-09-05", "### Added", "- a", D7]),
 
+        # -- ROUND 8: THE COLUMN MODEL, and the two ways it was wrong ---------
+        # A LIST MARKER'S PADDING IS NOT THE ITEM'S CONTENT (CommonMark 5.2).
+        # Five columns after the marker means the item begins with an INDENTED
+        # CODE BLOCK; consuming them as marker padding made a code line that only
+        # LOOKS like a fence open one, and everything below it -- the next real
+        # entry heading included -- was masked as that fence's content. The two
+        # entries here are deliberately out of order, so the file is only clean
+        # if the second one VANISHES: 1 finding proves it was read as an entry.
+        ("list code five columns in does not open a fence", 1,
+         ["# Changelog", V4, "### Added", "- x", "-     ```text",
+          V5, "### Added", "- y"]),
+        ("ordered list code does not open a fence", 1,
+         ["# Changelog", V4, "### Added", "- x", "1.     ```text",
+          V5, "### Added", "- y"]),
+        ("multi-digit list code does not open a fence", 1,
+         ["# Changelog", V4, "### Added", "- x", "10.     ```text",
+          V5, "### Added", "- y"]),
+        ("nested list code does not open a fence", 1,
+         ["# Changelog", V4, "### Added", "- x", "- -     ```text",
+          V5, "### Added", "- y"]),
+        # Three spaces and a TAB reach column 8: five columns of padding measured
+        # the way the renderer measures it, and a character count cannot see it.
+        ("tab-padded list code does not open a fence", 1,
+         ["# Changelog", V4, "### Added", "- x", "-   \t```text",
+          V5, "### Added", "- y"]),
+        ("list code carrying a release heading is data", 1,
+         ["# Changelog", V4, "### Added", "- x", "-     ### Fixed",
+          V5, "### Added", "- y"]),
+        # ...AND THE OTHER DIRECTION, which is the same column: a GENUINE fence in
+        # a list item must still mask its sample, and must still CLOSE. Its
+        # delimiters sit at the item's content column, so the three-column
+        # allowance is counted from there; counted from column 0 a four-column
+        # closer was not a closer and a valid document was reported as one long
+        # unclosed code block.
+        ("a fence in a list item masks its sample", 0,
+         ["# Changelog", V5, "### Added", "- ```text"]
+         + ["  " + s for s in SAMPLE] + ["  ```"]),
+        ("a fence four columns into its item still closes", 0,
+         ["# Changelog", V5, "### Added", "-    ```text"]
+         + ["     " + s for s in SAMPLE] + ["     ```"]),
+        ("a fence in a tab-marked item still closes", 0,
+         ["# Changelog", V5, "### Added", "-\t```text"]
+         + ["    " + s for s in SAMPLE] + ["    ```"]),
+        ("a fence in a `10. ` item still closes", 0,
+         ["# Changelog", V5, "### Added", "10. ```text"]
+         + ["    " + s for s in SAMPLE] + ["    ```"]),
+        ("a fence in a nested item still closes", 0,
+         ["# Changelog", V5, "### Added", "- - ```text"]
+         + ["    " + s for s in SAMPLE] + ["    ```"]),
+        # A line that falls BELOW the item's content column leaves the item, so it
+        # leaves the fence: the renderer shows the entry heading and the extractor
+        # would cut there. Masking it was the under-report the column now closes.
+        ("a list-item fence ends where the content dedents", 1,
+         ["# Changelog", V4, "### Added", "- ```text", V5, "### Added", "- y",
+          "  ```", "  ```"]),
+        # ...but a BLANK line is not a dedent. Both `### Fixed` lines stay masked;
+        # unmasked they are a duplicate category and the count moves.
+        ("a blank line does not end a list-item fence", 0,
+         ["# Changelog", V5, "### Added", "- ```text", "", "  ### Fixed",
+          "  ### Fixed", "  ```"]),
+
+        # A QUOTED line can dedent out of the item too, and its own content indent
+        # is not the column that decides it: `>` at column 0 leaves an item whose
+        # content starts at column 2, and the renderer then shows the heading
+        # inside the quote. Reading `indent_columns` of the quote's content
+        # instead measured three columns, kept the fence open and hid it.
+        # A COUNT CANNOT SEE THIS ONE. Keeping the fence open reports the opener
+        # as never closed -- one finding, just like naming the heading -- so the
+        # fixture asserts WHICH invariant is named.
+        ("a quoted line below the item's column ends the fence", 1,
+         ["# Changelog", V5, "### Added", "- ```text",
+          ">    ## [0.4.0] — 2026-01-01",
+          "@@says:sits behind `>` on the same line@@"]),
+
+        # -- ROUND 8: TABS IN A MARKER PUT CONTENT AT A TAB STOP ---------------
+        # `-\tname` starts its content at column 4, not 2. Measured with `len()`
+        # the setext underline's 0-3 allowance was counted from column 2, so an
+        # underline at six or seven columns -- a heading to every renderer -- was
+        # invisible here while `release.yml` published the release into the notes
+        # above it.
+        ("a tab-marked setext release at its content column", 1,
+         ["# Changelog", V5, "### Added", "-\t[0.9.7]", "    -------"]),
+        ("a tab-marked setext release three columns past it", 1,
+         ["# Changelog", V5, "### Added", "-\t[0.9.7]", "       -------"]),
+        ("four columns past it is not a heading", 0,
+         ["# Changelog", V5, "### Added", "-\t[0.9.7]", "        -------"]),
+        ("below the content column it is not a heading", 0,
+         ["# Changelog", V5, "### Added", "-\t[0.9.7]", "   -------"]),
+        ("a tab-marked ordered setext release", 1,
+         ["# Changelog", V5, "### Added", "1.\t[0.9.7]", "    -------"]),
+        # Nested tabs compound: `-\t-\t` reaches column 8, and each tab stop
+        # depends on the column the one before it left off at.
+        ("nested tab markers put content at column 8", 1,
+         ["# Changelog", V5, "### Added", "-\t-\t[0.9.7]", "        -------"]),
+        ("a space-then-tab marker reaches the same stop", 1,
+         ["# Changelog", V5, "### Added", "- \t[0.9.7]", "    -------"]),
+        ("a tab-marked setext CATEGORY is a heading too", 1,
+         ["# Changelog", V5, "### Added", "-\tChanged", "    -------"]),
+        ("a space-marked setext release is unchanged", 1,
+         ["# Changelog", V5, "### Added", "- [0.9.7]", "  -------"]),
+
         # -- a bare CR is named, not silently resolved ------------------------
         ("a bare carriage return inside a line is a finding", 1,
          ["# Changelog", V5, "### Added", "- a. Evidence: PR #2.\r### Fixed", "- b"]),
@@ -2545,6 +2747,48 @@ def self_test() -> int:
             failures += 1
             print(f"self-test FAIL: changelog {label}: expected {expected}, got {got}",
                   file=sys.stderr)
+
+    # --- THE COLUMN MODEL ITSELF ---------------------------------------------
+    # Every expectation here was read off `markdown-it-py` in CommonMark mode by
+    # asking, for each marker, at which underline indents a setext heading
+    # appears: the lowest is the item's CONTENT COLUMN. They are written down as
+    # literals so the self-test needs nothing but a stdlib `python3`. The two
+    # defects this table pins are a tab measured as one character (`-\tx` is four
+    # columns wide, not two) and a fifth column of padding taken as marker width
+    # (`-     x` leaves the content one column past the marker, with the rest an
+    # indented code block).
+    for raw, cols, depth in [
+        ("- x", 2, 0), ("-  x", 3, 0), ("-   x", 4, 0), ("-    x", 5, 0),
+        ("-     x", 2, 0), ("-      x", 2, 0),
+        # An item that carries nothing but its marker starts its content one
+        # column past it, however much whitespace trails (5.2, and the renderer
+        # puts the last openable fence at column 5 for `-`, `-  ` and `-    `
+        # alike). Taking the trailing run as marker width made it 5.
+        ("-  ", 2, 0), ("-    ", 2, 0),
+        ("-\tx", 4, 0), ("- \tx", 4, 0), ("-  \tx", 4, 0), ("-   \tx", 2, 0),
+        ("1. x", 3, 0), ("1.\tx", 4, 0), ("9. x", 3, 0),
+        ("10. x", 4, 0), ("10.\tx", 4, 0), ("100. x", 5, 0), ("1000. x", 6, 0),
+        ("10) x", 4, 0),
+        ("- - x", 4, 0), ("-\t-\tx", 8, 0), ("- \t- x", 6, 0), ("1. 1. x", 6, 0),
+        ("> x", 0, 1), (">  x", 0, 1), (">> x", 0, 2), ("> > x", 0, 2),
+        ("> - x", 2, 1), (">\t- x", 4, 1), ("- > x", 0, 1),
+        ("x", 0, 0), ("-x", 0, 0), ("1.5 x", 0, 0), ("-", 0, 0),
+    ]:
+        got_cols, got_depth = strip_containers(raw)[3], strip_containers(raw)[2]
+        checked += 1
+        if (got_cols, got_depth) != (cols, depth):
+            failures += 1
+            print(f"self-test FAIL: strip_containers({raw!r}) -> columns {got_cols}, "
+                  f"depth {got_depth}; want {cols}, {depth}", file=sys.stderr)
+
+    # A tab advances to the next four-column stop, from wherever the line is.
+    for raw, want in [("\tx", "    x"), (" \tx", "    x"), ("   \tx", "    x"),
+                      ("    \tx", "        x"), ("a\tb", "a   b"), ("no tabs", "no tabs")]:
+        checked += 1
+        if expand_tabs(raw) != want:
+            failures += 1
+            print(f"self-test FAIL: expand_tabs({raw!r}) -> {expand_tabs(raw)!r}, "
+                  f"want {want!r}", file=sys.stderr)
 
     for raw, want in [("`a`", "   "), ("x `|` y", "x     y"), ("``a`b`` c", "        c")]:
         got_line = blank_code_spans(raw)

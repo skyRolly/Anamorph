@@ -124,7 +124,13 @@ blockquote **depth**, not a column, is what pairs a setext underline with its su
 marker establishes a content column instead — its full width, the space after it included, so
 `1. ` puts content at column 3 and `100. ` at column 5 — and a continuation line is indented to
 that column, with CommonMark's 0–3 allowance counted **from there** rather than from the
-container's start (`- [0.9.7]` over `  -------` is a heading, and so is `10. [0.9.7]` over four
+container's start. Two rules decide that width, and both are CommonMark's rather than ours.
+A **tab** advances to the next four-column stop, so `-\t` puts content at column 4 and not at
+column 2, and each tab is measured from the column the one before it left off at (`-\t-\t`
+reaches column 8). And a marker takes **at most four columns** of following whitespace: a fifth
+means the item's first block is an INDENTED CODE BLOCK, the content column is the marker plus one,
+and the rest of that whitespace belongs to the content — so ` -     ```text ` is code, and the
+fence-looking line in it opens nothing (`- [0.9.7]` over `  -------` is a heading, and so is `10. [0.9.7]` over four
 spaces and `-------`; `- foo` over `- ---` is two list items). Measuring that allowance from the
 wrong place is how a marker four or more columns wide once hid the release heading it underlined.
 Both heading forms, ATX and setext, go through that one normalisation, and the boundaries were
@@ -165,13 +171,21 @@ closed only inside the same quote, ending as soon as a line leaves it. Two conse
 stated rather than hidden: a fence nested
 inside a list item has its delimiters four or more columns from column 0, where a container
 stack would be needed to be sure, so a second pass silences the deep-heading rule between
-two such delimiters; and a fence indented one to three columns at top level cannot be told
-apart from one at a list's content column, so its content stays masked to the closer.
-A sample is not a defect.
+two such delimiters; and where a fence's own line carries no
+list marker, a delimiter indented one to three columns cannot be told apart from one at a list's
+content column, so its content stays masked to the closer. Where the opener DOES carry the marker
+the column is known and used: the closer's three-column allowance is counted from it (so
+` -    ```text ` is closed by a delimiter five columns in, which measuring from column 0 called
+unclosed and every line below it code), and a NON-BLANK line below that column leaves the item and
+ends the fence there without masking — a column-0 `## [x.y.z]` after ` - ```text ` is a real entry
+heading, and the extractor, which boundaries on `^## \[` at column 0, would have cut there. A blank
+line is not a dedent and stays inside. A sample is not a defect.
 
 **Where the two tools deliberately differ from the renderer**, they differ in one
 direction only: `check-docs.py` may see structure the renderer treats as an indented code
-block (a `### Fixed` indented four columns with no blank line above it), and reports it.
+block (a `### Fixed` indented four columns with no blank line above it, or a release name
+written as the first — and so code-indented — line of a list item, ` -   \t[0.9.7] `, underlined
+below), and reports it.
 It never sees *less* structure than the renderer — that direction is the bypass the rules
 exist to close, and the property is asserted over the grammar matrix in `--self-test`.
 

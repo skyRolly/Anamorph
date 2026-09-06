@@ -74,7 +74,21 @@ build time and moved unmodified after a fail-closed name/version check,
 job; publishing the draft stays a manual maintainer action per RELEASE_POLICY). No
 third-party actions beyond `actions/checkout` / `actions/download-artifact` + the `gh` CLI
 with the ephemeral `GITHUB_TOKEN`; no signing secrets exist in the repository.
-Evidence [Verified]: release.yml.
+
+**What `validate` actually runs against `CHANGELOG.md` (0.9.7 onward).** Not a `grep` alone: the
+job runs the NOTES EXTRACTOR itself — `scripts/changelog-section.awk`, the same file the
+`draft-release` notes step runs, so the check and the thing it checks are one implementation and
+cannot drift — and requires the section to extract to something. A `## [x.y.z]` line that exists
+only inside a fenced example satisfies a `grep` and extracts to nothing, and the job used to die on
+the empty notes body after the whole 3-OS matrix had run; it now fails in seconds. The ISO-date test
+then reads the FIRST LINE OF THE EXTRACTED SECTION rather than the file at large, so a dated heading
+somewhere else cannot vouch for an undated real one. A `workflow_dispatch` rehearsal reports the
+same two conditions as warnings against the `CMakeLists.txt` version, so a rehearsal stays green
+while telling the maintainer what a real tag would reject. The Markdown subset that keeps a release
+extractable — headings at column 0, no container markers, fences closed — is stated once in
+`CHANGELOG_POLICY.md` §The structural grammar and gated on every push by `scripts/check-docs.py`
+(the `docs` job); `release.yml` re-checks nothing that gate already covers.
+Evidence [Verified]: release.yml (`validate` job), `scripts/changelog-section.awk`.
 
 ## Build matrix
 
