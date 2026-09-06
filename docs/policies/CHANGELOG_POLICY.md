@@ -213,7 +213,9 @@ no ATX levels, no link definitions, no HTML blocks, no inline code spans. The ex
 the testable one, and `--self-test` executes it: **for every document `check-docs.py` accepts, the
 extractor finds the same release boundaries — it never omits a real release, never merges two, and
 never publishes a fenced example as one.** That is what the two tools promise each other; identical
-internals are not.
+internals are not. It is written in POSIX awk and verified under `gawk`, the one-true-awk and
+`mawk` — `--self-test` also refuses a call to one of the script's own functions written with a space
+before its `(`, which POSIX reads as a variable and which two of those three awks will not parse.
 
 **The extractor applies the same asymmetry.** `changelog-section.awk` did not look behind container
 markers at all, so a fence opened on `- ` was invisible to it: the sample's own closer read as an

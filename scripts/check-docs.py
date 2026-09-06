@@ -3331,6 +3331,29 @@ def self_test() -> int:
     # developer machines); the `docs` job and `preflight.sh` both have one.
     # ------------------------------------------------------------------
     extractor = Path(__file__).resolve().parent / "changelog-section.awk"
+    # THE ONE THING ABOUT THE EXTRACTOR THAT NO FIXTURE CAN CATCH: whether every
+    # `awk` will PARSE it. POSIX forbids a space between a USER-DEFINED function's
+    # name and its `(` -- a call written `qrest (x)` is read as the variable
+    # `qrest` concatenated with a parenthesised expression. `mawk` accepts it
+    # anyway; `gawk` and the one-true-awk reject the whole program, so the script
+    # ran locally and died on the runner with 37 fixtures failing at once and no
+    # clue in any of them. Built-ins are exempt -- `substr (s, 1, 1)` is legal and
+    # is the file's own style -- so the rule is checked only for the functions the
+    # file itself defines.
+    if extractor.is_file():
+        awk_text = extractor.read_text(encoding="utf-8")
+        defined = re.findall(r"^function\s+(\w+)\s*\(", awk_text, re.M)
+        for name in defined:
+            checked += 1
+            spaced = re.findall(rf"(?<![\w.]){re.escape(name)}\s+\(", awk_text)
+            if spaced:
+                failures += 1
+                print(f"self-test FAIL: {extractor.name} calls its own function "
+                      f"`{name}` with a space before `(` ({len(spaced)} site(s)) -- "
+                      f"POSIX awk reads that as a variable, and `gawk` and the "
+                      f"one-true-awk refuse to parse the program at all",
+                      file=sys.stderr)
+
     awk = shutil.which("awk")
     if awk is None:
         print("check-docs: NOTE -- no `awk` on PATH, so the release-notes "

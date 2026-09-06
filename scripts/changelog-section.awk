@@ -108,7 +108,7 @@ function qrest(s, k,   i) {
 BEGIN { SENT = "\001no-such-container\001" }
 
 {
-    xl = expand ($0)
+    xl = expand($0)
 
     # ---- THIS LINE'S CONTAINERS: quote depth, and the chain of list items ----
     rest = xl; d = 0; base = 0; n = 0
@@ -146,11 +146,11 @@ BEGIN { SENT = "\001no-such-container\001" }
     if (n > 0) {
         cn = n
         for (i = 1; i <= n; i++) { cd[i] = lid[i]; cc[i] = lic[i] }
-    } else if (! blank (xl)) {
+    } else if (! blank(xl)) {
         keep = 0
         for (i = 1; i <= cn; i++) {
-            r = qrest (xl, cd[i])
-            if (r == SENT || lead (r) < cc[i]) break
+            r = qrest(xl, cd[i])
+            if (r == SENT || lead(r) < cc[i]) break
             keep = i
         }
         cn = keep
@@ -161,21 +161,21 @@ BEGIN { SENT = "\001no-such-container\001" }
         ended = (d < fdepth)                       # left the blockquote
         if (! ended) {
             for (i = 1; i <= fn; i++) {            # left an enclosing list item
-                r = qrest (xl, fid[i])
+                r = qrest(xl, fid[i])
                 if (r == SENT)     { ended = 1; break }
-                if (blank (r))     continue        # blank in that frame is not a dedent
-                if (lead (r) < fic[i]) { ended = 1; break }
+                if (blank(r))     continue        # blank in that frame is not a dedent
+                if (lead(r) < fic[i]) { ended = 1; break }
             }
         }
         if (! ended) {
-            cr = qrest (xl, fdepth)                # a closer sits behind SPACES only
+            cr = qrest(xl, fdepth)                # a closer sits behind SPACES only
             if (cr != SENT) {
-                ci = lead (cr); ct = substr (cr, ci + 1)
+                ci = lead(cr); ct = substr (cr, ci + 1)
                 if (ct ~ /^(```|~~~)/) {
                     fc = substr (ct, 1, 1); nn = 0
                     while (substr (ct, nn + 1, 1) == fc) nn++
                     info = substr (ct, nn + 1)
-                    if (ci - fbase <= 3 && fc == f && nn >= w && blank (info)) fence = 0
+                    if (ci - fbase <= 3 && fc == f && nn >= w && blank(info)) fence = 0
                 }
             }
             if (on) print
@@ -188,17 +188,17 @@ BEGIN { SENT = "\001no-such-container\001" }
     }
 
     # ---- NO FENCE ACTIVE: may this line open one? ----------------------------
-    if (n > 0) { ind = lead (rest); body = substr (rest, ind + 1) }
+    if (n > 0) { ind = lead(rest); body = substr (rest, ind + 1) }
     else {
-        r = qrest (xl, d)
+        r = qrest(xl, d)
         if (r == SENT) { ind = 4; body = "" }
         else {
             # The allowance is counted from the item's content column, which for a
             # continuation line is on an earlier line: four columns into a `10. `
             # item is an ordinary nested sample, and counting from column 0 opened
             # nothing there.
-            ind = lead (r) - ((cn > 0 && cd[cn] == d) ? cc[cn] : 0)
-            body = substr (r, lead (r) + 1)
+            ind = lead(r) - ((cn > 0 && cd[cn] == d) ? cc[cn] : 0)
+            body = substr (r, lead(r) + 1)
         }
     }
     if (ind <= 3 && body ~ /^(```|~~~)/) {

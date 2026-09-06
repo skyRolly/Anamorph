@@ -9699,7 +9699,8 @@ Eleven mutations on those three rules, each killed by a named case -- including 
 cannot see (opening the phantom fence reports it as never closed, one finding either way), so the
 fixture asserts which invariant is named.
 
-**Measured.** Self-test 405 -> 425 cases: 12 new extractor-contract fixtures and 8 heading fixtures,
+**Measured.** Self-test 405 -> 429 cases: 12 new extractor-contract fixtures, 8 heading fixtures
+and the four awk-portability assertions,
 each pinning one transition and its control. 23 mutations added this round (11 checker, 12
 extractor), 18 killed by named cases and 5 proved equivalent by exhaustive search. `check-docs` 120
 files clean, `check-citations` 415 anchors clean, `preflight.sh` exit 0.
@@ -9713,6 +9714,18 @@ closed, and the 160-document three-way differential still agrees on every one.
 reconstructed, in order), 40 categories, 0 findings, with the parser and the extractor agreeing
 line-for-line on all 21 versioned entries -- the extraction path `release.yml` actually runs, not
 only the validator.
+
+**One thing no fixture could catch, now gated.** The rewritten extractor passed every local gate
+and then failed CI in four seconds with 37 fixtures red at once: POSIX awk forbids a space between
+a USER-DEFINED function's name and its `(`, reading `qrest (x)` as a variable concatenated with a
+parenthesised expression. `mawk` -- the awk on this machine -- accepts it; `gawk` and the
+one-true-awk refuse to parse the program at all, so no fixture failed for its own reason and none of
+them named the cause. `--self-test` now checks the rule directly: it reads the function names the
+extractor defines and fails on any call site that spaces the `(`, with a message that says why.
+Built-ins are exempt, since `substr (s, 1, 1)` is legal and is the file's own style. Proved by
+restoring the space and watching the lint fire. The extractor was then run under **gawk 5.2.1, the
+one-true-awk and mawk 1.3.4**: all three parse it and all three give identical results on the
+425-case self-test, the 34-document differential, the 306-document sweep and the real CHANGELOG.
 
 **Two extractor fixtures moved by design, and the renderer settles both.** A three-space-indented
 fence inside `- b`'s item now ends at the column-0 heading below it, so `[0.9.8]` no longer publishes
