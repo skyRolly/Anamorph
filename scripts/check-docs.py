@@ -377,87 +377,105 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
     width = 0
     opened_at: int | None = None
     depth = 0
-    in_list = False
+    item: tuple[int, int] | None = None      # the list item the fence was opened in
     open_col = 0
     for i, line in enumerate(lines):
-        prefix, content, line_depth, line_cols = strip_containers(line)
-        marked = bool(LIST_CONTAINER_MARKER.search(prefix))
-        # The column this line's own content starts at, inside whatever quote it
-        # is in: the list marker's content column where it carries one, its plain
-        # indent where it does not (a continuation line is indented to the column,
-        # it does not re-state the marker).
-        line_col = line_cols if prefix else indent_columns(content)
+        prefix, content, line_depth, _, line_item = strip_containers(line)
         run = fence_run(content.lstrip(" \t"))
-        if char is None:
-            # A fence opens where its delimiter sits: inside a quote, inside a
-            # list item, or at top level. Reading the RAW line instead is what let
-            # `> ```text` open nothing at all, so a fenced example in a blockquote
-            # reached `classify_heading` as live structure and a valid document
-            # was rejected -- the mirror image of every earlier bypass.
-            if line.strip() and opens_fence(run) and indent_columns(content) <= 3:
-                char, width, depth, in_list = run[0], run[1], line_depth, marked
-                open_col = line_cols if marked else 0
-                opened_at, mask[i] = i + 1, True
-            continue
-        # HAS THE LINE LEFT THE BLOCKQUOTE THE FENCE WAS OPENED IN? A quote ends
-        # at any line below its depth -- a truly blank line included, since one
-        # strips to depth 0 while `>` alone does not (that is a quoted blank, and
-        # it stays inside). The renderer then shows a heading on the next quoted
-        # line, so the fence ends WITHOUT masking this one; not seeing that
-        # heading is the bypass direction. No separate blank-line clause: it was
-        # subsumed by the depth test, and a redundant condition is what a mutation
-        # test cannot tell from a rule.
-        #
-        # DEPTH ONLY, never the column. Whether a fence indented three columns is
-        # a top-level fence (its content may sit at column 0 and still be code) or
-        # a list item's fence (where column 0 leaves the item) cannot be told apart
-        # without a container stack this file does not keep. Ending on the column
-        # broke the top-level case; masking on it is what the file has always
-        # done. The ambiguity is recorded in KNOWN LIMITS, not resolved here.
-        # ...and a NEW LIST ITEM ends it too, but only when the fence was opened
-        # on a line that carried a list marker itself (`- > ```text`): the next
-        # `- ` starts a fresh item, so its quote and its fence are new and the
-        # renderer shows the heading. Where the opener carried no marker, a
-        # `> - foo` INSIDE the fence is ordinary code text and must stay masked --
-        # which is why the test is on the opener, not on the line.
-        # ...and a LINE THAT FALLS BELOW THE ITEM'S CONTENT COLUMN ends it as well,
-        # for a fence opened on a list line. Content inside such a fence is
-        # indented to the item's column; a shallower line leaves the item, so the
-        # renderer ends both the item and the fence there and shows what follows
-        # -- `- ```text` over a column-0 `## [x.y.z]` is a real entry heading, and
-        # masking it was an under-report the extractor did not share (it
-        # boundaries on `^## \[` at column 0 and would have cut there). Only where
-        # the opener carried a marker: a top-level fence indented one to three
-        # columns may legitimately hold content at column 0, which the renderer
-        # confirms, and telling those two apart is what needs the marker. A blank
-        # line is not a dedent -- it stays inside the fence, as it does in the
-        # renderer.
-        if line_depth < depth or (in_list and marked) \
-                or (in_list and line.strip() and line_col < open_col):
-            char, width, opened_at, in_list = None, 0, None, False
-            continue
-        mask[i] = True                       # inside the fence, including its closer
-        # `strip(" \t")`, never a bare `strip()`. CommonMark 4.5 allows spaces and
-        # TABS after a closing run and nothing else; Python's argument-less strip
-        # removes every Unicode space, so a closer trailed by a non-breaking space
-        # closed the fence HERE and not in `changelog-section.awk`, whose test is
-        # `/^[ \t\r]*$/`. One character, and the two tools disagreed about where a
-        # release ends -- the checker calling the file clean while the extractor
-        # ran two releases together.
-        #
-        # The closer's allowance is three columns measured inside its own
-        # container, exactly as the opener's is -- `>    ``` ` closes and
-        # `>     ``` ` does not, which is what the renderer says. Inside a LIST
-        # item that container's content column is `open_col`, so the allowance is
-        # counted from there: `-    ```text` is closed by a delimiter five columns
-        # in, and measuring from column 0 called the block unclosed and every line
-        # below it code -- a false positive on a valid document, which is the
-        # failure this whole family runs toward. `open_col` is 0 wherever no list
-        # marker opened the fence, and the test is then the top-level one it has
-        # always been.
-        if run and line_depth == depth and indent_columns(content) - open_col <= 3 \
-                and run[0] == char and run[1] >= width and not run[2].strip(" \t"):
-            char, width, opened_at = None, 0, None
+        if char is not None:
+            # ---- INSIDE A FENCE: does this line leave the container? ----------
+            #
+            # HAS THE LINE LEFT THE BLOCKQUOTE THE FENCE WAS OPENED IN? A quote
+            # ends at any line below its depth -- a truly blank line included,
+            # since one strips to depth 0 while `>` alone does not (that is a
+            # quoted blank, and it stays inside). The renderer then shows a
+            # heading on the next quoted line, so the fence ends WITHOUT masking
+            # this one; not seeing that heading is the bypass direction. No
+            # separate blank-line clause: it was subsumed by the depth test, and a
+            # redundant condition is what a mutation test cannot tell from a rule.
+            #
+            # DEPTH ONLY, never the column, for a fence that is NOT in a list
+            # item. Whether a fence indented three columns is a top-level fence
+            # (its content may sit at column 0 and still be code) or a list item's
+            # fence (where column 0 leaves the item) cannot be told apart without
+            # knowing the item, and a fence opened on a line with no list marker
+            # does not. Ending on the column broke the top-level case; masking on
+            # it is what the file has always done. The ambiguity is recorded in
+            # KNOWN LIMITS, not resolved here.
+            #
+            # ...AND, FOR A FENCE OPENED IN A LIST ITEM, ONE MORE TEST AND ONLY
+            # ONE: the line's own INDENTATION, read at the depth the item sits in,
+            # against the item's content column. A line still indented to that
+            # column is the item's content and so is the fence's; a shallower one
+            # has left the item, so the renderer ends the item, the fence and
+            # anything between, and shows what follows. That single number decides
+            # every shape the renderer was asked about: `- ```text` ends at a
+            # column-0 `## [x.y.z]` (a real entry heading, which the extractor
+            # would have cut at) and at ` - x` one column in, and does NOT end at
+            # `  - x`; `> - ```text` ends at `> - x` and not at `>   - x`;
+            # `- > ```text` ends at `> x` and not at `  > x`.
+            #
+            # WHAT IS NOT A TEST: whether the line carries a LIST MARKER. It was
+            # one, and it is the defect this replaces -- the old clause fired on
+            # any bullet, so `- ```text` followed by its own indented `- item`
+            # broke the fence open and the example's `### Fixed` and
+            # `## [x.y.z]` were read as live structure. A fenced example holding a
+            # Markdown list is the most ordinary thing a changelog preamble can
+            # carry, and it failed CI. Content inside a fence is DATA; only the
+            # depth, the item's column, or a genuine closer may end it.
+            #
+            # A blank line is not a dedent -- it stays inside the fence, as it
+            # does in the renderer. `container_lead` returns None where the line
+            # does not reach the item's quote depth, which is a dedent past every
+            # column.
+            ended = line_depth < depth
+            if not ended and item is not None and line.strip():
+                lead = container_lead(line, item[0])
+                ended = lead is None or lead < open_col
+            if not ended:
+                mask[i] = True               # inside the fence, including its closer
+                # `strip(" \t")`, never a bare `strip()`. CommonMark 4.5 allows
+                # spaces and TABS after a closing run and nothing else; Python's
+                # argument-less strip removes every Unicode space, so a closer
+                # trailed by a non-breaking space closed the fence HERE and not in
+                # `changelog-section.awk`, whose test is `/^[ \t\r]*$/`. One
+                # character, and the two tools disagreed about where a release
+                # ends -- the checker calling the file clean while the extractor
+                # ran two releases together.
+                #
+                # The closer's allowance is three columns measured inside its own
+                # container, exactly as the opener's is -- `>    ``` ` closes and
+                # `>     ``` ` does not, which is what the renderer says. Inside a
+                # LIST item that container's content column is `open_col`, so the
+                # allowance is counted from there: `-    ```text` is closed by a
+                # delimiter five columns in, and measuring from column 0 called
+                # the block unclosed and every line below it code -- a false
+                # positive on a valid document, which is the failure this whole
+                # family runs toward. `open_col` is 0 wherever no list marker
+                # opened the fence, and the test is then the top-level one it has
+                # always been.
+                if run and line_depth == depth \
+                        and indent_columns(content) - open_col <= 3 \
+                        and run[0] == char and run[1] >= width \
+                        and not run[2].strip(" \t"):
+                    char, width, opened_at, item = None, 0, None, None
+                continue
+            # The fence ended HERE, and this line is outside it. It is therefore
+            # not fence content and not a closer -- so it falls through to be
+            # classified from scratch, opener test included. Skipping that step
+            # left `- ```text` / `  - item` / `> ``` ` with no fence open where the
+            # renderer shows one, and so with no unclosed-fence report either.
+            char, width, opened_at, item = None, 0, None, None
+        # ---- NO FENCE ACTIVE: may this line open one? -------------------------
+        # A fence opens where its delimiter sits: inside a quote, inside a list
+        # item, or at top level. Reading the RAW line instead is what let
+        # `> ```text` open nothing at all, so a fenced example in a blockquote
+        # reached `classify_heading` as live structure and a valid document was
+        # rejected -- the mirror image of every earlier bypass.
+        if line.strip() and opens_fence(run) and indent_columns(content) <= 3:
+            char, width, depth, item = run[0], run[1], line_depth, line_item
+            open_col = item[1] if item else 0
+            opened_at, mask[i] = i + 1, True
     return mask, opened_at
 
 
@@ -1038,8 +1056,50 @@ LIST_MARKER_HEAD = re.compile(r"^([-*+]|\d{1,9}[.)])")
 LIST_CONTAINER_MARKER = re.compile(r"(?:^|[ \t])(?:[-*+][ \t]|\d{1,9}[.)][ \t])")
 
 
-def strip_containers(line: str) -> tuple[str, str, int, int]:
-    """(prefix, content, quote_depth, list_columns) after removing container markers.
+def quote_marker(rest: str) -> int | None:
+    """Columns consumed by ONE blockquote marker at the head of `rest`, else None.
+
+    Its optional indentation, the `>`, and AT MOST ONE following space (5.1 -- the
+    space belongs to the marker). Factored out because two callers need exactly
+    this and no other answer: `strip_containers`, which walks the whole prefix, and
+    `container_lead`, which walks only as far as a fence's own quote depth. One
+    grammar, two consumers -- the alternative is a second idea of what a `>` is.
+    """
+    indent = len(rest) - len(rest.lstrip(" "))
+    if rest[indent:indent + 1] != ">":
+        return None
+    take = indent + 1
+    return take + (1 if rest[take:take + 1] == " " else 0)
+
+
+def container_lead(line: str, quote_depth: int) -> int | None:
+    """Indentation in COLUMNS after `quote_depth` blockquote markers, or None if the
+    line does not reach that depth.
+
+    THE MEASUREMENT A FENCE INSIDE A LIST ITEM NEEDS, and the reason it cannot be
+    `indent_columns` alone. A line belongs to the item while its own indentation
+    reaches the item's content column -- and that indentation is counted inside
+    whatever blockquote the item itself sits in. `> - ```text` puts its item at
+    column 2 OF THE QUOTE, so `>   - x` (two columns in) is still the item's
+    content and `> - x` (none) is the next item; `- > ```text` puts its item at
+    column 2 of the DOCUMENT, so `  > x` is content and `> x` is not. One number,
+    read in the frame the fence's own list marker sits in.
+
+    Deliberately blind to LIST markers: a bullet on a content line is data, and
+    reading it as container structure is what let list-like text inside a fenced
+    example break the fence open.
+    """
+    rest = expand_tabs(line)
+    for _ in range(quote_depth):
+        take = quote_marker(rest)
+        if take is None:
+            return None
+        rest = rest[take:]
+    return len(rest) - len(rest.lstrip(" "))
+
+
+def strip_containers(line: str) -> tuple[str, str, int, int, tuple[int, int] | None]:
+    """(prefix, content, quote_depth, list_columns, item) after removing container markers.
 
     THE NORMALISATION EVERY CONTAINER RULE GOES THROUGH. Strip the markers once,
     then hand what is left to the SAME functions that read a top-level line --
@@ -1081,17 +1141,18 @@ def strip_containers(line: str) -> tuple[str, str, int, int]:
     """
     expanded = expand_tabs(line)
     rest, pos, base, depth, columns = expanded, 0, 0, 0, 0
+    item: tuple[int, int] | None = None
     while True:
-        indent = len(rest) - len(rest.lstrip(" "))
-        body = rest[indent:]
-        if body[:1] == ">":
+        take = quote_marker(rest)
+        if take is not None:
             # 5.1: the marker is `>` plus AT MOST ONE space, and that space
             # belongs to the marker. Content is measured inside the quote, so the
             # list column restarts from here.
-            take = indent + 1 + (1 if body[1:2] == " " else 0)
             rest, pos = rest[take:], pos + take
             base, depth, columns = pos, depth + 1, 0
             continue
+        indent = len(rest) - len(rest.lstrip(" "))
+        body = rest[indent:]
         m = LIST_MARKER_HEAD.match(body)
         if m is None:
             break
@@ -1106,8 +1167,14 @@ def strip_containers(line: str) -> tuple[str, str, int, int]:
         width = 1 if (spaces >= 5 or not tail[spaces:]) else spaces
         take = indent + after + width
         columns = pos + take - base        # relative to the innermost quote
+        # WHICH FRAME THE ITEM SITS IN, recorded with its column. A fence opened
+        # on this line is contained by this item, and a later line belongs to it
+        # while its indentation -- read at THIS quote depth -- reaches this
+        # column. `- > ` puts the item at depth 0 and `> - ` at depth 1, and the
+        # two measure their content from different places.
+        item = (depth, columns)
         rest, pos = rest[take:], pos + take
-    return expanded[:pos], rest, depth, columns
+    return expanded[:pos], rest, depth, columns, item
 
 
 def classify_heading(line: str) -> tuple[int, str, str] | None:
@@ -1137,7 +1204,7 @@ def classify_heading(line: str) -> tuple[int, str, str] | None:
     deep = deep_heading(line)
     if deep is not None:
         return deep[0], deep[1], "deep"
-    prefix, content, _, _ = strip_containers(line)
+    prefix, content, _, _, _ = strip_containers(line)
     if prefix:
         # The remainder is read by the TOP-LEVEL rule, and only by it. A remainder
         # indented four columns or more is an indented code block inside the
@@ -1281,10 +1348,10 @@ def parse_changelog(lines: list[str], skip: list[bool]
         # a quoted release name over a quoted rule became ordinary prose here
         # while the renderer showed a level-2 heading and the extractor missed the
         # boundary.
-        under_prefix, under_content, under_depth, _ = strip_containers(line)
+        under_prefix, under_content, under_depth, _, _ = strip_containers(line)
         if i and not skip[i - 1] and SETEXT_UNDERLINE.match(under_content.lstrip(" \t")) \
                 and not LIST_CONTAINER_MARKER.search(under_prefix):
-            _, subj_content, subj_depth, subj_cols = strip_containers(lines[i - 1])
+            _, subj_content, subj_depth, subj_cols, _ = strip_containers(lines[i - 1])
             # A continuation line is indented to the list's CONTENT COLUMN, and
             # CommonMark's 0-3 allowance is counted from there -- not from the
             # container's start. The column is the marker's full width including
@@ -2475,7 +2542,13 @@ def self_test() -> int:
         ("a top-level fence is not closed by a quoted delimiter", 0,
          ["# Changelog", V5, "### Added", "- a", "", "```text", "### Added", "> ```",
           "```"]),
-        ("a new list item ends a fence opened on a list line", 2,
+        # Three findings, and the third is the point of the round-9 restructure: the
+        # renderer shows THREE fences here, one per list item, and the last is
+        # never closed. A line that ends a fence by leaving its item is outside
+        # that fence, so it is classified from scratch -- and when it is itself a
+        # delimiter it OPENS one. Ending the fence and then skipping the line left
+        # the last opener unseen and its unclosed block unreported.
+        ("a new list item ends a fence opened on a list line", 3,
          ["# Changelog", V5, "### Added", "- a", "", "- > ```text", "- > ### Added",
           "- > ```", "- > ```"]),
         ("...but a bullet INSIDE a quoted fence is still data", 0,
@@ -2709,6 +2782,72 @@ def self_test() -> int:
          ["# Changelog", V5, "### Added", "-\tChanged", "    -------"]),
         ("a space-marked setext release is unchanged", 1,
          ["# Changelog", V5, "### Added", "- [0.9.7]", "  -------"]),
+
+        # -- ROUND 9: A BULLET INSIDE A FENCE IS DATA -------------------------
+        # Once a fence is open, its contents are DATA. The old rule ended a
+        # list-opened fence at any line carrying a list marker, so the most
+        # ordinary thing a changelog preamble can hold -- a fenced example
+        # containing a Markdown list -- broke the fence open and its `### Fixed`
+        # and `## [x.y.z]` were read as live structure. Every fixture here renders
+        # as ONE fenced code block and nothing else, so the answer is 0.
+        ("bullets inside an unordered-list fence are data", 0,
+         ["# Changelog", V5, "### Added", "- ```text", "  - item", "  * item",
+          "  + item", "  ```"]),
+        ("a bulleted sample inside a list fence is data", 0,
+         ["# Changelog", V5, "### Added", "- ```text"]
+         + ["  - " + s for s in SAMPLE] + ["  ```"]),
+        ("an ordered sample inside an ordered-list fence is data", 0,
+         ["# Changelog", V5, "### Added", "1. ```markdown", "   1. item", "   2. item",
+          "   10. item", "", "   ### Fixed", "   ### Fixed", "   ```"]),
+        ("list content inside a `10. ` fence is data", 0,
+         ["# Changelog", V5, "### Added", "10. ```text", "    - item", "    ### Fixed",
+          "    ### Fixed", "    ```"]),
+        ("list content inside a nested-list fence is data", 0,
+         ["# Changelog", V5, "### Added", "- - ```text", "    - item", "    ### Fixed",
+          "    ### Fixed", "    ```"]),
+        # The two frames a list marker can sit in, and they measure from different
+        # places: `> - ` puts its item INSIDE the quote, `- > ` outside it.
+        ("list content inside a quote+list fence is data", 0,
+         ["# Changelog", V5, "### Added", "> - ```text", ">   - item", ">   ### Fixed",
+          ">   ### Fixed", ">   ```"]),
+        ("list content inside a list+quote fence is data", 0,
+         ["# Changelog", V5, "### Added", "- > ```text", "  > - item", "  > ### Fixed",
+          "  > ### Fixed", "  > ```"]),
+        ("list content inside a tab-marked fence is data", 0,
+         ["# Changelog", V5, "### Added", "-\t```text", "    - item", "    ### Fixed",
+          "    ### Fixed", "    ```"]),
+        ("nested bullets and a blank line inside a fence are data", 0,
+         ["# Changelog", V5, "### Added", "- ```text", "  - item", "", "    - nested",
+          "  - ### Fixed", "  1. ## [0.9.7] — 2026-09-05", "  ```"]),
+
+        # ...AND THE OTHER DIRECTION, which is why the fix is a column and not a
+        # blanket "ignore list-like lines". A line that LEAVES the item still ends
+        # the fence, and the structure after it is still seen.
+        ("a genuine sibling item still ends the fence", 1,
+         ["# Changelog", V5, "### Added", "- ```text", "- ### Fixed"]),
+        ("a one-column dedent still ends the fence", 1,
+         ["# Changelog", V5, "### Added", "- ```text", " - ### Fixed"]),
+        ("a column-0 release heading still ends the fence", 1,
+         ["# Changelog", V4, "### Added", "- x", "- ```text", V5, "### Added", "- y",
+          "  ```", "  ```"]),
+        ("structure after a correct close is still seen", 1,
+         ["# Changelog", V5, "### Added", "- ```text", "  - item", "  ```", "### Added"]),
+        # A fence whose only "closer" is a bullet is NOT closed. Before the fix the
+        # bullet ended it and the file looked clean; the renderer says otherwise.
+        ("an unclosed list fence is reported", 1,
+         ["# Changelog", V5, "### Added", "- ```text", "  - item", "  - more"]),
+        ("a closer four columns past the item does not close", 1,
+         ["# Changelog", V5, "### Added", "- ```text", "  - item", "      ```"]),
+        ("a quoted closer does not close a list fence", 1,
+         ["# Changelog", V5, "### Added", "- ```text", "  - item", "> ```"]),
+        # A LINE THAT NEVER REACHES THE ITEM'S OWN QUOTE FRAME has left it past
+        # every column, and `container_lead` says so by returning None. The frame
+        # here is one quote deep (`- > - ` puts its innermost item inside the
+        # quote), and the next line's markers do not line up with it: the renderer
+        # shows the heading, and reading None as "still inside" hid it.
+        ("a line that leaves the item's quote frame ends the fence", 2,
+         ["# Changelog", V5, "### Added", "- > - ```text", "- > - ### Fixed",
+          "  > - ```"]),
 
         # -- a bare CR is named, not silently resolved ------------------------
         ("a bare carriage return inside a line is a finding", 1,

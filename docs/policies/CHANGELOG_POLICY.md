@@ -181,6 +181,19 @@ ends the fence there without masking — a column-0 `## [x.y.z]` after ` - ```te
 heading, and the extractor, which boundaries on `^## \[` at column 0, would have cut there. A blank
 line is not a dedent and stays inside. A sample is not a defect.
 
+**And nothing else ends a fence — a bullet inside one is data.** A line between an opening
+delimiter and its closer is fence CONTENT, whatever it looks like: a `- item`, a numbered
+list, a nested list, a `### Fixed`, a `## [x.y.z] — YYYY-MM-DD`, a setext pair. Only three
+things may end the block — leaving the blockquote it was opened in, falling below the content
+column of the list item it was opened in, or a genuine closing delimiter — and a list marker
+on a content line is none of them. Treating one as a container was a false positive on the
+most ordinary thing a changelog preamble can hold: a fenced example containing a Markdown
+list, which failed documentation CI while every renderer showed one code block. The three
+kinds of line are the whole model — the OPENER a fence begins on, the CONTENT it holds, and
+the CLOSER that ends it — and a line that terminates a fence by leaving its container is none
+of the three: it is outside, so it is read from scratch, and where it is itself a delimiter it
+opens the next fence.
+
 **Where the two tools deliberately differ from the renderer**, they differ in one
 direction only: `check-docs.py` may see structure the renderer treats as an indented code
 block (a `### Fixed` indented four columns with no blank line above it, or a release name

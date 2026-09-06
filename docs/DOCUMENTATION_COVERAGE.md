@@ -9403,3 +9403,95 @@ carries is the per-job command table (`docs`, `source-lint`, the build jobs), al
 job, so there is nothing in it to re-sync. Adding a description there would be new prose, not a sync.
 `RELEASE_PROCESS.md` already carries the corrected description (written in the same change set).
 [Verified]
+
+
+## Changelog system round 9 (2026-09-06) — a bullet inside a fence is data
+
+**What the round is.** One finding, and it is the same false-positive direction round 7 opened:
+valid documentation rejected. A fenced changelog example containing a Markdown list — the most
+ordinary thing a preamble can hold — broke its own fence open and its `### Fixed` and
+`## [x.y.z]` were read as live structure.
+
+**The defect, as a state-machine violation.** `fence_mask` ended an active fence at ANY line whose
+container prefix carried a list marker (`in_list and marked`). That clause exists to catch a
+genuine sibling item — `- ```text` followed by `- ### Fixed` really is a new item and a new fence —
+but it never asked WHERE the marker sat. So `- ```text` followed by its own indented `  - item`
+ended the fence at line 2, and every line after it was read as document structure. The transition
+was: fence opens → content line carries a bullet → state cleared → the sample's headings reach
+`parse_changelog`. Reproduced on unordered (`-`, `*`, `+`), ordered, multi-digit, nested,
+quote+list, list+quote and tab-marked openers — seven families, every one a false positive on a
+document `markdown-it-py` shows as a single fenced code block.
+
+**The renderer's rule, measured before any code changed.** For a fence opened in a list item there
+is ONE test and it is not the marker: a line belongs to the item while its own indentation, read in
+the frame the item sits in, reaches the item's content column. `- ```text` (content column 2) ends
+at `- x` and at ` - x` and NOT at `  - x`; `- - ```text` (column 4) ends at 0-3 and not at 4;
+`1. ```text` (column 3) ends at 0-2; `> - ```text` ends at `> - x` and not at `>   - x`;
+`- > ```text` ends at `> x` and not at `  > x`. Twelve boundary shapes, each answered by the
+renderer rather than reasoned about, and one rule fits all of them.
+
+**The fix reuses the normalisation, it does not add a parser.** `strip_containers` now also returns
+`item` = the innermost LIST marker's `(quote_depth, content_column)`, recorded at the moment the
+walk consumes it — which is what separates `- > ` (item at depth 0) from `> - ` (item at depth 1),
+two frames that measure their content from different places. `container_lead(line, depth)` returns
+the line's indentation after exactly that many blockquote markers, and is deliberately BLIND to
+list markers: reading one as container structure is the defect. The blockquote step both functions
+need is factored into `quote_marker`, so there is one idea of what a `>` is, not two.
+
+**Three kinds of line and no fourth.** The loop is now explicit about the OPENER a fence begins on,
+the CONTENT it holds, and the CLOSER that ends it. A line that terminates a fence by leaving its
+container is none of the three — it is outside — so it falls through and is classified from
+scratch, opener test included. Skipping it left `- ```text` / `  - item` / `> ``` ` with no fence
+open where the renderer shows one, and so with no unclosed-fence report either; the round-7 fixture
+`- > ```text` / `- > ### Added` / `- > ``` ` / `- > ``` ` went from 2 findings to 3 for the same
+reason, and the renderer shows exactly three fences there, the last unclosed.
+
+**Focused sweep, 372 data shapes and 186 closer shapes.** 31 openers (unordered at four widths,
+`*`, `+`, five ordered widths including `1000. ` and the paren forms, tab and space+tab, four
+nested combinations, `> - `, `>> - `, `> > - `, `- > `, `- > - `, `> - > `, indented and
+tab-indented) x 12 list-like bodies (three bullet characters, multi-digit ordered runs, nested
+lists, categories, release headings, a setext pair, blank lines mid-block, mixed markers), with
+each body built from the opener's own container context rather than from the checker's arithmetic.
+**372 of 372 agree with the renderer, 0 over-reports and 0 under-reports**; the same sweep against
+the pre-fix implementation shows **119 false positives**. The closer boundary was swept per opener
+— at the item's column, +1, +3, +4, with an info string, and with the wrong delimiter character —
+**186 of 186 agree**, against 28 disagreements before.
+
+**Measured.** Self-test 362 -> 379 cases: 17 new fixtures, nine of them documents that must produce
+NOTHING (a bulleted sample, an ordered sample with blank lines, `10. `, nested, quote+list,
+list+quote, tab-marked, nested bullets with a blank line) and eight that must still fire (a genuine
+sibling item, a one-column dedent, a column-0 release heading, structure after a correct close, an
+unclosed list fence, a closer four columns past the item, a quoted closer, and a line that leaves
+the item's own quote frame). **Twelve mutations, each killed by a named case**: restoring the old
+marker clause (11 cases), deleting the dedent test, `<=` and `>` for the column comparison, reading
+the lead at depth 0 regardless of the item's frame, letting the lead skip list markers, treating a
+blank line as a dedent, treating an unreachable frame as "still inside", recording the item frame
+from the walk's final state, skipping the terminating line instead of re-classifying it, and two
+ways of forgetting the opener's column. The "unreachable frame" mutant survived the first pass; an
+exhaustive search over 5 950 opener x line pairs found **35 that reach it**, so it is a real branch
+and now has a fixture — not an equivalent mutant, which is what the search was run to decide.
+
+**No regression, measured the established way.** Every check over all 120 real documents gives
+results identical to the previous head. The round-5 container matrix (37), the round-6 ordered-list
+matrix (33), the round-7/8 99-shape column audit and the round-8 160-shape sweep all still agree
+with the renderer, and all 32 previously closed bypass classes are still closed.
+
+**The real `CHANGELOG.md` is byte-unchanged** and still parses to 23 entries (21 versioned + the 2
+reconstructed, in order), 40 categories, 0 findings, with the parser and the extractor agreeing
+line-for-line on all 21 versioned entries. `changelog-section.awk` needed no change: its fence rule
+is `/^[ \t]*(```|~~~)/`, so a list marker cannot open a fence there, and it boundaries on
+`^## \[` at column 0, which no fenced sample line can reach.
+
+**LEVEL5_AUDITION.md version drift, verified rather than re-fixed.** The reviewer names `:15-16`,
+and on `origin/main` those lines read "The v0.9.4 audition of 2026-08-15 is invalid for v0.9.6 on
+both counts" — an invalidation rule that stopped at v0.9.6 and never said what it means for the
+release in preparation. That is corrected on this branch (commit `1869c68`): the rule now states
+that **the v0.9.6 audition of 2026-09-01 does not carry over to v0.9.7**, names ADR-0034's reported
+latency change and the Drive-crossing swap as the reasons, and keeps the v0.9.4 -> v0.9.6 case as
+the worked example the rule was first written from. Every remaining 0.9.6 reference in the document
+is HISTORICAL and must stay: the worked example (`:25`, `:31`), the scope kept as the v0.9.6 record
+with a pointer to what a v0.9.7 scope must cover (`:34`, `:36`, `:41`, `:47`), and the recorded
+v0.9.6 PASS with its deliberately blank rows (`:112`-`:149`). `RELEASE_PROCESS.md:34` names the same
+audition. Repository version metadata cross-checked: `CMakeLists.txt:14` `VERSION 0.9.7`, the newest
+CHANGELOG entry `[0.9.7]`, `HANDOVER.md` Current Version **0.9.7**. No further edit was needed and
+none was made. [Verified]
