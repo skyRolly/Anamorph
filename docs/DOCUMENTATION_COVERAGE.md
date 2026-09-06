@@ -9477,14 +9477,35 @@ a document the renderer calls valid or a heading the renderer shows:
 - **An inner item can be left while the outer one is satisfied.** `- - ```text` nests columns 2 and
   4, and a new item at column 2 passes the outer test and fails the inner. Found by the mutation
   that checks only the outermost item, and closed by the same chain.
+- **A quoted blank is a blank.** `>` alone strips to `>`, so testing the RAW line called it
+  non-blank; its zero columns of content then read as a dedent and broke a fence open in the middle
+  of a quoted sample. Blankness is now read in each item's own frame, exactly as the dedent is.
+- **The EXTRACTOR could not see an opener behind a container marker.** `changelog-section.awk`
+  matched `/^[ \t]*(```|~~~)/`, so a fence opened on `- ```text` was invisible to it: the sample's
+  own CLOSER was then read as an opener and the mask ran to end of file, so **nothing extracted, for
+  any version**, on a document the checker calls clean. `release.yml` would have failed the tag. The
+  extractor now applies the same asymmetry the checker does -- an OPENER may sit behind container
+  markers, a CLOSER may be preceded by spaces and nothing else -- with the closer's three-column
+  allowance measured from the item's own content column and the fence's own blockquote depth
+  stripped first. It is the only change the extractor has needed in rounds 5-9.
 
-**Measured.** Self-test 362 -> 387 cases: 25 new fixtures, nine of them documents that must produce
+**One over-report was found and deliberately left.** `100.\t```text` over a tab-indented sample
+ends its fence correctly at the dedent, and `indented_code_mask` then declines to mask the
+four-column line because its `in_list_context` guard sees a list marker on the preceding line -- so
+a line the renderer calls indented code is reported as a deep heading. That guard is conservative
+BY DESIGN (masking in list context is how a real heading would be hidden), the direction is the
+tolerated one, and the shape needs a tab inside a four-digit ordered marker. Recorded here rather
+than traded for a possible under-report.
+
+**Measured.** Self-test 362 -> 395 cases: 33 new fixtures, nine of them documents that must produce
 NOTHING (a bulleted sample, an ordered sample with blank lines, `10. `, nested, quote+list,
 list+quote, tab-marked, nested bullets with a blank line) and eight that must still fire (a genuine
 sibling item, a one-column dedent, a column-0 release heading, structure after a correct close, an
 unclosed list fence, a closer four columns past the item, a quoted closer, and a line that leaves
-the item's own quote frame), plus eight for the three defects the audit added. **Sixteen
-mutations, each killed by a named case**: restoring the old
+the item's own quote frame), plus sixteen for the defects the audit added -- including five in the
+EXTRACTOR CONTRACT, which the self-test executes by running `changelog-section.awk` rather than
+asserting it in a comment. **Twenty-one mutations, each killed by a named case** -- seventeen in the
+checker and four in the extractor: restoring the old
 marker clause (11 cases), deleting the dedent test, `<=` and `>` for the column comparison, reading
 the lead at depth 0 regardless of the item's frame, letting the lead skip list markers, treating a
 blank line as a dedent, treating an unreachable frame as "still inside", recording the item frame
@@ -9495,7 +9516,16 @@ and now has a fixture — not an equivalent mutant, which is what the search was
 four added for the audit's defects are: reading the closer off the container-stripped content
 again, reading it at depth 0 rather than at the fence's own, checking only the innermost enclosing
 item, and checking only the outermost. The last two each needed a fixture written for them, and
-both were answered by the renderer first.
+both were answered by the renderer first. The extractor's four are: not looking behind container
+markers, stripping markers before a CLOSER too, measuring the closer's allowance from column 0, and
+losing the item's frame inside a quote. `container_lead` was REMOVED in the same pass: the item
+loop reads `quote_rest` directly, which left the helper with no caller, and a mutation test cannot
+tell dead code from a rule.
+
+**Three-way agreement, executed rather than asserted.** 160 documents the checker accepts, built
+from 32 opener shapes x 5 bodies, were run through the renderer, the checker AND the extractor:
+**all 160 extract the right release at the right boundary**, and neither tool cuts inside a sample
+the renderer shows as one code block.
 
 **No regression, measured the established way.** Every check over all 120 real documents gives
 results identical to the previous head. The round-5 container matrix (37), the round-6 ordered-list

@@ -57,31 +57,75 @@
 # into the release notes above it. `check-docs.py`'s `indent_columns` counts the
 # same way, and its docstring records the same defect from the other direction.
 
-/^[ \t]*(```|~~~)/ {
-    fl = $0
-    ind = 0                                          # indentation in COLUMNS
-    for (k = 1; k <= length (fl); k++) {
-        ch = substr (fl, k, 1)
-        if      (ch == " ")  ind++
-        else if (ch == "\t") ind += 4 - (ind % 4)
-        else break
+# A FENCE DELIMITER MAY SIT BEHIND CONTAINER MARKERS, and until this it did not.
+# A fenced example inside a list item -- `- ` then the delimiter -- was invisible
+# here, so the sample's own CLOSER was read as an OPENER and the mask ran to end
+# of file: NOTHING extracted, for any version, on a document `check-docs.py` calls
+# clean. The two tools now normalise the same way, and the asymmetry is
+# CommonMark's own (4.5): an OPENER may be preceded by container markers, a CLOSER
+# by up to three columns of SPACES and by nothing else -- so `- ``` ` inside a
+# fence is code text, not a closer. `fbase` is the opener's container content
+# column and `fdepth` its blockquote depth, which is what the closer's three-column
+# allowance is measured from, exactly as `open_col` and `depth` are in
+# `check-docs.py`'s `fence_mask`.
+{
+    # Tab-expanded copy: a tab advances to the next four-column stop, so after
+    # this COLUMN == INDEX and every measurement below is a column count.
+    xl = ""; col = 0
+    for (k = 1; k <= length ($0); k++) {
+        ch = substr ($0, k, 1)
+        if (ch == "\t") { w = 4 - (col % 4); while (w-- > 0) { xl = xl " "; col++ } }
+        else            { xl = xl ch; col++ }
     }
-    if (ind <= 3) {
-        sub (/^[ \t]+/, "", fl)
+    fl = xl; base = 0; item = 0; d = 0
+    if (! fence) {
+        while (1) {
+            if (match (fl, /^ *>( ?)/)) {
+                fl = substr (fl, RLENGTH + 1); d++; base = 0   # content restarts inside the quote
+                continue
+            }
+            if (match (fl, /^ *([-*+]|[0-9]+[.)]) +/)) {
+                base += RLENGTH; item = base   # the INNERMOST item, in its own frame
+                fl = substr (fl, RLENGTH + 1)
+                continue
+            }
+            break
+        }
+    } else {
+        for (q = 0; q < fdepth; q++) {
+            if (match (fl, /^ *>( ?)/)) fl = substr (fl, RLENGTH + 1)
+            else                        { fl = ""; break }
+        }
+    }
+    ind = 0
+    while (substr (fl, ind + 1, 1) == " ") ind++
+    fl = substr (fl, ind + 1)
+    if (fl ~ /^(```|~~~)/) {
         fc = substr (fl, 1, 1)
         n  = 0
         while (substr (fl, n + 1, 1) == fc) n++
         rest = substr (fl, n + 1)
         if (! fence) {
-            # An info string with a backtick makes a BACKTICK delimiter no
-            # delimiter at all (clause 4). Fall through to the rules below, so
-            # the line is scanned as the ordinary content CommonMark says it is.
-            if (fc == "`" && index (rest, "`")) { if (on) print; next }
-            fence = 1; f = fc; w = n
+            if (ind <= 3) {
+                # An info string with a backtick makes a BACKTICK delimiter no
+                # delimiter at all (clause 4). Fall through to the rules below, so
+                # the line is scanned as the ordinary content CommonMark says it is.
+                if (fc == "`" && index (rest, "`")) { if (on) print; next }
+                # The closer's allowance is measured from the ITEM's content
+                # column, exactly as `check-docs.py` measures it from `open_col`
+                # -- and that column keeps the frame the item was read in, which a
+                # later `>` inside the same item does not move.
+                fence = 1; f = fc; w = n; fbase = item; fdepth = d
+                if (on) print
+                next
+            }
         }
-        else if (fc == f && n >= w && rest ~ /^[ \t\r]*$/)      { fence = 0 }
-        if (on) print
-        next
+        else if (ind - fbase <= 3 && fc == f && n >= w && rest ~ /^[ \t\r]*$/) {
+            fence = 0
+            if (on) print
+            next
+        }
+        else if (fence) { if (on) print; next }
     }
 }
 fence                          { if (on) print; next }

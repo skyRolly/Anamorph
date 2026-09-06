@@ -196,7 +196,17 @@ opens the next fence. Two consequences follow and both are CommonMark's. A **clo
 may be preceded by up to three columns of SPACES and by nothing else, so a list marker disqualifies
 it — `- ``` ` inside a fenced example is code text, not a closer. And a fence opened inside NESTED
 items belongs to every one of them: a line that leaves an outer item takes the inner containers,
-and the fence, with it, whichever frame the inner one was measured in.
+and the fence, with it, whichever frame the inner one was measured in. Blankness is read in that
+frame too: `>` alone is a quoted blank and stays inside a fence opened in a quoted item, exactly as
+a bare blank line stays inside one opened at top level.
+
+**The extractor applies the same asymmetry.** `changelog-section.awk` did not look behind container
+markers at all, so a fence opened on `- ` was invisible to it: the sample's own closer read as an
+opener and the mask ran to end of file, so nothing extracted for any version on a file this checker
+calls clean. It now strips container markers before an OPENER and only blockquote markers before a
+CLOSER, and measures the closer's three-column allowance from the item's content column — the same
+two numbers `check-docs.py` uses. The two tools are checked against each other on every such shape,
+not merely against their own fixtures.
 
 **Where the two tools deliberately differ from the renderer**, they differ in one
 direction only: `check-docs.py` may see structure the renderer treats as an indented code
