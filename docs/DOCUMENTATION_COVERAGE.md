@@ -9733,3 +9733,63 @@ the older release inside its notes; and a delimiter four columns into a quoted i
 but the line after it leaves the quote, so the entry below extracts normally where the old extractor
 published nothing. In both cases the new output is what `fence_mask` and `markdown-it-py` already
 said. [Verified]
+
+## Changelog system round 11 (2026-09-06) — a nested item extends the chain, and a lint that can fire
+
+**Three findings, and they are two defects.** The first two were in the portability gate round 10
+added; the third was in the container state both tools read. Evidence: `scripts/check-docs.py`,
+`scripts/changelog-section.awk`, `docs/policies/CHANGELOG_POLICY.md`, PR #140.
+
+**The gate could not fail.** Round 10's lint ran its matcher over one file — the extractor — and
+that file is clean, so every result was the empty list and a matcher that had stopped recognising
+`qrest (` looked exactly like a working one. The lint is now `awk_spaced_calls`, driven by fifteen
+synthetic sources with known answers: seven it MUST flag and eight it must leave alone. A blind
+matcher fails the first seven; a raw substring search passes them and fails the rest.
+
+**And it could fail wrongly.** `name\s+\(` matched the characters, not the grammar, so a comment, a
+string, a regex or a documentation line saying `qrest (` would have failed the build over prose —
+all three awks run such a file. The measured grammar is narrower than the text in four ways: only a
+CALL (a **definition** written `function qrest (s, k)` is accepted by gawk, mawk and the
+one-true-awk alike — run, not reasoned about), only a name the file DEFINES (`substr (s, 1, 1)` is a
+built-in and is the script's own style), only in CODE, and only the whole identifier (`myqrest (` is
+not a call of `qrest`). `awk_code_text` blanks comments, string literals and regex literals first,
+in one pass with three states, and its one heuristic — where a `/` is a regex rather than division —
+is the conservative way round: guessing division leaves extra text to scan, guessing regex could
+swallow a real call. Both directions are pinned by fixtures.
+
+**A marker line is not a fresh start.** `container_chains` replaced the carried chain with whatever
+markers a line stated, so `- outer` over `  - nested` left only the nested item and the still-open
+outer one was gone. The next continuation line fell below the nested column with nothing to fall
+back to and read as top level, which broke both ways at once: a fence opened there belonged to NO
+item, so only a closing delimiter could end it and the column-0 `## [` that ends the list, the fence
+and the block in every renderer was masked — while the same erasure in `changelog-section.awk`
+published the two releases as one note and printed *nothing* for the older version; and where the
+item's column was wider than three, the delimiter read as an indented code block, no fence opened at
+all, and the sample's contents were scanned as live structure. One rule replaces it in both tools:
+**trim then extend** — keep the longest prefix of the carried chain the line still reaches, each item
+read in its own quote frame, then append the markers the line states for itself; a blank changes
+nothing. Containers nest, so what survives is always a prefix.
+
+**All three consumers read the one chain.** `fence_mask`, `classify_heading` and the setext
+alignment take it from `container_chains` and nowhere else; `chain_column` reads the innermost entry
+and `fence_mask` the whole chain, which is why the fix needed no change in any of them.
+`indented_code_mask` was audited and left alone: it consumes no chain, and its list-context guard
+declines to mask in any list context, so it can only over-report.
+
+**Proofs.** The self-test is **464** cases. 12 mutations this round — 10 on the checker, 2 on the
+extractor — **all 12 killed**, each by a named case: chain replacement and trim-without-extend; a
+blind matcher, an unlexed one, unblanked definition headers, unskipped regex literals, a `/` always
+read as a regex, a `#` that ends a string, a dropped identifier look-behind, and a dropped
+whitespace requirement. A 200-document three-way differential over container-chain extension ×
+nested lists × blockquotes × tabs × fences × release boundaries: **200 agree, 0 mismatch, 0
+under-report, against 60 under-reports on the round-10 head**. A 72-document probe of the
+paragraph-interruption residual (an ordered marker on a continuation line, which CommonMark does not
+treat as a marker): 72 agree, 0 under-report.
+
+**No regression.** Round 10's 34-document differential (32 agree, 2 rejected, 0 mismatch) and
+306-document sweep (297 agree, 9 rejected, 0 mismatch, 0 under-report) are unchanged; every earlier
+matrix still passes inside the 464-case self-test. Over all 120 real documents the chain itself now
+differs on 21 of them — it is a real change to the model — and **not one document's findings change**,
+nor does any of the 23 versions of the real `CHANGELOG.md` extract differently. The extractor is
+byte-identical under gawk 5.2.1, mawk 1.3.4 and the one-true-awk. `check-docs` 120 files clean,
+`check-citations` 415 anchors clean, `preflight.sh` exit 0. [Verified]

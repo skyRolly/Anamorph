@@ -214,8 +214,20 @@ the testable one, and `--self-test` executes it: **for every document `check-doc
 extractor finds the same release boundaries — it never omits a real release, never merges two, and
 never publishes a fenced example as one.** That is what the two tools promise each other; identical
 internals are not. It is written in POSIX awk and verified under `gawk`, the one-true-awk and
-`mawk` — `--self-test` also refuses a call to one of the script's own functions written with a space
-before its `(`, which POSIX reads as a variable and which two of those three awks will not parse.
+`mawk`.
+
+**The portability rule is about awk's grammar, not about the characters.** POSIX makes a
+user-defined function's name and its `(` one token, so a *call* written `qrest (x)` is read as a
+variable and two of those three awks refuse to parse the program at all; `--self-test` therefore
+rejects one. What it must not reject is text that merely contains those characters: a **definition**
+written `function qrest (s, k)` is accepted by all three (measured, not assumed), a built-in such as
+`substr (s, 1, 1)` is exempt and is the script's own style, and a comment, a string literal or a
+regex literal naming the call is data. The check removes comments, strings and regex literals first
+— the smallest lexical approximation that answers the question, since the alternative is an awk
+parser — and `--self-test` proves the gate in both directions: synthetic sources it MUST flag, and
+synthetic sources it must leave alone. A lint that is only ever run against a file that is already
+clean cannot tell a working matcher from a broken one, and that is how this gate could have died
+silently.
 
 **The extractor applies the same asymmetry.** `changelog-section.awk` did not look behind container
 markers at all, so a fence opened on `- ` was invisible to it: the sample's own closer read as an
@@ -227,11 +239,24 @@ not merely against their own fixtures.
 
 **A fence may be opened on a continuation line**, and the item it belongs to is then on an earlier
 line: `- an item`, and under it the delimiter. `check-docs.py` carries the item chain across lines
-for exactly this — a line with markers restates it, one without keeps as much as its indentation
-still reaches, a blank changes nothing — which is what tells a delimiter indented two columns INSIDE
-an item from one indented two columns at top level. Both the opening and the closing three-column
-allowances are counted from the item's content column, read in the fence's own blockquote frame; an
-item recorded at a shallower depth imposes no column inside a quote.
+for exactly this — which is what tells a delimiter indented two columns INSIDE an item from one
+indented two columns at top level. Both the opening and the closing three-column allowances are
+counted from the item's content column, read in the fence's own blockquote frame; an item recorded
+at a shallower depth imposes no column inside a quote.
+
+**The chain is carried by one rule, TRIM THEN EXTEND, and it is the same rule in both tools.** A
+non-blank line keeps the longest *prefix* of the carried chain it still reaches — each item read in
+its own quote frame — and then appends the markers it states for itself; a blank line changes
+nothing, because a blank does not end a list item. Containers nest, so what survives is always a
+prefix: leaving an outer item leaves every inner one with it. **A line carrying a marker is not a
+fresh start**, and reading it as one erased enclosing containers that were still open: `- outer`
+over `  - nested` left only the nested item, the next continuation line fell below the nested column
+with nothing to fall back to, and a fence opened there belonged to no item at all. Nothing but a
+closing delimiter could then end it, so the column-0 `## [` that ends the list, the fence and the
+block in every renderer was masked — while the same erasure in `changelog-section.awk` published the
+two releases as one note, and asking for the older version printed nothing. Where the item's column
+was wider than three, the same erasure broke the other way: the delimiter read as an indented code
+block, no fence opened, and the sample's contents were scanned as live structure.
 
 **The heading rules read that chain too.** `classify_heading` and the setext alignment measure a
 container-prefixed line from the enclosing item's content column, not from column 0, and one guard

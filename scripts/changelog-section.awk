@@ -78,6 +78,16 @@
 #      preamble swallowed EVERY release below it, so `awk -v ver=...` printed
 #      nothing for any version and a release tag could not be cut. The rule is
 #      `check-docs.py`'s `fence_mask`, stated the same way and tested against it.
+#   8. ...WHICH IS ONLY AS GOOD AS THE CHAIN OF ITEMS IT IS MEASURED AGAINST, and
+#      that chain is carried by ONE rule: TRIM THEN EXTEND. A non-blank line
+#      keeps the longest PREFIX of the carried chain it still reaches, then
+#      appends the markers it states for itself; a blank changes nothing.
+#      Replacing the chain with a line's own markers -- which is what this did --
+#      dropped the still-open OUTER item at `- outer` over `  - nested`, and a
+#      fence opened below that belonged to no item at all: the column-0 `## [`
+#      that ends the list, the fence and the block in every renderer was
+#      swallowed, so the newer entry's notes ran on through the older one and
+#      asking for the older version printed nothing.
 # ---------------------------------------------------------------------------
 
 function expand(s,   out, col, k, ch, wid) {          # tabs to four-column stops
@@ -140,13 +150,22 @@ BEGIN { SENT = "\001no-such-container\001" }
 
     # ---- THE ITEMS THIS LINE SITS IN, carried across lines -------------------
     # A fence may be opened on a CONTINUATION line -- `- an item`, and indented
-    # under it the delimiter -- and then the chain is not on that line at all. A
-    # line with markers restates it; one without keeps as much as its indentation
-    # still reaches; a blank changes nothing, because a blank does not end an item.
-    if (n > 0) {
-        cn = n
-        for (i = 1; i <= n; i++) { cd[i] = lid[i]; cc[i] = lic[i] }
-    } else if (! blank(xl)) {
+    # under it the delimiter -- and then the chain is not on that line at all.
+    #
+    # ONE RULE, TRIM THEN EXTEND: keep the longest PREFIX of the carried chain
+    # this line still reaches (each item read in its own quote frame; containers
+    # nest, so leaving an outer item leaves every inner one with it), then append
+    # the markers the line states for itself. A blank changes nothing, because a
+    # blank does not end an item.
+    #
+    # A MARKER LINE IS NOT A FRESH START. It used to REPLACE the chain, so
+    # `- outer` over `  - nested` left only the nested item and the still-open
+    # outer one was gone; the next continuation line fell below the nested column
+    # with nothing to fall back to and read as top level. A fence opened there
+    # belonged to NO item, so only a closing delimiter could end it and the
+    # column-0 `## [` that ends the list, the fence and the block in every
+    # renderer was swallowed -- two releases published as one note.
+    if (! blank(xl)) {
         keep = 0
         for (i = 1; i <= cn; i++) {
             r = qrest(xl, cd[i])
@@ -154,6 +173,10 @@ BEGIN { SENT = "\001no-such-container\001" }
             keep = i
         }
         cn = keep
+        # The indentation compared above is the one BEFORE this line's own
+        # markers, which is the test CommonMark applies: an outer item matches by
+        # indentation first, and only what is left may open an item inside it.
+        for (i = 1; i <= n; i++) { cn++; cd[cn] = lid[i]; cc[cn] = lic[i] }
     }
 
     # ---- INSIDE A FENCE ------------------------------------------------------

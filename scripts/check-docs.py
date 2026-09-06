@@ -358,9 +358,31 @@ def container_chains(lines: list[str]) -> list[tuple[tuple[int, int], ...]]:
 
     THE ONE PIECE OF CROSS-LINE CONTAINER STATE THIS FILE KEEPS, and both the
     fence rules and the heading rules read it from here rather than each building
-    their own. A line carrying markers RESTATES the chain; one without keeps as
-    much of it as its indentation still reaches, each item read in its own frame;
-    a blank line changes nothing, because a blank does not end a list item.
+    their own.
+
+    ONE RULE FOR EVERY LINE, and it is TRIM THEN EXTEND:
+
+      * TRIM the carried chain to the longest PREFIX this line still reaches --
+        each item read in its own quote frame, a line that does not carry an
+        item's depth having dedented past every column in it. Containers nest, so
+        what survives is always a prefix: leaving an outer item leaves every
+        inner one with it.
+      * EXTEND that prefix with the markers this line states for itself, whose
+        columns `strip_containers` has already measured in the right frame.
+      * A BLANK line changes nothing, because a blank does not end a list item.
+
+    A MARKER LINE IS NOT A FRESH START, and reading it as one was a bypass. It
+    used to REPLACE the chain with its own markers, so `- outer` / `  - nested`
+    left only the nested item -- and the outer item, which the nested one sits
+    inside and which is still open, was gone. The next continuation line then
+    fell below the nested column, found nothing left to fall back to, and read as
+    top level. A fence opened there was recorded as belonging to NO item, and
+    nothing but a closing delimiter could end it: the `## [x.y.z]` at column 0
+    that ends the list, the fence and the block in every renderer was masked, and
+    the same erasure in `changelog-section.awk` ran the two releases together in
+    the published notes. In the other direction the erased column made a
+    four-column delimiter inside a two-column item read as an indented code block
+    at top level, so a valid fenced sample was scanned as live structure.
 
     It is what tells a line indented two columns INSIDE an item from one indented
     two columns at top level -- a distinction the renderer makes and no
@@ -372,17 +394,22 @@ def container_chains(lines: list[str]) -> list[tuple[tuple[int, int], ...]]:
     out: list[tuple[tuple[int, int], ...]] = []
     context: tuple[tuple[int, int], ...] = ()
     for line in lines:
-        line_items = strip_containers(line)[4]
-        if line_items:
-            context = line_items
-        elif line.strip():
-            keep: list[tuple[int, int]] = []
-            for ctx_depth, ctx_col in context:
-                ctx_rest = quote_rest(line, ctx_depth)
-                if ctx_rest is None or indent_of(ctx_rest) < ctx_col:
-                    break
-                keep.append((ctx_depth, ctx_col))
-            context = tuple(keep)
+        if not line.strip():
+            out.append(context)            # a blank does not end an item
+            continue
+        keep: list[tuple[int, int]] = []
+        for ctx_depth, ctx_col in context:
+            ctx_rest = quote_rest(line, ctx_depth)
+            if ctx_rest is None or indent_of(ctx_rest) < ctx_col:
+                break
+            keep.append((ctx_depth, ctx_col))
+        # The indentation compared above is the one BEFORE this line's own
+        # markers, which is exactly the test CommonMark applies: an outer item
+        # matches by indentation first, and only what is left of the line may
+        # open a new item inside it. So a marker at an outer item's content
+        # column extends the chain, and one at column 0 replaces it -- both fall
+        # out of the same two steps rather than needing a case of their own.
+        context = tuple(keep) + strip_containers(line)[4]
         out.append(context)
     return out
 
@@ -949,6 +976,108 @@ KAC_CATEGORIES = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Securit
 # `^## \[` at column 0 and nothing else, so a version heading that renders but
 # does not extract is a defect in its own right, reported as one.
 ATX_HEADING = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$")
+
+
+def awk_code_text(source: str) -> str:
+    """`source` with COMMENTS, STRING LITERALS and REGEX LITERALS blanked to spaces.
+
+    THE LEXICAL APPROXIMATION, stated so it can be argued with. `awk_spaced_calls`
+    below has to answer a question about awk's GRAMMAR -- is this text a function
+    call? -- and the honest way to do that without an awk parser is to remove the
+    three places where text is not code, then read what is left. Every character
+    removed is replaced by a space rather than deleted, so offsets and line
+    numbers still point at the real file.
+
+    Three lexical states and nothing else:
+
+      * `#` to end of line is a comment -- BUT ONLY OUTSIDE A STRING. `"a # b"` is
+        a string containing a hash, and treating it as a comment would blank the
+        rest of a line that may hold a real call.
+      * `"..."` is a string, `\\` escapes the next character, and an awk string
+        cannot span a line, so an unterminated one ends at the newline.
+      * `/.../` is a REGEX LITERAL only where a `/` cannot be division: after an
+        operator, a comma, an opening bracket or at the start of a statement --
+        never after an identifier, a number, a `)`, a `]` or a string. This is the
+        one heuristic here, and it is the conservative way round: guessing
+        "division" where a regex was meant leaves extra text to scan (at worst a
+        false positive that a fixture would catch), while guessing "regex" where a
+        division was meant would swallow real code and could HIDE a forbidden
+        call. `--self-test` pins both directions.
+
+    What it deliberately does not do: parse. It does not know a function from a
+    variable, `getline` from a pipe, or a continued line from two statements. It
+    does not have to -- the only question asked of the result is whether a name
+    the file DEFINES is followed by whitespace and a `(` in code position.
+    """
+    out = list(source)
+    i, n = 0, len(source)
+    prev = ""                       # last significant CODE character seen
+    while i < n:
+        c = source[i]
+        if c == "#":                                        # comment to line end
+            while i < n and source[i] != "\n":
+                out[i] = " "
+                i += 1
+            continue
+        if c == '"' or (c == "/" and not (prev.isalnum() or prev in "_)]")):
+            close = c                                       # string, or regex literal
+            out[i] = " "
+            i += 1
+            while i < n and source[i] != close and source[i] != "\n":
+                if source[i] == "\\" and i + 1 < n and source[i + 1] != "\n":
+                    out[i] = " "
+                    i += 1
+                out[i] = " "
+                i += 1
+            if i < n and source[i] == close:
+                out[i] = " "
+                i += 1
+            prev = ")"              # a literal is an operand: a `/` after it divides
+            continue
+        if not c.isspace():
+            prev = c
+        i += 1
+    return "".join(out)
+
+
+def awk_spaced_calls(source: str) -> list[tuple[int, str]]:
+    """(1-based line, name) for every call of a function `source` DEFINES that is
+    written with whitespace before its `(`.
+
+    THE ONE THING ABOUT THE EXTRACTOR THAT NO FIXTURE CAN CATCH: whether every
+    `awk` will PARSE it. POSIX gives a user-defined function's name and its `(`
+    as a single token, so `qrest (x)` is read as the VARIABLE `qrest` next to a
+    parenthesised expression; `mawk` accepts it anyway, while `gawk` and the
+    one-true-awk reject THE WHOLE PROGRAM. `scripts/changelog-section.awk` ran
+    clean locally and died on the runner in four seconds with all 37 extractor
+    fixtures failing at once and the reason in none of them.
+
+    THE GRAMMAR THAT IS FORBIDDEN, and it is narrower than the text:
+
+      * a CALL only. `function qrest (s, k)` -- a DEFINITION with a space -- is
+        accepted by gawk, mawk and the one-true-awk alike (measured, not assumed),
+        so flagging it would be a false report about a portable file.
+      * a name the file itself DEFINES. Built-ins are exempt: `substr (s, 1, 1)`
+        is legal, portable, and this file's own house style.
+      * in CODE. A comment, a string or a regex holding the characters
+        `qrest (` is data -- all three awks run such a file -- and reporting it
+        would fail the build over prose. `awk_code_text` removes those first.
+      * the whole identifier. `myqrest (` is not a call of `qrest`, which is what
+        the look-behind is for.
+    """
+    code = awk_code_text(source)
+    defined = set(re.findall(r"^[ \t]*function[ \t]+(\w+)[ \t]*\(", code, re.M))
+    # Blank the DEFINITION headers, keeping the file's length so line numbers
+    # survive: a definition may portably carry the space a CALL may not, so the
+    # text scanned for calls must not still contain the name that declares one.
+    code = re.sub(r"^[ \t]*function[ \t]+\w+",
+                  lambda m: " " * len(m.group(0)), code, flags=re.M)
+    found: list[tuple[int, str]] = []
+    for name in sorted(defined):
+        for m in re.finditer(rf"(?<![\w.]){re.escape(name)}[ \t]+\(", code):
+            found.append((code.count("\n", 0, m.start()) + 1, name))
+    return sorted(found)
+
 
 
 def atx_heading(line: str) -> tuple[int, str] | None:
@@ -3153,6 +3282,70 @@ def self_test() -> int:
          ["# Changelog", V5, "### Added", "10. item", "    > ```text",
           "    > ### Fixed", "    > ```"]),
 
+        # -- ROUND 11: A NESTED ITEM EXTENDS THE CHAIN, IT DOES NOT REPLACE IT --
+        # `container_chains` used to throw the carried chain away on any line that
+        # stated a marker, so `- outer` over `  - nested` left only the nested
+        # item and the still-open outer one vanished. The next continuation line
+        # fell below the nested column with nothing to fall back to and read as
+        # top level, which broke BOTH ways at once:
+        #
+        #   * a fence opened there belonged to NO item, so nothing but a closing
+        #     delimiter could end it and the column-0 release heading that ends
+        #     the list, the fence and the block in every renderer was masked --
+        #     and `changelog-section.awk`, which carried the same erasure,
+        #     published the two releases as one note;
+        #   * where the item's column was wider than three, the delimiter itself
+        #     read as an indented code block, no fence opened at all, and the
+        #     sample's contents were scanned as live structure -- the broken link
+        #     inside these samples is what that direction reports.
+        #
+        # Every fixture here is a document the RENDERER shows as one fenced block
+        # inside a list, with `## [0.4.0]` a real heading below it.
+        ("an outer bullet survives a nested bullet", 0,
+         ["# Changelog", V5, "### Added", "- item", "- outer", "  - nested", "  text",
+          "  ```text", "  see [x](nope.md)", V4, "### Added", "- a"]),
+        ("...an outer ordered item survives a nested one", 0,
+         ["# Changelog", V5, "### Added", "- item", "1. outer", "   1. nested", "   text",
+          "   ```text", "   see [x](nope.md)", V4, "### Added", "- a"]),
+        ("...and the two kinds mix", 0,
+         ["# Changelog", V5, "### Added", "- item", "1. outer", "   - nested", "   text",
+          "   ```text", "   see [x](nope.md)", V4, "### Added", "- a"]),
+        ("...tab-marked items are items too", 0,
+         ["# Changelog", V5, "### Added", "- item", "-\touter", "\t-\tnested", "\ttext",
+          "\t```text", "\tsee [x](nope.md)", V4, "### Added", "- a"]),
+        ("...a multi-digit marker's column is its own", 0,
+         ["# Changelog", V5, "### Added", "- item", "10. outer", "    100. nested",
+          "    text", "    ```text", "    see [x](nope.md)", V4, "### Added", "- a"]),
+        ("...and the chain is a chain, not a pair", 0,
+         ["# Changelog", V5, "### Added", "- item", "- a", "  - b", "    - c", "    text",
+          "    ```text", "    see [x](nope.md)", V4, "### Added", "- a"]),
+        # The quote shapes were never broken -- a fence inside a blockquote is
+        # ended by the DEPTH test, whatever happened to the item chain -- and they
+        # are here so a future change to the chain cannot quietly take them out.
+        ("a quoted nested item still ends its fence at the quote", 0,
+         ["# Changelog", V5, "### Added", "- item", "> - outer", ">   - nested", ">   text",
+          ">   ```text", ">   see [x](nope.md)", V4, "### Added", "- a"]),
+        ("...and so does a quote inside an item", 0,
+         ["# Changelog", V5, "### Added", "- item", "- > outer", "  > - nested",
+          "  >   text", "  >   ```text", "  >   see [x](nope.md)", V4, "### Added", "- a"]),
+        # A COUNT CANNOT SEE THE UNDER-REPORT: masking the release reports the
+        # fence as never closed, which is also one finding. The fixture therefore
+        # asserts WHICH invariant is named -- and an ordering complaint can only
+        # be made about a release the checker actually parsed.
+        ("a release below a nested container is parsed, not masked",
+         1, ["# Changelog", V4, "### Added", "- item", "- outer", "  - nested", "  text",
+             "  ```text", V5, "### Added", "- a",
+             "@@says:entries run newest first@@"]),
+        # ...and the other direction: while the nested item is still ACTIVE, a
+        # release-like heading inside the fence stays data, and the closer in the
+        # outer item's frame still closes.
+        ("a heading inside the fence stays inside it", 0,
+         ["# Changelog", V5, "### Added", "- outer", "  - nested", "  text", "  ```text",
+          "  ## [0.3.0] — 2026-01-03", "  ```", "- after", V4, "### Added", "- a"]),
+        ("...markers inside a fence do not outlive its closer", 1,
+         ["# Changelog", V5, "### Added", "- outer", "  ```text", "  - a", "    - b",
+          "      - c", "  ```", "  see [x](nope.md)", V4, "### Added", "- a"]),
+
         # -- a bare CR is named, not silently resolved ------------------------
         ("a bare carriage return inside a line is a finding", 1,
          ["# Changelog", V5, "### Added", "- a. Evidence: PR #2.\r### Fixed", "- b"]),
@@ -3189,6 +3382,46 @@ def self_test() -> int:
         if got != expected:
             failures += 1
             print(f"self-test FAIL: changelog {label}: expected {expected}, got {got}",
+                  file=sys.stderr)
+
+    # --- THE CONTAINER CHAIN ITSELF ------------------------------------------
+    # The invariant `container_chains` exists to keep, asserted directly rather
+    # than through whatever a fence or a heading happens to do with it:
+    #
+    #     A continuation line may EXTEND the active chain, and may TRIM it back to
+    #     an enclosing container that is still open. It may never ERASE an
+    #     enclosing container that the line still reaches.
+    #
+    # Every expectation was read off `markdown-it-py`: the chain for a line lists
+    # the list items the renderer shows it inside, innermost last, each with the
+    # content column its marker establishes and the quote depth it sits at. The
+    # last two documents pin the two directions a chain can be wrong -- one item
+    # too few (the round-11 defect) and one too many (fence content leaking out
+    # past the closer).
+    for label, doc, want in [
+        ("a nested item extends its outer one, and a dedent returns to it",
+         ["- outer", "  - nested", "    body", "", "  back", "text"],
+         [((0, 2),), ((0, 2), (0, 4)), ((0, 2), (0, 4)), ((0, 2), (0, 4)),
+          ((0, 2),), ()]),
+        ("...inside a blockquote, each item read at its own depth",
+         ["> - q", ">   - qn", ">   qback", "> qtop"],
+         [((1, 2),), ((1, 2), (1, 4)), ((1, 2),), ()]),
+        ("...with ordered markers of different widths",
+         ["10. outer", "    100. nested", "    back", "text"],
+         [((0, 4),), ((0, 4), (0, 9)), ((0, 4),), ()]),
+        ("...and with tabs, where one marker is four columns",
+         ["-\touter", "\t-\tnested", "\tback", "text"],
+         [((0, 4),), ((0, 4), (0, 8)), ((0, 4),), ()]),
+        ("markers inside a fence extend the chain and the closer trims it back",
+         ["- outer", "  ```t", "  - a", "    - b", "  ```", "  after", "top"],
+         [((0, 2),), ((0, 2),), ((0, 2), (0, 4)), ((0, 2), (0, 4), (0, 6)),
+          ((0, 2),), ((0, 2),), ()]),
+    ]:
+        checked += 1
+        got = container_chains(doc)
+        if got != want:
+            failures += 1
+            print(f"self-test FAIL: container chain -- {label}: expected {want}, got {got}",
                   file=sys.stderr)
 
     # --- THE COLUMN MODEL ITSELF ---------------------------------------------
@@ -3331,28 +3564,89 @@ def self_test() -> int:
     # developer machines); the `docs` job and `preflight.sh` both have one.
     # ------------------------------------------------------------------
     extractor = Path(__file__).resolve().parent / "changelog-section.awk"
-    # THE ONE THING ABOUT THE EXTRACTOR THAT NO FIXTURE CAN CATCH: whether every
-    # `awk` will PARSE it. POSIX forbids a space between a USER-DEFINED function's
-    # name and its `(` -- a call written `qrest (x)` is read as the variable
-    # `qrest` concatenated with a parenthesised expression. `mawk` accepts it
-    # anyway; `gawk` and the one-true-awk reject the whole program, so the script
-    # ran locally and died on the runner with 37 fixtures failing at once and no
-    # clue in any of them. Built-ins are exempt -- `substr (s, 1, 1)` is legal and
-    # is the file's own style -- so the rule is checked only for the functions the
-    # file itself defines.
+
+    # ---- THE PORTABILITY GATE, AND THE PROOF THAT IT CAN FIRE ----------------
+    #
+    # `awk_spaced_calls` answers the one question about the extractor that no
+    # extraction fixture can: will every `awk` PARSE it? Its docstring carries the
+    # grammar; what is executed here is the pair of properties a lint has to have,
+    # because a lint that cannot fire passes forever:
+    #
+    #   * IT MUST FIRE on the forbidden syntax. Running the matcher only over a
+    #     file that is already clean is VACUOUS -- every result is the empty list,
+    #     and a matcher that had stopped recognising `qrest (` would look exactly
+    #     the same. That is how the gate could have died silently, so the firing
+    #     half is now synthetic input whose answer is known and non-empty.
+    #   * IT MUST STAY SILENT on text that merely CONTAINS those characters. A
+    #     comment, a string, a regex or a documentation line saying `qrest (` runs
+    #     under gawk, mawk and the one-true-awk alike, and failing the build over
+    #     prose is a false report, not caution. A raw substring search passes the
+    #     firing half and fails every case below it.
+    #
+    # Each case is (name, awk source, expected (line, function) hits).
+    portability_cases: list[tuple[str, str, list[tuple[int, str]]]] = [
+        # ---- MUST DETECT: this is really what gawk and nawk refuse to parse.
+        ("a spaced call of a defined function",
+         'function qrest(s, k) { return s }\nBEGIN { x = qrest (s, 1) }\n', [(2, "qrest")]),
+        ("a tab between the name and its `(`",
+         'function qrest(s, k) { return s }\nBEGIN { x = qrest\t(s, 1) }\n', [(2, "qrest")]),
+        ("several spaces are no better than one",
+         'function qrest(s, k) { return s }\nBEGIN { x = qrest   (s, 1) }\n', [(2, "qrest")]),
+        ("every defined function is covered, each at its own line",
+         'function expand(s) { return s }\nfunction lead(s) { return s }\n'
+         'BEGIN { x = expand (1); }\nBEGIN { y = lead (2) }\n',
+         [(3, "expand"), (4, "lead")]),
+        ("a `#` inside a string does not hide the call after it",
+         'function qrest(s, k) { return s }\nBEGIN { x = "a # b"; y = qrest (1) }\n',
+         [(2, "qrest")]),
+        ("a division earlier on the line is not a regex that swallows the call",
+         'function qrest(s, k) { return s }\nBEGIN { y = a / b; x = qrest (1) }\n',
+         [(2, "qrest")]),
+        ("an unterminated string ends at the newline, not at end of file",
+         'function qrest(s, k) { return s }\nBEGIN { print "oops\nx = qrest (1) }\n',
+         [(3, "qrest")]),
+        # ---- MUST NOT DETECT: all three awks run every one of these.
+        ("a comment naming the call",
+         'function qrest(s, k) { return s }\n# qrest (s, k) is called below\n'
+         'BEGIN { x = qrest(s, 1) }\n', []),
+        ("a string containing the call",
+         'function qrest(s, k) { return s }\nBEGIN { print "qrest (s, 1)" }\n', []),
+        ("a trailing comment after a correct call",
+         'function qrest(s, k) { return s }\nBEGIN { x = qrest(1) } # qrest (2)\n', []),
+        # The `(` is UNESCAPED here on purpose: an escaped one would not match the
+        # rule's own pattern, and the fixture would pass without the regex ever
+        # being skipped. `/qrest (a|b)/` is an ordinary ERE with a group, and it
+        # carries the exact characters the rule looks for.
+        ("a regex literal containing the call",
+         'function qrest(s, k) { return s }\nBEGIN { if ($0 ~ /qrest (a|b)/) print }\n', []),
+        ("a DEFINITION written with a space, which every awk accepts",
+         'function qrest (s, k) { return s }\nBEGIN { x = qrest(1) }\n', []),
+        ("a built-in, which is exempt and is this file's own style",
+         'function qrest(s, k) { return s }\nBEGIN { x = substr (s, 1, 1) }\n', []),
+        ("a longer identifier that merely ends in the name",
+         'function qrest(s, k) { return s }\nBEGIN { x = myqrest (1) }\n', []),
+        ("the correct call, which is the whole point",
+         'function qrest(s, k) { return s }\nBEGIN { x = qrest(1) }\n', []),
+    ]
+    for name, src, want in portability_cases:
+        checked += 1
+        got = awk_spaced_calls(src)
+        if got != want:
+            failures += 1
+            print(f"self-test FAIL: awk portability -- {name}: expected {want}, got {got}",
+                  file=sys.stderr)
+
+    # ...and only then the real file, whose answer must be the empty list.
     if extractor.is_file():
-        awk_text = extractor.read_text(encoding="utf-8")
-        defined = re.findall(r"^function\s+(\w+)\s*\(", awk_text, re.M)
-        for name in defined:
-            checked += 1
-            spaced = re.findall(rf"(?<![\w.]){re.escape(name)}\s+\(", awk_text)
-            if spaced:
-                failures += 1
-                print(f"self-test FAIL: {extractor.name} calls its own function "
-                      f"`{name}` with a space before `(` ({len(spaced)} site(s)) -- "
-                      f"POSIX awk reads that as a variable, and `gawk` and the "
-                      f"one-true-awk refuse to parse the program at all",
-                      file=sys.stderr)
+        checked += 1
+        spaced = awk_spaced_calls(extractor.read_text(encoding="utf-8"))
+        if spaced:
+            sites = ", ".join(f"line {n} (`{fn}`)" for n, fn in spaced)
+            failures += 1
+            print(f"self-test FAIL: {extractor.name} calls its own function with a "
+                  f"space before `(` -- {sites}. POSIX awk reads that as a variable, "
+                  f"and `gawk` and the one-true-awk refuse to parse the program at all",
+                  file=sys.stderr)
 
     awk = shutil.which("awk")
     if awk is None:
@@ -3556,6 +3850,48 @@ def self_test() -> int:
              "0.9.8", ["# Changelog", "-\t" + F + "text", "    ## [9.9.9] — 2999-01-01",
                        *entry, *older],
              entry),
+            # ROUND 11: A NESTED MARKER EXTENDS THE CHAIN. The item chain used to
+            # be REPLACED by whatever markers a line stated, so `- outer` over
+            # `  - nested` dropped the outer item; the continuation line below
+            # then fell below the nested column with nothing left to belong to,
+            # and the fence it opened was recorded as being in NO item. Only a
+            # closing delimiter could end it after that -- so the column-0 entry
+            # heading below, which ends the list, the fence and the block in every
+            # renderer, was swallowed: the newer entry's notes ran on through the
+            # older one, and asking for the older version printed NOTHING.
+            ("a nested item does not detach a fence from its outer item",
+             "0.9.8", ["# Changelog", *entry, "- outer", "  - nested", "  text",
+                       "  " + F + "text", *older],
+             [*entry, "- outer", "  - nested", "  text", "  " + F + "text"]),
+            ("...and the entry below it can still be cut",
+             "0.9.7", ["# Changelog", *entry, "- outer", "  - nested", "  text",
+                       "  " + F + "text", *older],
+             older),
+            ("...for ordered markers of different widths",
+             "0.9.7", ["# Changelog", *entry, "10. outer", "    100. nested", "    text",
+                       "    " + F + "text", *older],
+             older),
+            ("...and for tab-marked ones",
+             "0.9.7", ["# Changelog", *entry, "-\touter", "\t-\tnested", "\ttext",
+                       "\t" + F + "text", *older],
+             older),
+            ("...three items deep as well",
+             "0.9.7", ["# Changelog", *entry, "- a", "  - b", "    - c", "    text",
+                       "    " + F + "text", *older],
+             older),
+            # ...while the fence is still INSIDE the nested item, an entry heading
+            # at its indentation is data, and markers inside it do not outlive the
+            # closer that ends it.
+            ("a heading inside a nested item's fence is still data",
+             "0.9.8", ["# Changelog", *entry, "- outer", "  - nested", "  " + F + "text",
+                       "  ## [0.9.7] — 2026-09-05", "  " + F, *older],
+             [*entry, "- outer", "  - nested", "  " + F + "text",
+              "  ## [0.9.7] — 2026-09-05", "  " + F]),
+            ("markers inside a fence do not outlive its closer",
+             "0.9.8", ["# Changelog", *entry, "- outer", "  " + F + "text", "  - a",
+                       "    - b", "  " + F, "  after", *older],
+             [*entry, "- outer", "  " + F + "text", "  - a", "    - b", "  " + F,
+              "  after"]),
             # ...AND THE PADDING RULE (5.2), which decides whether there is a fence
             # to end at all: four columns after the marker is content, a fifth is
             # an indented code block whose delimiter opens nothing.
