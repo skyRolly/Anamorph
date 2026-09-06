@@ -878,6 +878,30 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   separate scopes. Mutation-tested — removing the lock from `copyStateWithRawValues` fails leg A
   with the same 3 / 30 figure.
 
+* **State test 65 — a legacy A/B slot is canonical at the decode boundary, and no baseline is a
+  live read** (ADR-0037; closes ADR-0036 §22's *recorded, not changed*). A pre-0.6.4 slot (params
+  alone under `AB@slotA`) arrived with an empty baseline that `setMeta` resolved by reading the live
+  parameters on the first switch-in; `readSlot` now derives it from the slot's own bytes at decode.
+  Legs: (a) the frozen fixture re-saves with both slot baselines equal to the session predictor over
+  the slot tree *as parsed*; (b) switched into, the slot reads clean and its baseline is the live
+  signature; (c) **the seam** `betweenStateSetApplyAndMeta` lands an automation write exactly where
+  the old read looked, and the slot must read DIRTY with its baseline still the bytes' — the direct
+  proof the read is gone; (d) the invariant across payload shapes (legacy full / one-parameter /
+  malformed value; modern with `slotABase` absent / present-empty; a stored dirty baseline kept
+  verbatim; an unparsable payload re-seeded whole) plus the **searched raw value** 0.690675139 on
+  `mbFreqLow`, where the preset predictor and the session predictor print different five-decimal
+  signatures — 192 of 4 000 000 random raws on that range — so a raw-bearing slot's derived
+  baseline must be the session prediction; (e) repeated restore into one instance; (f) the
+  **one-pass sweep**: 3 216 session-shaped applies (root install and slot switch, value-only and
+  `raw`-bearing) over the four log-mapped ranges, each required to report exactly one
+  `normalisedAsRendered` of `anamorph::sessionNormalisedValue`, bit for bit, with the live signature
+  equal to `soundSignatureAfterRestoring`; (g) a session with no `presetBaseline` restores CLEAN at
+  each searched raw, which round 15's predictor did not give. Mutation-tested, four mutants each
+  killed by named checks: the boundary derivation removed (32 checks), the pre-ADR-0037 behaviour
+  restored with the live read (16, leg c among them), `reassertParameters` reading the copy handed
+  to JUCE (leg f), and the preset predictor in the session seats (leg d's searched value). State
+  test 5's assertion that a legacy slot re-saves with **no** baseline inverted in the same change.
+
 * **State test 63 — an obsolete restore cannot reassert over a newer authoritative one** (round 18,
   ADR-0036 §25). A host thread's restore used to INSTALL its sound and only then ANNOUNCE its
   generation; the adoption of an older, still-pending restore evaluated its guard inside that window

@@ -437,6 +437,18 @@ juce::String PresetManager::soundSignatureAfterLoading (const juce::AudioProcess
     });
 }
 
+juce::String PresetManager::soundSignatureAfterRestoring (const juce::AudioProcessorValueTreeState& s,
+                                                          const juce::ValueTree& sessionSound)
+{
+    // From the tree alone, through the session resolver (ADR-0037): `raw` first, then `value`,
+    // then the default -- what reassertParameters will assert, one store/report pass before the
+    // signature's own. Nothing live is read.
+    return signatureAfterApplying (s, [&] (const juce::RangedAudioParameter& rp, const juce::String& id)
+    {
+        return anamorph::sessionNormalisedValue (rp, sessionSound.getChildWithProperty ("id", id)).normalised;
+    });
+}
+
 juce::String PresetManager::soundSignatureForSavedTree (const juce::AudioProcessorValueTreeState& s,
                                                         const juce::ValueTree& savedSound)
 {

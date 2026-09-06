@@ -1746,7 +1746,8 @@ vintage of slot. Closing it means deriving the baseline from `s.params` — but 
 by `replaceState` + `reassertParameters`, not by `applySoundTree`, so it first requires MEASURING
 that `soundSignatureAfterLoading` models that store/report pass bit for bit. Assuming that equality
 instead of measuring it is precisely what round 10 got wrong (§19), so it belongs to a round that can
-measure rather than to a closure round.
+measure rather than to a closure round. **Closed 2026-09-06 by ADR-0037** — measured, then migrated at
+the decode boundary; record in `worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md`.
 
 **Host serialization: disposition D, unchanged, no new evidence.** The finding moved line again
 (`src/PluginProcessor.h:437`) because this round added lines above it. That is not evidence. The

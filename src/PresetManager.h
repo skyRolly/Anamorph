@@ -125,29 +125,19 @@ public:
     // puts the tick back on the row that actually produced the sound. A pre-0.9.2 session
     // has none to carry, and passes the default (unknown) -> the name fallback.
     //
-    // An EMPTY `baselineSig` means the state being adopted never recorded one. The only thing
-    // that produces it is a pre-0.6.4 A/B slot, which stored parameters ALONE -- every in-memory
-    // producer (the constructor, load, loadFile, saveUser, and therefore currentStateSet and every
-    // undo / redo / A-B / copy snapshot built from it) always fills it.
-    // "No baseline" is not "modified": soundSig() is never empty, so a literal "" would compare
-    // unequal to every possible sound and report the slot dirty forever -- a modified-marker on a
-    // preset the slot does not even have (it has no name either). The state being adopted becomes
-    // its own clean baseline instead.
-    //
-    // A HOST RESTORE NO LONGER REACHES THIS FALLBACK. Round 15 (ADR-0036 §22) resolves a session's
-    // absent or empty `presetBaseline` at DECODE time, from the restore's own bytes, and passes the
-    // result here non-empty; the live read below is an unbounded window later than the restore on a
-    // host thread, and it used to absorb every edit made in that window into the clean baseline. The
-    // remaining caller is the pre-0.6.4 A/B slot above, where the state IS being applied by the same
-    // call and the window does not exist.
-    //
-    // PRECONDITION for that fallback, not enforced by the signature: the parameters this metadata
-    // describes must ALREADY be applied. soundSig() reads the LIVE apvts, so "its own clean
-    // baseline" means "the sound in force right now" -- correct only because every caller applies
-    // first (applyStateSet does applyStatePreservingView() then this; setStateInformation restores
-    // the ANAMORPH child long before the adoption block). A caller that adopted metadata BEFORE
-    // applying its parameters would baseline against the outgoing sound and mis-report the dirty
-    // star from then on, silently. Adopt after applying, always.
+    // `baselineSig` IS THE BASELINE, VERBATIM (ADR-0037). Every producer decides it from bytes
+    // before it gets here: the constructor, load / loadFile (§18), saveUser (§17), and therefore
+    // currentStateSet and every undo / redo / A-B / copy snapshot built from it; adoptRestoreTail
+    // through baselineOfRestore (§22); and, since ADR-0037, decodeRestore's readSlot for a slot
+    // that recorded none -- a pre-0.6.4 A/B slot, which stored parameters alone. That last case
+    // used to arrive EMPTY and was resolved here by reading the LIVE parameters -- correct only
+    // because applyStateSet had applied them in the statement before, and wrong for any
+    // audio-thread automation write landing between the two, which the read absorbed into the
+    // clean baseline. It was the last live-read baseline in the model after rounds 9, 10 and 15
+    // removed the other three. An empty baseline is now a caller error rather than a request:
+    // asserted, and stored as given, where it reads as permanently modified -- loud where the
+    // live read was silent. "No baseline recorded" is still not "modified"; it is decided at the
+    // decode boundary, from the sound the bytes install, exactly as the root's is.
     //
     // There is deliberately NO identity-less overload. One existed until 0.9.2 and it made
     // "forget which row produced this sound" -- the mis-tick ADR-0024 exists to remove -- something
@@ -155,8 +145,9 @@ public:
     void setMeta (const juce::String& name, const juce::String& baselineSig,
                   const Selection& sourceSel)
     {
+        jassert (baselineSig.isNotEmpty());   // ADR-0037: derived by the producer, never read live here
         current = name;
-        sigAtLoad = baselineSig.isNotEmpty() ? baselineSig : soundSig();
+        sigAtLoad = baselineSig;
         sel = sourceSel;
         if (onMetaChanged) onMetaChanged();
     }
@@ -214,6 +205,18 @@ public:
     // (2 in 3000), which is why the two exist; State test 57 pins the boundary behaviour.
     static juce::String soundSignatureAfterLoading (const juce::AudioProcessorValueTreeState&,
                                                     const juce::ValueTree& savedSound);
+
+    // The same prediction for a SESSION-SHAPED tree -- the APVTS child of a project, an A/B
+    // slot, an undo step -- which may carry `raw` as well as `value` and is applied through
+    // replaceState + reassertParameters rather than through applySoundTree (ADR-0037). Its
+    // resolver is `anamorph::sessionNormalisedValue`, the one function that path asserts from
+    // and the text repair writes from, so the post-apply live signature equals this by the same
+    // arithmetic on the same inputs -- the property soundSignatureAfterLoading has for presets
+    // since round 11. A preset file never carries `raw`, which is why two predictors exist and
+    // not one. Used by decodeRestore for the root's `restoredSoundSig` (§22) and for a slot
+    // that recorded no baseline.
+    static juce::String soundSignatureAfterRestoring (const juce::AudioProcessorValueTreeState&,
+                                                      const juce::ValueTree& sessionSound);
 
     void load (int index);                           // message thread only
     // `load` with the drain already done. `step` calls this directly: it has drained itself and

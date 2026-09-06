@@ -595,7 +595,10 @@ static void testLegacyPre064AbSlots()
     // was the construction snapshot "Default" and on a re-restore was the PREVIOUS session's
     // name -- see the repeated-restore check below.)
     checkStr (ab["slotAName"].toString(), "", "a legacy slot carries no name of its own");
-    checkStr (ab["slotABase"].toString(), "", "...and no baseline of its own");
+    // ...and, since ADR-0037, a baseline of its own DERIVED AT DECODE from its bytes, so the
+    // re-saved session is fully modern. It used to re-save as "" and be resolved by a live read
+    // of the parameters on the first switch-in; State test 65 pins the derivation itself.
+    check (ab["slotABase"].toString().isNotEmpty(), "...and a baseline derived from its own bytes at decode");
 
     // Repeated restore into ONE live instance -- the case the rule exists for. A host may
     // call setStateInformation on the same processor any number of times; a legacy AB node
@@ -10094,7 +10097,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1340).
+//  baseline", src/PluginProcessor.cpp:1286).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -10327,7 +10330,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1077).
+//  targets", src/PluginProcessor.cpp:1023).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -10704,7 +10707,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1525).
+//  mixed sound", src/PluginProcessor.cpp:1471).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -11613,6 +11616,286 @@ static int runD2StressProbe()
 }
 
 
+// ---------------------------------------------------------------------------
+//  State test 65 -- a legacy A/B slot is canonical at the decode boundary, and no
+//  baseline is a live read (ADR-0037; closes ADR-0036 §22's "recorded, not changed").
+//
+//  A pre-0.6.4 session stores its A/B slots as parameters alone (`AB@slotA`), so the
+//  slot arrived in the model with an EMPTY baseline and `PresetManager::setMeta`
+//  resolved it by reading the live parameters when the slot was switched into --
+//  right only because `applyStateSet` had applied them in the statement before, and
+//  wrong for an audio-thread automation write landing between the two, which the read
+//  absorbed into the clean baseline. `readSlot` now derives the baseline from the
+//  slot's own bytes at decode, exactly as `baselineOfRestore` does for the root, and
+//  `setMeta` stores what it is given.
+//
+//  The derivation is only as good as the predictor's model of the apply path, and that
+//  was measured rather than assumed (worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md §3):
+//  `replaceState` flushes each parameter's RENDERED value back into the very tree
+//  `reassertParameters` then read, so the four log-mapped frequency parameters ended one
+//  to three store/report passes from the bytes in ~1.3 % of values. Leg (f) is that
+//  measurement, kept: after a session-shaped apply the parameter reports exactly ONE
+//  pass of the resolved value, bit for bit, and the live signature equals the predictor.
+// ---------------------------------------------------------------------------
+namespace adr37
+{
+    // A whole-sound tree: every preset-carried parameter at its default, except the
+    // overrides given as (id, normalised). `withRaw` adds the modern exact `raw` attribute.
+    static juce::ValueTree soundTree (AnamorphAudioProcessor& p,
+                                      std::initializer_list<std::pair<const char*, float>> overrides,
+                                      bool withRaw)
+    {
+        juce::ValueTree t ("ANAMORPH");
+        for (auto* q : p.getAPVTS().processor.getParameters())
+            if (auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (q))
+                if (! pid::isPresetExcluded (wid->paramID))
+                    if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (q))
+                    {
+                        float norm = rp->getDefaultValue();
+                        for (auto& o : overrides) if (wid->paramID == o.first) norm = o.second;
+                        juce::ValueTree node ("PARAM");
+                        node.setProperty ("id", wid->paramID, nullptr);
+                        node.setProperty ("value", rp->convertFrom0to1 (norm), nullptr);
+                        if (withRaw) node.setProperty ("raw", norm, nullptr);
+                        t.appendChild (node, nullptr);
+                    }
+        return t;
+    }
+
+    // An AnamorphRoot blob whose root sound is `root`, with `active` = 1 and slot A stored
+    // under `slotKey` ("slotA" = the pre-0.6.4 shape, "slotAParams" = modern). `base` void
+    // leaves `slotABase` ABSENT; a string writes it, empty or not.
+    static juce::MemoryBlock blobWithSlotA (const juce::ValueTree& root, const juce::ValueTree& slotA,
+                                            const char* slotKey, const juce::var& base = juce::var())
+    {
+        juce::ValueTree r ("AnamorphRoot");
+        r.appendChild (root.createCopy(), nullptr);
+        juce::ValueTree ab ("AB");
+        ab.setProperty ("active", 1, nullptr);
+        ab.setProperty (slotKey, slotA.toXmlString(), nullptr);
+        if (! base.isVoid()) ab.setProperty ("slotABase", base, nullptr);
+        r.appendChild (ab, nullptr);
+        return BlobCodec::wrap (*r.createXml());
+    }
+
+    // The slot tree exactly as `readSlot` holds it: parsed back from the text.
+    static juce::ValueTree asParsed (const juce::ValueTree& t) { return juce::ValueTree::fromXml (t.toXmlString()); }
+
+    static juce::String savedSlotABase (AnamorphAudioProcessor& p)
+    {
+        return stateTreeOf (p).getChildWithName ("AB")["slotABase"].toString();
+    }
+}
+static void testLegacySlotIsCanonicalAtTheBoundary()
+{
+    std::printf ("State test 65: a legacy A/B slot is canonical at the decode boundary, and no baseline is a live read (ADR-0037)\n");
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& p = *owned;
+    p.prepareToPlay (48000.0, 512);
+    auto& apvts = p.getAPVTS();
+    using PM = anamorph::PresetManager;
+
+    // ---- (a) the frozen pre-0.6.4 fixture re-saves with baselines derived from ITS bytes ----
+    {
+        auto fixture = juce::parseXML (fixtureDir().getChildFile ("legacy_pre_0_6_4_ab_slots.xml"));
+        check (fixture != nullptr && applyXmlFixture (p, "legacy_pre_0_6_4_ab_slots.xml"), "the pre-0.6.4 fixture restores");
+        if (fixture != nullptr)
+        {
+            auto* ab = fixture->getChildByName ("AB");
+            const auto slotA = juce::ValueTree::fromXml (ab->getStringAttribute ("slotA"));
+            const auto slotB = juce::ValueTree::fromXml (ab->getStringAttribute ("slotB"));
+            auto saved = stateTreeOf (p).getChildWithName ("AB");
+            checkStr (saved["slotABase"].toString(), PM::soundSignatureAfterRestoring (apvts, slotA),
+                      "(a) legacy slot A re-saves with the signature of the sound ITS bytes install");
+            checkStr (saved["slotBBase"].toString(), PM::soundSignatureAfterRestoring (apvts, slotB),
+                      "(a) ...and so does slot B");
+            checkStr (saved["slotAName"].toString(), "", "(a) the name stays the canonical empty one (No Preset)");
+        }
+    }
+
+    // ---- (b) switched into, a legacy slot reads clean, and its baseline IS the live signature ----
+    {
+        p.abSwitchTo (0);
+        check (! p.getPresets().isDirty(), "(b) a legacy slot switched into reads clean");
+        checkStr (p.getPresets().baseline(), PM::soundSignatureFor (apvts),
+                  "(b) ...because the baseline decided from its bytes equals the live signature");
+    }
+
+    // ---- (c) NO LIVE READ: an automation write landing between the apply and the metadata ----
+    // is NOT the clean baseline. The seam sits exactly where the old live read used to look.
+    {
+        check (applyXmlFixture (p, "legacy_pre_0_6_4_ab_slots.xml"), "(c) restore again (active = B)");
+        const auto driveBefore = rawOf (p, "drive");
+        p.seams.betweenStateSetApplyAndMeta = [&] { setRaw (p, "drive", 0.77f); };   // "automation" lands here
+        p.abSwitchTo (0);
+        p.seams.betweenStateSetApplyAndMeta = nullptr;
+        check (p.getPresets().isDirty(), "(c) a write between apply and metadata leaves the slot DIRTY, not absorbed");
+        check (! juce::approximatelyEqual (rawOf (p, "drive"), driveBefore), "(c) ...and the write itself stood");
+        auto fixture = juce::parseXML (fixtureDir().getChildFile ("legacy_pre_0_6_4_ab_slots.xml"));
+        if (fixture != nullptr)
+            checkStr (p.getPresets().baseline(),
+                      PM::soundSignatureAfterRestoring (apvts, juce::ValueTree::fromXml (fixture->getChildByName ("AB")->getStringAttribute ("slotA"))),
+                      "(c) the baseline is the slot's OWN bytes, decided before the write");
+    }
+
+    // ---- (d) the invariant across payload shapes: a VALID slot never leaves the decode without ----
+    // a baseline; an invalid one is re-seeded whole; a stored baseline is kept verbatim.
+    {
+        const auto root  = adr37::soundTree (p, { { "width", 0.30f } }, true);
+        const auto slotV = adr37::soundTree (p, { { "width", 0.80f }, { "drive", 0.20f } }, false);   // value only
+        const auto slotR = adr37::soundTree (p, { { "width", 0.80f }, { "drive", 0.20f } }, true);    // value + raw
+        juce::ValueTree partial ("ANAMORPH");
+        { juce::ValueTree n ("PARAM"); n.setProperty ("id", "width", nullptr); n.setProperty ("value", 1.8f, nullptr); partial.appendChild (n, nullptr); }
+        juce::ValueTree malformed ("ANAMORPH");
+        { juce::ValueTree n ("PARAM"); n.setProperty ("id", "width", nullptr); n.setProperty ("value", "abc", nullptr); malformed.appendChild (n, nullptr); }
+
+        struct Shape { const char* what; juce::ValueTree slot; const char* key; juce::var base; };
+        const Shape shapes[] = {
+            { "legacy key, full slot",                 slotV,     "slotA",       juce::var() },
+            { "legacy key, one parameter (fixture)",   partial,   "slotA",       juce::var() },
+            { "legacy key, malformed value",           malformed, "slotA",       juce::var() },
+            { "modern key, `slotABase` absent",        slotR,     "slotAParams", juce::var() },
+            { "modern key, `slotABase` present-empty", slotR,     "slotAParams", juce::var (juce::String()) },
+        };
+        for (const auto& sh : shapes)
+        {
+            const auto blob = adr37::blobWithSlotA (root, sh.slot, sh.key, sh.base);
+            d2::restoreFrom (p, blob);
+            const auto want = PM::soundSignatureAfterRestoring (apvts, adr37::asParsed (sh.slot));
+            const auto got  = adr37::savedSlotABase (p);
+            check (got.isNotEmpty(), (juce::String ("(d) ") + sh.what + ": the re-saved slot carries a baseline").toRawUTF8());
+            checkStr (got, want, (juce::String ("(d) ") + sh.what + ": ...derived from its own bytes").toRawUTF8());
+            p.abSwitchTo (0);
+            check (! p.getPresets().isDirty(), (juce::String ("(d) ") + sh.what + ": switched into, it reads clean").toRawUTF8());
+            checkStr (p.getPresets().baseline(), PM::soundSignatureFor (apvts),
+                      (juce::String ("(d) ") + sh.what + ": ...and the baseline equals the live signature").toRawUTF8());
+        }
+        // THE TWO PREDICTORS ARE NOT INTERCHANGEABLE, and this is the value that shows it. A
+        // 4 000 000-value search per range found raw values where the preset predictor (which
+        // reads `value` = F(raw), one rendering pass further in) prints a different five-decimal
+        // signature from the session one -- 192 of 4 000 000 on mbFreqLow, the first at
+        // r = 0.690675139 (worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md §8). A modern slot at that
+        // raw with no stored baseline must get the SESSION prediction, which is what the live
+        // signature is; the preset prediction would mark the slot modified on the first switch.
+        {
+            const auto slot = adr37::soundTree (p, { { "mbFreqLow", 0.690675139f } }, true);
+            d2::restoreFrom (p, adr37::blobWithSlotA (root, slot, "slotAParams"));
+            const auto parsed = adr37::asParsed (slot);
+            check (PM::soundSignatureAfterRestoring (apvts, parsed) != PM::soundSignatureAfterLoading (apvts, parsed),
+                   "(d) the searched raw value is one where the two predictors disagree");
+            checkStr (adr37::savedSlotABase (p), PM::soundSignatureAfterRestoring (apvts, parsed),
+                      "(d) a raw-bearing slot's derived baseline is the SESSION prediction");
+            p.abSwitchTo (0);
+            check (! p.getPresets().isDirty(), "(d) ...and it reads clean, where the preset prediction would read modified");
+        }
+        // A stored baseline -- here one that names ANOTHER sound, i.e. a slot saved dirty -- is
+        // adopted verbatim, never re-derived: the star it carried survives the reload.
+        {
+            const auto other = PM::soundSignatureAfterRestoring (apvts, adr37::asParsed (adr37::soundTree (p, { { "width", 0.10f } }, true)));
+            d2::restoreFrom (p, adr37::blobWithSlotA (root, slotR, "slotAParams", juce::var (other)));
+            checkStr (adr37::savedSlotABase (p), other, "(d) a slot's STORED baseline is kept verbatim");
+            p.abSwitchTo (0);
+            check (p.getPresets().isDirty(), "(d) ...so a slot saved dirty reads dirty after the reload");
+        }
+        // An unparsable payload leaves the slot INVALID; abEnsureInit re-seeds it whole from the
+        // restored state, metadata included, so its baseline is the manager's, never empty.
+        {
+            juce::ValueTree r ("AnamorphRoot");
+            r.appendChild (root.createCopy(), nullptr);
+            juce::ValueTree ab ("AB");
+            ab.setProperty ("active", 1, nullptr);
+            ab.setProperty ("slotA", "<ANAMORPH truncated", nullptr);
+            r.appendChild (ab, nullptr);
+            const auto blob = BlobCodec::wrap (*r.createXml());
+            d2::restoreFrom (p, blob);
+            check (adr37::savedSlotABase (p).isNotEmpty(), "(d) an unparsable legacy payload is re-seeded with a baseline, never empty");
+        }
+    }
+
+    // ---- (e) repeated restore into ONE live instance: the derivation is a function of the bytes ----
+    {
+        const auto root = adr37::soundTree (p, { { "width", 0.30f } }, true);
+        const auto slot = adr37::soundTree (p, { { "width", 0.65f } }, false);
+        const auto blob = adr37::blobWithSlotA (root, slot, "slotA");
+        juce::String first;
+        for (int i = 0; i < 3; ++i)
+        {
+            d2::restoreFrom (p, blob);
+            const auto base = adr37::savedSlotABase (p);
+            if (i == 0) first = base;
+            checkStr (base, first, "(e) every restore of the same bytes derives the same slot baseline");
+            p.abSwitchTo (0);
+            check (! p.getPresets().isDirty(), "(e) ...and switching in reads clean every time");
+            setRaw (p, "drive", 0.33f + 0.1f * (float) i);   // leave the instance dirty and elsewhere
+        }
+    }
+
+    // ---- (f) ONE PASS, BIT FOR BIT, on the log-mapped ranges, for both apply paths ----
+    // The root install (applySoundTree) and the slot switch (applyStatePreservingView) are the
+    // two session-shaped applies. For each value the parameter must report exactly one
+    // normalisedAsRendered of the value the shared resolver gives, and the live signature must
+    // equal the session predictor. Before ADR-0037 this leg failed at ~1.3 % of values.
+    {
+        long applies = 0, floatMismatch = 0, sigMismatch = 0;
+        for (auto* q : apvts.processor.getParameters())
+        {
+            auto* wid = dynamic_cast<juce::AudioProcessorParameterWithID*> (q);
+            auto* rp  = dynamic_cast<juce::RangedAudioParameter*> (q);
+            if (wid == nullptr || rp == nullptr || ! wid->paramID.containsIgnoreCase ("freq")) continue;
+            for (int i = 0; i <= 200; ++i)
+                for (bool withRaw : { false, true })
+                {
+                    const float n = (float) i / 200.0f, far = std::fmod (n + 0.5f, 1.0f);
+                    const auto root = adr37::soundTree (p, { { wid->paramID.toRawUTF8(), n } }, withRaw);
+                    const auto slot = adr37::soundTree (p, { { wid->paramID.toRawUTF8(), far } }, withRaw);
+                    rp->setValueNotifyingHost (std::fmod (n + 0.25f, 1.0f));               // start elsewhere
+                    d2::restoreFrom (p, adr37::blobWithSlotA (root, slot, withRaw ? "slotAParams" : "slotA"));
+                    for (const auto* tree : { &root, &slot })
+                    {
+                        if (tree == &slot) p.abSwitchTo (0);
+                        const auto parsed = adr37::asParsed (*tree);
+                        const float want  = normalisedAsRendered (*rp, anamorph::sessionNormalisedValue (*rp, parsed.getChildWithProperty ("id", wid->paramID)).normalised);
+                        ++applies;
+                        if (! juce::exactlyEqual (rp->getValue(), want)) ++floatMismatch;
+                        if (PM::soundSignatureFor (apvts) != PM::soundSignatureAfterRestoring (apvts, parsed)) ++sigMismatch;
+                    }
+                }
+        }
+        std::printf ("  (f) %ld session-shaped applies on the log-mapped ranges: %ld report a value other than ONE pass of the resolved one, %ld signature mismatches\n",
+                     applies, floatMismatch, sigMismatch);
+        check (applies >= 1600, "(f) the sweep covered the four frequency ranges on both apply paths");
+        check (floatMismatch == 0, "(f) every apply reports exactly one store/report pass of the resolved value");
+        check (sigMismatch == 0, "(f) ...so the live signature equals the session predictor, bit for bit");
+    }
+
+    // ---- (g) the ROOT restore (ADR-0036 §22's `restoredSoundSig`) at the searched values ----
+    // A session saved with NO `presetBaseline` (written before 0.6, or while sitting on a
+    // nameless A/B slot) restores clean against its own sound. With the preset predictor in
+    // that seat -- round 15's choice -- these four values restore MODIFIED: the predictor is
+    // one rendering pass further from the bytes than the parameter the restore installs.
+    {
+        struct Found { const char* id; float raw; };
+        const Found found[] = { { "mbFreqLow", 0.690675139f }, { "mbFreqMid", 0.711325169f },
+                                { "mbFreqHigh", 0.996955156f }, { "monoMakerFreq", 0.518795192f } };
+        for (const auto& f : found)
+        {
+            auto* rp = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (f.id));
+            check (rp != nullptr, "(g) the searched parameter exists");
+            if (rp == nullptr) continue;
+            rp->setValueNotifyingHost (f.raw);
+            auto xml = BlobCodec::unwrap (d2::saveOf (p));
+            xml->removeAttribute ("presetBaseline");                 // the shape §22 resolves
+            const auto blob = BlobCodec::wrap (*xml);
+            setRaw (p, f.id, std::fmod (f.raw + 0.5f, 1.0f));          // move away first
+            d2::restoreFrom (p, blob);
+            check (! p.getPresets().isDirty(),
+                   (juce::String ("(g) a session with no presetBaseline restores CLEAN at the searched raw of ") + f.id).toRawUTF8());
+            checkStr (p.getPresets().baseline(), PM::soundSignatureFor (apvts),
+                      (juce::String ("(g) ...its baseline being the live signature, for ") + f.id).toRawUTF8());
+        }
+    }
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -11745,6 +12028,7 @@ int main (int argc, char* argv[])
     testOverlappingReplacementsCannotMixTwoSessions();
     testObsoleteRestoreCannotReassertOverNewerOne();
     testDurableCaptureNeverRecordsTwoReplacements();
+    testLegacySlotIsCanonicalAtTheBoundary();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

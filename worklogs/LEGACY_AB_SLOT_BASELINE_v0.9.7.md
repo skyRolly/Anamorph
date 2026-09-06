@@ -330,6 +330,80 @@ probes; `check-realtime.py`; `check-docs.py`, `check-citations.py`; `preflight.s
 matrix on the final head; a mutation pass (restore the live read; restore `copy` as the tree
 `reassertParameters` reads; drop the boundary derivation) — each must fail a named check.
 
-## 8. Implementation chronology
+## 8. Implementation chronology and results
 
-*(filled in as the work lands — see the commits on `claude/legacy-ab-slot-baseline-m4rohp`)*
+Branch `claude/legacy-ab-slot-baseline-m4rohp`, on top of `737d3c1`.
+
+1. **`b172c40` — the decision, recorded first.** This worklog (§1–§7) and ADR-0037 with its
+   `ADR_INDEX.md` row; no source change.
+2. **`8f152c9` — the implementation.** `anamorph::sessionNormalisedValue` and
+   `usableSerializedNumber` in `src/PluginParameters.h`; `repairSerializedValues` and
+   `reassertParameters` read the resolver, the file-local `readSerializedValue` in
+   `PluginProcessor.cpp` is gone (the preset path keeps its own copy in `PresetManager.cpp` — its
+   resolver is deliberately a different one); `applySoundTree` and `applyStatePreservingView` pass
+   the caller's original tree to `reassertParameters`; `PresetManager::soundSignatureAfterRestoring`
+   (declared beside `soundSignatureAfterLoading`, defined beside it); both `restoredSoundSig` fills
+   use it; `readSlot` captures `this` and derives an absent/empty baseline of a valid slot;
+   `setMeta` stores the baseline verbatim behind `jassert (baselineSig.isNotEmpty())`;
+   `applyStateSet` gains the seam `betweenStateSetApplyAndMeta`. State test 5's `slotABase == ""`
+   inverted; State test 65 added (legs a–f).
+3. **`68d76b3` — the searched values.** A temporary 4 000 000-value search per log-mapped range for
+   raw values at which the preset predictor (`value` = F(raw), one rendering pass further in) and
+   the session predictor print different five-decimal signatures:
+
+   | range | `nAR² ≠ nAR³` (float) | five-decimal crossings | first such raw |
+   |---|---|---|---|
+   | mbFreqLow | 51 866 / 4 000 000 | **192** | 0.690675139 |
+   | mbFreqMid | 52 282 | **188** | 0.711325169 |
+   | mbFreqHigh | 52 377 | **167** | 0.996955156 |
+   | monoMakerFreq | 57 172 | **679** | 0.518795192 |
+
+   So the two predictors are not interchangeable on `raw`-bearing trees — roughly 5·10⁻⁵ of raw
+   values per range — and round 15's choice of the preset predictor for `restoredSoundSig` was a
+   latent (rare, cosmetic) defect: a session saved with no `presetBaseline` restored *modified* at
+   those values. State test 65 gained leg (d)'s raw-bearing slot at 0.690675139 and leg (g), the
+   root restore at all four values, which the round-15 tree fails.
+
+**The measurement, repeated on the changed tree.** State test 65 leg (f): 3 216 session-shaped
+applies (root install and slot switch, value-only and `raw`-bearing, the four ranges × 201 values)
+— **0** report a value other than one pass of the resolved one, **0** signature mismatches. The
+§3 probe on the changed tree gives the same k = 1 for every case. Suite: **2 496 checks, 0
+failures** (2 439 before this task).
+
+**Mutation results** (each mutant applied to the committed tree, the suite rebuilt and run):
+
+| mutant | result | killed by |
+|---|---|---|
+| M1a — `readSlot`'s derivation removed | **killed**, 32 checks | State test 5 ("a baseline derived from its own bytes at decode"); 65 (a), (b), (d) ×5 shapes, (e) |
+| M1b — the pre-ADR-0037 behaviour: no derivation AND `setMeta` reads live | **killed**, 16 checks | 65 **(c)** "a write between apply and metadata leaves the slot DIRTY, not absorbed"; (a), (d), test 5 |
+| M2 — `reassertParameters` reads the copy handed to JUCE (both sites) | **killed**, 1 check | 65 (f) "every apply reports exactly one store/report pass of the resolved value" |
+| M3 — the preset predictor in the session seats | **killed**, 2 checks | 65 (d) the searched raw: "a raw-bearing slot's derived baseline is the SESSION prediction" |
+
+No survivor; nothing to argue equivalent.
+
+**ThreadSanitizer** (`build-tsan`, RelWithDebInfo, `-fsanitize=thread`): the four D-2 probes
+`--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe`,
+`--d2-stress-probe` — exit 0, **0 ThreadSanitizer warnings** each; the full state suite under
+TSan — 2 496 / 0, 0 warnings. DSP suite 396 / 0. `check-realtime.py`: 47 files, 0 violations.
+
+**Hidden-dependency sweep after the change.** `soundSig()` is read live in exactly two places:
+the `PresetManager` constructor (`src/PresetManager.cpp:71`, before any operation an edit could
+follow) and `isDirty()` itself (the comparison). No `isNotEmpty() ? … : soundSig()` fallback
+remains; `adoptRestoredState` is gone since round 15. Legacy identifiers (`legacyKey`, `"slotA"`,
+`"slotB"`) occur only in `readSlot` and in comments — *legacy knowledge at the boundary, canonical
+state internally.* `soundSignatureAfterLoading` is used by the preset load paths only (`load`,
+`loadFile`); every session seat uses `soundSignatureAfterRestoring`.
+
+**Citations.** The source edit moved every span below `repairSerializedValues`; 12 declared
+re-aims and 37 plain moves were re-anchored (`check-citations.py --fix`), one by hand
+(`STATE_SERIALIZATION.md`'s `applyStatePreservingView` span, whose lines were edited).
+
+**Residuals carried forward** (all recorded in ADR-0037 §Consequences):
+
+- The 1-ulp adjacency case: a parameter already holding a *different* denormalised float whose
+  normalised report equals the resolved value skips the reassert write; live signature `nAR(n)`,
+  prediction `nAR(nAR(n))`. No path in the plug-in produces such a neighbour after this change.
+  Measured, not fixed: changing the write condition would touch the host-restore notification
+  contract for a case with no known producer.
+- `PresetManager.cpp` keeps its own `readSerializedValue` for the preset resolver; the predicate
+  itself is `SerializedNumber.h`'s in both places, so the two cannot disagree about a number.
