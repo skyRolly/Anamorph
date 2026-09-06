@@ -9515,6 +9515,21 @@ a delimiter four columns into a `10. ` item -- an ordinary nested sample -- open
 nothing. Two existing fixtures moved by one finding as a result, and the renderer was asked about
 both: each new finding is a genuine unclosed fence it also shows.
 
+**Two more the adversarial phase found, and one it found in the round's own new code.** The
+blockquote marker `>` is accepted at any indentation, so `    > ```text` -- four columns, where
+CommonMark 5.1 allows three and the `>` is literal text inside an indented code block -- opened a
+blockquote that is not there, and a fence inside it masked a real `## [x.y.z]` with NO finding. The
+bound was written, and REVERTED: it is measured from column 0, and on a continuation line that is
+the wrong origin -- `10. > [0.9.7]` over `    > -------` has its `>` at the item's own content
+column and IS a heading, which the bound broke. Both shapes are the same container-stack question
+and both are recorded below rather than half-fixed. The second was fixed: the deep pass's fence
+tracker silenced EVERY line between two deep delimiters whatever its indent, so a six-column
+delimiter inside a `- ` item swallowed a `### Removed` at four columns -- two columns inside the
+item, and a heading to the renderer. Content of a fence is indented at least as far as the fence
+is; a shallower line has left it. Its closer-side twin was written for symmetry, found to be
+distinguishable by no input (a shallower delimiter always opens a fence in `fence_mask` first, which
+masks everything after it), and removed rather than kept.
+
 **One over-report was found and deliberately left.** `100.\t```text` over a tab-indented sample
 ends its fence correctly at the dedent, and `indented_code_mask` then declines to mask the
 four-column line because its `in_list_context` guard sees a list marker on the preceding line -- so
@@ -9566,6 +9581,27 @@ reconstructed, in order), 40 categories, 0 findings, with the parser and the ext
 line-for-line on all 21 versioned entries. `changelog-section.awk` needed no change: its fence rule
 is `/^[ \t]*(```|~~~)/`, so a list marker cannot open a fence there, and it boundaries on
 `^## \[` at column 0, which no fenced sample line can reach.
+
+**What the round did NOT close, named with its shapes.** The container chain `fence_mask` now
+carries is not available to the HEADING rules, which still measure a container-prefixed line from
+column 0. Three reproducible under-reports follow from that, all confirmed against the renderer and
+all pre-existing (the pre-round-9 checker is silent on each):
+
+- `> -   item` over `>     ## [0.9.7] — 2026-09-01`. The item's content column is 2 inside the
+  quote, so four columns after the `> ` is only two inside the item and the renderer shows an entry
+  heading; `classify_heading`'s container path reads the post-strip content, sees four columns and
+  calls it indented code.
+- `- 1. ```text` over an indented `[0.9.7] — 2026-09-05` and `-----`, and the same pair with no
+  fence at all. Both lines are CONTINUATIONS carrying no marker, so the setext rule's alignment test
+  measures both from column 0 and the pair falls outside the 0-3 allowance.
+- `    > ```text` at top level, from the paragraph above: bounding the blockquote marker at three
+  columns fixes it and breaks `10. > [0.9.7]` over `    > -------`, because the bound has to be
+  counted from the item's content column and `strip_containers` is a per-line function.
+
+They are one question -- the heading rules need the chain the fence rules have -- and answering it
+is a change to `classify_heading`, the setext alignment and `strip_containers`'s signature, which is
+a round of its own rather than a coda to this one. Recorded here so the next round starts from the
+shapes rather than from a search.
 
 **LEVEL5_AUDITION.md version drift, verified rather than re-fixed.** The reviewer names `:15-16`,
 and on `origin/main` those lines read "The v0.9.4 audition of 2026-08-15 is invalid for v0.9.6 on

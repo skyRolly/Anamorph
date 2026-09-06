@@ -216,6 +216,17 @@ an item from one indented two columns at top level. Both the opening and the clo
 allowances are counted from the item's content column, read in the fence's own blockquote frame; an
 item recorded at a shallower depth imposes no column inside a quote.
 
+**What that chain does not yet reach.** The HEADING rules — `classify_heading` and the setext
+alignment — still measure a container-prefixed line from column 0, so three shapes are known to be
+under-reported and are written down rather than left to be re-found: an ATX release heading four
+columns after `> -   item` (two columns inside that item, and a heading to the renderer); a setext
+release pair written as two continuation lines inside a nested item; and a `>` indented four
+columns, which is literal text inside an indented code block but is read here as a blockquote. The
+last is why the blockquote marker carries no three-column bound: counted from column 0 the bound
+breaks `10. > [0.9.7]` over `    > -------`, which IS a heading. All three are the same question —
+the heading rules need the container chain the fence rules carry — and all three are
+under-reports, which is the direction this section exists to close.
+
 **Where the two tools deliberately differ from the renderer**, they differ in one
 direction only: `check-docs.py` may see structure the renderer treats as an indented code
 block (a `### Fixed` indented four columns with no blank line above it, or a release name

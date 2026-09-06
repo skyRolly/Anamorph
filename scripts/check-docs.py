@@ -1134,6 +1134,16 @@ def quote_marker(rest: str) -> int | None:
     only as far as a fence's own quote depth. One grammar, two consumers -- the
     alternative is a second idea of what a `>` is.
     """
+    # NO THREE-COLUMN BOUND HERE, and that is a decision rather than an omission.
+    # CommonMark 5.1 allows a `>` at most three columns into its container, but on
+    # a CONTINUATION line -- one carrying no marker of its own -- this function
+    # cannot know which container that is: `10. > [0.9.7]` over `    > -------` has
+    # its `>` at the item's own content column and IS a heading, while
+    # `    > ```text` at top level is an indented code block whose `>` is literal.
+    # Bounding absolutely fixes the second and breaks the first. Both are recorded
+    # as the container-stack residual in CHANGELOG_POLICY.md; `fence_mask` carries
+    # the chain it needs for its own decisions, and threading it through this
+    # normalisation is a separate change.
     indent = len(rest) - len(rest.lstrip(" "))
     if rest[indent:indent + 1] != ">":
         return None
@@ -1372,7 +1382,7 @@ def parse_changelog(lines: list[str], skip: list[bool]
     # rule: it is the deep rule that cannot tell a sample from a container, and a
     # deep delimiter run is the clearest signal there is that what follows is a
     # sample. Nothing else in this file changes its answer because of it.
-    deep_fence: tuple[str, int] | None = None
+    deep_fence: tuple[str, int, int] | None = None   # character, run, opener indent
     for i, line in enumerate(lines):
         # A LONE CARRIAGE RETURN, reported rather than silently resolved.
         # CommonMark 2.1 calls it a line ending; `awk` does not, and
@@ -1399,12 +1409,26 @@ def parse_changelog(lines: list[str], skip: list[bool]
             if run:
                 if deep_fence is None:
                     if opens_fence(run):
-                        deep_fence = (run[0], run[1])
+                        deep_fence = (run[0], run[1], indent_columns(line))
                 elif run[0] == deep_fence[0] and run[1] >= deep_fence[1] \
                         and not run[2].strip(" \t"):
+                    # NO INDENT GUARD ON THE CLOSER, deliberately: a delimiter
+                    # shallower than the opener always opens a fence in
+                    # `fence_mask` first -- its allowance is measured from the
+                    # item's column, which is shallower still -- so every line
+                    # after it is masked before this pass sees it. The guard was
+                    # written for symmetry and no input distinguishes it, which is
+                    # the definition of a clause to remove.
                     deep_fence = None
                 continue
-            if deep_fence is not None:
+            # A LINE LESS INDENTED THAN THE OPENER IS NOT ITS CONTENT. The deep
+            # pass silences the deep-heading rule between two deep delimiters, and
+            # it used to silence every line between them whatever its indent -- so
+            # `- item` over a six-column delimiter swallowed a `### Removed` at
+            # FOUR columns, which the renderer shows as a heading because four
+            # columns is only two inside the item. Content of a fence is indented
+            # at least as far as the fence is; a shallower line has left it.
+            if deep_fence is not None and indent_columns(line) >= deep_fence[2]:
                 continue
         d = LINK_DEFINITION.match(line)
         if d:
@@ -3015,6 +3039,26 @@ def self_test() -> int:
         ("a shallower item imposes no column inside the quote", 1,
          ["# Changelog", V5, "### Added", "- > ```text", "  >     ### Fixed",
           "  >     ```"]),
+        # THE DEEP PASS SILENCES ITS OWN CONTENT AND NOT WHAT IS ABOVE IT. A
+        # six-column delimiter inside a `- ` item used to silence a `### Removed`
+        # at FOUR columns, which the renderer shows as a heading -- four columns is
+        # only two inside the item. Content of a fence is indented at least as far
+        # as the fence is; a shallower line has left it.
+        ("a line shallower than a deep opener is not its content", 1,
+         ["# Changelog", V5, "### Added", "- item", "      ```text", "    ### Removed",
+          "      ```"]),
+        ("...and a line at the opener's own indent still is", 0,
+         ["# Changelog", V5, "### Added", "- item", "      ```text", "      ### Removed",
+          "      ```"]),
+        # ...and a SHALLOWER DELIMITER does not close it either: it belongs to a
+        # different container, and the renderer shows it opening a fence of its own
+        # that swallows what follows. Closing on it would have unmasked that.
+        ("a shallower delimiter does not close a deep fence", 2,
+         ["# Changelog", V5, "### Added", "- item", "      ```text", "    ### Removed",
+          "    ```", "      ### Security"]),
+        ("...but one at the opener's indent does", 1,
+         ["# Changelog", V5, "### Added", "- item", "      ```text", "      ### Removed",
+          "      ```", "      ### Security"]),
         ("...and a bare blank does not end one at top level", 0,
          ["# Changelog", V5, "### Added", "- ```text", "  ### Fixed", "",
           "  ## [0.9.7] — 2026-09-05", "  ```"]),
