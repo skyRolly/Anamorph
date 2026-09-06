@@ -3,6 +3,13 @@
 Potential technical risks. Each is evidence-based (constraint C7) — no invented risks. ADRs and
 postmortems may reference these IDs to close the loop. Severity: Low / Medium / High / Critical.
 
+**Version-synced to v0.9.7 (2026-09-06): the pluginval crash-classification fix.** No new entry and
+none closed. RISK-004 is **re-scoped in kind rather than in likelihood**: its title term
+"signal-only" is retired, because a crash does not always arrive as a signal exit. On macOS
+pluginval traps SIGABRT and friends itself and exits **9**, which `run-pluginval.sh` read as a real
+validation failure until this change — so on that platform the risk of a masked crash was never the
+retry at all, but the classifier, and it was a *mislabelled* rather than a retried-away crash. The
+retry cap and its Linux scoping are unchanged. Prior:
 **Version-synced to v0.9.7 (2026-09-03): the ADR-0034 latency change.** No new entry and none
 closed. RISK-008 (the reported latency can reach a Linux host late, or not until the editor opens,
 in a wrapper configuration that hands over its run loop only through `IPlugFrame`) **narrows
@@ -93,7 +100,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-001 | JUCE version bump silently changes DSP/latency/editor behaviour | High | Medium |
 | RISK-002 | Always-on monitor/crossover banks + per-sample coeff recompute → CPU | Medium | Medium |
 | RISK-003 | No git release tags → fragile version/CHANGELOG attribution | Low | High (already true) |
-| RISK-004 | pluginval signal-only retry could mask a real future editor crash | Medium | Low |
+| RISK-004 | pluginval crash-only retry could mask a real future editor crash | Medium | Low |
 | RISK-005 | Manual-only audio/visual + host validation lets regressions ship green | Medium | Medium |
 | RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the commercial JUCE licence required by the closed-source model is not yet obtained | High | High (already true) |
 | RISK-007 | **RESOLVED 2026-09-03 (D-2, ADR-0036)** — State calls on a non-main host thread raced message-thread state (AU autosave; out-of-spec VST3 hosts); program metadata is now message-thread-owned and exchanged through two lock-free cells | — | — |
@@ -162,8 +169,8 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   manifest). The risk **closes when the first release tag is cut** (planned: **v0.9.7** — 0.9.0 through 0.9.6 were each written up but never tagged); until
   then, cite commit SHAs. Historical entries keep SHA evidence permanently.
 
-## RISK-004 — pluginval signal-only retry masking a real crash
-- **Risk:** `run-pluginval.sh` retries on a signal-crash to absorb the external X11 flake
+## RISK-004 — pluginval crash-only retry masking a real crash
+- **Risk:** `run-pluginval.sh` retries on a crash to absorb the external X11 flake
   (INC-006/KI-003). A genuine *new* editor crash that also exits with a signal could be retried away
   and pass on a later attempt, hiding a real defect.
 - **Impact:** A real crash regression could ship if it happens to pass on retry.
@@ -175,10 +182,19 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   3-attempt loop had been left excusing exclusively genuine Win32-exception crashes; it now fails
   a real abnormal exit immediately and retries only a failed *launch* — so this risk is
   Linux-scoped again, as the 2026-08-18 note intended.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:147-198 (`run_one_pass`; retry only on exit ≥128, cap 3);
+  **2026-09-06: the macOS half of this risk was never the retry.** macOS has had one attempt since
+  2026-08-18, so nothing there could be retried away — but pluginval traps SIGFPE/SIGILL/SIGSEGV/
+  SIGBUS/SIGABRT itself on that platform (`kill9WithSomeMercy`, `#if JUCE_MAC`) and exits **9**,
+  which the script's "exit <128 is a real validation failure" rule reported as a plug-in defect. A
+  crash was therefore masked by *misnaming*, not by retrying. `classify_pass_exit` now reads
+  pluginval's own `pluginval received <signal>, exiting immediately` line as well as the code, on
+  every host, and `--self-test` proves that decision live.
+- **Evidence [Verified]:** scripts/run-pluginval.sh:140-228 (`run_one_pass` and `classify_pass_exit`;
+  retry only on a CRASH, cap 3, Linux only);
   scripts/run-pluginval.ps1 (verdict block: crash → immediate failure, retry only on `$null`).
 - **Mitigation:** Investigate any repeated crash rather than trusting the pass; keep the cap; a real
-  assertion (exit <128) already fails immediately with no retry.
+  validation failure already fails immediately with no retry. Keep the crash/failure decision in one
+  self-tested function — an exit code alone does not carry it.
 
 ## RISK-005 — Manual-only audio/visual + host validation
 - **Risk:** Audio quality, GUI/vectorscope appearance, and real-DAW host behaviour cannot be verified

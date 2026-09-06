@@ -100,7 +100,7 @@ jobs that guard classes the build matrix cannot see:
 |---|---|---|---|
 | **merge-check** | `ubuntu-latest` + **pinned `clang`** | VST3 + Standalone + tests, from `refs/pull/N/merge` — **same-repo PRs only**, no packaging, no artifacts | — |
 | **docs** | `ubuntu-latest` | — (`scripts/check-docs.py --self-test` then the lint) | — |
-| **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, then `check-citations.py --check`) | — |
+| **source-lint** | `ubuntu-latest` | — (each lint preceded by its own `--self-test`: `check-portability.py`, then `check-citations.py --check`; plus the two shell self-tests that need no lint of their own — `setup-llvm-apt.sh` and `run-pluginval.sh`) | — |
 | **linux** | `ubuntu-latest` + **pinned `clang`/`lld`** | **Clang: the shipped VST3 + Standalone (+ tests)**; also the portability canary, the first-party Clang warning gate, a `-fsyntax-only` compile of the two opt-in instruments, and the **Windows-parity stack guard** (the state suite re-run under `ulimit -s 1024`, blocking — see below) | VST3, **both modes ×3** (deterministic + randomise) — **blocking** |
 | **sanitizers** | `ubuntu-latest` | Clang ASan+UBSan build, plus an unsanitized build for valgrind | — |
 | **tsan** | `ubuntu-latest` | Clang ThreadSanitizer build of the state suite; the four cross-thread probes ×5 and the suite once, behind a seeded-race canary (D-2 / ADR-0036) | — |
@@ -170,6 +170,14 @@ edge above must not be read as release non-blocking.
   portability self-test is not the same check as `--compile-canary` in `linux`: that one asks
   whether the pinned JUCE still *has* the hazard, this one whether the checker still *finds* it, and
   a green canary over a dead scanner reports a clean tree.
+  (d) two **shell** self-tests with no lint of their own, here because their decision functions need
+  nothing this job does not already have: `setup-llvm-apt.sh --self-test` (the toolchain's
+  release-identity verifier, ADR-0033) and, since 2026-09-06, **`run-pluginval.sh --self-test`** —
+  the release gate's own verdict, `classify_pass_exit`, which decides whether a non-zero pluginval
+  exit is a **crash** or a **real validation failure** (§Reading a pluginval verdict, below). It
+  belongs here rather than in the five jobs that validate for real: it needs no bundle, no
+  pluginval, no display and no network, and those jobs could not prove it anyway — a *passing*
+  pluginval step takes none of the classifier's branches. 22 cases, seconds.
 - **linux (the Clang warning gate)** — `juce_recommended_warning_flags` picks its set by **compiler ID**, and Clang's is
   strictly larger than GCC's (`-Wshorten-64-to-32`, `-Wconditional-uninitialized`,
   `-Wsign-conversion`, `-Wcast-align`, `-Wshift-sign-overflow`,
@@ -759,6 +767,41 @@ miss; the fixed seed (nonzero — see step 6) seeds the RNG the tests themselves
 flags are independent rather than two spellings of the same thing.
 Evidence [Verified]: `.github/workflows/build.yml`.
 
+### Reading a pluginval verdict (a crash is not an exit code)
+
+The gate is uniform, but the *reading* of a failed pass was not until 2026-09-06. A pluginval step
+now prints one of three things, and which one is decided by `classify_pass_exit` in
+`scripts/run-pluginval.sh` from the host, the exit code **and** pluginval's captured output:
+
+| The step says | What happened | What CI does |
+|---|---|---|
+| `PASSED …` | exit 0 | next pass |
+| `FAILED … real validation failure, not a crash.` | a genuine conformance defect — or a pluginval **timeout**, which also exits 1 and is separable only by its `*** FAILED: Timeout after` line | fails the job at once, on every platform, with pluginval's own exit code |
+| `CRASHED …` / `crashed … Retry n/3` | a signal death (exit ≥ 128), or a signal **pluginval trapped itself** — on macOS that is exit **9** plus `pluginval received <signal>, exiting immediately` | 3 attempts on Linux (the X11 XEmbed flake, RISK-004), 1 everywhere else; still a failure after them |
+
+**Why the exit code alone is not the answer.** On Linux a crashing validator is killed by the
+signal, so the shell reports 128+N. On macOS pluginval installs its own handler for SIGFPE, SIGILL,
+SIGSEGV, SIGBUS and SIGABRT — `kill9WithSomeMercy` in `Source/CommandLine.cpp`, `#if JUCE_MAC` in
+both the definition and the `CommandLineValidator` constructor that installs it — which logs that
+line and calls `std::_Exit (SIGKILL)`. SIGKILL is 9, so a macOS crash arrives *below* the old 128
+threshold and was announced as a plug-in that failed validation. Observed on
+[PR #141](https://github.com/skyRolly/Anamorph/pull/141) (run 34019453055, job `macos`, AU randomise
+pass 2/3): all 25 tests passed, pluginval printed `SUCCESS`, and only then did a
+`std::bad_function_call` in its own teardown produce `(exit 9) -- real validation failure, not a
+crash.` The line is matched on **every** host, not on Darwin alone, because gating proof of a crash
+behind a platform check is the defect itself; a bare exit 9 counts only on Darwin, where it is that
+handler's signature and pluginval otherwise exits 0 or 1.
+
+The pass output is `tee`'d with `2>&1` so the classifier can read it — load-bearing, since pluginval
+installs no `juce::Logger` and the line reaches `stderr` — and the verdict comes from
+`${PIPESTATUS[0]}`, pluginval's own code, never the pipeline's. **The retry policy did not change**
+(3 on Linux, 1 elsewhere), and Windows needs no counterpart: nothing installs that handler there,
+and an abnormal exit still carries its Win32 exception code, which `run-pluginval.ps1` already calls
+a crash. `run-pluginval.sh --self-test` proves the decision live in `source-lint` and in
+`scripts/preflight.sh` — 22 cases over recorded strings and a stand-in validator, including the
+verbatim tail of the run above. Evidence [Verified]: `scripts/run-pluginval.sh`;
+`scripts/run-pluginval.ps1`; `docs/procedures/TESTING.md` §What counts as a crash.
+
 ### The Clang warning baseline
 
 The Clang gate asserts **no new** first-party warnings, not **zero**. The tree carries 17 distinct
@@ -1069,8 +1112,10 @@ caused it. It runs in CI, minutes later, in a different job, and knows only that
 while `--fix`, which killed it, is holding the replacement spelling. It now prints that spelling as
 a `::warning::` at the moment of the rewrite. Observed twice in one change set (edits to
 `run-pluginval.sh` and `CMakeLists.txt` moved anchors six entries named), and verified live
-end-to-end: shifting `run-pluginval.sh` by one line produced
-`update it to scripts/run-pluginval.sh:122`. A warning rather than an error, because `--fix`'s job
+end-to-end: shifting `run-pluginval.sh` by one line produced a warning naming the replacement
+spelling exactly (`update it to scripts/run-pluginval.sh:<the shifted line>` — the literal number is
+left out because this is an illustration, not a citation, and a governed path with a number here
+becomes a rewrite target of the very tool the sentence describes). A warning rather than an error, because `--fix`'s job
 is to repair drift and refusing to do it because a declaration will need an edit would leave **both**
 problems in place.
 
@@ -1367,8 +1412,10 @@ a document makes the tool fall back to ordinal pairing, which only judges base s
 present verbatim). Check **both** before concluding the gate is green.
 
 **`scripts/preflight.sh`** (added 2026-08-18) runs the whole lint block above in one command — all
-**seven** checkers with their self-tests, the citation gate against **all three** bases that can
-disagree — `origin/main`, the branch merge base, and `HEAD~1`, the **push predecessor** CI actually
+**seven** checkers with their self-tests, the two shell self-tests beside them
+(`setup-llvm-apt.sh` and, since 2026-09-06, `run-pluginval.sh`, whose crash-vs-failure verdict a
+green local pluginval run would not exercise), the citation gate against **all three** bases that
+can disagree — `origin/main`, the branch merge base, and `HEAD~1`, the **push predecessor** CI actually
 compares (added 2026-08-18 after it cost a red run: three anchors drifted from an earlier commit on
 the same branch, both `origin/main` bases already carried the re-aimed spelling, and preflight went
 green while `source-lint` did not) — the ABI floor for real when a local Release build is present

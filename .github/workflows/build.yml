@@ -521,6 +521,24 @@ jobs:
       - name: Release-identity self-test (the toolchain verifier still refuses)
         run: ./scripts/setup-llvm-apt.sh --self-test
 
+      # THE RELEASE GATE'S OWN VERDICT, self-tested HERE for the same reason as
+      # the verifier above: `classify_pass_exit` decides whether a non-zero
+      # pluginval exit is a CRASH or a real validation failure, and that decision
+      # needs no bundle, no pluginval, no display and no network -- so proving it
+      # live costs seconds in this job instead of a duplicated download in the
+      # five jobs that validate for real. It is not something those jobs can
+      # prove anyway: they only exercise the branch the run happens to take, and
+      # a green pluginval step exercises none of them.
+      #
+      # The case it exists for could not be caught any other way. Until
+      # 2026-09-06 the script read exit codes alone, so a macOS crash -- which
+      # pluginval TRAPS itself, logging `pluginval received <signal>, exiting
+      # immediately` and exiting 9 -- was announced as "real validation failure,
+      # not a crash" (PR #141, run 34019453055). The step was right to go red and
+      # wrong about why: the crash was in pluginval's teardown, after SUCCESS.
+      - name: pluginval verdict self-test (a crash is still called a crash)
+        run: ./scripts/run-pluginval.sh --self-test
+
       # Evidence anchors (`some/file.cpp:695-752`) are exact and
       # therefore fragile: an edit ABOVE one silently re-aims it at unrelated
       # code while the document keeps reading as though it were still correct.

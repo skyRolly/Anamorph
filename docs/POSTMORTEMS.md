@@ -72,7 +72,7 @@ required) · Fix · Why this fix · Prevention.
 
 ## INC-006 — Linux editor-automation segfault (OpenGL/X11 UAF)
 - **Date:** 2026-06-28 (`c924ff8`) · **Affected version:** ≤0.8.4, fixed 0.8.5 · **Severity:** High (crash)
-- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.5]. **[Verified]:** commit c924ff8; ADR-0011; src/PluginEditor.cpp:277 (GL-attach platform gate); scripts/run-pluginval.sh:147-198.
+- **Evidence [Partially Verified]:** CHANGELOG.md [0.8.5]. **[Verified]:** commit c924ff8; ADR-0011; src/PluginEditor.cpp:277 (GL-attach platform gate); scripts/run-pluginval.sh:155-228.
 
 - **Problem:** Rapid editor open/close on Linux crashed (pluginval "Editor Automation" and real Linux DAWs).
 - **Symptom:** A use-after-free segfault during editor teardown.

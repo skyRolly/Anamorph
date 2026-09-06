@@ -316,149 +316,44 @@ GLOSS = re.compile(r"""\A[`]?\s*\((?:`([^`]+)`|"([^"]+)")\)""")
 # `""` means "no stable token to name"; the run reports those as unverified
 # rather than accepting them silently, so they stay countable.
 DELIBERATE_REAIMS = {
-    # 2026-09-03 (D-2 / ADR-0036): THE TABLE WAS EMPTIED AND REFILLED. Every entry
-    # it held -- the round 1 through round 27 transitions -- had completed: the
-    # tool reported all of them as "not needed against origin/main, which already
-    # carries the re-aimed spelling", against a base that IS this branch's merge
-    # base (PR #135 merged them), which is the retirement condition the lifecycle
-    # note above states. Kept none, for the reason the 2026-08-30 emptying gives:
-    # under the transition key a completed transition can never match again, and
-    # leaving it would silence a later undeclared movement of the same anchor.
+    # 2026-09-06 (pluginval crash classification): THE TABLE WAS EMPTIED AND
+    # REFILLED, for the third time and for the reason the 2026-09-03 note below
+    # this one gives. Every entry it held -- the D-2 / ADR-0036 rounds and the
+    # ADR-0037 round -- was reported by this tool as "not needed against
+    # origin/main, which already carries the re-aimed spelling", against a base
+    # that IS this branch's merge base (PRs #135 and #141 merged them). Under the
+    # transition key a completed transition can never match again, and leaving it
+    # would silence a later undeclared movement of the same anchor -- which is
+    # exactly the failure the lifecycle note above records.
     #
-    # What refilled it is the D-2 change, which EDITED the cited lines themselves
-    # in five places, so --fix reports each UNMAPPABLE and the new spelling was
-    # re-derived by reading the span for the symbol the document names:
-    #   * the constructor's hook wiring gained the D-2 hooks (onMetaChanged,
-    #     onAboutToSave, InternalState::onChanged) between onAboutToLoad and
-    #     the timer guard;
-    #   * setStateInformation became decodeRestore + adoptRestoreTail +
-    #     setStateInformation, and getStateInformation gained writeState;
-    #   * InternalState::restoreState / migrateFromLegacyApvts became one-line
-    #     wrappers over resolveRestore / resolveLegacy + applyResolved, and the
-    #     listener block gained onChanged and syncAtomicsFrom;
-    #   * reassertParameters lost its tree write to repairSerializedValues.
-    # Keyed on ORIGIN/MAIN's spelling, which is the branch's merge base and the
-    # push predecessor alike for a one-commit branch. All retire on merge.
+    # What refills it is `run-pluginval.sh` gaining `classify_pass_exit` and its
+    # `--self-test` ahead of the pass loop: `run_one_pass` moved above the setup
+    # AND was edited (it now tees pluginval's output, reads `${PIPESTATUS[0]}`
+    # and asks the classifier for the verdict), so every citation into the
+    # retry/loop block reports UNMAPPABLE rather than a plain move. Each was
+    # re-derived by reading the span for the symbol its document names: a
+    # document that speaks only of the RETRY is aimed at the policy block plus
+    # `run_one_pass`; one that speaks of what a crash IS starts at
+    # `classify_pass_exit`. Keyed on origin/main's spelling, which is this
+    # branch's merge base and its push predecessor alike. All retire on merge.
     ("docs/FUTURE_RISKS.md",
-     "src/PluginProcessor.cpp:1001-1256",
-     "src/PluginProcessor.cpp:1727-1826"): "setStateInformation",
-    ("docs/FUTURE_RISKS.md",
-     "src/PluginProcessor.cpp:1001",
-     "src/PluginProcessor.cpp:1727"): "setStateInformation",
-    ("docs/FUTURE_RISKS.md",
-     "src/PluginProcessor.cpp:1065",
-     "src/PluginProcessor.cpp:1263"): "abActive",
-    ("docs/architecture/API_REFERENCE.md",
-     "src/InternalState.h:165-280",
-     "src/InternalState.h:165-435"): "oversampleValue",
-    ("docs/architecture/PARAMETER_REGISTRY.md",
-     "src/InternalState.h:197-286",
-     "src/InternalState.h:255-309"): "resolveLegacy",
-    ("docs/architecture/PARAMETER_REGISTRY.md",
-     "src/PluginProcessor.cpp:677-680",
-     "src/PluginProcessor.cpp:1531-1534"): "resolveLegacy",
-    ("docs/architecture/SERIALIZATION_REGISTRY.md",
-     "src/PluginProcessor.cpp:1037-1040",
-     "src/PluginProcessor.cpp:1531-1534"): "resolveLegacy",
-    ("docs/architecture/SERIALIZATION_REGISTRY.md",
-     "src/InternalState.h:197-286",
-     "src/InternalState.h:198-433"): "resolveRestore",
-    ("docs/architecture/SERIALIZATION_REGISTRY.md",
-     "src/PluginProcessor.cpp:968-969",
-     "src/PluginProcessor.cpp:1346-1354"): "writeSelection",
-    ("docs/architecture/SERIALIZATION_REGISTRY.md",
-     "src/InternalState.h:235-286",
-     "src/InternalState.h:255-309"): "comboId",
-    ("docs/architecture/SERIALIZATION_REGISTRY.md",
-     "src/PluginProcessor.cpp:874-904",
-     "src/PluginProcessor.cpp:1645-1669"): "the whole block above is skipped",
-    ("docs/architecture/SERIALIZATION_REGISTRY.md",
-     "src/PluginProcessor.cpp:1066-1153",
-     "src/PluginProcessor.cpp:1555-1639"): "adoptIfAnamorph",
-    ("docs/architecture/SERIALIZATION_REGISTRY.md",
-     "src/PluginProcessor.cpp:1155-1169",
-     "src/PluginProcessor.cpp:1671-1694"): "hasTagName",
-    ("docs/architecture/STATE_SERIALIZATION.md",
-     "src/PluginProcessor.cpp:964-994",
-     "src/PluginProcessor.cpp:1394-1480"): "getStateInformation",   # moved again by ADR-0037's edit
-    ("docs/architecture/design-decisions/ADR-0024-preset-identity.md",
-     "src/PluginProcessor.cpp:63-74",
-     "src/PluginProcessor.cpp:68-107"): "onSaved",
-    ("docs/policies/COMPATIBILITY_POLICY.md",
-     "src/PluginProcessor.cpp:1001-1256",
-     "src/PluginProcessor.cpp:1727-1826"): "setStateInformation",
-    ("docs/policies/COMPATIBILITY_POLICY.md",
-     "src/InternalState.h:229-280",
-     "src/InternalState.h:255-309"): "resolveLegacy",
-    ("docs/policies/THREADING_POLICY.md",
-     "src/InternalState.h:172-177, 283-292",
-     "src/InternalState.h:175, 548-571"): "engineConfig",
-    # D-2 round 2 (2026-09-03), keyed on the round-1 commit's spelling as well -- the push
-    # predecessor for the second commit on the branch: the oversampling atomic became the
-    # generation-tagged engine-config word, so the cited lines were edited, not moved.
-    ("docs/policies/THREADING_POLICY.md",
-     "src/InternalState.h:173, 340-352",
-     "src/InternalState.h:175, 548-571"): "engineConfig",
-    # D-2 round 4 (2026-09-03), keyed on the round-3 commit's spelling as well -- the push
-    # predecessor for the fourth commit on the branch. setStateInformation grew the inline
-    # drain, the off-thread tripwire and the handoff seam, so its span was edited, not moved.
-    ("docs/FUTURE_RISKS.md",
-     "src/PluginProcessor.cpp:1243-1504",
-     "src/PluginProcessor.cpp:1727-1826"): "setStateInformation",
-    ("docs/policies/COMPATIBILITY_POLICY.md",
-     "src/PluginProcessor.cpp:1243-1504",
-     "src/PluginProcessor.cpp:1727-1826"): "setStateInformation",
-    # ADR-0037 (2026-09-06): `decodeRestore`'s readSlot gained the decode-time baseline
-    # derivation, reassertParameters and repairSerializedValues lost their private
-    # two-branch readings for the shared resolver, and the file-local number predicate
-    # went, so every span below the repair MOVED (edited at readSlot, moved elsewhere).
-    # Keyed on origin/main's spelling, which is this branch's merge base. Retire on merge.
-    ("docs/FUTURE_RISKS.md",
-     "src/PluginProcessor.cpp:1766-1865",
-     "src/PluginProcessor.cpp:1727-1826"): "setStateInformation",
-    ("docs/FUTURE_RISKS.md",
-     "src/PluginProcessor.cpp:1766",
-     "src/PluginProcessor.cpp:1727"): "setStateInformation",
-    ("docs/FUTURE_RISKS.md",
-     "src/PluginProcessor.cpp:1317",
-     "src/PluginProcessor.cpp:1263"): "abActive",
-    ("docs/architecture/PARAMETER_REGISTRY.md",
-     "src/PluginProcessor.cpp:1585-1588",
-     "src/PluginProcessor.cpp:1531-1534"): "resolveLegacy",
-    ("docs/architecture/SERIALIZATION_REGISTRY.md",
-     "src/PluginProcessor.cpp:1585-1588",
-     "src/PluginProcessor.cpp:1531-1534"): "resolveLegacy",
-    ("docs/architecture/SERIALIZATION_REGISTRY.md",
-     "src/PluginProcessor.cpp:1400-1408",
-     "src/PluginProcessor.cpp:1346-1354"): "writeSelection",
-    ("docs/architecture/SERIALIZATION_REGISTRY.md",
-     "src/PluginProcessor.cpp:1684-1708",
-     "src/PluginProcessor.cpp:1645-1669"): "the whole block above is skipped",
-    ("docs/architecture/SERIALIZATION_REGISTRY.md",
-     "src/PluginProcessor.cpp:1609-1682",
-     "src/PluginProcessor.cpp:1555-1639"): "adoptIfAnamorph",
-    ("docs/architecture/SERIALIZATION_REGISTRY.md",
-     "src/PluginProcessor.cpp:1710-1733",
-     "src/PluginProcessor.cpp:1671-1694"): "hasTagName",
-    ("docs/policies/COMPATIBILITY_POLICY.md",
-     "src/PluginProcessor.cpp:1766-1865",
-     "src/PluginProcessor.cpp:1727-1826"): "setStateInformation",
-    # ...and applyStatePreservingView's own span was EDITED (it asserts from the
-    # original tree now), so --fix reports it UNMAPPABLE; re-aimed by hand.
-    ("docs/architecture/STATE_SERIALIZATION.md",
-     "src/PluginProcessor.cpp:468-515",
-     "src/PluginProcessor.cpp:477-533"): "applyStatePreservingView",
-    # D-2 round 5 (2026-09-03), keyed on the round-4 commit's spelling as well -- the push
-    # predecessor for the fifth commit on the branch. The preset hooks gained the
-    # whole-sound-replacement bump, so their span was edited rather than moved.
-    ("docs/architecture/design-decisions/ADR-0024-preset-identity.md",
-     "src/PluginProcessor.cpp:68-90",
-     "src/PluginProcessor.cpp:68-107"): "onSaved",
-    # D-2 round 7 (2026-09-03), keyed on the round-6 commit's spelling as well -- the push
-    # predecessor for the seventh commit. The preset hooks' comment gained the completion rule.
-    ("docs/architecture/design-decisions/ADR-0024-preset-identity.md",
-     "src/PluginProcessor.cpp:68-95",
-     "src/PluginProcessor.cpp:68-107"): "onSaved",
+     "scripts/run-pluginval.sh:147-198",
+     "scripts/run-pluginval.sh:140-228"): "classify_pass_exit",
+    ("docs/KNOWN_ISSUES.md",
+     "scripts/run-pluginval.sh:147-198",
+     "scripts/run-pluginval.sh:140-228"): "classify_pass_exit",
+    ("docs/architecture/design-decisions/ADR-0011-linux-x11-cpu-render.md",
+     "scripts/run-pluginval.sh:147-198",
+     "scripts/run-pluginval.sh:140-228"): "classify_pass_exit",
+    ("docs/procedures/TESTING.md",
+     "scripts/run-pluginval.sh:172-198",
+     "scripts/run-pluginval.sh:140-228"): "classify_pass_exit",
+    ("docs/POSTMORTEMS.md",
+     "scripts/run-pluginval.sh:147-198",
+     "scripts/run-pluginval.sh:155-228"): "CRASH_RETRY_ATTEMPTS",
+    ("docs/procedures/TROUBLESHOOTING.md",
+     "scripts/run-pluginval.sh:147-198",
+     "scripts/run-pluginval.sh:155-228"): "CRASH_RETRY_ATTEMPTS",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

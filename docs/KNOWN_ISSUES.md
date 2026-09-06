@@ -172,7 +172,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:2006-2008 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:2024-2026 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -181,9 +181,9 @@ Notarization (RH-PR-3) closes both.
 The editor open/close tests can crash under pluginval on Linux due to a use-after-free in
 **pluginval's own JUCE** X11 `XEmbedComponent` (`ConfigureNotify`→`callAsync` capturing a raw
 pointer). It is **not a defect in this plugin** (the plugin already drops its OpenGL child window on
-Linux, INC-006/ADR-0011) and is mitigated by a signal-only retry, but it cannot be fixed from this
+Linux, INC-006/ADR-0011) and is mitigated by a crash-only retry, but it cannot be fixed from this
 repository.
-- **Evidence [Verified]:** scripts/run-pluginval.sh:147-198 (`run_one_pass`, signal-only retry); ADR-0011. See FUTURE_RISKS RISK-004.
+- **Evidence [Verified]:** scripts/run-pluginval.sh:140-228 (`run_one_pass`, crash-only retry; what counts as a crash is `classify_pass_exit`, not the exit code alone); ADR-0011. See FUTURE_RISKS RISK-004.
 
 ## KI-004 — No automated DAW/host-compatibility testing
 There is no in-repo test matrix across real DAWs; pluginval is the only conformance proxy. Host
