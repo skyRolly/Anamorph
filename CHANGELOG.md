@@ -74,8 +74,8 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   the four log-mapped frequency parameters could previously settle a hair (well below anything
   audible, and below the modified-marker's own resolution) away from the stored value depending on
   the value being replaced, which in rare cases could show a modified-marker on a freshly reopened
-  project that had been saved while sitting on an unnamed A/B slot. Evidence: ADR-0037,
-  `worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md`. [Verified]
+  project that had been saved while sitting on an unnamed A/B slot. Evidence: PR #141 (ADR-0037,
+  `worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md`). [Verified]
 - **A project reopened from your DAW's own thread can no longer come up playing the sound of the
   session it replaced, and an autosave can no longer capture a preset half-loaded.** Two closely
   related fixes to how a session restore arriving from your DAW's own thread — Logic's autosave path,
