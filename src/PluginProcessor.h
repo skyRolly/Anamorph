@@ -123,7 +123,8 @@ public:
     // that thread is blocked on this one.
     struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake, beforeRestorePut,
                                         afterRestoreSoundApplied, beforeSoundReplacementWrites,
-                                        atRelativeDecision, insideSoundReplacement; };
+                                        atRelativeDecision, insideSoundReplacement,
+                                        betweenStateSetApplyAndMeta; };   // ADR-0037: proves no live read
     Seams seams;
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.

@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "dsp/EngineParameters.h"
+#include "SerializedNumber.h"   // the malformed-value predicate the session resolver below applies
 
 // ============================================================================
 //  PluginParameters
@@ -138,6 +139,57 @@ inline float normalisedAsRendered (const juce::AudioProcessorParameter& p) noexc
     if (auto* rp = dynamic_cast<const juce::RangedAudioParameter*> (&p))
         return normalisedAsRendered (*rp, rp->getValue());
     return p.getValue();
+}
+
+// ---------------------------------------------------------------------------
+//  WHAT NORMALISED VALUE A SESSION-SHAPED NODE MEANS -- one rule, three readers (ADR-0037).
+//
+//  A session tree -- the APVTS child of a saved project, an A/B slot, an undo step -- carries
+//  `value` (the denormalised number) and, since 0.8.7, `raw` (the exact normalised value the
+//  parameter reported). `raw` wins when it is a usable number, clamped to 0..1; else `value`
+//  when usable, through `convertTo0to1` (which clamps); else the parameter default -- the
+//  answer an absent node already gets (SERIALIZATION_REGISTRY.md). `repaired` says the input
+//  was outside its range or not a number at all, which is what the text repair rewrites.
+//
+//  Three sites used to spell that precedence separately and agreed by inspection:
+//  `repairSerializedValues` (what to write back into the tree), `reassertParameters` (what to
+//  assert into the parameter) and the restore's clean-baseline predictor (what the live
+//  signature will be). They now read this, so they agree by construction -- and so the value
+//  asserted is the RESOLVED one, taken from the tree the caller passed, never re-derived from a
+//  denormalised text that a repair or JUCE's own `replaceState` flush wrote back. That
+//  re-derivation is one extra store/report pass, which for the four log-mapped frequency
+//  ranges is not the identity in float (see normalisedAsRendered above); measured before this
+//  existed, a session-shaped apply left those parameters one to three passes from the bytes
+//  in about 1.3 % of values (worklogs/LEGACY_AB_SLOT_BASELINE_v0.9.7.md §3).
+// ---------------------------------------------------------------------------
+namespace anamorph
+{
+    struct SessionValue { float normalised; bool repaired; };
+
+    // The predicate on the INPUT text, before any clamp can launder an infinity into a range
+    // endpoint (SerializedNumber.h carries the measured table). False means "no usable number".
+    inline bool usableSerializedNumber (const juce::var& prop, float& out)
+    {
+        if (prop.isVoid()) return false;
+        if (prop.isString() && ! looksLikePlainNumber (prop.toString().trim().toRawUTF8())) return false;
+        const float v = (float) (double) prop;
+        if (! isUsableSerializedValue (v)) return false;
+        out = v;
+        return true;
+    }
+
+    inline SessionValue sessionNormalisedValue (const juce::RangedAudioParameter& rp, const juce::ValueTree& node)
+    {
+        float serialized = 0.0f;
+        if (node.isValid() && node.hasProperty ("raw") && usableSerializedNumber (node.getProperty ("raw"), serialized))
+            return { juce::jlimit (0.0f, 1.0f, serialized), serialized < 0.0f || serialized > 1.0f };
+        if (node.isValid() && usableSerializedNumber (node.getProperty ("value"), serialized))
+        {
+            const auto& r = rp.getNormalisableRange();
+            return { juce::jlimit (0.0f, 1.0f, rp.convertTo0to1 (serialized)), serialized < r.start || serialized > r.end };
+        }
+        return { rp.getDefaultValue(), true };
+    }
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout createAnamorphLayout();

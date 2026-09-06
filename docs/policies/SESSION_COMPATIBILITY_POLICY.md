@@ -32,7 +32,10 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
    boundary (roughly 1 value in 500). Cosmetic, no sound change, no field change, and self-correcting
    on the next save or preset load — both recompute the baseline under the new definition. The
    corrected definition is the point: the old one marked a preset clean against a sound its own file
-   could not hold.
+   could not hold. **Recorded change (0.9.7, ADR-0037):** a per-slot baseline the session does not
+   carry (a pre-0.6.4 slot, or an emptied `slotABase`) is derived at decode from the slot's own
+   stored values, so a re-saved legacy session records it; it was resolved by a live read on the
+   first switch-in. Same field, same meaning, no format change — the read paths of rule 3 all stay.
 
 ## Required verification before release
 
@@ -42,7 +45,7 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
 These same checks are enforced at release time via the release compatibility checklist
 (`docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`).
 
-Evidence [Verified]: src/PluginProcessor.cpp:1139-1431 (write), :595-685 (read), :540-561
+Evidence [Verified]: src/PluginProcessor.cpp:1085-1377 (write), :595-685 (read), :540-561
 (the identity helpers); src/InternalState.h:197-321.
 
 ## Enforcement

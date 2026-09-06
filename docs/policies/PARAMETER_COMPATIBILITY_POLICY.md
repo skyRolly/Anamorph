@@ -23,7 +23,7 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs the host parameter surface and auto
 - `[ ] Parameter IDs unchanged` (diff the registry).
 - `[ ] Automation playback verified`.
 
-Evidence [Verified]: src/PluginParameters.cpp:13,114-198; src/PluginParameters.h:64-87.
+Evidence [Verified]: src/PluginParameters.cpp:13,114-198; src/PluginParameters.h:65-88.
 
 ## Enforcement
 

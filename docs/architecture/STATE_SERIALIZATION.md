@@ -4,9 +4,9 @@ How session state is saved and restored. The field-level ledger is in
 `SERIALIZATION_REGISTRY.md`; binding rules are in
 `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:1448-1534 (`getStateInformation`), :1226-1485
+Evidence [Verified]: src/PluginProcessor.cpp:1394-1480 (`getStateInformation`), :1226-1485
 (`decodeRestore` + `setStateInformation`), :980-999 (the `writeSelection` / `readSelection` helpers);
-src/PresetManager.cpp:708-761 (`encodeSelection` / `decodeSelection`).
+src/PresetManager.cpp:720-773 (`encodeSelection` / `decodeSelection`).
 
 ## On-disk schema (`getStateInformation`)
 
@@ -59,7 +59,7 @@ a factory id removed by a later version, a user preset deleted, renamed or moved
 rather than falling back to a same-named row. The field-level ledger, including the file-name vs
 absolute-path encoding rule, is in `SERIALIZATION_REGISTRY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:1448-1534 (`getStateInformation`).
+Evidence [Verified]: src/PluginProcessor.cpp:1394-1480 (`getStateInformation`).
 
 ## Which thread (D-2 / ADR-0036)
 
@@ -130,9 +130,12 @@ window). `docs/architecture/THREAD_MODEL.md` carries the cells and their orderin
      it from the state just restored (the documented "lazily initialised from current" default) —
      **both** slots, symmetrically; slot B used to be seeded from a copy of slot A, which only
      differed when slot A alone was readable and made slot B a duplicate of it. A
-     slot that comes back with an **empty baseline** (only a pre-0.6.4 slot can) becomes clean at its
-     own state when it is switched into — "no baseline recorded" is not "modified". Both rules are
-     stated field-by-field in `SERIALIZATION_REGISTRY.md`, `AB` child.
+     slot that carries **no baseline** (a pre-0.6.4 slot, or an emptied `slotABase`) gets one at
+     decode, derived from its own bytes by `PresetManager::soundSignatureAfterRestoring` — the same
+     answer the root's `baselineOfRestore` gives — so "no baseline recorded" is not "modified" and
+     no live read is involved (ADR-0037; it used to be resolved by `setMeta` reading the live
+     parameters on the first switch-in). Both rules are stated field-by-field in
+     `SERIALIZATION_REGISTRY.md`, `AB` child.
 3. **Else if the root is the bare APVTS state type:** backward-compat path for v0.2 sessions
    (the same repair → `apvts.replaceState` → `reassertParameters` sequence, `resolveLegacy`, and the
    A/B defaults).
@@ -162,13 +165,13 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 | **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :700-705 |
 | **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :688-692 (within `readSlot`, :652-693) |
 | **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :628-631; InternalState.h:106-128 |
-| **pre-0.9.2**: no indicator identity in the session | `decodeSelection` yields `unknown` → name fallback | src/PresetManager.cpp:744-761; :128-131 |
+| **pre-0.9.2**: no indicator identity in the session | `decodeSelection` yields `unknown` → name fallback | src/PresetManager.cpp:756-773; :128-131 |
 
 ## View-parameter preservation on restore
 
 `applyStatePreservingView` restores a snapshot but **keeps the current** shared view params
 (`pid::viewParams` = `bypass`) so an A/B / undo / preset apply never flips the view state.
-Evidence [Verified]: src/PluginProcessor.cpp:468-515 (`applyStatePreservingView`).
+Evidence [Verified]: src/PluginProcessor.cpp:477-533 (`applyStatePreservingView`).
 
 ## Invariants
 

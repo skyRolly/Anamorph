@@ -461,12 +461,16 @@ AnamorphAudioProcessor::StateSet AnamorphAudioProcessor::currentStateSet()
 // preset metadata, so the name + dirty-star reappear exactly as stored (#6).
 void AnamorphAudioProcessor::applyStateSet (const StateSet& s)
 {
-    // ORDER IS LOAD-BEARING: parameters first, metadata second. setMeta resolves an EMPTY
-    // baseline by calling soundSig(), which reads the LIVE apvts -- so it means "the state
-    // just applied is its own clean baseline" only while these two lines are in this order.
-    // Swapping them would baseline a pre-0.6.4 A/B slot against the OUTGOING sound and leave
-    // its dirty-star wrong from then on, with nothing to catch it. See PresetManager.h.
+    // The two halves are independent (ADR-0037): every StateSet carries a non-empty baseline
+    // decided from bytes -- currentStateSet copies the manager's, readSlot derives a legacy
+    // slot's at decode -- so setMeta no longer reads the live parameters, and the order of these
+    // two statements is no longer load-bearing. It used to be: an empty baseline was resolved by
+    // a live read that was right only because the parameters had just been applied, and an
+    // audio-thread automation write landing between the two was absorbed into the clean
+    // baseline. The seam is where a test lands exactly that write and requires the slot to read
+    // DIRTY afterwards. Empty in production.
     applyStatePreservingView (s.params);
+    if (seams.betweenStateSetApplyAndMeta) seams.betweenStateSetApplyAndMeta();
     presets.setMeta (s.name, s.baseline, s.selection);
 }
 
@@ -513,7 +517,10 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
     // Synchronously force every parameter to its exact (raw) value from the snapshot, so undo /
     // redo / A-B apply propagate exactly like host state restore -- replaceState alone can leave a
     // param at a stale/snapped value (see reassertParameters). View params are re-overridden below.
-    reassertParameters (copy, /*notifyHost*/ true); // undo/redo/A-B is editor-initiated: notify host+editor
+    // FROM THE ORIGINAL, NOT FROM `copy` (ADR-0037): replaceState made `copy` the live tree and
+    // then flushed each parameter's RENDERED value back into it, so asserting from `copy` re-derived
+    // the target one store/report pass further from the bytes. The resolver embodies the repair.
+    reassertParameters (target, /*notifyHost*/ true); // undo/redo/A-B is editor-initiated: notify host+editor
 
     for (size_t i = 0; i < std::size (pid::viewParams); ++i)
         apvts.getParameter (pid::viewParams[i])->setValueNotifyingHost (saved[i]);
@@ -557,28 +564,6 @@ juce::ValueTree AnamorphAudioProcessor::copyStateWithRawValues()
             if (auto* p = apvts.getParameter (param.getProperty ("id").toString()))
                 param.setProperty ("raw", p->getValue(), nullptr);
     return tree;
-}
-
-namespace
-{
-    // The same predicate the preset path uses (PresetManager.cpp), so a malformed
-    // serialized value cannot mean one thing in a session and another in a preset.
-    // False means "no usable number here"; every caller answers that with the
-    // parameter default, which is what SERIALIZATION_REGISTRY.md already records
-    // for an absent node.
-    bool readSerializedValue (const juce::var& prop, float& out)
-    {
-        if (prop.isVoid()) return false;
-        if (prop.isString())
-        {
-            const auto text = prop.toString().trim();
-            if (! anamorph::looksLikePlainNumber (text.toRawUTF8())) return false;
-        }
-        const float v = (float) (double) prop;
-        if (! anamorph::isUsableSerializedValue (v)) return false;
-        out = v;
-        return true;
-    }
 }
 
 // The SERIALIZED-TEXT half of a restore's repair, on a tree WE own (D-2, ADR-0036).
@@ -628,33 +613,15 @@ void AnamorphAudioProcessor::repairSerializedValues (juce::ValueTree& tree) cons
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
             if (auto node = tree.getChildWithProperty ("id", rp->paramID); node.isValid())
             {
-                float serialized = 0.0f;
-                const bool haveRaw = node.hasProperty ("raw")
-                                     && readSerializedValue (node.getProperty ("raw"), serialized);
-                float norm;
-                bool repaired;
-                if (haveRaw)
+                // `raw` if usable (0..1), else `value` if usable, else the default -- the ONE
+                // resolver (ADR-0037, PluginParameters.h) that reassertParameters asserts from
+                // and the restore's baseline predictor models, so the three cannot disagree.
+                const auto resolved = anamorph::sessionNormalisedValue (*rp, node);
+                if (resolved.repaired)
                 {
-                    norm = juce::jlimit (0.0f, 1.0f, serialized);   // `raw` is normalised: 0..1
-                    repaired = serialized < 0.0f || serialized > 1.0f;
-                }
-                else if (readSerializedValue (node.getProperty ("value"), serialized))
-                {
-                    norm = juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 (serialized));
-                    const auto& r = rp->getNormalisableRange();
-                    repaired = serialized < r.start || serialized > r.end;
-                }
-                else
-                {
-                    norm = rp->getDefaultValue();
-                    repaired = true;                                 // unusable text
-                }
-
-                if (repaired)
-                {
-                    node.setProperty ("value", rp->convertFrom0to1 (norm), nullptr);
+                    node.setProperty ("value", rp->convertFrom0to1 (resolved.normalised), nullptr);
                     if (node.hasProperty ("raw"))
-                        node.setProperty ("raw", norm, nullptr);
+                        node.setProperty ("raw", resolved.normalised, nullptr);
                 }
             }
 }
@@ -687,11 +654,17 @@ void AnamorphAudioProcessor::repairSerializedValues (juce::ValueTree& tree) cons
 // Prefer "raw" (exact); fall back to the denormalised "value" for legacy sessions that lack it.
 // Idempotent: parameters already at the target value are left untouched.
 //
-// SINCE D-2 (ADR-0036) THE TREE IS ALREADY REPAIRED when this runs: every caller passes the
-// copy repairSerializedValues() rewrote and replaceState adopted, so the classification below
-// finds nothing malformed on an ordinary path and this function writes NO tree property. The
-// classification stays, as the VALUE-side backstop it always also was: a malformed value that
-// somehow reached a parameter is still driven to the same answer the text repair gives.
+// THE TREE THIS READS IS THE ORIGINAL THE CALLER HOLDS, NOT THE COPY JUCE WAS HANDED (ADR-0037).
+// Until this round every caller passed the repaired copy it had just given to replaceState --
+// and replaceState makes that copy the LIVE tree, then flushes each parameter's RENDERED value
+// back into it (flushParameterValuesToValueTree), so this function re-derived its target from
+// a denormalised text one store/report pass away from the bytes; the repair's own write-back
+// had the same shape one step earlier. For the four log-mapped frequency ranges that pass is
+// not the identity in float, and the restored value ended one to three passes from what the
+// session says in about 1.3 % of values -- inaudible, but enough to put a bytes-derived clean
+// baseline on the wrong side of a five-decimal boundary. Reading the caller's original through
+// `anamorph::sessionNormalisedValue` -- the one resolver the repair also writes from -- makes
+// the value asserted exactly the resolved one, and this function still writes NO tree property.
 //
 // notifyHost: TRUE for editor-initiated restores (undo / redo / A-B via applyStatePreservingView) --
 // setValueNotifyingHost updates value + DSP atomic + editor + host. FALSE for host state restore
@@ -782,45 +755,16 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
         {
             if (++written == 4 && seams.insideSoundReplacement) seams.insideSoundReplacement();
-            if (auto node = restoredApvtsTree.getChildWithProperty ("id", rp->paramID); node.isValid())
-            {
-                // The same two-branch reading as repairSerializedValues, on the same
-                // predicate, so a value that classified as usable there is applied
-                // here exactly. A property that is not a usable number means the
-                // parameter default -- the same answer the absent-node branch below
-                // gives, and the same one the text repair already wrote.
-                float serialized = 0.0f;
-                const bool haveRaw = node.hasProperty ("raw")
-                                     && readSerializedValue (node.getProperty ("raw"), serialized);
-                float norm;
-                if (haveRaw)
-                    norm = juce::jlimit (0.0f, 1.0f, serialized);   // `raw` is normalised: 0..1
-                else if (readSerializedValue (node.getProperty ("value"), serialized))
-                    norm = juce::jlimit (0.0f, 1.0f, rp->convertTo0to1 (serialized));
-                else
-                    norm = rp->getDefaultValue();
-                applyNorm (rp, norm);
-            }
-            else
-            {
-                // No PARAM node for this parameter in the restored blob (an older
-                // session predating it, or a partial host chunk): apply the
-                // parameter DEFAULT, exactly as the preset path already does for a
-                // missing child (PresetManager::applySoundTree) and as
-                // SESSION_COMPATIBILITY_POLICY rule 2 / SERIALIZATION_REGISTRY
-                // ("Default: per-parameter defaults") record.
-                //
-                // A BACKSTOP, not the mechanism -- see 1b above. replaceState has
-                // already applied this same default via its appended-node path, so
-                // by the time this runs the parameter is at it and applyNorm's gate
-                // is false. Round 1 claimed a reused live instance kept the previous
-                // project's value here; measurement (--latency-restore-probe step 0b)
-                // refuted that. Kept anyway: it is one comparison, it is the same
-                // answer, and it does not rely on a JUCE internal. View params are
-                // unaffected where rule 5 applies: applyStatePreservingView
-                // re-overrides them after this call.
-                applyNorm (rp, rp->getDefaultValue());
-            }
+            // ONE RESOLVER (ADR-0037): `raw` if usable, else `value`, else the default -- the
+            // same function repairSerializedValues wrote the repaired text from, so a value that
+            // classified as usable there is asserted here exactly. An ABSENT node resolves to the
+            // default, exactly as the preset path answers a missing child and as
+            // SESSION_COMPATIBILITY_POLICY rule 2 / SERIALIZATION_REGISTRY record; replaceState
+            // has already applied that default through its appended-node path (1b above), so for
+            // an absent node this is the idempotent backstop it always was, measured as such
+            // (--latency-restore-probe step 0b). View params are unaffected where rule 5 applies:
+            // applyStatePreservingView re-overrides them after this call.
+            applyNorm (rp, anamorph::sessionNormalisedValue (*rp, restoredApvtsTree.getChildWithProperty ("id", rp->paramID)).normalised);
         }
 
     // The notifyHost=false path (host session restore) applies values via
@@ -857,7 +801,9 @@ juce::uint32 AnamorphAudioProcessor::applySoundTree (const juce::ValueTree& soun
     auto copy = soundTree.createCopy();
     repairSerializedValues (copy);
     apvts.replaceState (copy);
-    reassertParameters (copy, /*notifyHost*/ false); // host restore: no host-notify (see above)
+    // From the ORIGINAL (ADR-0037): `copy` is the live tree now and carries what replaceState
+    // flushed back, one rendering pass away from the bytes the baseline was predicted from.
+    reassertParameters (soundTree, /*notifyHost*/ false); // host restore: no host-notify (see above)
     return soundReplacementToken (begin);
 }
 
@@ -1575,7 +1521,7 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
         // (§22). From the tree, not from the parameters: a live read here would describe
         // whatever the seam above -- or a real replacement landing in the same window -- had
         // just installed, and on the message thread it would also absorb an automation write.
-        d.restoredSoundSig = anamorph::PresetManager::soundSignatureAfterLoading (apvts, params);
+        d.restoredSoundSig = anamorph::PresetManager::soundSignatureAfterRestoring (apvts, params);   // §22; the session-shaped predictor (ADR-0037)
 
         // The host-hidden Settings / view state (Oversampling, UI Scale, Persistence,
         // Tooltips, Animations, Show Meters), RESOLVED here and written by the message
@@ -1606,7 +1552,7 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
             // out-of-range "active"; abSlot[]/abUndo[] are size-2, so an unclamped index would be
             // an out-of-bounds access (anamorph::kNumAbSlots). Valid states (0/1) are unchanged.
             d.abActive = anamorph::clampAbSlotIndex ((int) ab.getProperty ("active", 0));
-            auto readSlot = [&ab, expectedType = apvtsStateType]
+            auto readSlot = [this, &ab, expectedType = apvtsStateType]
                             (StateSet& dst,
                                    const char* pk, const char* nk, const char* bk,
                                    const char* sk, const char* fk, const char* uk,
@@ -1675,6 +1621,21 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
                 dst.selection = readSelection (ab, sk, fk, uk);
                 dst.name      = ab.getProperty (nk).toString();
                 dst.baseline  = ab.getProperty (bk).toString();
+
+                // A SLOT THAT RECORDED NO BASELINE GETS ONE HERE, FROM ITS OWN BYTES (ADR-0037).
+                // Only a pre-0.6.4 slot -- params alone under the legacy key -- or a blob whose
+                // `slotABase` was emptied by hand arrives without one, and until this round the
+                // gap travelled into the model: `setMeta` resolved it by reading the LIVE
+                // parameters when the slot was switched into -- the last live-read baseline in
+                // the program state after rounds 9, 10 and 15 removed the other three (ADR-0036
+                // §17, §18, §22). The answer is the one the ROOT already gets for the same
+                // situation (`baselineOfRestore`): the signature of the sound these bytes
+                // install, decided on the decoding thread, so what leaves this lambda is
+                // indistinguishable from a slot a modern save wrote. An INVALID slot keeps its
+                // empty baseline: abEnsureInit() re-seeds it whole from currentStateSet(),
+                // metadata included, before anything can read it.
+                if (dst.params.isValid() && dst.baseline.isEmpty())
+                    dst.baseline = anamorph::PresetManager::soundSignatureAfterRestoring (apvts, dst.params);
             };
             readSlot (d.abSlot[0], "slotAParams", "slotAName", "slotABase",
                       "slotASource", "slotAFactoryId", "slotAUserFile", "slotA");
@@ -1711,7 +1672,7 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
     {
         auto legacy = juce::ValueTree::fromXml (*xml);
         d.soundParams  = legacy;                    // installed by the caller, after the announcement (§25)
-        d.restoredSoundSig = anamorph::PresetManager::soundSignatureAfterLoading (apvts, legacy);   // §22
+        d.restoredSoundSig = anamorph::PresetManager::soundSignatureAfterRestoring (apvts, legacy);   // §22, ADR-0037
 
         // A v0.2 session is older than 0.8.4, so it can only carry the host-hidden Settings the
         // way pre-0.8.4 sessions do: as APVTS params, or not at all. Same resolver the AnamorphRoot

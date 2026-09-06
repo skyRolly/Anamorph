@@ -13,7 +13,7 @@ parameter. Changing this surface breaks sessions, automation, and presets in the
 Enforced by convention + the version field: all parameters use `ParameterID { id, kVersion }`
 with `kVersion = 1`. The string `id` (not the display name) is the persistent key.
 
-Evidence [Verified]: src/PluginParameters.cpp:95 (`kVersion = 1`); src/PluginParameters.h:14-88.
+Evidence [Verified]: src/PluginParameters.cpp:95 (`kVersion = 1`); src/PluginParameters.h:15-89.
 
 ## APVTS parameters (host-visible)
 
@@ -72,9 +72,9 @@ Footnotes:
   (the previous `withAutomatable(false)` was removed); they are still primarily driven by the
   drag-to-split display. Source: src/PluginParameters.cpp (`mbBands`/`mbSolo`, no `withAutomatable`).
 - **†** `mbSolo` is **excluded from presets** (`isPresetExcluded`): a preset load resets solo to
-  off. It still travels with A/B + Undo. Source: src/PluginParameters.h:84-87.
+  off. It still travels with A/B + Undo. Source: src/PluginParameters.h:85-88.
 - **◊** `bypass` is a **view param** (`pid::viewParams`): excluded from A/B, Undo, and presets,
-  but still serialized in the main session state. Source: src/PluginParameters.h:70-72.
+  but still serialized in the main session state. Source: src/PluginParameters.h:71-73.
 - **◊◊** `advancedMode` is a UI-layout toggle: **not host-automatable** (`isAutomatable()` returns
   `false`). A layout toggle has no place in an automation lane, and automating it flips the editor
   layout — driving editor **resizes** (`applyUiScale`) whose `ConfigureNotify` storm hits a
@@ -83,7 +83,7 @@ Footnotes:
   and serialized, excluded from **presets**, and travels with A/B + Undo (0.8.2 "ADV travels with A/B").
   This is a recorded automation-flag change (`PARAMETER_COMPATIBILITY_POLICY` rule 5) — the
   ID/range/default are unchanged, so sessions and existing state are unaffected. Source:
-  src/PluginParameters.cpp (`RawBool(..., /*automatable*/ false)`); src/PluginParameters.h:84-87.
+  src/PluginParameters.cpp (`RawBool(..., /*automatable*/ false)`); src/PluginParameters.h:85-88.
 - **‖** Display name renamed `Haas Side` → `Haas Focus` in 0.8.6; the **ID `haasSide` is
   unchanged** (the immutability invariant in action). Evidence [Partially Verified]: CHANGELOG.md [0.8.6];
   src/PluginParameters.cpp:135-136.
@@ -131,7 +131,7 @@ Evidence [Verified]: src/InternalState.h:34-160.
 
 This is the one precedent for a parameter-surface change. It was done **with a migration path**
 (the model the compatibility policy requires). Evidence [Partially Verified]: CHANGELOG.md [0.8.4];
-src/InternalState.h:255-309; src/PluginProcessor.cpp:1585-1588.
+src/InternalState.h:255-309; src/PluginProcessor.cpp:1531-1534.
 
 ## Introduced / Deprecated columns
 
