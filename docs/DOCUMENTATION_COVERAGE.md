@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3235` and `.github/workflows/build.yml:3320`, this round being
+`.github/workflows/build.yml:3253` and `.github/workflows/build.yml:3338`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1876,7 +1876,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:650` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:668` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -2458,7 +2458,8 @@ drifts for an unrelated reason. Section 9 of the self-test already fails on the 
 holds — but it fires in CI, minutes later, in a different job, knowing only that an entry is dead,
 while `--fix` killed it and is holding the replacement. Observed twice in this change set. Verified
 live: shifting `run-pluginval.sh` by one line produced the warning with
-`update it to scripts/run-pluginval.sh:122`.
+`update it to scripts/run-pluginval.sh:<the shifted line>` (the number is left out: this is an
+illustration, not a citation, and spelled with a governed path it becomes a rewrite target itself).
 
 **One approved item was measured and NOT implemented, and the measurement is the reason.** Caching
 the JUCE checkout would save at most the JUCE clone's share of a **23–40 s** `Configure` step (two
@@ -9832,4 +9833,66 @@ named checks. State suite 2 496 / 0; DSP 396 / 0; `check-realtime` clean.
 `STATE_SERIALIZATION.md` step 2, `SESSION_COMPATIBILITY_POLICY.md` rule 6, ADR-0036 §22 (append-only
 pointer), `ADR_INDEX.md`, `TESTING.md`, `CHANGELOG.md` [0.9.7] Fixed, the round-15 residual row in
 `ENGINEERING_REVIEW_PROGRAMME.md`, and the twelve `check-citations` re-aims the source edit moved.
+[Verified]
+
+## pluginval crash classification (2026-09-06) — a trapped signal is a crash on macOS too
+
+**The defect, in one line.** `scripts/run-pluginval.sh` decided crash-vs-validation-failure from the
+exit code alone (`rc < 128` → "real validation failure, not a crash"), which is right on Linux, where
+a crashing validator is killed by the signal and the shell reports 128+N — and wrong on macOS, where
+pluginval installs its own handler for SIGFPE/SIGILL/SIGSEGV/SIGBUS/SIGABRT (`kill9WithSomeMercy`,
+`Source/CommandLine.cpp`, `#if JUCE_MAC` in both the definition and the `CommandLineValidator`
+constructor that installs it), logs `pluginval received <signal>, exiting immediately` and calls
+`std::_Exit (SIGKILL)`, i.e. exit **9**. Observed on PR #141 (run 34019453055, job `macos`, AU
+randomise pass 2/3): every test passed, pluginval printed `SUCCESS`, and only then did a
+`std::bad_function_call` in its own teardown produce `(exit 9) -- real validation failure, not a
+crash.` A teardown crash was announced as a plug-in that failed conformance.
+
+**What changed, and what deliberately did not.** `classify_pass_exit` returns `pass` / `crash` /
+`fail` from the host, the exit code **and** pluginval's captured output; the handler line counts on
+every host (gating proof of a crash behind a platform check is the defect itself), a bare exit 9
+counts on Darwin only. The pass is `tee`'d with `2>&1` — load-bearing, the line reaches `stderr`
+through JUCE's `outputDebugString` because pluginval installs no `Logger` — and the verdict reads
+`${PIPESTATUS[0]}`, never the pipeline's status. **The retry policy is untouched**: 3 attempts on
+Linux for the X11 XEmbed flake, 1 everywhere else, and a crashed pass still fails with pluginval's
+own exit code. `run-pluginval.ps1` was checked and needs nothing — that handler is not installed on
+Windows, an unhandled access violation still carries its Win32 exception code, and an uncaught C++
+exception reaches the UCRT's `__fastfail (FAST_FAIL_FATAL_APP_EXIT)` and terminates with
+`0xC0000409`, which that script's negative branch already calls a crash. The one small-code abnormal
+exit it cannot see is pluginval's own inactivity watchdog (`ExitProcess (1)` on Windows,
+`std::_Exit (EXIT_FAILURE)` on posix — exit 1 everywhere, and a timed-out validation *is* a
+validation failure). Both recorded in the script.
+
+**Proof.** `run-pluginval.sh --self-test`: 22 cases over recorded strings, including the verbatim
+tail of the run above, plus four end-to-end cases driving `run_one_pass` itself against a stand-in
+validator (the wiring the unit cases cannot see: `2>&1`, the `tee`, `${PIPESTATUS[0]}`). Five
+mutants, all killed — the old `rc < 128` rule (6 cases), `rc=$?` (1), a dropped `2>&1` (2), the
+handler line gated on Darwin (3), and "every non-zero exit is a crash" (6). It runs in `source-lint`
+and in `scripts/preflight.sh`; a *passing* pluginval run exercises none of the classifier's branches,
+which is why the five validating jobs cannot stand in for it.
+
+**Docs synced.** `CI_CD.md` (new §Reading a pluginval verdict, the `source-lint` job entry (d), the
+job-matrix row, the preflight paragraph), `TESTING.md` (§What counts as a crash, the §Signal-only
+retry opening, two Failure-analysis rows), `TROUBLESHOOTING.md` (the pluginval table: the `<128` row
+replaced by the two verdict rows), `TESTING_POLICY.md` (rule 3 and its Evidence line: "signal-only"
+→ "crash-only", plus the rule-4 obligation on the classifier), `FUTURE_RISKS.md` (RISK-004 title,
+table row, Evidence, Mitigation, and a new version-sync note), `KNOWN_ISSUES.md` KI-003,
+`ADR-0011` Related code, `REPOSITORY_MAP.md` script row. No CHANGELOG entry: CI plumbing is not a
+user-visible change (`CHANGELOG_POLICY.md` rule 3 and §Writing an entry). Not a gate item — no
+parameter, serialization, threading, DSP-order or latency change, and no Accepted ADR conflict.
+
+**`DELIBERATE_REAIMS` emptied and refilled, the third time and for the reason the table's own
+lifecycle note gives.** All 34 entries it held — the D-2 / ADR-0036 rounds and the ADR-0037 round —
+were reported by the tool as "not needed against origin/main, which already carries the re-aimed
+spelling", against a base that IS this branch's merge base (PRs #135 and #141 merged them). Under
+the transition key a completed transition can never match again, and leaving it would silence a
+later undeclared movement of the same anchor. Six declarations replace them: `run_one_pass` moved
+above the setup **and** was edited, so every citation into the retry block reported UNMAPPABLE
+rather than a plain move, and each was re-derived by reading the span for the symbol its document
+names — the retry-only documents aim at the policy block plus the loop, the ones that say what a
+crash *is* start at `classify_pass_exit`. Two prose *illustrations* of an anchor
+(`CI_CD.md`, `DOCUMENTATION_COVERAGE.md`, both quoting a tool warning) lost their literal line
+number instead of being re-aimed: `--fix` would have rewritten the quoted observation into a
+falsehood, and the checker cannot tell an illustration from a citation — the same hazard
+`build.yml`'s own comment names. Eleven further anchors were plain moves, re-anchored by `--fix`.
 [Verified]

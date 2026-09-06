@@ -64,6 +64,12 @@ python3 scripts/check-gcc-warnings.py --self-test
 # used to pass silently: a compiler whose version looks right and whose identity
 # cannot be established at all.
 ./scripts/setup-llvm-apt.sh --self-test
+# The release gate's own verdict. `classify_pass_exit` decides whether a non-zero
+# pluginval exit is a crash or a real validation failure, from recorded strings
+# and a stand-in validator, so it needs no bundle, no pluginval and no display --
+# and a green pluginval run proves nothing about it, because a pass takes none of
+# its branches.
+./scripts/run-pluginval.sh --self-test
 echo "note: the FULL warning gates need a build log from the pinned compiler"
 echo "      (CI: linux, linux-lto-tests); only their self-tests ran here."
 

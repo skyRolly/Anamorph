@@ -47,8 +47,9 @@ therefore runs pluginval with `--skip-gui-tests`; GL stays enabled for real Wind
 ## Related code
 - `src/PluginEditor.cpp` (attach gate `#if ! (JUCE_LINUX || JUCE_BSD)` + rationale; destructor order;
   `triggerRepaint` `isAttached()` guard)
-- `scripts/run-pluginval.sh:147-198` (Linux/macOS signal-only retry); `scripts/run-pluginval.ps1`
-  (Windows crash retry + `--skip-gui-tests`)
+- `scripts/run-pluginval.sh:140-228` (Linux/macOS crash-only retry, and `classify_pass_exit`, which
+  decides what a crash IS — a macOS signal pluginval traps itself arrives as exit 9, not 128+N);
+  `scripts/run-pluginval.ps1` (Windows crash retry + `--skip-gui-tests`)
 
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp (attach gate + destructor); local core dump (XEmbedComponent frame).

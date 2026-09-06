@@ -130,6 +130,31 @@ $guiArgs = @("--skip-gui-tests")
 # Only a $null code retries: Invoke-Pluginval yields $null solely when Process.Start itself fails
 # under ErrorActionPreference=Continue -- a launch/setup fault of the step, never a verdict about
 # the plugin, and the one case the original null-handling rationale actually covers.
+#
+# THE 2026-09-06 macOS DEFECT HAS NO WINDOWS COUNTERPART, and that was checked rather than assumed.
+# run-pluginval.sh was mislabelling a crash there because pluginval traps SIGABRT and friends itself
+# and exits 9 -- small, and so read as a validation failure. That handler (`kill9WithSomeMercy`) is
+# `#if JUCE_MAC` in BOTH its definition and the `CommandLineValidator` constructor that installs it,
+# so nothing installs it here; JUCE's own `setApplicationCrashHandler` is not reached on the
+# in-process `--validate` path either, and on Windows it would install a SetUnhandledExceptionFilter
+# whose termination still carries the exception code. An abnormal exit on this platform therefore
+# still arrives as a Win32 exception code, which the negative / >=256 branch below already calls a
+# crash. Nothing to change here.
+#
+# The abort() path needs nothing either, and that was checked rather than assumed. With no SIGABRT
+# handler installed, the UCRT's abort() reaches __acrt_call_reportfault and issues
+# __fastfail (FAST_FAIL_FATAL_APP_EXIT) wherever PF_FASTFAIL_AVAILABLE holds -- true on every
+# windows-latest runner -- so an uncaught C++ exception terminates with 0xC0000409, which the
+# negative branch below already calls a crash. `_exit (3)` is only the no-fastfail fallback.
+#
+# The one SMALL-code abnormal termination that is reachable here is pluginval's own INACTIVITY
+# WATCHDOG, and it is left where it lands on purpose. `PluginsUnitTestRunner` runs a timeout thread
+# whenever --timeout-ms is set (this script passes 600000 below); on expiry it logs
+# `*** FAILED: Timeout after ...` and calls juce::Process::terminate(), which is ExitProcess (1) on
+# Windows and std::_Exit (EXIT_FAILURE) on posix -- exit 1 on every platform, indistinguishable by
+# code from an ordinary validation failure, which is what a timed-out validation is. Only that log
+# line names it, and this script deliberately inherits the console rather than capturing output
+# (see Invoke-Pluginval above), so there is nothing to match on.
 $pvArgs = @('--strictness-level', "$Strictness") + $modeArgs + $guiArgs + @('--validate', $vst3.FullName, '--timeout-ms', '600000')
 Write-Host "Validating $($vst3.FullName) at strictness $Strictness -- mode=$Mode ($passes consecutive pass(es) required); GUI tests skipped (see KI-007)"
 $launchAttempts = 3

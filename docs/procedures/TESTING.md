@@ -1278,8 +1278,8 @@ a display). Evidence [Verified]: scripts/run-pluginval.sh / scripts/run-pluginva
 ### Signal-only retry (known X11 host flake)
 
 `run-pluginval.sh` treats a real
-validation failure (exit < 128) as a failure immediately. On Linux it retries up to 3 times **only on
-a signal-crash** (exit ≥ 128) to absorb a use-after-free in **pluginval's own JUCE** X11
+validation failure as a failure immediately. On Linux it retries up to 3 times **only on
+a crash** (§What counts as a crash, below) to absorb a use-after-free in **pluginval's own JUCE** X11
 `XEmbedComponent` (a `ConfigureNotify`→`callAsync` on rapid editor open/close), not a plugin defect —
 the plugin already drops its OpenGL child window on Linux (ADR-0011). On Windows,
 `run-pluginval.ps1` fails immediately on a real validation failure **and, since 2026-08-31, on a
@@ -1298,6 +1298,40 @@ everywhere else — and a single-attempt failure prints a distinct message so it
 an exhausted retry. The 2026-08-31 Windows change above completes the same scoping for the third
 platform. Evidence [Verified]: scripts/run-pluginval.sh (`run_one_pass`, and the `case
 "$(uname -s)"` above it); scripts/run-pluginval.ps1 (verdict block).
+
+### What counts as a crash (the exit code alone does not say)
+
+**A signal death does not look the same on every platform, and until 2026-09-06 this script assumed
+it did.** On Linux a crashing validator really is killed by the signal, so the shell reports 128+N
+and the old "exit < 128 is a real validation failure" rule held. On macOS it does not: pluginval
+traps SIGFPE, SIGILL, SIGSEGV, SIGBUS and SIGABRT itself — `kill9WithSomeMercy` in its
+`Source/CommandLine.cpp`, `#if JUCE_MAC` in both the definition **and** the `CommandLineValidator`
+constructor that installs it — logs `pluginval received <signal>, exiting immediately` and calls
+`std::_Exit (SIGKILL)`. SIGKILL is 9, so a macOS crash arrives as **exit 9**, and this script called
+it a plug-in that failed validation. Observed on PR #141 (run 34019453055, job `macos`, AU randomise
+pass 2/3): all 25 tests passed, pluginval printed `SUCCESS`, and only then came a
+`std::bad_function_call` in pluginval's own teardown — reported as "real validation failure, not a
+crash", the furthest-apart verdict this gate can reach.
+
+`classify_pass_exit` now returns `pass`, `crash` or `fail` from the host, the exit code **and**
+pluginval's captured output. Exit 0 is a pass; ≥ 128 is a signal death; the handler line is a
+trapped signal **on any host**, because gating proof of a crash on a platform check is exactly the
+mistake above; and a bare exit 9 is a crash on **Darwin only**, where it is that handler's signature
+and pluginval otherwise exits 0 or 1. The pass output is therefore `tee`'d with `2>&1` — load-bearing
+rather than tidy, since pluginval installs no `juce::Logger` and the line reaches `stderr` through
+`outputDebugString` — and the verdict reads `${PIPESTATUS[0]}`, pluginval's own code, never the
+pipeline's.
+
+**This renames the verdict; it does not move the gate.** A crashed pass still fails, still with
+pluginval's exit code, and the retry policy above is untouched: 3 attempts on Linux, 1 everywhere
+else. Two things it deliberately does not separate, both pre-existing and neither reachable from
+CI's own invocation: a malformed command line exits 255 and reads as a crash, and a pluginval
+**timeout** exits 1 and reads as a validation failure, which it is. Windows needs no counterpart —
+nothing installs that handler there, and an abnormal exit still carries its Win32 exception code.
+`scripts/run-pluginval.sh --self-test` drives the classifier, and `run_one_pass` itself against a
+stand-in validator, over recorded strings — 22 cases, no build tree, no pluginval, no display — in
+`source-lint` and in `scripts/preflight.sh`. Evidence [Verified]: scripts/run-pluginval.sh
+(`classify_pass_exit`, `run_one_pass`, `self_test`); scripts/run-pluginval.ps1 (verdict block).
 
 ## CI integration
 
@@ -1389,8 +1423,8 @@ exactly when the raw SARIF is most worth keeping.
 |---|---|---|
 | A `check` assertion fails | DSP regression | the named test in `tests/dsp_tests.cpp`; compare against the invariant it guards (`docs/policies/DSP_POLICY.md`) |
 | A state-test `check` fails | serialization / parameter-surface regression | the named test in `tests/state_tests.cpp`; if the change is INTENTIONAL it needs the compatibility-policy process (ADR + registry update + `--write-snapshot`) |
-| pluginval exits < 128 | real validation failure | the pluginval log line; do **not** retry — it's a genuine defect |
-| pluginval exits ≥ 128 (crash) | the known X11 host flake | retried automatically; if it still fails after 3 tries, treat as a failure (`scripts/run-pluginval.sh:172-198`, `run_one_pass`) |
+| pluginval: `FAILED … real validation failure` | a genuine validation defect | the pluginval log line; do **not** retry — and note a *timeout* also lands here (exit 1, log line `*** FAILED: Timeout after`) |
+| pluginval: `CRASHED …` / `crashed …` | a signal death (exit ≥ 128), or one pluginval trapped itself (macOS: exit 9 + `pluginval received …, exiting immediately`) | on Linux the known X11 host flake, retried 3× and then a failure; elsewhere it fails at once (`scripts/run-pluginval.sh:140-228`, `run_one_pass`, `classify_pass_exit`) |
 | `AnamorphTests`/`AnamorphStateTests` `not found` | not built yet | run `scripts/build.sh` first (`scripts/run-tests.sh:51-73`) |
 
 ## Gaps in the automated coverage (known, deliberate)

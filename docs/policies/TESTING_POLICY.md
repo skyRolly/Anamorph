@@ -48,7 +48,8 @@ Repository Governance Policy. Test acceptance levels and the release gate.
   "ready to audition," not "shipped."
 
 Evidence [Verified]: scripts/run-tests.sh; scripts/run-pluginval.sh / scripts/run-pluginval.ps1
-(mode handling + seed + 3-pass loop + signal-only retry); .github/workflows/build.yml (uniform
+(mode handling + seed + 3-pass loop + crash classification + crash-only retry);
+.github/workflows/build.yml (uniform
 blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU gates).
 
 ## Rules
@@ -70,9 +71,12 @@ blocking gate; `env.ANAMORPH_PLUGINVAL_STRICTNESS`; the macOS AU install + AU ga
    This changes nothing about the **release gate** above: Levels 2, 3 and pluginval remain blocking.
 2. **DSP-policy invariants must have a guarding test** where feasible (see the invariant→test map
    in `DSP_POLICY.md`).
-3. The pluginval **signal-only retry** is permitted (it works around a host-side JUCE/X11 crash,
+3. The pluginval **crash-only retry** is permitted (it works around a host-side JUCE/X11 crash,
    not a plugin defect) but never retries a real validation failure
-   (`run_one_pass`, `scripts/run-pluginval.sh:172-198`).
+   (`run_one_pass`, `scripts/run-pluginval.sh:186-228`). **What counts as a crash is decided by
+   `classify_pass_exit`, not by the exit code alone** — macOS traps its own signals and exits 9,
+   and reading the number alone reported that as a validation failure until 2026-09-06. Rule 4
+   applies to that decision like any other gate: `run-pluginval.sh --self-test` proves it live.
 
 3a. **A state-mutation test must CYCLE, not just transition.** A single `A -> B` pass can leave a
    defect invisible, because the first pass through a state path can be made correct by conditions
