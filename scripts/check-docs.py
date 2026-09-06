@@ -378,10 +378,37 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
     opened_at: int | None = None
     depth = 0
     items: tuple[tuple[int, int], ...] = ()  # the list items the fence was opened in
+    context: tuple[tuple[int, int], ...] = ()   # the list items THIS line sits in
     open_col = 0
     for i, line in enumerate(lines):
         prefix, content, line_depth, _, line_items = strip_containers(line)
         run = fence_run(content.lstrip(" \t"))
+        # WHICH ITEMS THIS LINE IS IN, carried across lines because a fence may be
+        # opened on a CONTINUATION line: `- an item` and then, indented under it,
+        # the delimiter. Such a line carries no marker of its own, so reading the
+        # item chain off the opener alone left the fence with no column at all --
+        # no dedent could end it and the item's own closer, four or five columns
+        # in, was rejected. Measured on the generated corpus: 98 documents masked a
+        # real `## [x.y.z]` release heading with no finding whatsoever, which is
+        # the bypass direction.
+        #
+        # A line carrying markers RESTATES the chain; one without keeps as much of
+        # it as its indentation still reaches, each item read in its own frame; a
+        # blank line changes nothing, because a blank does not end a list item.
+        # That is the whole of the container state this file keeps, and it is what
+        # tells a fence indented two columns INSIDE an item from one indented two
+        # columns at top level -- a distinction the renderer makes and no
+        # single-line rule can.
+        if line_items:
+            context = line_items
+        elif line.strip():
+            keep: list[tuple[int, int]] = []
+            for ctx_depth, ctx_col in context:
+                ctx_rest = quote_rest(line, ctx_depth)
+                if ctx_rest is None or indent_of(ctx_rest) < ctx_col:
+                    break
+                keep.append((ctx_depth, ctx_col))
+            context = tuple(keep)
         if char is not None:
             # ---- INSIDE A FENCE: does this line leave the container? ----------
             #
@@ -492,9 +519,30 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
         # `> ```text` open nothing at all, so a fenced example in a blockquote
         # reached `classify_heading` as live structure and a valid document was
         # rejected -- the mirror image of every earlier bypass.
-        if line.strip() and opens_fence(run) and indent_columns(content) <= 3:
-            char, width, depth, items = run[0], run[1], line_depth, line_items
-            open_col = items[-1][1] if items else 0
+        # THE OPENER'S THREE-COLUMN ALLOWANCE IS COUNTED FROM ITS OWN CONTENT
+        # COLUMN, which for a line carrying markers is what `strip_containers`
+        # already left behind, and for a CONTINUATION line is the item's column
+        # read in the fence's quote frame. Counting it from column 0 meant a
+        # delimiter indented to a `10. ` item's content column -- four columns, an
+        # ordinary nested sample -- opened nothing at all, and the sample's
+        # headings were then read as live structure. That is the residual rounds 7
+        # and 8 recorded as needing a container stack; there is one now.
+        if line_items:
+            open_indent = indent_columns(content)
+        else:
+            open_rest = quote_rest(line, line_depth)
+            open_indent = 4 if open_rest is None else indent_of(open_rest) - (
+                context[-1][1] if context and context[-1][0] == line_depth else 0)
+        if line.strip() and opens_fence(run) and open_indent <= 3:
+            char, width, depth, items = run[0], run[1], line_depth, context
+            # THE CLOSER'S ALLOWANCE IS COUNTED IN THE FENCE'S OWN QUOTE FRAME, so
+            # the column it is counted from has to live in that frame too. An item
+            # recorded at a SHALLOWER depth -- `- > ```text` puts one at depth 0
+            # while the fence itself is at depth 1 -- imposes no column inside the
+            # quote, and using its document column stretched the three-column
+            # allowance to five: the checker then closed on a line the renderer
+            # calls code and read the code as structure.
+            open_col = items[-1][1] if items and items[-1][0] == depth else 0
             opened_at, mask[i] = i + 1, True
     return mask, opened_at
 
@@ -2541,7 +2589,12 @@ def self_test() -> int:
          ["# Changelog", V5, "### Added", "- The template is:", "", "  ```text",
           "  ### Fixed", "", "  ### Added", "  ```"]),
 
-        ("...and a bad info string opens no DEEP fence either", 2,
+        # Three, and the third is the trailing `    ``` `: it sits at the `10. `
+        # item's own content column, so once the opener's allowance is counted from
+        # there it OPENS a fence, and that fence is never closed. The renderer says
+        # the same -- a heading on the `### Added` line and a fence on the one
+        # after it.
+        ("...and a bad info string opens no DEEP fence either", 3,
          ["# Changelog", V5, "### Added", "10. x", "", "    ```a`b", "    ### Added",
           "    ```"]),
 
@@ -2912,7 +2965,11 @@ def self_test() -> int:
         # ...and the INNER item is checked as well as the outer one: `- - ```text`
         # nests items at columns 2 and 4, and a new item at column 2 satisfies the
         # outer while leaving the inner. The renderer ends the fence there.
-        ("a new inner item at the outer column ends the fence", 1,
+        # Two: the heading, and the closer that is no longer one. The new item at
+        # column 2 ends the fence, so the `    ``` ` below it starts a fresh item's
+        # fence at that item's content column -- unclosed, exactly as the renderer
+        # shows it.
+        ("a new inner item at the outer column ends the fence", 2,
          ["# Changelog", V5, "### Added", "- - ```text", "  - ### Fixed", "    ```"]),
         ("...and content at the inner column stays data", 0,
          ["# Changelog", V5, "### Added", "- - ```text", "    - ### Fixed", "    ```"]),
@@ -2923,6 +2980,41 @@ def self_test() -> int:
         ("a quoted blank does not end a fence in a quoted item", 0,
          ["# Changelog", V5, "### Added", "> - ```text", ">   ### Fixed", ">",
           ">   ## [0.9.7] — 2026-09-05", ">   ```"]),
+        # A FENCE MAY BE OPENED ON A CONTINUATION LINE, and then the item chain is
+        # not on that line at all. Reading it from the opener alone left such a
+        # fence with no column: no dedent could end it, its own closer four or five
+        # columns in was rejected, and a real release heading below it was masked
+        # with no finding at all -- 98 such documents in the generated corpus.
+        # `fence_mask` now carries the item chain across lines: a line with markers
+        # restates it, one without keeps as much as its indentation still reaches.
+        ("a fence on a continuation line does not hide the entry below it", 1,
+         ["# Changelog", V4, "### Added", "- an item", "  ```text", V5, "### Added",
+          "- y"]),
+        ("...and still masks its own sample", 0,
+         ["# Changelog", V5, "### Added", "- an item", "  ```text", "  ### Fixed",
+          "  ### Fixed", "  ```"]),
+        # ...at the item's OWN column, which is what the opener's three-column
+        # allowance is counted from: four columns inside a `10. ` item is an
+        # ordinary nested sample, and counting from column 0 opened nothing there.
+        ("...four columns into a `10. ` item", 0,
+         ["# Changelog", V5, "### Added", "10. an item", "    ```text", "    ### Fixed",
+          "    ### Fixed", "    ```"]),
+        ("...and inside a quoted item", 0,
+         ["# Changelog", V5, "### Added", "> - an item", ">   ```text", ">   ### Fixed",
+          ">   ### Fixed", ">   ```"]),
+        # THE CONTROL. With no list above it, a delimiter indented two columns is a
+        # TOP-LEVEL fence whose content may sit at column 0, and the renderer keeps
+        # masking to the closer. That is the distinction the carried chain makes.
+        ("a top-level indented fence still masks a column-0 heading", 0,
+         ["# Changelog", V5, "### Added", "  ```text", "## [0.9.7] — 2026-09-05",
+          "  ```"]),
+        # The closer's allowance is counted in the FENCE's quote frame, so an item
+        # recorded at a shallower depth imposes no column there: `- > ```text` is
+        # not closed by a delimiter four columns into the quote, and using the
+        # item's document column stretched the allowance to five.
+        ("a shallower item imposes no column inside the quote", 1,
+         ["# Changelog", V5, "### Added", "- > ```text", "  >     ### Fixed",
+          "  >     ```"]),
         ("...and a bare blank does not end one at top level", 0,
          ["# Changelog", V5, "### Added", "- ```text", "  ### Fixed", "",
           "  ## [0.9.7] — 2026-09-05", "  ```"]),

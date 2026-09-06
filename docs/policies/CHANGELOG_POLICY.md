@@ -208,6 +208,14 @@ CLOSER, and measures the closer's three-column allowance from the item's content
 two numbers `check-docs.py` uses. The two tools are checked against each other on every such shape,
 not merely against their own fixtures.
 
+**A fence may be opened on a continuation line**, and the item it belongs to is then on an earlier
+line: `- an item`, and under it the delimiter. `check-docs.py` carries the item chain across lines
+for exactly this — a line with markers restates it, one without keeps as much as its indentation
+still reaches, a blank changes nothing — which is what tells a delimiter indented two columns INSIDE
+an item from one indented two columns at top level. Both the opening and the closing three-column
+allowances are counted from the item's content column, read in the fence's own blockquote frame; an
+item recorded at a shallower depth imposes no column inside a quote.
+
 **Where the two tools deliberately differ from the renderer**, they differ in one
 direction only: `check-docs.py` may see structure the renderer treats as an indented code
 block (a `### Fixed` indented four columns with no blank line above it, or a release name

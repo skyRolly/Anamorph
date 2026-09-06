@@ -9489,6 +9489,32 @@ a document the renderer calls valid or a heading the renderer shows:
   allowance measured from the item's own content column and the fence's own blockquote depth
   stripped first. It is the only change the extractor has needed in rounds 5-9.
 
+**Two more from the adversarial phase, both against the fixed tree.** Three agents attacked the
+result -- one hunting false positives an author would actually write, one hunting hidden headings,
+one attacking the boundary arithmetic -- over roughly 19 000 generated documents between them,
+differentially against the renderer:
+
+- **A fence may be opened on a CONTINUATION line**, and then the item chain is not on that line at
+  all: `- an item` and, indented under it, the delimiter. Reading the chain off the opener left such
+  a fence with no column -- no dedent could end it, its own closer four or five columns in was
+  rejected, and a real `## [x.y.z]` below it was masked with **no finding whatsoever** in 98 of the
+  generated documents. `fence_mask` now carries the chain across lines: a line with markers restates
+  it, one without keeps as much of it as its indentation still reaches, a blank changes nothing.
+  That is the whole of the container state this file keeps, and it is exactly what tells a fence
+  indented two columns INSIDE an item from one indented two columns at top level -- the residual
+  rounds 7 and 8 recorded as needing a container stack. Both directions are pinned by fixtures.
+- **The closer's allowance was counted from a column in the wrong frame.** `open_col` came from the
+  innermost item as recorded in the OPENER's frame, while the closer is read after the fence's own
+  quote markers; for `- > ```text` the item sits at depth 0 and the fence at depth 1, so a document
+  column was subtracted from a quote-relative one and the three-column allowance became five. The
+  checker then closed on a line the renderer calls code. An item recorded at a shallower depth now
+  imposes no column inside the quote.
+
+With the chain available, the OPENER's allowance is counted from the item's content column too, so
+a delimiter four columns into a `10. ` item -- an ordinary nested sample -- opens a fence instead of
+nothing. Two existing fixtures moved by one finding as a result, and the renderer was asked about
+both: each new finding is a genuine unclosed fence it also shows.
+
 **One over-report was found and deliberately left.** `100.\t```text` over a tab-indented sample
 ends its fence correctly at the dedent, and `indented_code_mask` then declines to mask the
 four-column line because its `in_list_context` guard sees a list marker on the preceding line -- so
@@ -9497,15 +9523,15 @@ BY DESIGN (masking in list context is how a real heading would be hidden), the d
 tolerated one, and the shape needs a tab inside a four-digit ordered marker. Recorded here rather
 than traded for a possible under-report.
 
-**Measured.** Self-test 362 -> 395 cases: 33 new fixtures, nine of them documents that must produce
+**Measured.** Self-test 362 -> 401 cases: 39 new fixtures, nine of them documents that must produce
 NOTHING (a bulleted sample, an ordered sample with blank lines, `10. `, nested, quote+list,
 list+quote, tab-marked, nested bullets with a blank line) and eight that must still fire (a genuine
 sibling item, a one-column dedent, a column-0 release heading, structure after a correct close, an
 unclosed list fence, a closer four columns past the item, a quoted closer, and a line that leaves
 the item's own quote frame), plus sixteen for the defects the audit added -- including five in the
 EXTRACTOR CONTRACT, which the self-test executes by running `changelog-section.awk` rather than
-asserting it in a comment. **Twenty-one mutations, each killed by a named case** -- seventeen in the
-checker and four in the extractor: restoring the old
+asserting it in a comment. **Twenty-six mutations, each killed by a named case** -- twenty-two in
+the checker and four in the extractor: restoring the old
 marker clause (11 cases), deleting the dedent test, `<=` and `>` for the column comparison, reading
 the lead at depth 0 regardless of the item's frame, letting the lead skip list markers, treating a
 blank line as a dedent, treating an unreachable frame as "still inside", recording the item frame
@@ -9518,7 +9544,10 @@ again, reading it at depth 0 rather than at the fence's own, checking only the i
 item, and checking only the outermost. The last two each needed a fixture written for them, and
 both were answered by the renderer first. The extractor's four are: not looking behind container
 markers, stripping markers before a CLOSER too, measuring the closer's allowance from column 0, and
-losing the item's frame inside a quote. `container_lead` was REMOVED in the same pass: the item
+losing the item's frame inside a quote. The five for the carried chain are: reading it from the
+opener line only, letting it survive any dedent, clearing it on a blank line, counting the opener's
+allowance from column 0, and ignoring the frame the closer's column was recorded in.
+`container_lead` was REMOVED in the same pass: the item
 loop reads `quote_rest` directly, which left the helper with no caller, and a mutation test cannot
 tell dead code from a rule.
 
