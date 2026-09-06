@@ -9457,19 +9457,45 @@ the pre-fix implementation shows **119 false positives**. The closer boundary wa
 — at the item's column, +1, +3, +4, with an info string, and with the wrong delimiter character —
 **186 of 186 agree**, against 28 disagreements before.
 
-**Measured.** Self-test 362 -> 379 cases: 17 new fixtures, nine of them documents that must produce
+**Three more defects the round's own audit found, all in the same class.** A six-dimension
+renderer differential run over the FIXED tree (flat lists, nested and mixed containers, closers,
+over-masking negatives, tabs, and the extractor) reproduced three the fix had not reached, each on
+a document the renderer calls valid or a heading the renderer shows:
+
+- **A closer may be preceded by spaces and by nothing else (4.5), so a list marker disqualifies
+  it.** The closer test read `strip_containers`'s content, which removes list markers as well as
+  quote markers, so a content line `- ``` ` was accepted as a closer: the block ended one line
+  early and the item's REAL closer then opened a fence that ran to end of file -- two findings on a
+  valid document. Reproduced for `- `, `* `, `+ `, `1. `, `1) `, `10. `, `- - `, a tab-marked item
+  and a tilde fence, at top level as well as inside an item. The closer is now read from
+  `quote_rest`, which strips the fence's own blockquote markers and nothing else.
+- **Only the innermost enclosing item was remembered.** `- > - ```text` nests an item at quote
+  depth 0 and another at depth 1; a line that leaves the OUTER one takes the quote and the fence
+  with it, and the renderer shows the heading on it. Measuring only the inner frame kept the fence
+  open and masked a renderer-visible `## [0.9.7]` -- an under-report, the bypass direction.
+  `strip_containers` now records the whole chain and every item is tested.
+- **An inner item can be left while the outer one is satisfied.** `- - ```text` nests columns 2 and
+  4, and a new item at column 2 passes the outer test and fails the inner. Found by the mutation
+  that checks only the outermost item, and closed by the same chain.
+
+**Measured.** Self-test 362 -> 387 cases: 25 new fixtures, nine of them documents that must produce
 NOTHING (a bulleted sample, an ordered sample with blank lines, `10. `, nested, quote+list,
 list+quote, tab-marked, nested bullets with a blank line) and eight that must still fire (a genuine
 sibling item, a one-column dedent, a column-0 release heading, structure after a correct close, an
 unclosed list fence, a closer four columns past the item, a quoted closer, and a line that leaves
-the item's own quote frame). **Twelve mutations, each killed by a named case**: restoring the old
+the item's own quote frame), plus eight for the three defects the audit added. **Sixteen
+mutations, each killed by a named case**: restoring the old
 marker clause (11 cases), deleting the dedent test, `<=` and `>` for the column comparison, reading
 the lead at depth 0 regardless of the item's frame, letting the lead skip list markers, treating a
 blank line as a dedent, treating an unreachable frame as "still inside", recording the item frame
 from the walk's final state, skipping the terminating line instead of re-classifying it, and two
 ways of forgetting the opener's column. The "unreachable frame" mutant survived the first pass; an
 exhaustive search over 5 950 opener x line pairs found **35 that reach it**, so it is a real branch
-and now has a fixture — not an equivalent mutant, which is what the search was run to decide.
+and now has a fixture — not an equivalent mutant, which is what the search was run to decide. The
+four added for the audit's defects are: reading the closer off the container-stripped content
+again, reading it at depth 0 rather than at the fence's own, checking only the innermost enclosing
+item, and checking only the outermost. The last two each needed a fixture written for them, and
+both were answered by the renderer first.
 
 **No regression, measured the established way.** Every check over all 120 real documents gives
 results identical to the previous head. The round-5 container matrix (37), the round-6 ordered-list

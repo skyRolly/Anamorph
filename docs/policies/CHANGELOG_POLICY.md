@@ -192,7 +192,11 @@ list, which failed documentation CI while every renderer showed one code block. 
 kinds of line are the whole model — the OPENER a fence begins on, the CONTENT it holds, and
 the CLOSER that ends it — and a line that terminates a fence by leaving its container is none
 of the three: it is outside, so it is read from scratch, and where it is itself a delimiter it
-opens the next fence.
+opens the next fence. Two consequences follow and both are CommonMark's. A **closing** delimiter
+may be preceded by up to three columns of SPACES and by nothing else, so a list marker disqualifies
+it — `- ``` ` inside a fenced example is code text, not a closer. And a fence opened inside NESTED
+items belongs to every one of them: a line that leaves an outer item takes the inner containers,
+and the fence, with it, whichever frame the inner one was measured in.
 
 **Where the two tools deliberately differ from the renderer**, they differ in one
 direction only: `check-docs.py` may see structure the renderer treats as an indented code

@@ -377,10 +377,10 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
     width = 0
     opened_at: int | None = None
     depth = 0
-    item: tuple[int, int] | None = None      # the list item the fence was opened in
+    items: tuple[tuple[int, int], ...] = ()  # the list items the fence was opened in
     open_col = 0
     for i, line in enumerate(lines):
-        prefix, content, line_depth, _, line_item = strip_containers(line)
+        prefix, content, line_depth, _, line_items = strip_containers(line)
         run = fence_run(content.lstrip(" \t"))
         if char is not None:
             # ---- INSIDE A FENCE: does this line leave the container? ----------
@@ -429,9 +429,15 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
             # does not reach the item's quote depth, which is a dedent past every
             # column.
             ended = line_depth < depth
-            if not ended and item is not None and line.strip():
-                lead = container_lead(line, item[0])
-                ended = lead is None or lead < open_col
+            if not ended and items and line.strip():
+                # EVERY enclosing item, not just the innermost: a line that leaves
+                # an OUTER one takes the inner containers -- and the fence -- with
+                # it, and only that item's own frame can see it.
+                for item_depth, item_col in items:
+                    lead = container_lead(line, item_depth)
+                    if lead is None or lead < item_col:
+                        ended = True
+                        break
             if not ended:
                 mask[i] = True               # inside the fence, including its closer
                 # `strip(" \t")`, never a bare `strip()`. CommonMark 4.5 allows
@@ -454,18 +460,19 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
                 # family runs toward. `open_col` is 0 wherever no list marker
                 # opened the fence, and the test is then the top-level one it has
                 # always been.
-                if run and line_depth == depth \
-                        and indent_columns(content) - open_col <= 3 \
-                        and run[0] == char and run[1] >= width \
-                        and not run[2].strip(" \t"):
-                    char, width, opened_at, item = None, 0, None, None
+                closer_rest = quote_rest(line, depth)
+                closer = fence_run(closer_rest) if closer_rest is not None else None
+                if closer and indent_of(closer_rest) - open_col <= 3 \
+                        and closer[0] == char and closer[1] >= width \
+                        and not closer[2].strip(" \t"):
+                    char, width, opened_at, items = None, 0, None, ()
                 continue
             # The fence ended HERE, and this line is outside it. It is therefore
             # not fence content and not a closer -- so it falls through to be
             # classified from scratch, opener test included. Skipping that step
             # left `- ```text` / `  - item` / `> ``` ` with no fence open where the
             # renderer shows one, and so with no unclosed-fence report either.
-            char, width, opened_at, item = None, 0, None, None
+            char, width, opened_at, items = None, 0, None, ()
         # ---- NO FENCE ACTIVE: may this line open one? -------------------------
         # A fence opens where its delimiter sits: inside a quote, inside a list
         # item, or at top level. Reading the RAW line instead is what let
@@ -473,8 +480,8 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
         # reached `classify_heading` as live structure and a valid document was
         # rejected -- the mirror image of every earlier bypass.
         if line.strip() and opens_fence(run) and indent_columns(content) <= 3:
-            char, width, depth, item = run[0], run[1], line_depth, line_item
-            open_col = item[1] if item else 0
+            char, width, depth, items = run[0], run[1], line_depth, line_items
+            open_col = items[-1][1] if items else 0
             opened_at, mask[i] = i + 1, True
     return mask, opened_at
 
@@ -1072,6 +1079,35 @@ def quote_marker(rest: str) -> int | None:
     return take + (1 if rest[take:take + 1] == " " else 0)
 
 
+def indent_of(text: str) -> int:
+    """Leading SPACES of an already tab-expanded string -- its column, because after
+    `expand_tabs` column and index are the same number."""
+    return len(text) - len(text.lstrip(" "))
+
+
+def quote_rest(line: str, quote_depth: int) -> str | None:
+    """`line`, tab-expanded, after exactly `quote_depth` blockquote markers -- or None
+    if it does not carry that many.
+
+    WHAT A CLOSING FENCE IS ALLOWED TO HAVE IN FRONT OF IT. CommonMark 4.5 lets a
+    closer be preceded by up to three columns of SPACES and by nothing else, so a
+    list marker disqualifies it: inside a fenced example, `- ``` ` is code text.
+    Reading the closer off `strip_containers`'s content -- which removes list
+    markers as well as quote markers -- accepted that line as a closer and ended
+    the block one line early, at which point the item's real closer opened a fresh
+    fence that ran to end of file. Two findings on a valid document, and the same
+    for `* `, `+ `, `1. `, `10. `, `- - `, a tab-marked item, and a tilde fence,
+    top level included.
+    """
+    rest = expand_tabs(line)
+    for _ in range(quote_depth):
+        take = quote_marker(rest)
+        if take is None:
+            return None
+        rest = rest[take:]
+    return rest
+
+
 def container_lead(line: str, quote_depth: int) -> int | None:
     """Indentation in COLUMNS after `quote_depth` blockquote markers, or None if the
     line does not reach that depth.
@@ -1089,17 +1125,12 @@ def container_lead(line: str, quote_depth: int) -> int | None:
     reading it as container structure is what let list-like text inside a fenced
     example break the fence open.
     """
-    rest = expand_tabs(line)
-    for _ in range(quote_depth):
-        take = quote_marker(rest)
-        if take is None:
-            return None
-        rest = rest[take:]
-    return len(rest) - len(rest.lstrip(" "))
+    rest = quote_rest(line, quote_depth)
+    return None if rest is None else len(rest) - len(rest.lstrip(" "))
 
 
-def strip_containers(line: str) -> tuple[str, str, int, int, tuple[int, int] | None]:
-    """(prefix, content, quote_depth, list_columns, item) after removing container markers.
+def strip_containers(line: str) -> tuple[str, str, int, int, tuple[tuple[int, int], ...]]:
+    """(prefix, content, quote_depth, list_columns, items) after removing container markers.
 
     THE NORMALISATION EVERY CONTAINER RULE GOES THROUGH. Strip the markers once,
     then hand what is left to the SAME functions that read a top-level line --
@@ -1141,7 +1172,7 @@ def strip_containers(line: str) -> tuple[str, str, int, int, tuple[int, int] | N
     """
     expanded = expand_tabs(line)
     rest, pos, base, depth, columns = expanded, 0, 0, 0, 0
-    item: tuple[int, int] | None = None
+    items: list[tuple[int, int]] = []
     while True:
         take = quote_marker(rest)
         if take is not None:
@@ -1167,14 +1198,18 @@ def strip_containers(line: str) -> tuple[str, str, int, int, tuple[int, int] | N
         width = 1 if (spaces >= 5 or not tail[spaces:]) else spaces
         take = indent + after + width
         columns = pos + take - base        # relative to the innermost quote
-        # WHICH FRAME THE ITEM SITS IN, recorded with its column. A fence opened
-        # on this line is contained by this item, and a later line belongs to it
-        # while its indentation -- read at THIS quote depth -- reaches this
-        # column. `- > ` puts the item at depth 0 and `> - ` at depth 1, and the
-        # two measure their content from different places.
-        item = (depth, columns)
+        # WHICH FRAME EACH ITEM SITS IN, recorded with its column. A fence opened
+        # on this line is contained by EVERY item in this chain, and a later line
+        # belongs to it only while its indentation -- read at each item's own
+        # quote depth -- reaches that item's column. `- > ` puts an item at depth
+        # 0 and `> - ` at depth 1, and the two measure their content from
+        # different places; `- > - ` has one of each, and keeping only the
+        # innermost lost the outer one. A line that leaves the OUTER item takes
+        # the quote and the fence with it, and the renderer then shows the heading
+        # on it -- masking that was an under-report.
+        items.append((depth, columns))
         rest, pos = rest[take:], pos + take
-    return expanded[:pos], rest, depth, columns, item
+    return expanded[:pos], rest, depth, columns, tuple(items)
 
 
 def classify_heading(line: str) -> tuple[int, str, str] | None:
@@ -2848,6 +2883,46 @@ def self_test() -> int:
         ("a line that leaves the item's quote frame ends the fence", 2,
          ["# Changelog", V5, "### Added", "- > - ```text", "- > - ### Fixed",
           "  > - ```"]),
+        # A CLOSER MAY BE PRECEDED BY SPACES AND BY NOTHING ELSE (4.5), so a list
+        # marker disqualifies it: `- ``` ` inside a fence is code text. Reading the
+        # closer off the container-stripped content accepted it, ended the block a
+        # line early, and the item's real closer then opened a fence that ran to
+        # end of file -- two findings on a document the renderer calls valid.
+        ("a bare delimiter behind a bullet is fence content", 0,
+         ["# Changelog", V5, "### Added", "```text", "- ```",
+          "## [1.2.3] — 2026-01-01", "```"]),
+        ("...inside a list item too", 0,
+         ["# Changelog", V5, "### Added", "- ```text", "  - ```", "  ### Fixed",
+          "  ```"]),
+        ("...behind `*`, `1.`, `10.` and a tilde fence", 0,
+         ["# Changelog", V5, "### Added", "```text", "* ```", "1. ```", "10. ```",
+          "### Fixed", "```", "", "~~~text", "- ~~~", "### Fixed", "~~~"]),
+        # EVERY enclosing item, not just the innermost. `- > - ` nests an item at
+        # depth 0 and another at depth 1; a line that leaves the OUTER one takes
+        # the quote and the fence with it, and the renderer shows the heading on
+        # it. Keeping only the innermost item measured the wrong frame and masked
+        # a renderer-visible release heading -- an under-report.
+        ("a line that leaves an outer item ends the fence", 2,
+         ["# Changelog", V5, "### Added", "- > - ```text",
+          ">   ## [0.9.7] — 2026-09-05", "  >   ```"]),
+        ("...but a line that stays inside both is still data", 0,
+         ["# Changelog", V5, "### Added", "- > - ```text", "  >   ### Fixed",
+          "  >   ### Fixed", "  >   ```"]),
+        # An item's frame is not reachable from a line whose quote marker is not at
+        # its head: `  - > x` carries a quote, so its DEPTH matches, but the fence's
+        # inner item lives one quote in and this line's first container is a list.
+        # `container_lead` says so by returning None, and that is a dedent past
+        # every column -- the renderer shows the heading.
+        ("a line whose quote is not at its head leaves the frame", 2,
+         ["# Changelog", V5, "### Added", "- > - ```text", "  - > ### Fixed",
+          "  > - ```"]),
+        # ...and the INNER item is checked as well as the outer one: `- - ```text`
+        # nests items at columns 2 and 4, and a new item at column 2 satisfies the
+        # outer while leaving the inner. The renderer ends the fence there.
+        ("a new inner item at the outer column ends the fence", 1,
+         ["# Changelog", V5, "### Added", "- - ```text", "  - ### Fixed", "    ```"]),
+        ("...and content at the inner column stays data", 0,
+         ["# Changelog", V5, "### Added", "- - ```text", "    - ### Fixed", "    ```"]),
 
         # -- a bare CR is named, not silently resolved ------------------------
         ("a bare carriage return inside a line is a finding", 1,
