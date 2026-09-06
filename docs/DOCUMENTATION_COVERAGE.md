@@ -6,8 +6,8 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **changelog system round 6** (2026-09-05), whose
-entry is LAST in the body; before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
+Last updated: for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
 `Vectorscope Persistence` Settings relabel** (2026-09-05); before it
@@ -9232,3 +9232,76 @@ detected" is resolved by this fix rather than deferred further — the content c
 used, at any width. The others stand: HTML blocks unmodelled, the preamble link-definition
 behaviour, the deliberate over-report on a four-column `### Fixed` with no blank line above it, and
 the editorial rules that stay with the author.
+
+
+## Changelog system round 7 (2026-09-06) — a fence inside a container
+
+**What the round is.** One finding, and the first one in this series that runs the other way: not a
+bypass that let malformed structure through, but a **false positive** that rejected a valid
+document. A fenced changelog example written inside a blockquote — the obvious way to quote the
+entry template in a changelog's own preamble — was read as live structure and failed CI.
+
+**The defect.** `fence_mask` matched the RAW line, so `> ```text` opened nothing at all: the sample
+inside it reached `classify_heading`, whose `### Fixed` became a container category and whose
+`## [0.9.7] — 2026-09-05` became a hidden release heading. Reproduced across the shapes: a
+blockquote fence, `>>`, `> >`, and a quote-plus-list fence all leaked; `-` and `1.` list fences did
+not, because their delimiters happen to sit within the three-column allowance `fence_mask` already
+measured from column 0, and `10.`-and-wider ones were caught by the deep pass added in round 3b.
+The gap was blockquotes specifically, and it was the only container whose marker is not whitespace.
+
+**The fix is the normalisation the heading rules already use.** `fence_mask` now strips the
+container prefix with `strip_containers` and reads the remainder, so the three-column allowance is
+measured inside the container. A fence carries the blockquote **depth** it opened at, and only a
+delimiter at that depth can close it — a top-level fence is not closed by a quoted delimiter, and a
+quoted one is not closed by a top-level delimiter, which is what the renderer says. A line that
+leaves the quote ends the fence without masking, because the renderer shows a heading on the next
+quoted line and not seeing it would be the bypass direction. A new list item ends a fence that was
+opened on a list line (`- > ```text` … `- > ### Fixed` is two items and the second heading is real),
+while a bullet written INSIDE a quoted fence stays data — the test is on the opener, not the line.
+
+**One primitive, three callers.** `fence_run` is now the only place that answers "is this a fence
+delimiter", and `opens_fence` the only place that states CommonMark §4.5's backtick-info-string rule.
+`fence_delimiter` (top level), `fence_mask` (containers) and `parse_changelog`'s deep pass all go
+through them; `grep` finds exactly one `FENCE.match` in the file. The deep pass remains a separate
+PASS — `fence_mask` measures from column 0 and cannot see a list's content column without a
+container stack — but it no longer carries a separate GRAMMAR.
+
+**Bounded audit, 31 shapes against the renderer.** Blockquote fences at 0–4 spaces after the marker,
+`>>`, `> >`, tilde; `-`, `*`, `+`, `1.`, `9.`, `10.`, `100.`, nested unordered and nested ordered,
+quote-plus-list, list-plus-quote, tab-indented. And the negatives, which matter as much: a bad
+backtick info string, two backticks, five spaces after the `>` (indented code), a blank line, a lazy
+line, a closer three and four columns in, a top-level fence with a quoted closer, an inline code
+span, and a bullet inside a quoted fence. **All agree with `markdown-it-py`** on whether a heading
+exists — once the probe was corrected to compare structural findings only, since an unclosed-fence
+report is a true statement about the document rather than a claim that a heading exists, and a
+correctly-ordered category produces no finding at all.
+
+**The extractor needed no change.** `changelog-section.awk` boundaries on `^## \[` at column 0, so a
+`> ## [x.y.z]` line can never be a boundary whatever its fence state. Verified on the reported shape:
+the renderer sees only the three real headings, the checker reports nothing structural, the extractor
+keeps the sample inside `[0.9.8]` and `0.9.7` is not extractable.
+
+**Measured.** Self-test 272 → 298 cases. Eight mutations each fail a named case: reading the raw line
+again (10 cases), closing a quoted fence from any depth, not ending at a line that leaves the quote,
+not ending at a new list item, dropping the info-string rule from the shared primitive, giving the
+deep pass its own interpretation of it back, letting an opener sit four columns into its container,
+and removing the deep pass's guard. One redundant clause was **removed rather than kept**: a blank
+line always strips to depth 0, so the depth test already covered it, and a mutation test cannot tell
+a redundant condition from a rule. `check-docs` 120 files clean, `check-citations` 415 anchors clean,
+`preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**No regression, measured two ways.** Running the changelog rules over all 84 real documents gives
+identical results to the previous head — and so does running **every** check over them, which
+matters here because `fence_mask` feeds the table, link and lazy-continuation rules as well. The
+round-5 container matrix (37 shapes) and the round-6 ordered-list matrix (33 shapes) both still agree
+with the renderer in full.
+
+**The real `CHANGELOG.md` is byte-unchanged** and still parses to 23 entries (21 versions + the 2
+reconstructed, in order), 40 categories, no findings, with the parser and the extractor agreeing
+line-for-line on all 22 versioned boundaries.
+
+**Residuals.** Unchanged, plus one this round states rather than leaves implicit: a fence indented
+one to three columns at top level cannot be told apart from one at a list's content column, so its
+content stays masked until the closer — the direction that keeps a sample a sample. HTML blocks
+remain unmodelled, the preamble link-definition behaviour stands, the four-column `### Fixed`
+over-report stands, and the editorial rules stay with the author.

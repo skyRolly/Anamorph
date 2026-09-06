@@ -157,10 +157,17 @@ info string may not contain a backtick, which makes ` ```a`b ` a paragraph rathe
 fence, and a closer may be followed by spaces and tabs only (not by any other Unicode
 whitespace — that difference alone made the two tools disagree about where a release ends).
 Content inside a fence is never read as changelog structure; a line that is not actually a
-fence never hides changelog structure. One exception is stated rather than hidden: a fence
-nested inside a list item has its delimiters four or more columns from column 0, where
-neither tool can see them without a container stack, so the deep-heading rule is silenced
-between two such delimiters — a sample is not a defect.
+fence never hides changelog structure. **A fence inside a container works the same way**:
+the container prefix is stripped first (the same `strip_containers` every heading rule uses),
+so a fence delimiter written after a blockquote marker opens a fence inside that quote, and
+a changelog example written there is data rather than structure — and that fence can be
+closed only inside the same quote, ending as soon as a line leaves it. Two consequences are
+stated rather than hidden: a fence nested
+inside a list item has its delimiters four or more columns from column 0, where a container
+stack would be needed to be sure, so a second pass silences the deep-heading rule between
+two such delimiters; and a fence indented one to three columns at top level cannot be told
+apart from one at a list's content column, so its content stays masked to the closer.
+A sample is not a defect.
 
 **Where the two tools deliberately differ from the renderer**, they differ in one
 direction only: `check-docs.py` may see structure the renderer treats as an indented code

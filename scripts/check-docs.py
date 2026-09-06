@@ -321,11 +321,36 @@ def fence_delimiter(line: str) -> tuple[str, int, str] | None:
     info string is blank, so the backtick rule cannot change a closer's verdict
     and is applied by the caller only where it opens.
     """
-    m = FENCE.match(line)
-    if m is None or indent_columns(line) > 3:
+    if indent_columns(line) > 3:
+        return None
+    return fence_run(line)
+
+
+def fence_run(text: str) -> tuple[str, int, str] | None:
+    """(character, run length, info string) if `text` opens or closes a fence.
+
+    THE DELIMITER ITSELF, with no opinion about where it sits. Indentation is the
+    caller's question, because the allowance is three columns measured from the
+    CONTENT COLUMN of whatever contains the line -- column 0 at top level, the
+    blockquote's content inside a quote, the marker's width inside a list item.
+    One primitive, three callers: `fence_delimiter` for the top-level case,
+    `fence_mask` for a fence inside a container, and `parse_changelog`'s deep
+    pass. Whatever else they disagree about, they cannot disagree about what a
+    fence delimiter IS.
+    """
+    m = FENCE.match(text)
+    if m is None:
         return None
     run = m.group(1)
     return run[0], len(run), m.group(2)
+
+
+def opens_fence(run: tuple[str, int, str] | None) -> bool:
+    """CommonMark 4.5: a BACKTICK fence's info string may not contain a backtick.
+    Such a line is a paragraph and opens nothing; a tilde fence has no such
+    restriction. Stated once, because every caller needs it and none of them
+    should re-derive it."""
+    return run is not None and not (run[0] == "`" and "`" in run[2])
 
 
 def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
@@ -351,13 +376,45 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
     char: str | None = None
     width = 0
     opened_at: int | None = None
+    depth = 0
+    in_list = False
     for i, line in enumerate(lines):
-        delim = fence_delimiter(line)
+        prefix, content, line_depth, _ = strip_containers(line)
+        marked = bool(LIST_CONTAINER_MARKER.search(prefix))
+        run = fence_run(content.lstrip(" \t"))
         if char is None:
-            # CommonMark 4.5: a backtick fence's info string may not contain a
-            # backtick. Such a line is a paragraph and opens nothing.
-            if delim and not (delim[0] == "`" and "`" in delim[2]):
-                char, width, opened_at, mask[i] = delim[0], delim[1], i + 1, True
+            # A fence opens where its delimiter sits: inside a quote, inside a
+            # list item, or at top level. Reading the RAW line instead is what let
+            # `> ```text` open nothing at all, so a fenced example in a blockquote
+            # reached `classify_heading` as live structure and a valid document
+            # was rejected -- the mirror image of every earlier bypass.
+            if line.strip() and opens_fence(run) and indent_columns(content) <= 3:
+                char, width, depth, in_list = run[0], run[1], line_depth, marked
+                opened_at, mask[i] = i + 1, True
+            continue
+        # HAS THE LINE LEFT THE BLOCKQUOTE THE FENCE WAS OPENED IN? A quote ends
+        # at any line below its depth -- a truly blank line included, since one
+        # strips to depth 0 while `>` alone does not (that is a quoted blank, and
+        # it stays inside). The renderer then shows a heading on the next quoted
+        # line, so the fence ends WITHOUT masking this one; not seeing that
+        # heading is the bypass direction. No separate blank-line clause: it was
+        # subsumed by the depth test, and a redundant condition is what a mutation
+        # test cannot tell from a rule.
+        #
+        # DEPTH ONLY, never the column. Whether a fence indented three columns is
+        # a top-level fence (its content may sit at column 0 and still be code) or
+        # a list item's fence (where column 0 leaves the item) cannot be told apart
+        # without a container stack this file does not keep. Ending on the column
+        # broke the top-level case; masking on it is what the file has always
+        # done. The ambiguity is recorded in KNOWN LIMITS, not resolved here.
+        # ...and a NEW LIST ITEM ends it too, but only when the fence was opened
+        # on a line that carried a list marker itself (`- > ```text`): the next
+        # `- ` starts a fresh item, so its quote and its fence are new and the
+        # renderer shows the heading. Where the opener carried no marker, a
+        # `> - foo` INSIDE the fence is ordinary code text and must stay masked --
+        # which is why the test is on the opener, not on the line.
+        if line_depth < depth or (in_list and marked):
+            char, width, opened_at, in_list = None, 0, None, False
             continue
         mask[i] = True                       # inside the fence, including its closer
         # `strip(" \t")`, never a bare `strip()`. CommonMark 4.5 allows spaces and
@@ -367,7 +424,12 @@ def fence_mask(lines: list[str]) -> tuple[list[bool], int | None]:
         # `/^[ \t\r]*$/`. One character, and the two tools disagreed about where a
         # release ends -- the checker calling the file clean while the extractor
         # ran two releases together.
-        if delim and delim[0] == char and delim[1] >= width and not delim[2].strip(" \t"):
+        #
+        # The closer's allowance is three columns measured inside its own
+        # container, exactly as the opener's is -- `>    ``` ` closes and
+        # `>     ``` ` does not, which is what the renderer says.
+        if run and line_depth == depth and indent_columns(content) <= 3 \
+                and run[0] == char and run[1] >= width and not run[2].strip(" \t"):
             char, width, opened_at = None, 0, None
     return mask, opened_at
 
@@ -1086,15 +1148,16 @@ def parse_changelog(lines: list[str], skip: list[bool]
         if skip[i]:
             continue
         if indent_columns(line) >= 4:
-            bare = line.lstrip(" \t")
-            run = re.match(r"(`{3,}|~{3,})(.*)$", bare)
+            # `fence_run` and `opens_fence`, the same primitives `fence_mask`
+            # uses: whatever else the two passes disagree about, they cannot
+            # disagree about what a fence delimiter IS or which one opens.
+            run = fence_run(line.lstrip(" \t"))
             if run:
-                char, width, info = run.group(1)[0], len(run.group(1)), run.group(2)
                 if deep_fence is None:
-                    if not (char == "`" and "`" in info):
-                        deep_fence = (char, width)
-                elif char == deep_fence[0] and width >= deep_fence[1] \
-                        and not info.strip(" \t"):
+                    if opens_fence(run):
+                        deep_fence = (run[0], run[1])
+                elif run[0] == deep_fence[0] and run[1] >= deep_fence[1] \
+                        and not run[2].strip(" \t"):
                     deep_fence = None
                 continue
             if deep_fence is not None:
@@ -1693,6 +1756,10 @@ def self_test() -> int:
     D8 = "[0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8"
     RECON1, RECON2 = ("## " + t for t in RECONSTRUCTED_HEADINGS)
     V7CONTENT = "## [0.9.7] — 2026-09-05"
+    # The five shapes a fenced changelog EXAMPLE contains, and that the parser
+    # must not react to: a category, a release heading, a setext release pair,
+    # and a second category.
+    SAMPLE = ["### Fixed", "## [0.9.7] — 2026-09-05", "[0.9.7]", "-------", "### Added"]
     UDEF = "[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.5.0...HEAD"
     for label, expected, lines in [
         # -- the notes-boundary rule, as before --------------------------------
@@ -2221,6 +2288,100 @@ def self_test() -> int:
         ("...and the setext diagnostic names a setext heading", 0,
          ["# Changelog", V5, "### Added", "- a", "", "10. [0.9.7]", "    -------",
           "@@says:is a setext heading@@"]),
+
+        # ===================================================================
+        # ROUND 7: a fence inside a container. The opposite failure mode to every
+        # bypass before it -- valid EXAMPLE content read as live structure, so a
+        # correct document was rejected. `fence_mask` read the RAW line, so a
+        # `> ```text` opened nothing and the sample inside it reached
+        # `classify_heading`. It now strips the container prefix first, through
+        # the same `strip_containers` every heading rule uses, and a fence opened
+        # inside a quote is closed only inside that quote.
+        #
+        # Each fenced sample below carries all five shapes the parser reacts to:
+        # a category, a release heading, a setext release pair, and a second
+        # category. None of them may be seen.
+        # ===================================================================
+        ("a fenced sample in a blockquote is data", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "> ```text"]
+         + ["> " + c for c in SAMPLE] + ["> ```"]),
+        ("...with no space after the `>`", 0,
+         ["# Changelog", V5, "### Added", "- a", "", ">```text"]
+         + [">" + c for c in SAMPLE] + [">```"]),
+        ("...with four spaces after the `>`", 0,
+         ["# Changelog", V5, "### Added", "- a", "", ">    ```text"]
+         + [">    " + c for c in SAMPLE] + [">    ```"]),
+        ("...nested in `>>`", 0,
+         ["# Changelog", V5, "### Added", "- a", "", ">> ```text"]
+         + [">> " + c for c in SAMPLE] + [">> ```"]),
+        ("...nested in `> >`", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "> > ```text"]
+         + ["> > " + c for c in SAMPLE] + ["> > ```"]),
+        ("...as a tilde fence in a blockquote", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "> ~~~text"]
+         + ["> " + c for c in SAMPLE] + ["> ~~~"]),
+        ("a fenced sample in a `-` list item is data", 0,
+         ["# Changelog", V5, "### Added", "- The template is:", "", "  ```text"]
+         + ["  " + c for c in SAMPLE] + ["  ```"]),
+        ("...in a `*` item", 0,
+         ["# Changelog", V5, "### Added", "* The template is:", "", "  ```text"]
+         + ["  " + c for c in SAMPLE] + ["  ```"]),
+        ("...in a `1.` item", 0,
+         ["# Changelog", V5, "### Added", "1. The template is:", "", "   ```text"]
+         + ["   " + c for c in SAMPLE] + ["   ```"]),
+        ("...in a `10.` item", 0,
+         ["# Changelog", V5, "### Added", "10. The template is:", "", "    ```text"]
+         + ["    " + c for c in SAMPLE] + ["    ```"]),
+        ("...in a `100.` item", 0,
+         ["# Changelog", V5, "### Added", "100. The template is:", "", "     ```text"]
+         + ["     " + c for c in SAMPLE] + ["     ```"]),
+        ("...in a nested list item", 0,
+         ["# Changelog", V5, "### Added", "- x", "", "  - y", "", "    ```text"]
+         + ["    " + c for c in SAMPLE] + ["    ```"]),
+        ("...in a list inside a blockquote", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "> - x", "", ">   ```text"]
+         + [">   " + c for c in SAMPLE] + [">   ```"]),
+        ("...and a blank line inside it does not end a list fence", 0,
+         ["# Changelog", V5, "### Added", "- The template is:", "", "  ```text",
+          "  ### Fixed", "", "  ### Added", "  ```"]),
+
+        ("...and a bad info string opens no DEEP fence either", 2,
+         ["# Changelog", V5, "### Added", "10. x", "", "    ```a`b", "    ### Added",
+          "    ```"]),
+
+        # -- NEGATIVE: a line that only LOOKS like a fence masks nothing --------
+        # Over-masking is the same defect wearing the other face: it would hide
+        # real structure, which is the direction every earlier round closed.
+        ("a bad backtick info string opens no fence in a quote", 2,
+         ["# Changelog", V5, "### Added", "- a", "", "> ```a`b", "> ### Added", "> ```",
+          "> ```"]),
+        ("two backticks open no fence in a quote", 2,
+         ["# Changelog", V5, "### Added", "- a", "", "> ``x", "> ### Added", "> ``"]),
+        ("five spaces after a `>` is indented code, not a fence", 0,
+         ["# Changelog", V5, "### Added", "- a", "", ">     ```text", ">     ### Added",
+          ">     ```"]),
+        ("a blank line ends the quote, so the fence ends with it", 3,
+         ["# Changelog", V5, "### Added", "- a", "", "> ```text", "", "> ### Added",
+          "> ```"]),
+        ("a line that leaves the quote ends the fence", 2,
+         ["# Changelog", V5, "### Added", "- a", "", "> ```text", "### Added", "> ```"]),
+        ("after the fence closes, a quoted category is seen again", 2,
+         ["# Changelog", V5, "### Added", "- a", "", "> ```text", "> x", "> ```", "",
+          "> ### Added"]),
+        ("a closer three columns in still closes", 2,
+         ["# Changelog", V5, "### Added", "- a", "", "> ```text", "> x", ">    ```", "",
+          "> ### Added"]),
+        ("a top-level fence is not closed by a quoted delimiter", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "```text", "### Added", "> ```",
+          "```"]),
+        ("a new list item ends a fence opened on a list line", 2,
+         ["# Changelog", V5, "### Added", "- a", "", "- > ```text", "- > ### Added",
+          "- > ```", "- > ```"]),
+        ("...but a bullet INSIDE a quoted fence is still data", 0,
+         ["# Changelog", V5, "### Added", "- a", "", "> ```text", "> - a bullet",
+          "> ### Added", "> ```"]),
+        ("an inline code span is not a fence", 2,
+         ["# Changelog", V5, "### Added", "- a", "", "> a `### Added` b", "> ### Added"]),
 
         # -- categories live at column 0 (restriction 4) ----------------------
         ("a category indented one column is a finding", 1,
