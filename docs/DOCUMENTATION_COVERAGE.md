@@ -6,9 +6,12 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **`Vectorscope Persist` → `Vectorscope
-Persistence` Settings relabel** (2026-09-05), whose entry is LAST in the body; before it
-(2026-09-03, matching the CHANGELOG heading) **D-2 / RISK-007 resolved as ADR-0036** (program state
+Last updated: for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
+the **changelog audit against Keep a Changelog 1.1.0**
+(2026-09-05); before it the **`Vectorscope Persist` →
+`Vectorscope Persistence` Settings relabel** (2026-09-05); before it
+(the 0.9.7 change set, whose CHANGELOG heading is dated 2026-09-05) **D-2 / RISK-007 resolved as ADR-0036** (program state
 is message-thread-owned; host threads exchange immutable snapshots; the `tsan` CI lane), whose
 round-11 entry is the section above it; before it the
 **scanner-SARIF artifact change** (2026-09-03) — `codeql.yml` and `msvc.yml` now also publish
@@ -8590,3 +8593,1203 @@ Reported and NOT changed: `CHANGELOG.md`'s `[0.9.7]` section carries two separat
 headings around one `### Changed`, where every other release section uses one heading per type.
 Merging them would reorder published entries, which is a `CHANGELOG_POLICY` question rather than
 part of a relabel.
+
+## Changelog audit (2026-09-05) — Keep a Changelog 1.1.0 compliance, and a checker that keeps it
+
+**Specification consulted:** [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) (published
+2019-02-15), read for this audit rather than recalled. The rules applied: latest version first, every
+entry dated ISO `YYYY-MM-DD`, the six change types `Added, Changed, Deprecated, Removed, Fixed,
+Security` in that order and grouped, versions linkable, an `Unreleased` section above the first entry
+if used, and the "bad practices" it names — commit-log dumps, undated or ambiguously dated headings,
+and selectively omitted changes.
+
+**Release date.** `[0.9.7]` is dated **2026-09-05**, the day its last content merged to `main`
+(PR #137 at 02:36 UTC, PR #138, and the relabel of PR #139), on the maintainer's instruction. The
+previous heading said 2026-09-03, the day the section was first written. `release.yml` validates the
+heading against `^## \[x.y.z\][^0-9]*[0-9]{4}-[0-9]{2}-[0-9]{2}`, which this still satisfies.
+
+**Structure, measured against the spec.** `[0.9.7]` carried **two** `### Fixed` sections either side
+of its `### Changed` — round after round appended a heading instead of a bullet — so one release told
+its story as Fixed, Changed, Fixed. Six further entries (`[0.9.4]`, `[0.9.2]`, `[0.8.9]`, `[0.8.6]`,
+`[0.8.2]`, `[0.8.1]`) put Fixed above Changed. Four sections carried invented names: `[0.9.0]`'s
+`Compatibility`, `Documentation` and `Build / Release`, and `[0.8.10]`'s `Known issues`. All are now
+canonical: the duplicate merged, the orders corrected, `Documentation` filed under `Changed`,
+`Build / Release` under `Added`, and the two that record no change at all (a compatibility statement,
+a known issue) moved to their entry's lead as bold notes. **No entry was reworded and none moved
+between releases** — verified mechanically: the 153 bullet leads and every non-heading line are
+identical before and after, so the change is entirely where the section boundaries fall.
+
+**Content, measured against the repository.** The `[0.9.7]` window is `9e24952..HEAD` — every commit
+after the one that opened the section. Ten notable changes, ten entries: ADR-0034's reported-latency
+change and ADR-0035's path crossfade (Changed), the relabel (Changed), and seven fixes (the bypassed
+Drive-crossing click, the Oversampling→Off dropout, and the five D-2 / ADR-0036 state-race entries).
+Nothing was missing and nothing is listed that did not happen. Two evidence defects were corrected:
+the relabel cited PR #137 when it lands in **PR #139**, and the D-2 entry carried no Evidence Source
+at all (policy rule 2) — it is PR #137, the merge that introduced the entry. Correctly absent, and
+checked rather than assumed: PR #136 (raw scanner SARIF as an Actions artifact) and the two Dependabot
+action bumps touch no `src/` file and change nothing a user can observe; `PluginParameters.h` gained
+only two helper functions, so the parameter surface did not move.
+
+**`[0.9.6]` and the rest of the recent line.** Audited, not corrected. Its 32 entries are all genuine
+`Fixed` bullets under one heading; `[0.9.5]`, `[0.9.3]` and `[0.9.1]` were already canonical. The
+defect was systemic in ORDER and in invented headings, not in what the entries claim.
+
+**Linkable versions — left open by this round on a wrong premise, closed by the next.** Every heading
+is written `## [x.y.z]`, a link reference, and this round defined none, reasoning that a URL for a
+tag not yet pushed would be a fabricated citation while also telling the release process to add the
+definition "in the commit the tag points at" — two instructions that cannot both hold, since a tag
+points at a commit that already exists. The round-2 entry below records the corrected sequence: the
+definition is written in the release commit, naming the deterministic tag `v` + CMake version, and
+the tag follows.
+
+**Documents updated:** `CHANGELOG.md` (the date, the two evidence corrections, the structure, and a
+preamble that now names the spec version and links Semantic Versioning); `CHANGELOG_POLICY.md` (the
+format authority, rules 6-8, and a "Writing an entry" section covering audit-before-writing, the git
+log not being the changelog, no fabrication, user-visible versus internal, and minimal correction);
+`RELEASE_PROCESS.md` (the link-definition step); `CLAUDE.md` (one clause pointing at the policy, since
+that file is what an agent reads first); this document.
+
+**Automated protection.** A guard already existed for the half that breaks releases —
+`check_changelog_notes_boundary` in `check-docs.py`, which keeps a stray `## ` heading from running
+into a release's published notes, and `release.yml`'s fail-closed date check at tag time. Neither can
+see a duplicated or misordered category, which is exactly what went wrong, so `check-docs.py` gains
+`check_changelog_categories`: inside one entry, a `### ` heading must be one of the six names, appear
+once, and follow the spec's order. It deliberately does not judge whether a bullet sits in the right
+category — no parser should — and that stays with the author and the policy. Seven self-test cases
+were added (75 total, all passing), three of them the exact shapes found here, so the gate is proved
+live rather than trusted silent.
+
+**Drift.** One stale claim corrected in this document: its header said the 0.9.7 change set was
+"2026-09-03, matching the CHANGELOG heading", which the re-dating made false.
+
+## Changelog system round 2 (2026-09-05) — the review's five findings, and twelve more the audit added
+
+**What the review found, all five genuine.** (1) `RELEASE_PROCESS.md` required the version's link
+definition in the tagged commit AND forbade writing it before the tag was pushed — unsatisfiable,
+since a tag points at a commit that already exists. (2) The entry template was `## [0.8.7] — Fixed`:
+a category in the heading, no date, so following it produced a file the project's own validator
+rejects. (3) `CHANGELOG_CATEGORY_HEADING` matched `^### ` only, so a category indented one to three
+spaces — a heading to every renderer — bypassed the duplicate/invented/misorder rules. (4) Every
+`## ` line started an "entry", so a preamble section's `###` sub-headings were reported as invented
+categories. (5) The policy required newest-first and ISO dates and nothing checked either outside
+`release.yml`'s tag-time grep of the one selected version.
+
+**The enforcement boundary, stated once.** Machine-checked: entry-heading grammar and the one
+publishable spelling, calendar-valid dates, strictly decreasing versions, `[Unreleased]` first and
+once, category names/order/uniqueness, link-definition presence and exact form. Left with the
+author, as `CHANGELOG_POLICY.md` says: whether a bullet belongs under Added, Changed or Fixed;
+whether a change is notable; wording; whether a date is the right date.
+
+**The sequence that replaces the impossible one.** The definition is written in the **release
+commit**, naming the tag that commit is about to carry — deterministic, because `release.yml`
+refuses any tag other than `v` + the CMake `project VERSION` — and the tag is pushed straight after.
+The link is unresolvable only between that commit and the tag push, the same interval in which the
+dated heading names a release that does not exist yet. `CHANGELOG.md` gains
+`[0.9.7]: .../releases/tag/v0.9.7`; rule 8, pre-release step 2 and §Tagging all state the same
+three steps.
+
+**One parser now serves four rules.** `parse_changelog` reads the ATX grammar (0–3 columns, 1–6
+`#`, space or end of line, optional closing run), starts an entry only at a column-0 `## [` heading
+— exactly where `release.yml` starts one — and leaves the preamble alone. `check_changelog_headings`,
+`check_changelog_categories`, `check_changelog_links` and the notes-boundary rule all read its
+result, so they cannot disagree about what a heading is.
+
+**Twelve more defects, found by an adversarial read-only audit of the fixed chain** (four lenses,
+three independent refuters per finding; 27 raised, 17 confirmed, 10 refuted). The ones that mattered
+most were bypasses the first fix did not close: `##\t[0.9.7]` and `##  [0.9.7]` (tab or second space
+after the `##`) render as entry headings, are invisible to `release.yml`'s `^## \[`, and — as an
+older entry — do not terminate the entry above them, so that entry's notes run on into the next
+release's; a `### Fixed` indented four columns under a list bullet renders as a heading but fell in
+the gap between `atx_heading` (which stops at three) and `indented_code_mask` (which deliberately
+does not mask list-context indentation); and a setext heading (`Acknowledgements` over `---`) is
+invisible to both the checker and the extractor. All three are now reported. `LINK_DEFINITION` was
+also too strict in the other direction, reporting a definition that CommonMark accepts (indented,
+titled, angle-bracketed) as missing.
+
+**The link rule now is what rule 8 says it is.** The first spelling accepted either URL form for any
+version and never checked the compare base or the host, so `[0.9.7]: .../compare/v0.9.6...v0.9.7` —
+a comparison against a tag that was never cut — passed. It now requires exactly the form the version
+calls for: the tag page for `0.9.7`, a comparison against the previous release for everything
+after, `[Unreleased]` against the last tag, all inside this repository. (This paragraph and rule 8
+both said "the entry directly **above**". The predecessor of a version is the entry directly
+**below** it in a newest-first file; the code was right, the prose inverted. Corrected in round 2c,
+below.)
+
+**Content.** The `[0.9.7]` entry recorded the A/B-button / preset-arrow fix twice: once as its own
+entry (ADR-0036 §23, State test 61) and again inside the long D-2 bullet, as the earlier partial pass
+at the same symptom (State tests 53 and 56). Removed from the transcript; the dedicated entry stands.
+No entry was reworded or removed — the 153 bullet leads are identical before and after.
+
+**Tag-time validation is fence-aware.** `release.yml`'s two greps are not, so a `## [x.y.z]` line
+inside a fenced example satisfied them and the job died on `[ -s notes.md ]` after the full 3-OS
+matrix. The validate step now rejects that in seconds. (This round added a **second, simplified**
+fence tracker to do it — a plain toggle, blind to the fence character, its length and its info
+string — while `RELEASE_PROCESS.md` claimed "the same fence-aware pass that builds the notes runs
+here". Round 2c, below, made that claim true instead of correcting it downward.)
+
+**Measured.** `check-docs.py` self-test 108 → 125 cases; twenty single-rule mutations (twelve from
+round 1, eight new) each fail at least one case — the reverted rule is named in the worklog of this
+round. `check-docs` 120 files clean, `check-citations` 415 anchors clean against `origin/main` and
+the round-1 head, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**Drift found while auditing, corrected here:** `RELEASE_PROCESS.md`'s Versioning section cited
+`CMakeLists.txt:306-331` for the versioning comment and `ANAMORPH_BUILD_NUMBER`; those lines are the
+LTO linker options. The real anchors are `:467-469` and `:492`, `:495`. The citation gate could not
+see it — `origin/main` carries the same stale text, so there was nothing to drift from.
+
+
+## Changelog system round 2c (2026-09-05) — one extractor, and the contract executed instead of asserted
+
+**What the round is.** The round-2 fix left two kinds of residue: six inputs its new parser accepted
+or mis-reported, and a set of documentation claims about the enforcement chain that were not true of
+the code that had just been written. Both are closed here. No `CHANGELOG.md` content changed.
+
+**Six parser bypasses, each with a self-test that fails against the previous implementation.** The
+notes-boundary rule armed only on the *publishable* heading spelling, so one badly spelled entry
+heading at the top of the file disarmed the boundary check for everything below it — a second defect
+hiding behind the first. `DEEP_HEADING` measured indent in **characters**, so a tab-indented
+`### Fixed` (four columns, one character) slipped past its `^ {4,}` prefix; it now defers to
+`indent_columns`, which counts a tab as four. A **level-2** `## [x.y.z]` inside a list item was
+skipped entirely, although it renders as an entry heading, cannot be extracted by `release.yml`, and
+does not terminate the entry above it. The setext guard tested `startswith("-")`, which called a
+paragraph beginning `-not a list` a list item and called the thematic break under the file's own
+link definitions a heading; it now uses `LIST_MARKER`, `interrupts_paragraph` and `LINK_DEFINITION`.
+A tagged-era version with no older entry below it produced a literal `v?` inside the URL the author
+was told to write. And link labels are now compared after CommonMark's whitespace normalisation.
+The `[Unreleased]` definition is additionally pinned to the **newest released version** rather than
+any `v<x.y.z>`: a comparison from an older tag silently misreports what is unreleased.
+
+**One extractor, two callers.** `release.yml` held two implementations of "which lines are this
+release's section": a full CommonMark fence state machine in the notes step, and a simplified toggle
+in `validate` that ignored the fence character, its length and its info string — so a nested
+` ```cpp ` inside a ` ```markdown ` example inverted its mask, and the two steps could disagree about
+the same file. They are now one file, `scripts/changelog-section.awk`, run by both steps. The date
+test moved onto the **extracted** heading, which also removes the last fence-blind grep: a dated
+`## [x.y.z]` line inside an example can no longer vouch for an undated real entry.
+
+**The entry-boundary contract is now executed, not described.** `check_changelog_notes_boundary`
+exists to protect that extractor, and until now the script only asserted in a comment what the
+extractor does — so a regression in the extractor would have left every rule passing while the
+published notes went wrong. `--self-test` now RUNS the extractor on twelve fixtures: the three
+fence-closing clauses of CommonMark §4.5 separately, the four-column case that is an indented code
+block rather than a fence, the prefix-versus-substring entry test, and the boundary rule's own
+premise — that a stray `## ` heading below an entry lands in the published notes of the release
+above it, and a fenced `## [` line does not. Skipped **with a note** where there is no `awk`.
+
+**Documentation claims made true or corrected.** Pre-release step 2 said `check-docs.py` rejects the
+file until the entry is "well-formed"; it gates structure, and the evidence citation, the category a
+bullet belongs in and whether a change was worth recording stay with the author — the step now says
+so. Rule 8 and the template's closing paragraph said a version compares against "the entry directly
+above"; in a newest-first file the predecessor is the entry directly **below**. Rule 1 attached
+"newest first" to the category list rather than to the versions (rule 7 owns it). Rule 7 quoted the
+two grandfathered reconstructed headings by their bracketed part while accepting them by exact
+text — they are now quoted in full. The template claimed to be "the shape `check-docs.py` accepts",
+without the first-tag exception three paragraphs later. §Tagging's "those three are the steps of
+THIS section" was ambiguous about which numbering a bare step number means. And the module docstring
+listed its five checks in the order 1, 2, 3, 5, 4 and undercounted its own `check_changelog_*`
+rules.
+
+**Measured.** `check-docs.py` self-test 125 → 152 cases. Seven single-clause mutations of the
+extractor — drop each fence-closing clause, widen the indent guard, terminate on any `## ` heading,
+substring instead of prefix, remove fence suppression — each fail a **named** case; the six parser
+fixes carry the mutation proofs recorded with them. `check-docs` 120 files clean, `check-citations`
+415 anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**Reported, not fixed (outside this round's scope).** `LEVEL5_AUDITION.md:15-16` still says the
+2026-08-15 v0.9.4 audition "is invalid for **v0.9.6**"; the current version is 0.9.7, which
+`RELEASE_PROCESS.md:32-33` names correctly. The audition document is not part of the changelog
+enforcement chain and was left alone.
+
+
+## Changelog system round 2d (2026-09-05) — the audit of the audit
+
+**What the round is.** An eight-lens adversarial read-only audit of the finished chain (policy ↔
+template ↔ parser ↔ extractor ↔ release process ↔ the documents that describe them), with the
+findings re-verified by hand. It found four behavioural defects the previous rounds' own fixes had
+introduced or left, and five false statements. The audit's refuter fleet stopped part-way on an
+account spend limit, so every finding recorded here was reproduced directly rather than accepted
+from an agent.
+
+**Four behavioural defects, each with a case that fails against the previous implementation.**
+
+- **CRLF killed every fence in the extractor.** `check-docs.py` reads with Python's universal
+  newlines and never sees a `\r`; `changelog-section.awk`'s closing-fence test required nothing but
+  spaces and tabs after the delimiter run, so on a CRLF `CHANGELOG.md` no fence could ever close.
+  The first fenced block ran to EOF and every older entry was published inside the newest one's
+  notes, with the checker reporting the file clean. The closer now accepts `\r`.
+- **A tab-indented ``` opened a fence it should not have.** The indent guard measured CHARACTERS
+  (`match(fl, /[^ \t]/) <= 4`), and one tab is four COLUMNS — an indented code block, not a fence.
+  It now counts columns exactly as `indent_columns` does, tab stops included.
+- **The entry-boundary rule looked at level 2 only.** The extractor terminates on `^## [` and on
+  nothing else, so a `# Appendix` below the entries is published inside the notes of the entry above
+  it exactly as `## Appendix` is. The more eye-catching spelling was the one the rule missed.
+- **A code span hid a heading from the rule whose job is to see it.** `blanked_lines` blanks inline
+  code spans for the prose checks, and a span may run across a line boundary, so a backtick opened in
+  one bullet blanked the `## ` heading two lines below. The four changelog rules now read the RAW
+  lines — the same view the extractor has, fences excluded and nothing else.
+
+**Five self-test cases that never distinguished a broken implementation.** The closing `]` in the
+extractor's entry test (without it `## [0.9.80]` answers to `ver=0.9.8`), the `^` anchor on its
+termination rule, the one-to-three-space fence indent, the tab-indent rule above, and the CRLF
+closer were all asserted in the header and exercised by nothing. Each now has a case, and each case
+is mutation-proved.
+
+**`[0.9.4]` cited no Evidence Source at all** — 12 bullets, 0 citations, the only entry in the file
+in that state (`[0.9.6]` cites 32 for 32 bullets). Rule 2 requires one. Each bullet was traced to
+the commit that introduced it AND whose subject describes the change, then to the merge that carried
+it: PR #122 / `12c545d` (Clang), #121 / `f967639` (installer hardening, twice), #113 / `5034d8f`
+(the ABI floor), #105 / `e974cb0` (C++23), #104 / `3ebdf69` (JUCE 9.0.1), #120 / `4fcc41c` (the
+tooltip), #119 / `e54e331` (panels and the idle gate), #117 / `06804e8` (drop-down occlusion), #108
+/ `6e57666` (the AU gate, pluginval determinism, the universal-build check). Twelve lines changed,
+each differing from its original only by the inserted clause — verified mechanically, not by eye.
+
+**Five false statements corrected.** The preamble said pre-`[0.8.12]` entries cite their
+"**commit SHA + date**"; no citation in the file carries a date, 47 of them in that range cite a PR,
+and the policy the sentence invokes never mentions a date. It also said "every entry cites a commit
+SHA or a PR" — eighteen (sixteen in `[0.8.8]`, two in `[0.9.0]`) name the source file they changed
+instead; that is now recorded as the historical exception it is rather than asserted away.
+`check-docs.py`'s PROVENANCE paragraph claimed the file was "adopted verbatim from the sibling
+product Anabasis apart from this paragraph and the product name": the two differ by 68 deletions and
+994 insertions, and the sibling has a `check_changelog_notes_boundary` of its own, so "the CHANGELOG
+rules are this repository's own" was false too. What IS true was measured and stated: six functions
+— `fence_mask`, `indented_code_mask`, `blanked_lines`, `check_tables`, `check_links`,
+`check_lazy_continuation` — are still byte-for-byte identical to the sibling's. The docstring also
+said the four `check_changelog_*` rules sit below `parse_changelog`; the boundary rule is above it.
+And `HANDOVER.md` still dated the `[0.9.7]` heading 2026-09-03.
+
+**Measured.** Self-test 152 → 160 cases. Twelve extractor mutations (E1–E12) and two parser
+mutations each fail a named case. `check-docs` 120 files clean, `check-citations` 415 anchors clean,
+`preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**Reported, not fixed.** (a) `check-docs.py`'s `FENCE` accepts Unicode whitespace (`\s{0,3}`) where
+the extractor accepts only spaces and tabs, so a non-breaking-space-indented fence is a fence to one
+and not the other. `FENCE` is one of the six functions still shared byte-for-byte with Anabasis;
+diverging it is a product-family decision, not a fix to make here. (b) The `[0.9.7]` D-2 bullet
+reads as a round-by-round transcript, which rule 3's "the git log is not the changelog" discourages.
+Round 2 already removed the passages that were duplicated elsewhere in the entry; rewriting the rest
+is a stylistic rewrite of an accurate entry, which the same policy's "correct minimally" forbids.
+(c) `LEVEL5_AUDITION.md:15-16` still says the 2026-08-15 v0.9.4 audition "is invalid for v0.9.6";
+the current version is 0.9.7, which `RELEASE_PROCESS.md:32-33` names correctly.
+
+
+## Changelog system round 3 (2026-09-05) — one Markdown grammar, in both tools, proved against a renderer
+
+**What the round is.** Three review findings, all real bypasses, and all of the same shape: the
+changelog system held more than one interpretation of Markdown, and a line could satisfy one
+interpretation while defeating another. The fixes replace the second interpretation rather than
+patching it, and the grammar is now written down.
+
+**Finding 1 — closing hashes bypassed category enforcement.** `### Fixed ###` is the heading
+`Fixed`: the closing run is decoration, and CommonMark §4.2 says the renderer strips it.
+`atx_heading` had stripped it since round 2, but `deep_heading` — the rule that catches a category
+hidden four columns deep inside a list item — carried a regex of its own and captured the text RAW.
+So the comparison saw `Fixed ###`, matched none of the six category names, and the duplicate,
+invented and misordered rules never saw the heading at all: three characters defeated all three.
+It now dedents the line and hands it to `atx_heading`, the function every other heading here goes
+through. Seven fixtures pin the grammar (a run with and without a preceding space, a run followed by
+text, trailing spaces, and duplicate/misordered/invented categories each hidden behind one).
+
+**Finding 2 — invalid fences merged release notes.** CommonMark §4.5: a BACKTICK fence's info
+string may not contain a backtick, so ` ```a`b ` is a paragraph and everything after it is document
+structure. Both tools opened a fence there and hid every line to the next delimiter — a whole
+release heading included, which runs two releases together in the published notes. The second half
+was worse because it was a genuine disagreement: `FENCE` measured its three-column indent allowance
+in CHARACTERS (`\s{0,3}` matches a tab), so a tab-indented delimiter opened a fence in the checker
+while `changelog-section.awk`, which has counted columns since round 2d, correctly called it an
+indented code block and still saw the heading. `fence_delimiter` now states both rules for the
+checker; the awk applies the same two.
+
+**Finding 3 — malformed release headings escaped validation.** Only a leading `[` started an entry.
+A heading that lost one was therefore preamble: its `### ` sections were charged to the release
+ABOVE it, and when it was the file's first entry nothing reported it at all — `release.yml`'s
+`^## \[` grep at tag time was the first stage to notice, by which point the tag exists.
+`release_like()` now recognises an entry ATTEMPT — a leading bracket, a leading version number,
+`Unreleased`, or a version and an ISO date in the same heading — at every heading level, says what
+is actually wrong with it, and records it as a malformed ENTRY so its categories are charged to
+itself. The other half is tested too: an ordinary preamble heading, and one that merely contains a
+number, are untouched. A rule that caught the first set by banning `## ` headings in the preamble
+would pass every malformed fixture and make the file unwritable.
+
+**The grammar is written down.** `CHANGELOG_POLICY.md` gains §The structural grammar: CommonMark
+decides what a line IS, the policy decides which forms this file may USE, `check-docs.py` gates them
+on every push, and `changelog-section.awk` — one implementation, called twice by `release.yml` —
+consumes them. Six restrictions, each traced to `release.yml` boundarying on the literal `^## [`,
+and the fence rules stated once for both tools.
+
+**Measured against a renderer, not against belief.** Every expectation added this round was derived
+by asking `markdown-it-py` in CommonMark mode what each line is, then written down as a literal —
+the self-test must keep running on a bare `python3` with nothing to install, so the oracle is an
+authoring-time instrument, not a dependency. Over a 47-fixture grammar matrix the checker never sees
+LESS structure than the renderer does; the two fixtures where it sees more are the indented-code
+ambiguity (no blank line, no list container), which is documented and errs toward reporting, because
+under-reporting is the bypass and over-reporting costs an author one blank line. On the real
+`CHANGELOG.md` the parser and the extractor agree line-for-line on the boundaries of all 22
+versioned entries.
+
+**Enforcement boundary, re-audited.** Sixteen structural rules were each driven with an input that
+violates them and each produced a finding: release-heading grammar, the publishable spelling,
+release ordering, date syntax, calendar validity, category names, uniqueness and order,
+`[Unreleased]` placement, the structural boundary, link-definition presence and form, malformed
+release headings, wrong heading level, setext headings, and the reconstructed headings' terminal
+position. The editorial half is unchanged and stays with the author: whether a change is notable,
+which category a bullet belongs in, wording, and whether a date is the right date.
+
+**Measured.** Self-test 160 → 187 cases. Five mutations each fail a named case: the old
+deep-heading regex, the info-string rule dropped from the checker, the same rule dropped from the
+extractor, the column-measured indent guard, and bracket-only entry detection. `check-docs` 120
+files clean, `check-citations` 415 anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**Residuals.** The Unicode-whitespace divergence recorded in round 2d is **resolved** rather than
+carried: `FENCE` no longer uses `\s`, so both tools now accept spaces and tabs only and measure the
+allowance in columns. The consequence is that `fence_mask` and `FENCE` have DIVERGED from the
+Anabasis copy they were adopted from — deliberately, because only this repository has a second
+implementation of the same grammar to disagree with; the sibling carries the same latent defect
+harmlessly, and porting it back is a decision for that repository. Seven functions remain
+byte-for-byte identical and are named in the module docstring. `LEVEL5_AUDITION.md:15-16` still
+refers to v0.9.6 and is deliberately untouched: it is outside the changelog compliance chain and is
+recorded here as a separate documentation follow-up.
+
+
+## Changelog system round 3b (2026-09-05) — what the bounded audit found in round 3's own fix
+
+**What the round is.** Round 3 was audited immediately, by eight reviewers each confined to one
+area of the parser/extractor attack surface (heading grammar, fence grammar, release boundaries,
+preamble, category normalisation, tool agreement, malformed-input rejection, valid-input
+preservation) — the bounded replacement for the spend-limited panel of round 2d. All eight
+completed. Nine defects were reproduced by hand from their fixtures and fixed here; every fix
+carries a case that fails against the previous implementation.
+
+**Four reviewers independently found the same divergence, and it was one character.**
+`fence_mask` closed a fence with `not delim[2].strip()` — Python's argument-less `strip`, which
+removes every Unicode whitespace character. CommonMark §4.5 allows spaces and tabs after a closing
+run and nothing else, and `changelog-section.awk` tests `/^[ \t\r]*$/`. So a closer trailed by a
+non-breaking space closed the fence in the checker and not in the extractor: the checker called the
+file clean while the published notes ran two releases together. `strip(" \t")` now. The same trap
+one line up in `atx_heading` — `re.sub(r"(?:^|\s+)#+$", ...)` — made `### Fixed\u00a0###`, whose
+rendered name really is `Fixed\u00a0###`, read as the category `Fixed`.
+
+**Round 3's own regression: `release_like` fired at every heading level.** At level 2 the bracket
+is reserved and must stay so — the reconstructed headings at the foot of this file (`[0.6.x] and
+earlier`, whose version is not a semantic version) are entries only because of that reservation.
+Nowhere else is it reserved, and applying it everywhere told the author that `# [Anamorph] —
+changelog`, the document's own title, "reads as an entry heading but is level 1" and should be
+rewritten as a release entry; a preamble `### [Verified]` sub-heading got the same advice.
+`names_a_release` now decides the level-1 and level-3 cases: a version number, `Unreleased`, a
+lost `]` with a version behind it, or a version and an ISO date together.
+
+**A `v`-prefixed version was invisible.** `\b\d+\.\d+\.\d+\b` cannot match inside `v0.9.8` —
+`v` and `0` are both word characters, so there is no boundary — and the anchored pattern did not
+allow the prefix either. `## v0.9.8 — 2026-10-01` passed as ordinary prose.
+
+**A heading behind a container marker was invisible to both functions.** `> ### Fixed` and
+`- ### Fixed` render as headings; `atx_heading` is anchored at columns 0–3 and `deep_heading` needs
+four columns of leading whitespace, so a category — or an entry heading `release.yml` could never
+extract — hid behind two characters. Reported now, and a hidden category is still counted, so the
+duplicate and order rules see it. Ordinary quoted prose is untouched: only a Keep a Changelog
+category name or an entry-shaped level-2 heading is reported.
+
+**A fenced sample nested in a list item was read as structure.** CommonMark measures a fence's
+three-column allowance from its CONTAINER's content column; nothing here keeps a container stack, so
+a perfectly ordinary sample inside a bullet had its delimiters at four columns and its contents were
+reported as hidden category headings and a duplicate — three findings, no defect. The deep rule is
+now silenced between two deep delimiters. Stated in the policy rather than hidden, and the case that
+proves the real detection still fires sits beside it.
+
+**A lone carriage return split the file differently for each tool.** CommonMark §2.1 counts it as a
+line ending; `awk` does not. `check_file` read with universal newlines and so agreed with the
+renderer and disagreed with the extractor. It now splits the way `awk` does — a CRLF line's trailing
+`\r` is dropped so every other rule sees what it saw before — and the lone CR is REPORTED, because
+resolving the disagreement silently would leave the renderer showing a heading neither tool sees.
+
+**Three smaller defects.** A malformed entry heading collected a second, false finding — its own
+link definition read as an orphan — because the `claimed` set only understood the bracketed shape.
+`VERSION_HEADING_TEXT` accepted a leading zero (`[0.08.0]`), which `int()` normalised, so every
+message quoted a version the heading does not carry and the link rule demanded a tag `release.yml`
+can never cut. And its end anchor was pinned by nothing: `## [0.5.0] — 2026-01-02 (final)` and a
+misspelled `[Yanked]` marker now each have a case.
+
+**Measured.** Self-test 187 → 207 cases. Twelve mutations this round each fail a named case, and
+four of them only after the fixture was rebuilt: a closer that does not close and one that closes
+wrongly both yield exactly one finding, so a single duplicate after the closer proved nothing.
+One dead guard was removed rather than kept as defence — a redundant condition is what a mutation
+test cannot tell from a rule. The 47-fixture grammar matrix still shows zero under-reports against
+the CommonMark renderer, and on the real `CHANGELOG.md` the parser and the extractor still agree
+line-for-line on all 22 versioned entries. `check-docs` 120 files clean, `check-citations` 415
+anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**Residuals, recorded not fixed.** CommonMark's HTML blocks (§4.6) are not modelled, so a
+`## [x.y.z]` line inside an open `<details>` block in the preamble is an entry to both tools and a
+raw-HTML line to the renderer — both tools agree, so the pipeline stays coherent, and no such block
+exists in this file. A link reference definition written directly under preamble prose cannot
+interrupt a paragraph in CommonMark but is counted as a definition here. Two `## [Unreleased]`
+headings are reported as a placement defect rather than as a duplicate. `LEVEL5_AUDITION.md:15-16`
+still refers to v0.9.6 and remains a separate documentation follow-up outside this chain.
+
+
+## Changelog system round 4 (2026-09-05) — one classifier, and the last four review findings
+
+**What the round is.** Four findings, two of them bypasses. The cause of both was structural and
+the same one round 3b had already been told about in a different form: **heading classification had
+three independent paths**, and every gap between them was a hole. This round replaces them with one
+function and closes the findings as a consequence rather than one at a time.
+
+**Finding 1 — hidden release headings passed validation (genuine bug).** The container rule fired
+only `if hidden and entries`, so the FIRST release heading in a file, written behind a `>` or a list
+marker, was ignored entirely — nothing above it to hang it on. And the deep path tested
+`text.startswith("[")` where the column-0 path tested `release_like`, so an indented UNBRACKETED
+version heading was invisible too. In both cases CI accepted a changelog whose apparent release
+boundaries `release.yml` cannot reach. Demonstrated end to end: given a file with a `>`-prefixed and
+a nested-list release heading, the extractor publishes all three releases as ONE section and neither
+hidden version extracts to anything at all.
+
+**The decision, taken explicitly (Option A).** A release heading inside a container, or at any
+indent, is **forbidden structure** — reported, and recorded as a malformed ENTRY so what follows is
+charged to it rather than to the release above. The alternative (supporting it) would mean changing
+the extractor's `^## [` boundary, which changes what every release publishes; half-supporting it is
+the failure mode this whole section exists to prevent. Recorded in `CHANGELOG_POLICY.md` §The
+structural grammar.
+
+**Finding 2 — indented categories passed forbidden syntax (genuine bug).** Restriction 4 has always
+said category headings sit at column 0. The plain ATX path accepted 0–3 columns and never looked at
+the indent, so the policy and the parser disagreed and the parser was the permissive one. Now
+reported — and the heading is still COUNTED, so the duplicate, order and name rules go on seeing
+what they saw. The four round-2 fixtures that encoded the permissive behaviour were rewritten to the
+enforced contract rather than deleted; their counts are now the sum of both halves, which is what
+makes them evidence of each.
+
+**The pipeline.** `classify_heading` answers one question — (level, text, PLACEMENT), where
+placement is `column0`, `indented`, `deep` or `container` — by composing `atx_heading`,
+`deep_heading` and `CONTAINER_HIDDEN_HEADING`. `parse_changelog` then has ONE decision table:
+release heading not at column 0 → forbidden; release name at the wrong level → forbidden; release
+heading at column 0 → the entry grammar; level 3 inside an entry → a category, reported if it is not
+at column 0, and skipped at depth or behind a marker unless it carries a category name. No rule
+consults a heading regex of its own any more.
+
+**Finding 3 — reconstructed footer ordering (valid concern; order IS normative).** Established
+rather than assumed: the two headings sit in `CHANGELOG.md` newest-first (`[0.7.5] – [0.7.0]` at
+1967, `[0.6.x] and earlier` at 1978); `release.yml` never names them and cannot extract either, so
+the workflow does not depend on their order — but they ARE release entries in a newest-first file,
+so rule 7's ordering governs them exactly as it governs every other entry, and reversing them would
+put older content above newer. Each now appears at most once, in `RECONSTRUCTED_HEADINGS` order.
+Their PRESENCE is not required: a file without them is well-formed, and the fixtures say so.
+
+**Finding 4 — duplicate `[Unreleased]` diagnostic (valid concern; the contract is BOTH).** The
+project promises two distinct invariants — `check_changelog_headings`' docstring says "first and
+only once" and the grammar comment says "at most once" — and only the placement half was enforced.
+A second section was therefore reported as "must be the first entry", whose remedy (move it to the
+top) makes the file worse. Both invariants now have their own diagnostic. The regression is a TEXT
+assertion, not a count: the broken rule and the fixed one produce exactly one finding either way and
+differ only in which invariant they name, so a count cannot see the defect — and naming the wrong
+invariant IS the defect. `@@says:<text>@@` fixtures were added for that class.
+
+**Measured.** Self-test 207 → 230 cases. Nine mutations each fail a named case: the `entries`
+precondition on hidden releases, the bracket-only test on that path, dropping hidden-release
+detection entirely, the alternate indented-category path, permissive reconstructed ordering,
+permissive reconstructed duplication, the old `[Unreleased]` diagnostic, and classifying a container
+or an indented heading as `column0`. Three of them are killed only by text assertions, because the
+broken and fixed rules report the same COUNT. A 23-fixture classification matrix pins the parsed
+KIND and the collected CATEGORY list, not just a number. `check-docs` 120 files clean,
+`check-citations` 415 anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**The real `CHANGELOG.md` is byte-unchanged this round** and still passes: 23 entries (21 versions
++ the 2 reconstructed, in their canonical order), 0 `[Unreleased]`, 40 category headings all at
+column 0, no parse findings, and the parser and the extractor still agree line-for-line on all 22
+versioned entries' boundaries.
+
+**Also in this round, on the owner's instruction:** the `LEVEL5_AUDITION.md` version drift, which
+three previous rounds recorded as a deliberate out-of-scope residual, is corrected. §When a previous
+audition stops counting now applies the rule to the release it currently blocks — the v0.9.6
+audition of 2026-09-01 does not carry over to v0.9.7, because ADR-0034 changed the reported latency
+and the Drive-crossing swap behaviour — and keeps the v0.9.4 → v0.9.6 case as the worked example the
+rule was first written from. §Scope for v0.9.6 is kept as written (it is the record of a completed
+audition) with a note that a v0.9.7 audition needs its own scope. `RELEASE_PROCESS.md` step 7 now
+names the same audition the audition document does.
+
+
+## Changelog system round 5 (2026-09-05) — containers, normalised once
+
+**What the round is.** Two review findings, both real, and both the same defect in two of
+Markdown's heading forms: a heading behind a container marker was matched by a pattern that tried
+to recognise the marker AND the heading in one go, so the pattern's idea of a container had to be
+right for the heading to be seen at all. It was not.
+
+**Finding 1 — blockquoted ATX headings bypassed validation.** `CONTAINER_HIDDEN_HEADING` hard-coded
+`>[ \t]?` and then demanded a `#` immediately after. CommonMark 5.1 gives the marker at most ONE
+space, so `>  ## [0.9.7] — 2026-09-05` leaves one column of content indent and is a heading to every
+renderer — and was ordinary prose to this checker, while the extractor folded the release into the
+notes above it. The renderer's real boundary, measured rather than assumed: a heading at 0, 1, 2, 3
+and 4 spaces after the `>`; at five the content reaches four columns and becomes an indented code
+block. The checker now matches that exactly.
+
+**Finding 2 — blockquoted setext releases bypassed validation.** The setext rule matched the RAW
+line, so any container prefix hid the pair completely. `> [0.9.7]` over `> -------` is a level-2
+heading; it was invisible here and the release boundary was missed.
+
+**The fix is one normalisation, not two patterns.** `strip_containers` removes the container prefix
+and hands what is left to the SAME functions that read a top-level line — `atx_heading` for ATX,
+`SETEXT_UNDERLINE`, `LIST_MARKER`, `interrupts_paragraph` and `LINK_DEFINITION` for setext. A
+container does not change what a heading IS; it changes the column its content starts at. The two
+container kinds are counted differently because CommonMark treats them differently:
+
+- a `>` contributes **depth**, and its optional space belongs to the marker — which is why
+  `> [0.9.7]` over `>-------` is one heading (the renderer says so) and why counting columns instead
+  made that pair look mismatched. Depth must match exactly: depth 1 under depth 2 is not a heading.
+- a list marker contributes a **content column**, which a continuation line is indented to —
+  `- [0.9.7]` over `  -------` is a heading, `- [0.9.7]` over `-------` is not, and `- foo` over
+  `- ---` is two list items. A list marker anywhere in the underline's prefix disqualifies it,
+  because `> - ---` opens a list inside the quote rather than continuing the paragraph above it.
+
+`deep_heading` is deliberately NOT consulted for container content: four columns inside a container
+is that container's indented code block, exactly as at top level, and the renderer agrees.
+
+**Measured against the renderer, 37 shapes.** Every blockquote spacing from 0 to 5 for ATX and 0 to
+4 for setext; `>>`, `> >`, `> -`, `- >`, 3- and 4-column indents before the `>`, a tab after it;
+nested setext, mismatched depths in both directions, list setext at the right and the wrong column,
+`- foo`/`- ---`, `> foo`/`> - ---`, a quoted `---` alone, a blank quoted line inside a pair, a
+quoted `=` underline, nested and ordered list markers, and a continuation line. **37 of 37 agree
+with `markdown-it-py` on whether a heading exists**, and where one does the checker reports it.
+
+**The extractor needed no change, and that is the finding.** `changelog-section.awk` boundaries on
+`^## \[`, so it does not terminate at a container-hidden heading and cannot extract one — checked
+on a file carrying both defects: the extractor publishes all three "releases" as one section and
+neither hidden version extracts to anything, while the checker names both. Forbidden structure now
+fails closed on the validator side rather than being silently reinterpreted on the publishing side.
+
+**Measured.** Self-test 230 → 253 cases. Nine mutations each fail a named case: the old
+"heading must follow the marker immediately" rule, dropping container normalisation from
+`classify_heading`, matching setext on the raw underline, matching the setext subject on the raw
+line, ignoring quote depth, allowing a list marker on the underline, looking for that marker only at
+the head of the prefix, consulting `deep_heading` for container content, and counting a blockquote
+in columns instead of depth. Running the changelog rules over all 84 real documents gives identical
+results before and after this round, so nothing here fires on real prose. `check-docs` 120 files
+clean, `check-citations` 415 anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**The real `CHANGELOG.md` is byte-unchanged** and still parses to 23 entries (21 versions + the 2
+reconstructed, in order), 40 categories, no findings, with the parser and the extractor agreeing
+line-for-line on all 22 versioned boundaries.
+
+**Residuals unchanged from round 4**, plus one this round records: a list whose content column is 4
+or more puts its setext underline beyond `SETEXT_UNDERLINE`'s own `^ {0,3}` allowance, so such a
+pair is not detected. It is an under-report in a shape (a release name written as a setext heading
+inside a deeply indented list) that nothing in this repository writes, and closing it needs the
+container stack this file deliberately does not keep.
+
+
+## Changelog system round 6 (2026-09-05) — the list marker's width
+
+**What the round is.** One finding, and it closes the residual round 5 recorded as deferred. The
+reviewer showed it is reachable with an ordinary two-digit list marker rather than an exotic
+construct, which makes it a bypass and not a limitation.
+
+**The defect.** A setext release heading under a wide ordered-list marker was invisible.
+`10. [0.9.7]` over four spaces and `-------` is a level-2 heading to every renderer; the checker saw
+nothing and the extractor folded the release into the notes above it. Measured, not assumed: every
+marker whose content column reaches four bypassed — `10.`, `11.`, `99.`, `100.`, `1000.`, `10)`, and
+`1.` with a second space. One-digit markers (column 3) were caught, which is why it survived five
+rounds.
+
+**The cause was an ordering error, not a missing case.** `SETEXT_UNDERLINE` carried CommonMark's
+0-3 indent allowance inside the pattern (`^ {0,3}`), and the rule matched it in the `if` BEFORE
+reading the subject line. That allowance is counted from the CONTENT COLUMN of whatever contains the
+line — a property of the SUBJECT, which the code only computed afterwards, in `aligned`. So it was
+measured from the container's start, and any continuation line four or more columns in failed the
+pattern before alignment could look at it. The fix moves the allowance out of the pattern and into
+`aligned`, where the column is known; `SETEXT_UNDERLINE` is now the run alone.
+
+**Nothing is special-cased per marker.** `strip_containers` already measured what each marker
+consumed — its digits, its delimiter and the space after it. The calculation was never wrong; the
+question was asked in the wrong order.
+
+**Bounded audit of the class, 33 shapes against the renderer.** Markers `1.` `2.` `9.` `10.` `11.`
+`99.` `100.` `1000.` `1)` `10)` `100)`; one to four spaces after the marker; underlines short of the
+content column and beyond it (the 0-3 allowance: five and seven columns are headings under `10.`,
+eight is not); nested ordered lists; an ordered list inside a blockquote and a blockquote inside an
+ordered item; a mixed `-` then `10.` list; ATX headings under `10.`, `100.` and `1000.`; a setext
+CATEGORY under `10.`; `10. foo` over `10. ---`; and a tab after the marker. **33 of 33 agree with
+`markdown-it-py`** on whether a heading exists, and where one does the checker reports it.
+
+**Three-way differential on the reported shape.** The renderer sees two level-2 headings; the
+checker reports both as forbidden container structure with the right diagnostic; the extractor
+treats neither as a boundary — `[0.9.8]` swallows both and neither hidden version extracts to
+anything. The three agree about the structure's nature while none of them supports it, which is the
+property the grammar asks for.
+
+**Measured.** Self-test 253 -> 272 cases. Five mutations each fail a named case: restoring the old
+`SETEXT_UNDERLINE.match(under_content)` (13 cases), treating every marker as three columns wide,
+ignoring the content column in the alignment test, and dropping either bound of the allowance. A
+sixth — putting `^ {0,3}` back into the pattern WITHOUT also restoring the raw match — is a provable
+**equivalent mutant**: no lstripped input distinguishes the two patterns, checked exhaustively
+rather than argued, so its survival is the mutation test behaving correctly. `check-docs` 120 files
+clean, `check-citations` 415 anchors clean, `preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0), and
+the changelog rules over all 84 real documents give identical results to the previous head.
+
+**The real `CHANGELOG.md` is byte-unchanged** and still parses to 23 entries (21 versions + the 2
+reconstructed, in order), 40 categories, no findings, with the parser and the extractor agreeing
+line-for-line on all 22 versioned boundaries.
+
+**Residual closed.** Round 5's "a setext underline inside a list whose content column is >= 4 is not
+detected" is resolved by this fix rather than deferred further — the content column is measured and
+used, at any width. The others stand: HTML blocks unmodelled, the preamble link-definition
+behaviour, the deliberate over-report on a four-column `### Fixed` with no blank line above it, and
+the editorial rules that stay with the author.
+
+
+## Changelog system round 7 (2026-09-06) — a fence inside a container
+
+**What the round is.** One finding, and the first one in this series that runs the other way: not a
+bypass that let malformed structure through, but a **false positive** that rejected a valid
+document. A fenced changelog example written inside a blockquote — the obvious way to quote the
+entry template in a changelog's own preamble — was read as live structure and failed CI.
+
+**The defect.** `fence_mask` matched the RAW line, so `> ```text` opened nothing at all: the sample
+inside it reached `classify_heading`, whose `### Fixed` became a container category and whose
+`## [0.9.7] — 2026-09-05` became a hidden release heading. Reproduced across the shapes: a
+blockquote fence, `>>`, `> >`, and a quote-plus-list fence all leaked; `-` and `1.` list fences did
+not, because their delimiters happen to sit within the three-column allowance `fence_mask` already
+measured from column 0, and `10.`-and-wider ones were caught by the deep pass added in round 3b.
+The gap was blockquotes specifically, and it was the only container whose marker is not whitespace.
+
+**The fix is the normalisation the heading rules already use.** `fence_mask` now strips the
+container prefix with `strip_containers` and reads the remainder, so the three-column allowance is
+measured inside the container. A fence carries the blockquote **depth** it opened at, and only a
+delimiter at that depth can close it — a top-level fence is not closed by a quoted delimiter, and a
+quoted one is not closed by a top-level delimiter, which is what the renderer says. A line that
+leaves the quote ends the fence without masking, because the renderer shows a heading on the next
+quoted line and not seeing it would be the bypass direction. A new list item ends a fence that was
+opened on a list line (`- > ```text` … `- > ### Fixed` is two items and the second heading is real),
+while a bullet written INSIDE a quoted fence stays data — the test is on the opener, not the line.
+
+**One primitive, three callers.** `fence_run` is now the only place that answers "is this a fence
+delimiter", and `opens_fence` the only place that states CommonMark §4.5's backtick-info-string rule.
+`fence_delimiter` (top level), `fence_mask` (containers) and `parse_changelog`'s deep pass all go
+through them; `grep` finds exactly one `FENCE.match` in the file. The deep pass remains a separate
+PASS — `fence_mask` measures from column 0 and cannot see a list's content column without a
+container stack — but it no longer carries a separate GRAMMAR.
+
+**Bounded audit, 31 shapes against the renderer.** Blockquote fences at 0–4 spaces after the marker,
+`>>`, `> >`, tilde; `-`, `*`, `+`, `1.`, `9.`, `10.`, `100.`, nested unordered and nested ordered,
+quote-plus-list, list-plus-quote, tab-indented. And the negatives, which matter as much: a bad
+backtick info string, two backticks, five spaces after the `>` (indented code), a blank line, a lazy
+line, a closer three and four columns in, a top-level fence with a quoted closer, an inline code
+span, and a bullet inside a quoted fence. **All agree with `markdown-it-py`** on whether a heading
+exists — once the probe was corrected to compare structural findings only, since an unclosed-fence
+report is a true statement about the document rather than a claim that a heading exists, and a
+correctly-ordered category produces no finding at all.
+
+**The extractor needed no change.** `changelog-section.awk` boundaries on `^## \[` at column 0, so a
+`> ## [x.y.z]` line can never be a boundary whatever its fence state. Verified on the reported shape:
+the renderer sees only the three real headings, the checker reports nothing structural, the extractor
+keeps the sample inside `[0.9.8]` and `0.9.7` is not extractable.
+
+**Measured.** Self-test 272 → 298 cases. Eight mutations each fail a named case: reading the raw line
+again (10 cases), closing a quoted fence from any depth, not ending at a line that leaves the quote,
+not ending at a new list item, dropping the info-string rule from the shared primitive, giving the
+deep pass its own interpretation of it back, letting an opener sit four columns into its container,
+and removing the deep pass's guard. One redundant clause was **removed rather than kept**: a blank
+line always strips to depth 0, so the depth test already covered it, and a mutation test cannot tell
+a redundant condition from a rule. `check-docs` 120 files clean, `check-citations` 415 anchors clean,
+`preflight.sh` exit 0 (state 2439 / 0, DSP 396 / 0).
+
+**No regression, measured two ways.** Running the changelog rules over all 84 real documents gives
+identical results to the previous head — and so does running **every** check over them, which
+matters here because `fence_mask` feeds the table, link and lazy-continuation rules as well. The
+round-5 container matrix (37 shapes) and the round-6 ordered-list matrix (33 shapes) both still agree
+with the renderer in full.
+
+**The real `CHANGELOG.md` is byte-unchanged** and still parses to 23 entries (21 versions + the 2
+reconstructed, in order), 40 categories, no findings, with the parser and the extractor agreeing
+line-for-line on all 22 versioned boundaries.
+
+**Residuals.** Unchanged, plus one this round states rather than leaves implicit: a fence indented
+one to three columns at top level cannot be told apart from one at a list's content column, so its
+content stays masked until the closer — the direction that keeps a sample a sample. HTML blocks
+remain unmodelled, the preamble link-definition behaviour stands, the four-column `### Fixed`
+over-report stands, and the editorial rules stay with the author.
+
+
+## Changelog system round 8 (2026-09-06) — one column model, and the two ways it was wrong
+
+**What the round is.** Two findings, and they are the same defect measured twice: indentation
+counted in CHARACTERS where CommonMark counts COLUMNS. One let invalid structure through, the other
+rejected a valid document, and both lived in `strip_containers`.
+
+**Defect 1 — list code opened phantom fences.** `CONTAINER_MARKER` spelled a list marker as
+`[-*+][ \t]+`, so the greedy run swallowed whatever whitespace followed it as marker padding.
+CommonMark 5.2 gives a marker at most FOUR columns of following whitespace; a fifth means the item's
+first block is an INDENTED CODE BLOCK whose content column is the marker plus one. So `-     ```text`
+is code to every renderer and was a fence delimiter here: `fence_mask` entered a fence state, and
+every line after it — a real `## [x.y.z]` entry heading included — was masked as that fence's
+content. Measured: `-`, `1.`, `10.` and `- -` all bypassed at five spaces, and `-   \t` bypassed at
+three spaces and a tab, which reaches column 8. The extractor never shared the bug (its fence rule is
+`/^[ \t]*(```|~~~)/`, and a marker is not whitespace), so the two tools disagreed about the document.
+
+**Defect 2 — tabbed markers hid setext releases.** The same function added `len(marker)`, a character
+count, to its content column. A tab is not one column: it advances to the next four-column stop, so
+`-\t[0.9.7]` puts content at column 4 and was recorded as 2. The setext underline's 0-3 allowance was
+then counted from column 2, and an underline at six or seven columns — a level-2 heading to every
+renderer — was invisible here while `release.yml` would publish the release inside the notes above
+it. Reproduced on three shapes the checker did not see: `-\t` at +3, `- \t` at +3, and `-\t-\t`
+(content column 8) at every column in its window.
+
+**One fix, because it is one model.** `expand_tabs` advances every tab to its four-column stop once,
+at the top of `strip_containers`, after which COLUMN == INDEX and no later measurement can disagree
+with an earlier one. The walk then reads containers in columns: a `>` takes its one optional space
+and restarts the list column inside the quote; a list marker takes at most four columns of following
+whitespace, one if there is a fifth or if nothing but whitespace follows. Nothing is special-cased
+per marker and no arbitrary "four spaces" rule was added — the model is CommonMark's, and every
+expectation in the new tests was read off `markdown-it-py` first.
+
+**Two false positives closed by the column the fix now has.** A fence opened on a LIST line records
+that item's content column, so (a) its closer's three-column allowance is counted from there —
+`-    ```text` is closed by a delimiter five columns in, which measuring from column 0 called
+unclosed and turned every line below it into code, on five of the eight marker widths tested — and
+(b) a non-blank line BELOW that column leaves the item and ends the fence without masking, which is
+what the renderer shows and what the extractor (boundaries on `^## \[` at column 0) would do. A blank
+line is not a dedent. Round 7 recorded (b) as a residual because the column was not available; it is
+available now, so it is closed rather than re-deferred. The residual that remains is genuinely
+undecidable without a container stack and is stated as such: where the opening line carries no
+marker, a delimiter one to three columns in cannot be told from one at a list's content column —
+and the renderer confirms masking is the right answer there.
+
+**Bounded audit, 99 shapes against the renderer.** 76 setext shapes (unordered `- ` through `-    `,
+tab, space+tab, 2sp+tab, ordered `1. ` and `1.\t`, `9. `, `10. `, `10.\t`, `100. `, `1000. `,
+`10) `, nested `- - `, `-\t-\t`, `- \t- `, `1. 1. `), each at the bottom of its window, at +3, at
++4 and one below — so the NEGATIVES are audited as heavily as the positives; 12 code-vs-fence shapes
+(five- and six-space padding, `3sp+tab`, ordered, multi-digit and nested code against genuine fences
+at one, four and tab widths, ordered, multi-digit and nested); 11 heading-in-list shapes including
+quote+list, list+quote and the two that ARE code. **All 99 agree with `markdown-it-py`** on whether a
+hidden heading exists, and where one does the checker reports it. Against the pre-fix implementation
+the same matrix shows **12 under-reports**.
+
+**Every previously closed class re-run: 32/32.** Closing hashes, fence info strings (backtick and
+tilde), malformed and wrong-level release headings, indented categories, the four-column heading in
+both its code and its lazy form, blockquoted ATX at every spacing plus `>>` and `> >`, blockquoted
+setext, mismatched depth, quote+list setext, wide ordered markers `10. `/`100. `/`1000. `, `- foo`
+over `- ---`, the round-7 container fences, a bad info string in a quote, the lone carriage return
+and the duplicate `[Unreleased]`. That matrix passes on the PRE-fix implementation too, which is what
+makes it a regression check rather than a description of the new code.
+
+**Measured.** Self-test 298 → 362 cases: 23 changelog fixtures (15 of which fail against the pre-fix
+implementation) and 39 unit cases pinning the column model itself — every content column in the table
+read off the renderer by asking where a setext window opens, plus the tab-expansion table. Thirteen
+mutations, each killed by a NAMED case: greedy marker padding, no tab expansion, a tab as one column,
+a tab as always four, dropping either half of the five-column rule, dropping the dedent rule, letting
+a blank line count as a dedent, measuring the closer from column 0, measuring list columns from the
+line instead of the quote, ignoring a line's own marker column, forgetting the opener's column, and
+dropping the marker's required following space. Two of them survived the first pass and neither was
+argued away: the empty-item column was pinned in the unit table (the renderer puts the last openable
+fence at column 5 for `-`, `-  ` and `-    ` alike, so the content column is 2), and the last was
+killed by an `@@says:` assertion because keeping the fence open reports the opener as never closed —
+one finding either way, and only the invariant NAMED distinguishes them.
+
+**No regression, measured over the whole corpus.** Running EVERY check over all 120 real documents
+gives results identical to the previous head — not just the changelog rules, which matters because
+`fence_mask` and `strip_containers` feed the table, link and lazy-continuation rules as well.
+`check-docs` 120 files clean, `check-citations` 415 anchors clean, `preflight.sh` exit 0.
+
+**The real `CHANGELOG.md` is byte-unchanged** and still parses to 23 entries (21 versioned + the 2
+reconstructed, in order), 40 categories, 0 findings, with the parser and the extractor agreeing
+line-for-line on all 21 versioned entries.
+
+**CI documentation contract, dispositioned rather than waved through.**
+`DOCUMENTATION_LIFECYCLE_POLICY.md`'s trigger map row **CI workflow → `CI_CD.md`, `TESTING.md`**
+applies: `release.yml`'s `validate` job changed behaviour in this change set (it now runs
+`scripts/changelog-section.awk` — the same file the notes step runs — and reads the ISO date off the
+EXTRACTED heading). `CI_CD.md` described the older `grep`-only validation and is corrected, with the
+rehearsal behaviour and the division of labour against the `docs` gate stated. `TESTING.md` is NOT
+changed, and the reason is its actual content rather than convenience: the only CI material it
+carries is the per-job command table (`docs`, `source-lint`, the build jobs), all of which belong to
+`build.yml` and none of which this change touches; it has never described `release.yml`'s validate
+job, so there is nothing in it to re-sync. Adding a description there would be new prose, not a sync.
+`RELEASE_PROCESS.md` already carries the corrected description (written in the same change set).
+[Verified]
+
+
+## Changelog system round 9 (2026-09-06) — a bullet inside a fence is data
+
+**What the round is.** One finding, and it is the same false-positive direction round 7 opened:
+valid documentation rejected. A fenced changelog example containing a Markdown list — the most
+ordinary thing a preamble can hold — broke its own fence open and its `### Fixed` and
+`## [x.y.z]` were read as live structure.
+
+**The defect, as a state-machine violation.** `fence_mask` ended an active fence at ANY line whose
+container prefix carried a list marker (`in_list and marked`). That clause exists to catch a
+genuine sibling item — `- ```text` followed by `- ### Fixed` really is a new item and a new fence —
+but it never asked WHERE the marker sat. So `- ```text` followed by its own indented `  - item`
+ended the fence at line 2, and every line after it was read as document structure. The transition
+was: fence opens → content line carries a bullet → state cleared → the sample's headings reach
+`parse_changelog`. Reproduced on unordered (`-`, `*`, `+`), ordered, multi-digit, nested,
+quote+list, list+quote and tab-marked openers — seven families, every one a false positive on a
+document `markdown-it-py` shows as a single fenced code block.
+
+**The renderer's rule, measured before any code changed.** For a fence opened in a list item there
+is ONE test and it is not the marker: a line belongs to the item while its own indentation, read in
+the frame the item sits in, reaches the item's content column. `- ```text` (content column 2) ends
+at `- x` and at ` - x` and NOT at `  - x`; `- - ```text` (column 4) ends at 0-3 and not at 4;
+`1. ```text` (column 3) ends at 0-2; `> - ```text` ends at `> - x` and not at `>   - x`;
+`- > ```text` ends at `> x` and not at `  > x`. Twelve boundary shapes, each answered by the
+renderer rather than reasoned about, and one rule fits all of them.
+
+**The fix reuses the normalisation, it does not add a parser.** `strip_containers` now also returns
+`item` = the innermost LIST marker's `(quote_depth, content_column)`, recorded at the moment the
+walk consumes it — which is what separates `- > ` (item at depth 0) from `> - ` (item at depth 1),
+two frames that measure their content from different places. `container_lead(line, depth)` returns
+the line's indentation after exactly that many blockquote markers, and is deliberately BLIND to
+list markers: reading one as container structure is the defect. The blockquote step both functions
+need is factored into `quote_marker`, so there is one idea of what a `>` is, not two.
+
+**Three kinds of line and no fourth.** The loop is now explicit about the OPENER a fence begins on,
+the CONTENT it holds, and the CLOSER that ends it. A line that terminates a fence by leaving its
+container is none of the three — it is outside — so it falls through and is classified from
+scratch, opener test included. Skipping it left `- ```text` / `  - item` / `> ``` ` with no fence
+open where the renderer shows one, and so with no unclosed-fence report either; the round-7 fixture
+`- > ```text` / `- > ### Added` / `- > ``` ` / `- > ``` ` went from 2 findings to 3 for the same
+reason, and the renderer shows exactly three fences there, the last unclosed.
+
+**Focused sweep, 372 data shapes and 186 closer shapes.** 31 openers (unordered at four widths,
+`*`, `+`, five ordered widths including `1000. ` and the paren forms, tab and space+tab, four
+nested combinations, `> - `, `>> - `, `> > - `, `- > `, `- > - `, `> - > `, indented and
+tab-indented) x 12 list-like bodies (three bullet characters, multi-digit ordered runs, nested
+lists, categories, release headings, a setext pair, blank lines mid-block, mixed markers), with
+each body built from the opener's own container context rather than from the checker's arithmetic.
+**372 of 372 agree with the renderer, 0 over-reports and 0 under-reports**; the same sweep against
+the pre-fix implementation shows **119 false positives**. The closer boundary was swept per opener
+— at the item's column, +1, +3, +4, with an info string, and with the wrong delimiter character —
+**186 of 186 agree**, against 28 disagreements before.
+
+**Three more defects the round's own audit found, all in the same class.** A six-dimension
+renderer differential run over the FIXED tree (flat lists, nested and mixed containers, closers,
+over-masking negatives, tabs, and the extractor) reproduced three the fix had not reached, each on
+a document the renderer calls valid or a heading the renderer shows:
+
+- **A closer may be preceded by spaces and by nothing else (4.5), so a list marker disqualifies
+  it.** The closer test read `strip_containers`'s content, which removes list markers as well as
+  quote markers, so a content line `- ``` ` was accepted as a closer: the block ended one line
+  early and the item's REAL closer then opened a fence that ran to end of file -- two findings on a
+  valid document. Reproduced for `- `, `* `, `+ `, `1. `, `1) `, `10. `, `- - `, a tab-marked item
+  and a tilde fence, at top level as well as inside an item. The closer is now read from
+  `quote_rest`, which strips the fence's own blockquote markers and nothing else.
+- **Only the innermost enclosing item was remembered.** `- > - ```text` nests an item at quote
+  depth 0 and another at depth 1; a line that leaves the OUTER one takes the quote and the fence
+  with it, and the renderer shows the heading on it. Measuring only the inner frame kept the fence
+  open and masked a renderer-visible `## [0.9.7]` -- an under-report, the bypass direction.
+  `strip_containers` now records the whole chain and every item is tested.
+- **An inner item can be left while the outer one is satisfied.** `- - ```text` nests columns 2 and
+  4, and a new item at column 2 passes the outer test and fails the inner. Found by the mutation
+  that checks only the outermost item, and closed by the same chain.
+- **A quoted blank is a blank.** `>` alone strips to `>`, so testing the RAW line called it
+  non-blank; its zero columns of content then read as a dedent and broke a fence open in the middle
+  of a quoted sample. Blankness is now read in each item's own frame, exactly as the dedent is.
+- **The EXTRACTOR could not see an opener behind a container marker.** `changelog-section.awk`
+  matched `/^[ \t]*(```|~~~)/`, so a fence opened on `- ```text` was invisible to it: the sample's
+  own CLOSER was then read as an opener and the mask ran to end of file, so **nothing extracted, for
+  any version**, on a document the checker calls clean. `release.yml` would have failed the tag. The
+  extractor now applies the same asymmetry the checker does -- an OPENER may sit behind container
+  markers, a CLOSER may be preceded by spaces and nothing else -- with the closer's three-column
+  allowance measured from the item's own content column and the fence's own blockquote depth
+  stripped first. It is the only change the extractor has needed in rounds 5-9.
+
+**Two more from the adversarial phase, both against the fixed tree.** Three agents attacked the
+result -- one hunting false positives an author would actually write, one hunting hidden headings,
+one attacking the boundary arithmetic -- over roughly 19 000 generated documents between them,
+differentially against the renderer:
+
+- **A fence may be opened on a CONTINUATION line**, and then the item chain is not on that line at
+  all: `- an item` and, indented under it, the delimiter. Reading the chain off the opener left such
+  a fence with no column -- no dedent could end it, its own closer four or five columns in was
+  rejected, and a real `## [x.y.z]` below it was masked with **no finding whatsoever** in 98 of the
+  generated documents. `fence_mask` now carries the chain across lines: a line with markers restates
+  it, one without keeps as much of it as its indentation still reaches, a blank changes nothing.
+  That is the whole of the container state this file keeps, and it is exactly what tells a fence
+  indented two columns INSIDE an item from one indented two columns at top level -- the residual
+  rounds 7 and 8 recorded as needing a container stack. Both directions are pinned by fixtures.
+- **The closer's allowance was counted from a column in the wrong frame.** `open_col` came from the
+  innermost item as recorded in the OPENER's frame, while the closer is read after the fence's own
+  quote markers; for `- > ```text` the item sits at depth 0 and the fence at depth 1, so a document
+  column was subtracted from a quote-relative one and the three-column allowance became five. The
+  checker then closed on a line the renderer calls code. An item recorded at a shallower depth now
+  imposes no column inside the quote.
+
+With the chain available, the OPENER's allowance is counted from the item's content column too, so
+a delimiter four columns into a `10. ` item -- an ordinary nested sample -- opens a fence instead of
+nothing. Two existing fixtures moved by one finding as a result, and the renderer was asked about
+both: each new finding is a genuine unclosed fence it also shows.
+
+**Two more the adversarial phase found, and one it found in the round's own new code.** The
+blockquote marker `>` is accepted at any indentation, so `    > ```text` -- four columns, where
+CommonMark 5.1 allows three and the `>` is literal text inside an indented code block -- opened a
+blockquote that is not there, and a fence inside it masked a real `## [x.y.z]` with NO finding. The
+bound was written, and REVERTED: it is measured from column 0, and on a continuation line that is
+the wrong origin -- `10. > [0.9.7]` over `    > -------` has its `>` at the item's own content
+column and IS a heading, which the bound broke. Both shapes are the same container-stack question
+and both are recorded below rather than half-fixed. The second was fixed: the deep pass's fence
+tracker silenced EVERY line between two deep delimiters whatever its indent, so a six-column
+delimiter inside a `- ` item swallowed a `### Removed` at four columns -- two columns inside the
+item, and a heading to the renderer. Content of a fence is indented at least as far as the fence
+is; a shallower line has left it. Its closer-side twin was written for symmetry, found to be
+distinguishable by no input (a shallower delimiter always opens a fence in `fence_mask` first, which
+masks everything after it), and removed rather than kept.
+
+**One over-report was found and deliberately left.** `100.\t```text` over a tab-indented sample
+ends its fence correctly at the dedent, and `indented_code_mask` then declines to mask the
+four-column line because its `in_list_context` guard sees a list marker on the preceding line -- so
+a line the renderer calls indented code is reported as a deep heading. That guard is conservative
+BY DESIGN (masking in list context is how a real heading would be hidden), the direction is the
+tolerated one, and the shape needs a tab inside a four-digit ordered marker. Recorded here rather
+than traded for a possible under-report.
+
+**Measured.** Self-test 362 -> 401 cases: 39 new fixtures, nine of them documents that must produce
+NOTHING (a bulleted sample, an ordered sample with blank lines, `10. `, nested, quote+list,
+list+quote, tab-marked, nested bullets with a blank line) and eight that must still fire (a genuine
+sibling item, a one-column dedent, a column-0 release heading, structure after a correct close, an
+unclosed list fence, a closer four columns past the item, a quoted closer, and a line that leaves
+the item's own quote frame), plus sixteen for the defects the audit added -- including five in the
+EXTRACTOR CONTRACT, which the self-test executes by running `changelog-section.awk` rather than
+asserting it in a comment. **Twenty-six mutations, each killed by a named case** -- twenty-two in
+the checker and four in the extractor: restoring the old
+marker clause (11 cases), deleting the dedent test, `<=` and `>` for the column comparison, reading
+the lead at depth 0 regardless of the item's frame, letting the lead skip list markers, treating a
+blank line as a dedent, treating an unreachable frame as "still inside", recording the item frame
+from the walk's final state, skipping the terminating line instead of re-classifying it, and two
+ways of forgetting the opener's column. The "unreachable frame" mutant survived the first pass; an
+exhaustive search over 5 950 opener x line pairs found **35 that reach it**, so it is a real branch
+and now has a fixture — not an equivalent mutant, which is what the search was run to decide. The
+four added for the audit's defects are: reading the closer off the container-stripped content
+again, reading it at depth 0 rather than at the fence's own, checking only the innermost enclosing
+item, and checking only the outermost. The last two each needed a fixture written for them, and
+both were answered by the renderer first. The extractor's four are: not looking behind container
+markers, stripping markers before a CLOSER too, measuring the closer's allowance from column 0, and
+losing the item's frame inside a quote. The five for the carried chain are: reading it from the
+opener line only, letting it survive any dedent, clearing it on a blank line, counting the opener's
+allowance from column 0, and ignoring the frame the closer's column was recorded in.
+`container_lead` was REMOVED in the same pass: the item
+loop reads `quote_rest` directly, which left the helper with no caller, and a mutation test cannot
+tell dead code from a rule.
+
+**Three-way agreement, executed rather than asserted.** 160 documents the checker accepts, built
+from 32 opener shapes x 5 bodies, were run through the renderer, the checker AND the extractor:
+**all 160 extract the right release at the right boundary**, and neither tool cuts inside a sample
+the renderer shows as one code block.
+
+**No regression, measured the established way.** Every check over all 120 real documents gives
+results identical to the previous head. The round-5 container matrix (37), the round-6 ordered-list
+matrix (33), the round-7/8 99-shape column audit and the round-8 160-shape sweep all still agree
+with the renderer, and all 32 previously closed bypass classes are still closed.
+
+**The real `CHANGELOG.md` is byte-unchanged** and still parses to 23 entries (21 versioned + the 2
+reconstructed, in order), 40 categories, 0 findings, with the parser and the extractor agreeing
+line-for-line on all 21 versioned entries. `changelog-section.awk` needed no change: its fence rule
+is `/^[ \t]*(```|~~~)/`, so a list marker cannot open a fence there, and it boundaries on
+`^## \[` at column 0, which no fenced sample line can reach.
+
+**What the round did NOT close, named with its shapes.** The container chain `fence_mask` now
+carries is not available to the HEADING rules, which still measure a container-prefixed line from
+column 0. Three reproducible under-reports follow from that, all confirmed against the renderer and
+all pre-existing (the pre-round-9 checker is silent on each):
+
+- `> -   item` over `>     ## [0.9.7] — 2026-09-01`. The item's content column is 2 inside the
+  quote, so four columns after the `> ` is only two inside the item and the renderer shows an entry
+  heading; `classify_heading`'s container path reads the post-strip content, sees four columns and
+  calls it indented code.
+- `- 1. ```text` over an indented `[0.9.7] — 2026-09-05` and `-----`, and the same pair with no
+  fence at all. Both lines are CONTINUATIONS carrying no marker, so the setext rule's alignment test
+  measures both from column 0 and the pair falls outside the 0-3 allowance.
+- `    > ```text` at top level, from the paragraph above: bounding the blockquote marker at three
+  columns fixes it and breaks `10. > [0.9.7]` over `    > -------`, because the bound has to be
+  counted from the item's content column and `strip_containers` is a per-line function.
+
+They are one question -- the heading rules need the chain the fence rules have -- and answering it
+is a change to `classify_heading`, the setext alignment and `strip_containers`'s signature, which is
+a round of its own rather than a coda to this one. Recorded here so the next round starts from the
+shapes rather than from a search.
+
+**LEVEL5_AUDITION.md version drift, verified rather than re-fixed.** The reviewer names `:15-16`,
+and on `origin/main` those lines read "The v0.9.4 audition of 2026-08-15 is invalid for v0.9.6 on
+both counts" — an invalidation rule that stopped at v0.9.6 and never said what it means for the
+release in preparation. That is corrected on this branch (commit `1869c68`): the rule now states
+that **the v0.9.6 audition of 2026-09-01 does not carry over to v0.9.7**, names ADR-0034's reported
+latency change and the Drive-crossing swap as the reasons, and keeps the v0.9.4 -> v0.9.6 case as
+the worked example the rule was first written from. Every remaining 0.9.6 reference in the document
+is HISTORICAL and must stay: the worked example (`:25`, `:31`), the scope kept as the v0.9.6 record
+with a pointer to what a v0.9.7 scope must cover (`:34`, `:36`, `:41`, `:47`), and the recorded
+v0.9.6 PASS with its deliberately blank rows (`:112`-`:149`). `RELEASE_PROCESS.md:34` names the same
+audition. Repository version metadata cross-checked: `CMakeLists.txt:14` `VERSION 0.9.7`, the newest
+CHANGELOG entry `[0.9.7]`, `HANDOVER.md` Current Version **0.9.7**. No further edit was needed and
+none was made. [Verified]
+
+
+## Changelog system round 10 (2026-09-06) — the extractor's own container state, and the chain the heading rules were missing
+
+**What the round is.** Three defects in the AWK release extractor, all one root cause, and the
+three heading-rule under-reports round 9 named and deferred. Every one is closed.
+
+**The extractor recorded a fence's container and then never asked about it again.** It stored the
+opener's blockquote depth and item column at open time -- and from then on only a closing delimiter
+could clear `fence`. So a fence opened inside any container stayed open to end of file:
+
+- `> ```text` unclosed in the preamble, or `- ```text`, or `>> ```text`, or `- > `, or `> - `:
+  every release below it was swallowed. Measured on documents `check-docs.py` calls CLEAN and the
+  renderer shows as one code block plus two real entry headings: `awk -v ver=0.9.8` published BOTH
+  entries as one section and `awk -v ver=0.9.7` printed **nothing**, which is a release tag that
+  cannot be cut.
+- `-     ```text` -- five columns of marker padding, an indented code block to CommonMark 5.2 --
+  opened a phantom fence with the same consequence. The checker fixed that rule in round 8; the
+  extractor still read the padding greedily.
+
+**One state model, mirroring `fence_mask`.** The extractor now walks each line's containers in
+columns (tabs expanded to four-column stops), carries the chain of enclosing list items across lines
+(a line with markers restates it, one without keeps as much as its indentation reaches, a blank
+changes nothing), and ends a fence when the line drops below the fence's blockquote depth or below
+any enclosing item's content column -- reading blankness in each item's own frame, exactly as the
+checker does. The terminating line is then re-classified from scratch, so a line that ends one fence
+may open the next. Openers may sit behind container markers; closers may be preceded by spaces and
+nothing else, with the three-column allowance counted from the item's content column.
+
+**The contract is now stated exactly, and it is smaller than the checker's.** The extractor answers
+one question per line -- is this a `## [` boundary at column 0, or is it inside a fenced example --
+and models blockquote depth, list content columns, tabs and fences with their containers, and
+nothing else: no setext, no ATX levels, no link definitions, no HTML blocks, no code spans. The
+header says so, and says why: `check-docs.py` gates every push and REJECTS the structures those
+would matter for. The external contract is the testable one and `--self-test` executes it -- for
+every document the checker accepts, the extractor finds the same boundaries.
+
+**Differential coverage extended to the transitions it was missing.** 34 documents built from the
+state transitions themselves rather than from shapes: twelve CONTAINER EXITS (blockquote to top
+level, nested quote to outer quote and to top level, list to top level, nested list to outer list
+and to top level, quote+list, list+quote, ordered, tab-marked, a fence opened on a continuation
+line, and an exit carrying a release-like line) and thirteen MARKER PADDINGS (one through six
+columns, ordered and multi-digit and four-digit markers, tab and space+tab padding, three spaces and
+a tab, a paren marker), plus nine masking controls. For each, the checker's parsed entry span and
+the extractor's output are compared LINE FOR LINE, for every version in the file. **32 agree, 2 are
+rejected by the checker (so outside the contract), 0 mismatch. Against the previous extractor: 25
+of 34 mismatched.**
+
+**Mutation proofs.** Twelve on the extractor: greedy marker padding, dropping either half of the
+padding rule, never ending at a list dedent, never ending at a quote exit, reading the item chain
+from the opener line only, blankness on the raw line, the closer allowance from column 0, the closer
+read after list markers, the opener allowance without the carried column, treating an unreachable
+frame as column 0, not recording the fence's quote depth, and not re-classifying the terminating
+line. **Seven are killed by named cases.** The other five -- and this is the round's most useful
+negative result -- are **equivalent with respect to the extractor's contract, proved rather than
+argued**: every release boundary sits at column 0, and column 0 leaves every container, so any
+refinement that only changes WHEN a container fence ends earlier cannot change a boundary. Searched
+over **6 144 extractions** (3 072 documents x 2 versions, 24 container prefixes x 8 inner prefixes x
+8 payloads) with zero differing outputs. The same search FOUND the distinguishing document for the
+padding rule -- `-     ```text` over `  ``` `, where greedy padding opens a fence, the delimiter
+below it dedents out, and that delimiter then opens a SECOND fence at top level with no container to
+end it -- so that mutation is killed by a fixture rather than excused.
+
+**The three heading-rule under-reports, closed.** Round 9 named them and recorded that they were one
+question: `classify_heading` and the setext alignment measured a container-prefixed line from column
+0 while `fence_mask` carried the container chain. `container_chains` is now the single place that
+computes the chain and all three rules read it:
+
+- an ATX release heading inside a quoted item (`> -   item` over `>     ## [0.9.7]`) is measured
+  from the item's content column. The renderer's window is three to EIGHT spaces after the `>`, and
+  the checker now matches it at both ends -- eight reports, nine does not.
+- a setext release pair written as two CONTINUATION lines inside a nested item takes its subject
+  column from the chain, so the 0-3 allowance is counted from the item rather than from column 0.
+- a `>` more than three columns past its container's content column is literal text inside an
+  indented code block, so the fence it appeared to open is not there. That guard needs the chain,
+  which is why round 9 could not apply it: counted from column 0 it broke `10. > [0.9.7]` over
+  `    > -------`, which IS a heading. Counted from the item's column both are right, and both are
+  pinned.
+
+Eleven mutations on those three rules, each killed by a named case -- including two that a COUNT
+cannot see (opening the phantom fence reports it as never closed, one finding either way), so the
+fixture asserts which invariant is named.
+
+**Measured.** Self-test 405 -> 429 cases: 12 new extractor-contract fixtures, 8 heading fixtures
+and the four awk-portability assertions,
+each pinning one transition and its control. 23 mutations added this round (11 checker, 12
+extractor), 18 killed by named cases and 5 proved equivalent by exhaustive search. `check-docs` 120
+files clean, `check-citations` 415 anchors clean, `preflight.sh` exit 0.
+
+**No regression.** Every check over all 120 real documents gives results identical to the previous
+head. The round-5 (37), round-6 (33), round-7 (31), round-8 (99 and 160) and round-9 (372 data and
+186 closer) matrices all still agree with the renderer, all 32 previously closed classes are still
+closed, and the 160-document three-way differential still agrees on every one.
+
+**The real `CHANGELOG.md` is byte-unchanged** and still parses to 23 entries (21 versioned + the 2
+reconstructed, in order), 40 categories, 0 findings, with the parser and the extractor agreeing
+line-for-line on all 21 versioned entries -- the extraction path `release.yml` actually runs, not
+only the validator.
+
+**One thing no fixture could catch, now gated.** The rewritten extractor passed every local gate
+and then failed CI in four seconds with 37 fixtures red at once: POSIX awk forbids a space between
+a USER-DEFINED function's name and its `(`, reading `qrest (x)` as a variable concatenated with a
+parenthesised expression. `mawk` -- the awk on this machine -- accepts it; `gawk` and the
+one-true-awk refuse to parse the program at all, so no fixture failed for its own reason and none of
+them named the cause. `--self-test` now checks the rule directly: it reads the function names the
+extractor defines and fails on any call site that spaces the `(`, with a message that says why.
+Built-ins are exempt, since `substr (s, 1, 1)` is legal and is the file's own style. Proved by
+restoring the space and watching the lint fire. The extractor was then run under **gawk 5.2.1, the
+one-true-awk and mawk 1.3.4**: all three parse it and all three give identical results on the
+425-case self-test, the 34-document differential, the 306-document sweep and the real CHANGELOG.
+
+**Two extractor fixtures moved by design, and the renderer settles both.** A three-space-indented
+fence inside `- b`'s item now ends at the column-0 heading below it, so `[0.9.8]` no longer publishes
+the older release inside its notes; and a delimiter four columns into a quoted item is not a closer,
+but the line after it leaves the quote, so the entry below extracts normally where the old extractor
+published nothing. In both cases the new output is what `fence_mask` and `markdown-it-py` already
+said. [Verified]
+
+## Changelog system round 11 (2026-09-06) — a nested item extends the chain, and a lint that can fire
+
+**Three findings, and they are two defects.** The first two were in the portability gate round 10
+added; the third was in the container state both tools read. Evidence: `scripts/check-docs.py`,
+`scripts/changelog-section.awk`, `docs/policies/CHANGELOG_POLICY.md`, PR #140.
+
+**The gate could not fail.** Round 10's lint ran its matcher over one file — the extractor — and
+that file is clean, so every result was the empty list and a matcher that had stopped recognising
+`qrest (` looked exactly like a working one. The lint is now `awk_spaced_calls`, driven by fifteen
+synthetic sources with known answers: seven it MUST flag and eight it must leave alone. A blind
+matcher fails the first seven; a raw substring search passes them and fails the rest.
+
+**And it could fail wrongly.** `name\s+\(` matched the characters, not the grammar, so a comment, a
+string, a regex or a documentation line saying `qrest (` would have failed the build over prose —
+all three awks run such a file. The measured grammar is narrower than the text in four ways: only a
+CALL (a **definition** written `function qrest (s, k)` is accepted by gawk, mawk and the
+one-true-awk alike — run, not reasoned about), only a name the file DEFINES (`substr (s, 1, 1)` is a
+built-in and is the script's own style), only in CODE, and only the whole identifier (`myqrest (` is
+not a call of `qrest`). `awk_code_text` blanks comments, string literals and regex literals first,
+in one pass with three states, and its one heuristic — where a `/` is a regex rather than division —
+is the conservative way round: guessing division leaves extra text to scan, guessing regex could
+swallow a real call. Both directions are pinned by fixtures.
+
+**A marker line is not a fresh start.** `container_chains` replaced the carried chain with whatever
+markers a line stated, so `- outer` over `  - nested` left only the nested item and the still-open
+outer one was gone. The next continuation line fell below the nested column with nothing to fall
+back to and read as top level, which broke both ways at once: a fence opened there belonged to NO
+item, so only a closing delimiter could end it and the column-0 `## [` that ends the list, the fence
+and the block in every renderer was masked — while the same erasure in `changelog-section.awk`
+published the two releases as one note and printed *nothing* for the older version; and where the
+item's column was wider than three, the delimiter read as an indented code block, no fence opened at
+all, and the sample's contents were scanned as live structure. One rule replaces it in both tools:
+**trim then extend** — keep the longest prefix of the carried chain the line still reaches, each item
+read in its own quote frame, then append the markers the line states for itself; a blank changes
+nothing. Containers nest, so what survives is always a prefix.
+
+**All three consumers read the one chain.** `fence_mask`, `classify_heading` and the setext
+alignment take it from `container_chains` and nowhere else; `chain_column` reads the innermost entry
+and `fence_mask` the whole chain, which is why the fix needed no change in any of them.
+`indented_code_mask` was audited and left alone: it consumes no chain, and its list-context guard
+declines to mask in any list context, so it can only over-report.
+
+**Proofs.** The self-test is **464** cases. 12 mutations this round — 10 on the checker, 2 on the
+extractor — **all 12 killed**, each by a named case: chain replacement and trim-without-extend; a
+blind matcher, an unlexed one, unblanked definition headers, unskipped regex literals, a `/` always
+read as a regex, a `#` that ends a string, a dropped identifier look-behind, and a dropped
+whitespace requirement. A 200-document three-way differential over container-chain extension ×
+nested lists × blockquotes × tabs × fences × release boundaries: **200 agree, 0 mismatch, 0
+under-report, against 60 under-reports on the round-10 head**. A 72-document probe of the
+paragraph-interruption residual (an ordered marker on a continuation line, which CommonMark does not
+treat as a marker): 72 agree, 0 under-report.
+
+**No regression.** Round 10's 34-document differential (32 agree, 2 rejected, 0 mismatch) and
+306-document sweep (297 agree, 9 rejected, 0 mismatch, 0 under-report) are unchanged; every earlier
+matrix still passes inside the 464-case self-test. Over all 120 real documents the chain itself now
+differs on 21 of them — it is a real change to the model — and **not one document's findings change**,
+nor does any of the 23 versions of the real `CHANGELOG.md` extract differently. The extractor is
+byte-identical under gawk 5.2.1, mawk 1.3.4 and the one-true-awk. `check-docs` 120 files clean,
+`check-citations` 415 anchors clean, `preflight.sh` exit 0. [Verified]

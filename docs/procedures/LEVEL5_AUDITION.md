@@ -12,8 +12,18 @@ structurally cannot supply — a green build plus a pluginval pass means *"ready
 ## When a previous audition stops counting
 
 An audition is **per-build**, not per-feature. It is invalidated by anything that changes the
-machine code or the audible behaviour of the thing being shipped. The v0.9.4 audition of
-2026-08-15 is invalid for v0.9.6 on both counts:
+machine code or the audible behaviour of the thing being shipped. The rule has now been applied
+twice, and the second application is the one that governs the release in preparation.
+
+**The v0.9.6 audition of 2026-09-01 does not carry over to v0.9.7** — the release this rule
+currently blocks. **ADR-0034** changed what the plug-in reports to the host and added a delay
+element to the chain, and it changed one audible behaviour beyond latency: a forced A/B, preset or
+undo swap that crosses the Drive engagement threshold with a factor selected is now
+latency-neutral, so it dry-fills instead of dipping to silence. Neither is a thing an automated
+gate can audition. The v0.9.6 verdict below is not withdrawn; it simply does not cover this build.
+
+**The v0.9.4 audition of 2026-08-15 was invalid for v0.9.6** on both counts, which is the worked
+example the rule was first written from:
 
 - **ADR-0031 / ADR-0032** changed the x86-64 machine code everywhere (`-march=haswell`,
   `-ffp-contract=off`, and the MSVC AVX2 adoption). CI's twin-dump gate proves the two builds are
@@ -22,6 +32,11 @@ machine code or the audible behaviour of the thing being shipped. The v0.9.4 aud
   activation duck, the first-block level of a restored session, and the A/B / preset switch.
 
 ## Scope for v0.9.6
+
+**This scope is the v0.9.6 record and is kept as written.** The audition it describes was performed
+and passed (see §Recorded auditions). A v0.9.7 audition needs its own scope, derived the same way
+from the `[0.9.7]` CHANGELOG entries; the ADR-0034 latency and Drive-crossing changes named above
+are what it has to cover, and group C below is the closest existing analogue.
 
 Derived from the `[0.9.6]` CHANGELOG entries and grouped by what the listener actually has to do.
 Each item names the failure it is looking for, so a pass is a statement about something specific.
