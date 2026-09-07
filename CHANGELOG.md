@@ -63,6 +63,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Regression coverage: DSP test 53. Evidence: PR #135. [Verified]
 
 ### Fixed
+- **Releasing a split you dragged out of the display can no longer delete a different band.**
+  Dragging a split outside the Multiband display and letting go removes the band that split opens —
+  the quick way to merge two bands. The plug-in remembered *which* split you had grabbed by its
+  position in the row, so if the number of Bands fell while you were still holding it — by an
+  automation lane on Bands, or by opening or restoring a project at that moment — the split you
+  grabbed could be gone by the time you let go. The release then deleted whichever band that
+  position now landed on: a band you never touched, with Bands dropping a second time. A drag whose
+  own split has disappeared now removes nothing. Dragging a split out and releasing it at a steady
+  band count still merges exactly as before.
+  Regression coverage: State test 67. Evidence: PR #143. [Verified]
 - **Dragging in the Multiband display can no longer throw a crossover frequency to a value you
   never chose, if the number of Bands changes underneath the drag.** Dragging a split, or holding a
   band's solo handle and moving it sideways, remembers where every split was when the drag began and

@@ -1759,7 +1759,21 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     if (dragHandle >= 0)
     {
         endGesture (freqP[dragHandle]);
-        if (dragRemovePending) removeBand (dragHandle + 1); // drop the dragged split, merge (#18)
+        // ONLY IF THE SPLIT BEING DRAGGED STILL EXISTS. `dragHandle` is latched at mouseDown
+        // and names a split by POSITION, not identity; a host write of mbBands -- an automation
+        // lane, or the sound half of a state restore -- can lower Bands while the drag is still
+        // held, and `dragCrossoverTo` correctly stops steering it at that point (:361) but the
+        // drag stays ARMED. `removeBand` then CLAMPS its argument into the live range (:521), so
+        // the release used to delete a different, live band and lower Bands a second time -- a
+        // band the user never touched, gone on a gesture aimed at one that had already vanished.
+        // A drag whose target no longer exists has nothing left to remove: splits are 0 ..
+        // bandCount() - 2, so this is exactly "the dragged split is still there", and it is the
+        // same condition `removeBand` would need for `dragHandle + 1` to name a real band.
+        // Validated here rather than by tightening removeBand's clamp: the only other caller
+        // (:1741) already proves its argument live through `deleteHit`, and a clamp that has no
+        // reachable stale input left is defence, not behaviour.
+        if (dragRemovePending && dragHandle < bandCount() - 1)
+            removeBand (dragHandle + 1); // drop the dragged split, merge (#18)
     }
     if (dragBand >= 0) endGesture (widthP[dragBand]);
     dragHandle = dragBand = -1;

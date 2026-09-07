@@ -861,6 +861,23 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 67 — an outward drag whose split has vanished removes nothing** (stale-drag review).
+  Dragging a split far outside the plot arms `dragRemovePending`, and the release deletes the band
+  that split opens: `removeBand (dragHandle + 1)`. `dragHandle` is latched at `mouseDown` and names
+  a split by **position**, so a host write of `mbBands` that LOWERS Bands mid-drag makes it stale —
+  `dragCrossoverTo` stops steering it, correctly, but the drag stays **armed** — and `removeBand`
+  **clamps** its argument into the live range. Four bands, drag split 2 out, host drops Bands to 2,
+  release: `removeBand (3)` was clamped to band 1, and Bands fell to 1. The invariant is asserted as
+  an **exact band count**, never as "the result is legal" — one band fewer is perfectly legal and is
+  the bug. Legs: (a) Bands falls while the drag is armed; (b) the drag is re-armed *after* the fall
+  (`dragRemovePending` is recomputed on every drag event); (c) the **positive control** — at an
+  unchanged band count the same gesture must still delete its band, 4 → 3, so a fix that simply
+  stopped removing on release fails here; (d) the boundary, Bands falling to 1, where `removeBand`
+  returns early anyway. Mutation-tested: restoring the unguarded `if (dragRemovePending) removeBand
+  (dragHandle + 1)` fails legs a and b, printing `Bands 2 -> 1 on release of a drag whose split had
+  gone`. Same editor/mouse-injection harness as State test 66, probing for the **rightmost** handle
+  — at four bands that is split 2, the only one a fall to two bands makes stale.
+
 * **State test 66 — a split the drag never captured keeps its place when the host moves Bands**
   (Code Scanning follow-up to PR #143). `dragOrigX` is seeded once when a gesture begins and read
   for the whole gesture, but both consumers — `SpectrumImager::dragCrossoverTo` and `::moveBand` —

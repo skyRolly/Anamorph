@@ -9915,7 +9915,7 @@ the working tree: 0 files missing, 0 lines past EOF, 0 pointing at unrelated cod
 
 **MUST FIX — one, and the scanners did not report it.** PREfast's four `C6001` results are false
 positives, but auditing the second pair's surface found a real one three functions away:
-`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:307) validated its pin arguments
+`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:325) validated its pin arguments
 against `count` when *writing* them and not when computing `leftPin`/`rightPin`, so a stale pin
 survived into the pull loops and `out[k + 1]` read a slot the copy loop never wrote. Reachable:
 `beginBandMove` (:398) latches `soloMoveLeft`/`soloMoveRight` from the band count at the press;
@@ -9952,7 +9952,8 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
-`/analyze` does not fold `std::size` on a constexpr array. `src/gui/SpectrumImager.cpp:512`, now :525: `dropX`
+`/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
+anchored it, src/gui/SpectrumImager.cpp:530 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10006,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:639`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:657`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10093,3 +10094,84 @@ positions are now all real — and changing it would alter behaviour the review 
 to both directions rather than a second bullet for one gesture), and the correction above to the
 audit round's own claim. Not a gate item: no parameter ID, serialization, threading-model, DSP-order
 or reported-latency change, and no Accepted ADR conflict; message-thread only. [Verified]
+
+## SpectrumImager stale-drag review — a stale handle was deleting a live band (2026-09-07, second pass)
+
+**A third defect in the same family, and the one that actually reached a wrong target.** Dragging a
+split outside the plot arms `dragRemovePending`, and the release deletes the band that split opens:
+`removeBand (dragHandle + 1)` (src/gui/SpectrumImager.cpp:1776). `dragHandle` is latched at
+`mouseDown` and names a split by **position**. A host write of `mbBands` that LOWERS Bands mid-drag
+makes it stale — `dragCrossoverTo` stops steering it, correctly (:363) — but the drag stays **armed**,
+and `removeBand` **clamps** its argument into the live range (`b = juce::jlimit (0, N - 1, b)`,
+:521). Four bands, drag split 2 out, host drops Bands to 2, release: `removeBand (3)` clamped to
+band 1 and Bands fell to 1. Measured under the mutation run: `Bands 2 -> 1 on release of a drag whose
+split had gone`.
+
+**Fix, at the call site.** `if (dragRemovePending && dragHandle < bandCount() - 1)`. Splits are
+`0 .. bandCount() - 2`, so that is exactly "the dragged split still exists", and the same condition
+`removeBand` would need for `dragHandle + 1` to name a real band. `removeBand`'s clamp is left alone:
+its only other caller (:1741) already proves its argument live through `deleteHit`, so with this call
+site guarded the clamp has no reachable stale input and is defence rather than behaviour. Tightening
+it into a reject would have changed a shared helper for one caller's bug.
+
+**Regression: State test 67**, asserting an **exact band count** rather than legality — one band
+fewer is perfectly legal and is the bug. Legs: (a) Bands falls while armed; (b) re-armed after the
+fall, since `dragRemovePending` is recomputed on every drag event; (c) the **positive control**, an
+unchanged band count where the same gesture must still delete 4 → 3, which is what stops a fix that
+simply never removes; (d) the boundary at Bands 1, where `removeBand` returns early anyway.
+**Mutation:** restoring the unguarded forwarding fails legs a and b. Leg c passes under both versions,
+which is the point of it.
+
+**The adjacent stale-drag audit, field by field.** Every cached identifier was classified by what it
+is defined relative to and whether its consumer revalidates:
+
+| Cached state | Defined relative to | Revalidated by its consumer? | Consequence if stale |
+|---|---|---|---|
+| `dragHandle` → `dragCrossoverTo` | split position at press | **yes** — `handle >= M` returns (:363) | none |
+| `dragHandle` → `removeBand` | split position at press | **no** → **FIXED this round** | a different live band deleted |
+| `dragOrigX[]` | split positions at press | n/a — every slot now seeded | none (fixed in the previous pass) |
+| `soloMoveLeft` / `soloMoveRight` | split positions at `beginBandMove` | **yes** — `projectFromOrig` validates both pins | the move does less, never something else |
+| `pressDeleteBand` | band index at press | **yes** — `deleteHit (e.position) == dB` (:1741) | none |
+| `scrollHandle` / `scrollBand` | index at hover | **yes** — `< N - 1` / `< N` in `mouseWheelMove` | none |
+| `dragBand` → width write | band index at press | no | writes a vanished band's own Width parameter |
+| `soloPressBand` → `toggleSoloBit` | band index at press | no | sets a mask bit for a vanished band |
+
+**The line this round draws, and it is what settles the `soloMoveRight` question.** A stale
+positional identifier is a *defect* when it is silently retargeted onto a **different live** object,
+and an *accepted residual* when it merely makes the gesture do **less**, or acts on the vanished
+object's own parameter. `removeBand` was the only case on the wrong side of that line, and it is
+fixed. `soloMoveRight` stale at −1 after a rise, and `soloMoveLeft` stale after a fall, are both on
+the acceptable side: the band move drags only its live edge, or writes nothing at all — never another
+band's split. **Decision: option B, accepted residual**, with the invariant now named rather than
+asserted. The last two rows are also accepted, for a different reason: both are reachable with no
+drag at all (a host lowering Bands while a solo is latched leaves the same phantom mask bit), so they
+are a Bands/parameter coherence question that belongs to whoever takes that on, not to a stale-drag
+round. Neither can index out of range — `widthP[0..3]` and the 4-bit mask cover every value
+`bandAtX`/`soloHit` can produce.
+
+**Post-fix sweep, against the five things the fix must not leave behind.** No other stale handle
+reaches `mouseUp`: its three branches are `pressDeleteBand` (self-validating), `soloPressBand` (mask
+bit only) and `dragHandle` (now guarded); `endGesture` on `freqP[dragHandle]` / `widthP[dragBand]`
+closes the gesture that same index opened, so it is correct by construction. No remaining silent
+clamp into a live target — `removeBand`'s is now unreachable with a stale argument. No drag stays
+armed after its target disappears in a way that acts: it stays armed and does nothing, which is the
+fix. No automation-visible mutation reaches a wrong target. And no topology change produces an
+out-of-range access: every index is bounded by the array it addresses.
+
+**`source-lint` CI failure — this branch's own, and the local run could not see it.** Job
+101614618525 on run 34080455906 failed with three `DRIFTED` citations in
+`docs/DOCUMENTATION_COVERAGE.md`. CI runs `check-citations.py --check --base <push predecessor>`;
+every local run this session used the default base `origin/main`. The previous commit added 18 lines
+to `src/gui/SpectrumImager.cpp` above three anchors that were correct when written. Two were plain
+moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
+move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
+into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:530 today", which keeps the fact and
+leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
+`check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
+run in this round checks both.
+
+**Docs.** `TESTING.md` (State test 67), `CHANGELOG.md` `[0.9.7]` Fixed (a second bullet — a band being
+deleted is a different user-facing symptom from a crossover moving, unlike the two the previous
+bullet merges). Not a gate item: no parameter ID, serialization, threading-model, DSP-order or
+reported-latency change, and no Accepted ADR conflict; message-thread only. [Verified]

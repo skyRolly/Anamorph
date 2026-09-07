@@ -1599,6 +1599,190 @@ static void testWrapperProcessBlockAudioPath()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 67 -- an outward drag whose split has since vanished removes
+//  NOTHING, rather than deleting whichever band the index now lands on.
+//
+//  THE DEFECT. Dragging a split far outside the plot arms `dragRemovePending`, and
+//  the release deletes the band that split opens: `removeBand (dragHandle + 1)`.
+//  `dragHandle` is latched at mouseDown and names a split by POSITION. A host write
+//  of mbBands that LOWERS Bands mid-drag makes it stale -- `dragCrossoverTo` stops
+//  steering it, correctly, but the drag stays armed -- and `removeBand` CLAMPS its
+//  argument into the live range. So releasing an outward drag of a split that had
+//  already vanished deleted a DIFFERENT, live band and lowered Bands a second time.
+//  Four bands, drag split 2 out, host drops Bands to 2, release: removeBand (3) was
+//  clamped to band 1 and Bands fell to 1.
+//
+//  THE INVARIANT. A drag that became stale because its own split was removed must
+//  not remove or mutate a different live band. Asserted as an EXACT band count, not
+//  as "the result is legal" -- one band fewer is perfectly legal and is the bug.
+//  Leg (c) is the positive control that keeps the fix honest: at an UNCHANGED band
+//  count the very same gesture must still delete its band, so a fix that simply
+//  stopped removing on release would fail here.
+// ---------------------------------------------------------------------------
+static void testStaleOutwardDragRemovesNothing()
+{
+    std::printf ("State test 67: an outward drag whose split has vanished removes nothing (stale-drag review)\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the stale-removal probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    check (bandsP && loP && midP && hiP, "the multiband parameters the probe drives exist");
+    if (! (bandsP && loP && midP && hiP)) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto bandsNow = [&] { return juce::roundToInt (plainOf (bandsP)); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+    const float laneY = 0.5f * (float) imager->getHeight();
+
+    // The RIGHTMOST handle: at four bands that is split 2, the only one a fall to two
+    // bands makes stale. The leftmost would stay in range and test nothing.
+    auto findLastHandleX = [&] () -> float
+    {
+        for (float x = (float) imager->getWidth() - 3.0f; x > 2.0f; x -= 1.0f)
+        {
+            imager->mouseMove (mev (x, laneY, x, laneY, false));
+            if (imager->getTooltip() == juce::String ("Drag to change the split frequency")) return x;
+        }
+        return -1.0f;
+    };
+    auto resetWorld = [&] ()
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 2000.0f);
+        setPlain (hiP, 10000.0f);
+    };
+    // Far above the plot: mouseDrag's `out` test is y < -50, which arms dragRemovePending
+    // AND skips dragCrossoverTo -- the "dragged out to delete it" gesture, exactly (#18).
+    const float outY = -100.0f;
+
+    // ---- LEG A: Bands falls while the drag is armed --------------------------
+    {
+        resetWorld();
+        const float wantLow = plainOf (loP);
+        const float hx = findLastHandleX();
+        check (hx >= 0.0f, "leg A: the last split's handle is findable at four bands");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx, outY, hx, laneY, true));   // arm the removal
+            setPlain (bandsP, 2.0f);                                // the host lane moves
+            check (bandsNow() == 2, "leg A: the host really did lower Bands to 2");
+            imager->mouseUp   (mev (hx, outY, hx, laneY, true));
+            if (bandsNow() != 2)
+                std::printf ("  [leg A] Bands 2 -> %d on release of a drag whose split had gone\n", bandsNow());
+            check (bandsNow() == 2,
+                   "leg A: releasing a stale outward drag removes NO band (Bands stays 2)");
+            check (juce::exactlyEqual (plainOf (loP), wantLow),
+                   "leg A: ...and the surviving crossover is untouched");
+        }
+    }
+
+    // ---- LEG B: the drag is re-armed AFTER the fall, then released -----------
+    //  dragRemovePending is recomputed on every drag event, so a second outward move
+    //  re-arms it against the SMALLER count -- the handle is still the stale one.
+    {
+        resetWorld();
+        const float wantLow = plainOf (loP);
+        const float hx = findLastHandleX();
+        check (hx >= 0.0f, "leg B: the last split's handle is findable at four bands");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx, outY, hx, laneY, true));
+            setPlain (bandsP, 2.0f);
+            imager->mouseDrag (mev (hx + 5.0f, outY, hx, laneY, true)); // re-armed while stale
+            imager->mouseUp   (mev (hx + 5.0f, outY, hx, laneY, true));
+            check (bandsNow() == 2,
+                   "leg B: re-arming after the fall still removes no band");
+            check (juce::exactlyEqual (plainOf (loP), wantLow),
+                   "leg B: ...and the surviving crossover is untouched");
+        }
+    }
+
+    // ---- LEG C: POSITIVE CONTROL -- ordinary removal is unchanged ------------
+    {
+        resetWorld();
+        const float hx = findLastHandleX();
+        check (hx >= 0.0f, "leg C: the last split's handle is findable at four bands");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx, outY, hx, laneY, true));
+            imager->mouseUp   (mev (hx, outY, hx, laneY, true));     // Bands never moved
+            if (bandsNow() != 3)
+                std::printf ("  [leg C] Bands 4 -> %d; an ordinary outward drag must still delete\n", bandsNow());
+            check (bandsNow() == 3,
+                   "leg C: at a steady band count the same gesture still removes its band (4 -> 3)");
+        }
+    }
+
+    // ---- LEG D: a stale drag released after Bands falls to the FLOOR ---------
+    //  removeBand returns early at N <= 1, so the clamp could not have fired here --
+    //  the leg exists so the guard is exercised at the boundary as well.
+    {
+        resetWorld();
+        const float hx = findLastHandleX();
+        check (hx >= 0.0f, "leg D: the last split's handle is findable at four bands");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx, outY, hx, laneY, true));
+            setPlain (bandsP, 1.0f);
+            imager->mouseUp   (mev (hx, outY, hx, laneY, true));
+            check (bandsNow() == 1, "leg D: at one band the release still removes nothing");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 //  State test 66 -- a split the gesture never captured keeps its own position
 //  when the host RAISES Bands part-way through the drag.
 //
@@ -12312,6 +12496,7 @@ int main (int argc, char* argv[])
     testDurableCaptureNeverRecordsTwoReplacements();
     testLegacySlotIsCanonicalAtTheBoundary();
     testBandRiseDuringDragKeepsUncapturedSplits();
+    testStaleOutwardDragRemovesNothing();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 
