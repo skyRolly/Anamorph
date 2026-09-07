@@ -97,6 +97,23 @@ and the rest of it wrote 3 back`. `addBandAt` is the same shape with a weaker pr
    writes a whole four-bit word, so there is no safe first store, and no ordering makes a truncated
    compaction invisible.
 
+8. **A published per-parameter edit version the gesture snapshots** — a "watched set" where each of
+   the nine multiband parameters carries a version every writer advances, and the gesture requires
+   its own stores to advance exactly its own slot by exactly one. Rejected for option 2's reason with
+   an extra cost: the silent writer advances nothing unless the processor is changed to make it, so
+   the mechanism needs new published state *and* a change to the restore path to be correct — new
+   plumbing to reach a guarantee that comparing the values already gives.
+9. **A staged layout transaction** — the imager computes a whole replacement `Layout`, one primitive
+   proves the plan, stages the value fields with `setValue` (no host notification, so no listener can
+   run inside the transaction), commits at `mbBands`, and reverts on failure. Genuinely different and
+   genuinely considered; rejected on three counts. Staging silently means the host sees no
+   intermediate notification for the widths and splits, which changes what an automation pass
+   records; `setValue` bypasses the APVTS adapter that keeps the tree in sync, and the one precedent
+   for it (`reassertParameters`) is the deliberately silent restore path, not an edit; and "revert on
+   failure" is a second burst of writes issued *against* a newer authority, which is the opposite of
+   ADR-0036 §25. It is also larger than the defect: the reentrancy class is closed by moving one
+   comparison, and a transaction primitive is a new abstraction to maintain for the residue.
+
 ## Decision
 
 > **A gesture stores an authoritative value only while that value is still the one its plan was
