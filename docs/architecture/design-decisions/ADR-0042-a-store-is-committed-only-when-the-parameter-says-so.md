@@ -92,6 +92,30 @@ write-side commit would be re-torn on the read side. Making the topology genuine
 replacing the read with a versioned or double-buffered snapshot — a **threading-model change**, an
 Architecture Review Gate item, and out of scope for a review round.
 
+**Option C's recorded reason was false, and this ADR corrects it.** ADR-0041's option table, and
+this ADR's first form, rejected a generation counter because the silent writer
+"advances no version". `reassertParameters (…, notifyHost = false)` fires no listener
+(`PluginProcessor.cpp:743-748`) but **does** bump `soundParamGen` at `:779-780`, under a comment
+saying exactly why, added a month before ADR-0041 shipped. The verdict is unchanged and rests on
+three obstacles that are each sufficient: the processor listens to every non-view parameter and
+bumps unconditionally (`PluginProcessor.cpp:43-47`, `PluginProcessor.h:171-174`), so the
+transaction's own stores move the counter it would watch, and one global counter conflates all eight
+multiband parameters with every other sound parameter; the silent bump is once per **pass**, not per
+store, so it is invisible in the between-adjacent-stores window the whole design exists to close;
+and both the bump and the silent stores are relaxed with no release/acquire pairing, so making a
+counter trustworthy cross-thread means editing the restore path's synchronisation — a
+threading-model change and a hard stop. The parameter's own normalised value is the stronger stamp:
+per-parameter, content-addressed, self-stamped at the store, and already atomic. The only thing a
+counter buys over it is ABA detection, and an ABA here is a no-op by construction because the guards
+re-prove the count, the mask and each value exactly.
+
+**Option D's decisive objection is not the policy but that there is no second acquisition site.**
+Every frame between the imager's store and the host's write-back is JUCE-wrapper or host code, so
+there is nowhere to put the matching lock; a lock with one acquisition site is not mutual exclusion.
+The same-thread re-entry then makes exclusion impossible in principle — `juce::CriticalSection` is
+re-entrant, a non-recursive mutex self-deadlocks the message thread inside a host callback, and a
+`try_lock` that drops the host's write discards an authoritative store.
+
 Option **E**, evaluated on its merits this round rather than dismissed: a compensating rollback that
 restores the stores already issued writes a **stale value over a newer authority**, which ADR-0036
 §25 forbids and which every finding in this series has been about; its rollback stores can themselves
@@ -124,6 +148,18 @@ and both are closed here:
   since ADR-0040, and this one guard was left on `kSplitMovedPx` — 32 Hz at 10 kHz, so a fully
   representable, fully automatable host move that size read as "unchanged" and the burst wrote over
   it. Closed by capturing the splits in parameter space alongside the pixel plan.
+
+A third round of the same pass, over the transaction half, corrected two more claims and removed one
+more defect. Both burst comments said abandoning leaves *"at most one already-issued store behind"*;
+an add at N = 3 issues nine stores and a removal at N = 4 issues seven, so the largest residue is
+**eight** and **six**, corrected in place. And below the insertion point — or above the removal —
+most of the plan *is* the world it was computed from, yet the burst wrote those slots anyway: for
+the widths a redundant dispatch, for the **splits** a value change, because the plan is carried in
+pixels and `xToFreq (freqToX (f))` is a bisection over a monotone-spline axis, not the identity.
+**Measured on a two-band add: `split0 200.000015259 -> 199.999847412, delta -1.678e-04`** — an
+automation and undo entry, with a new value, for a split the user never touched. Both bursts now
+skip a store whose plan equals its snapshot exactly, which removes the perturbation and shrinks the
+reentrancy surface together.
 
 Examined and deliberately not changed: `projectGaps` is a coupled chain, so proving one slot does not
 prove the plan *for* that slot, and an abort part-way can leave the splits out of order **on screen**

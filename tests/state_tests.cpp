@@ -3655,6 +3655,33 @@ static void testAStoreIsNotCommittedUntilTheParameterSaysSo()
                "leg L: ...and the value that arrived stands");
     }
 
+    // ---- LEG M: a burst does not write the slots its plan leaves alone ---------
+    //  Below the insertion point the plan IS the world it was computed from, and the
+    //  burst wrote those slots anyway. For the widths that was a redundant host
+    //  dispatch; for the SPLITS it was a value change, because the plan is carried in
+    //  pixels and `xToFreq (freqToX (f))` is a 30-iteration bisection over a monotone
+    //  spline, not the identity. Measured before the fix: `split0 200.000015259 ->
+    //  199.999847412, delta -1.678e-04` -- an automation and undo entry, with a new
+    //  value, for a split the user never touched. Asserted EXACTLY: the split must be
+    //  bit-identical, because "close enough" is what let this stand.
+    {
+        resetWorld();
+        setPlain (bandsP, 2.0f);
+        setPlain (loP, 200.0f);
+        const float before = plainOf (loP);
+        imager->mouseDown (mev (W * 0.80f, 30.0f, W * 0.80f, 30.0f, false));
+        imager->mouseUp   (mev (W * 0.80f, 30.0f, W * 0.80f, 30.0f, true));
+        if (! juce::exactlyEqual (before, plainOf (loP)))
+            std::printf ("  [leg M] an add moved a split it never planned to move:"
+                         " %.9f -> %.9f (delta %.3e)\n",
+                         (double) before, (double) plainOf (loP),
+                         (double) (plainOf (loP) - before));
+        check (juce::exactlyEqual (before, plainOf (loP)),
+               "leg M: an add leaves a split its plan does not move bit-identical");
+        check (bandsNow() == 3, "leg M: ...and still adds its band");
+        check (plainOf (midP) > 200.0f, "leg M: ...and still creates the split it was asked for");
+    }
+
     // ---- LEG E: positive control -- an uninterrupted delete still removes -------
     {
         resetWorld();

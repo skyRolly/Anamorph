@@ -813,10 +813,14 @@ argument disposes of the idea that the burst is a special weakness: `reassertPar
 whole sound the same way, one parameter at a time, and a host writing two automation lanes in one
 block tears identically.
 
-**Option C — versioned/generation — loses to the same silent writer as in §30.** The host restore
-path writes `rp->setValue (norm)` and fires nothing (`PluginProcessor.cpp:740`), so a generation
-driven by listeners cannot see it. A generation derived from *polling the values* is what
-`ownsSplit`, `ownsWidth` and `storeOwned` already are, under another name.
+**Option C — versioned/generation — stays rejected, and §46 replaces the reason.** The reason
+recorded here, and in ADR-0041's option table, was that the silent writer "advances no version".
+**That is false**, and the adversarial pass proved it: `reassertParameters (…, notifyHost = false)`
+sets `silentSoundChange` and bumps `soundParamGen` at `PluginProcessor.cpp:779-780`, with a comment
+saying exactly why, added a month before ADR-0041 shipped. The three real obstacles are in §46. What
+survives unchanged is the second half: a generation derived from *polling the values* is what
+`ownsSplit`, `ownsWidth` and `storeOwned` already are, under another name — and the stronger form of
+it.
 
 **Option D — a lock — is forbidden and would not work.** `REALTIME_AUDIO_POLICY.md` puts
 `mutex`/`lock`/blocking waits on the hard red line, and the audio thread is now shown to be a
@@ -911,8 +915,8 @@ for.
 | `spreadSplits` | `freqP[k]->getValue()` at plan time (`was[]`), and the split count | `xs[]` from `projectGaps` | up to 2 | each store's dispatch | `bandCount() - 1 == count` **and** `getValue() == was[k]` before each; `storeOwned` after | returns false | abandoned | stand | **no — this is the round's P1 fix** |
 | `resetCrossover` | live splits + `was[]` | default for `i`, `projectGaps` for the rest | 1 primary + `spreadSplits` | the gesture open/close, each store's dispatch | primary confirmed after its gesture closes; then `spreadSplits` | returns before spreading | abandoned | the primary stands | no |
 | `commitFreqEditor` | live splits + `was[]` | parsed value, `projectGaps` for the rest | 1 primary + `spreadSplits` | as `resetCrossover` | as `resetCrossover` | skips the spread; still closes the editor | abandoned | the primary stands | no |
-| `addBandAt` | `bandCount()`, `soloMask()`, `fr[]`, `wd[]` | remapped mask, shifted widths, shifted splits, `N + 1` | mask, ≤5 widths, ≤3 splits, count | every store's dispatch | count + target re-proved before each, splits **exactly, in parameter space** since §45; mask and count also confirmed after | returns −1 | abandoned | stand (§41) | no — every store's target is re-proved against the snapshot immediately before it |
-| `removeBand` | as `addBandAt` | remapped mask, shifted widths, shifted splits, `N − 1` | mask, ≤3 widths, ≤2 splits, count | every store's dispatch | as `addBandAt`; the final count store's result is discarded because nothing follows it | returns | abandoned | stand (§41) | no |
+| `addBandAt` | `bandCount()`, `soloMask()`, `fr[]`, `wd[]` | remapped mask, shifted widths, shifted splits, `N + 1` | mask, ≤5 widths, ≤3 splits, count — each elided when its plan equals its snapshot (§46) | every store's dispatch | count + target re-proved before each, splits **exactly, in parameter space** since §45; mask and count also confirmed after | returns −1 | abandoned | stand (§41) | no — every store's target is re-proved against the snapshot immediately before it |
+| `removeBand` | as `addBandAt` | remapped mask, shifted widths, shifted splits, `N − 1` | mask, ≤3 widths, ≤2 splits, count — each elided when its plan equals its snapshot (§46) | every store's dispatch | as `addBandAt`; the final count store's result is discarded because nothing follows it | returns | abandoned | stand (§41) | no |
 | `resetParam` | none | the parameter's default | one, inside a gesture | the gesture open/close, the value dispatch | none — nothing follows it | n/a | n/a | n/a | no |
 | wheel width step | live width | `bandWidth + step` | one | the store's dispatch | none — the press was ended first | n/a | n/a | n/a | no |
 | `mouseUp` solo click | `pressBands`, the mask it reads | one word | via `setSoloMask` | as `setSoloMask` | both, and now the far side | nothing is written | nothing follows | none | no |
@@ -926,10 +930,10 @@ the exact value its plan assumed.
 
 ## 44. Validation and residuals, round 5
 
-State suite **2 673 / 0**; DSP **396 / 0**; State tests 66–73 unchanged and green. Mutations M1–M9
+State suite **2 676 / 0**; DSP **396 / 0**; State tests 66–73 unchanged and green. Mutations M1–M10
 each killed by exactly the intended leg (M6 kills State test 73 leg (c) as well as State test 74 leg
 A, which is right: one `if` guards both windows; M8 and M9 come from §45's pass over the shipped
-fix). `check-realtime` 47/0 with its self-test 93/93,
+fix, M10 from §46's). `check-realtime` 47/0 with its self-test 93/93,
 `check-portability` 57/0 with 120/120, `check-docs` 128 clean with 464/464, `check-citations` clean
 against both bases with self-test 139/139, `git diff --check` clean, `preflight.sh` exit 0.
 
@@ -1015,3 +1019,88 @@ One correction to this round's own ground facts, from the same pass: in this tre
 sources are under `modules/juce_audio_processors_headless/processors/`, not
 `modules/juce_audio_processors/processors/`. Every line number cited in this worklog and in ADR-0042
 is correct in the headless copy.
+
+## 46. What the transaction half of the audit corrected
+
+The read-only pass re-derived §41's five options from the shipped code. **Options A, B, D and E are
+confirmed with better evidence. Option C's stated reason was false** — the verdict survives, the
+argument does not, and it was wrong in ADR-0041 as well as here.
+
+**Option C: the silent writer DOES advance a version.** `reassertParameters (…, notifyHost = false)`
+applies values through `setValue` and fires no listener (`PluginProcessor.cpp:743-748`) — but the
+function does not stop there. It accumulates `silentSoundChange` and bumps `soundParamGen` once at
+the end of the pass (`:779-780`), under a comment that names the reason: *"applies values via
+setValue(), which does NOT fire parameterValueChanged — so the listener never bumps soundParamGen …
+mirror that here"*. That bump predates ADR-0041 by a month. So "a generation would not see the
+silent writer" was already untrue when it was written down, twice.
+
+The three obstacles that actually decide it, each sufficient alone:
+
+1. **Self/foreign confound.** The processor registers itself as a value listener on **every**
+   non-view parameter (`PluginProcessor.cpp:43-47`; `viewParams[]` is `{ bypass }` alone,
+   `PluginParameters.h:71-73`) and `parameterValueChanged` bumps unconditionally
+   (`PluginProcessor.h:171-174`). Every store the transaction itself makes therefore moves the
+   counter it would be watching, so an expected-generation check aborts on its own writes. One
+   global counter also conflates the eight multiband parameters with Drive, Algorithm and every
+   other sound parameter, so an unrelated automation lane would abort a topology commit.
+2. **Granularity.** The silent bump is once per **pass** (`:779-780`), not per store, while the
+   whole ADR-0040/0042 architecture depends on re-validation **between adjacent stores**. A counter
+   bumped after the interfering writer's pass completes is blind in exactly the window that matters.
+3. **Ordering.** Both the bump and the silent stores are `memory_order_relaxed` with no
+   release/acquire pairing (`PluginProcessor.h:173`, `PluginProcessor.cpp:744-747`, `:780`).
+   `soundSetGen` escapes this only by living under the `soundReplacement` lock
+   (`PluginProcessor.h:260-266`), which the imager cannot take. Making a polled counter trustworthy
+   cross-thread means editing the restore path's synchronisation — a **threading-model change** and
+   an Architecture Review Gate hard stop.
+
+And the positive half, worth stating because it is the reason the current design is not a
+compromise: **the parameter's own normalised value is the stronger version stamp.** It is
+per-parameter rather than global, content-addressed so it needs no cooperation from any writer and
+catches the silent one for free, self-stamped at the store itself (`storeOwned` writes `ownedNorm`
+from the read-back), and each stamp is already a single `std::atomic<float>` needing no added
+ordering. The only thing a counter buys over it is ABA detection — and on this path an ABA is a
+no-op by construction, because the guards re-prove the count, the mask and each value **exactly**,
+so a round trip landing on the identical value leaves precisely the state the plan was computed
+from. A counter would abort transactions that are provably safe to complete.
+
+**Option D gains the primary evidence §41 asserted without.** The decisive objection is not the
+policy but that **there is no second acquisition site**: every frame between the imager's store and
+the host's write-back is JUCE-wrapper or host code (`setValueNotifyingHost` → listener loop →
+`ParameterChangeForwarder` → the wrapper's `performEdit` → the host → `setValueNotifyingHost`
+again). Anamorph owns nothing on that path, so there is nowhere to put the matching lock, and a lock
+with one acquisition site is not mutual exclusion. The same-thread re-entry then makes exclusion
+impossible in principle: `juce::CriticalSection` is documented re-entrant, so the nested acquire
+succeeds; a non-recursive mutex self-deadlocks the message thread inside a host callback, hanging
+the DAW; and a `try_lock` that drops the host's write silently discards an authoritative store,
+inverting ADR-0036 §25.
+
+**The audio-thread picture is confirmed and gains a third writer.** No first-party code writes any
+multiband parameter from the audio thread — `src/dsp/` contains no JUCE parameter type at all — but
+the host does, through `JuceVST3Component::process` → `processParameterChanges` →
+`setValueNotifyingHost`, with the listener dispatch on that same audio thread and no message-thread
+hop. And `reassertParameters (…, notifyHost = false)` runs on the **host's state thread**. Three
+writer threads, which is why the checks compare live values and never ask who moved them.
+
+**The partial-application picture is sharper than §41 stated, in one direction.** The rule is that
+width slot *i* is live iff *i* ≤ L−1, split slot *k* iff *k* ≤ L−2 and solo bit *b* iff *b* ≤ L−1,
+for the live count L. Applying it: `addBandAt` writes exactly **one** slot past what the live count
+supports in each array, so its residue is one inert slot per array; `removeBand` writes one slot
+**short**, so **nothing an aborted removal writes is inert — every store lands inside the live
+layout.** That is the worse of the two and §41's worked example is a removal, so the ruling is
+unaffected; the asymmetry is recorded because it was not stated.
+
+**And one claim in the source was simply wrong.** Both burst comments said abandoning leaves *"at
+most one already-issued store behind"*. An add at N = 3 issues nine stores and a removal at N = 4
+issues seven, so the largest residue is **eight** and **six**. Corrected in place rather than
+quietly dropped, and reduced in the common case by the elision below.
+
+**The elision, and the defect it removed.** Below the insertion point — and above the removal — most
+of the plan *is* the world it was computed from, and the burst wrote those slots anyway. For the
+widths that was a redundant host dispatch. For the **splits** it was a value change, because the
+plan is carried in pixels and `xToFreq (freqToX (f))` is a 30-iteration bisection over a
+monotone-spline axis, not the identity. **Measured on a two-band add:
+`split0 200.000015259 -> 199.999847412, delta -1.678e-04`** — an automation and undo entry, carrying
+a new value, for a split the user never touched. This is the store-side residue of the same
+pixel-versus-parameter error §45 fixed in the guard. Both bursts now skip a store whose plan equals
+its snapshot exactly, which removes the perturbation and shrinks the reentrancy surface by the same
+stroke. State test 74 leg M, asserted bit-identical; mutation M10.

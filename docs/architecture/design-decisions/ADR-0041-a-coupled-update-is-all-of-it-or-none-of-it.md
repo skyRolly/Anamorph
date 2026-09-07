@@ -131,6 +131,14 @@ the cross-thread residual below with a stronger reason than "no single commit po
 reader tears too (`PluginParameters.cpp:365-374` reads the ten multiband atomics with ten separate
 `load()` calls), so a write-side commit would buy nothing without a threading-model change.
 
+**And the option table below is wrong about option C.** It rejects a generation counter because the
+silent writer "advances no version". `reassertParameters (…, notifyHost = false)` fires no listener,
+but it **does** bump `soundParamGen` (`PluginProcessor.cpp:779-780`), under a comment saying exactly
+why — added a month before this ADR was written. The verdict stands on three other obstacles, each
+sufficient on its own; ADR-0042 states them. Left in place rather than rewritten, because what this
+record is for is showing what was decided and on what grounds, including where the grounds were
+wrong.
+
 ## Related code
 
 - `src/gui/SpectrumImager.h` — `gestureX`/`gestureW` as normalised values, `storeOwned`, the `bool`

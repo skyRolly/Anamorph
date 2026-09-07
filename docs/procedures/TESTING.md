@@ -887,7 +887,12 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   whose split moved by **20 Hz at 10 kHz** — inside the old half-pixel window, five orders of
   magnitude above the parameter's resolution and fully automatable — does not raise the band count
   and leaves the value that arrived standing. Mutations: dropping the count re-proof → K; the split
-  guard back in pixel space → L.
+  guard back in pixel space → L. Leg (M) comes from the transaction half of the same pass: an add
+  must leave a split its plan does not move **bit-identical**, because the plan is carried in pixels
+  and `xToFreq (freqToX (f))` is a bisection over a monotone-spline axis, not the identity — measured
+  before the fix as `split0 200.000015259 -> 199.999847412, delta -1.678e-04`, an automation and undo
+  entry with a new value for a split the user never touched. Asserted exactly, since "close enough"
+  is what let it stand. Mutation: writing the slot the plan leaves alone → M.
 
 * **State test 73 — a coupled update is all of it or none of it** (ADR-0041). Three review findings
   of one shape: part of a coupled change applied, the rest not, and nothing downstream able to tell.

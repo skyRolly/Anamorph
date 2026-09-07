@@ -446,12 +446,21 @@ void SpectrumImager::captureGestureSound() noexcept
 // difference to the host inside the change gesture the drag opened. Measured: a restore of
 // mbFreqHigh to 15 kHz under a drag of the FIRST split was pulled back to 10 kHz.
 //
-// Detected by self-comparison rather than by a new cross-component signal: the processor's
-// `soundSetGen` counts WHOLESALE replacements only and is not reachable from here (the imager
-// holds a ScopeBuffer and an APVTS, nothing else), and it would still miss a single automated
-// crossover. Every writer of these three parameters is either this class or somebody outside
-// it -- the engine only reads them (AnamorphEngine.cpp:609) -- so "it moved and I did not move
-// it" is exact, needs no plumbing, and covers automation and undo as well as restore.
+// Detected by self-comparison rather than by a cross-component counter, and ADR-0042 corrects
+// WHY. The reason recorded here (and in ADR-0041's option table) was that the processor's
+// counter is unreachable and that a silent restore advances nothing. Both are wrong:
+// `soundGeneration()` is public (PluginProcessor.h:159) and `apvts.processor` is a public
+// member, and `reassertParameters (..., notifyHost = false)` DOES bump `soundParamGen`
+// (PluginProcessor.cpp:779-780, with a comment saying so, added a month before ADR-0041). The
+// real reasons are three: the processor listens to every non-view parameter (:43-47) and bumps
+// unconditionally (PluginProcessor.h:171-174), so this class's OWN stores move the counter it
+// would be watching; one global counter conflates all eight multiband parameters with every
+// other sound parameter; and the bump is once per PASS and relaxed, so it is invisible in the
+// window between two adjacent stores, which is the only window that matters here. The parameter's
+// own normalised value is the stronger version stamp: per-parameter, content-addressed, needing
+// no writer cooperation, and self-stamped at the store. Every writer of these parameters is
+// either this class or somebody outside it -- the engine only reads them
+// (AnamorphEngine.cpp:609) -- so "it moved and I did not move it" is exact and needs no plumbing.
 bool SpectrumImager::soundMovedUnderGesture() const noexcept
 {
     if (gestureBands < 0) return false;
@@ -711,8 +720,18 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
     // ABANDONING MID-BURST LEAVES THE STORES ALREADY ISSUED. That is the right trade and not a
     // half-measure: the alternative -- the completed operation -- puts the OLD count back over the
     // newer one and rewrites the whole layout under it, while abandoning leaves the newer topology
-    // standing and at most one already-issued store behind. A legitimately begun operation truncated
-    // by a newer authority is ADR-0036 section 25's rule, not a stale overwrite.
+    // standing. A legitimately begun operation truncated by a newer authority is ADR-0036 section
+    // 25's rule, not a stale overwrite.
+    //
+    // ADR-0042 CORRECTION: this used to say "at most ONE already-issued store behind", and that was
+    // simply wrong -- an add at N = 3 issues nine stores and a removal at N = 4 issues seven, so the
+    // largest residue is eight and six. The number is bounded and knowable, not one, and it is
+    // counted honestly in the worklog rather than understated here. What DOES reduce it is eliding
+    // the stores whose plan equals the snapshot: below the insertion (or above the removal) most of
+    // the plan is the world it was computed from, and re-writing those slots bought nothing but
+    // reentrancy surface -- plus, for the splits, a pixel round trip that MOVED them. Measured on a
+    // two-band add: `split0 200.000015259 -> 199.999847412, delta -1.678e-04` for a split the user
+    // never touched, reported to the host as an automation and undo entry.
     // `N` is this transaction's expected topology, read once at entry (ADR-0039). A caller that
     // sees -1 knows nothing it planned was completed as planned.
     // ADR-0041: a refusal is heard. The transaction cannot go on to change the band count with
@@ -723,6 +742,7 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
     for (int i = 0; i <= N; ++i)
     {
         if (bandCount() != N || ! juce::exactlyEqual (bandWidth (i), wd[i])) return -1;
+        if (juce::exactlyEqual (nw[i], wd[i])) continue;   // the plan IS the world here
         setParam (widthP[i], nw[i]);
     }
     for (int i = 0; i < N;  ++i)
@@ -736,6 +756,11 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
         // its own plan over it. `removeBand` has compared exactly since ADR-0040 (:799); this now
         // matches it. Found by an adversarial pass over the shipped ADR-0042 code.
         if (i < M && ! juce::exactlyEqual (crossover (i), fr[i])) return -1;
+        // ...and the split it did not move is not written at all. `xToFreq (freqToX (f))` is a
+        // 30-iteration bisection over a monotone-spline log axis, not the identity, so storing an
+        // unmoved split MOVED it -- measured at -1.678e-04 Hz on a two-band add, into the host's
+        // automation lane and the undo stack for a split the user never touched.
+        if (i < M && juce::exactlyEqual (nx[i], xs[i])) continue;
         setParam (freqP[i],  juce::jlimit (kFreqLo, kFreqHi, xToFreq (nx[i])));
     }
     if (bandCount() != N) return -1;
@@ -801,8 +826,18 @@ void SpectrumImager::removeBand (int b, int expectedBands)
     // ABANDONING MID-BURST LEAVES THE STORES ALREADY ISSUED. That is the right trade and not a
     // half-measure: the alternative -- the completed operation -- puts the OLD count back over the
     // newer one and rewrites the whole layout under it, while abandoning leaves the newer topology
-    // standing and at most one already-issued store behind. A legitimately begun operation truncated
-    // by a newer authority is ADR-0036 section 25's rule, not a stale overwrite.
+    // standing. A legitimately begun operation truncated by a newer authority is ADR-0036 section
+    // 25's rule, not a stale overwrite.
+    //
+    // ADR-0042 CORRECTION: this used to say "at most ONE already-issued store behind", and that was
+    // simply wrong -- an add at N = 3 issues nine stores and a removal at N = 4 issues seven, so the
+    // largest residue is eight and six. The number is bounded and knowable, not one, and it is
+    // counted honestly in the worklog rather than understated here. What DOES reduce it is eliding
+    // the stores whose plan equals the snapshot: below the insertion (or above the removal) most of
+    // the plan is the world it was computed from, and re-writing those slots bought nothing but
+    // reentrancy surface -- plus, for the splits, a pixel round trip that MOVED them. Measured on a
+    // two-band add: `split0 200.000015259 -> 199.999847412, delta -1.678e-04` for a split the user
+    // never touched, reported to the host as an automation and undo entry.
     // ADR-0041: a refusal is heard -- see addBandAt.
     if (bandCount() != expectedBands || soloMask() != oldMask) return;
     if (! setSoloMask (nm, expectedBands, oldMask)) return;
@@ -810,11 +845,13 @@ void SpectrumImager::removeBand (int b, int expectedBands)
     for (int k = 0; k < N - 1; ++k)
     {
         if (bandCount() != expectedBands || ! juce::exactlyEqual (bandWidth (k), wd[k])) return;
+        if (juce::exactlyEqual (nw[k], wd[k])) continue;   // the plan IS the world here
         setParam (widthP[k], nw[k]);
     }
     for (int k = 0; k < N - 2; ++k)
     {
         if (bandCount() != expectedBands || ! juce::exactlyEqual (crossover (k), fr[k])) return;
+        if (juce::exactlyEqual (nf[k], fr[k])) continue;
         setParam (freqP[k],  nf[k]);
     }
     if (bandCount() != expectedBands) return;
