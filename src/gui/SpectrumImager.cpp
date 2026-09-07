@@ -656,6 +656,7 @@ void SpectrumImager::resetCrossover (int i)
     auto* p = (i >= 0 && i < 3) ? freqP[i] : nullptr;
     if (p == nullptr) return;
     const int M = bandCount() - 1;
+    if (i >= M) return;   // same rule as commitFreqEditor: the handle must still name a live split
     float xs[3] {}, was[3] {};
     for (int k = 0; k < M && k < (int) std::size (freqP); ++k)
     {
@@ -902,6 +903,12 @@ void SpectrumImager::commitFreqEditor()
     if (editingHandle < 0) return;
     const int i = editingHandle;
     const int M = bandCount() - 1;
+    // ADR-0039's rule, at this commit point too: the handle names a split by POSITION, and
+    // `openFreqEditor` proved it live when the editor OPENED. Nothing closes the editor when the
+    // band count moves -- not the 24 Hz reconcile, not `cancelActiveDrag` -- so a host lane that
+    // drops Bands while the user is typing leaves this committing a split the topology no longer
+    // uses, and spreading the live ones around a pin that is not there. REFUSE, never clamp.
+    if (i >= M) { closeFreqEditor(); return; }
     float xs[3] {}, was[3] {};
     for (int k = 0; k < M && k < (int) std::size (freqP); ++k)
     {

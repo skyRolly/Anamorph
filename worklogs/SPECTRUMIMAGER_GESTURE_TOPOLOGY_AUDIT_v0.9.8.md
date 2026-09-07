@@ -930,10 +930,10 @@ the exact value its plan assumed.
 
 ## 44. Validation and residuals, round 5
 
-State suite **2 676 / 0**; DSP **396 / 0**; State tests 66–73 unchanged and green. Mutations M1–M10
+State suite **2 680 / 0**; DSP **396 / 0**; State tests 66–73 unchanged and green. Mutations M1–M11
 each killed by exactly the intended leg (M6 kills State test 73 leg (c) as well as State test 74 leg
 A, which is right: one `if` guards both windows; M8 and M9 come from §45's pass over the shipped
-fix, M10 from §46's). `check-realtime` 47/0 with its self-test 93/93,
+fix, M10 from §46's and M11 from §47's). `check-realtime` 47/0 with its self-test 93/93,
 `check-portability` 57/0 with 120/120, `check-docs` 128 clean with 464/464, `check-citations` clean
 against both bases (431 / 415) with self-test 139/139, `git diff --check` clean, `preflight.sh`
 exit 0.
@@ -1112,3 +1112,28 @@ a new value, for a split the user never touched. This is the store-side residue 
 pixel-versus-parameter error §45 fixed in the guard. Both bursts now skip a store whose plan equals
 its snapshot exactly, which removes the perturbation and shrinks the reentrancy surface by the same
 stroke. State test 74 leg M, asserted bit-identical; mutation M10.
+
+## 47. The last one the audit found: a commit point with no live-handle check
+
+Twenty of the audit's ninety-eight adversarial verdicts survived refutation. Nineteen of them are the
+defects already closed in §§37, 45 and 46 — the same finding reached independently from the
+mechanism, observability and guard-already-present lenses. The twentieth is a defect none of the
+earlier rounds had reached, and it is the same rule as ADR-0039's, missing from one more place.
+
+**`commitFreqEditor` never re-proved that its handle still names a live split.** `openFreqEditor`
+checks `i < bandCount() - 1` when the editor **opens**. Nothing closes the editor when the band count
+moves afterwards — not the 24 Hz reconcile, which only resyncs the drawn positions, and not
+`cancelActiveDrag`, which does not touch `editingHandle`. So a host automation lane that drops Bands
+while the user is typing left the commit:
+
+* storing the typed value into a split the topology no longer uses — DSP-inert
+  (`MultibandWidth.h:53-56`), but a real automation and undo entry the user never made, and live
+  again the moment the count returns; and
+* handing `spreadSplits` a pin index outside the live range, so every live split was spread around a
+  pin that is not there.
+
+Closed the way ADR-0039 closed the same class in `removeBand`: **refuse, never clamp.** `i >= M`
+discards the typed value and closes the editor, exactly as pressing Escape would.
+`resetCrossover` gets the same one-line guard for the same reason — its callers derive the handle
+from `handleNearX`, which agrees with `resetCrossover`'s own re-read on the message thread but not
+against a concurrent writer. State test 74 leg N; mutation M11.

@@ -3342,6 +3342,15 @@ static void testAStoreIsNotCommittedUntilTheParameterSaysSo()
         }
         return -1.0f;
     };
+    auto findLastX = [&] (const char* want, float y) -> float
+    {
+        for (float x = W - 3.0f; x > 2.0f; x -= 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
     auto textEditorOf = [&] () -> juce::TextEditor*
     {
         for (int i = 0; i < imager->getNumChildComponents(); ++i)
@@ -3680,6 +3689,42 @@ static void testAStoreIsNotCommittedUntilTheParameterSaysSo()
                "leg M: an add leaves a split its plan does not move bit-identical");
         check (bandsNow() == 3, "leg M: ...and still adds its band");
         check (plainOf (midP) > 200.0f, "leg M: ...and still creates the split it was asked for");
+    }
+
+    // ---- LEG N: a text commit whose split has vanished commits nothing ---------
+    //  The editor is opened against a live split and nothing closes it when the band
+    //  count moves -- not the 24 Hz reconcile, not `cancelActiveDrag`. A host lane
+    //  that drops Bands while the user is typing left the commit writing a split the
+    //  topology no longer uses, into the automation lane and the undo stack, and
+    //  spreading the live splits around a pin that is not there. ADR-0039's rule --
+    //  the handle must still name a live split -- applies at this commit point too.
+    {
+        resetWorld();
+        const float sx = findLastX ("Drag to change the split frequency", laneY);
+        check (sx >= 0.0f, "leg N: the last split's handle is findable");
+        if (sx >= 0.0f)
+        {
+            imager->mouseDoubleClick (mev (sx, chipY, sx, chipY, false));
+            auto* te = textEditorOf();
+            check (te != nullptr, "leg N: the frequency text editor opens on the last chip");
+            if (te != nullptr)
+            {
+                setPlain (bandsP, 2.0f);            // the split being edited is now unused
+                const float frozenHi = plainOf (hiP);
+                const float frozenLo = plainOf (loP);
+                te->setText ("5 kHz", juce::dontSendNotification);
+                if (te->onReturnKey) te->onReturnKey();
+
+                if (! juce::exactlyEqual (frozenHi, plainOf (hiP)))
+                    std::printf ("  [leg N] the commit wrote a split the topology no longer uses:"
+                                 " %.1f Hz -> %.1f Hz at Bands %d\n",
+                                 (double) frozenHi, (double) plainOf (hiP), bandsNow());
+                check (juce::exactlyEqual (frozenHi, plainOf (hiP)),
+                       "leg N: a commit whose split has vanished writes nothing");
+                check (juce::exactlyEqual (frozenLo, plainOf (loP)),
+                       "leg N: ...and spreads no live neighbour around a pin that is not there");
+            }
+        }
     }
 
     // ---- LEG E: positive control -- an uninterrupted delete still removes -------

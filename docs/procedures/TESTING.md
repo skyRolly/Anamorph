@@ -892,7 +892,11 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   and `xToFreq (freqToX (f))` is a bisection over a monotone-spline axis, not the identity — measured
   before the fix as `split0 200.000015259 -> 199.999847412, delta -1.678e-04`, an automation and undo
   entry with a new value for a split the user never touched. Asserted exactly, since "close enough"
-  is what let it stand. Mutation: writing the slot the plan leaves alone → M.
+  is what let it stand. Mutation: writing the slot the plan leaves alone → M. Leg (N) is the one
+  defect the audit reached that no earlier round had: the frequency **text editor** is proved against
+  a live split when it OPENS and nothing closes it when the band count moves, so a host lane dropping
+  Bands while the user types left the commit writing a split the topology no longer uses and spreading
+  the live ones around a pin that is not there. Mutation: committing a vanished split → N.
 
 * **State test 73 — a coupled update is all of it or none of it** (ADR-0041). Three review findings
   of one shape: part of a coupled change applied, the rest not, and nothing downstream able to tell.

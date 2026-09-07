@@ -161,6 +161,14 @@ automation and undo entry, with a new value, for a split the user never touched.
 skip a store whose plan equals its snapshot exactly, which removes the perturbation and shrinks the
 reentrancy surface together.
 
+One defect the audit reached that no earlier round had: **`commitFreqEditor` never re-proved that its
+handle still names a live split.** `openFreqEditor` checks it when the editor opens, and nothing
+closes the editor when the band count moves afterwards, so a host lane dropping Bands while the user
+types left the commit storing into a split the topology no longer uses — an automation and undo entry
+the user never made, live again when the count returns — and handing `spreadSplits` a pin outside the
+live range. Closed the way ADR-0039 closed the same class in `removeBand`: refuse, never clamp.
+`resetCrossover` takes the same guard.
+
 Examined and deliberately not changed: `projectGaps` is a coupled chain, so proving one slot does not
 prove the plan *for* that slot, and an abort part-way can leave the splits out of order **on screen**
 — the same accepted trade as above, since the alternatives are to overwrite a newer authority or to

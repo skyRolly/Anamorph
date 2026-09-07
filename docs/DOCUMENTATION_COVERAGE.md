@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:803 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:804 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:977`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:984`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10169,7 +10169,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:803 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:804 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10513,7 +10513,15 @@ which for the **splits** was a value change, because the plan is carried in pixe
 `split0 200.000015259 -> 199.999847412` for a split the user never touched. Both bursts now elide
 those stores. State test 74 leg M, mutation M10.
 
-**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§36-46 (findings, reproduction,
+**And one defect no earlier round had reached.** `commitFreqEditor` proved its handle live when the
+editor **opened** and never again, and nothing closes the editor when the band count moves — not the
+24 Hz reconcile, not `cancelActiveDrag`. A host lane dropping Bands while the user types left the
+commit storing into a split the topology no longer uses (an automation and undo entry the user never
+made, live again when the count returns) and handing the spread a pin outside the live range. Closed
+the way ADR-0039 closed the same class in `removeBand` — refuse, never clamp — with the same one-line
+guard added to `resetCrossover`. State test 74 leg N, mutation M11.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§36-47 (findings, reproduction,
 the invariant split into its three halves, the reporting contract, the two spreads, the cross-thread
 re-ruling, chronology, the final audit table, validation), `ADR-0042` + the `ADR-0041` correction +
 `ADR_INDEX`, `TESTING.md` (State test 74), `CHANGELOG.md` `[0.9.7]` Fixed. Not a gate item: no
