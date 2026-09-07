@@ -344,7 +344,7 @@ bool SpectrumImager::writeCrossovers (const float* xs, int count)
 }
 // ADR-0042. A SPREAD IS A PLAN, AND A PLAN IS APPLIED ONLY TO THE WORLD IT WAS COMPUTED FROM.
 // A reset and a text commit both move their neighbours aside to make room for one split, and both
-// used to ask the question ADR-0040 removed from `writeCrossovers` at :314-316 -- "does the live
+// used to ask the question ADR-0040 removed from `writeCrossovers` (see its header) -- "does the live
 // value differ from MY target?" -- which a large foreign move answers MORE emphatically, not less.
 // So a host that moved a neighbour from inside the primary store had the plan written over it.
 // Measured: `5000.0 Hz was installed and 2000.0 Hz was written over it`, on both paths.
@@ -356,7 +356,7 @@ bool SpectrumImager::spreadSplits (const float* xs, const float* was, int count,
     for (int k = 0; k < count && k < (int) std::size (freqP); ++k)
     {
         // ADR-0042, and it is the same correction ADR-0040 round-3 made to `writeCrossovers` at
-        // :333: the COUNT is re-proved as well as the value. `count` was read once before the plan
+        // to `writeCrossovers`: the COUNT is re-proved as well as the value. `count` was read before the plan
         // was computed and four dispatches follow it -- the gesture open, the primary store, the
         // gesture close and each neighbour store -- any of which a host can answer by writing
         // mbBands. `was[k]` cannot see that: mbBands is a different parameter.
@@ -753,8 +753,8 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
         // ADR-0041 ruled ownership a PARAMETER question, not a pixel one, and converted the gesture
         // paths; this guard was left in pixels. Half a display pixel is 0.30-0.65 % of the frequency
         // -- 32 Hz at 10 kHz -- so a foreign move that size read as "unchanged" and the burst wrote
-        // its own plan over it. `removeBand` has compared exactly since ADR-0040 (:799); this now
-        // matches it. Found by an adversarial pass over the shipped ADR-0042 code.
+        // its own plan over it. `removeBand`'s split guard has compared exactly since ADR-0040;
+        // this now matches it. Found by an adversarial pass over the shipped ADR-0042 code.
         if (i < M && ! juce::exactlyEqual (crossover (i), fr[i])) return -1;
         // ...and the split it did not move is not written at all. `xToFreq (freqToX (f))` is a
         // 30-iteration bisection over a monotone-spline log axis, not the identity, so storing an
