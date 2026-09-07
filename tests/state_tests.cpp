@@ -1599,6 +1599,244 @@ static void testWrapperProcessBlockAudioPath()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 68 -- a gesture is void once the topology it was defined against
+//  has moved: it writes nothing further, and it fires no on-release action.
+//
+//  WHY A THIRD TEST. Tests 66 and 67 each pinned one consumer against one kind of
+//  staleness. This one pins the INVARIANT, which is what ADR-0038 decided, and it
+//  covers the two cases local validation at the consumers cannot reach:
+//
+//  (1) THE WRITE-THROUGH. A band move validates its PINS against the live count, so
+//      a fallen count leaves `leftPin < 0` and projectFromOrig returns early -- with
+//      `out[]` still holding the DRAG-START positions it copied from dragOrigX.
+//      writeCrossovers then compares those against the live crossovers and writes any
+//      that differ. When the topology change was a RESTORE -- which moves the
+//      crossover values too, not just Bands -- the gesture writes its pre-drag
+//      positions straight over the restored ones. Test 66 leg (e) missed this because
+//      it moved Bands alone, leaving dragOrigX[0] equal to the live crossover, so the
+//      0.5 px threshold suppressed the write. A restore does not leave them equal.
+//
+//  (2) THE ON-RELEASE ACTION. mouseUp is where a gesture DELETES a band, and leg (d)
+//      pins that a gesture voided by a topology change fires none of it.
+//
+//      WHAT LEG (d) DOES NOT PROVE, stated because an earlier draft of this comment
+//      claimed it did: `removeBand` now REFUSES a non-live index instead of clamping
+//      it into a live one, and that refusal is NOT what leg (d) exercises. The
+//      centralized guard returns from mouseUp before removeBand is reached, so the
+//      refusal is shadowed on every path a single-threaded test can build. It exists
+//      for the TOCTOU the guard cannot close -- the count moving between the check and
+//      removeBand's own read -- and that window needs a real concurrent write to enter,
+//      which this suite cannot create. Measured: restoring the clamp AND deleting the
+//      call-site guard leaves all 2544 checks green. The refusal is defence in depth
+//      with no reachable test, and is recorded as such in ADR-0038 rather than carried
+//      as a mutation proof it does not have.
+// ---------------------------------------------------------------------------
+static void testGestureIsVoidOnceTopologyMoves()
+{
+    std::printf ("State test 68: a gesture whose topology moved writes nothing further (ADR-0038)\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the topology-invalidation probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    check (bandsP && loP && midP && hiP, "the multiband parameters the probe drives exist");
+    if (! (bandsP && loP && midP && hiP)) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto bandsNow = [&] { return juce::roundToInt (plainOf (bandsP)); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+    const float laneY = 0.5f * (float) imager->getHeight();
+    const float soloY = 11.0f;
+    const float outY  = -100.0f;
+
+    // Leg E needs the LEFTMOST split: it asserts that the splits the gesture never named
+    // are untouched, and dragging the rightmost one would move `hiP` legitimately -- which
+    // is precisely how the first draft of that leg failed against correct code.
+    auto findFirst = [&] (const char* want, float y) -> float
+    {
+        for (float x = 2.0f; x < (float) imager->getWidth() - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto findLast = [&] (const char* want, float y) -> float
+    {
+        for (float x = (float) imager->getWidth() - 3.0f; x > 2.0f; x -= 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto resetWorld = [&] ()
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 2000.0f);
+        setPlain (hiP, 10000.0f);
+    };
+    // What a RESTORE does, as opposed to an automation lane touching Bands alone: it
+    // installs a whole sound, so the crossover VALUES move with the count.
+    auto hostRestores = [&] (float bands, float lo)
+    {
+        setPlain (bandsP, bands);
+        setPlain (loP,    lo);
+    };
+
+    // ---- LEG A: a band move must not write its pre-drag split over a restore ----
+    {
+        resetWorld();
+        const float sx = findLast ("Solo this band", soloY);
+        check (sx >= 0.0f, "leg A: the last band's solo handle is findable");
+        if (sx >= 0.0f)
+        {
+            imager->mouseDown (mev (sx, soloY, sx, soloY, false));
+            imager->mouseDrag (mev (sx + 8.0f, soloY, sx, soloY, true)); // beginBandMove seeds here
+            hostRestores (2.0f, 900.0f);                                  // the restore lands
+            const float restored = plainOf (loP);
+            imager->mouseDrag (mev (sx + 16.0f, soloY, sx, soloY, true)); // the stale move continues
+            imager->mouseUp   (mev (sx + 16.0f, soloY, sx, soloY, true));
+            const float after = plainOf (loP);
+            if (! juce::exactlyEqual (restored, after))
+                std::printf ("  [leg A] the restored split %.1f Hz was overwritten with %.1f Hz\n",
+                             (double) restored, (double) after);
+            check (juce::exactlyEqual (restored, after),
+                   "leg A: a band move stale against a restore does not overwrite the restored split");
+        }
+    }
+
+    // ---- LEG B: the same for a CROSSOVER drag -----------------------------------
+    {
+        resetWorld();
+        const float hx = findLast ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg B: the last split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx - 10.0f, laneY, hx, laneY, true));
+            hostRestores (2.0f, 900.0f);
+            const float restored = plainOf (loP);
+            imager->mouseDrag (mev (hx - 20.0f, laneY, hx, laneY, true));
+            imager->mouseUp   (mev (hx - 20.0f, laneY, hx, laneY, true));
+            check (juce::exactlyEqual (restored, plainOf (loP)),
+                   "leg B: a crossover drag stale against a restore does not overwrite it either");
+        }
+    }
+
+    // ---- LEG C: a topology RISE voids the gesture just as a fall does -----------
+    {
+        resetWorld();
+        setPlain (bandsP, 2.0f);
+        setPlain (loP, 200.0f);
+        const float hx = findLast ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg C: the split handle is findable at two bands");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx - 10.0f, laneY, hx, laneY, true));
+            setPlain (bandsP, 4.0f);                     // the count rises under the drag
+            const float afterRise = plainOf (loP);
+            imager->mouseDrag (mev (hx - 20.0f, laneY, hx, laneY, true));
+            imager->mouseUp   (mev (hx - 20.0f, laneY, hx, laneY, true));
+            check (juce::exactlyEqual (afterRise, plainOf (loP)),
+                   "leg C: a rise voids the drag too -- no further write");
+            check (bandsNow() == 4, "leg C: ...and the risen band count is left alone");
+        }
+    }
+
+    // ---- LEG D: the removal is safe WITHOUT the call-site guard -----------------
+    //  The TOCTOU cannot be closed by a check, so it is closed by making removeBand
+    //  refuse a non-live index. This leg is the proof: it reaches mouseUp through the
+    //  same armed-then-stale path as State test 67 leg (a), and it must hold even if
+    //  the guard at the call site is deleted -- which is exactly the mutation run.
+    {
+        resetWorld();
+        const float hx = findLast ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg D: the split handle is findable at four bands");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx, outY, hx, laneY, true));   // arm the removal
+            setPlain (bandsP, 2.0f);
+            imager->mouseUp   (mev (hx, outY, hx, laneY, true));
+            if (bandsNow() != 2)
+                std::printf ("  [leg D] Bands 2 -> %d: the stale handle still reached a live band\n", bandsNow());
+            check (bandsNow() == 2,
+                   "leg D: a voided gesture fires no on-release removal");
+        }
+    }
+
+    // ---- LEG E: an UNRELATED band is never touched -----------------------------
+    //  The whole point of the invariant: whatever a void gesture does, it must not
+    //  reach a band it never named. Every crossover is pinned, not just the dragged one.
+    {
+        resetWorld();
+        const float wantMid = plainOf (midP), wantHi = plainOf (hiP);
+        const float hx = findFirst ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg E: the FIRST split's handle is findable at four bands");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx - 10.0f, laneY, hx, laneY, true));
+            setPlain (bandsP, 3.0f);                     // topology moves under the drag
+            imager->mouseDrag (mev (hx - 30.0f, laneY, hx, laneY, true));
+            imager->mouseUp   (mev (hx - 30.0f, laneY, hx, laneY, true));
+            check (juce::exactlyEqual (plainOf (midP), wantMid)
+                   && juce::exactlyEqual (plainOf (hiP), wantHi),
+                   "leg E: no band the gesture never named is modified");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 //  State test 67 -- an outward drag whose split has since vanished removes
 //  NOTHING, rather than deleting whichever band the index now lands on.
 //
@@ -1947,7 +2185,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     // ---- LEG A: crossover drag, Bands 2 -> 4 (two splits appear at once) -------
     {
         resetWorld();
-        const float wantMid = plainOf (midP), wantHi = plainOf (hiP);
+        const float wantMid = plainOf (midP), wantHi = plainOf (hiP), wantLow = plainOf (loP);
         const float hx = findHotspotX ("Drag to change the split frequency", laneY);
         check (hx >= 0.0f, "leg A: the split handle is findable by its tooltip");
         if (hx >= 0.0f)
@@ -1956,8 +2194,14 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
             hostSetsBands (4.0f);                       // the host lane moves mid-gesture
             imager->mouseDrag (mev (hx - 20.0f, laneY, hx, laneY, true));
             imager->mouseUp   (mev (hx - 20.0f, laneY, hx, laneY, true));
-            check (std::abs (plainOf (loP) - 100.0f) > 0.5f,
-                   "leg A: the drag really moved the split it was pinning");
+            // ADR-0038 SUPERSEDED THIS LINE, and the supersession is the point. It used to
+            // read "the drag really moved the split it was pinning" -- a liveness check,
+            // because under the previous design the drag CONTINUED across the rise and had
+            // to be caught doing something. A gesture is now VOID from the instant the
+            // count moves, so the pinned split must not move either. That is strictly
+            // stronger, and it is what made this line fail the moment the guard landed.
+            check (juce::exactlyEqual (plainOf (loP), wantLow),
+                   "leg A: the pinned split does not move either -- the rise voided the gesture");
             checkUntouched (wantMid, wantHi,
                             "leg A: Bands 2->4 mid-drag leaves the two uncaptured splits where they were");
         }
@@ -12497,6 +12741,7 @@ int main (int argc, char* argv[])
     testLegacySlotIsCanonicalAtTheBoundary();
     testBandRiseDuringDragKeepsUncapturedSplits();
     testStaleOutwardDragRemovesNothing();
+    testGestureIsVoidOnceTopologyMoves();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

@@ -518,7 +518,17 @@ void SpectrumImager::removeBand (int b)
 {
     const int N = bandCount();
     if (N <= 1) return;
-    b = juce::jlimit (0, N - 1, b);
+    // REFUSE, NEVER CLAMP (ADR-0038). This used to be `b = juce::jlimit (0, N - 1, b)`, and
+    // that clamp was the mechanism that turned a stale index into a WRONG TARGET: a caller
+    // holding a band number from before a host write of mbBands had its request silently
+    // retargeted onto whichever live band the number now landed on. A caller-side liveness
+    // check cannot close that, because `bandCount()` is a live read and the count can move
+    // between the check and this line -- a check never closes a race, only making the racy
+    // operation safe does. Refusing costs nothing: both callers pass an index they have
+    // already proved live (the delete-x path through `deleteHit`, the outward drag through
+    // its own guard), so this fires only in the window a check cannot reach, and there
+    // doing nothing is the whole point.
+    if (b < 0 || b >= N) return;
     const int dropX = (b == 0) ? 0 : (b - 1); // delete the split on this band's left (#12)
 
     float fr[3], wd[4];
@@ -1621,6 +1631,10 @@ void SpectrumImager::mouseExit (const juce::MouseEvent&)
 void SpectrumImager::mouseDown (const juce::MouseEvent& e)
 {
     if (editingHandle >= 0) commitFreqEditor();
+    // ADR-0038: the topology this gesture is about to be defined against. Taken once, at
+    // the top, so every branch below -- solo press, delete press, handle drag, width drag,
+    // add-and-drag -- is covered by the one snapshot rather than each latching its own.
+    gestureBands = bandCount();
     const auto p = e.position;
     const bool alt = e.mods.isAltDown();
 
@@ -1690,6 +1704,13 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
 }
 void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
 {
+    // ADR-0038. A gesture is defined against the topology it began in; once that has moved
+    // the gesture is VOID, and the one safe thing to do with it is what a release lost
+    // outside the window already does -- close the open parameter gestures, clear the
+    // flags, fire no on-release action. Checked HERE, at the entry of the handler that
+    // acts, rather than inside each consumer: this is the point where the identifiers stop
+    // being trustworthy as a SET.
+    if (topologyMovedUnderGesture()) { cancelActiveDrag(); return; }
     if (soloPressBand >= 0)
     {
         if (soloMovedBand || std::abs (e.position.x - soloDownX) > 4.0f)
@@ -1734,6 +1755,13 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
 }
 void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 {
+    // ADR-0038, and it matters most here: mouseUp is where the ON-RELEASE ACTIONS live --
+    // remove a band, toggle a solo bit, commit a band move. A gesture whose topology moved
+    // must fire none of them, exactly as a release lost outside the window fires none.
+    if (topologyMovedUnderGesture()) { cancelActiveDrag(); updateHover (e.position); return; }
+    // The press is over on EVERY path out of this handler -- the solo and delete branches
+    // both return early -- so the snapshot is dropped here rather than at each exit.
+    gestureBands = -1;
     if (pressDeleteBand >= 0)
     {
         const int dB = pressDeleteBand;
@@ -1807,6 +1835,7 @@ void SpectrumImager::cancelActiveDrag()
     handleHoldActive  = false;
     widthHoldActive   = false;
     soloHoldActive = soloMovedBand = false;
+    gestureBands = -1;            // no gesture in progress -> nothing left to invalidate
     updateHover (getMouseXYRelative().toFloat());
     repaint();
 }

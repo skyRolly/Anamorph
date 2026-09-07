@@ -276,6 +276,22 @@ private:
 
     bool  dragRemovePending = false; // dragged a split far outside -> drop it on release (#18)
 
+    // ADR-0038. THE TOPOLOGY A GESTURE WAS DEFINED AGAINST. Every identifier above --
+    // dragHandle, dragBand, soloPressBand, soloMoveLeft/Right, pressDeleteBand -- names a
+    // split or a band by POSITION, and every one of them is latched when a press begins.
+    // `bandCount()` is a LIVE read of mbBands, which a host can move at any instant, so
+    // each of those names can stop meaning what it meant. Snapshotting the count once per
+    // press, and voiding the whole gesture the moment the live one differs, is what makes
+    // the identifiers safe as a set; validating them one consumer at a time provably is
+    // not (the band move validated its pins and still wrote the unpinned splits from
+    // drag-start origins). -1 = no gesture in progress.
+    int   gestureBands = -1;
+    // True once the count has moved under an active gesture. Message thread only; a plain
+    // comparison of two ints, no lock and no allocation -- the audio thread is not involved
+    // in any of this and must never be.
+    bool  topologyMovedUnderGesture() const noexcept
+    { return gestureBands >= 0 && bandCount() != gestureBands; }
+
     // Crossover band-pass preview gate (0.8.1): the blue/green band-pass curve is a
     // PRESS-AND-HOLD affordance, exactly like the solo audition. A bare click, double-
     // click (reset), repeated clicks, programmatic/preset/A-B change must NOT flash it.

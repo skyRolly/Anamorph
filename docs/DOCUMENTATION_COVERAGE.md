@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:530 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:540 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:657`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:667`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10099,7 +10099,7 @@ or reported-latency change, and no Accepted ADR conflict; message-thread only. [
 
 **A third defect in the same family, and the one that actually reached a wrong target.** Dragging a
 split outside the plot arms `dragRemovePending`, and the release deletes the band that split opens:
-`removeBand (dragHandle + 1)` (src/gui/SpectrumImager.cpp:1776). `dragHandle` is latched at
+`removeBand (dragHandle + 1)` (src/gui/SpectrumImager.cpp:1804). `dragHandle` is latched at
 `mouseDown` and names a split by **position**. A host write of `mbBands` that LOWERS Bands mid-drag
 makes it stale — `dragCrossoverTo` stops steering it, correctly (:363) — but the drag stays **armed**,
 and `removeBand` **clamps** its argument into the live range (`b = juce::jlimit (0, N - 1, b)`,
@@ -10166,7 +10166,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:530 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:540 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10175,3 +10175,59 @@ run in this round checks both.
 deleted is a different user-facing symptom from a crossover moving, unlike the two the previous
 bullet merges). Not a gate item: no parameter ID, serialization, threading-model, DSP-order or
 reported-latency change, and no Accepted ADR conflict; message-thread only. [Verified]
+
+## SpectrumImager gesture lifetime — ADR-0038, and the round that stopped patching consumers (2026-09-07, third pass)
+
+**The question this round answered.** Three rounds had fixed three stale-topology consequences one
+consumer at a time. Review then named two more and asked whether local validation was the right
+architecture at all. It is not, and the audit says so with a measurement rather than an opinion:
+State test 68 leg (b) — the same restore-under-a-drag scenario driven through a **crossover drag** —
+passed *before* any fix, because `dragCrossoverTo` validates and returns; leg (a), the identical
+scenario through a **band move**, failed, because `moveBand` validates its pins and then writes the
+unpinned splits from drag-start origins. One consumer had been made safe and its sibling had not.
+That asymmetry is the case against per-consumer validation.
+
+**Four findings, two named by review and two the audit added.** (1) the `:1775` TOCTOU — the count
+can move between the call-site check and `removeBand`'s own read, and the clamp retargets;
+(2) the `:349` write-through — measured as `the restored split 900.0 Hz was overwritten with
+200.0 Hz`; (3) a topology **rise** also lets a gesture keep writing; (4) a void gesture can write
+splits it never named. All four reproduce against `aa55f20`; legs A, C and E of State test 68 fail
+there.
+
+**Decision: ADR-0038**, centralized invalidation **plus** one primitive made safe. `mouseDown`
+snapshots `bandCount()` once; `mouseDrag`/`mouseUp` void the whole gesture through the existing
+`cancelActiveDrag()` when the live count differs; `removeBand` **refuses** a non-live index instead
+of clamping it into a live one. Neither half suffices: the guard is exact for the message-thread
+topology paths (click-to-add, delete-x, preset, A/B, undo — a mutator would have to run on the same
+thread) and **not** for the two that race (host automation on `mbBands`, and the sound half of
+`setStateInformation`), while the refusal alone does nothing about findings 2-4, which are
+write-through rather than retargeting. Message thread only; no lock, no allocation, no blocking, and
+no audio path touched — `REALTIME_AUDIO_POLICY` is not engaged, and a lock was rejected explicitly
+because `mbBands` is written from the audio thread.
+
+**This changes behaviour, and it supersedes a test written three days ago.** A gesture now *stops*
+when the topology moves, where it used to continue. State test 66 legs (a)-(d) were written to prove
+the gesture continued *correctly* across a rise; they now prove it stops, and leg (a)'s liveness
+check inverted. `captureDragOrigins()` from that round becomes defence in depth: a voided gesture
+never reads the slots beyond its snapshot.
+
+**What could not be proven, stated rather than dressed up.** The refusal in `removeBand` has **no
+reachable test**: the guard returns from `mouseUp` before `removeBand` is called on every path a
+single-threaded suite can build. Measured — restoring the clamp *and* deleting the call-site guard
+leaves all 2 544 checks green. An earlier draft of State test 68 leg (d) claimed to prove it; the
+claim was wrong and the test was corrected rather than the claim left standing. Its justification is
+the code path and the race it closes, not a mutation proof.
+
+**Left open, with the mechanism recorded.** A restore that changes the crossover *values* while
+leaving Bands unchanged does not move the snapshot, so the gesture continues and its writes win.
+Closing it needs a value-level signal — the drag comparing the live crossovers against what it last
+wrote, or the imager observing the processor's `soundSetGen`. No finding in this round claims it and
+no test exercises it. Separately, a vanished band's own Width and its solo mask bit remain writable
+with no gesture in flight; that is Bands/parameter coherence, not gesture lifetime.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` (the investigation),
+`ADR-0038` + `ADR_INDEX` (the decision), `TESTING.md` (State test 68, and State test 66's
+supersession), `CHANGELOG.md` `[0.9.7]` Fixed. Neither `REPOSITORY_MAP.md` nor `SOURCE_OF_TRUTH.md`
+enumerates individual ADRs or worklogs, so neither needed a row. Not a gate item: no parameter ID,
+serialization, threading-model, DSP-order or reported-latency change, and no Accepted ADR conflict.
+[Verified]

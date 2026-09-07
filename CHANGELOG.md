@@ -63,6 +63,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Regression coverage: DSP test 53. Evidence: PR #135. [Verified]
 
 ### Fixed
+- **A drag in the Multiband display now ends when the number of Bands changes underneath it,
+  instead of writing over whatever replaced it.** Dragging a split, or moving a band by its solo
+  handle, is set up against the bands that were there when you pressed. If the Bands control moved
+  while you were still holding — by an automation lane, or by a project or preset loading at that
+  moment — the drag used to carry on regardless, and could write the split positions it started from
+  over the ones that had just arrived: a project you had just opened could have one of its crossover
+  frequencies replaced by a value from before you opened it. The drag now simply ends at that
+  instant, exactly as it does when you release the mouse outside the plug-in window: nothing further
+  is written, and nothing is deleted or soloed on release. **What changes for you:** a drag
+  interrupted this way stops rather than continuing, so you re-grab the handle — the same handful of
+  gestures behave identically whenever the band count stays put, which is every ordinary edit.
+  Decision: ADR-0038. Regression coverage: State test 68. Evidence: PR #143. [Verified]
 - **Releasing a split you dragged out of the display can no longer delete a different band.**
   Dragging a split outside the Multiband display and letting go removes the band that split opens —
   the quick way to merge two bands. The plug-in remembered *which* split you had grabbed by its

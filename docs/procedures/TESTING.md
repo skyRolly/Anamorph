@@ -861,6 +861,24 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 68 — a gesture whose topology moved writes nothing further** (ADR-0038). Pins the
+  invariant rather than a consumer: a `SpectrumImager` gesture is defined against the band topology
+  it began in, and once that moves it is **void** — no further write, no on-release action. Legs:
+  (a) a **band move** stale against a restore must not overwrite the restored split — this is the one
+  the previous rounds missed, because `projectFromOrig` returns early with `out[]` still holding
+  drag-start positions and `writeCrossovers` then writes the ones that differ, which only shows when
+  the topology change moved the crossover **values** too, as a restore does and an automation lane on
+  Bands alone does not; (b) the same scenario through a **crossover drag**, which passed *before* the
+  fix as well — `dragCrossoverTo` validates and returns — and is kept precisely as the measurement
+  that rejects per-consumer validation; (c) a topology **rise** voids the gesture just as a fall does;
+  (d) a voided gesture fires no on-release removal; (e) no split the gesture never named is modified.
+  Legs a, c and e fail against `aa55f20`. Mutation: deleting the centralized guard fails 3 checks
+  across tests 66 and 68, printing `the restored split 900.0 Hz was overwritten with 200.0 Hz`.
+  **What this test does NOT prove**, recorded because an earlier draft claimed it did: `removeBand`'s
+  refusal of a non-live index is shadowed by the guard on every path a single-threaded suite can
+  build — restoring the clamp *and* deleting the call-site guard leaves all checks green. It exists
+  for the TOCTOU a check cannot close, and that window needs a real concurrent write.
+
 * **State test 67 — an outward drag whose split has vanished removes nothing** (stale-drag review).
   Dragging a split far outside the plot arms `dragRemovePending`, and the release deletes the band
   that split opens: `removeBand (dragHandle + 1)`. `dragHandle` is latched at `mouseDown` and names
@@ -908,6 +926,11 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   that hotspot is under the cursor. A sweep that finds nothing fails the test rather than passing
   vacuously, and the editor is built with `advancedMode` already on because `PluginEditor::resized`
   lays the imager out only in Advanced.
+  **Legs (a)-(d) were superseded by ADR-0038** and now assert the stronger statement: a rise
+  VOIDS the gesture, so the pinned split does not move either. Leg (a)'s liveness check —
+  written when the gesture was expected to continue across the rise — inverted, and
+  `captureDragOrigins()` became defence in depth, since a voided gesture never reads the
+  slots beyond its snapshot.
 
 * **State test 64 — a durable capture never records a sound assembled from two replacements**
   (round 18, ADR-0036 §25). §24 excluded two replacements from each other but left every READER of
