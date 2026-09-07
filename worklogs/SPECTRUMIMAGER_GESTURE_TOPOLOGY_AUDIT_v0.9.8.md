@@ -908,10 +908,10 @@ for.
 | `toggleSoloBit` | the word it reads | `m ^ (1 << b)` | via `setSoloMask` | as above | as above | returns false | nothing follows | as above | no |
 | `storeOwned` | the caller's | one value | one | the store's own dispatch | read-back `== expect`, exact | returns false | the caller's | this store | no |
 | `writeCrossovers` | `freqP[k]->getValue()`, `bandCount()` | `xs[]` | up to 3 | each store's dispatch | count + `ownsSplit (k)` before each; `storeOwned` after | returns false | abandoned | stand | no |
-| `spreadSplits` | `freqP[k]->getValue()` at plan time (`was[]`) | `xs[]` from `projectGaps` | up to 2 | each store's dispatch | `getValue() == was[k]` before each; `storeOwned` after | returns false | abandoned | stand | **no — this is the round's P1 fix** |
+| `spreadSplits` | `freqP[k]->getValue()` at plan time (`was[]`), and the split count | `xs[]` from `projectGaps` | up to 2 | each store's dispatch | `bandCount() - 1 == count` **and** `getValue() == was[k]` before each; `storeOwned` after | returns false | abandoned | stand | **no — this is the round's P1 fix** |
 | `resetCrossover` | live splits + `was[]` | default for `i`, `projectGaps` for the rest | 1 primary + `spreadSplits` | the gesture open/close, each store's dispatch | primary confirmed after its gesture closes; then `spreadSplits` | returns before spreading | abandoned | the primary stands | no |
 | `commitFreqEditor` | live splits + `was[]` | parsed value, `projectGaps` for the rest | 1 primary + `spreadSplits` | as `resetCrossover` | as `resetCrossover` | skips the spread; still closes the editor | abandoned | the primary stands | no |
-| `addBandAt` | `bandCount()`, `soloMask()`, `fr[]`, `wd[]` | remapped mask, shifted widths, shifted splits, `N + 1` | mask, ≤5 widths, ≤3 splits, count | every store's dispatch | count + target re-proved before each; mask and count also confirmed after | returns −1 | abandoned | stand (§41) | no — every store's target is re-proved against the snapshot immediately before it |
+| `addBandAt` | `bandCount()`, `soloMask()`, `fr[]`, `wd[]` | remapped mask, shifted widths, shifted splits, `N + 1` | mask, ≤5 widths, ≤3 splits, count | every store's dispatch | count + target re-proved before each, splits **exactly, in parameter space** since §45; mask and count also confirmed after | returns −1 | abandoned | stand (§41) | no — every store's target is re-proved against the snapshot immediately before it |
 | `removeBand` | as `addBandAt` | remapped mask, shifted widths, shifted splits, `N − 1` | mask, ≤3 widths, ≤2 splits, count | every store's dispatch | as `addBandAt`; the final count store's result is discarded because nothing follows it | returns | abandoned | stand (§41) | no |
 | `resetParam` | none | the parameter's default | one, inside a gesture | the gesture open/close, the value dispatch | none — nothing follows it | n/a | n/a | n/a | no |
 | wheel width step | live width | `bandWidth + step` | one | the store's dispatch | none — the press was ended first | n/a | n/a | n/a | no |
@@ -926,9 +926,10 @@ the exact value its plan assumed.
 
 ## 44. Validation and residuals, round 5
 
-State suite **2 667 / 0**; DSP **396 / 0**; State tests 66–73 unchanged and green. Mutations M1–M7
+State suite **2 673 / 0**; DSP **396 / 0**; State tests 66–73 unchanged and green. Mutations M1–M9
 each killed by exactly the intended leg (M6 kills State test 73 leg (c) as well as State test 74 leg
-A, which is right: one `if` guards both windows). `check-realtime` 47/0 with its self-test 93/93,
+A, which is right: one `if` guards both windows; M8 and M9 come from §45's pass over the shipped
+fix). `check-realtime` 47/0 with its self-test 93/93,
 `check-portability` 57/0 with 120/120, `check-docs` 128 clean with 464/464, `check-citations` clean
 against both bases with self-test 139/139, `git diff --check` clean, `preflight.sh` exit 0.
 
@@ -936,3 +937,59 @@ against both bases with self-test 139/139, `git diff --check` clean, `preflight.
 bounded trade with the reopening trigger named; the stores already issued when a transaction
 abandons; and the ADR-0039 disposition of a vanished band's Width and solo bit, which are inert while
 hidden (`SoloMonitor.cpp:85`, `MultibandWidth.h:53-56`) and exact when the count returns.
+
+## 45. The adversarial pass over the shipped round-5 code
+
+The same practice as round 3: once the fix was in the tree and green, a read-only fan-out re-derived
+every store site from the shipped code rather than from the design. It found two more, both real,
+both closed here, and both the *same rule applied inconsistently* rather than a new class.
+
+**D1 — `spreadSplits` re-proved the values but not the COUNT.** `writeCrossovers` has re-proved
+`bandCount()` before every store since ADR-0040's round-3 correction 1; the new helper did not.
+`was[k]` cannot stand in for it: `mbBands` is a different parameter, so a host lowering the count
+from inside the primary store leaves every split holding exactly what it held, and the plan — made
+for the old count — is applied anyway. On a lowering the writes land on splits the new topology does
+not use, so they are DSP-inert (`MultibandWidth.h:53-56`) but reach the host: an automation lane and
+the undo stack record split moves the user never made, and they become live if the count returns.
+Closed by re-proving `bandCount() - 1 == count` at the top of each iteration. State test 74 leg K;
+mutation M8.
+
+**D2 — `addBandAt` owned its splits in PIXELS.** ADR-0041 ruled ownership a parameter question and
+converted the gesture paths; `removeBand` has compared `juce::exactlyEqual (crossover (k), fr[k])`
+since ADR-0040. `addBandAt`'s split guard was still
+`std::abs (freqToX (crossover (i)) - xs[i]) > kSplitMovedPx`, and half a display pixel is 32 Hz at
+10 kHz (§29's table) — so a fully representable, fully automatable host move that size read as
+"unchanged" and the burst wrote its own plan over it. This is precisely the defect ADR-0041 named,
+surviving in the one guard that round did not convert. Closed by capturing `fr[]` alongside `xs[]`
+and comparing exactly. State test 74 leg L; mutation M9.
+
+**Examined and NOT changed, with the reason:**
+
+* **The coupled plan can still be applied in part.** `projectGaps` is a chain — `xs[k]` is a function
+  of the *other* slots' snapshot — so proving slot `k` in isolation does not prove the plan *for*
+  slot `k` is still valid, and an abort part-way can leave the splits out of order on screen. This is
+  the same accepted trade as §41, arrived at from the other direction: the alternatives are to
+  overwrite a newer authority (forbidden) or to commit atomically (unavailable). The DSP is unaffected
+  — `MultibandWidth::setCrossovers` and `SoloMonitor::setCrossovers` force `1.1×` ordering on whatever
+  they read — so the residual is a display artefact until the next edit.
+* **`resetCrossover` writes a pixel round trip of the default rather than `getDefaultValue()`**
+  (`freqToX` out, `xToFreq` back through a 30-iteration bisection). About 1e-6 Hz at 180 Hz, and
+  nothing on any path compares these parameters to their default exactly. Inert; recorded, not
+  changed.
+* **`resetCrossover` does not refresh `gestureX`.** `mouseDown` latches the gesture snapshot at the
+  top for every branch, and the alt-click branch then resets a split without updating it — so
+  `soundMovedUnderGesture()` reports true for the slots the reset moved. It is harmless only because
+  that branch latches no identifier, so `cancelActiveDrag` takes its early return. Pre-existing,
+  unchanged by this round, recorded as a residual rather than fixed inside a round about stores.
+* **The neighbour stores are outside any change-gesture bracket**, matching `writeCrossovers` and the
+  drag path, which bracket only the split the user is holding. Consistent with the existing design;
+  an observation, not a defect.
+* **`kSplitMovedPx` inside `spreadSplits` is correct.** It now runs strictly *after* the exact
+  ownership compare and `continue`s rather than storing, so it does only the job ADR-0041 left it —
+  deciding whether a write is worth making on a slot already proved to be ours. It cannot mistake a
+  foreign value for a small delta at any magnitude.
+
+One correction to this round's own ground facts, from the same pass: in this tree the JUCE parameter
+sources are under `modules/juce_audio_processors_headless/processors/`, not
+`modules/juce_audio_processors/processors/`. Every line number cited in this worklog and in ADR-0042
+is correct in the headless copy.

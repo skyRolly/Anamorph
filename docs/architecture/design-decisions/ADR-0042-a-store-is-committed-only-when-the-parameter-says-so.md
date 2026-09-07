@@ -107,6 +107,31 @@ statements never arrives at the output. The one discontinuous quantity, `mbBands
 change routed through the engine's silent switch-duck and is written **last** by both bursts, which is
 why the store order is kept.
 
+## The adversarial pass over the shipped fix
+
+Once the fix was in the tree and green, a read-only fan-out re-derived every store site from the
+shipped code. It found two more, both the same rule applied inconsistently rather than a new class,
+and both are closed here:
+
+* **`spreadSplits` re-proved the values but not the count.** `writeCrossovers` has re-proved
+  `bandCount()` before every store since ADR-0040's round-3 correction; the new helper did not, and
+  `was[k]` cannot stand in for it because `mbBands` is a different parameter. A host lowering the
+  count from inside the primary store left every split holding what it held, so the plan — made for
+  the old count — was applied anyway, reaching the host as automation and undo entries the user never
+  made. Closed by `bandCount() - 1 == count` at the top of each iteration.
+* **`addBandAt` owned its splits in pixels.** ADR-0041 ruled ownership a parameter question and
+  converted the gesture paths; `removeBand` has compared `juce::exactlyEqual (crossover (k), fr[k])`
+  since ADR-0040, and this one guard was left on `kSplitMovedPx` — 32 Hz at 10 kHz, so a fully
+  representable, fully automatable host move that size read as "unchanged" and the burst wrote over
+  it. Closed by capturing the splits in parameter space alongside the pixel plan.
+
+Examined and deliberately not changed: `projectGaps` is a coupled chain, so proving one slot does not
+prove the plan *for* that slot, and an abort part-way can leave the splits out of order **on screen**
+— the same accepted trade as above, since the alternatives are to overwrite a newer authority or to
+commit atomically; the DSP force-orders whatever it reads. `resetCrossover` writes a pixel round trip
+of the default (~1e-6 Hz) and does not refresh `gestureX`; both are pre-existing, inert on every
+reachable path, and recorded in the worklog rather than changed inside a round about stores.
+
 ## Consequences
 
 * A user edit that a host is simultaneously automating on the same parameter now aborts instead of

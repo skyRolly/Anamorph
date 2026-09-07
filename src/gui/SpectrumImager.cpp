@@ -355,6 +355,12 @@ bool SpectrumImager::spreadSplits (const float* xs, const float* was, int count,
 {
     for (int k = 0; k < count && k < (int) std::size (freqP); ++k)
     {
+        // ADR-0042, and it is the same correction ADR-0040 round-3 made to `writeCrossovers` at
+        // :333: the COUNT is re-proved as well as the value. `count` was read once before the plan
+        // was computed and four dispatches follow it -- the gesture open, the primary store, the
+        // gesture close and each neighbour store -- any of which a host can answer by writing
+        // mbBands. `was[k]` cannot see that: mbBands is a different parameter.
+        if (bandCount() - 1 != count) return false;
         if (k == except || freqP[k] == nullptr) continue;
         if (! juce::exactlyEqual (freqP[k]->getValue(), was[k])) return false;
         if (std::abs (freqToX (crossover (k)) - xs[k]) <= kSplitMovedPx) continue;
@@ -666,7 +672,8 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
     if (N >= 4) return -1;
     const int M = N - 1; // existing crossovers
     float xs[3];
-    for (int k = 0; k < M; ++k) xs[k] = freqToX (crossover (k));
+    float fr[3] {};      // the same splits in PARAMETER space, for the ownership compare below
+    for (int k = 0; k < M; ++k) { xs[k] = freqToX (crossover (k)); fr[k] = crossover (k); }
     const float clickX = freqToX (juce::jlimit (kFreqLo, kFreqHi, hz));
 
     int ins = 0;
@@ -722,7 +729,12 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
         // The plan was computed from the M = N - 1 splits that EXIST; slot M is the one this add
         // creates and there is nothing there to own, so only the existing ones are re-proved.
         if (bandCount() != N) return -1;
-        if (i < M && std::abs (freqToX (crossover (i)) - xs[i]) > kSplitMovedPx) return -1;
+        // ADR-0041 ruled ownership a PARAMETER question, not a pixel one, and converted the gesture
+        // paths; this guard was left in pixels. Half a display pixel is 0.30-0.65 % of the frequency
+        // -- 32 Hz at 10 kHz -- so a foreign move that size read as "unchanged" and the burst wrote
+        // its own plan over it. `removeBand` has compared exactly since ADR-0040 (:799); this now
+        // matches it. Found by an adversarial pass over the shipped ADR-0042 code.
+        if (i < M && ! juce::exactlyEqual (crossover (i), fr[i])) return -1;
         setParam (freqP[i],  juce::jlimit (kFreqLo, kFreqHi, xToFreq (nx[i])));
     }
     if (bandCount() != N) return -1;

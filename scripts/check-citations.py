@@ -356,7 +356,7 @@ DELIBERATE_REAIMS = {
     # named here and a target left at :471 would silently switch the check off.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:493"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:499"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

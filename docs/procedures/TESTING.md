@@ -881,7 +881,13 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   side → D; `spreadSplits` dropping the ownership check → B and C; `resetCrossover` not confirming
   its own store → J(ii); `commitFreqEditor` not confirming its own store → I(ii); `removeBand`
   ignoring a refused mask store → A **and** State test 73 leg (c); `addBandAt` ignoring a refused
-  count store → D.
+  count store → D. Legs (K) and (L) come from the adversarial pass over the shipped fix and hold the
+  two inconsistencies it found: (K) a spread whose **band count** moved under it writes no neighbour
+  — `was[k]` cannot see a `mbBands` change, because that is a different parameter; (L) an add burst
+  whose split moved by **20 Hz at 10 kHz** — inside the old half-pixel window, five orders of
+  magnitude above the parameter's resolution and fully automatable — does not raise the band count
+  and leaves the value that arrived standing. Mutations: dropping the count re-proof → K; the split
+  guard back in pixel space → L.
 
 * **State test 73 — a coupled update is all of it or none of it** (ADR-0041). Three review findings
   of one shape: part of a coupled change applied, the rest not, and nothing downstream able to tell.

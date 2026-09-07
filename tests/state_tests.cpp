@@ -3583,6 +3583,78 @@ static void testAStoreIsNotCommittedUntilTheParameterSaysSo()
         }
     }
 
+    // ---- LEG K: the spread re-proves the COUNT, not only the values ------------
+    //  `writeCrossovers` has re-proved `bandCount()` before every store since ADR-0040's
+    //  round-3 correction. The spread's `was[k]` compare cannot stand in for it: mbBands
+    //  is a different parameter, so a host lowering the count from inside the primary
+    //  store leaves every split still holding what it held, and the plan -- made for the
+    //  old count -- is applied to splits the new topology does not use.
+    {
+        auto crowded = [&] ()
+        {
+            imager->cancelActiveDrag();
+            setPlain (bandsP, 4.0f);
+            setPlain (soloP,  0.0f);
+            setPlain (loP,    50.0f);
+            setPlain (midP,  200.0f);
+            setPlain (hiP, 10000.0f);
+        };
+        crowded();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg K: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            WriteFromInsideAStore poke;
+            poke.target = bandsP;                 // the COUNT moves, the splits do not
+            poke.to     = 2.0f;
+            loP->addListener (&poke);
+            poke.armed = true;
+            imager->mouseDown (mevAlt (hx, laneY));
+            const bool landed = poke.fired;
+            loP->removeListener (&poke);
+
+            check (landed, "leg K: the probe write landed inside resetCrossover's own store");
+            if (landed && plainOf (midP) > 225.0f)
+                std::printf ("  [leg K] the count moved to %d and the spread applied a plan made for"
+                             " the old one: the neighbour was pushed to %.1f Hz\n",
+                             bandsNow(), (double) plainOf (midP));
+            check (! landed || plainOf (midP) <= 225.0f,
+                   "leg K: a spread whose band count moved under it writes no neighbour");
+        }
+    }
+
+    // ---- LEG L: the add burst owns its splits in PARAMETER space ---------------
+    //  ADR-0041 ruled ownership a parameter question and converted the gesture paths;
+    //  `addBandAt`'s split guard was left comparing display pixels. Half a pixel is
+    //  32 Hz at 10 kHz, so a fully representable, fully automatable host move that size
+    //  read as "unchanged" and the burst wrote its own plan over it. `removeBand` has
+    //  compared exactly since ADR-0040; this is the sibling catching up.
+    {
+        resetWorld();
+        setPlain (bandsP, 3.0f);
+        setPlain (loP,    200.0f);
+        setPlain (midP, 10000.0f);
+        WriteFromInsideAStore poke;
+        poke.target = midP;                       // 20 Hz at 10 kHz: inside the old half pixel
+        poke.to     = 10020.0f;
+        soloP->addListener (&poke);               // the mask is the burst's FIRST store
+        poke.armed = true;
+        imager->mouseDown (mev (W * 0.80f, 30.0f, W * 0.80f, 30.0f, false));
+        const bool landed = poke.fired;
+        imager->mouseUp   (mev (W * 0.80f, 30.0f, W * 0.80f, 30.0f, true));
+        soloP->removeListener (&poke);
+
+        check (landed, "leg L: the probe write landed inside the add burst's first store");
+        if (landed && bandsNow() != 3)
+            std::printf ("  [leg L] a 20 Hz host move at 10 kHz read as the burst's own:"
+                         " Bands became %d and the split is %.1f Hz\n",
+                         bandsNow(), (double) plainOf (midP));
+        check (! landed || bandsNow() == 3,
+               "leg L: an add burst whose split moved under it does not raise the band count");
+        check (! landed || std::abs (plainOf (midP) - 10020.0f) <= 1.0f,
+               "leg L: ...and the value that arrived stands");
+    }
+
     // ---- LEG E: positive control -- an uninterrupted delete still removes -------
     {
         resetWorld();
