@@ -1837,6 +1837,470 @@ static void testGestureIsVoidOnceTopologyMoves()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 69 -- the gesture's own topology change is part of the gesture,
+//  and a change that lands INSIDE mouseUp must not reach a live band.
+//
+//  TWO REVIEW FINDINGS, one from each direction of the ADR-0038 guard.
+//
+//  (1) TOO BROAD. `gestureBands` was snapshotted at the TOP of mouseDown, before
+//      the add-area branch runs. That branch's whole job is to CREATE a split and
+//      hand the press to it -- `addBandAt` raises Bands, `dragHandle = idx` is
+//      latched afterwards -- so the snapshot named a topology that the press
+//      itself had already left. The next mouseDrag compared 3 against 2, called
+//      the gesture void and cancelled it: click-to-add-and-drag, one of the
+//      imager's primary interactions, stopped following the cursor.
+//
+//  (2) TOO NARROW. `bandCount()` is a LIVE read and the release path reads it
+//      MORE THAN ONCE: the guard at the top of mouseUp, then the outward-drag
+//      liveness check, then `removeBand` itself. Between the second and the
+//      third there is a real window -- `endGesture` on the dragged split runs
+//      first, and any listener on that parameter (a host recording automation,
+//      a control surface, the sound half of a restore) can move Bands inside it.
+//      A range check cannot close that: the stale index simply lands inside the
+//      NEW range and the removal proceeds against a topology the user never saw.
+//
+//  THE INVARIANT: a gesture is defined against the topology in force when its
+//  IDENTIFIERS were latched -- which is after its own add, not before -- and
+//  every on-release operation must be refused unless the topology it observes is
+//  still that one. Legs (d) and (e) are the positive controls: both removal paths
+//  must still remove when nothing moved underneath them.
+// ---------------------------------------------------------------------------
+namespace
+{
+// A host moving Bands at the instant of release, made deterministic. JUCE calls
+// AudioProcessorParameter::Listener::parameterGestureChanged SYNCHRONOUSLY from
+// endChangeGesture (juce_AudioProcessorParameter.cpp:101), so arming this on the
+// dragged split's parameter lands the write in the exact window between mouseUp's
+// liveness check and removeBand's own read of the count. No thread, no sleep, no
+// test-only production code -- a real listener on a real parameter.
+struct BandsMoveOnGestureEnd final : public juce::AudioProcessorParameter::Listener
+{
+    juce::RangedAudioParameter* bands = nullptr;
+    float to = 4.0f;
+    bool  armed = false;
+    void parameterValueChanged (int, float) override {}
+    void parameterGestureChanged (int, bool starting) override
+    {
+        if (starting || ! armed || bands == nullptr) return;
+        armed = false; // one shot: the nested write must not re-enter
+        bands->setValueNotifyingHost (bands->convertTo0to1 (to));
+    }
+};
+} // namespace
+
+static void testGestureOwnsTheTopologyItCreated()
+{
+    std::printf ("State test 69: a gesture owns the topology it created, and none it did not\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the gesture-ownership probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the ownership probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* wMidP  = apvts.getParameter (pid::mbWidthMid);
+    check (bandsP && loP && midP && hiP && wLoP && wMidP,
+           "the multiband parameters the ownership probe drives exist");
+    if (! (bandsP && loP && midP && hiP && wLoP && wMidP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto bandsNow = [&] { return juce::roundToInt (plainOf (bandsP)); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+    const float W     = (float) imager->getWidth();
+    const float H     = (float) imager->getHeight();
+    const float laneY = 0.5f * H;
+    const float outY  = -100.0f;
+    // The add affordance is the LAST hover branch (SpectrumImager.cpp:1589-1596): solo,
+    // then handle, then width line, then add. At the vertical middle of the lane the
+    // width line for the default Width of 1.0 sits at laneBot - 0.5 * (laneBot - laneTop)
+    // = 0.5 * H - 7, i.e. 7 px from laneY -- inside the 8 px grab -- so a scan there
+    // reports "Band width" everywhere and never reaches the add branch. Probe just below
+    // the solo row instead (soloBox ends at plot().getY() + 18), which clears the width
+    // line for every Width up to 2.0 by more than the grab.
+    const float addY  = 30.0f;
+    // deleteBox(0) = { plot().getX() + 5, rulerY() - 22, 14, 14 } with
+    // plot() = getLocalBounds().reduced(1) and rulerY() = plot().getBottom() - 14
+    // (SpectrumImager.cpp:154, :166, :224) -- band 0's x is therefore fixed by the
+    // component size alone, with no split position to find first.
+    const float delX  = 13.0f;
+    const float delY  = H - 30.0f;
+
+    auto findFrom = [&] (const char* want, float y, float x0, float dx) -> float
+    {
+        for (float x = x0; x > 2.0f && x < W - 2.0f; x += dx)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto resetWorld = [&] ()
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 2000.0f);
+        setPlain (hiP, 10000.0f);
+        setPlain (wLoP,   1.0f);
+        setPlain (wMidP,  1.0f);
+    };
+
+    // ---- LEG A: the split the press CREATED must follow the press --------------
+    {
+        resetWorld();
+        setPlain (bandsP, 2.0f);
+        setPlain (loP,   200.0f);
+        // Add to the RIGHT of the only split, so the new one is index 1 (mbFreqMid)
+        // and a rightward drag has room before the min-gap edge clamp.
+        const float ax = findFrom ("Click to add a band split", addY, 0.55f * W, -1.0f);
+        check (ax >= 0.0f, "leg A: an add area is findable at two bands");
+        if (ax >= 0.0f)
+        {
+            imager->mouseDown (mev (ax, addY, ax, addY, false));
+            check (bandsNow() == 3, "leg A: the press added the split");
+            const float born = plainOf (midP);
+            imager->mouseDrag (mev (ax + 20.0f, addY, ax, addY, true));
+            imager->mouseDrag (mev (ax + 60.0f, addY, ax, addY, true));
+            const float dragged = plainOf (midP);
+            if (! (dragged > born + 5.0f))
+                std::printf ("  [leg A] the new split stayed at %.1f Hz (from %.1f Hz): the press's own"
+                             " add voided its gesture\n", (double) dragged, (double) born);
+            check (dragged > born + 5.0f,
+                   "leg A: the newly added split follows the press that created it");
+            imager->mouseUp (mev (ax + 60.0f, addY, ax, addY, true));
+            check (bandsNow() == 3, "leg A: ...and the release adds nothing further");
+        }
+    }
+
+    // ---- LEG B: an EXTERNAL change after that add still voids the gesture -------
+    {
+        resetWorld();
+        setPlain (bandsP, 2.0f);
+        setPlain (loP,   200.0f);
+        const float ax = findFrom ("Click to add a band split", addY, 0.55f * W, -1.0f);
+        check (ax >= 0.0f, "leg B: an add area is findable at two bands");
+        if (ax >= 0.0f)
+        {
+            imager->mouseDown (mev (ax, addY, ax, addY, false));
+            imager->mouseDrag (mev (ax + 20.0f, addY, ax, addY, true));
+            setPlain (bandsP, 4.0f);                       // now an OUTSIDE hand moves it
+            const float frozen = plainOf (midP);
+            imager->mouseDrag (mev (ax + 60.0f, addY, ax, addY, true));
+            imager->mouseUp   (mev (ax + 60.0f, addY, ax, addY, true));
+            check (juce::exactlyEqual (frozen, plainOf (midP)),
+                   "leg B: re-snapshotting for the press's own add does not license an external one");
+        }
+    }
+
+    // ---- LEG C: a change landing INSIDE mouseUp removes nothing -----------------
+    {
+        resetWorld();
+        setPlain (bandsP, 2.0f);
+        setPlain (loP,   200.0f);
+        const float hx = findFrom ("Drag to change the split frequency", laneY, W - 3.0f, -1.0f);
+        check (hx >= 0.0f, "leg C: the split handle is findable at two bands");
+        if (hx >= 0.0f)
+        {
+            BandsMoveOnGestureEnd bump;
+            bump.bands = bandsP;
+            bump.to    = 4.0f;
+            loP->addListener (&bump);
+
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx, outY, hx, laneY, true));   // arm the removal
+            const float wantMid = plainOf (midP), wantHi = plainOf (hiP);
+            const float wantWLo = plainOf (wLoP), wantWMid = plainOf (wMidP);
+            bump.armed = true;                                     // fires inside endGesture
+            imager->mouseUp (mev (hx, outY, hx, laneY, true));
+            loP->removeListener (&bump);
+
+            if (bandsNow() != 4)
+                std::printf ("  [leg C] Bands 4 -> %d: the release read a count the check never saw\n",
+                             bandsNow());
+            check (bandsNow() == 4,
+                   "leg C: a Bands move inside mouseUp removes no band");
+            check (juce::exactlyEqual (plainOf (midP),  wantMid)
+                   && juce::exactlyEqual (plainOf (hiP),   wantHi)
+                   && juce::exactlyEqual (plainOf (wLoP),  wantWLo)
+                   && juce::exactlyEqual (plainOf (wMidP), wantWMid),
+                   "leg C: ...and rewrites no split or width of the topology it never saw");
+        }
+    }
+
+    // ---- LEG D: positive control -- the delete x still deletes ------------------
+    {
+        resetWorld();
+        setPlain (bandsP, 2.0f);
+        imager->mouseDown (mev (delX, delY, delX, delY, false));
+        imager->mouseUp   (mev (delX, delY, delX, delY, true));
+        check (bandsNow() == 1, "leg D: the delete x still removes its band");
+    }
+
+    // ---- LEG F: repeated topology changes inside ONE gesture --------------------
+    //  The guard compares against a SNAPSHOT, not against the previous frame, so a
+    //  second change must not look like "back to normal". Voiding also clears the
+    //  drag flags, so the second change lands on a gesture that no longer exists --
+    //  which is the point: there is nothing left for it to make stale.
+    {
+        resetWorld();
+        const float hx = findFrom ("Drag to change the split frequency", laneY, W - 3.0f, -1.0f);
+        check (hx >= 0.0f, "leg F: the split handle is findable at four bands");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx - 10.0f, laneY, hx, laneY, true));
+            setPlain (bandsP, 3.0f);                       // first change
+            const float frozenLo = plainOf (loP), frozenMid = plainOf (midP);
+            imager->mouseDrag (mev (hx - 30.0f, laneY, hx, laneY, true));
+            setPlain (bandsP, 2.0f);                       // second, on an already-void gesture
+            imager->mouseDrag (mev (hx - 50.0f, laneY, hx, laneY, true));
+            imager->mouseUp   (mev (hx - 50.0f, laneY, hx, laneY, true));
+            check (juce::exactlyEqual (frozenLo, plainOf (loP))
+                   && juce::exactlyEqual (frozenMid, plainOf (midP)),
+                   "leg F: a second topology change writes nothing either");
+            check (bandsNow() == 2, "leg F: ...and the release removes no band");
+        }
+    }
+
+    // ---- LEG E: positive control -- a steady outward drag still removes ---------
+    {
+        resetWorld();
+        const float hx = findFrom ("Drag to change the split frequency", laneY, W - 3.0f, -1.0f);
+        check (hx >= 0.0f, "leg E: the split handle is findable at four bands");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx, outY, hx, laneY, true));
+            imager->mouseUp   (mev (hx, outY, hx, laneY, true));
+            check (bandsNow() == 3, "leg E: an outward drag at a steady count still removes its band");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 70 -- an authoritative sound change voids a gesture even when it
+//  leaves the band COUNT alone.
+//
+//  THE GAP ADR-0038 LEFT. `gestureBands` watches mbBands, so a restore that moves
+//  the count voids the drag. A restore that installs a whole sound at the SAME
+//  count moves no counter the gesture watches, so the drag continues -- and it
+//  continues from `dragOrigX`, which holds the positions of the sound that has
+//  just been replaced. `projectFromOrig` pulls every unpinned split toward those
+//  stale origins and `writeCrossovers` pushes the ones that differ back to the
+//  host, inside the change gesture the drag opened. The restored value is undone
+//  by a gesture the user never aimed at it.
+//
+//  THE INVARIANT: a gesture is defined against the sound it began in, not only
+//  against the count. If any split has moved since this gesture last left it
+//  there, the sound is not the one the gesture was defined against and the
+//  gesture is void -- the same answer ADR-0038 gives for the count.
+//
+//  Legs (c) and (d) are the positive controls that keep the rule honest: the
+//  drag's OWN writes must not read as an outside change, and the neighbour
+//  push/spring-back projection (#8-#11) must survive untouched.
+// ---------------------------------------------------------------------------
+static void testAuthoritativeSoundChangeVoidsAGesture()
+{
+    std::printf ("State test 70: a sound change under a gesture voids it, count or no count\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the sound-change probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the sound-change probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    check (bandsP && loP && midP && hiP, "the multiband parameters the sound-change probe drives exist");
+    if (! (bandsP && loP && midP && hiP)) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+    const float W     = (float) imager->getWidth();
+    const float laneY = 0.5f * (float) imager->getHeight();
+    const float soloY = 11.0f;
+
+    auto findFirst = [&] (const char* want, float y) -> float
+    {
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto resetWorld = [&] ()
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 2000.0f);
+        setPlain (hiP, 10000.0f);
+    };
+
+    // ---- LEG A: a value-only restore under a CROSSOVER drag --------------------
+    {
+        resetWorld();
+        const float hx = findFirst ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg A: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx - 10.0f, laneY, hx, laneY, true));
+            setPlain (hiP, 15000.0f);                 // a whole-sound install at the SAME count
+            const float restored = plainOf (hiP);
+            imager->mouseDrag (mev (hx - 30.0f, laneY, hx, laneY, true));
+            imager->mouseUp   (mev (hx - 30.0f, laneY, hx, laneY, true));
+            if (! juce::exactlyEqual (restored, plainOf (hiP)))
+                std::printf ("  [leg A] the restored split %.1f Hz was pulled back to %.1f Hz by a drag"
+                             " that never named it\n", (double) restored, (double) plainOf (hiP));
+            check (juce::exactlyEqual (restored, plainOf (hiP)),
+                   "leg A: a value-only sound change is not undone by the drag that outlived it");
+        }
+    }
+
+    // ---- LEG B: the same under a BAND MOVE ------------------------------------
+    {
+        resetWorld();
+        const float sx = findFirst ("Solo this band", soloY);
+        check (sx >= 0.0f, "leg B: the first band's solo handle is findable");
+        if (sx >= 0.0f)
+        {
+            imager->mouseDown (mev (sx, soloY, sx, soloY, false));
+            imager->mouseDrag (mev (sx + 8.0f, soloY, sx, soloY, true));   // beginBandMove seeds here
+            setPlain (hiP, 15000.0f);
+            const float restored = plainOf (hiP);
+            imager->mouseDrag (mev (sx + 16.0f, soloY, sx, soloY, true));
+            imager->mouseUp   (mev (sx + 16.0f, soloY, sx, soloY, true));
+            check (juce::exactlyEqual (restored, plainOf (hiP)),
+                   "leg B: a band move stale against a value-only change does not undo it either");
+        }
+    }
+
+    // ---- LEG C: positive control -- the drag's own writes are not an outside change ----
+    {
+        resetWorld();
+        const float hx = findFirst ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg C: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            const float before = plainOf (loP);
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            for (float d = 4.0f; d <= 40.0f; d += 4.0f)          // ten steps, each one a write
+                imager->mouseDrag (mev (hx + d, laneY, hx, laneY, true));
+            imager->mouseUp (mev (hx + 40.0f, laneY, hx, laneY, true));
+            check (plainOf (loP) > before + 5.0f,
+                   "leg C: a plain multi-step drag still moves its own split");
+        }
+    }
+
+    // ---- LEG D: positive control -- neighbours are still pushed and spring back ----
+    {
+        resetWorld();
+        const float hx = findFirst ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg D: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            const float restMid = plainOf (midP);
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (W - 20.0f, laneY, hx, laneY, true));   // shove it past its neighbour
+            const float pushed = plainOf (midP);
+            imager->mouseDrag (mev (hx, laneY, hx, laneY, true));          // and bring it back
+            const float sprung = plainOf (midP);
+            imager->mouseUp   (mev (hx, laneY, hx, laneY, true));
+            check (pushed > restMid + 5.0f, "leg D: the neighbour is still pushed aside");
+            check (std::abs (sprung - restMid) < 1.0f, "leg D: ...and still springs back");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 //  State test 67 -- an outward drag whose split has since vanished removes
 //  NOTHING, rather than deleting whichever band the index now lands on.
 //
@@ -12742,6 +13206,8 @@ int main (int argc, char* argv[])
     testBandRiseDuringDragKeepsUncapturedSplits();
     testStaleOutwardDragRemovesNothing();
     testGestureIsVoidOnceTopologyMoves();
+    testGestureOwnsTheTopologyItCreated();
+    testAuthoritativeSoundChangeVoidsAGesture();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

@@ -861,6 +861,35 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 70 — a sound change under a gesture voids it, count or no count** (ADR-0039). The
+  half `gestureBands` could not see: a restore, preset, A/B apply, undo or automation lane can
+  install a whole sound at the SAME band count, and the drag then keeps projecting from `dragOrigX`
+  — the positions of the sound that was just replaced — and writes the unpinned splits back over it.
+  Legs: (a) a value-only change under a **crossover drag**, which prints `the restored split
+  15000.0 Hz was pulled back to 10000.0 Hz by a drag that never named it` against `b65ce4e`; (b) the
+  same through a **band move**; (c) positive control — a ten-step drag must still move its own split,
+  so the drag's own writes can never read as somebody else's; (d) positive control — a neighbour must
+  still be pushed aside and still spring back (#8–#11), which is what forbids "re-seed `dragOrigX`"
+  as the fix. Mutations: dropping the sound half of the predicate kills legs (a) and (b); dropping
+  the `writeCrossovers` refresh of `gestureX` kills leg (d).
+
+* **State test 69 — a gesture owns the topology it created, and none it did not** (ADR-0039). One
+  leg for each direction of the ADR-0038 guard. Legs: (a) the split the press **created** must follow
+  it — the add-area branch raises Bands *after* the old snapshot was taken, so the first `mouseDrag`
+  cancelled the brand-new drag (`the new split stayed at 1392.1 Hz (from 1392.1 Hz)`); (b) an
+  **external** change after that same add still voids, so the re-snapshot licenses only the press's
+  own change; (c) a Bands move landing **inside `mouseUp`** removes no band and rewrites no split or
+  width (`Bands 4 -> 3: the release read a count the check never saw`) — the window is made
+  deterministic with a `juce::AudioProcessorParameter::Listener` on the dragged split, because JUCE
+  dispatches `parameterGestureChanged` synchronously from `endChangeGesture`
+  (`juce_AudioProcessorParameter.cpp:101`) and `mouseUp` calls `endGesture` before the removal;
+  (d) positive control — the delete x still deletes; (e) positive control — a steady outward drag
+  still removes; (f) repeated topology changes inside one gesture write nothing either. Legs (a) and
+  (c) fail against `b65ce4e`. Mutations: dropping the topology contract, restoring the whole
+  pre-ADR-0038 `removeBand` (clamp and all), **and** restoring the round-3 caller-side liveness check
+  in place of the contract each kill leg (c) — the last being the measurement that shows a
+  caller-side check is not a fix; dropping the add branch's re-snapshot kills leg (a).
+
 * **State test 68 — a gesture whose topology moved writes nothing further** (ADR-0038). Pins the
   invariant rather than a consumer: a `SpectrumImager` gesture is defined against the band topology
   it began in, and once that moves it is **void** — no further write, no on-release action. Legs:
@@ -878,6 +907,9 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   refusal of a non-live index is shadowed by the guard on every path a single-threaded suite can
   build — restoring the clamp *and* deleting the call-site guard leaves all checks green. It exists
   for the TOCTOU a check cannot close, and that window needs a real concurrent write.
+  **Superseded in part by ADR-0039**: `removeBand` now refuses a topology it was not aimed at, not
+  merely an out-of-range index, and State test 69 leg (c) **does** reach it — restoring the whole
+  pre-ADR-0038 `removeBand` is mutation M6 and fails that leg.
 
 * **State test 67 — an outward drag whose split has vanished removes nothing** (stale-drag review).
   Dragging a split far outside the plot arms `dragRemovePending`, and the release deletes the band

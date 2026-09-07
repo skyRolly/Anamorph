@@ -115,6 +115,7 @@ private:
     // mid-drag makes them read entries a "0 .. splits-in-use" capture never wrote. Call
     // this at every drag start rather than writing the loop again -- one home for the rule.
     void  captureDragOrigins() noexcept;
+    void  captureGestureSound() noexcept;
     // Reversible projection: pin one or two splits at target x, keep every OTHER split
     // as close to its drag-start position (orig) as the min gap allows, so a pushed
     // neighbour springs back when the pin moves away again (0.6.13 #8/#9/#10/#11).
@@ -124,8 +125,15 @@ private:
     void  dragCrossoverTo (int handle, float x);
     bool  bandAddTarget (int b, float x, float& outX) const noexcept;
 
-    int   addBandAt (float hz);
-    void  removeBand (int b);
+    // `resultingBands` reports the count this add ESTABLISHED, taken from the same read of
+    // `bandCount()` the insertion was computed against -- so the caller's gesture snapshot
+    // cannot pick up a different count from a second, later read (ADR-0039).
+    int   addBandAt (float hz, int& resultingBands);
+    // `expectedBands` is the topology the caller validated its index against. removeBand reads
+    // the live count ONCE and refuses unless it is still that one: the check and the operation
+    // then share a single read, which is the only way to stop a stale index being applied to a
+    // topology the user never saw (ADR-0039).
+    void  removeBand (int b, int expectedBands);
     void  resetCrossover (int i);
 
     // Display-eased positions (#1): split frequencies and band widths the PAINT uses,
@@ -285,12 +293,33 @@ private:
     // the identifiers safe as a set; validating them one consumer at a time provably is
     // not (the band move validated its pins and still wrote the unpinned splits from
     // drag-start origins). -1 = no gesture in progress.
+    // ADR-0039 sharpens WHEN this is taken: with the identifiers, not at handler entry. The
+    // add-area press CREATES a split and hands itself to it (`addBandAt` raises Bands, then
+    // `dragHandle = idx`), so a snapshot taken at the top of mouseDown named a topology the
+    // press itself had already left and the first mouseDrag cancelled the brand-new drag.
+    // Taking it where the identifiers are latched separates the two classes BY CONSTRUCTION
+    // rather than by asking who moved the count: a change the press performs is synchronous,
+    // on this thread, and complete before the identifiers exist; anything later is external.
     int   gestureBands = -1;
+    // ADR-0039. WHERE THIS GESTURE LAST LEFT EACH SPLIT, in pixels. `gestureBands` catches an
+    // authoritative change that moves the COUNT; a whole-sound install at the same count moves
+    // nothing it watches, and the drag then keeps projecting from `dragOrigX` -- the positions
+    // of the sound that was just replaced -- and writes the unpinned splits back over it. Every
+    // write this gesture makes refreshes these, so a difference means someone else wrote.
+    float gestureX[3] { 0.0f, 0.0f, 0.0f };
     // True once the count has moved under an active gesture. Message thread only; a plain
     // comparison of two ints, no lock and no allocation -- the audio thread is not involved
     // in any of this and must never be.
     bool  topologyMovedUnderGesture() const noexcept
     { return gestureBands >= 0 && bandCount() != gestureBands; }
+    // True once a split has moved under an active gesture by more than the amount
+    // `writeCrossovers` itself treats as a change -- so the drag's own writes, read back
+    // through the same conversion, can never register as somebody else's.
+    bool  soundMovedUnderGesture() const noexcept;
+    // The one question mouseDrag and mouseUp ask: is this gesture still defined against the
+    // world it was latched in?
+    bool  gestureIsStale() const noexcept
+    { return topologyMovedUnderGesture() || soundMovedUnderGesture(); }
 
     // Crossover band-pass preview gate (0.8.1): the blue/green band-pass curve is a
     // PRESS-AND-HOLD affordance, exactly like the solo audition. A bare click, double-

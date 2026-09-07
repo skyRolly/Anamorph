@@ -11,6 +11,11 @@ static constexpr float kFreqLo = 20.0f, kFreqHi = 20000.0f;
 static constexpr float kMinDb = -90.0f, kMaxDb = 0.0f;
 static constexpr float kWidthGrab = 8.0f;
 static constexpr float kMinGapPx  = 46.0f; // constant on-screen split spacing (#1/#26)
+// The distance at which a split counts as HAVING MOVED. `writeCrossovers` uses it to decide
+// a write is worth making, and `soundMovedUnderGesture` uses it to decide somebody else made
+// one; the two must be the same number, or a difference too small for this imager to write
+// could still read as an outside change and cancel a live drag (ADR-0039).
+static constexpr float kSplitMovedPx = 0.5f;
 
 namespace
 {
@@ -299,8 +304,13 @@ void SpectrumImager::projectGaps (float* xs, int count, int pin) const noexcept
 void SpectrumImager::writeCrossovers (const float* xs, int count)
 {
     for (int k = 0; k < count; ++k)
-        if (std::abs (freqToX (crossover (k)) - xs[k]) > 0.5f)
+        if (std::abs (freqToX (crossover (k)) - xs[k]) > kSplitMovedPx)
             setParam (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])));
+    // ADR-0039: the gesture now owns these positions. Read BACK rather than recording `xs`:
+    // the write goes through convertTo0to1 and the parameter's own quantisation, so only the
+    // read-back is what the next comparison will see. Splits this pass left alone are recorded
+    // too -- an outside hand that moves one of those is exactly the case this catches.
+    captureGestureSound();
 }
 // Seed the drag-start positions for a gesture that is about to start. EVERY slot of
 // dragOrigX, not just the `bandCount() - 1` splits in use at the press -- because the two
@@ -318,6 +328,35 @@ void SpectrumImager::captureDragOrigins() noexcept
 {
     for (int k = 0; k < (int) std::size (dragOrigX); ++k)
         dragOrigX[k] = freqToX (crossover (k));
+    captureGestureSound(); // the gesture starts owning exactly what it just measured
+}
+// The positions this gesture last left behind. Called at every gesture start (through
+// captureDragOrigins) and after every write the gesture makes (through writeCrossovers), so
+// the array always answers "where did I leave the splits?" and never "where were they once".
+void SpectrumImager::captureGestureSound() noexcept
+{
+    for (int k = 0; k < (int) std::size (gestureX); ++k)
+        gestureX[k] = freqToX (crossover (k));
+}
+// ADR-0039. THE COUNT IS NOT THE WHOLE TOPOLOGY. A restore, a preset, an A/B apply, an undo or
+// an automation lane can install a different sound at the SAME band count; `gestureBands` sees
+// nothing, the drag continues, and `projectFromOrig` pulls every unpinned split back toward
+// `dragOrigX` -- the sound that has just been replaced -- with `writeCrossovers` pushing the
+// difference to the host inside the change gesture the drag opened. Measured: a restore of
+// mbFreqHigh to 15 kHz under a drag of the FIRST split was pulled back to 10 kHz.
+//
+// Detected by self-comparison rather than by a new cross-component signal: the processor's
+// `soundSetGen` counts WHOLESALE replacements only and is not reachable from here (the imager
+// holds a ScopeBuffer and an APVTS, nothing else), and it would still miss a single automated
+// crossover. Every writer of these three parameters is either this class or somebody outside
+// it -- the engine only reads them (AnamorphEngine.cpp:609) -- so "it moved and I did not move
+// it" is exact, needs no plumbing, and covers automation and undo as well as restore.
+bool SpectrumImager::soundMovedUnderGesture() const noexcept
+{
+    if (gestureBands < 0) return false;
+    for (int k = 0; k < (int) std::size (gestureX); ++k)
+        if (std::abs (freqToX (crossover (k)) - gestureX[k]) > kSplitMovedPx) return true;
+    return false;
 }
 // Pin pinA (and optional pinB) at their target x; every other split is pulled toward
 // its drag-start position `orig`, only pushed aside as far as the min gap demands -- so a
@@ -479,9 +518,10 @@ void SpectrumImager::resetCrossover (int i)
             setParam (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])));
 }
 
-int SpectrumImager::addBandAt (float hz)
+int SpectrumImager::addBandAt (float hz, int& resultingBands)
 {
     const int N = bandCount();
+    resultingBands = N;          // nothing added -> the caller's gesture keeps the count it had
     if (N >= 4) return -1;
     const int M = N - 1; // existing crossovers
     float xs[3];
@@ -511,23 +551,32 @@ int SpectrumImager::addBandAt (float hz)
     for (int i = 0; i <= N; ++i) setParam (widthP[i], nw[i]);
     for (int i = 0; i < N;  ++i) setParam (freqP[i],  juce::jlimit (kFreqLo, kFreqHi, xToFreq (nx[i])));
     setBands (N + 1);
+    resultingBands = N + 1;      // from THIS read of the count, not a second one (ADR-0039)
     return ins;
 }
 
-void SpectrumImager::removeBand (int b)
+void SpectrumImager::removeBand (int b, int expectedBands)
 {
     const int N = bandCount();
     if (N <= 1) return;
     // REFUSE, NEVER CLAMP (ADR-0038). This used to be `b = juce::jlimit (0, N - 1, b)`, and
     // that clamp was the mechanism that turned a stale index into a WRONG TARGET: a caller
     // holding a band number from before a host write of mbBands had its request silently
-    // retargeted onto whichever live band the number now landed on. A caller-side liveness
-    // check cannot close that, because `bandCount()` is a live read and the count can move
-    // between the check and this line -- a check never closes a race, only making the racy
-    // operation safe does. Refusing costs nothing: both callers pass an index they have
-    // already proved live (the delete-x path through `deleteHit`, the outward drag through
-    // its own guard), so this fires only in the window a check cannot reach, and there
-    // doing nothing is the whole point.
+    // retargeted onto whichever live band the number now landed on.
+    //
+    // A RANGE CHECK IS NOT ENOUGH (ADR-0039, review finding 1). Refusing an out-of-range index
+    // still let a stale one through whenever it happened to LAND inside the new range: two
+    // bands, drag split 0 outside, the count rises to four inside mouseUp -- `endGesture` on the
+    // dragged split runs first and any listener on that parameter can move mbBands there -- and
+    // `removeBand (1)` was in range, so it merged bands out of a four-band layout the user had
+    // never seen and left Bands at 3. Measured as `Bands 4 -> 3` by State test 69 leg (c).
+    //
+    // So the caller names the topology it validated its index against and this reads the live
+    // count ONCE: the check and the operation share a single read, which is the only shape that
+    // holds when the count can move between two of them. `bandCount()` is a live read of a
+    // parameter a host can write at any instant; a check in the CALLER can never close that,
+    // because the operation reads again afterwards.
+    if (N != expectedBands) return;
     if (b < 0 || b >= N) return;
     const int dropX = (b == 0) ? 0 : (b - 1); // delete the split on this band's left (#12)
 
@@ -1631,10 +1680,12 @@ void SpectrumImager::mouseExit (const juce::MouseEvent&)
 void SpectrumImager::mouseDown (const juce::MouseEvent& e)
 {
     if (editingHandle >= 0) commitFreqEditor();
-    // ADR-0038: the topology this gesture is about to be defined against. Taken once, at
-    // the top, so every branch below -- solo press, delete press, handle drag, width drag,
-    // add-and-drag -- is covered by the one snapshot rather than each latching its own.
+    // ADR-0038: the topology this gesture is about to be defined against, and (ADR-0039) the
+    // sound with it. Taken once, at the top, so every branch below -- solo press, delete press,
+    // handle drag, width drag -- is covered by the one snapshot rather than each latching its
+    // own. The ADD branch is the exception and re-takes it: see there.
     gestureBands = bandCount();
+    captureGestureSound();
     const auto p = e.position;
     const bool alt = e.mods.isAltDown();
 
@@ -1689,9 +1740,21 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     float ax;
     if (bandAddTarget (b, p.x, ax))
     {
-        const int idx = addBandAt (xToFreq (ax));
+        int addedBands = bandCount();
+        const int idx = addBandAt (xToFreq (ax), addedBands);
         if (idx >= 0)
         {
+            // ADR-0039, review finding 2. THE PRESS'S OWN ADD IS PART OF THE GESTURE. `addBandAt`
+            // has just raised Bands and `dragHandle` is latched HERE, against the topology it
+            // established -- so the snapshot belongs here too. Taken at the top of the handler it
+            // named the count from BEFORE the add, and the first mouseDrag compared 3 against 2,
+            // called the gesture void and cancelled it: click-to-add-and-drag stopped following
+            // the cursor the moment the split appeared. `captureDragOrigins` below re-seeds the
+            // sound half the same way. Nothing here asks WHO moved the count: a change the press
+            // performs is synchronous on this thread and complete before the identifiers exist,
+            // so taking the snapshot with the identifiers separates the two classes by
+            // construction. State test 69 legs (a) and (b) hold both ends of that line.
+            gestureBands = addedBands;
             dragHandle = idx; dragBand = -1; dragRemovePending = false;
             handlePressMs = juce::Time::getMillisecondCounter(); handlePressX = p.x; handleHoldActive = false;
             captureDragOrigins();
@@ -1710,7 +1773,7 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
     // flags, fire no on-release action. Checked HERE, at the entry of the handler that
     // acts, rather than inside each consumer: this is the point where the identifiers stop
     // being trustworthy as a SET.
-    if (topologyMovedUnderGesture()) { cancelActiveDrag(); return; }
+    if (gestureIsStale()) { cancelActiveDrag(); return; }
     if (soloPressBand >= 0)
     {
         if (soloMovedBand || std::abs (e.position.x - soloDownX) > 4.0f)
@@ -1758,15 +1821,18 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     // ADR-0038, and it matters most here: mouseUp is where the ON-RELEASE ACTIONS live --
     // remove a band, toggle a solo bit, commit a band move. A gesture whose topology moved
     // must fire none of them, exactly as a release lost outside the window fires none.
-    if (topologyMovedUnderGesture()) { cancelActiveDrag(); updateHover (e.position); return; }
+    if (gestureIsStale()) { cancelActiveDrag(); updateHover (e.position); return; }
     // The press is over on EVERY path out of this handler -- the solo and delete branches
-    // both return early -- so the snapshot is dropped here rather than at each exit.
+    // both return early -- so the snapshot is dropped here rather than at each exit. It is
+    // KEPT in a local first: the two removal paths below still need to name the topology this
+    // press was made in, and after this line the member no longer says what that was.
+    const int pressBands = gestureBands;
     gestureBands = -1;
     if (pressDeleteBand >= 0)
     {
         const int dB = pressDeleteBand;
         pressDeleteBand = -1;
-        if (deleteHit (e.position) == dB) removeBand (dB); // released over the same x -> delete
+        if (deleteHit (e.position) == dB) removeBand (dB, pressBands); // released over the same x -> delete
         updateHover (e.position);
         repaint();
         return;
@@ -1787,21 +1853,20 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     if (dragHandle >= 0)
     {
         endGesture (freqP[dragHandle]);
-        // ONLY IF THE SPLIT BEING DRAGGED STILL EXISTS. `dragHandle` is latched at mouseDown
-        // and names a split by POSITION, not identity; a host write of mbBands -- an automation
-        // lane, or the sound half of a state restore -- can lower Bands while the drag is still
-        // held, and `dragCrossoverTo` correctly stops steering it at that point (:361) but the
-        // drag stays ARMED. `removeBand` then CLAMPS its argument into the live range (:521), so
-        // the release used to delete a different, live band and lower Bands a second time -- a
-        // band the user never touched, gone on a gesture aimed at one that had already vanished.
-        // A drag whose target no longer exists has nothing left to remove: splits are 0 ..
-        // bandCount() - 2, so this is exactly "the dragged split is still there", and it is the
-        // same condition `removeBand` would need for `dragHandle + 1` to name a real band.
-        // Validated here rather than by tightening removeBand's clamp: the only other caller
-        // (:1741) already proves its argument live through `deleteHit`, and a clamp that has no
-        // reachable stale input left is defence, not behaviour.
-        if (dragRemovePending && dragHandle < bandCount() - 1)
-            removeBand (dragHandle + 1); // drop the dragged split, merge (#18)
+        // ONLY IF THE TOPOLOGY IS STILL THE ONE THIS PRESS WAS MADE IN. `dragHandle` is latched
+        // at mouseDown and names a split by POSITION, not identity; a host write of mbBands --
+        // an automation lane, or the sound half of a state restore -- can move Bands while the
+        // drag is held or, as review finding 1 showed, inside this very handler: `endGesture`
+        // above notifies every listener on the dragged split's parameter, and a host recording
+        // automation can write mbBands from there. This used to be a liveness check
+        // (`dragHandle < bandCount() - 1`) which the rise then satisfied, because a stale index
+        // can land inside a NEW range perfectly well. The condition is gone rather than doubled
+        // up: `removeBand` is handed the topology this press was made in and owns the decision,
+        // so there is ONE place that decides whether a removal is legitimate and one read of the
+        // count behind it. `pressBands` guarantees dragHandle <= pressBands - 2 by construction
+        // (handleNearX and addBandAt both return an index inside the count they read).
+        if (dragRemovePending)
+            removeBand (dragHandle + 1, pressBands); // drop the dragged split, merge (#18)
     }
     if (dragBand >= 0) endGesture (widthP[dragBand]);
     dragHandle = dragBand = -1;
@@ -1821,6 +1886,13 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 // parameter's endChangeGesture can never fire twice.
 void SpectrumImager::cancelActiveDrag()
 {
+    // BEFORE the cheap exit (ADR-0039). The four flags below are the only real gestures, but
+    // `gestureBands` is latched at the TOP of mouseDown -- including on the branches that latch
+    // no identifier at all (an Alt-click reset, an add the count refused). Left set, the next
+    // authoritative change made `gestureIsStale()` true with nothing in flight, and this
+    // function's early return meant nothing ever cleared it. Clearing an int costs nothing and
+    // makes the predicate mean exactly "a gesture is in progress and its world moved".
+    gestureBands = -1;
     if (dragBand < 0 && dragHandle < 0 && soloPressBand < 0 && pressDeleteBand < 0)
         return;
     if (dragBand   >= 0) endGesture (widthP[dragBand]);
@@ -1835,7 +1907,6 @@ void SpectrumImager::cancelActiveDrag()
     handleHoldActive  = false;
     widthHoldActive   = false;
     soloHoldActive = soloMovedBand = false;
-    gestureBands = -1;            // no gesture in progress -> nothing left to invalidate
     updateHover (getMouseXYRelative().toFloat());
     repaint();
 }

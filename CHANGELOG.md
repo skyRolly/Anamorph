@@ -63,6 +63,20 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Regression coverage: DSP test 53. Evidence: PR #135. [Verified]
 
 ### Fixed
+- **Loading a project, preset or A/B side while you are holding a split in the Multiband display no
+  longer has part of it quietly undone.** A drag remembers where every split was when you pressed,
+  because that is what lets a split you shove past its neighbour push it aside and lets the neighbour
+  spring back when you move away again. If a whole new set of frequencies arrived while you were
+  still holding — a project or preset loading, an A/B switch, an undo, or an automation lane on one
+  of the other splits — the drag carried on from the old memory and wrote the splits you were *not*
+  dragging back to where they had been before, inside the same automation move: the frequencies you
+  had just loaded were replaced by ones from before you loaded them. Previously this was caught only
+  when the new sound also changed the **number** of bands; it is now caught whenever any split moves
+  under your hand, whatever the band count does. The drag ends at that instant, exactly as it does
+  when you release the mouse outside the plug-in window. **What changes for you:** a drag interrupted
+  this way stops rather than continuing, so you re-grab the handle. Ordinary dragging is untouched —
+  splits still push their neighbours aside and the neighbours still spring back.
+  Decision: ADR-0039. Regression coverage: State test 70. Evidence: PR #143. [Verified]
 - **A drag in the Multiband display now ends when the number of Bands changes underneath it,
   instead of writing over whatever replaced it.** Dragging a split, or moving a band by its solo
   handle, is set up against the bands that were there when you pressed. If the Bands control moved
@@ -83,8 +97,11 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   grabbed could be gone by the time you let go. The release then deleted whichever band that
   position now landed on: a band you never touched, with Bands dropping a second time. A drag whose
   own split has disappeared now removes nothing. Dragging a split out and releasing it at a steady
-  band count still merges exactly as before.
-  Regression coverage: State test 67. Evidence: PR #143. [Verified]
+  band count still merges exactly as before. This also holds when the number of Bands moves at the
+  very instant you let go — the release is checked against the band layout you were actually looking
+  at when you pressed, not against whatever the count happens to say a moment later, so a merge is
+  simply refused rather than applied to a layout you never saw.
+  Decision: ADR-0039. Regression coverage: State tests 67 and 69. Evidence: PR #143. [Verified]
 - **Dragging in the Multiband display can no longer throw a crossover frequency to a value you
   never chose, if the number of Bands changes underneath the drag.** Dragging a split, or holding a
   band's solo handle and moving it sideways, remembers where every split was when the drag began and
