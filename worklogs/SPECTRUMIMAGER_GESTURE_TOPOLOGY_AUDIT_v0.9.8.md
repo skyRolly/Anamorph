@@ -935,7 +935,15 @@ each killed by exactly the intended leg (M6 kills State test 73 leg (c) as well 
 A, which is right: one `if` guards both windows; M8 and M9 come from §45's pass over the shipped
 fix, M10 from §46's). `check-realtime` 47/0 with its self-test 93/93,
 `check-portability` 57/0 with 120/120, `check-docs` 128 clean with 464/464, `check-citations` clean
-against both bases with self-test 139/139, `git diff --check` clean, `preflight.sh` exit 0.
+against both bases (431 / 415) with self-test 139/139, `git diff --check` clean, `preflight.sh`
+exit 0.
+
+On the final head: **ThreadSanitizer 0 warnings** across the four D-2 probes (×3 each) and the full
+suite; **valgrind memcheck `ERROR SUMMARY: 0 errors from 0 contexts`** on both suites, exit 0, with
+State test 74 confirmed executed under it (the DSP suite reports 390 rather than 396 checks under
+`ANAMORPH_TESTS_NO_FTZ=1`, which relaxes the denormal half of one assertion because valgrind emulates
+floating point and does not honour the CPU's FTZ/DAZ bits — the standing arrangement in
+`.github/workflows/build.yml`, not a regression).
 
 **Residuals, unchanged and each with its evidence:** §41's partial topology application, ruled a
 bounded trade with the reopening trigger named; the stores already issued when a transaction
