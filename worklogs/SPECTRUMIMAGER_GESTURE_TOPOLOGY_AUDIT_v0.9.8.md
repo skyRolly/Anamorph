@@ -876,3 +876,63 @@ atomicity worth having, and only then. That is a threading-model change and belo
 Architecture Review Gate, not to a review round. The trigger to raise it would be evidence that a
 torn topology is *audible*: a report of a wrong band being soloed or a wrong width being applied for
 longer than a smoother's travel, or a DSP change that removes one of the smoothers above.
+
+## 42. Implementation chronology, round 5
+
+1. State test 74 written first, against `e247c11`, with the four legs red and their positive controls
+   green. §37 is its measurement, quoted from the run.
+2. Two temporary probes measured the `setParam`-in-a-burst case that the review names but that turned
+   out not to be a defect (`removeBand` and `addBandAt` under a width echo); recorded in §37 and
+   removed.
+3. The decision record above written before any production edit, per the round's own gate.
+4. `setBands` returns `stored && bandCount() == want`; `setSoloMask` returns
+   `stored && soloMask() == mask`; both re-read after `endChangeGesture`.
+5. `spreadSplits` added; `resetCrossover` and `commitFreqEditor` capture `was[]` before their primary
+   store, confirm that store, and spread through the helper.
+6. Legs I and J added — the primary-store confirmation is not observable through legs A–D, and a
+   fix without a killing mutation is not a fix. Each leg is two halves so that "the neighbour did not
+   move" cannot pass because the spread never moves anything: half (i) proves the push exists.
+7. Leg J's threshold retuned from 250 Hz to 225 Hz after the first run measured the real push as
+   `200 -> 249.8 Hz` on this axis. The measurement, not the guess, sets the bound.
+
+## 43. The final transaction audit, round 5
+
+Every multi-parameter operation this work touches, stated in the form §15 of the round's brief asks
+for.
+
+| Operation | Authoritative snapshot | Derived plan | Stores, in order | Synchronous callback points | Ownership check | If ownership is lost | Remaining plan | Stores already issued | Can a newer value be overwritten afterwards? |
+|---|---|---|---|---|---|---|---|---|---|
+| `setParam` | none | the caller's | one | the store's own dispatch | none — by design (§38) | n/a | n/a | n/a | no: no caller writes the same slot twice |
+| `setBands` | `bandCount()` | `want = jlimit (1,4,n)` | one, inside a gesture | the gesture open, the value dispatch, the gesture close | `expectedBands` between open and store; `bandCount() == want` after close | returns false | the caller's | this store | no |
+| `setSoloMask` | `bandCount()`, `soloMask()` | `mask & 0x0F` | one, inside a gesture | as `setBands` | `expectedBands`/`expectedMask` between open and store; `soloMask() == mask` after close | returns false | the caller's | this store | no |
+| `toggleSoloBit` | the word it reads | `m ^ (1 << b)` | via `setSoloMask` | as above | as above | returns false | nothing follows | as above | no |
+| `storeOwned` | the caller's | one value | one | the store's own dispatch | read-back `== expect`, exact | returns false | the caller's | this store | no |
+| `writeCrossovers` | `freqP[k]->getValue()`, `bandCount()` | `xs[]` | up to 3 | each store's dispatch | count + `ownsSplit (k)` before each; `storeOwned` after | returns false | abandoned | stand | no |
+| `spreadSplits` | `freqP[k]->getValue()` at plan time (`was[]`) | `xs[]` from `projectGaps` | up to 2 | each store's dispatch | `getValue() == was[k]` before each; `storeOwned` after | returns false | abandoned | stand | **no — this is the round's P1 fix** |
+| `resetCrossover` | live splits + `was[]` | default for `i`, `projectGaps` for the rest | 1 primary + `spreadSplits` | the gesture open/close, each store's dispatch | primary confirmed after its gesture closes; then `spreadSplits` | returns before spreading | abandoned | the primary stands | no |
+| `commitFreqEditor` | live splits + `was[]` | parsed value, `projectGaps` for the rest | 1 primary + `spreadSplits` | as `resetCrossover` | as `resetCrossover` | skips the spread; still closes the editor | abandoned | the primary stands | no |
+| `addBandAt` | `bandCount()`, `soloMask()`, `fr[]`, `wd[]` | remapped mask, shifted widths, shifted splits, `N + 1` | mask, ≤5 widths, ≤3 splits, count | every store's dispatch | count + target re-proved before each; mask and count also confirmed after | returns −1 | abandoned | stand (§41) | no — every store's target is re-proved against the snapshot immediately before it |
+| `removeBand` | as `addBandAt` | remapped mask, shifted widths, shifted splits, `N − 1` | mask, ≤3 widths, ≤2 splits, count | every store's dispatch | as `addBandAt`; the final count store's result is discarded because nothing follows it | returns | abandoned | stand (§41) | no |
+| `resetParam` | none | the parameter's default | one, inside a gesture | the gesture open/close, the value dispatch | none — nothing follows it | n/a | n/a | n/a | no |
+| wheel width step | live width | `bandWidth + step` | one | the store's dispatch | none — the press was ended first | n/a | n/a | n/a | no |
+| `mouseUp` solo click | `pressBands`, the mask it reads | one word | via `setSoloMask` | as `setSoloMask` | both, and now the far side | nothing is written | nothing follows | none | no |
+| state / preset / A-B | outside this class | outside | outside | — | — | — | — | — | these are the **newer authority** the checks above defer to |
+
+**No stale transaction can continue because a primitive returned normally**, because the only
+primitives that return normally without proving their result are the ones nothing reads afterwards:
+`setParam` at a burst leaf, `resetParam`, and the wheel's width step. Every other store either proves
+its own result (`storeOwned`, `setBands`, `setSoloMask`) or is immediately preceded by a re-proof of
+the exact value its plan assumed.
+
+## 44. Validation and residuals, round 5
+
+State suite **2 667 / 0**; DSP **396 / 0**; State tests 66–73 unchanged and green. Mutations M1–M7
+each killed by exactly the intended leg (M6 kills State test 73 leg (c) as well as State test 74 leg
+A, which is right: one `if` guards both windows). `check-realtime` 47/0 with its self-test 93/93,
+`check-portability` 57/0 with 120/120, `check-docs` 128 clean with 464/464, `check-citations` clean
+against both bases with self-test 139/139, `git diff --check` clean, `preflight.sh` exit 0.
+
+**Residuals, unchanged and each with its evidence:** §41's partial topology application, ruled a
+bounded trade with the reopening trigger named; the stores already issued when a transaction
+abandons; and the ADR-0039 disposition of a vanished band's Width and solo bit, which are inert while
+hidden (`SoloMonitor.cpp:85`, `MultibandWidth.h:53-56`) and exact when the count returns.

@@ -10443,3 +10443,54 @@ semantics, chronology, the full audit table with the invariant stated once, resi
 and half-applied-transaction symptoms, and the wheel behaviour change). Not a gate item: `mbSolo` and
 `mbBands` keep their meaning; no parameter ID, serialization, threading-model, DSP-order or
 reported-latency change, and no Accepted ADR conflict. [Verified]
+
+## SpectrumImager — a store is committed only when the parameter says so (2026-09-07, eighth pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: `setBands` and `setSoloMask` re-read their own
+target after `endChangeGesture` and return `stored && bandCount() == want` / `stored && soloMask() ==
+mask`; `spreadSplits` is added and `resetCrossover`/`commitFreqEditor` use it, so a neighbour is
+written only while it still holds the value the plan was computed from and the primary store is
+confirmed before anything moves to make room for it. `tests/state_tests.cpp`: State test 74.
+
+**Why.** ADR-0041's rule — *a conditional store reports whether it **committed*** — was implemented
+as far as the **precondition**. `setValueNotifyingHost` dispatches every listener synchronously from
+inside itself, so a listener writing the same parameter from inside that store's own dispatch (or
+from inside the `endChangeGesture` that follows) took the value away and both functions still
+answered `true`. The same round converted `writeCrossovers` to ownership and left the two other
+neighbour spreads on the predicate it had just condemned at `SpectrumImager.cpp:314-316`. Measured
+against `e247c11`: `the mask store was overwritten from inside its dispatch and the transaction
+carried on: Bands 3 with mask 0x9`; `5000.0 Hz was installed and 2000.0 Hz was written over it` (on
+both the reset and the text-commit paths); `the count store did not stand (Bands 2) and the press
+still latched the add and opened 1 gesture(s) on the new split`.
+
+**A correction this round makes to the last.** ADR-0041's Decision was right and is unchanged; what
+was incomplete was its implementation, in the two primitives named above, and its application, in the
+two spread loops it did not convert. Recorded in ADR-0041 under *Correction, next round* rather than
+quietly amended.
+
+**`setParam` deliberately stays `void`, and that is a measured decision.** Every caller is either a
+leaf of a topology burst — the plan for slot `k+1` comes from the entry snapshot, never from slot
+`k`'s committed value — or a single store with nothing after it. A listener echoing a width slot from
+inside its own store in the middle of `removeBand` was measured to leave `Bands 3 mask 0x5 wLo 1.750`:
+the intended layout with the newer authority's width standing. Aborting there is **worse**, because
+the mask is stored first and is only correct once the count changes.
+
+**The cross-thread transaction is re-ruled, and the reason is stronger than last round's.** Option B
+was rejected before as *unreachable* (eight separate automatable parameters, no single commit point).
+The decisive fact this round is that a commit point would not help: `PluginParameters::toEngine`
+reads the ten multiband atomics with **ten separate `load()` calls** once per block with no coherence
+guard (`PluginParameters.cpp:365-374`), so the **reader tears** and any write-side atomicity would be
+re-torn. Making the topology atomic means replacing the read — a threading-model change and an
+Architecture Review Gate item. Option E (compensating rollback) is newly evaluated and rejected: it
+writes a stale value over a newer authority (ADR-0036 §25) and cannot terminate deterministically.
+Safety is re-derived from the DSP rather than asserted — every split clamped to `[20 Hz, 0.45·sr]`
+and force-ordered `1.1×`, the count clamped, the mask masked to the live count, every continuous
+quantity smoothed, and `mbBands` (the one discontinuous quantity) written **last**, which is why the
+store order is kept.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§36-43 (findings, reproduction,
+the invariant split into its three halves, the reporting contract, the two spreads, the cross-thread
+re-ruling, chronology, the final audit table, validation), `ADR-0042` + the `ADR-0041` correction +
+`ADR_INDEX`, `TESTING.md` (State test 74), `CHANGELOG.md` `[0.9.7]` Fixed. Not a gate item: no
+parameter ID, serialization, threading-model, DSP-order or reported-latency change, and no Accepted
+ADR conflict. [Verified]

@@ -63,6 +63,24 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Regression coverage: DSP test 53. Evidence: PR #135. [Verified]
 
 ### Fixed
+- **A change arriving from your DAW while the Multiband display is writing is no longer overwritten,
+  and an edit that was overwritten no longer carries on as though it had worked.** Adding or removing
+  a band writes the solo buttons, the band widths, the split frequencies and the band count in turn,
+  and each of those writes is handed straight to the host — so a DAW that answers one of them by
+  changing the same control (an automation lane, a control surface, a linked-parameter macro) does so
+  in the middle of the operation. The plug-in used to take its own writes on trust: the solo buttons
+  could be written, replaced by the DAW a moment later, and the band count changed anyway, leaving
+  bands soloed that you never soloed and a soloed band silently dropped. It now checks that each
+  write actually took, and stops the operation instead of finishing it against something that is no
+  longer there. The same trust showed up the other way round when you double-click a split to reset
+  it or type a frequency into it: the neighbouring splits are moved aside to make room, and the test
+  for moving one was "it is not where I want it" — which is *more* true of a frequency that arrived
+  from elsewhere, so the DAW's change was replaced by the plug-in's plan. A neighbour is now moved
+  only while it still holds the value the plan was worked out from, and the change that arrived
+  stands. **What changes for you:** an add, a remove, a reset or a typed frequency interrupted this
+  way stops part-way rather than completing against a layout that has moved, so you repeat it.
+  Ordinary adding, removing, resetting and typing are untouched.
+  Decision: ADR-0042. Regression coverage: State test 74. Evidence: PR #143. [Verified]
 - **Soloing a band can no longer land on a different band's layout, and adding or removing a band no
   longer half-applies.** Clicking a band's solo button, and adding or removing a band, are each
   several changes written in turn — the solo buttons, the band widths, the split frequencies and the

@@ -861,6 +861,28 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 74 — a store is not committed until the parameter says so** (ADR-0042). The far side
+  of the window ADR-0040's round-3 correction closed on the near side: `setValueNotifyingHost`
+  dispatches every listener synchronously from inside itself, so a host write-back lands between the
+  store and the next statement. Legs: (A) a **mask store overwritten from inside its own dispatch**
+  does not let `removeBand` go on to change the band count (`Bands 3 with mask 0x9` — and
+  `SoloMonitor.cpp:85` then masks `0x9 & 0x7`, so the soloed top band disappears); (B) an **alt-click
+  reset** does not spread its plan over a newer authoritative write (`5000.0 Hz was installed and
+  2000.0 Hz was written over it`); (C) the same for a **text commit**; (D) an **add whose count store
+  did not stand** opens no gesture on a split it did not create (`the count store did not stand
+  (Bands 2) and the press still latched the add and opened 1 gesture(s) on the new split`); (I) and
+  (J) the **primary store is confirmed before the spread runs**, each in two halves — (i) proves the
+  push exists at all by landing the typed or reset value next to its neighbour, (ii) removes the
+  primary store from inside its own dispatch and requires that no neighbour is written; (E), (F), (G),
+  (H) positive controls — an uninterrupted delete still removes and remaps, an uninterrupted reset
+  still resets, an uninterrupted text commit still commits, an uninterrupted add still adds and opens
+  exactly one gesture. Legs A, B, C, D, I(ii) and J(ii) fail against `e247c11`. Mutations, each killed
+  by exactly the intended leg: `setSoloMask` ignoring its far side → A; `setBands` ignoring its far
+  side → D; `spreadSplits` dropping the ownership check → B and C; `resetCrossover` not confirming
+  its own store → J(ii); `commitFreqEditor` not confirming its own store → I(ii); `removeBand`
+  ignoring a refused mask store → A **and** State test 73 leg (c); `addBandAt` ignoring a refused
+  count store → D.
+
 * **State test 73 — a coupled update is all of it or none of it** (ADR-0041). Three review findings
   of one shape: part of a coupled change applied, the rest not, and nothing downstream able to tell.
   Legs: (a) a wheel tick during a **width** drag must not adopt an outside width its `dragGrabDY`
