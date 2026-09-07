@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3253` and `.github/workflows/build.yml:3338`, this round being
+`.github/workflows/build.yml:3269` and `.github/workflows/build.yml:3354`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -9896,3 +9896,128 @@ number instead of being re-aimed: `--fix` would have rewritten the quoted observ
 falsehood, and the checker cannot tell an illustration from a citation — the same hazard
 `build.yml`'s own comment names. Eleven further anchors were plain moves, re-anchored by `--fix`.
 [Verified]
+
+## GitHub Code Scanning audit — a stale pin, and two documents that described a filter that is not there (2026-09-07)
+
+**Scope.** Every current first-party Code Scanning finding on `main` @ `2ed512c6`, from the raw
+SARIF each scanner publishes as an Actions artifact (`docs/procedures/CI_CD.md` §Raw scanner SARIF
+artifacts): CodeQL `c-cpp` and `actions` from run 34066947393, MSVC `/analyze` from run 34023043647
+at `b7b1c57`. That PREfast run is one commit behind, and `git diff b7b1c57 2ed512c6 -- src tests
+CMakeLists.txt` is empty — PR #142 touched only scripts, docs and workflows — so its anchors are
+current. 200 results: **CodeQL c-cpp 50** (every one under `build/_deps/juce-src`, zero first-party,
+in `locations`, `relatedLocations` and every `threadFlow` step), **CodeQL actions 0**, **PREfast
+150** (149 first-party). Rules: `C6262` 130, `C26495` 8, `C6001` 4, `C26498` 4, `C28252` 4.
+
+**No finding is stale or mis-anchored.** All 144 distinct `(file, line)` anchors were re-read against
+the working tree: 0 files missing, 0 lines past EOF, 0 pointing at unrelated code, and all 152
+`codeFlow` step locations inside their files' line ranges. The 28 `C6262` anchors that sit on a bare
+`{` are lambda bodies and each carries a `<lambda_N>::()` logical location.
+
+**MUST FIX — one, and the scanners did not report it.** PREfast's four `C6001` results are false
+positives, but auditing the second pair's surface found a real one three functions away:
+`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:307) validated its pin arguments
+against `count` when *writing* them and not when computing `leftPin`/`rightPin`, so a stale pin
+survived into the pull loops and `out[k + 1]` read a slot the copy loop never wrote. Reachable:
+`beginBandMove` (:398) latches `soloMoveLeft`/`soloMoveRight` from the band count at the press;
+`moveBand` (:430) re-reads a **live** `bandCount()` (:183, `bandsP->getValue()`), which a host write
+of `mbBands` — an automation lane, or the sound half of a state restore — can lower mid-gesture, and
+`moveBand` guards only `M <= 0`. Concretely: 4 bands, press-hold band 3 (`soloMoveLeft = 2`,
+`soloMoveRight = -1`), host drops Bands to 2, next drag calls `projectFromOrig(..., count = 1,
+pinA = 2, ...)`; the copy loop writes `out[0]` alone, `leftPin` is 2, and `out[1] = jmin (orig[1],
+out[2] - kMinGapPx)` reads indeterminate memory. **Not memory-unsafe** — `soloMove* <= N - 2 <= 2`,
+so every index stays inside `float out[3]` — and the value stays a legal frequency, because the
+safety pass clamps `out[0]` into `[lo, hi]`. It is still UB, and the garbage steers a
+`setValueNotifyingHost` on a crossover, inside the change gesture the move opened: an audible split
+jump the user never made, recorded into the host's automation lane and the undo stack.
+
+**Fix and proof.** Both pins are now validated once, and the same values drive the pin writes and the
+loop bounds, so the two can never disagree again. Proved with a standalone harness carrying the
+before and after bodies verbatim (`plot()`'s `lo`/`hi` as parameters), the stack slots dirtied by a
+prior call: **before** `out[0]` came back 20.000 (the `lo` clamp, driven entirely by the junk),
+**after** 100.000 = `orig[0]`, the correct "nothing is pinned" answer. Under `valgrind memcheck` the
+before body reports *Conditional jump or move depends on uninitialised value(s)* twice — in the
+leftward pull loop and in the safety pass — and the after body reports nothing. Equivalence for
+every live pin: 29 `(count, pinA, pinB)` combinations with both pins in range, **0 differ**.
+
+**No committed regression test, and that is a gap rather than a judgement that none is wanted.**
+`projectFromOrig`, `beginBandMove` and `moveBand` are all private members of `SpectrumImager`
+(src/gui/SpectrumImager.h:65 onward), the suite has no GUI-instantiating harness, and this repository
+has no `friend`-for-test idiom anywhere in `src/` — its idiom is a public seam struct, which exists
+on the processor and not here. Adding one for this would be a larger change than the fix. The
+harness above is the proof; the follow-up worth doing is a seam that lets the state suite drive a
+band move against a shrinking band count.
+
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:526`: `pid::viewParams`
+(src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
+`float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
+`0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
+`/analyze` does not fold `std::size` on a constexpr array. `src/gui/SpectrumImager.cpp:512`, now :525: `dropX`
+(:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
+written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
+own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
+(the build's `-Wno-maybe-uninitialized` removed) under g++ 13.3.0 at `-O3` and under clang++ 18.1.3
+with `-Wconditional-uninitialized`: **no diagnostic on either line**, in either compiler. The only
+first-party warnings raised are `-Wshadow` at PluginProcessor.cpp:1493 and `-Wsign-conversion` at
+ScopeBuffer.h:76, both already recorded debt (`scripts/gcc-warning-baseline.txt:36`,
+`scripts/clang-warning-baseline.txt:36,38`). No code was changed for these four.
+
+**TEST-ONLY — 146, none changed.** The 130 `C6262` are accurate about the shape and wrong about the
+size: `/analyze` sums a function's locals across disjoint sibling scopes without lifetime overlap, so
+its largest claim (1,280,508 bytes at state_tests.cpp:2659) is 4.5× the 283,968 GCC allocates there.
+Measured with `g++ -fstack-usage` on ninja's own compile lines, the true maxima are **707,824** in
+the state suite (state_tests.cpp:8967) and **289,440** in the DSP suite (dsp_tests.cpp:1388) — 68%
+and 28% of the Windows 1 MB reserve, nothing above 1 MiB anywhere. The 8 `C26495` and 4 `C26498` are
+aggregate-initialised at every construction site, and the 4 `C28252` are a missing SAL annotation on
+the nothrow `operator new` replacements; the replacement set itself is complete and every
+allocator/deallocator pair closed. Tests are not edited for a dashboard.
+
+**One CI control was widened, because its exclusion rested on a false premise.** The Windows-parity
+stack guard (`.github/workflows/build.yml`) ran the state suite alone, justified by "the DSP suite
+holds no processors". True of `AnamorphAudioProcessor` — `AnamorphTests` compiles
+`tests/dsp_tests.cpp` alone (CMakeLists.txt:523-525) — and the wrong test: `dsp_tests.cpp` declares
+`anamorph::AnamorphEngine engine;` as an automatic in dozens of tests (:119, :189, :268, :304 …), at
+28% of the reserve. The step now runs both binaries; both were verified green under
+`ulimit -s 1024` first, so this arms a tripwire rather than introducing a failure.
+
+**Two scanning claims in the documents were false, and both are corrected.** (1) `paths-ignore:
+build` does **not** filter the C/C++ alerts. GitHub documents `paths`/`paths-ignore` as applying when
+a codebase is analysed *without building it*; this entry is `build-mode: manual`, and the run's own
+SARIF proves it — all 50 results are under `build/_deps`, and the `Analyze (c-cpp)` job log shows one
+file written, fingerprinted and uploaded (`Exported results to SARIF` → `Post-processing sarif files:
+["…/results/cpp.sarif"]` → `Successfully uploaded results`), so the artifact cannot be "strictly
+richer than the dashboard" either. (2) `msvc.yml`'s `ignoredIncludePaths`/`ignoredTargetPaths` do not
+make the SARIF wholly first-party: `juce_audio_plugin_client_VST3.cpp` is compiled **into**
+`Anamorph_VST3` (`Anamorph_VST3.dir/_deps/…/juce_audio_plugin_client_VST3.cpp.o`), so it is neither
+an ignored target nor a header. Corrected in `codeql.yml`, `msvc.yml`, `CI_CD.md` (the two job-matrix
+rows, the artifact paragraph, and a new §Reading the Code Scanning surface carrying the coverage
+table and the third-party triage rule) and `REPOSITORY_MAP.md`.
+
+**The two scanners disagree about scope, and neither is wrong.** CodeQL c-cpp analyses what the
+build compiles; PREfast analyses every target in the CMake File API codemodel and re-configures the
+tree itself, so `--target Anamorph_VST3 AnamorphTests` does not bound it. `ANAMORPH_BUILD_TESTS`
+defaults ON (CMakeLists.txt:27) and `msvc.yml` overrides only `ANAMORPH_BUILD_STANDALONE`, so
+`AnamorphStateTests` is analysed but never built — 85 of the 150 results carry `analysisTarget`
+`tests/state_tests.cpp`, a file CodeQL never extracts. `tests/AllocationGuard.h` is **not** in that
+gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the header through the
+`#include` at dsp_tests.cpp:16, so both scanners cover it.
+
+**A drift anchor went stale silently, and the gate now covers it.** The fix moved
+`src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
+`check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
+citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:639`), and
+`src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
+the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
+it is checkable from the next change on.
+
+**What this audit could not establish.** The Code Scanning **alert state** — which alerts stand open,
+which are dismissed and by whom — needs the Code Scanning alerts API, which is not reachable from
+this environment (the repository is public but `/security/code-scanning` returns 404 unauthenticated,
+and no MCP tool exposes it). Everything above is derived from what the scanners *produced*. The
+specific consequence left open: whether the 50 JUCE CodeQL results and the 1 JUCE PREfast result
+render as standing alerts. The analysis says they should; only the dashboard can confirm it.
+
+**Not a gate item.** No parameter ID, serialization schema, threading-model, DSP-order or
+reported-latency change, and no Accepted ADR conflict. The fix is message-thread only and touches no
+audio-thread path. CHANGELOG entry under `[0.9.7]` Fixed: the crossover jump is user-visible
+(`CHANGELOG_POLICY.md` rule 3); the CI guard and the documentation corrections are not. [Verified]

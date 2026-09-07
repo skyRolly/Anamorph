@@ -1238,8 +1238,8 @@ Separate from the build/validate pipeline, four security workflows/configs run a
 
 | File | What it does | Triggers |
 |---|---|---|
-| `.github/workflows/codeql.yml` | CodeQL: `c-cpp` (manual build — VST3 + tests targets, Standalone off) + `actions`. Alerts filtered to repo-own code (`paths-ignore: build` excludes the FetchContent'd JUCE tree). Default query suite. Uploads to Code Scanning **and** keeps the raw SARIF as an artifact. | push/PR to `main` (docs-only changes skipped), weekly, dispatch |
-| `.github/workflows/msvc.yml` | MSVC `/analyze` (NativeRecommendedRules) → SARIF upload. Build step required (juceaide-generated files); JUCE under `build/_deps` treated as external. Uploads to Code Scanning **and** keeps the raw SARIF as an artifact. | push/PR to `main` path-filtered to `src/`, `tests/`, `CMakeLists.txt`; weekly; dispatch |
+| `.github/workflows/codeql.yml` | CodeQL: `c-cpp` (manual build — VST3 + `AnamorphTests`, Standalone off) + `actions`. Default query suite. Alerts are **not** filtered to repo-own code — see §Reading the Code Scanning surface. Uploads to Code Scanning **and** keeps the raw SARIF as an artifact. | push/PR to `main` (docs-only changes skipped), weekly, dispatch |
+| `.github/workflows/msvc.yml` | MSVC `/analyze` (NativeRecommendedRules) → SARIF upload. Build step required (juceaide-generated files); JUCE under `build/_deps` treated as external, with one documented leak. Analyses every codemodel target, including `AnamorphStateTests`, which the build step never compiles. Uploads to Code Scanning **and** keeps the raw SARIF as an artifact. | push/PR to `main` path-filtered to `src/`, `tests/`, `CMakeLists.txt`; weekly; dispatch |
 | `.github/workflows/dependency-review.yml` | Dependency Review on PRs (GitHub Actions deps only — the graph does not index CMake FetchContent). Comments only on failure. | PR to `main` |
 | `.github/dependabot.yml` | Weekly `github-actions` version bumps in **two groups split by semver impact** — minor/patch in one PR (most of the volume: the `github/codeql-action` trio releases every week or two, and since every ref became a SHA pin the `actions/*` point releases land here too), majors in another, so one major cannot block every safe bump behind it. Both groups keep `patterns: "*"`, which is what holds a multi-ref family (`codeql-action/{init,analyze,upload-sarif}` — three dependency names) together. `microsoft/msvc-code-analysis-action` is **ignored**: its SHA pin carries no tag, and an untagged pin is followed to the latest *commit*, not the latest release. `cooldown` is unset — Dependabot already withholds a new version for 3 days by default. Nothing else in this repository is a Dependabot ecosystem; `DEPENDENCY_POLICY.md` §Update mechanisms says what maintains each of the rest. | weekly |
 
@@ -1251,11 +1251,18 @@ coverage. Evidence [Verified]: the four files above.
 
 Both scanners also publish their SARIF as Actions artifacts — `codeql-sarif-<language>-<sha>` and
 `prefast-sarif-<sha>`. The Code Scanning alert and check-run annotation APIs are not reachable from
-every audit context; Actions artifacts are. The artifact is strictly richer than the dashboard for
-CodeQL: `paths-ignore: build` filters the fetched JUCE tree out of the ALERTS, but those results
-remain in the raw SARIF. Note the name carries `github.sha`, which on a `pull_request` event is the
-merge commit, not the head commit. Neither analysis runs a second time — each new step reads the
-SARIF the scanner had already written.
+every audit context; Actions artifacts are, and that is the whole reason these exist. Note the name
+carries `github.sha`, which on a `pull_request` event is the merge commit, not the head commit.
+Neither analysis runs a second time — each new step reads the SARIF the scanner had already written.
+
+**The CodeQL artifact is the same bytes the dashboard got, not a richer superset.** This paragraph
+used to claim it was richer, on the reasoning that `paths-ignore: build` filtered the JUCE tree out
+of the alerts while leaving it in the raw file. That is wrong in both halves and was corrected on
+2026-09-07: `analyze` writes `../results/cpp.sarif`, fingerprints *that file*, and uploads *that
+file*, so artifact and upload cannot differ; and the filter does not apply at all (§Reading the Code
+Scanning surface). Evidence [Verified]: the `Analyze (c-cpp)` job log for run 34066947393 —
+`Exported results to SARIF` → `Post-processing sarif files: ["…/results/cpp.sarif"]` → `Uploading
+code scanning results` → `Successfully uploaded results`, one file throughout.
 
 **The raw scanner SARIF is kept on the same `!cancelled()` principle** the artifact gating in
 §Pipeline uses — a report Code Scanning REJECTS is exactly when the raw SARIF is most worth having,
@@ -1271,6 +1278,41 @@ skips the upload when nothing matches.
 
 Evidence [Verified]: `.github/workflows/codeql.yml`, `.github/workflows/msvc.yml`.
 
+### Reading the Code Scanning surface (what each scanner actually covers)
+
+Established by the 2026-09-07 audit against `main` @ `2ed512c6`, from the raw SARIF of both
+scanners. Read this before triaging an alert: the two analyzers disagree about scope, and the
+disagreement is not a defect in either.
+
+| | CodeQL `c-cpp` | MSVC `/analyze` (PREfast) |
+|---|---|---|
+| Chooses what to analyse by | what the **build** compiles (`build-mode: manual`) | every target in the **CMake File API codemodel** |
+| Sees `src/**` | yes, via `Anamorph_VST3` | yes |
+| Sees `tests/dsp_tests.cpp` | yes, via `AnamorphTests` | yes |
+| Sees `tests/state_tests.cpp`, `tests/AllocationGuard.h` | **no** — `AnamorphStateTests` is never built | yes — the target is in the codemodel (`ANAMORPH_BUILD_TESTS` defaults ON, CMakeLists.txt:27) |
+| Sees `bench`/`dsp_dump`/`fuzz_state`/`realtime_*`/`tsan_canary` | no | only where the target is configured |
+| JUCE under `build/_deps` | **not filtered** — all 50 results on `2ed512c6` are JUCE | filtered except one .cpp compiled into a first-party target |
+
+**`paths-ignore` does not filter the C/C++ alerts.** GitHub documents `paths`/`paths-ignore` as
+applying when a codebase is analysed *without building it* — interpreted languages, or a compiled
+language under `build-mode: none`. This repository's `c-cpp` entry is `build-mode: manual`, so the
+keyword is inert for it; it remains in the config only because the `actions` entry shares the block.
+The consequence is concrete and must not be re-forgotten: the JUCE tree **is** extracted, **is** in
+the results, and **is** uploaded, so those alerts stand on the dashboard.
+
+**The triage rule for both scanners.** An alert whose path begins with `build/_deps/` is
+third-party JUCE. JUCE is pin-locked to 9.0.1 and review-gated (`docs/policies/DEPENDENCY_POLICY.md`),
+so such an alert is **accepted, not fixed here** — a JUCE change is an ADR-scoped dependency bump,
+never an alert-driven edit. Genuinely removing them from the dashboard would mean relocating the
+FetchContent tree outside the workspace, or post-filtering the SARIF before upload. Both are Build
+System scope decisions under `ARCHITECTURE_REVIEW_GATE.md`, so neither was folded into the audit
+that found this.
+
+**What the raw artifacts cannot tell you.** They carry what each scanner *produced*. They do not
+carry alert *state* — whether an alert is open, fixed or dismissed, and by whom. That is the Code
+Scanning alerts API, and any claim about the dashboard's standing alert count has to come from
+there.
+
 ### The Linux ABI floor
 
 ### The Windows-parity stack guard (`linux`)
@@ -1282,12 +1324,29 @@ entry to the function, before its first statement. That is exactly how round 12'
 failed: the suite died before printing anything, the Windows CRT's fully-buffered pipe took the log
 with it, and CI reported one truncated line and no summary from the slowest job in the matrix.
 
-The `linux` job therefore re-runs the state suite under `ulimit -s 1024` as a blocking step, right
-after the ordinary self-tests and re-using the same binary. It is a **proxy** — MSVC lays out frames
-its own way — but it reproduces the failure it exists for, on the platform the suite is developed on,
-in about a minute. The fix it points at is never "raise the limit": it is to put the processors on the
-heap (`docs/procedures/TESTING.md`). Both suites additionally run with `stdout` **unbuffered**, so a
-crash can no longer take the log with it on any platform.
+The `linux` job therefore re-runs the self-test suites under `ulimit -s 1024` as a blocking step,
+right after the ordinary self-tests and re-using the same binaries. It is a **proxy** — MSVC lays out
+frames its own way — but it reproduces the failure it exists for, on the platform the suites are
+developed on, in about a minute. The fix it points at is never "raise the limit": it is to put the
+processors on the heap (`docs/procedures/TESTING.md`). Both suites additionally run with `stdout`
+**unbuffered**, so a crash can no longer take the log with it on any platform.
+
+**Both suites, since 2026-09-07.** The step used to run the state suite alone, justified by "the DSP
+suite holds no processors". That is true only of `AnamorphAudioProcessor` — `AnamorphTests` compiles
+`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:523-525), so it cannot construct one — and it
+is the wrong test: what overflows a frame is a large automatic, not that particular class, and
+`dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests
+(:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
+suite's largest frame is **289,440 bytes** (`testPendingDuckDoesNotSurviveActivation`,
+dsp_tests.cpp:1388) — 28% of the 1 MB reserve, against the state suite's **707,824**
+(state_tests.cpp:8967, 68%). Widening the step armed a tripwire rather than introducing a failure:
+both binaries were verified green under `ulimit -s 1024` first.
+
+**PREfast's `C6262` numbers are not frame sizes.** The same audit measured its largest claim,
+1,280,508 bytes at state_tests.cpp:2659, against GCC's 283,968 for that function — /analyze sums a
+function's locals across disjoint sibling scopes, without the lifetime overlap a real compiler
+applies. Use `-fstack-usage`, not the alert text, when judging headroom. The 130 `C6262` alerts are
+accepted as test-only; the control that actually holds this line is the guard step, not the alert.
 
 ### Why the valgrind lane needs the suite's spinners paced (`sanitizers`)
 

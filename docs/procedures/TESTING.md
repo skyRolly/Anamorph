@@ -995,12 +995,26 @@ the Windows stack locally:
 
 ```bash
 ( ulimit -s 1024 && ./build/AnamorphStateTests_artefacts/Release/AnamorphStateTests )
+( ulimit -s 1024 && ./build/AnamorphTests_artefacts/Release/AnamorphTests )
 ```
 
-The `linux` job runs exactly that as a blocking step (*State suite under a 1 MB stack (Windows
-parity)*), so the constraint is checked on every push where the suite is actually developed rather
+The `linux` job runs exactly that as a blocking step (*Self-test suites under a 1 MB stack (Windows
+parity)*), so the constraint is checked on every push where the suites are actually developed rather
 than only by the slowest job in the matrix. It is a proxy — MSVC's frame layout is its own — but it
-reproduces the failure it exists for. **Both suites also run with `stdout` unbuffered**
+reproduces the failure it exists for.
+
+**The DSP suite is in the guard too, since 2026-09-07.** It used to be excluded because it "holds no
+processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `tests/dsp_tests.cpp`
+alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
+`dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
+with `g++ -fstack-usage`, the largest frames are **707,824 bytes** in the state suite
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, state_tests.cpp:8967) and
+**289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, dsp_tests.cpp:1388) — 68%
+and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
+alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
+state_tests.cpp:2659 is 1,280,508 where the real frame is 283,968.
+
+**Both suites also run with `stdout` unbuffered**
 (`setvbuf(..., _IONBF, ...)`), so a crash can no longer take the log with it: on Windows the CRT
 buffers a pipe fully, which is why the round-12 failure arrived unreadable.
 

@@ -801,20 +801,36 @@ jobs:
       # `ulimit -s 1024` is a PROXY, not an equivalence: MSVC's frame layout is its
       # own. It is a good proxy -- it reproduces the failure this exists for -- and
       # it is the only way to keep the constraint visible where the suite is
-      # actually developed. Runs the state suite only (the DSP suite holds no
-      # processors) and re-uses the binary the step above just built.
-      - name: State suite under a 1 MB stack (Windows parity)
+      # actually developed. Both binaries the step above just built are re-used.
+      #
+      # BOTH SUITES, since 2026-09-07. This used to run the state suite alone, on the
+      # premise that "the DSP suite holds no processors". That is true only of
+      # `AnamorphAudioProcessor` -- which `AnamorphTests` genuinely cannot construct,
+      # since it compiles `tests/dsp_tests.cpp` alone and never the plugin sources
+      # (CMakeLists.txt:523-525) -- and it is the wrong test. What overflows a frame is
+      # a large object, not that particular one, and `dsp_tests.cpp` declares
+      # `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests
+      # (:119, :189, :268, :304 ...). Measured with `g++ -fstack-usage` on the exact
+      # compile line ninja uses: the DSP suite's largest frame is 289,440 bytes
+      # (`testPendingDuckDoesNotSurviveActivation`, dsp_tests.cpp:1388) against the
+      # state suite's 707,824 (state_tests.cpp:8967) -- 28% of the 1 MB reserve, not
+      # 0%. This arms a tripwire rather than introducing a failure: both suites were
+      # verified green under `ulimit -s 1024` before the step was widened.
+      - name: Self-test suites under a 1 MB stack (Windows parity)
         if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
         run: |
-          BIN="$(find build -maxdepth 8 -name AnamorphStateTests -type f)"
-          test "$(printf '%s' "$BIN" | grep -c .)" -eq 1
-          ( ulimit -s 1024 && "$BIN" > /dev/null ) || {
-            echo "::error::the state suite does not survive a 1 MB stack -- the Windows main-thread"\
-                 " default. A test is holding too many ~138 kB AnamorphAudioProcessor objects in one"\
-                 " frame; put them on the heap (see State test 59) rather than raising this limit."
-            exit 1
-          }
-          echo "state suite green under a 1 MB stack"
+          for name in AnamorphStateTests AnamorphTests; do
+            BIN="$(find build -maxdepth 8 -name "$name" -type f)"
+            test "$(printf '%s' "$BIN" | grep -c .)" -eq 1
+            ( ulimit -s 1024 && "$BIN" > /dev/null ) || {
+              echo "::error::${name} does not survive a 1 MB stack -- the Windows main-thread"\
+                   " default. A test is holding too many large objects (a ~138 kB"\
+                   " AnamorphAudioProcessor, or an AnamorphEngine) in one frame; put them on the"\
+                   " heap (see State test 59) rather than raising this limit."
+              exit 1
+            }
+            echo "${name} green under a 1 MB stack"
+          done
 
       - name: pluginval (deterministic x3 -- release gate)
         # Explicit condition rather than relying on "no `if:`, so it self-skips".

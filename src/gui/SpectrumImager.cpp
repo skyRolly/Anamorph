@@ -310,11 +310,24 @@ void SpectrumImager::projectFromOrig (float* out, const float* orig, int count,
     auto r = plot();
     const float lo = r.getX() + kMinGapPx, hi = r.getRight() - kMinGapPx;
     for (int k = 0; k < count; ++k) out[k] = orig[k];
-    if (pinA >= 0 && pinA < count) out[pinA] = juce::jlimit (lo, hi, xA);
-    if (pinB >= 0 && pinB < count) out[pinB] = juce::jlimit (lo, hi, xB);
 
-    const int leftPin  = (pinA >= 0 && pinB >= 0) ? juce::jmin (pinA, pinB) : juce::jmax (pinA, pinB);
-    const int rightPin = juce::jmax (pinA, pinB);
+    // A PIN CAN BE STALE, and only `out[0 .. count - 1]` was written above. `beginBandMove`
+    // latches soloMoveLeft/soloMoveRight from the band count at the press; `moveBand` then
+    // re-reads a LIVE `bandCount()`, which a host write of `mbBands` -- an automation lane,
+    // or the sound half of a state restore -- can lower part-way through the gesture. The
+    // two pin guards already rejected an index past `count`; `leftPin`/`rightPin` were
+    // computed from the RAW arguments and did not, so a stale pin reached the pull loops
+    // below and `out[k + 1]` read a slot the copy loop never wrote -- an indeterminate
+    // value (UB) that then steered a crossover write the user never made, inside the
+    // gesture the move had opened. Validate ONCE and use the same values for the pins and
+    // for the loop bounds, so the two can never disagree again.
+    const int pA = (pinA >= 0 && pinA < count) ? pinA : -1;
+    const int pB = (pinB >= 0 && pinB < count) ? pinB : -1;
+    if (pA >= 0) out[pA] = juce::jlimit (lo, hi, xA);
+    if (pB >= 0) out[pB] = juce::jlimit (lo, hi, xB);
+
+    const int leftPin  = (pA >= 0 && pB >= 0) ? juce::jmin (pA, pB) : juce::jmax (pA, pB);
+    const int rightPin = juce::jmax (pA, pB);
     if (leftPin < 0) return;
 
     for (int k = leftPin - 1;  k >= 0;    --k) out[k] = juce::jmin (orig[k], out[k + 1] - kMinGapPx);

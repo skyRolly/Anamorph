@@ -161,6 +161,7 @@ TRACKED = (
     "src/dsp/SoloMonitor.h",
     "src/dsp/VelvetNoise.cpp",
     "src/gui/LookAndFeel.cpp",
+    "src/gui/SpectrumImager.cpp",
     "src/gui/Vectorscope.h",
     "tests/state_tests.cpp",
     "tests/dsp_tests.cpp",
@@ -316,44 +317,25 @@ GLOSS = re.compile(r"""\A[`]?\s*\((?:`([^`]+)`|"([^"]+)")\)""")
 # `""` means "no stable token to name"; the run reports those as unverified
 # rather than accepting them silently, so they stay countable.
 DELIBERATE_REAIMS = {
-    # 2026-09-06 (pluginval crash classification): THE TABLE WAS EMPTIED AND
-    # REFILLED, for the third time and for the reason the 2026-09-03 note below
-    # this one gives. Every entry it held -- the D-2 / ADR-0036 rounds and the
-    # ADR-0037 round -- was reported by this tool as "not needed against
-    # origin/main, which already carries the re-aimed spelling", against a base
-    # that IS this branch's merge base (PRs #135 and #141 merged them). Under the
-    # transition key a completed transition can never match again, and leaving it
-    # would silence a later undeclared movement of the same anchor -- which is
-    # exactly the failure the lifecycle note above records.
+    # 2026-09-07 (Code Scanning audit): THE TABLE IS EMPTY AGAIN, for the fourth
+    # time and for the reason the lifecycle note above gives. All six entries it
+    # held -- the pluginval crash-classification round -- were reported by this
+    # tool as "not needed against origin/main, which already carries the re-aimed
+    # spelling", against a base that IS this branch's merge base (PR #142 merged
+    # them as 2ed512c6). Under the transition key a completed transition can
+    # never match again, and leaving it would silence a later undeclared movement
+    # of the same anchor.
     #
-    # What refills it is `run-pluginval.sh` gaining `classify_pass_exit` and its
-    # `--self-test` ahead of the pass loop: `run_one_pass` moved above the setup
-    # AND was edited (it now tees pluginval's output, reads `${PIPESTATUS[0]}`
-    # and asks the classifier for the verdict), so every citation into the
-    # retry/loop block reports UNMAPPABLE rather than a plain move. Each was
-    # re-derived by reading the span for the symbol its document names: a
-    # document that speaks only of the RETRY is aimed at the policy block plus
-    # `run_one_pass`; one that speaks of what a crash IS starts at
-    # `classify_pass_exit`. Keyed on origin/main's spelling, which is this
-    # branch's merge base and its push predecessor alike. All retire on merge.
-    ("docs/FUTURE_RISKS.md",
-     "scripts/run-pluginval.sh:147-198",
-     "scripts/run-pluginval.sh:140-228"): "classify_pass_exit",
-    ("docs/KNOWN_ISSUES.md",
-     "scripts/run-pluginval.sh:147-198",
-     "scripts/run-pluginval.sh:140-228"): "classify_pass_exit",
-    ("docs/architecture/design-decisions/ADR-0011-linux-x11-cpu-render.md",
-     "scripts/run-pluginval.sh:147-198",
-     "scripts/run-pluginval.sh:140-228"): "classify_pass_exit",
-    ("docs/procedures/TESTING.md",
-     "scripts/run-pluginval.sh:172-198",
-     "scripts/run-pluginval.sh:140-228"): "classify_pass_exit",
-    ("docs/POSTMORTEMS.md",
-     "scripts/run-pluginval.sh:147-198",
-     "scripts/run-pluginval.sh:155-228"): "CRASH_RETRY_ATTEMPTS",
-    ("docs/procedures/TROUBLESHOOTING.md",
-     "scripts/run-pluginval.sh:147-198",
-     "scripts/run-pluginval.sh:155-228"): "CRASH_RETRY_ATTEMPTS",
+    # Nothing refills it. This change's only source movement is
+    # src/gui/SpectrumImager.cpp gaining 13 comment lines above
+    # `projectFromOrig`'s pin validation; the one document that cites into that
+    # file below the edit (`docs/architecture/THREAD_MODEL.md`, the imager's ring
+    # read) was re-aimed by hand from :626 to :639, and it is a PLAIN MOVE with
+    # the cited statement unchanged, not an edited span -- so it needs no
+    # declaration. It needed the hand, not `--fix`, because that cell used to
+    # cite BARE filenames, which this parser declines: both paths are now written
+    # in full and `src/gui/SpectrumImager.cpp` joins `TRACKED`, so the next such
+    # move is the gate's to catch rather than a reader's.
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the
