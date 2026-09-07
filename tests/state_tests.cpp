@@ -2664,6 +2664,261 @@ static void testAGestureWritesOnlyWhatItOwns()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 72 -- the three holes the adversarial pass found in ADR-0040's
+//  own guard, each one a place where "the check is adjacent to the store" was
+//  not actually true.
+//
+//  (a) THE COMMIT POINT OPENS A GESTURE FIRST. `setBands` and `setSoloMask` are
+//      not bare stores: each is `beginChangeGesture(); setValueNotifyingHost();
+//      endChangeGesture();`, and `beginChangeGesture` dispatches
+//      parameterGestureChanged(idx, true) to every listener SYNCHRONOUSLY BEFORE
+//      the value store (juce_AudioProcessorParameter.cpp:65-86). So at the two
+//      stores that matter most -- the band count and the solo word -- there IS a
+//      call between the check and the store, and a host that moves mbBands from
+//      inside that dispatch had the commit written straight over it.
+//
+//  (b) A SAME-PARAMETER ECHO WAS STILL LAUNDERED. The record was taken by
+//      READING THE PARAMETER BACK after the store returned. A listener that
+//      writes the very parameter the gesture just stored therefore had its value
+//      adopted as the gesture's own, and the next comparison could not see it.
+//      Every leg of State test 71 aims its probe at a DIFFERENT parameter from
+//      the one it hooks, so none of them could reach this.
+//
+//  (c) IS NOT A DEFECT, AND THIS LEG RECORDS WHY. The adversarial pass flagged
+//      `mouseWheelMove` for calling `captureDragOrigins()` mid-drag and so
+//      re-seeding the ownership record. Measured: it passes before and after,
+//      because that call re-seeds `dragOrigX` AND `gestureX` together -- the
+//      projection targets move with the record, so the continuing drag has
+//      nothing stale to write and overwrites nothing. The leg is kept as the
+//      guard on that pairing: a future change that re-seeds one array without the
+//      other turns it red.
+// ---------------------------------------------------------------------------
+namespace
+{
+// The (a) probe: fires from inside beginChangeGesture, BEFORE the value store.
+struct WriteFromInsideAGestureOpen final : public juce::AudioProcessorParameter::Listener
+{
+    juce::RangedAudioParameter* target = nullptr;
+    float to = 0.0f;
+    bool  armed = false, fired = false;
+    void parameterValueChanged (int, float) override {}
+    void parameterGestureChanged (int, bool starting) override
+    {
+        if (! starting || ! armed || target == nullptr) return;
+        armed = false;
+        fired = true;
+        target->setValueNotifyingHost (target->convertTo0to1 (to));
+    }
+};
+// The (b) probe: writes the SAME parameter whose store is dispatching.
+struct EchoTheSameParameter final : public juce::AudioProcessorParameter::Listener
+{
+    juce::RangedAudioParameter* self = nullptr;
+    float to = 0.0f;
+    bool  armed = false, fired = false;
+    void parameterValueChanged (int, float) override
+    {
+        if (! armed || self == nullptr) return;
+        armed = false;
+        fired = true;
+        self->setValueNotifyingHost (self->convertTo0to1 (to));
+    }
+    void parameterGestureChanged (int, bool) override {}
+};
+} // namespace
+
+static void testTheCheckIsAdjacentToEveryStore()
+{
+    std::printf ("State test 72: the check is adjacent to EVERY store, including the ones that open a gesture\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the adjacency probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the adjacency probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* wMidP  = apvts.getParameter (pid::mbWidthMid);
+    check (bandsP && loP && midP && hiP && wLoP && wMidP, "the parameters the adjacency probe drives exist");
+    if (! (bandsP && loP && midP && hiP && wLoP && wMidP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto bandsNow = [&] { return juce::roundToInt (plainOf (bandsP)); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+    const float W     = (float) imager->getWidth();
+    const float H     = (float) imager->getHeight();
+    const float laneY = 0.5f * H;
+    const float delX  = 13.0f, delY = H - 30.0f;
+
+    auto findFirstX = [&] (const char* want, float y) -> float
+    {
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto resetWorld = [&] ()
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 2000.0f);
+        setPlain (hiP, 10000.0f);
+        setPlain (wLoP,   1.0f);
+        setPlain (wMidP,  1.0f);
+    };
+
+    // ---- LEG A: the write inside beginChangeGesture, before the commit store ----
+    {
+        resetWorld();
+        WriteFromInsideAGestureOpen poke;
+        poke.target = bandsP;
+        poke.to     = 2.0f;
+        bandsP->addListener (&poke);       // setBands opens a gesture on THIS parameter
+
+        imager->mouseDown (mev (delX, delY, delX, delY, false));
+        poke.armed = true;
+        imager->mouseUp   (mev (delX, delY, delX, delY, true));
+        const bool landed = poke.fired;
+        bandsP->removeListener (&poke);
+
+        check (landed, "leg A: the probe write landed inside setBands' gesture-open dispatch");
+        if (landed && bandsNow() != 2)
+            std::printf ("  [leg A] Bands was moved to 2 from inside the gesture that opens the commit,"
+                         " and the commit wrote %d over it\n", bandsNow());
+        check (! landed || bandsNow() == 2,
+               "leg A: a write inside the commit's own gesture-open is not written over");
+    }
+
+    // ---- LEG B: an echo of the SAME parameter the store is dispatching ----------
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg B: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            EchoTheSameParameter echo;
+            echo.self = loP;
+            echo.to   = 500.0f;
+            loP->addListener (&echo);
+
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            echo.armed = true;
+            imager->mouseDrag (mev (hx - 20.0f, laneY, hx, laneY, true)); // store -> echo -> record
+            const bool landed = echo.fired;
+            const float echoed = plainOf (loP);
+            imager->mouseDrag (mev (hx - 60.0f, laneY, hx, laneY, true)); // would overwrite the echo
+            imager->mouseUp   (mev (hx - 60.0f, laneY, hx, laneY, true));
+            loP->removeListener (&echo);
+
+            check (landed, "leg B: the echo landed inside the store it answers");
+            if (landed && ! juce::exactlyEqual (echoed, plainOf (loP)))
+                std::printf ("  [leg B] the echoed value %.1f Hz was adopted as the gesture's own and"
+                             " then overwritten with %.1f Hz\n", (double) echoed, (double) plainOf (loP));
+            check (! landed || juce::exactlyEqual (echoed, plainOf (loP)),
+                   "leg B: a same-parameter echo is not adopted as the gesture's own");
+        }
+    }
+
+    // ---- LEG C: a wheel tick mid-drag must not re-seed ownership ----------------
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg C: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx - 10.0f, laneY, hx, laneY, true));
+            setPlain (hiP, 15000.0f);                       // an outside hand installs a split
+            const float installed = plainOf (hiP);
+            juce::MouseWheelDetails wheel;
+            wheel.deltaX = 0.0f; wheel.deltaY = 0.05f; wheel.isReversed = false;
+            wheel.isSmooth = false; wheel.isInertial = false;
+            imager->mouseWheelMove (mev (hx, laneY, hx, laneY, false), wheel);
+            imager->mouseDrag (mev (hx - 40.0f, laneY, hx, laneY, true));
+            imager->mouseUp   (mev (hx - 40.0f, laneY, hx, laneY, true));
+            if (! juce::exactlyEqual (installed, plainOf (hiP)))
+                std::printf ("  [leg C] a wheel tick mid-drag re-seeded ownership: the installed split"
+                             " %.1f Hz became %.1f Hz\n", (double) installed, (double) plainOf (hiP));
+            check (juce::exactlyEqual (installed, plainOf (hiP)),
+                   "leg C: a wheel tick during a drag re-seeds the origins WITH the record, so"
+                   " nothing outside is overwritten");
+        }
+    }
+
+    // ---- LEG D: positive control -- a steady delete x still removes -------------
+    {
+        resetWorld();
+        imager->mouseDown (mev (delX, delY, delX, delY, false));
+        imager->mouseUp   (mev (delX, delY, delX, delY, true));
+        check (bandsNow() == 3, "leg D: an uninterrupted delete x still removes its band");
+    }
+
+    // ---- LEG E: positive control -- the wheel still works with no drag ----------
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg E: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            const float before = plainOf (loP);
+            juce::MouseWheelDetails wheel;
+            wheel.deltaX = 0.0f; wheel.deltaY = 0.20f; wheel.isReversed = false;
+            wheel.isSmooth = false; wheel.isInertial = false;
+            imager->mouseWheelMove (mev (hx, laneY, hx, laneY, false), wheel);
+            check (! juce::exactlyEqual (before, plainOf (loP)),
+                   "leg E: the wheel still moves a split when no gesture is in flight");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 //  State test 67 -- an outward drag whose split has since vanished removes
 //  NOTHING, rather than deleting whichever band the index now lands on.
 //
@@ -13572,6 +13827,7 @@ int main (int argc, char* argv[])
     testGestureOwnsTheTopologyItCreated();
     testAuthoritativeSoundChangeVoidsAGesture();
     testAGestureWritesOnlyWhatItOwns();
+    testTheCheckIsAdjacentToEveryStore();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

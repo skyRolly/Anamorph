@@ -16,6 +16,11 @@ static constexpr float kMinGapPx  = 46.0f; // constant on-screen split spacing (
 // one; the two must be the same number, or a difference too small for this imager to write
 // could still read as an outside change and cancel a live drag (ADR-0039).
 static constexpr float kSplitMovedPx = 0.5f;
+// The width parameters carry an interval of 0.001 (PluginParameters.cpp:241-244), so a store
+// quantises and a read-back is not bit-identical to what was asked for. This is the tolerance
+// for "did MY store land?", and it is the parameter's own resolution: a foreign write smaller
+// than it is a change the parameter itself cannot represent (ADR-0040).
+static constexpr float kWidthQuantum = 0.001f;
 
 namespace
 {
@@ -328,10 +333,24 @@ bool SpectrumImager::writeCrossovers (const float* xs, int count)
 {
     for (int k = 0; k < count; ++k)
     {
+        // ADR-0040, round-3 correction 1: the COUNT is re-proved too, not only the value. `count`
+        // was read once before this loop and a listener can move mbBands from inside any store.
+        if (gestureBands >= 0 && bandCount() != gestureBands) return false;
         if (! ownsSplit (k)) return false;
-        if (std::abs (freqToX (crossover (k)) - xs[k]) > kSplitMovedPx)
-            setParam (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])));
-        gestureX[k] = freqToX (crossover (k)); // own exactly what is there NOW, not what survives later
+        if (std::abs (freqToX (crossover (k)) - xs[k]) <= kSplitMovedPx)
+            continue;                                  // nothing to write; the record already stands
+        const float want = juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k]));
+        setParam (freqP[k], want);
+        // ADR-0040, round-3 correction 2: CONFIRM THE STORE LANDED before owning the result. The
+        // record used to be a bare read-back, which adopted a listener that wrote THIS SAME
+        // parameter from inside this very store -- the one case every leg of State test 71 misses,
+        // because each aims its probe at a different parameter from the one it hooks. Measured:
+        // `the echoed value 500.0 Hz was adopted as the gesture's own and then overwritten with
+        // 131.3 Hz`. Compared at kSplitMovedPx rather than exactly, so the parameter's own
+        // quantisation of `want` is not mistaken for somebody else's hand.
+        const float landed = freqToX (crossover (k));
+        if (std::abs (landed - freqToX (want)) > kSplitMovedPx) return false;
+        gestureX[k] = landed;                          // own what THIS store put there, nothing else
     }
     return true;
 }
@@ -475,23 +494,36 @@ void SpectrumImager::resetParam (juce::RangedAudioParameter* p)
 {
     if (p) { if (onSweep) onSweep(); p->beginChangeGesture(); p->setValueNotifyingHost (p->getDefaultValue()); p->endChangeGesture(); }
 }
-void SpectrumImager::setBands (int n)
+// ADR-0040, round-3 correction 3: THE COMMIT POINT OPENS A GESTURE FIRST, so a check in the caller
+// is NOT adjacent to this store. `beginChangeGesture` dispatches parameterGestureChanged(idx, true)
+// to every listener SYNCHRONOUSLY before the value goes out (juce_AudioProcessorParameter.cpp:65-86),
+// and one of those listeners is the wrapper that tells the host -- so a host answering the gesture
+// open by writing mbBands had the commit written straight over it. Measured: `Bands was moved to 2
+// from inside the gesture that opens the commit, and the commit wrote 3 over it`. `expectedBands`
+// re-proves the topology in the only place that is adjacent: after the open, before the store.
+// -1 means the caller has no topology to prove (a plain solo toggle).
+void SpectrumImager::setBands (int n, int expectedBands)
 {
     if (auto* p = bandsP)
     {
         p->beginChangeGesture();
-        p->setValueNotifyingHost (p->convertTo0to1 ((float) juce::jlimit (1, 4, n)));
+        if (expectedBands < 0 || bandCount() == expectedBands)
+            p->setValueNotifyingHost (p->convertTo0to1 ((float) juce::jlimit (1, 4, n)));
         p->endChangeGesture();
     }
 }
 
 // --- Solo mask ---------------------------------------------------------------
-void SpectrumImager::setSoloMask (int mask)
+// Same shape, same reason (ADR-0040 round-3 correction 3). `expectedMask` additionally proves the
+// word this plan was computed from is still the word being replaced; -1 waives both.
+void SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
 {
     if (soloP == nullptr) return;
     mask &= 0x0F;
     soloP->beginChangeGesture();
-    soloP->setValueNotifyingHost (soloP->convertTo0to1 ((float) mask));
+    if ((expectedBands < 0 || bandCount() == expectedBands)
+        && (expectedMask < 0 || soloMask() == expectedMask))
+        soloP->setValueNotifyingHost (soloP->convertTo0to1 ((float) mask));
     soloP->endChangeGesture();
 }
 void SpectrumImager::toggleSoloBit (int b) { setSoloMask (soloMask() ^ (1 << b)); }
@@ -611,7 +643,7 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
     // `N` is this transaction's expected topology, read once at entry (ADR-0039). A caller that
     // sees -1 knows nothing it planned was completed as planned.
     if (bandCount() != N || soloMask() != oldMask) return -1;
-    setSoloMask (nm);
+    setSoloMask (nm, N, oldMask);
 
     for (int i = 0; i <= N; ++i)
     {
@@ -627,7 +659,7 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
         setParam (freqP[i],  juce::jlimit (kFreqLo, kFreqHi, xToFreq (nx[i])));
     }
     if (bandCount() != N) return -1;
-    setBands (N + 1);
+    setBands (N + 1, N);
     resultingBands = N + 1;      // from THIS read of the count, not a second one (ADR-0039)
     return ins;
 }
@@ -692,7 +724,7 @@ void SpectrumImager::removeBand (int b, int expectedBands)
     // standing and at most one already-issued store behind. A legitimately begun operation truncated
     // by a newer authority is ADR-0036 section 25's rule, not a stale overwrite.
     if (bandCount() != expectedBands || soloMask() != oldMask) return;
-    setSoloMask (nm);
+    setSoloMask (nm, expectedBands, oldMask);
 
     for (int k = 0; k < N - 1; ++k)
     {
@@ -705,7 +737,7 @@ void SpectrumImager::removeBand (int b, int expectedBands)
         setParam (freqP[k],  nf[k]);
     }
     if (bandCount() != expectedBands) return;
-    setBands (N - 1);
+    setBands (N - 1, expectedBands);
 }
 
 // ----------------------------------------------------------------------------
@@ -1929,7 +1961,12 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
         }
         if (widthHoldActive)
         {
-            setParam (widthP[dragBand], yToWidth ((float) e.position.y - dragGrabDY));
+            const float want = yToWidth ((float) e.position.y - dragGrabDY);
+            setParam (widthP[dragBand], want);
+            // Confirm the store landed before owning it, for the same reason as the splits above --
+            // at the parameter's own 0.001 resolution, so its quantisation of `want` is not read as
+            // a foreign hand (ADR-0040 round-3 correction 2).
+            if (std::abs (bandWidth (dragBand) - want) > kWidthQuantum) { cancelActiveDrag(); return; }
             gestureW[dragBand] = bandWidth (dragBand); // own it at the store, never in a later pass
         }
     }

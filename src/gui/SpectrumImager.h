@@ -147,7 +147,7 @@ private:
     float dispRightX (int b) const noexcept;
 
     // Solo (mask) ---------------------------------------------------------
-    void  setSoloMask (int mask);
+    void  setSoloMask (int mask, int expectedBands = -1, int expectedMask = -1);
     void  toggleSoloBit (int b);
     int   effectiveSoloMask() const noexcept; // includes the momentary hold preview
     void  beginBandMove (int b);            // drag a solo handle sideways to move the band (0.6.9 #9)
@@ -158,7 +158,7 @@ private:
     void setParam (juce::RangedAudioParameter*, float plain);
     void endGesture (juce::RangedAudioParameter*);
     void resetParam (juce::RangedAudioParameter*);
-    void setBands (int n);
+    void setBands (int n, int expectedBands = -1);
 
     void updateHover (juce::Point<float>);
     void setContextTooltip();               // per-control tooltip (0.6.9 #18)

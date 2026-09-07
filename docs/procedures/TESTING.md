@@ -861,6 +861,25 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 72 — the check is adjacent to EVERY store, including the ones that open a gesture**
+  (ADR-0040, same-day correction). ADR-0040's first form claimed the comparison and the store are
+  adjacent "with no call between them"; an adversarial pass over the shipped code found that false at
+  three stores. Legs: (a) `setBands`/`setSoloMask` are `beginChangeGesture(); setValueNotifyingHost();
+  endChangeGesture();`, and `beginChangeGesture` dispatches to every listener **before** the value
+  goes out (`juce_AudioProcessorParameter.cpp:65-86`), so a host write from inside that open was
+  written over (`Bands was moved to 2 from inside the gesture that opens the commit, and the commit
+  wrote 3 over it`); (b) the ownership record was a bare read-back, so a listener writing **the same
+  parameter** the gesture had just stored was adopted as the gesture's own (`the echoed value
+  500.0 Hz was adopted ... and then overwritten with 131.3 Hz`) — a case State test 71 is
+  structurally unable to reach, because every one of its legs aims its probe at a *different*
+  parameter from the one it hooks; (c) **not a defect, recorded as such**: `mouseWheelMove` re-seeds
+  `dragOrigX` and `gestureX` together, so a wheel tick mid-drag overwrites nothing — the leg passes
+  before and after and guards that pairing; (d), (e) positive controls — a steady delete x, and the
+  wheel still moving a split with no gesture in flight. Mutations: the bare read-back restored →
+  leg (b); the commit store no longer re-proving after the gesture open → leg (a). **Not caught:**
+  removing `writeCrossovers`' per-store count re-proof, whose consequence is inert writes to splits
+  above the live count.
+
 * **State test 71 — a gesture writes only what it owns, and claims only what it wrote** (ADR-0040).
   The round that moved the ownership question from HANDLER ENTRY to the STORE. Its probe is a
   `juce::AudioProcessorParameter::Listener` that writes one other parameter from inside a store,

@@ -168,6 +168,38 @@ Message thread only. No lock, no allocation, no blocking, no wait; the audio thr
 5. **The vanished-band Width and solo-mask residuals** keep the ADR-0039 disposition: preserved,
    deliberately. Nothing this round found makes them user-visible incorrect behaviour.
 
+## Correction, same day: the adjacency claim was false at three stores
+
+This ADR's first form asserted that the comparison and the store are adjacent "with no call between
+them". **That was true of the split and width stores and false of the two that matter most**, and an
+adversarial pass over the shipped design found it. Recorded here rather than quietly amended.
+
+1. **`setBands` and `setSoloMask` open a change gesture before storing.** Both are
+   `beginChangeGesture(); setValueNotifyingHost(); endChangeGesture();`, and `beginChangeGesture`
+   dispatches `parameterGestureChanged (idx, true)` to every listener **synchronously, before the
+   value goes out** (`juce_AudioProcessorParameter.cpp:65-86`). So at the commit point of both
+   topology transactions there *was* a call between the caller's check and the store. **Measured:**
+   `Bands was moved to 2 from inside the gesture that opens the commit, and the commit wrote 3 over
+   it`. Fixed by giving both an `expectedBands` (and, for the mask, an `expectedMask`) re-proved in
+   the only adjacent place there is — after the open, before the store.
+2. **The ownership record was a bare read-back, so a same-parameter echo was adopted.** A listener
+   that writes *the very parameter the gesture just stored* had its value read back and recorded as
+   the gesture's own, after which no comparison could see it. Every leg of State test 71 aims its
+   probe at a *different* parameter from the one it hooks, so none of them could reach this.
+   **Measured:** `the echoed value 500.0 Hz was adopted as the gesture's own and then overwritten
+   with 131.3 Hz`. Fixed by confirming the store landed — comparing the read-back against what this
+   store asked for, at `kSplitMovedPx` for splits and the parameter's own `0.001` interval for
+   widths, so quantisation is not mistaken for a foreign hand — and by recording only the slots the
+   pass actually wrote.
+3. **`writeCrossovers` re-proved each split's value but never the count.** Added for uniformity; its
+   consequence was inert (writes to splits above the live count), and **mutation N7 is not caught**,
+   which is recorded rather than dressed up.
+
+**One flag was investigated and is not a defect.** The adversarial pass also called `mouseWheelMove`
+a laundering hole for re-seeding ownership mid-drag. Measured: it re-seeds `dragOrigX` **and**
+`gestureX` together, so the projection targets move with the record and the continuing drag has
+nothing stale to write. State test 72 leg (c) keeps that pairing honest.
+
 ## Related code
 
 - `src/gui/SpectrumImager.h` — `gestureW[4]`, `ownsSplit`, `ownsWidth`, the `bool` returns.
@@ -186,7 +218,8 @@ out of the drag branch) → leg (a); **N2a** (no ownership check before the cros
 → leg (c); **N4** (`addBandAt`'s unguarded burst) → leg (h). Positive controls held throughout: legs
 (d), (e) and (f), and State tests 66–70 unchanged and green.
 
-**Confidence: high** for the reentrancy class, which is closed by construction — between the
-comparison and the store that follows it there is no call, so no listener can run. **Confidence:
+**Confidence: high** for the reentrancy class *after the correction above*, which is what makes the
+"no call between them" property actually hold at every store rather than at most of them. The first
+form of this ADR claimed it and was wrong at three; that is recorded rather than amended away. **Confidence:
 bounded, and stated as such** for the cross-thread class: it is narrowed from a burst to a single
 store and is not claimed closed.

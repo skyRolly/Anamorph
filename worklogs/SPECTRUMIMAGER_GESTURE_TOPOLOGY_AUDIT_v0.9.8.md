@@ -455,3 +455,32 @@ N3 and N4 each killed by exactly one named leg. Residuals unchanged from §20 pl
 vanished-band Width and solo-mask disposition, which this round re-checked and did not move: the new
 machinery touches the same stores, and nothing it found makes those values user-visible incorrect
 behaviour.
+
+## 25. The correction the adversarial pass forced, same day
+
+The round's own audit ran a five-way design panel and four adversarial judges per candidate over the
+**shipped** shape. Three of the flaws they returned were real, and one of them contradicts a claim
+this worklog and ADR-0040 had already made. Reproduced as State test 72 against `3bdc488`:
+
+```
+State test 72: the check is adjacent to EVERY store, including the ones that open a gesture
+  [leg A] Bands was moved to 2 from inside the gesture that opens the commit, and the commit wrote 3 over it
+  [FAIL] leg A: a write inside the commit's own gesture-open is not written over
+  [leg B] the echoed value 500.0 Hz was adopted as the gesture's own and then overwritten with 131.3 Hz
+  [FAIL] leg B: a same-parameter echo is not adopted as the gesture's own
+```
+
+| # | What was wrong | Fix | Mutation |
+|---|---|---|---|
+| C1 | `setBands`/`setSoloMask` dispatch `parameterGestureChanged(idx, true)` **before** their value store, so the caller's check was not adjacent at either commit point | `expectedBands` (+ `expectedMask`) re-proved between the open and the store | **N6** → leg (a) |
+| C2 | The ownership record was a bare read-back, so a listener writing the SAME parameter from inside its own store was adopted | confirm the store landed against what it asked for, at the write path's own tolerance; record only slots this pass wrote | **N5** → leg (b) |
+| C3 | `writeCrossovers` re-proved each value but not the count | count re-proved per store | **N7 not caught** — the consequence is inert writes to splits above the live count |
+
+**Why State test 71 could not have found C2:** every one of its legs hooks one parameter and aims the
+probe at a *different* one, so the same-parameter case was structurally outside it. That is the kind
+of blind spot an adversarial pass exists to find, and it found it in code that had already shipped.
+
+**One flag investigated and rejected.** `mouseWheelMove` was called a laundering hole for re-seeding
+ownership mid-drag. Measured: it re-seeds `dragOrigX` and `gestureX` **together**, so the projection
+targets move with the record and nothing stale is written. State test 72 leg (c) passes before and
+after and is kept as the guard on that pairing.
