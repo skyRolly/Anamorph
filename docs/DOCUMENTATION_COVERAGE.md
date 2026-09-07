@@ -9915,7 +9915,7 @@ the working tree: 0 files missing, 0 lines past EOF, 0 pointing at unrelated cod
 
 **MUST FIX — one, and the scanners did not report it.** PREfast's four `C6001` results are false
 positives, but auditing the second pair's surface found a real one three functions away:
-`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:364) validated its pin arguments
+`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:408) validated its pin arguments
 against `count` when *writing* them and not when computing `leftPin`/`rightPin`, so a stale pin
 survived into the pull loops and `out[k + 1]` read a slot the copy loop never wrote. Reachable:
 `beginBandMove` (:398) latches `soloMoveLeft`/`soloMoveRight` from the band count at the press;
@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:589 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:666 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:716`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:821`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10033,8 +10033,8 @@ that the fix covered one direction only. Both are settled here.
 
 **A SECOND defect, and the scanners never saw it either.** `dragOrigX` (src/gui/SpectrumImager.h:249)
 is the drag-start x of every split, seeded once when a gesture begins and read for the whole gesture.
-Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:399)
-and `moveBand` (:448). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
+Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:443)
+and `moveBand` (:531). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
 splits in USE at the press — so a host write of `mbBands` that **raised** Bands mid-gesture made the
 consumers ask `projectFromOrig` for origins nobody had written. Those slots still held the `{0,0,0}`
 initialiser, so unlike the falling case this half was **stale, not indeterminate — never UB**; the
@@ -10169,7 +10169,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:589 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:666 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10296,3 +10296,62 @@ nor `SOURCE_OF_TRUTH.md` enumerates individual ADRs or worklogs, so neither need
 item: no parameter ID, serialization, threading-model, DSP-order or reported-latency change, and no
 Accepted ADR conflict — ADR-0038 is amended through a new ADR, which is `ADR_POLICY` rule 4's own
 mechanism. [Verified]
+
+## SpectrumImager write ownership — ADR-0040, and the round that moved the check to the store (2026-09-07, fifth pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: `gestureW[4]` plus `ownsSplit`/`ownsWidth` — the
+two halves of one question, asked **adjacent to each store** instead of once at handler entry;
+`writeCrossovers` compares before each store, records the read-back of that slot immediately, and
+returns `false` so the caller abandons the event; `dragCrossoverTo` and `moveBand` propagate it; the
+`mouseDrag` width branch checks ownership before the anchor as well as before the store;
+`removeBand` and `addBandAt` re-read the count and re-prove each target before every store of their
+`2N ± 1`-store bursts; `resetCrossover` and `commitFreqEditor` stop carrying their own copy of `0.5f`.
+`tests/state_tests.cpp`: State test 71.
+
+**Why.** Three review findings, one invariant. `gestureIsStale()` was evaluated once and then up to
+seven stores followed it, which is safe only if nothing can run in between. Something can: JUCE's
+`setValueNotifyingHost` stores and then dispatches listeners **synchronously**
+(`juce_AudioProcessorParameter.cpp:59-63`, `:111-121`), and `AudioProcessor::ParameterChangeForwarder`
+(`juce_AudioProcessor.cpp:1467`) hands every one to the host through the format wrapper. So a host
+write-back lands *between two stores of the same burst* — a place no entry check can see.
+
+**Measured against `6e37e6e`:** `the installed width 1.700 was overwritten with 0.650 by a drag
+anchored before it`; `the split written from inside the burst (15000.0 Hz) was reclaimed as
+10000.0 Hz`; `Bands was moved to 2 from inside the burst and the rest of it wrote 3 back`.
+
+**Reading the mechanism changed the design.** It reclassified two of the three findings from
+"unclosable cross-thread race" to "synchronous reentrancy", which a check adjacent to its store closes
+**by construction** — between a comparison and the store that follows it there is no call, so no
+listener can run. That is why the fix is a placement change rather than a new signal.
+
+**Two rejections worth keeping.** A generation counter loses to a **silent writer**:
+`reassertParameters (…, notifyHost = false)` writes `rp->setValue (norm)` plus a direct atomic store
+and fires no listener at all, yet moves exactly what the imager reads — only a value comparison sees
+it. And the repository's existing coordinated-write abstraction, `juce::CriticalSection
+soundReplacement` (`PluginProcessor.h:558`, ADR-0036 §24), was evaluated rather than dismissed and
+rejected on four grounds, the decisive one being that it does not close the reentrancy class at all:
+a host re-entering is on *this* thread and the section is recursive.
+
+**One first draft was wrong and is recorded.** `addBandAt`'s CAS compared `xs[i]` for every `i < N`
+and broke State test 69 leg (a): `xs` holds only the `M = N − 1` splits that exist, and slot `M` is
+the one the add creates, so there is nothing there to own.
+
+**What is not claimed.** The cross-thread window — a host thread writing between our comparison and
+our store — is narrowed from a burst to a single store and is **not** claimed closed; no lock-free
+design can close it, and the one lock that exists is scoped to whole-sound replacements and never
+taken by the audio thread. A partially applied topology transaction is the accepted cost of
+abandoning: the alternative puts the old count back over the newer one.
+
+**Scope held.** The vanished-band Width and solo-mask residuals keep their ADR-0039 disposition —
+re-checked because this round touches the same stores, and nothing found makes them user-visible
+incorrect behaviour. Undo attribution during a bare width click, and the wheel path's gesture-less
+writes, are recorded as out of scope with the reason.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§15-24 (findings, reproduction,
+the JUCE dispatch, the invariant, seven candidate architectures with their rejections, why the window
+closes and what it leaves, width semantics, the implementation chronology, the full stale-write audit
+table and the residuals), `ADR-0040` + `ADR_INDEX`, `TESTING.md` (State test 71), `CHANGELOG.md`
+`[0.9.7]` Fixed — one new bullet for the Width defect and two existing bullets extended, since the
+burst cases complete promises those bullets already make. Not a gate item: no parameter ID,
+serialization, threading-model, DSP-order or reported-latency change, and no Accepted ADR conflict —
+ADR-0038 and ADR-0039 are completed, not contradicted. [Verified]

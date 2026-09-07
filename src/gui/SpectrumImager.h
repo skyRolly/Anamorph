@@ -121,8 +121,11 @@ private:
     // neighbour springs back when the pin moves away again (0.6.13 #8/#9/#10/#11).
     void  projectFromOrig (float* out, const float* orig, int count,
                            int pinA, float xA, int pinB, float xB) const noexcept;
-    void  writeCrossovers (const float* xs, int count);
-    void  dragCrossoverTo (int handle, float x);
+    // ADR-0040: these return FALSE when the gesture lost ownership part-way through the burst, so
+    // the caller abandons the rest of the event and voids the gesture. `true` means every store this
+    // pass made was one the gesture still owned.
+    bool  writeCrossovers (const float* xs, int count);
+    bool  dragCrossoverTo (int handle, float x);
     bool  bandAddTarget (int b, float x, float& outX) const noexcept;
 
     // `resultingBands` reports the count this add ESTABLISHED, taken from the same read of
@@ -148,7 +151,7 @@ private:
     void  toggleSoloBit (int b);
     int   effectiveSoloMask() const noexcept; // includes the momentary hold preview
     void  beginBandMove (int b);            // drag a solo handle sideways to move the band (0.6.9 #9)
-    void  moveBand (float mouseX);
+    bool  moveBand (float mouseX);
     void  endBandMove();
 
     void beginGesture (juce::RangedAudioParameter*);
@@ -307,14 +310,28 @@ private:
     // of the sound that was just replaced -- and writes the unpinned splits back over it. Every
     // write this gesture makes refreshes these, so a difference means someone else wrote.
     float gestureX[3] { 0.0f, 0.0f, 0.0f };
+    // ADR-0040. THE SAME, FOR WIDTHS. `gestureX` records splits only, so a width-only authoritative
+    // change moved nothing the gesture watched: a width drag anchors `dragGrabDY` at the 3 px engage
+    // and thereafter computes from the CURSOR alone -- the live width is never read again -- so an
+    // outside write was overwritten by the next mouse move from an anchor taken before it. Measured:
+    // `the installed width 1.700 was overwritten with 0.650`.
+    float gestureW[4] { 0.0f, 0.0f, 0.0f, 0.0f };
+    // ADR-0040. THE ONE QUESTION EVERY GESTURE STORE ASKS, adjacent to the store it guards. Exact
+    // equality, not an epsilon: the gesture records the READ-BACK after each of its own stores, so
+    // its own write can never read as somebody else's, and there is no epsilon to invent for a path
+    // (the width drag) that has no write-suppression threshold of its own. `gestureBands < 0` means
+    // no gesture is in flight -- the wheel path -- and then nothing is owned and nothing is refused.
+    bool  ownsSplit (int k) const noexcept;
+    bool  ownsWidth (int b) const noexcept;
     // True once the count has moved under an active gesture. Message thread only; a plain
     // comparison of two ints, no lock and no allocation -- the audio thread is not involved
     // in any of this and must never be.
     bool  topologyMovedUnderGesture() const noexcept
     { return gestureBands >= 0 && bandCount() != gestureBands; }
-    // True once a split has moved under an active gesture by more than the amount
-    // `writeCrossovers` itself treats as a change -- so the drag's own writes, read back
-    // through the same conversion, can never register as somebody else's.
+    // True once any split OR any width has moved under an active gesture -- a split by more than the
+    // amount `writeCrossovers` itself treats as a change, a width at all. The drag's own writes, read
+    // back through the same conversion and recorded at the store, can never register as somebody
+    // else's (ADR-0039 for the splits, ADR-0040 for the widths).
     bool  soundMovedUnderGesture() const noexcept;
     // The one question mouseDrag and mouseUp ask: is this gesture still defined against the
     // world it was latched in?

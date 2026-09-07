@@ -336,6 +336,20 @@ DELIBERATE_REAIMS = {
     # cite BARE filenames, which this parser declines: both paths are now written
     # in full and `src/gui/SpectrumImager.cpp` joins `TRACKED`, so the next such
     # move is the gate's to catch rather than a reader's.
+    #
+    # 2026-09-07 (ADR-0040, write ownership): ONE entry, and it needs the table
+    # rather than `--fix` for the reason the table exists. `dragCrossoverTo`'s
+    # SIGNATURE changed -- `void` -> `bool`, so the burst can tell its caller the
+    # gesture stopped owning what it was writing -- and the line the coverage
+    # entry anchored is inside that edited span, which maps to `None` and is
+    # reported UNMAPPABLE rather than being given an invented number. The
+    # sentence's claim ("both consumers re-read a live bandCount()") is unchanged
+    # and still true, so the anchor is re-aimed at the function's new line and the
+    # transition declared here; the token is checked at the new spelling, so a
+    # later undeclared movement of the same anchor is still the gate's to catch.
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:399",
+     "src/gui/SpectrumImager.cpp:443"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

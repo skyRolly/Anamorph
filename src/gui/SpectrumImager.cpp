@@ -301,16 +301,56 @@ void SpectrumImager::projectGaps (float* xs, int count, int pin) const noexcept
     if (xs[count - 1] > hi)     { const float d = xs[count - 1] - hi;     for (int i = 0; i < count; ++i) xs[i] -= d; }
     for (int i = 0; i < count; ++i) xs[i] = juce::jlimit (lo, hi, xs[i]);
 }
-void SpectrumImager::writeCrossovers (const float* xs, int count)
+// ADR-0040. THE CHECK AND THE STORE ARE ADJACENT, AND THE RECORD IS MADE AT THE STORE.
+//
+// This used to be a bare write loop followed by one blanket `captureGestureSound()`. Both halves
+// were wrong, and for the same reason: `setParam` is `setValueNotifyingHost`, which stores and then
+// dispatches every listener SYNCHRONOUSLY on this thread (juce_AudioProcessorParameter.cpp:59-63,
+// :111-121), and one of those listeners is `AudioProcessor::ParameterChangeForwarder`
+// (juce_AudioProcessor.cpp:1467), which every format wrapper uses to tell the host. So a host that
+// writes a crossover back -- a linked-parameter macro, an automation write-back, a control surface
+// echo -- re-enters HERE, between two iterations of this loop.
+//
+//  * The loop then OVERWROTE it: the old predicate asked "does the live value differ from MY
+//    target?", which a large foreign move answers more emphatically, not less. Measured: `the split
+//    written from inside the burst (15000.0 Hz) was reclaimed as 10000.0 Hz`.
+//  * And `captureGestureSound()` afterwards LAUNDERED it: that function is branch-free and
+//    provenance-free, so whatever survived became the ownership baseline and the next
+//    `soundMovedUnderGesture()` could not see it either.
+//
+// Now: `ownsSplit (k)` is compared and the store follows it with nothing in between, so a write
+// nested inside store k-1 is seen by iteration k; the record is taken from the read-back of THIS
+// slot immediately, so nothing a later iteration lets in can be adopted; and slots past `count`
+// are left alone rather than adopted wholesale -- the write loop is bounded by the live split count
+// while the record used to be bounded by the array size, which adopted the unused slots for free.
+// Returns false the moment a slot is not ours: the caller abandons the rest of the event.
+bool SpectrumImager::writeCrossovers (const float* xs, int count)
 {
     for (int k = 0; k < count; ++k)
+    {
+        if (! ownsSplit (k)) return false;
         if (std::abs (freqToX (crossover (k)) - xs[k]) > kSplitMovedPx)
             setParam (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])));
-    // ADR-0039: the gesture now owns these positions. Read BACK rather than recording `xs`:
-    // the write goes through convertTo0to1 and the parameter's own quantisation, so only the
-    // read-back is what the next comparison will see. Splits this pass left alone are recorded
-    // too -- an outside hand that moves one of those is exactly the case this catches.
-    captureGestureSound();
+        gestureX[k] = freqToX (crossover (k)); // own exactly what is there NOW, not what survives later
+    }
+    return true;
+}
+// The two halves of the one rule, so a future consumer has one place to read it. `gestureBands < 0`
+// is "no gesture in flight" -- the wheel path -- and then there is nothing to own and nothing to
+// refuse. A split is owned within the same half pixel `writeCrossovers` uses to decide a write is
+// worth making, so the gesture's own read-back can never trip it; a width is owned exactly, because
+// the width path performs no write suppression and its read-back is bit-identical to its store.
+bool SpectrumImager::ownsSplit (int k) const noexcept
+{
+    if (gestureBands < 0) return true;
+    if (k < 0 || k >= (int) std::size (gestureX)) return true;
+    return std::abs (freqToX (crossover (k)) - gestureX[k]) <= kSplitMovedPx;
+}
+bool SpectrumImager::ownsWidth (int b) const noexcept
+{
+    if (gestureBands < 0) return true;
+    if (b < 0 || b >= (int) std::size (gestureW)) return true;
+    return juce::exactlyEqual (bandWidth (b), gestureW[b]);
 }
 // Seed the drag-start positions for a gesture that is about to start. EVERY slot of
 // dragOrigX, not just the `bandCount() - 1` splits in use at the press -- because the two
@@ -337,6 +377,10 @@ void SpectrumImager::captureGestureSound() noexcept
 {
     for (int k = 0; k < (int) std::size (gestureX); ++k)
         gestureX[k] = freqToX (crossover (k));
+    // ADR-0040: the widths belong to the gesture's world too. Seeded here at every gesture start,
+    // and refreshed at the width store itself rather than in any blanket pass.
+    for (int b = 0; b < (int) std::size (gestureW); ++b)
+        gestureW[b] = bandWidth (b);
 }
 // ADR-0039. THE COUNT IS NOT THE WHOLE TOPOLOGY. A restore, a preset, an A/B apply, an undo or
 // an automation lane can install a different sound at the SAME band count; `gestureBands` sees
@@ -354,8 +398,8 @@ void SpectrumImager::captureGestureSound() noexcept
 bool SpectrumImager::soundMovedUnderGesture() const noexcept
 {
     if (gestureBands < 0) return false;
-    for (int k = 0; k < (int) std::size (gestureX); ++k)
-        if (std::abs (freqToX (crossover (k)) - gestureX[k]) > kSplitMovedPx) return true;
+    for (int k = 0; k < (int) std::size (gestureX); ++k) if (! ownsSplit (k)) return true;
+    for (int b = 0; b < (int) std::size (gestureW); ++b) if (! ownsWidth (b)) return true;
     return false;
 }
 // Pin pinA (and optional pinB) at their target x; every other split is pulled toward
@@ -396,13 +440,13 @@ void SpectrumImager::projectFromOrig (float* out, const float* orig, int count,
     out[count - 1] = juce::jmin (out[count - 1], hi);
     for (int k = count - 2; k >= 0; --k)    out[k] = juce::jmin (out[k], out[k + 1] - kMinGapPx);
 }
-void SpectrumImager::dragCrossoverTo (int handle, float x)
+bool SpectrumImager::dragCrossoverTo (int handle, float x)
 {
     const int M = bandCount() - 1;
-    if (handle < 0 || handle >= M) return;
+    if (handle < 0 || handle >= M) return true; // nothing to steer is not a loss of ownership
     float out[3];
     projectFromOrig (out, dragOrigX, M, handle, x, -1, 0.0f);
-    writeCrossovers (out, M);
+    return writeCrossovers (out, M);
 }
 bool SpectrumImager::bandAddTarget (int b, float x, float& outX) const noexcept
 {
@@ -484,14 +528,14 @@ void SpectrumImager::beginBandMove (int b)
     if (soloMoveLeft  >= 0) beginGesture (freqP[soloMoveLeft]);
     if (soloMoveRight >= 0) beginGesture (freqP[soloMoveRight]);
 }
-void SpectrumImager::moveBand (float mouseX)
+bool SpectrumImager::moveBand (float mouseX)
 {
     const int M = bandCount() - 1;
-    if (M <= 0) return;
+    if (M <= 0) return true;
     const float T = juce::jlimit (bandTmin, bandTmax, mouseX - bandAnchorX);
     float out[3];
     projectFromOrig (out, dragOrigX, M, soloMoveLeft, bandStartLeftX + T, soloMoveRight, bandStartRightX + T);
-    writeCrossovers (out, M);
+    return writeCrossovers (out, M);
 }
 void SpectrumImager::endBandMove()
 {
@@ -514,7 +558,7 @@ void SpectrumImager::resetCrossover (int i)
     p->setValueNotifyingHost (p->convertTo0to1 (juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i]))));
     p->endChangeGesture();
     for (int k = 0; k < M; ++k)
-        if (k != i && std::abs (freqToX (crossover (k)) - xs[k]) > 0.5f)
+        if (k != i && std::abs (freqToX (crossover (k)) - xs[k]) > kSplitMovedPx)
             setParam (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])));
 }
 
@@ -546,10 +590,43 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
     for (int i = 0; i < N; ++i)
         if (oldMask & (1 << i))
             nm |= (i < ins) ? (1 << i) : (i == ins ? (1 << ins) : (1 << (i + 1)));
+    // ADR-0040. THE BURST IS RE-VALIDATED BEFORE EVERY STORE. A topology edit is not one write, it is
+    // a plan computed from a snapshot and then applied as six or more of them -- the solo word, the
+    // widths, the splits, and the count last. Every one of those stores is a `setValueNotifyingHost`
+    // that reaches the host SYNCHRONOUSLY, inside the call (juce_AudioProcessorParameter.cpp:59-63,
+    // :111-121 -> juce_AudioProcessor.cpp:1467, which every format wrapper listens to), so a host
+    // that writes mbBands back from inside the FIRST store had the remaining five written over it and
+    // the old count restored on top. Measured: `Bands was moved to 2 from inside the burst and the
+    // rest of it wrote 3 back`. Validating once at entry cannot see that; validating before each
+    // store does, because between the comparison and the store that follows it nothing runs.
+    //
+    // Each store also checks that its own target still holds the value the plan was computed from, so
+    // the plan is never applied to a value it did not account for.
+    //
+    // ABANDONING MID-BURST LEAVES THE STORES ALREADY ISSUED. That is the right trade and not a
+    // half-measure: the alternative -- the completed operation -- puts the OLD count back over the
+    // newer one and rewrites the whole layout under it, while abandoning leaves the newer topology
+    // standing and at most one already-issued store behind. A legitimately begun operation truncated
+    // by a newer authority is ADR-0036 section 25's rule, not a stale overwrite.
+    // `N` is this transaction's expected topology, read once at entry (ADR-0039). A caller that
+    // sees -1 knows nothing it planned was completed as planned.
+    if (bandCount() != N || soloMask() != oldMask) return -1;
     setSoloMask (nm);
 
-    for (int i = 0; i <= N; ++i) setParam (widthP[i], nw[i]);
-    for (int i = 0; i < N;  ++i) setParam (freqP[i],  juce::jlimit (kFreqLo, kFreqHi, xToFreq (nx[i])));
+    for (int i = 0; i <= N; ++i)
+    {
+        if (bandCount() != N || ! juce::exactlyEqual (bandWidth (i), wd[i])) return -1;
+        setParam (widthP[i], nw[i]);
+    }
+    for (int i = 0; i < N;  ++i)
+    {
+        // The plan was computed from the M = N - 1 splits that EXIST; slot M is the one this add
+        // creates and there is nothing there to own, so only the existing ones are re-proved.
+        if (bandCount() != N) return -1;
+        if (i < M && std::abs (freqToX (crossover (i)) - xs[i]) > kSplitMovedPx) return -1;
+        setParam (freqP[i],  juce::jlimit (kFreqLo, kFreqHi, xToFreq (nx[i])));
+    }
+    if (bandCount() != N) return -1;
     setBands (N + 1);
     resultingBands = N + 1;      // from THIS read of the count, not a second one (ADR-0039)
     return ins;
@@ -596,10 +673,38 @@ void SpectrumImager::removeBand (int b, int expectedBands)
         if (oldMask & (1 << k)) nm |= (1 << j);
         ++j;
     }
+    // ADR-0040. THE BURST IS RE-VALIDATED BEFORE EVERY STORE. A topology edit is not one write, it is
+    // a plan computed from a snapshot and then applied as six or more of them -- the solo word, the
+    // widths, the splits, and the count last. Every one of those stores is a `setValueNotifyingHost`
+    // that reaches the host SYNCHRONOUSLY, inside the call (juce_AudioProcessorParameter.cpp:59-63,
+    // :111-121 -> juce_AudioProcessor.cpp:1467, which every format wrapper listens to), so a host
+    // that writes mbBands back from inside the FIRST store had the remaining five written over it and
+    // the old count restored on top. Measured: `Bands was moved to 2 from inside the burst and the
+    // rest of it wrote 3 back`. Validating once at entry cannot see that; validating before each
+    // store does, because between the comparison and the store that follows it nothing runs.
+    //
+    // Each store also checks that its own target still holds the value the plan was computed from, so
+    // the plan is never applied to a value it did not account for.
+    //
+    // ABANDONING MID-BURST LEAVES THE STORES ALREADY ISSUED. That is the right trade and not a
+    // half-measure: the alternative -- the completed operation -- puts the OLD count back over the
+    // newer one and rewrites the whole layout under it, while abandoning leaves the newer topology
+    // standing and at most one already-issued store behind. A legitimately begun operation truncated
+    // by a newer authority is ADR-0036 section 25's rule, not a stale overwrite.
+    if (bandCount() != expectedBands || soloMask() != oldMask) return;
     setSoloMask (nm);
 
-    for (int k = 0; k < N - 1; ++k) setParam (widthP[k], nw[k]);
-    for (int k = 0; k < N - 2; ++k) setParam (freqP[k],  nf[k]);
+    for (int k = 0; k < N - 1; ++k)
+    {
+        if (bandCount() != expectedBands || ! juce::exactlyEqual (bandWidth (k), wd[k])) return;
+        setParam (widthP[k], nw[k]);
+    }
+    for (int k = 0; k < N - 2; ++k)
+    {
+        if (bandCount() != expectedBands || ! juce::exactlyEqual (crossover (k), fr[k])) return;
+        setParam (freqP[k],  nf[k]);
+    }
+    if (bandCount() != expectedBands) return;
     setBands (N - 1);
 }
 
@@ -658,7 +763,7 @@ void SpectrumImager::commitFreqEditor()
         p->endChangeGesture();
     }
     for (int k = 0; k < M; ++k)
-        if (k != i && std::abs (freqToX (crossover (k)) - xs[k]) > 0.5f)
+        if (k != i && std::abs (freqToX (crossover (k)) - xs[k]) > kSplitMovedPx)
             setParam (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])));
     closeFreqEditor();
 }
@@ -1780,7 +1885,9 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
         {
             if (! soloMovedBand)  { soloMovedBand = true; beginBandMove (soloPressBand); }
             if (! soloHoldActive) { soloHoldActive = true; if (onSoloPreview) onSoloPreview (1 << soloPressBand); }
-            moveBand ((float) e.position.x);
+            // ADR-0040: the move abandons its burst the moment a split stops being ours, and a
+            // gesture that has lost ownership is void -- the same answer the entry guard gives.
+            if (! moveBand ((float) e.position.x)) { cancelActiveDrag(); return; }
         }
         return;
     }
@@ -1797,7 +1904,8 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
         // A real drag IS a sustained hold -> show the band-pass preview (but a tiny jitter
         // between the two clicks of a double-click must not, hence the small threshold).
         if (! handleHoldActive && std::abs (e.position.x - handlePressX) > 3.0f) handleHoldActive = true;
-        if (! out) dragCrossoverTo (dragHandle, (float) e.position.x - dragGrabDX);
+        if (! out && ! dragCrossoverTo (dragHandle, (float) e.position.x - dragGrabDX))
+        { cancelActiveDrag(); return; }
     }
     else if (dragBand >= 0)
     {
@@ -1806,13 +1914,24 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
         // leaves Width untouched. On crossing it we anchor dragGrabDY to the CURRENT line, so
         // the value starts exactly where it was (no jump to the absolute cursor) and then
         // follows the mouse delta -- the line stays attached to the grabbed point.
+        // ADR-0040. OWNERSHIP FIRST, AND IT COVERS THE ANCHOR AS WELL AS THE STORE. The old code was
+        // inconsistent purely by threshold timing: an outside width write landing AFTER the 3 px
+        // engage was overwritten (the value below is computed from `dragGrabDY` and the cursor, and
+        // the live width is never read again), while one landing BEFORE it was silently adopted as
+        // the anchor and re-emitted inside the user's own change gesture. Both are the gesture
+        // writing state it does not own; both now void it, which is the answer ADR-0038 gives for
+        // the count and ADR-0039 for the splits.
+        if (! ownsWidth (dragBand)) { cancelActiveDrag(); return; }
         if (! widthHoldActive && std::abs ((float) e.position.y - widthPressY) > 3.0f)
         {
             widthHoldActive = true;
             dragGrabDY = (float) e.position.y - widthToY (bandWidth (dragBand));
         }
         if (widthHoldActive)
+        {
             setParam (widthP[dragBand], yToWidth ((float) e.position.y - dragGrabDY));
+            gestureW[dragBand] = bandWidth (dragBand); // own it at the store, never in a later pass
+        }
     }
     repaint();
 }

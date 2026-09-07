@@ -861,6 +861,29 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 71 — a gesture writes only what it owns, and claims only what it wrote** (ADR-0040).
+  The round that moved the ownership question from HANDLER ENTRY to the STORE. Its probe is a
+  `juce::AudioProcessorParameter::Listener` that writes one other parameter from inside a store,
+  because `setValueNotifyingHost` dispatches listeners synchronously
+  (`juce_AudioProcessorParameter.cpp:59-63`, `:111-121`) and `ParameterChangeForwarder`
+  (`juce_AudioProcessor.cpp:1467`) hands every one to the host — so a host write-back lands *between
+  two stores of the same burst*, which is a place no entry check can see. Legs: (a) an external
+  **width** change during a width drag is not overwritten (`the installed width 1.700 was overwritten
+  with 0.650 by a drag anchored before it`); (b) a **crossover** written from inside the burst is not
+  overwritten by the rest of it (`reclaimed as 10000.0 Hz`); (c) a **Bands** change from inside
+  `removeBand`'s seven-store burst is not written over (`the rest of it wrote 3 back`); (g) the
+  laundering half in isolation — at two bands the write loop is one slot wide, so a change to the
+  third split is never overwritten, and the discriminator is whether the gesture **stops** rather than
+  adopting it; (h) the same guard on `addBandAt`, the sibling transaction, proved rather than argued;
+  (d), (e), (f) positive controls — an uninterrupted width drag, the neighbour push and spring-back
+  (#8–#11), and a steady delete x. Legs (a), (b) and (c) fail against `6e37e6e`. Mutations, each
+  killed by exactly one leg: widths out of the detector → (a); no ownership check before the crossover
+  store → (b); the blanket post-burst capture restored → (g); `removeBand`'s unguarded burst → (c);
+  `addBandAt`'s unguarded burst → (h). **What this test does NOT prove:** a genuinely concurrent store
+  from another thread. It reproduces the synchronous-reentrancy class exactly and the
+  between-events class (leg (a)) exactly; the cross-thread window is narrowed to one store and is not
+  claimed closed.
+
 * **State test 70 — a sound change under a gesture voids it, count or no count** (ADR-0039). The
   half `gestureBands` could not see: a restore, preset, A/B apply, undo or automation lane can
   install a whole sound at the SAME band count, and the drag then keeps projecting from `dragOrigX`

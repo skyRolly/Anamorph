@@ -266,3 +266,192 @@ residuals, not closed.
   recorded the refusal having no reachable test.
 - **`addBandAt` reporting its own `N + 1`** rather than a second `bandCount()` read is likewise
   untestable here; both reads agree in a single-threaded suite.
+
+---
+
+# Round 3 (2026-09-07) — write ownership: the check and the store are not adjacent
+
+Round 2 shipped as `6e37e6e`. Review returned with three findings that are the same defect in three
+places: **the staleness check and the store it guards are separated, and the authoritative value can
+move in between.** This is the decision record required before any production edit.
+
+## 15. What was open at the start of round 3
+
+| # | Anchor at `6e37e6e` | Finding | Kind |
+|---|---|---|---|
+| W1 | `SpectrumImager.h:304` | Width changes are overwritten — `gestureX` tracks crossovers only, so a width-only change is invisible | blind spot |
+| W2 | `SpectrumImager.cpp:309` | Concurrent crossover changes are reclaimed — `writeCrossovers` can replace an externally changed split, and `captureGestureSound` runs after **all** stores | check/store gap + laundering |
+| W3 | `SpectrumImager.cpp:579` | Concurrent band changes are overwritten — `expectedBands` protects one read, not the store burst that follows | check/store gap |
+
+## 16. Reproduction, before any change
+
+State test 71, against `6e37e6e`:
+
+```
+State test 71: a gesture writes only what it owns, and claims only what it wrote
+  [leg A] the installed width 1.700 was overwritten with 0.650 by a drag anchored before it
+  [FAIL] leg A: an external width change is not overwritten by the drag that outlived it
+  [leg B] the split written from inside the burst (15000.0 Hz) was reclaimed as 10000.0 Hz
+  [FAIL] leg B: a split written from inside the burst is not overwritten by the rest of it
+  [leg C] Bands was moved to 2 from inside the burst and the rest of it wrote 3 back
+  [FAIL] leg C: a topology installed from inside the removal burst is not written over
+```
+
+Legs (d), (e) and (f) — an uninterrupted width drag, the neighbour push/spring-back, and a steady
+delete x — pass throughout and are the positive controls.
+
+## 17. The mechanism, read out of JUCE rather than assumed
+
+This is the fact the whole round turns on, and it changes the class of the defect.
+
+```
+juce_AudioProcessorParameter.cpp:59-63
+    void AudioProcessorParameter::setValueNotifyingHost (float newValue)
+    { setValue (newValue); sendValueChangedMessageToListeners (newValue); }
+
+juce_AudioProcessorParameter.cpp:111-121
+    ScopedLock lock (listenerLock);
+    for (int i = listeners.size(); --i >= 0;)
+        if (auto* l = listeners [i]) l->parameterValueChanged (getParameterIndex(), newValue);
+
+juce_AudioProcessor.cpp:1467-1475
+    void AudioProcessor::ParameterChangeForwarder::parameterValueChanged (int index, float value)
+    { ... l->audioProcessorParameterChanged (owner, index, value); }
+```
+
+`ParameterChangeForwarder` is an `AudioProcessorParameter::Listener` attached to every parameter, and
+every plugin-format wrapper registers an `AudioProcessorListener` behind it
+(`juce_audio_plugin_client_VST2.cpp:263-266`, `..._AU_1.mm:188`, `..._AUv3.mm:236`,
+`..._LV2.cpp:135`). **So every `setParam` the imager makes reaches the host synchronously, inside the
+call**, and a host that writes back — a linked-parameter macro, an automation write-back, a control
+surface echo — re-enters on the message thread before `setParam` returns.
+
+First-party listeners were checked and none of them writes a multiband parameter:
+`AnamorphAudioProcessor::parameterChanged` sets an atomic (`PluginProcessor.cpp:308-317`),
+`ViewGenWatcher` bumps a counter (`PluginProcessor.h:312-318`), `parameterGestureChanged` counts
+gestures (`PluginProcessor.cpp:814-825`). The engine only **reads** the crossovers and widths
+(`AnamorphEngine.cpp:609`, `:616`). Every writer is therefore the imager itself or somebody outside
+the plug-in.
+
+**This reclassifies W2 and W3.** They are not an unclosable cross-thread race: they are *synchronous
+reentrancy on the message thread*, and a check placed **adjacent** to its store closes them
+completely, because straight-line code between a comparison and the store that follows it cannot be
+interrupted by a listener. What remains after that is the ordinary cross-thread concurrency window of
+a single store, which is irreducible without a lock and which no design here can or should claim.
+
+## 18. The common invariant
+
+> **A gesture stores an authoritative value only while that value is still the one its plan was
+> computed from; the comparison is adjacent to the store, with no call between them; and ownership of
+> what was stored is recorded at the store, never in a blanket pass afterwards. The first value found
+> not to be owned abandons every remaining store of the burst.**
+
+Two owners instantiate the one rule:
+
+* a **drag** owns `gestureX[3]` (split positions) and `gestureW[4]` (band widths) — what it last
+  observed or wrote;
+* a **topology transaction** (`removeBand`, `addBandAt`) owns `expectedBands` plus the `fr[]`,
+  `wd[]` and `oldMask` its plan was computed from at entry.
+
+## 19. Candidate architectures, and why the others lose
+
+| | Design | Verdict |
+|---|---|---|
+| **A** | Expanded local stale checks before each write | This *is* the selected mechanism's shape, but on its own it is what ADR-0038 rejected: per-consumer checks that a future consumer forgets. Taken only **because** it is bound to one named invariant and one recording rule. |
+| **B** | A shared authoritative-state generation the gesture snapshots | Rejected on coverage and reachability, as in ADR-0039: `soundSetGen` counts wholesale replacements only, so it misses a single automated crossover, an undo step and every width change; and it is not reachable from the imager. It also cannot help at all with W2/W3, whose writer is a **host re-entering inside our own store** — no generation bump exists for that. |
+| **C** | The gesture owns a snapshot of exactly what it observed or wrote | Selected, as the *ownership record*. Extended from crossovers to widths (W1) and given per-store recording (W2). |
+| **D** | Conditional / transactional commit adjacent to the mutation | Selected, as the *store discipline*. C answers "what do I own"; D answers "when may I store it". Neither alone is enough: C with a blanket post-burst record launders the intruder's value (W2); D without an ownership record has nothing to compare against. |
+| **E** | Restructure so only the count write can lose; defer the burst; route topology edits through the processor | Rejected. Deferring a burst is message-thread marshalling used to hide a correctness problem, which the brief forbids and which ADR-0036 already decided against for state. No reordering makes a partial burst inert: `setSoloMask` writes a whole 4-bit word, so there is no "safe first store". |
+
+**Rejected outright:** a lock (`mbBands` is written from the audio thread —
+`REALTIME_AUDIO_POLICY`, and a Thread Model change); `setValue` without notification (silently
+desynchronises the host and breaks automation); post-hoc repair of a burst that lost its precondition
+(fights the newer authority, which is the opposite of ADR-0036 §25).
+
+## 20. Why this closes the window, and exactly what it leaves open
+
+**Closed — synchronous reentrancy.** In `writeCrossovers` the comparison `freqToX (crossover (k))` vs
+`gestureX[k]` and the `setParam` that may follow are adjacent statements in one iteration; nothing
+runs between them. A host re-entering through the notification of store *k−1* is therefore seen by
+iteration *k*'s comparison, and the burst is abandoned. Same shape in `removeBand`/`addBandAt`: the
+precondition is re-read immediately before each store, so a write landing inside store *n* is caught
+before store *n+1*.
+
+**Left open, and stated rather than dressed up:**
+
+1. **A truly concurrent store.** A host thread writing between our comparison and our store is not
+   excluded and cannot be without a lock. Its blast radius is now **one parameter**, not a burst.
+2. **A partially applied topology transaction.** Aborting mid-burst leaves the stores already issued.
+   This is the correct trade: the completed stale operation *restores the old count over the newer
+   one* (measured, `wrote 3 back`), whereas the abort leaves the newer topology standing and at most
+   some already-issued compaction. A legitimately-begun operation truncated by a newer authority is
+   exactly ADR-0036 §25's rule, not a stale overwrite.
+3. **Case C of the width analysis** — an external width write during a *bare* click is bracketed by
+   the user's own `begin`/`endChangeGesture` and folds into their undo step. That is undo attribution,
+   not write ownership, and it is the same class as the wheel path's gesture-less writes. Out of
+   scope, recorded.
+4. **The wheel path** (`mouseWheelMove`) writes widths and crossovers with no gesture in flight;
+   `scrollHandle`/`scrollBand` are bounds-checked against a live count in the same statement. No
+   gesture, so no gesture ownership. Out of scope, recorded.
+
+## 21. Width semantics, decided
+
+Today's behaviour is inconsistent purely by threshold timing: an external width change **after** the
+3 px engage is overwritten (`:1815` computes from `dragGrabDY`, and the live width is never read
+again), while one **before** the engage is silently adopted as the anchor and re-emitted inside the
+user's gesture (`:1812`). Both are wrong in the same way and in opposite directions.
+
+**Decision: void the gesture, uniformly.** Any width the gesture does not own, at any point in its
+life, voids it — the same answer ADR-0038 gives for the count and ADR-0039 gives for the splits. The
+comparison is exact equality against the read-back, so the drag's own store can never trip it, and no
+epsilon has to be invented for a path that has no write-suppression epsilon.
+
+## 22. Implementation chronology
+
+1. State test 71 written first, asserting the invariant against unmodified `6e37e6e`; legs (a), (b)
+   and (c) fail, legs (d), (e), (f) pass. §16.
+2. The JUCE dispatch read out rather than assumed (§17), which reclassified W2 and W3 from
+   "unclosable cross-thread race" to "synchronous reentrancy, closable by construction".
+3. The decision record above written before any production edit, per the round's own gate.
+4. `writeCrossovers` rewritten: `ownsSplit (k)` adjacent to the store, the record taken from the
+   read-back of that slot immediately, the blanket `captureGestureSound()` removed, and a `bool`
+   returned so the caller abandons the event.
+5. `gestureW[4]`, `ownsWidth`, and the width branch of `mouseDrag` — ownership checked before the
+   anchor as well as before the store, so the case-A/case-B inconsistency disappears.
+6. `removeBand` and `addBandAt`: the count re-read and each target re-proved before every store.
+   `addBandAt`'s first draft compared `xs[i]` for all `i < N` and broke State test 69 leg (a) — `xs`
+   holds only the `M = N - 1` splits that exist, and slot `M` is the one the add creates, so there is
+   nothing there to own. Recorded rather than quietly fixed.
+7. Legs (g) and (h) added to separate the laundering half from the overwrite half, and to prove the
+   add transaction rather than argue it.
+8. The two stray copies of `0.5f` in `resetCrossover` and `commitFreqEditor` pointed at
+   `kSplitMovedPx`, which the ADR-0039 comment already required.
+
+## 23. The final stale-write audit
+
+Every store performed while a gesture is active, with what establishes ownership and where it is
+validated.
+
+| Store | Writes | Ownership | Validated | What can change it after | Prevented by |
+|---|---|---|---|---|---|
+| `writeCrossovers` → `freqP[k]` | one split | `gestureX[k]`, within `kSplitMovedPx` | the statement before the store | a host re-entering through store `k−1`'s notification | `ownsSplit (k)`, adjacent; the burst is abandoned |
+| `mouseDrag` width → `widthP[dragBand]` | one width | `gestureW[b]`, exactly | the statement before the anchor and before the store | another message-thread event, or a host/audio-thread write between two mouse callbacks | `ownsWidth (b)`, adjacent; the gesture is voided |
+| `mouseDrag` width anchor (`dragGrabDY`) | nothing — reads `bandWidth` | as above | same check | as above | same check; the anchor is no longer taken from a value we do not own |
+| `removeBand` → `soloP` | the 4-bit mask | `oldMask` + `expectedBands` | immediately before | a host writing from inside an earlier store — there is none, this is first | the count and mask are re-proved before it |
+| `removeBand` → `widthP[k]` | one width | `wd[k]` + `expectedBands` | immediately before each | a host re-entering through the preceding store | re-read count + CAS; the rest is abandoned |
+| `removeBand` → `freqP[k]` | one split | `fr[k]` + `expectedBands` | immediately before each | as above | as above |
+| `removeBand` → `bandsP` | the count | `expectedBands` | immediately before | as above | as above |
+| `addBandAt` → the same four kinds | as above | its own `N`, `wd[]`, `xs[]`, `oldMask` | immediately before each | as above | as above |
+| `endGesture` / `beginGesture` | nothing | n/a | n/a | notifies the host, so it is a reentrancy *point*, not a write | the store that follows it is checked |
+| `mouseWheelMove` → `freqP`/`widthP` | one split or width | none — no gesture is in flight | indices bounds-checked against a live count in the same statement | n/a | out of scope by construction; recorded §20.4 |
+
+Nothing on that list can retarget another live object, and nothing can overwrite a value the gesture
+does not own except in the single-store cross-thread window §20.1 names.
+
+## 24. Validation and residuals, round 3
+
+State suite **2 598 / 0**; State tests 66–70 unchanged and green throughout. Mutations N1, N2a, N2b,
+N3 and N4 each killed by exactly one named leg. Residuals unchanged from §20 plus §12's
+vanished-band Width and solo-mask disposition, which this round re-checked and did not move: the new
+machinery touches the same stores, and nothing it found makes those values user-visible incorrect
+behaviour.
