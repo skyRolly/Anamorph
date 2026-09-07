@@ -372,9 +372,10 @@ bool SpectrumImager::spreadSplits (const float* xs, const float* was, int count,
 }
 // The two halves of the one rule, so a future consumer has one place to read it. `gestureBands < 0`
 // is "no gesture in flight" -- the wheel path -- and then there is nothing to own and nothing to
-// refuse. A split is owned within the same half pixel `writeCrossovers` uses to decide a write is
-// worth making, so the gesture's own read-back can never trip it; a width is owned exactly, because
-// the width path performs no write suppression and its read-back is bit-identical to its store.
+// refuse. BOTH halves compare the normalised value EXACTLY: this paragraph used to say a split was
+// owned "within the same half pixel `writeCrossovers` uses to decide a write is worth making", which
+// is what ADR-0041 removed and what the paragraph below replaces it with -- a reader arriving here
+// was told the opposite of what the code does.
 // ADR-0041. OWNERSHIP IS A PARAMETER QUESTION, NOT A PIXEL ONE. `kSplitMovedPx` decides whether a
 // write is worth making; it was also deciding whether a value was ours, and those are different
 // questions with different units. Half a display pixel is 0.30-0.65 % of the frequency -- 0.19 Hz at
@@ -2085,9 +2086,12 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
         // became 2 inside the store, and the mask was written as 0x8 anyway`.
         else if (soloPressAlt) // Alt/Option quick click: inactive band -> EXCLUSIVE solo
         {
+            // ONE read, and the decision is made from it. `bandSoloed` would re-read mbSolo, so
+            // the word the branch chose from and the word named as `expectedMask` could differ --
+            // the same "two reads where the rule needs one" this whole series has been about.
             const int m = soloMask();
-            (void) setSoloMask (bandSoloed (soloPressBand) ? 0 // active: all solos off (0.8.9)
-                                                           : (1 << soloPressBand), // 0.8.10: only this band
+            (void) setSoloMask (((m >> soloPressBand) & 1) != 0 ? 0 // active: all solos off (0.8.9)
+                                                                : (1 << soloPressBand), // 0.8.10: only this band
                                 pressBands, m);
         }
         else                  (void) toggleSoloBit (soloPressBand, pressBands);

@@ -989,6 +989,28 @@ and comparing exactly. State test 74 leg L; mutation M9.
   deciding whether a write is worth making on a slot already proved to be ours. It cannot mistake a
   foreign value for a small delta at any magnitude.
 
+**Two more, both small and both closed:**
+
+* **A comment that told the reader the opposite of the code.** The paragraph above `ownsSplit` still
+  described a split as owned "within the same half pixel `writeCrossovers` uses to decide a write is
+  worth making" — the rule ADR-0041 removed, sitting directly above the ADR-0041 paragraph that
+  replaced it. `CLAUDE.md`'s drift rule applies to comments as much as to documents, and this is
+  exactly the misreading ADR-0041 was written to end. Rewritten to state what the code does.
+* **The Alt solo branch decided from a second read of `mbSolo`.** `const int m = soloMask();` latches
+  the word passed as `expectedMask`, and the branch then called `bandSoloed (soloPressBand)`, which
+  re-reads it. `mbSolo` is a `std::atomic<float>` a host can write from another thread at any
+  instant, so the word the branch chose from and the word the store names as its precondition were
+  not guaranteed to be the same one — "two reads where the rule needs one", which is what this whole
+  series has been about. It is unreachable single-threaded (nothing dispatches between the two
+  statements) and needs two host writes inside a two-statement window to matter, so it carries no
+  test; the fix is to decide from `m`, which is strictly one read.
+
+**Recorded and deliberately not changed:** `writeCrossovers` indexes `freqP[k]` on the caller's
+`count` without the `k < std::size (freqP)` bound its new sibling `spreadSplits` carries. Both
+callers derive `count` from `bandCount()`, which is `jlimit (1, 4, …)`, so it is unreachable on this
+head; the asymmetry is this round's, and it is noted here rather than closed by widening a function
+the round did not otherwise touch.
+
 One correction to this round's own ground facts, from the same pass: in this tree the JUCE parameter
 sources are under `modules/juce_audio_processors_headless/processors/`, not
 `modules/juce_audio_processors/processors/`. Every line number cited in this worklog and in ADR-0042
