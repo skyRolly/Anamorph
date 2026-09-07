@@ -861,6 +861,24 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 73 — a coupled update is all of it or none of it** (ADR-0041). Three review findings
+  of one shape: part of a coupled change applied, the rest not, and nothing downstream able to tell.
+  Legs: (a) a wheel tick during a **width** drag must not adopt an outside width its `dragGrabDY`
+  predates (`a wheel tick adopted the installed width 1.700, and the drag then wrote 0.650 from an
+  anchor taken before it`) — this also corrects State test 72 leg (c)'s generalisation, which holds
+  for splits and not for widths; (b) a **solo click** whose topology moved inside the store writes no
+  mask (`the click soloed band 3 of a four-band layout, Bands became 2 inside the store, and the mask
+  was written as 0x8 anyway`); (c) a **transaction whose mask store was refused** does not go on to
+  change the band count (`Bands 3 with the mask left in the old numbering (0x5)`); (g) the
+  **threshold**: a 20 Hz host move at 10 kHz is invisible on screen, five orders of magnitude above
+  the parameter's resolution and fully automatable — the discriminator is whether the drag *stops*,
+  because a move that small is under the write-suppression threshold and would not be overwritten
+  either way; (d), (e), (f) positive controls — a plain solo click still solos, a removal still remaps
+  `0b1010` to `0b0101`, an uninterrupted width drag still moves its Width. Legs (a), (b) and (c) fail
+  against `799113f`. Mutations, each killed by exactly one leg: the wheel leaving the press running →
+  (a); the solo click carrying no topology → (b); `removeBand` carrying on after a refused mask store
+  → (c); ownership back in pixel space → (g).
+
 * **State test 72 — the check is adjacent to EVERY store, including the ones that open a gesture**
   (ADR-0040, same-day correction). ADR-0040's first form claimed the comparison and the store are
   adjacent "with no call between them"; an adversarial pass over the shipped code found that false at

@@ -2919,6 +2919,298 @@ static void testTheCheckIsAdjacentToEveryStore()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 73 -- a coupled update is all of it or none of it.
+//
+//  Three review findings, one shape: PART of a coupled change was applied and
+//  the rest was not, and nothing downstream could tell.
+//
+//  (a) A PARTIAL REFRESH. `captureDragOrigins()` re-seeds `dragOrigX` and the
+//      ownership record, and a wheel tick calls it. During a WIDTH drag that
+//      adopts an outside width change into `gestureW` while leaving
+//      `dragGrabDY` -- the anchor the next width store computes from -- pointing
+//      at the sound before it. The next mouse move then overwrites the adopted
+//      value from the stale anchor, and `ownsWidth` cannot object because the
+//      refresh already told it the new value was ours.
+//
+//  (b) A COMMIT WITH NO PRECONDITION. `mouseUp` clears `gestureBands` before the
+//      solo branch, so `setSoloMask` runs at its `expectedBands = -1` default and
+//      the solo click carries no proof of the topology it was aimed at. A Bands
+//      change landing in the gesture-open dispatch then applies the stale band
+//      selection to a layout that never had that band.
+//
+//  (c) A REFUSAL NOBODY HEARD. `setSoloMask` can refuse its store, and the
+//      topology transactions that call it carried on regardless -- so the count
+//      changed while the mask kept the OLD numbering, leaving solo bits on bands
+//      the user never soloed.
+// ---------------------------------------------------------------------------
+static void testACoupledUpdateIsAllOfItOrNone()
+{
+    std::printf ("State test 73: a coupled update is all of it or none of it\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the coupled-update probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the coupled-update probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* wMidP  = apvts.getParameter (pid::mbWidthMid);
+    check (bandsP && soloP && loP && midP && hiP && wLoP && wMidP,
+           "the parameters the coupled-update probe drives exist");
+    if (! (bandsP && soloP && loP && midP && hiP && wLoP && wMidP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto bandsNow = [&] { return juce::roundToInt (plainOf (bandsP)); };
+    auto maskNow  = [&] { return juce::roundToInt (plainOf (soloP)); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+    const float W     = (float) imager->getWidth();
+    const float H     = (float) imager->getHeight();
+    const float laneY = 0.5f * H;
+    const float soloY = 11.0f;
+    const float delX  = 13.0f, delY = H - 30.0f;
+
+    auto findFirstX = [&] (const char* want, float y) -> float
+    {
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto findLastX = [&] (const char* want, float y) -> float
+    {
+        for (float x = W - 3.0f; x > 2.0f; x -= 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto findY = [&] (const char* want, float x) -> float
+    {
+        for (float y = 2.0f; y < H - 2.0f; y += 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return y;
+        }
+        return -1.0f;
+    };
+    auto resetWorld = [&] ()
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (soloP,  0.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 2000.0f);
+        setPlain (hiP, 10000.0f);
+        setPlain (wLoP,   1.0f);
+        setPlain (wMidP,  1.0f);
+    };
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f; wheel.deltaY = 0.05f; wheel.isReversed = false;
+    wheel.isSmooth = false; wheel.isInertial = false;
+
+    // ---- LEG A: a wheel tick must not adopt a width the anchor still predates --
+    {
+        resetWorld();
+        const float s0 = findFirstX ("Drag to change the split frequency", laneY);
+        check (s0 >= 0.0f, "leg A: a split handle is findable");
+        const float wx = (s0 >= 0.0f) ? s0 + 40.0f : -1.0f;   // inside band 1
+        const float wy = (wx > 0.0f) ? findY ("Band width", wx) : -1.0f;
+        check (wy >= 0.0f, "leg A: band 1's width line is findable");
+        if (wy >= 0.0f && s0 >= 0.0f)
+        {
+            imager->mouseDown (mev (wx, wy, wx, wy, false));
+            imager->mouseDrag (mev (wx, wy + 10.0f, wx, wy, true));   // anchors dragGrabDY
+            setPlain (wMidP, 1.70f);                                   // an outside hand
+            const float installed = plainOf (wMidP);
+            imager->mouseWheelMove (mev (s0, laneY, s0, laneY, false), wheel); // captureDragOrigins()
+            imager->mouseDrag (mev (wx, wy + 24.0f, wx, wy, true));
+            imager->mouseUp   (mev (wx, wy + 24.0f, wx, wy, true));
+            if (! juce::exactlyEqual (installed, plainOf (wMidP)))
+                std::printf ("  [leg A] a wheel tick adopted the installed width %.3f, and the drag then"
+                             " wrote %.3f from an anchor taken before it\n",
+                             (double) installed, (double) plainOf (wMidP));
+            check (juce::exactlyEqual (installed, plainOf (wMidP)),
+                   "leg A: a refresh that cannot refresh the anchor does not adopt the value either");
+        }
+    }
+
+    // ---- LEG B: a solo click carries the topology it was aimed at ---------------
+    {
+        resetWorld();
+        const float sx = findLastX ("Solo this band", soloY);
+        check (sx >= 0.0f, "leg B: the last band's solo handle is findable");
+        if (sx >= 0.0f)
+        {
+            WriteFromInsideAGestureOpen poke;
+            poke.target = bandsP;
+            poke.to     = 2.0f;
+            soloP->addListener (&poke);        // toggleSoloBit opens a gesture on mbSolo
+
+            imager->mouseDown (mev (sx, soloY, sx, soloY, false));
+            poke.armed = true;
+            imager->mouseUp   (mev (sx, soloY, sx, soloY, true));
+            const bool landed = poke.fired;
+            soloP->removeListener (&poke);
+
+            check (landed, "leg B: the probe write landed inside the solo store's gesture-open");
+            if (landed && maskNow() != 0)
+                std::printf ("  [leg B] the click soloed band 3 of a four-band layout, Bands became 2"
+                             " inside the store, and the mask was written as 0x%X anyway\n", maskNow());
+            check (! landed || maskNow() == 0,
+                   "leg B: a solo click whose topology moved under it writes no mask");
+        }
+    }
+
+    // ---- LEG C: a refused mask store stops the whole transaction ----------------
+    {
+        resetWorld();
+        setPlain (soloP, 10.0f);              // 0b1010 -- bands 1 and 3 soloed
+        WriteFromInsideAGestureOpen poke;
+        poke.target = soloP;                  // change the MASK from inside its own gesture-open
+        poke.to     = 5.0f;                   // 0b0101 -- so setSoloMask's expectedMask check fails
+        soloP->addListener (&poke);
+
+        imager->mouseDown (mev (delX, delY, delX, delY, false));
+        poke.armed = true;
+        imager->mouseUp   (mev (delX, delY, delX, delY, true));
+        const bool landed = poke.fired;
+        soloP->removeListener (&poke);
+
+        check (landed, "leg C: the probe write landed inside removeBand's mask store");
+        if (landed && bandsNow() != 4)
+            std::printf ("  [leg C] the mask store was refused and the transaction carried on:"
+                         " Bands %d with the mask left in the old numbering (0x%X)\n",
+                         bandsNow(), maskNow());
+        check (! landed || bandsNow() == 4,
+               "leg C: a transaction whose mask store was refused does not change the band count");
+    }
+
+    // ---- LEG G: a change too small to see is still not the gesture's ------------
+    //  The half-pixel ownership window was 0.30-0.65 % of the frequency -- 32 Hz at
+    //  10 kHz on this plot -- against a parameter with no interval that resolves about
+    //  0.00055 Hz at 1 kHz. A 20 Hz move at 10 kHz is therefore invisible on screen,
+    //  five orders of magnitude above what the parameter can represent, and fully
+    //  automatable. Under pixel ownership the gesture called it its own and carried on;
+    //  under parameter ownership it is somebody else's and the gesture stops. The
+    //  discriminator is whether the DRAG stops, because a move that small is under the
+    //  write-suppression threshold and would not be overwritten either way.
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg G: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            imager->mouseDrag (mev (hx - 10.0f, laneY, hx, laneY, true));
+            setPlain (hiP, 10020.0f);                 // 20 Hz: inside the old half-pixel window
+            const float frozen = plainOf (loP);
+            const float installed = plainOf (hiP);
+            imager->mouseDrag (mev (hx - 40.0f, laneY, hx, laneY, true));
+            imager->mouseUp   (mev (hx - 40.0f, laneY, hx, laneY, true));
+            if (! juce::exactlyEqual (frozen, plainOf (loP)))
+                std::printf ("  [leg G] a 20 Hz host move at 10 kHz was counted as the gesture's own:"
+                             " the drag carried on from %.1f Hz to %.1f Hz\n",
+                             (double) frozen, (double) plainOf (loP));
+            check (juce::exactlyEqual (frozen, plainOf (loP)),
+                   "leg G: a sub-pixel but fully representable host change still voids the gesture");
+            check (juce::exactlyEqual (installed, plainOf (hiP)),
+                   "leg G: ...and the value it installed stands");
+        }
+    }
+
+    // ---- LEG D: positive control -- a plain solo click still solos --------------
+    {
+        resetWorld();
+        const float sx = findLastX ("Solo this band", soloY);
+        check (sx >= 0.0f, "leg D: the last band's solo handle is findable");
+        if (sx >= 0.0f)
+        {
+            imager->mouseDown (mev (sx, soloY, sx, soloY, false));
+            imager->mouseUp   (mev (sx, soloY, sx, soloY, true));
+            check (maskNow() == (1 << 3), "leg D: an uninterrupted solo click still solos its band");
+            check (bandsNow() == 4,       "leg D: ...and changes nothing else");
+        }
+    }
+
+    // ---- LEG E: positive control -- a removal still remaps the mask -------------
+    {
+        resetWorld();
+        setPlain (soloP, 10.0f);              // 0b1010 -- bands 1 and 3
+        imager->mouseDown (mev (delX, delY, delX, delY, false));
+        imager->mouseUp   (mev (delX, delY, delX, delY, true));
+        check (bandsNow() == 3, "leg E: an uninterrupted delete x still removes its band");
+        check (maskNow() == 5,  "leg E: ...and remaps 0b1010 to 0b0101 for the new numbering");
+    }
+
+    // ---- LEG F: positive control -- an uninterrupted width drag still works -----
+    {
+        resetWorld();
+        const float s0 = findFirstX ("Drag to change the split frequency", laneY);
+        const float wx = (s0 >= 0.0f) ? s0 + 40.0f : -1.0f;
+        const float wy = (wx > 0.0f) ? findY ("Band width", wx) : -1.0f;
+        check (wy >= 0.0f, "leg F: band 1's width line is findable");
+        if (wy >= 0.0f)
+        {
+            const float before = plainOf (wMidP);
+            imager->mouseDown (mev (wx, wy, wx, wy, false));
+            for (float d = 6.0f; d <= 30.0f; d += 6.0f)
+                imager->mouseDrag (mev (wx, wy + d, wx, wy, true));
+            imager->mouseUp (mev (wx, wy + 30.0f, wx, wy, true));
+            check (! juce::exactlyEqual (before, plainOf (wMidP)),
+                   "leg F: an uninterrupted width drag still moves its band's Width");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 //  State test 67 -- an outward drag whose split has since vanished removes
 //  NOTHING, rather than deleting whichever band the index now lands on.
 //
@@ -13828,6 +14120,7 @@ int main (int argc, char* argv[])
     testAuthoritativeSoundChangeVoidsAGesture();
     testAGestureWritesOnlyWhatItOwns();
     testTheCheckIsAdjacentToEveryStore();
+    testACoupledUpdateIsAllOfItOrNone();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

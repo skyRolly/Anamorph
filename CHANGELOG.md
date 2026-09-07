@@ -63,6 +63,21 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Regression coverage: DSP test 53. Evidence: PR #135. [Verified]
 
 ### Fixed
+- **Soloing a band can no longer land on a different band's layout, and adding or removing a band no
+  longer half-applies.** Clicking a band's solo button, and adding or removing a band, are each
+  several changes written in turn — the solo buttons, the band widths, the split frequencies and the
+  band count. If the number of Bands changed at the exact moment one of those was being written, the
+  rest carried on regardless: a solo could be applied to a band number that no longer existed, and a
+  band could be added or removed while the solo buttons stayed mapped to the old layout, leaving
+  bands soloed that you never soloed. Each of those changes now carries the layout it was aimed at,
+  and the whole operation stops the moment one of them cannot be applied to it. Ordinary soloing,
+  adding and removing are untouched.
+- **Scrolling the mouse wheel while dragging in the Multiband display now ends the drag instead of
+  fighting it.** The wheel is a separate edit, and using it mid-drag left the drag holding a grab
+  point from before the wheel moved things — so the next twitch of the mouse undid what the wheel had
+  just done, or undid a change that had arrived from elsewhere. The wheel still does exactly what it
+  did; the drag you were holding simply finishes, and you re-grab.
+  Decision: ADR-0041. Regression coverage: State test 73. Evidence: PR #143. [Verified]
 - **A change to a band's Width that arrives while you are dragging that Width is no longer undone.**
   Dragging a band's width line remembers where you grabbed it and then follows your mouse from that
   grab point. If the same band's Width was changed by something else while you were still holding —

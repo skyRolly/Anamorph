@@ -484,3 +484,159 @@ of blind spot an adversarial pass exists to find, and it found it in code that h
 ownership mid-drag. Measured: it re-seeds `dragOrigX` and `gestureX` **together**, so the projection
 targets move with the record and nothing stale is written. State test 72 leg (c) passes before and
 after and is kept as the guard on that pairing.
+
+---
+
+# Round 4 (2026-09-07) — a coupled update is all of it or none of it
+
+Round 3 shipped as `799113f`. Review returned three findings and two deeper questions. This is the
+decision record required before any production edit.
+
+## 26. What was open at the start of round 4
+
+| # | Anchor at `799113f` | Finding | Kind |
+|---|---|---|---|
+| T1 | `SpectrumImager.cpp:2095` | Wheel input revives stale width drags | partial **refresh** |
+| T2 | `SpectrumImager.cpp:1985` | Solo clicks target replaced layouts | commit with no precondition |
+| T3 | `SpectrumImager.cpp:646` | Failed solo remaps still change bands | **refusal nobody heard** |
+| T4 | `SpectrumImager.cpp:366` | `ownsSplit` ignores host changes within half a display pixel | investigate |
+| T5 | `SpectrumImager.cpp:638` | Per-store checks cannot make topology edits atomic | investigate |
+
+## 27. Reproduction, before any change
+
+```
+State test 73: a coupled update is all of it or none of it
+  [leg A] a wheel tick adopted the installed width 1.700, and the drag then wrote 0.650 from an anchor taken before it
+  [leg B] the click soloed band 3 of a four-band layout, Bands became 2 inside the store, and the mask was written as 0x8 anyway
+  [leg C] the mask store was refused and the transaction carried on: Bands 3 with the mask left in the old numbering (0x5)
+```
+
+Leg (a) also refutes a claim round 3 made. State test 72 leg (c) established that
+`captureDragOrigins()` re-seeds `dragOrigX` **and** `gestureX` together, and round 3's report
+generalised that to "nothing stale is written". That is true for splits and **false for widths**: the
+width store computes from `dragGrabDY`, a third piece of state the refresh does not touch. The
+correction is recorded here rather than amended away.
+
+## 28. The common invariant
+
+All three findings are the same shape: **part of a coupled change was applied and the rest was not,
+and nothing downstream could tell.**
+
+> **A coupled update — a commit or a refresh — is all of it or none of it. A conditional store must
+> report whether it committed, and a caller that derived state from a precondition must abandon the
+> rest of its plan the moment any store does not commit. A refresh that cannot bring every piece of
+> state the next write depends on to the same authoritative sound must refresh none of it.**
+
+* **T3** is a *commit* half-applied: `setSoloMask` refused and said nothing, so the transaction
+  changed the band count with the mask still in the old numbering.
+* **T2** is a *commit* with no precondition at all: `mouseUp` clears `gestureBands` before the solo
+  branch, so `setSoloMask` runs at its `expectedBands = -1` default.
+* **T1** is a *refresh* half-applied: `captureDragOrigins()` adopts an outside width into `gestureW`
+  while `dragGrabDY` still points at the sound before it.
+
+## 29. T4 — the half-pixel threshold, measured
+
+`kSplitMovedPx = 0.5f` was doing two jobs: deciding whether a write is worth making (its purpose) and
+deciding whether a value is the gesture's own (not its purpose). Measured against the real axis
+(`kAxis` + the Fritsch–Carlson map, reproduced exactly) at the harness's 902 px plot:
+
+| Hz | +0.5 px | Δ Hz | % |
+|---|---|---|---|
+| 30 | 30.193 | 0.19 | 0.642 % |
+| 200 | 200.703 | 0.70 | 0.352 % |
+| 1 000 | 1 003.529 | 3.53 | 0.353 % |
+| 10 000 | 10 032.307 | 32.31 | 0.323 % |
+| 18 000 | 18 054.795 | 54.79 | 0.304 % |
+
+Worst case **0.646 % at 27 Hz**, worst absolute **61.24 Hz at 19 905 Hz**. The crossover parameters
+are `logFreqRange (20, 20000)` with **no interval** (`PluginParameters.cpp:238-240`), so the smallest
+representable step is the float itself — about **0.00055 Hz at 1 kHz**. A 32 Hz change at 10 kHz is
+therefore roughly **59 000 times** the parameter's resolution: unambiguously representable, fully
+observable through host automation, and — until this round — reclaimable by the gesture.
+
+**Decision: outcome C.** Pixel space is the wrong ownership primitive. Ownership moves to the
+**normalised parameter value, compared exactly**. That is safe because
+`AudioParameterFloat::setValue` is `value = convertFrom0to1 (newValue)` with no snapping and
+`getValue()` is `convertTo0to1 (value)` (`juce_AudioParameterFloat.cpp:97-98`), so
+`convertTo0to1 (convertFrom0to1 (norm))` is bit-identical to what a clean store leaves — for the
+width family too, whatever its 0.001 interval does, because both sides use the same two conversions.
+`kSplitMovedPx` keeps its real job and only that job; `kWidthQuantum` is no longer needed.
+
+## 30. T5 — the cross-thread topology transaction
+
+| Option | Verdict |
+|---|---|
+| **A** per-store conditional ownership | **Kept**, and materially tightened by T3's fix: a refused store now stops the transaction instead of letting it run on. |
+| **B** single conditional commit from one snapshot | Rejected as unreachable, not as undesirable. The layout lives in **eight separate automatable parameters**; there is no single commit point to make conditional. Approximating one means exactly the per-store re-proof A already performs. |
+| **C** versioned topology | Rejected for ADR-0040 option 2's reason, now sharper: the **silent writer** (`reassertParameters` with `notifyHost = false`) advances no version yet moves what the imager reads, so a version would have to be added to the restore path — a processor change to reach a guarantee the value comparison already gives. |
+| **D** lock | Prohibited: `mbBands` is written from the audio thread, so `REALTIME_AUDIO_POLICY` forbids it, and it would be a Thread Model change. The one lock that exists (`soundReplacement`, ADR-0036 §24) is never taken by the audio thread but does not close reentrancy at all, is scoped to whole-sound replacements, and would block the message thread. |
+| **E** other | Nothing the measured facts support. |
+
+**Ruling: a bounded, documented concurrency trade — not a defect, and not an architectural
+violation.** What *was* a defect is T3, where the transaction continued after its own precondition
+had been refused; that is fixed. What remains is a store landing between our comparison and the
+`setValueNotifyingHost` on the next line, from another thread. Its blast radius is one parameter, and
+under a *lower* new count the parameters left behind are ones the DSP does not read
+(`SoloMonitor.cpp:85`, `MultibandWidth.h:53`).
+
+## 31. T5 semantics — what the solo operation owns
+
+`mbSolo` is a positional 4-bit word, and the solo operation owns **a positional band index plus the
+topology that numbering belongs to** — which is why the index alone is not enough and why
+`expectedBands` is the missing half. Nothing here changes what `mbSolo` or `mbBands` *mean*: no
+registry field, range, default or serialization semantics moves, so this is a bug fix and not an
+Architecture Review Gate item.
+
+## 32. T1 semantics — what a refresh must refresh
+
+The width write depends on `dragGrabDY`; the crossover write depends on `dragGrabDX`; neither is
+refreshable by `captureDragOrigins()`, which has no cursor position to re-anchor against. Two
+gestures cannot own the same state at once, so **a wheel tick while a press gesture is in flight ends
+the press gesture** and then performs its own action with nothing in flight. The wheel keeps working
+— this is not "disable the wheel during a drag" — and the press ends rather than continuing from an
+anchor that predates a sound it has just been told is its own.
+
+## 33. Implementation chronology, round 4
+
+1. State test 73 written first, against unmodified `799113f`; legs (a), (b), (c) fail, (d), (e), (f)
+   pass. §27.
+2. The threshold measured before it was touched, by reproducing `kAxis` and its Fritsch–Carlson map
+   exactly and evaluating half a pixel at eight frequencies. §29.
+3. The decision record above written before any production edit, per the round's own gate.
+4. `setBands`, `setSoloMask` and `toggleSoloBit` return `bool`; `addBandAt` and `removeBand` abandon
+   the transaction on a refused mask store.
+5. `mouseUp`'s two solo paths pass `pressBands` and the mask they read.
+6. `mouseWheelMove` ends an in-flight press before acting.
+7. `gestureX`/`gestureW` become normalised values; `ownsSplit`/`ownsWidth` compare exactly;
+   `storeOwned` stores and confirms in parameter space; `kWidthQuantum` deleted.
+8. Leg (g) added to make the threshold change mutation-visible — the discriminator is whether the
+   drag *stops*, because a 20 Hz move at 10 kHz is under the write-suppression threshold and would
+   not be overwritten either way.
+
+## 34. The final stale-write and transaction audit
+
+| Operation | Authoritative inputs | Cached gesture state | Ownership condition | Commit point | Reentrancy points | If ownership is lost half way |
+|---|---|---|---|---|---|---|
+| crossover store (`writeCrossovers`) | `freqP[k]->getValue()`, `bandCount()` | `gestureX[k]` (normalised), `dragOrigX`, `dragGrabDX` | `ownsSplit (k)`, exact | each `storeOwned` | the store's own dispatch | returns false; `mouseDrag` voids the gesture |
+| width store (`mouseDrag`) | `widthP[b]->getValue()` | `gestureW[b]` (normalised), `dragGrabDY` | `ownsWidth (b)`, exact, checked before the anchor **and** the store | `storeOwned` | the store's own dispatch | `cancelActiveDrag()` |
+| `setSoloMask` | `bandCount()`, `soloMask()` | `expectedBands`, `expectedMask` | both, between the gesture open and the store | the store inside the open | `beginChangeGesture` dispatch | returns false; the caller abandons |
+| `toggleSoloBit` | the mask it reads | `pressBands` | as above | as above | as above | returns false; nothing else follows |
+| `setBands` | `bandCount()` | `expectedBands` | between the gesture open and the store | the store inside the open | `beginChangeGesture` dispatch | returns false; it is the last store |
+| `removeBand` / `addBandAt` | count, mask, `fr[]`, `wd[]` | `expectedBands` + the plan | re-proved before every store | the burst, store by store | every store's dispatch | abandons the rest; stores already issued stand (§30) |
+| on-release removal | `pressBands` | `dragHandle`, `dragRemovePending` | `removeBand`'s contract | inside `removeBand` | `endGesture` before it | refused |
+| neighbour spring-back | `dragOrigX` | as the crossover store | `ownsSplit` | as above | as above | as above |
+| wheel refresh | live values | none — the press is ended first | n/a | n/a | its own stores | n/a |
+
+**The invariant a future gesture consumer must follow**, stated once so it need not be reconstructed:
+
+> Own what you observed or wrote, in the parameter's own units, compared exactly. Check ownership in
+> the statement before the store, with no call between. Record what you stored only after confirming
+> the parameter holds it. Report a refusal to your caller, and abandon the rest of your plan when you
+> hear one. Refresh every piece of state a write depends on together, or refresh none of it.
+
+## 35. Validation and residuals, round 4
+
+State suite **2 632 / 0**; State tests 66–72 unchanged and green. Mutations P1–P4 each killed by
+exactly one named leg. Residuals: §30's single cross-thread store, ruled a bounded trade; the
+stores already issued when a transaction abandons; and the ADR-0039 disposition of the vanished-band
+Width and solo-mask values, unchanged.

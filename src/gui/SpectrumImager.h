@@ -116,6 +116,9 @@ private:
     // this at every drag start rather than writing the loop again -- one home for the rule.
     void  captureDragOrigins() noexcept;
     void  captureGestureSound() noexcept;
+    // ADR-0041. Store, then confirm IN PARAMETER SPACE that this store is what the parameter now
+    // holds, and hand back the value to own. False means somebody wrote from inside the store.
+    bool  storeOwned (juce::RangedAudioParameter* p, float plain, float& ownedNorm) noexcept;
     // Reversible projection: pin one or two splits at target x, keep every OTHER split
     // as close to its drag-start position (orig) as the min gap allows, so a pushed
     // neighbour springs back when the pin moves away again (0.6.13 #8/#9/#10/#11).
@@ -147,8 +150,12 @@ private:
     float dispRightX (int b) const noexcept;
 
     // Solo (mask) ---------------------------------------------------------
-    void  setSoloMask (int mask, int expectedBands = -1, int expectedMask = -1);
-    void  toggleSoloBit (int b);
+    // ADR-0041: these RETURN whether they committed. A conditional store that refuses silently is
+    // indistinguishable from one that succeeded, and both topology transactions used to carry on
+    // after the mask store had been refused -- changing the band count with the mask still in the
+    // old numbering. A caller that derived state from a precondition must hear the refusal.
+    bool  setSoloMask (int mask, int expectedBands = -1, int expectedMask = -1);
+    bool  toggleSoloBit (int b, int expectedBands = -1);
     int   effectiveSoloMask() const noexcept; // includes the momentary hold preview
     void  beginBandMove (int b);            // drag a solo handle sideways to move the band (0.6.9 #9)
     bool  moveBand (float mouseX);
@@ -158,7 +165,7 @@ private:
     void setParam (juce::RangedAudioParameter*, float plain);
     void endGesture (juce::RangedAudioParameter*);
     void resetParam (juce::RangedAudioParameter*);
-    void setBands (int n, int expectedBands = -1);
+    bool setBands (int n, int expectedBands = -1);
 
     void updateHover (juce::Point<float>);
     void setContextTooltip();               // per-control tooltip (0.6.9 #18)
@@ -309,13 +316,21 @@ private:
     // nothing it watches, and the drag then keeps projecting from `dragOrigX` -- the positions
     // of the sound that was just replaced -- and writes the unpinned splits back over it. Every
     // write this gesture makes refreshes these, so a difference means someone else wrote.
+    // ADR-0041: the NORMALISED parameter value, not a pixel. A pixel was a GUI quantisation
+    // tolerance doing an ownership job: half a display pixel is 0.30-0.65 % of the frequency
+    // (0.19 Hz at 30 Hz, 32 Hz at 10 kHz, 61 Hz at 20 kHz on the harness's 902 px plot), while the
+    // parameter has no interval at all and resolves about 0.00055 Hz at 1 kHz -- so an external,
+    // fully automatable change of up to 61 Hz read as the gesture's own. Compared EXACTLY, which is
+    // sound because `AudioParameterFloat::setValue` is `value = convertFrom0to1 (newValue)` and
+    // `getValue()` is `convertTo0to1 (value)` (juce_AudioParameterFloat.cpp:97-98), so
+    // `convertTo0to1 (convertFrom0to1 (norm))` is bit-identical to what a clean store leaves.
     float gestureX[3] { 0.0f, 0.0f, 0.0f };
     // ADR-0040. THE SAME, FOR WIDTHS. `gestureX` records splits only, so a width-only authoritative
     // change moved nothing the gesture watched: a width drag anchors `dragGrabDY` at the 3 px engage
     // and thereafter computes from the CURSOR alone -- the live width is never read again -- so an
     // outside write was overwritten by the next mouse move from an anchor taken before it. Measured:
     // `the installed width 1.700 was overwritten with 0.650`.
-    float gestureW[4] { 0.0f, 0.0f, 0.0f, 0.0f };
+    float gestureW[4] { 0.0f, 0.0f, 0.0f, 0.0f }; // normalised too (ADR-0041)
     // ADR-0040. THE ONE QUESTION EVERY GESTURE STORE ASKS, adjacent to the store it guards. Exact
     // equality, not an epsilon: the gesture records the READ-BACK after each of its own stores, so
     // its own write can never read as somebody else's, and there is no epsilon to invent for a path

@@ -16,11 +16,6 @@ static constexpr float kMinGapPx  = 46.0f; // constant on-screen split spacing (
 // one; the two must be the same number, or a difference too small for this imager to write
 // could still read as an outside change and cancel a live drag (ADR-0039).
 static constexpr float kSplitMovedPx = 0.5f;
-// The width parameters carry an interval of 0.001 (PluginParameters.cpp:241-244), so a store
-// quantises and a read-back is not bit-identical to what was asked for. This is the tolerance
-// for "did MY store land?", and it is the parameter's own resolution: a foreign write smaller
-// than it is a change the parameter itself cannot represent (ADR-0040).
-static constexpr float kWidthQuantum = 0.001f;
 
 namespace
 {
@@ -339,18 +334,11 @@ bool SpectrumImager::writeCrossovers (const float* xs, int count)
         if (! ownsSplit (k)) return false;
         if (std::abs (freqToX (crossover (k)) - xs[k]) <= kSplitMovedPx)
             continue;                                  // nothing to write; the record already stands
-        const float want = juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k]));
-        setParam (freqP[k], want);
-        // ADR-0040, round-3 correction 2: CONFIRM THE STORE LANDED before owning the result. The
-        // record used to be a bare read-back, which adopted a listener that wrote THIS SAME
-        // parameter from inside this very store -- the one case every leg of State test 71 misses,
-        // because each aims its probe at a different parameter from the one it hooks. Measured:
-        // `the echoed value 500.0 Hz was adopted as the gesture's own and then overwritten with
-        // 131.3 Hz`. Compared at kSplitMovedPx rather than exactly, so the parameter's own
-        // quantisation of `want` is not mistaken for somebody else's hand.
-        const float landed = freqToX (crossover (k));
-        if (std::abs (landed - freqToX (want)) > kSplitMovedPx) return false;
-        gestureX[k] = landed;                          // own what THIS store put there, nothing else
+        // ADR-0040 round-3 correction 2, sharpened by ADR-0041: confirm the store landed before
+        // owning it, in PARAMETER space and exactly. A listener writing this same parameter from
+        // inside this very store is caught whatever the size of its write.
+        if (! storeOwned (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])), gestureX[k]))
+            return false;
     }
     return true;
 }
@@ -359,17 +347,38 @@ bool SpectrumImager::writeCrossovers (const float* xs, int count)
 // refuse. A split is owned within the same half pixel `writeCrossovers` uses to decide a write is
 // worth making, so the gesture's own read-back can never trip it; a width is owned exactly, because
 // the width path performs no write suppression and its read-back is bit-identical to its store.
+// ADR-0041. OWNERSHIP IS A PARAMETER QUESTION, NOT A PIXEL ONE. `kSplitMovedPx` decides whether a
+// write is worth making; it was also deciding whether a value was ours, and those are different
+// questions with different units. Half a display pixel is 0.30-0.65 % of the frequency -- 0.19 Hz at
+// 30 Hz, 3.5 Hz at 1 kHz, 32 Hz at 10 kHz, 61 Hz at the top -- against a parameter with no interval
+// that resolves about 0.00055 Hz at 1 kHz, so an external change up to five orders of magnitude
+// above the parameter's own resolution read as the gesture's own and was overwritten. Exact
+// comparison of the normalised value has no such gap and costs one float compare.
 bool SpectrumImager::ownsSplit (int k) const noexcept
 {
     if (gestureBands < 0) return true;
-    if (k < 0 || k >= (int) std::size (gestureX)) return true;
-    return std::abs (freqToX (crossover (k)) - gestureX[k]) <= kSplitMovedPx;
+    if (k < 0 || k >= (int) std::size (gestureX) || freqP[k] == nullptr) return true;
+    return juce::exactlyEqual (freqP[k]->getValue(), gestureX[k]);
 }
 bool SpectrumImager::ownsWidth (int b) const noexcept
 {
     if (gestureBands < 0) return true;
-    if (b < 0 || b >= (int) std::size (gestureW)) return true;
-    return juce::exactlyEqual (bandWidth (b), gestureW[b]);
+    if (b < 0 || b >= (int) std::size (gestureW) || widthP[b] == nullptr) return true;
+    return juce::exactlyEqual (widthP[b]->getValue(), gestureW[b]);
+}
+// Store, then confirm the parameter holds THIS store's result before owning it. `expect` is computed
+// by the same two conversions the parameter itself performs (juce_AudioParameterFloat.cpp:97-98), so
+// with nothing else writing it is bit-identical to the read-back -- and any difference is somebody
+// else's hand, at any magnitude, not merely one bigger than a display pixel.
+bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, float& ownedNorm) noexcept
+{
+    if (p == nullptr) return false;
+    const float norm   = p->convertTo0to1 (plain);
+    const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
+    p->setValueNotifyingHost (norm);
+    if (! juce::exactlyEqual (p->getValue(), expect)) return false;
+    ownedNorm = expect;
+    return true;
 }
 // Seed the drag-start positions for a gesture that is about to start. EVERY slot of
 // dragOrigX, not just the `bandCount() - 1` splits in use at the press -- because the two
@@ -395,11 +404,11 @@ void SpectrumImager::captureDragOrigins() noexcept
 void SpectrumImager::captureGestureSound() noexcept
 {
     for (int k = 0; k < (int) std::size (gestureX); ++k)
-        gestureX[k] = freqToX (crossover (k));
+        gestureX[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;
     // ADR-0040: the widths belong to the gesture's world too. Seeded here at every gesture start,
-    // and refreshed at the width store itself rather than in any blanket pass.
+    // and refreshed at the width store itself rather than in any blanket pass. ADR-0041: normalised.
     for (int b = 0; b < (int) std::size (gestureW); ++b)
-        gestureW[b] = bandWidth (b);
+        gestureW[b] = (widthP[b] != nullptr) ? widthP[b]->getValue() : 0.0f;
 }
 // ADR-0039. THE COUNT IS NOT THE WHOLE TOPOLOGY. A restore, a preset, an A/B apply, an undo or
 // an automation lane can install a different sound at the SAME band count; `gestureBands` sees
@@ -502,31 +511,47 @@ void SpectrumImager::resetParam (juce::RangedAudioParameter* p)
 // from inside the gesture that opens the commit, and the commit wrote 3 over it`. `expectedBands`
 // re-proves the topology in the only place that is adjacent: after the open, before the store.
 // -1 means the caller has no topology to prove (a plain solo toggle).
-void SpectrumImager::setBands (int n, int expectedBands)
+bool SpectrumImager::setBands (int n, int expectedBands)
 {
+    bool stored = false;
     if (auto* p = bandsP)
     {
         p->beginChangeGesture();
         if (expectedBands < 0 || bandCount() == expectedBands)
+        {
             p->setValueNotifyingHost (p->convertTo0to1 ((float) juce::jlimit (1, 4, n)));
+            stored = true;
+        }
         p->endChangeGesture();
     }
+    return stored;
 }
 
 // --- Solo mask ---------------------------------------------------------------
 // Same shape, same reason (ADR-0040 round-3 correction 3). `expectedMask` additionally proves the
 // word this plan was computed from is still the word being replaced; -1 waives both.
-void SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
+bool SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
 {
-    if (soloP == nullptr) return;
+    if (soloP == nullptr) return false;
     mask &= 0x0F;
+    bool stored = false;
     soloP->beginChangeGesture();
     if ((expectedBands < 0 || bandCount() == expectedBands)
         && (expectedMask < 0 || soloMask() == expectedMask))
+    {
         soloP->setValueNotifyingHost (soloP->convertTo0to1 ((float) mask));
+        stored = true;
+    }
     soloP->endChangeGesture();
+    return stored;
 }
-void SpectrumImager::toggleSoloBit (int b) { setSoloMask (soloMask() ^ (1 << b)); }
+// ADR-0041: the toggle reads the word it is about to replace and names it, so the store proves both
+// halves of what it assumed -- the topology the band index belongs to, and the mask it is toggling.
+bool SpectrumImager::toggleSoloBit (int b, int expectedBands)
+{
+    const int m = soloMask();
+    return setSoloMask (m ^ (1 << b), expectedBands, m);
+}
 
 void SpectrumImager::beginBandMove (int b)
 {
@@ -642,8 +667,10 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
     // by a newer authority is ADR-0036 section 25's rule, not a stale overwrite.
     // `N` is this transaction's expected topology, read once at entry (ADR-0039). A caller that
     // sees -1 knows nothing it planned was completed as planned.
+    // ADR-0041: a refusal is heard. The transaction cannot go on to change the band count with
+    // the mask still in the old numbering -- that is the half-applied commit T3 measured.
     if (bandCount() != N || soloMask() != oldMask) return -1;
-    setSoloMask (nm, N, oldMask);
+    if (! setSoloMask (nm, N, oldMask)) return -1;
 
     for (int i = 0; i <= N; ++i)
     {
@@ -659,7 +686,7 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
         setParam (freqP[i],  juce::jlimit (kFreqLo, kFreqHi, xToFreq (nx[i])));
     }
     if (bandCount() != N) return -1;
-    setBands (N + 1, N);
+    if (! setBands (N + 1, N)) return -1;
     resultingBands = N + 1;      // from THIS read of the count, not a second one (ADR-0039)
     return ins;
 }
@@ -723,8 +750,9 @@ void SpectrumImager::removeBand (int b, int expectedBands)
     // newer one and rewrites the whole layout under it, while abandoning leaves the newer topology
     // standing and at most one already-issued store behind. A legitimately begun operation truncated
     // by a newer authority is ADR-0036 section 25's rule, not a stale overwrite.
+    // ADR-0041: a refusal is heard -- see addBandAt.
     if (bandCount() != expectedBands || soloMask() != oldMask) return;
-    setSoloMask (nm, expectedBands, oldMask);
+    if (! setSoloMask (nm, expectedBands, oldMask)) return;
 
     for (int k = 0; k < N - 1; ++k)
     {
@@ -737,7 +765,7 @@ void SpectrumImager::removeBand (int b, int expectedBands)
         setParam (freqP[k],  nf[k]);
     }
     if (bandCount() != expectedBands) return;
-    setBands (N - 1, expectedBands);
+    (void) setBands (N - 1, expectedBands); // last store: nothing follows it to abandon
 }
 
 // ----------------------------------------------------------------------------
@@ -1961,13 +1989,9 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
         }
         if (widthHoldActive)
         {
-            const float want = yToWidth ((float) e.position.y - dragGrabDY);
-            setParam (widthP[dragBand], want);
-            // Confirm the store landed before owning it, for the same reason as the splits above --
-            // at the parameter's own 0.001 resolution, so its quantisation of `want` is not read as
-            // a foreign hand (ADR-0040 round-3 correction 2).
-            if (std::abs (bandWidth (dragBand) - want) > kWidthQuantum) { cancelActiveDrag(); return; }
-            gestureW[dragBand] = bandWidth (dragBand); // own it at the store, never in a later pass
+            if (! storeOwned (widthP[dragBand], yToWidth ((float) e.position.y - dragGrabDY),
+                              gestureW[dragBand]))
+            { cancelActiveDrag(); return; }
         }
     }
     repaint();
@@ -1996,10 +2020,19 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     if (soloPressBand >= 0)
     {
         if (soloHoldActive) { if (onClearSoloPreview) onClearSoloPreview(); if (soloMovedBand) endBandMove(); }
+        // ADR-0041: the solo click names the topology it was aimed at. `gestureBands` has already
+        // been cleared above, so without `pressBands` these stores ran at the `expectedBands = -1`
+        // default and a Bands change inside the store applied a stale band index to a layout that
+        // never had that band. Measured: `the click soloed band 3 of a four-band layout, Bands
+        // became 2 inside the store, and the mask was written as 0x8 anyway`.
         else if (soloPressAlt) // Alt/Option quick click: inactive band -> EXCLUSIVE solo
-            setSoloMask (bandSoloed (soloPressBand) ? 0 // active: all solos off, as before (0.8.9)
-                                                    : (1 << soloPressBand)); // 0.8.10: only this band
-        else                  toggleSoloBit (soloPressBand);
+        {
+            const int m = soloMask();
+            (void) setSoloMask (bandSoloed (soloPressBand) ? 0 // active: all solos off (0.8.9)
+                                                           : (1 << soloPressBand), // 0.8.10: only this band
+                                pressBands, m);
+        }
+        else                  (void) toggleSoloBit (soloPressBand, pressBands);
         soloPressBand = -1;
         soloHoldActive = soloMovedBand = false;
         updateHover (e.position);
@@ -2078,6 +2111,15 @@ void SpectrumImager::mouseDoubleClick (const juce::MouseEvent& e)
 }
 void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
+    // ADR-0041. TWO GESTURES CANNOT OWN THE SAME STATE AT ONCE. The wheel is its own instantaneous
+    // edit, and it re-seeds the projection origins through `captureDragOrigins()` -- which also
+    // re-seeds the ownership record but CANNOT re-seed `dragGrabDY` or `dragGrabDX`, the anchors the
+    // held press computes its next write from. A press left running across that refresh therefore
+    // owned a value its anchor predated, and overwrote it on the next mouse move. Measured: `a wheel
+    // tick adopted the installed width 1.700, and the drag then wrote 0.650 from an anchor taken
+    // before it`. The press ends here; the wheel then acts with nothing in flight, exactly as it
+    // does when no button is held. The wheel is not disabled -- the press is finished.
+    cancelActiveDrag();
     const int N = bandCount();
     if (scrollHandle < 0 && scrollBand < 0)
     {

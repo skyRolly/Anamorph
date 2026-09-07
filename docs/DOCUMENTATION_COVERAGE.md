@@ -9915,7 +9915,7 @@ the working tree: 0 files missing, 0 lines past EOF, 0 pointing at unrelated cod
 
 **MUST FIX — one, and the scanners did not report it.** PREfast's four `C6001` results are false
 positives, but auditing the second pair's surface found a real one three functions away:
-`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:427) validated its pin arguments
+`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:436) validated its pin arguments
 against `count` when *writing* them and not when computing `leftPin`/`rightPin`, so a stale pin
 survived into the pull loops and `out[k + 1]` read a slot the copy loop never wrote. Reachable:
 `beginBandMove` (:398) latches `soloMoveLeft`/`soloMoveRight` from the band count at the press;
@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:698 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:725 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:853`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:881`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10033,8 +10033,8 @@ that the fix covered one direction only. Both are settled here.
 
 **A SECOND defect, and the scanners never saw it either.** `dragOrigX` (src/gui/SpectrumImager.h:249)
 is the drag-start x of every split, seeded once when a gesture begins and read for the whole gesture.
-Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:462)
-and `moveBand` (:563). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
+Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:471)
+and `moveBand` (:588). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
 splits in USE at the press — so a host write of `mbBands` that **raised** Bands mid-gesture made the
 consumers ask `projectFromOrig` for origins nobody had written. Those slots still held the `{0,0,0}`
 initialiser, so unlike the falling case this half was **stale, not indeterminate — never UB**; the
@@ -10169,7 +10169,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:698 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:725 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10395,3 +10395,51 @@ live count, which the DSP does not read.
 **Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §25, `ADR-0040`'s new
 "Correction, same day" section and its amended confidence statement, `TESTING.md` (State test 72).
 [Verified]
+
+## SpectrumImager — a coupled update is all of it or none of it (2026-09-07, seventh pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: `setBands`, `setSoloMask` and `toggleSoloBit`
+return whether they committed, and `addBandAt`/`removeBand` abandon the transaction on a refused mask
+store; `mouseUp`'s two solo paths pass the `pressBands` they were aimed at; `mouseWheelMove` ends an
+in-flight press before acting; `gestureX`/`gestureW` hold **normalised parameter values** compared
+exactly, `storeOwned` confirms a store in parameter space, and `kWidthQuantum` is deleted.
+`tests/state_tests.cpp`: State test 73.
+
+**Why.** Three review findings of one shape — part of a coupled change applied and the rest not, with
+nothing downstream able to tell. Measured against `799113f`: `a wheel tick adopted the installed
+width 1.700, and the drag then wrote 0.650 from an anchor taken before it`; `the click soloed band 3
+of a four-band layout, Bands became 2 inside the store, and the mask was written as 0x8 anyway`; `the
+mask store was refused and the transaction carried on: Bands 3 with the mask left in the old
+numbering (0x5)`.
+
+**A correction this round makes to the last.** Round 3 recorded that `captureDragOrigins()` re-seeds
+the origins and the ownership record together, "so nothing stale is written". True for splits; false
+for widths, whose store computes from `dragGrabDY` — a third piece of state the refresh cannot touch.
+State test 72 leg (c) is unchanged and still passes; what was too broad was the generalisation drawn
+from it, and State test 73 leg (a) now holds the other half.
+
+**The threshold was measured, not argued.** Half a display pixel on the real axis is 0.30–0.65 % of
+the frequency — 0.19 Hz at 30 Hz, 3.53 Hz at 1 kHz, 32.31 Hz at 10 kHz, 61.24 Hz at the top — against
+crossover parameters with **no interval** resolving about 0.00055 Hz at 1 kHz. A 32 Hz change at
+10 kHz is roughly 59 000 times the parameter's resolution and fully automatable, and was being read
+as the gesture's own. Ownership therefore moves to the normalised value compared exactly, which is
+sound because `AudioParameterFloat::setValue`/`getValue` are `convertFrom0to1`/`convertTo0to1` with
+no snapping (`juce_AudioParameterFloat.cpp:97-98`).
+
+**The cross-thread transaction is ruled a bounded trade, with the options priced.** Option B is
+unreachable — the layout lives in eight separate automatable parameters, so there is no single commit
+point to make conditional; option C loses to the silent writer; option D is forbidden because
+`mbBands` is written from the audio thread. What *was* a defect is the transaction continuing after
+its own precondition was refused, and that is fixed.
+
+**One product decision, stated.** A wheel tick during a drag now **ends the drag**. The wheel keeps
+working; two gestures cannot own the same state at once, and the wheel's refresh cannot re-anchor
+`dragGrabDY`/`dragGrabDX`.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§26-35 (findings, reproduction,
+the common invariant, the threshold measurement, the transaction ruling, solo semantics, refresh
+semantics, chronology, the full audit table with the invariant stated once, residuals), `ADR-0041` +
+`ADR_INDEX`, `TESTING.md` (State test 73), `CHANGELOG.md` `[0.9.7]` Fixed (two new bullets — the solo
+and half-applied-transaction symptoms, and the wheel behaviour change). Not a gate item: `mbSolo` and
+`mbBands` keep their meaning; no parameter ID, serialization, threading-model, DSP-order or
+reported-latency change, and no Accepted ADR conflict. [Verified]

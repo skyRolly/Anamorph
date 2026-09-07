@@ -349,7 +349,7 @@ DELIBERATE_REAIMS = {
     # later undeclared movement of the same anchor is still the gate's to catch.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:462"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:471"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the
