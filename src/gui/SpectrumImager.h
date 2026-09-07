@@ -128,6 +128,10 @@ private:
     // the caller abandons the rest of the event and voids the gesture. `true` means every store this
     // pass made was one the gesture still owned.
     bool  writeCrossovers (const float* xs, int count);
+    // ADR-0042: the neighbour spread of a reset or a text commit, applied only to the world the plan
+    // was computed from. `was` holds each split's normalised value at plan time; a slot that no
+    // longer holds it belongs to somebody else and the spread stops there. Returns false then.
+    bool  spreadSplits (const float* xs, const float* was, int count, int except);
     bool  dragCrossoverTo (int handle, float x);
     bool  bandAddTarget (int b, float x, float& outX) const noexcept;
 

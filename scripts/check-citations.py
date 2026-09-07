@@ -347,9 +347,16 @@ DELIBERATE_REAIMS = {
     # and still true, so the anchor is re-aimed at the function's new line and the
     # transition declared here; the token is checked at the new spelling, so a
     # later undeclared movement of the same anchor is still the gate's to catch.
+    #
+    # 2026-09-07 (ADR-0042, committed stores): the TARGET is re-derived, not a new
+    # entry. `spreadSplits` is inserted above `dragCrossoverTo`, which moves the
+    # function :471 -> :493. That move is a pure insertion, so the ordinary mapping
+    # handles it and NO second declaration is warranted -- but this entry's target
+    # must follow, because `verify_reaim_targets()` checks the token at the spelling
+    # named here and a target left at :471 would silently switch the check off.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:471"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:493"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

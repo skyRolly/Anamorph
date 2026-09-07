@@ -640,3 +640,239 @@ State suite **2 632 / 0**; State tests 66–72 unchanged and green. Mutations P1
 exactly one named leg. Residuals: §30's single cross-thread store, ruled a bounded trade; the
 stores already issued when a transaction abandons; and the ADR-0039 disposition of the vanished-band
 Width and solo-mask values, unchanged.
+
+## 36. What was open at the start of round 5
+
+One confirmed production defect and one reopened investigation.
+
+| # | Location | Review finding |
+|---|---|---|
+| R1 | `SpectrumImager.cpp:542` | Reentrant stores corrupt coupled edits. A listener can rewrite the parameter just stored by `setSoloMask` or `setParam` (`:498-501`); neither verifies its result, so add, remove, reset and text-entry bursts continue from stale plans, and host automation can be reassigned or overwritten. |
+| R2 | `SpectrumImager.cpp:638` | The cross-thread partial topology transaction, accepted as a bounded trade in §30, reopened as an investigation against the final implementation. |
+
+R1 is the same class ADR-0040's round-3 correction and ADR-0041 closed on the **near** side of a
+store — the window `beginChangeGesture` opens between a caller's check and the value going out —
+reopened on the **far** side, the window the value dispatch itself opens between the store and the
+next statement. The two are one call apart and were closed one round apart.
+
+## 37. Reproduction, before any change
+
+State test 74 drives the real editor and injects real `juce::MouseEvent`s, with the reentrancy
+probes round 3 built: `EchoTheSameParameter` writes the parameter whose store is dispatching,
+`WriteFromInsideAStore` writes a different one from the same window. All four legs are red on
+`e247c11`, and each printed its own measurement:
+
+| Leg | Path | Probe | Measured on `e247c11` |
+|---|---|---|---|
+| A | `removeBand` → `setSoloMask` | echo `mbSolo` → `0b1001` from inside the mask store | `Bands 3 with mask 0x9` — the transaction lowered the count with a word it had not remapped, and `SoloMonitor.cpp:85` then masks `0x9 & 0x7`, so the soloed top band vanishes |
+| B | alt-click → `resetCrossover` | move `mbFreqMid` to 5 kHz from inside the reset's own store | `5000.0 Hz was installed and 2000.0 Hz was written over it` |
+| C | text commit → `commitFreqEditor` | same probe, same window | `5000.0 Hz was installed and 2000.0 Hz was written over it` |
+| D | click-to-add → `setBands` | echo `mbBands` back to 2 from inside the count store | `the count store did not stand (Bands 2) and the press still latched the add and opened 1 gesture(s) on the new split` |
+
+Legs E–H are the positive controls — an uninterrupted delete, an uninterrupted alt-click reset, an
+uninterrupted text commit and an uninterrupted add — and all four are green before the fix, so the
+test discriminates the defect rather than the operation.
+
+**Legs B and C are the more serious pair, and they are not the same defect as A and D.** A and D are
+a store reporting a success it did not have (a *false claim*). B and C are a later store overwriting
+a newer authoritative value (a *stale write*) — and it happens through the exact predicate ADR-0040
+condemned at `SpectrumImager.cpp:314-316`: *does the live value differ from MY target?*, which a
+large foreign move answers more emphatically, not less. `writeCrossovers` was converted to ownership
+in round 3; `resetCrossover` and `commitFreqEditor` compute the same kind of plan, spread the same
+kind of neighbours and were left on the old predicate.
+
+Measured separately, and **not** a defect: a listener echoing a *width* slot from inside its own
+store in the middle of `removeBand` (`landed=1 Bands=3 mask=0x5 wLo=1.750 …`) or of `addBandAt`
+(`landed=1 Bands=3 wLo=1.750 …`). Both bursts completed their intent and left the newer width
+standing. Nothing later in either plan reads that slot, so there is nothing stale to continue from;
+the probes were temporary and are not kept.
+
+## 38. The reentrancy invariant, and where the previous round stopped short
+
+ADR-0041 already wrote the rule down:
+
+> A conditional store **reports whether it committed**, and a caller that derived state from a
+> precondition abandons the rest of its plan the moment any store does not commit.
+
+The implementation of that rule stopped at the *precondition*. `setBands` (`:514-528`) and
+`setSoloMask` (`:533-547`) set `stored = true` immediately after `setValueNotifyingHost` and never
+look again, so what they return is **whether the store was issued**, not whether it committed. The
+one place the round did implement the far side — `storeOwned` (`:373-382`), which stores and then
+confirms the parameter holds this store's result — was applied only to `writeCrossovers` and the
+width drag. So the gap is not a wrong rule; it is the rule applied to two of four store primitives.
+
+Stated for this round, with the halves separated because the two findings are different failures:
+
+> **P1 — no stale write.** A transaction never writes a slot whose live value is not the one its plan
+> was computed from. *(Guarded by the pre-store re-reads; violated by the two neighbour spreads.)*
+>
+> **P2 — no false claim.** A transaction never reports success, and never takes a decision, on the
+> strength of a store the parameter did not keep. *(Violated by `setBands` and `setSoloMask`.)*
+>
+> **P3 — no incoherent commit.** A transaction never performs a store whose meaning depends on an
+> earlier store the parameter did not keep. *(The mask → count dependency; follows from P2 once the
+> refusal is audible.)*
+
+The round's proposed single form — *"a coupled transaction may continue only if every committed store
+still has the value and topology the remaining plan was derived from"* — is **right for P1 and P3 and
+too strong for the leaf stores**, and the measurement in §37 is why. The width and split stores
+inside a topology burst are leaves: the plan for slot `k+1` is read from the entry snapshot, never
+from slot `k`'s committed value, so there is no stale plan to continue from. Aborting there was
+measured to leave a *worse* state than completing, because the mask is stored first and is only
+correct once the count changes — an abort at a width store leaves the mask remapped under the old
+count, while completing leaves the intended layout with one slot holding the newer authority's value.
+So the invariant that actually holds is the dependency-shaped one: **a transaction must hear every
+refusal a later store's correctness depends on, and there is exactly one such dependency here —
+the solo mask before the band count.**
+
+## 39. The store reporting contract, and the abort semantics
+
+| Primitive | Reports | Why |
+|---|---|---|
+| `setSoloMask` | `bool` — **committed**, re-read after `endChangeGesture` | the count store's meaning depends on it (P3) |
+| `setBands` | `bool` — **committed**, re-read after `endChangeGesture` | `addBandAt`'s caller latches `gestureBands`, `dragHandle` and a host gesture on the strength of it (P2) |
+| `storeOwned` | already reports and already re-reads | unchanged |
+| `setParam` | stays `void` | every caller is either a leaf of a burst (nothing reads it, §38) or a single store with nothing after it (the wheel, `resetParam`) |
+
+Verification is in **semantic space** for the two integer parameters and in **parameter space** for
+the floats, and neither can false-refuse a clean store:
+
+* `bandCount()` and `soloMask()` both round through `std::lround` (`:189-210`), and `RawInt`
+  (`PluginParameters.cpp:71-89`) stores and returns the raw normalised float, so the store's own
+  round trip cannot move the integer it decodes to.
+* `storeOwned` computes `expect` with the same two conversions `AudioParameterFloat` performs
+  (`juce_AudioParameterFloat.cpp:97-98`), bit-identical when nothing else wrote — the ADR-0041
+  argument, unchanged and already in production on two paths.
+
+**Abort semantics: A — abort the remaining transaction.** The newer authoritative write wins and no
+remaining derived store is performed. B (re-read and continue) is wrong because the remaining plan
+cannot be recomputed: the whole plan — the solo remap, the width shift, the split shift and the new
+count — is derived from one entry snapshot, so "recompute" means "start again", not "continue". C
+(restart) is wrong because the trigger is a foreign write that may repeat: a retry is exactly the
+uncontrolled loop the round's own instruction forbids, and the operation has no bounded retry model
+to reuse. D is unnecessary. **A is also already the code's behaviour on the near side**, so this is
+the same answer extended, not a second mechanism.
+
+## 40. The two neighbour spreads — the P1 half
+
+`resetCrossover` (`:605-621`) and `commitFreqEditor` (`:810-829`) compute a plan from a snapshot,
+issue one bracketed store, and then spread the neighbours with
+
+```
+if (k != i && std::abs (freqToX (crossover (k)) - xs[k]) > kSplitMovedPx)
+    setParam (freqP[k], …);
+```
+
+which is the predicate ADR-0040 condemned in `writeCrossovers` and quoted at `:314-316`: *does the
+live value differ from MY target?* A foreign move makes it **more** true, so the plan reclaims the
+newer value. Round 3 converted `writeCrossovers` to ownership and left these two alone; §37 legs B
+and C are the same measurement on the two that were left.
+
+The fix is the one already in production one function away: capture the normalised value of each
+neighbour before the primary store, write a neighbour only while it still holds it, store through
+`storeOwned`, and stop at the first slot that is not ours. The primary store is confirmed the same
+way — after `endChangeGesture`, so a write from inside the gesture close is caught too — and the
+spread does not run if it did not land, because every neighbour position was computed to make room
+for it.
+
+## 41. The cross-thread partial topology transaction, re-ruled from the final implementation
+
+§30 accepted this as a bounded trade. The round's instruction is not to preserve that disposition
+automatically, so it was re-derived from the final code. **The ruling is upheld, and the reason
+changes: the argument in §30 was that there is no single write-side commit point. The stronger
+reason, found this round, is that even one would not help.**
+
+**The writer set, re-enumerated.**
+
+| Writer | Call | Fires listeners | Thread |
+|---|---|---|---|
+| this class | `setValueNotifyingHost` | yes | message |
+| preset load / init | `setValueNotifyingHost` (`PresetManager.cpp:188`, `:203`, `:320`, `:543`) | yes | message |
+| undo / redo / A-B | `reassertParameters (…, notifyHost = true)` (`PluginProcessor.cpp:523`, `:737`) | yes | message |
+| host state restore | `reassertParameters (…, notifyHost = false)` → `rp->setValue (norm)` (`PluginProcessor.cpp:740`) | **no** | message |
+| **host automation (VST3)** | `processParameterChanges` → `setValueAndNotifyIfChanged` → `setValueNotifyingHost` (`juce_audio_plugin_client_VST3.cpp:3496`, `:3591`, `:833`) | yes | **audio** |
+| the engine | — reads only (`AnamorphEngine.cpp:608-616`) | — | audio |
+
+§30 already ruled that `mbBands` is written from the audio thread; this round supplies the citation
+it asserted without one. JUCE's VST3 wrapper applies automation from inside
+`JuceVST3Component::process` (`:3591` calls `processParameterChanges`, which reaches
+`setValueNotifyingHost` at `:833`), so a host lane can move any of these parameters between two
+stores of a burst on a genuinely different thread — and the listener dispatch for that write runs on
+the audio thread too. A topology transaction can therefore be interrupted between any two of its
+stores, by that path and by the synchronous reentrancy of §37, and the per-store checks are the
+right shape for both because they compare live values without asking who moved them.
+
+**Option B — a single conditional topology commit — is not merely unreachable, it is pointless.**
+`PluginParameters::toEngine` reads the ten multiband atomics with **ten separate `load()` calls**
+once per block, with no seqlock, generation or coherence guard (`PluginParameters.cpp:365-374`,
+called from `PluginProcessor.cpp:186`). **The reader tears.** An atomic write-side commit would be
+re-torn on the read side, so it would buy nothing without also replacing the read with a versioned
+or double-buffered snapshot — which is a **threading-model change**, an Architecture Review Gate
+item and an AI Agent Hard Stop, and would have to be lock-free on the audio thread. The same
+argument disposes of the idea that the burst is a special weakness: `reassertParameters` restores a
+whole sound the same way, one parameter at a time, and a host writing two automation lanes in one
+block tears identically.
+
+**Option C — versioned/generation — loses to the same silent writer as in §30.** The host restore
+path writes `rp->setValue (norm)` and fires nothing (`PluginProcessor.cpp:740`), so a generation
+driven by listeners cannot see it. A generation derived from *polling the values* is what
+`ownsSplit`, `ownsWidth` and `storeOwned` already are, under another name.
+
+**Option D — a lock — is forbidden and would not work.** `REALTIME_AUDIO_POLICY.md` puts
+`mutex`/`lock`/blocking waits on the hard red line, and the audio thread is now shown to be a
+*writer* of these parameters, so any lock covering the transaction would be taken there. It would
+also not close the reentrancy half at all: that is same-thread, and a recursive `CriticalSection`
+re-entered by a listener on the message thread excludes nobody.
+
+**Option E — compensating rollback — is rejected on its own merits.** Restoring stores `1..k-1` to
+their snapshot values writes a **stale value over a newer authority**, which is exactly what
+ADR-0036 §25 forbids and what every finding in this worklog has been about. Each rollback store can
+itself be refused, and can itself be interfered with, so the scheme has no deterministic
+termination; and the host and undo stack would see the whole excursion.
+
+**Option A — per-store conditional ownership — stands.** What makes it safe is not the size of the
+window but what the DSP does with anything it reads:
+
+* **Nothing it reads can be illegal.** `MultibandWidth::setCrossovers` and
+  `SoloMonitor::setCrossovers` clamp every split to `[20 Hz, 0.45·sr]` and then force strict `1.1×`
+  ordering, top-down and bottom-up (`MultibandWidth.cpp:102-112`, `SoloMonitor.cpp:68-77`) — the
+  0.8.2 fix for exactly this class. `setBandCount` clamps to `[1,4]`. `SoloMonitor::process` masks
+  the word with `(1 << bands) - 1` (`SoloMonitor.cpp:85`) and holds the gains above the count at 0
+  (`:96`).
+* **Only the valid prefix is used.** `MultibandWidth.h:53-56`: `(bandCount - 1)` crossovers and
+  `bandCount` widths. Values retained in the slots above are inert while the count is low, and
+  become observable only when a later, legitimate operation raises the count — the ADR-0039
+  disposition, unchanged.
+* **Every continuous quantity is smoothed, so a microsecond-lived intermediate never arrives.**
+  Crossovers are *targets* eased under a ~4 oct/s rate cap or a single bank crossfade (ADR-0015,
+  `MultibandWidth.h:91-94`); widths glide one-pole ~20 ms (`MultibandWidth.h:64-68`); the solo gains
+  are `SmoothedValue` crossfades (`SoloMonitor.cpp:94-96`). A partial layout that exists for the
+  handful of stores between two statements on the message thread contributes a negligible increment
+  to a smoother that needs tens of milliseconds to travel.
+* **The one discontinuous quantity is stored last.** `mbBands` is a structural change routed
+  through the engine's silent switch-duck with a reset (`AnamorphEngine.cpp:302-306`, `:856`), and
+  both bursts write it **after** everything else. So the partial layout always lives inside the
+  smoothers and never inside a count change. **This is why the store order is kept**, and it is now
+  a measured reason rather than an unexamined default: moving the mask store later would shorten the
+  window in which the mask is remapped under the old count by roughly five stores, but the solo
+  gains are crossfaded so that window is already inaudible, while moving it would make an abort at
+  any earlier store *more* costly — with the mask first, an abort at the very first store applies
+  nothing at all.
+
+**Worst case, stated concretely.** Four bands, mask `0b1010`, widths `[0.5, 1.5, 1.0, 1.0]`, splits
+`[200, 2000, 10000]`. The user clicks the delete x on band 0. The burst writes `mbSolo = 0b0101`;
+between that store and the next, a VST3 automation lane writes `mbFreqMid`. The width loop's
+`! juce::exactlyEqual (bandWidth (k), wd[k])` guard does not see a *split* change, so the widths are
+written; the split loop's guard does, at `k = 1`, and the burst returns. The layout that stands is
+`Bands = 4`, mask `0b0101`, widths `[1.5, 1.0, 1.0, 1.0]`, split 0 rewritten, split 1 the host's.
+The user sees bands 1 and 2 soloed instead of 1 and 3, and the wrong widths on bands 0–2, until the
+next edit. **Nothing is unsafe** — every value is in range, the order is enforced by the DSP, the
+count is untouched, no NaN is reachable — and the user's next click resolves it. That is the trade,
+and it is the same trade any host writing two automation lanes in one block already takes.
+
+**What would justify reopening it.** A coherent read on the audio side — a seqlock or a
+double-buffered `EngineParameters` snapshot published with release/acquire — would make write-side
+atomicity worth having, and only then. That is a threading-model change and belongs to the
+Architecture Review Gate, not to a review round. The trigger to raise it would be evidence that a
+torn topology is *audible*: a report of a wrong band being soloed or a wrong width being applied for
+longer than a smoother's travel, or a DSP change that removes one of the smoothers above.

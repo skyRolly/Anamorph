@@ -342,6 +342,28 @@ bool SpectrumImager::writeCrossovers (const float* xs, int count)
     }
     return true;
 }
+// ADR-0042. A SPREAD IS A PLAN, AND A PLAN IS APPLIED ONLY TO THE WORLD IT WAS COMPUTED FROM.
+// A reset and a text commit both move their neighbours aside to make room for one split, and both
+// used to ask the question ADR-0040 removed from `writeCrossovers` at :314-316 -- "does the live
+// value differ from MY target?" -- which a large foreign move answers MORE emphatically, not less.
+// So a host that moved a neighbour from inside the primary store had the plan written over it.
+// Measured: `5000.0 Hz was installed and 2000.0 Hz was written over it`, on both paths.
+// `was[k]` is the normalised value the plan was computed from; a slot that no longer holds it is
+// somebody else's, and the spread stops there exactly as `writeCrossovers` stops. `kSplitMovedPx`
+// keeps its one real job -- deciding whether a write is worth making at all.
+bool SpectrumImager::spreadSplits (const float* xs, const float* was, int count, int except)
+{
+    for (int k = 0; k < count && k < (int) std::size (freqP); ++k)
+    {
+        if (k == except || freqP[k] == nullptr) continue;
+        if (! juce::exactlyEqual (freqP[k]->getValue(), was[k])) return false;
+        if (std::abs (freqToX (crossover (k)) - xs[k]) <= kSplitMovedPx) continue;
+        float owned = 0.0f;
+        if (! storeOwned (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])), owned))
+            return false;
+    }
+    return true;
+}
 // The two halves of the one rule, so a future consumer has one place to read it. `gestureBands < 0`
 // is "no gesture in flight" -- the wheel path -- and then there is nothing to own and nothing to
 // refuse. A split is owned within the same half pixel `writeCrossovers` uses to decide a write is
@@ -511,20 +533,28 @@ void SpectrumImager::resetParam (juce::RangedAudioParameter* p)
 // from inside the gesture that opens the commit, and the commit wrote 3 over it`. `expectedBands`
 // re-proves the topology in the only place that is adjacent: after the open, before the store.
 // -1 means the caller has no topology to prove (a plain solo toggle).
+// ADR-0042: AND THE FAR SIDE TOO. ADR-0041's rule -- a conditional store reports whether it
+// COMMITTED -- was implemented as far as the precondition and no further: `stored` used to be set
+// the instant the store was issued. `setValueNotifyingHost` dispatches every listener synchronously
+// from inside itself (juce_AudioProcessorParameter.cpp:59-63, :111-121) and `endChangeGesture`
+// dispatches again, so a host answering either one by writing mbBands took the count away and this
+// still reported success. Measured: `the count store did not stand (Bands 2) and the press still
+// latched the add and opened 1 gesture(s) on the new split`. The count is re-read once, after the
+// gesture closes, which is the last instant this function can still be believed.
 bool SpectrumImager::setBands (int n, int expectedBands)
 {
+    auto* p = bandsP;
+    if (p == nullptr) return false;
+    const int want = juce::jlimit (1, 4, n);
     bool stored = false;
-    if (auto* p = bandsP)
+    p->beginChangeGesture();
+    if (expectedBands < 0 || bandCount() == expectedBands)
     {
-        p->beginChangeGesture();
-        if (expectedBands < 0 || bandCount() == expectedBands)
-        {
-            p->setValueNotifyingHost (p->convertTo0to1 ((float) juce::jlimit (1, 4, n)));
-            stored = true;
-        }
-        p->endChangeGesture();
+        p->setValueNotifyingHost (p->convertTo0to1 ((float) want));
+        stored = true;
     }
-    return stored;
+    p->endChangeGesture();
+    return stored && bandCount() == want;
 }
 
 // --- Solo mask ---------------------------------------------------------------
@@ -543,7 +573,11 @@ bool SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
         stored = true;
     }
     soloP->endChangeGesture();
-    return stored;
+    // ADR-0042: confirmed on the far side as well -- see setBands. Measured on the value dispatch
+    // rather than the gesture open: `the mask store was overwritten from inside its dispatch and the
+    // transaction carried on: Bands 3 with mask 0x9`. `soloMask()` rounds through std::lround, so
+    // the store's own round trip cannot move the word this decodes to.
+    return stored && soloMask() == mask;
 }
 // ADR-0041: the toggle reads the word it is about to replace and names it, so the store proves both
 // halves of what it assumed -- the topology the band index belongs to, and the mask it is toggling.
@@ -606,17 +640,23 @@ void SpectrumImager::resetCrossover (int i)
     auto* p = (i >= 0 && i < 3) ? freqP[i] : nullptr;
     if (p == nullptr) return;
     const int M = bandCount() - 1;
-    float xs[3];
-    for (int k = 0; k < M; ++k) xs[k] = freqToX (crossover (k));
+    float xs[3] {}, was[3] {};
+    for (int k = 0; k < M && k < (int) std::size (freqP); ++k)
+    {
+        xs[k]  = freqToX (crossover (k));
+        was[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;   // the world the plan is computed from
+    }
     xs[i] = freqToX (p->convertFrom0to1 (p->getDefaultValue()));
     projectGaps (xs, M, i);
     if (onSweep) onSweep();
+    // ADR-0042: the reset is confirmed before anything is moved to make room for it -- every
+    // neighbour position below was computed against this split landing where it was told to.
+    float owned = 0.0f;
     p->beginChangeGesture();
-    p->setValueNotifyingHost (p->convertTo0to1 (juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i]))));
+    const bool landed = storeOwned (p, juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i])), owned);
     p->endChangeGesture();
-    for (int k = 0; k < M; ++k)
-        if (k != i && std::abs (freqToX (crossover (k)) - xs[k]) > kSplitMovedPx)
-            setParam (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])));
+    if (! landed || ! juce::exactlyEqual (p->getValue(), owned)) return;
+    (void) spreadSplits (xs, was, M, i);
 }
 
 int SpectrumImager::addBandAt (float hz, int& resultingBands)
@@ -812,19 +852,25 @@ void SpectrumImager::commitFreqEditor()
     if (editingHandle < 0) return;
     const int i = editingHandle;
     const int M = bandCount() - 1;
-    float xs[3];
-    for (int k = 0; k < M; ++k) xs[k] = freqToX (crossover (k));
+    float xs[3] {}, was[3] {};
+    for (int k = 0; k < M && k < (int) std::size (freqP); ++k)
+    {
+        xs[k]  = freqToX (crossover (k));
+        was[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;
+    }
     xs[i] = freqToX (juce::jlimit (kFreqLo, kFreqHi, parseFreq (freqEditor->getText())));
     projectGaps (xs, M, i);
     if (auto* p = freqP[i])
     {
+        // ADR-0042: same shape as resetCrossover -- the typed value is confirmed, then the
+        // neighbours that were positioned around it are spread, and only while they are still ours.
+        float owned = 0.0f;
         p->beginChangeGesture();
-        p->setValueNotifyingHost (p->convertTo0to1 (juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i]))));
+        const bool landed = storeOwned (p, juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i])), owned);
         p->endChangeGesture();
+        if (landed && juce::exactlyEqual (p->getValue(), owned))
+            (void) spreadSplits (xs, was, M, i);
     }
-    for (int k = 0; k < M; ++k)
-        if (k != i && std::abs (freqToX (crossover (k)) - xs[k]) > kSplitMovedPx)
-            setParam (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])));
     closeFreqEditor();
 }
 void SpectrumImager::closeFreqEditor()

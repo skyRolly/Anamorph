@@ -110,6 +110,27 @@ one parameter, and under a lower new count the parameters left behind are ones t
   resolution rather than only what a display pixel can show.
 - **`kWidthQuantum` is gone**; the width path needs no epsilon once ownership is exact.
 
+## Correction, next round: "reports whether it committed" was implemented only as far as the precondition
+
+This ADR's Decision says a conditional store **reports whether it committed**. `setBands` and
+`setSoloMask` were written to report whether the store was **issued**: both set `stored = true`
+immediately after `setValueNotifyingHost` and never looked again, so a listener writing the same
+parameter from inside that store's own dispatch — or from inside the `endChangeGesture` that follows
+it — took the value away and both still answered `true`. The rule above is unchanged and was right;
+its implementation stopped one statement short.
+
+The same round left two of the three neighbour-spread loops in this class on the predicate the
+Decision replaced. `writeCrossovers` was converted to ownership; `resetCrossover` and
+`commitFreqEditor` were not, and they still asked *does the live value differ from MY target?* —
+which a large foreign move answers more emphatically, not less. **Measured on both:** `5000.0 Hz was
+installed and 2000.0 Hz was written over it`.
+
+Both are closed by
+[ADR-0042](ADR-0042-a-store-is-committed-only-when-the-parameter-says-so.md), which also re-rules
+the cross-thread residual below with a stronger reason than "no single commit point": the audio-side
+reader tears too (`PluginParameters.cpp:365-374` reads the ten multiband atomics with ten separate
+`load()` calls), so a write-side commit would buy nothing without a threading-model change.
+
 ## Related code
 
 - `src/gui/SpectrumImager.h` — `gestureX`/`gestureW` as normalised values, `storeOwned`, the `bool`

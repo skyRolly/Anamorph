@@ -3211,6 +3211,444 @@ static void testACoupledUpdateIsAllOfItOrNone()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 74 -- a store is not committed until the PARAMETER says so, and a
+//  burst that lost a store does not carry on as though it had.
+//
+//  THE DEFECT (review finding, SpectrumImager.cpp:542 and :498-501). ADR-0040's
+//  round-3 correction put the check on the NEAR side of every store: `setBands`
+//  and `setSoloMask` re-prove the topology after `beginChangeGesture` has
+//  dispatched and before the value goes out. Nothing proves the FAR side. JUCE
+//  dispatches `parameterValueChanged` synchronously from inside
+//  `setValueNotifyingHost` (juce_AudioProcessorParameter.cpp:59-63, :111-121), so
+//  a listener -- a host write-back, a linked-parameter macro, a control surface
+//  echo -- writes the parameter the burst has just stored, from inside that very
+//  store, and the burst never looks again:
+//
+//    * `setSoloMask` sets `stored = true` unconditionally at :543 and its caller
+//      goes on to change the BAND COUNT with a mask that is no longer the one it
+//      remapped -- the half-applied commit ADR-0041 closed on the gesture-open
+//      window, reopened on the value window one call later.
+//    * `setParam` is `void` (:498-501), so no burst store reports anything.
+//    * `resetCrossover` (:605-621) and `commitFreqEditor` (:810-829) then spread
+//      their neighbours with the predicate ADR-0040 condemned at :314-316 --
+//      "does the live value differ from MY target?" -- which a large foreign move
+//      answers more emphatically, not less. The newer authoritative write is
+//      overwritten by the plan.
+//
+//  THE INVARIANT: a coupled transaction may perform a store whose meaning depends
+//  on an earlier store only if that earlier store still stands, and it may never
+//  write a slot whose live value is not the one its plan was computed from.
+//
+//  Legs (E)-(G) are the positive controls: an uninterrupted delete, an
+//  uninterrupted alt-click reset and an uninterrupted text commit must all still
+//  do exactly what they did before.
+// ---------------------------------------------------------------------------
+namespace
+{
+// Counts the change gestures opened on one parameter. `addBandAt` opens one on the
+// split it created, and only if it created one -- so this separates "the add landed"
+// from "the add reported success".
+struct CountGestureOpens final : public juce::AudioProcessorParameter::Listener
+{
+    int opens = 0;
+    void parameterValueChanged (int, float) override {}
+    void parameterGestureChanged (int, bool starting) override { if (starting) ++opens; }
+};
+} // namespace
+
+static void testAStoreIsNotCommittedUntilTheParameterSaysSo()
+{
+    std::printf ("State test 74: a store is not committed until the parameter says so\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the committed-store probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the committed-store probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* wMidP  = apvts.getParameter (pid::mbWidthMid);
+    check (bandsP && soloP && loP && midP && hiP && wLoP && wMidP,
+           "the parameters the committed-store probe drives exist");
+    if (! (bandsP && soloP && loP && midP && hiP && wLoP && wMidP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto bandsNow = [&] { return juce::roundToInt (plainOf (bandsP)); };
+    auto maskNow  = [&] { return juce::roundToInt (plainOf (soloP)); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+    auto mevAlt = [&] (float x, float y)
+    {
+        const auto mods = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                              | juce::ModifierKeys::altModifier);
+        return juce::MouseEvent (source, { x, y }, mods,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
+    const float W     = (float) imager->getWidth();
+    const float H     = (float) imager->getHeight();
+    const float laneY = 0.5f * H;
+    const float delX  = 13.0f, delY = H - 30.0f;
+    const float chipY = H - 15.0f;              // rulerY() = plot().getBottom() - 14
+
+    auto findFirstX = [&] (const char* want, float y) -> float
+    {
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto textEditorOf = [&] () -> juce::TextEditor*
+    {
+        for (int i = 0; i < imager->getNumChildComponents(); ++i)
+            if (auto* t = dynamic_cast<juce::TextEditor*> (imager->getChildComponent (i)))
+                if (t->isVisible()) return t;
+        return nullptr;
+    };
+    auto resetWorld = [&] ()
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (soloP,  0.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 2000.0f);
+        setPlain (hiP, 10000.0f);
+        setPlain (wLoP,   1.0f);
+        setPlain (wMidP,  1.0f);
+    };
+
+    // ---- LEG A: the mask store is overwritten from inside its own dispatch ------
+    //  `setSoloMask` stores the remapped word, JUCE dispatches, a listener writes a
+    //  different word, and `setSoloMask` reports success anyway. `removeBand` then
+    //  lowers the band count, so the word the listener installed is reinterpreted
+    //  under a topology it was never written for -- SoloMonitor.cpp:85 masks it with
+    //  ((1 << bands) - 1) and the soloed band above the new count simply vanishes.
+    {
+        resetWorld();
+        setPlain (soloP, 10.0f);                 // 0b1010 -- bands 1 and 3 soloed
+        EchoTheSameParameter echo;
+        echo.self = soloP;
+        echo.to   = 9.0f;                        // 0b1001 -- neither the old word nor the remap
+        soloP->addListener (&echo);
+
+        imager->mouseDown (mev (delX, delY, delX, delY, false));
+        echo.armed = true;
+        imager->mouseUp   (mev (delX, delY, delX, delY, true));
+        const bool landed = echo.fired;
+        soloP->removeListener (&echo);
+
+        check (landed, "leg A: the echo landed inside setSoloMask's own value store");
+        if (landed && bandsNow() != 4)
+            std::printf ("  [leg A] the mask store was overwritten from inside its dispatch and the"
+                         " transaction carried on: Bands %d with mask 0x%X\n", bandsNow(), maskNow());
+        check (! landed || bandsNow() == 4,
+               "leg A: a transaction whose mask store did not stand does not change the band count");
+        check (! landed || maskNow() == 9,
+               "leg A: ...and the newer mask stands");
+    }
+
+    // ---- LEG B: the reset spread overwrites a newer authoritative write ---------
+    //  Alt-click resets one split; the neighbours are then spread with the predicate
+    //  ADR-0040 condemned at :314-316. A host that moves a NEIGHBOUR from inside the
+    //  reset's own store makes that predicate MORE true, so the plan overwrites it.
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg B: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            WriteFromInsideAStore poke;
+            poke.target = midP;                  // the neighbour, moved far
+            poke.to     = 5000.0f;
+            loP->addListener (&poke);
+            poke.armed = true;
+            imager->mouseDown (mevAlt (hx, laneY));
+            const bool landed = poke.fired;
+            loP->removeListener (&poke);
+
+            check (landed, "leg B: the probe write landed inside resetCrossover's own store");
+            if (landed && std::abs (plainOf (midP) - 5000.0f) > 1.0f)
+                std::printf ("  [leg B] the neighbour spread reclaimed a newer authoritative write:"
+                             " %.1f Hz was installed and %.1f Hz was written over it\n",
+                             5000.0, (double) plainOf (midP));
+            check (! landed || std::abs (plainOf (midP) - 5000.0f) <= 1.0f,
+                   "leg B: a reset does not spread its plan over a newer authoritative write");
+        }
+    }
+
+    // ---- LEG C: the text-commit spread overwrites a newer authoritative write ---
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg C: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDoubleClick (mev (hx, chipY, hx, chipY, false));
+            auto* te = textEditorOf();
+            check (te != nullptr, "leg C: the frequency text editor opens on the number chip");
+            if (te != nullptr)
+            {
+                te->setText ("500", juce::dontSendNotification);
+                WriteFromInsideAStore poke;
+                poke.target = midP;
+                poke.to     = 5000.0f;
+                loP->addListener (&poke);
+                poke.armed = true;
+                if (te->onReturnKey) te->onReturnKey();
+                const bool landed = poke.fired;
+                loP->removeListener (&poke);
+
+                check (landed, "leg C: the probe write landed inside commitFreqEditor's own store");
+                if (landed && std::abs (plainOf (midP) - 5000.0f) > 1.0f)
+                    std::printf ("  [leg C] the text commit's spread reclaimed a newer authoritative"
+                                 " write: %.1f Hz was installed and %.1f Hz was written over it\n",
+                                 5000.0, (double) plainOf (midP));
+                check (! landed || std::abs (plainOf (midP) - 5000.0f) <= 1.0f,
+                       "leg C: a text commit does not spread its plan over a newer authoritative write");
+            }
+        }
+    }
+
+    // ---- LEG D: the count store is overwritten from inside its own dispatch ----
+    //  `addBandAt`'s last store raises Bands, and the caller latches the whole gesture
+    //  against the topology that store established -- `gestureBands`, `dragHandle`, and a
+    //  change gesture opened on the split the add created. `setBands` reported success
+    //  without looking again, so a listener that put Bands back from inside the store left
+    //  the press holding identifiers for a layout that does not exist, and opened a host
+    //  gesture on a split that is not in use.
+    {
+        resetWorld();
+        setPlain (bandsP, 2.0f);
+        CountGestureOpens gc;
+        midP->addListener (&gc);                 // freqP[1]: the split an add on the right creates
+        EchoTheSameParameter echo;
+        echo.self = bandsP;
+        echo.to   = 2.0f;                        // put the count straight back
+        bandsP->addListener (&echo);
+        echo.armed = true;
+
+        imager->mouseDown (mev (W * 0.80f, 30.0f, W * 0.80f, 30.0f, false));
+        const bool landed = echo.fired;
+        imager->mouseUp   (mev (W * 0.80f, 30.0f, W * 0.80f, 30.0f, true));
+        bandsP->removeListener (&echo);
+        midP->removeListener (&gc);
+
+        check (landed, "leg D: the echo landed inside setBands' own value store");
+        if (landed && gc.opens != 0)
+            std::printf ("  [leg D] the count store did not stand (Bands %d) and the press still"
+                         " latched the add and opened %d gesture(s) on the new split\n",
+                         bandsNow(), gc.opens);
+        check (! landed || gc.opens == 0,
+               "leg D: an add whose count store did not stand opens no gesture on a split it did not create");
+    }
+
+    // ---- LEG I: the spread does not run when the store it makes room for did not
+    //  land. A typed value that lands ABOVE its neighbour pushes that neighbour by the
+    //  46 px minimum gap, so this leg has something to observe. Half (i) proves the push
+    //  exists; half (ii) removes it by taking the primary store away from inside its own
+    //  dispatch -- every neighbour position was computed against that split landing where
+    //  it was told to, so none of them may be written.
+    {
+        resetWorld();
+        const float hx0 = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx0 >= 0.0f, "leg I: the first split's handle is findable");
+        if (hx0 >= 0.0f)
+        {
+            imager->mouseDoubleClick (mev (hx0, chipY, hx0, chipY, false));
+            if (auto* te = textEditorOf())
+            {
+                te->setText ("5 kHz", juce::dontSendNotification);
+                if (te->onReturnKey) te->onReturnKey();
+            }
+            check (plainOf (midP) > 2100.0f,
+                   "leg I(i): a typed value landing above its neighbour pushes that neighbour");
+        }
+
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        if (hx >= 0.0f)
+        {
+            imager->mouseDoubleClick (mev (hx, chipY, hx, chipY, false));
+            auto* te = textEditorOf();
+            check (te != nullptr, "leg I: the frequency text editor opens for the second half");
+            if (te != nullptr)
+            {
+                te->setText ("5 kHz", juce::dontSendNotification);
+                EchoTheSameParameter echo;
+                echo.self = loP;                 // take the primary store away from inside itself
+                echo.to   = 300.0f;
+                loP->addListener (&echo);
+                echo.armed = true;
+                if (te->onReturnKey) te->onReturnKey();
+                const bool landed = echo.fired;
+                loP->removeListener (&echo);
+
+                check (landed, "leg I: the echo landed inside commitFreqEditor's primary store");
+                if (landed && plainOf (midP) > 2100.0f)
+                    std::printf ("  [leg I] the primary store did not stand and the spread ran anyway:"
+                                 " the neighbour was pushed to %.1f Hz\n", (double) plainOf (midP));
+                check (! landed || plainOf (midP) <= 2100.0f,
+                       "leg I(ii): a spread whose own store did not stand writes no neighbour");
+            }
+        }
+    }
+
+    // ---- LEG J: the same for the alt-click reset. The reset must move the split
+    //  TOWARDS its neighbour for the spread to have anything to do, so this leg starts
+    //  the first split below its default and the second just above it.
+    {
+        auto crowded = [&] ()
+        {
+            imager->cancelActiveDrag();
+            setPlain (bandsP, 4.0f);
+            setPlain (soloP,  0.0f);
+            setPlain (loP,    50.0f);
+            setPlain (midP,  200.0f);
+            setPlain (hiP, 10000.0f);
+        };
+
+        crowded();
+        const float hx0 = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx0 >= 0.0f, "leg J: the first split's handle is findable");
+        if (hx0 >= 0.0f)
+        {
+            imager->mouseDown (mevAlt (hx0, laneY));
+            check (plainOf (midP) > 225.0f,
+                   "leg J(i): a reset landing next to its neighbour pushes that neighbour");
+        }
+
+        crowded();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        if (hx >= 0.0f)
+        {
+            EchoTheSameParameter echo;
+            echo.self = loP;                     // take the reset's own store away
+            echo.to   = 60.0f;
+            loP->addListener (&echo);
+            echo.armed = true;
+            imager->mouseDown (mevAlt (hx, laneY));
+            const bool landed = echo.fired;
+            loP->removeListener (&echo);
+
+            check (landed, "leg J: the echo landed inside resetCrossover's own store");
+            if (landed && plainOf (midP) > 225.0f)
+                std::printf ("  [leg J] the reset did not stand and the spread ran anyway:"
+                             " the neighbour was pushed to %.1f Hz\n", (double) plainOf (midP));
+            check (! landed || plainOf (midP) <= 225.0f,
+                   "leg J(ii): a reset whose own store did not stand writes no neighbour");
+        }
+    }
+
+    // ---- LEG E: positive control -- an uninterrupted delete still removes -------
+    {
+        resetWorld();
+        setPlain (soloP, 10.0f);
+        imager->mouseDown (mev (delX, delY, delX, delY, false));
+        imager->mouseUp   (mev (delX, delY, delX, delY, true));
+        check (bandsNow() == 3, "leg E: an uninterrupted delete x still removes its band");
+        check (maskNow() == 5,  "leg E: ...and still remaps 0b1010 to 0b0101");
+    }
+
+    // ---- LEG F: positive control -- an uninterrupted reset still resets ---------
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg F: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mevAlt (hx, laneY));
+            check (std::abs (plainOf (loP) - 180.0f) < 1.0f,
+                   "leg F: an uninterrupted alt-click still resets the split to its default");
+            check (std::abs (plainOf (midP) - 2000.0f) < 1.0f,
+                   "leg F: ...and leaves the untouched neighbour where it was");
+        }
+    }
+
+    // ---- LEG G: positive control -- an uninterrupted text commit still commits --
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg G: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDoubleClick (mev (hx, chipY, hx, chipY, false));
+            auto* te = textEditorOf();
+            check (te != nullptr, "leg G: the frequency text editor opens on the number chip");
+            if (te != nullptr)
+            {
+                te->setText ("500", juce::dontSendNotification);
+                if (te->onReturnKey) te->onReturnKey();
+                check (std::abs (plainOf (loP) - 500.0f) < 2.0f,
+                       "leg G: an uninterrupted text commit still writes its split");
+                check (std::abs (plainOf (midP) - 2000.0f) < 1.0f,
+                       "leg G: ...and leaves the untouched neighbour where it was");
+            }
+        }
+    }
+
+    // ---- LEG H: positive control -- an uninterrupted add still latches its drag ---
+    {
+        resetWorld();
+        setPlain (bandsP, 2.0f);
+        CountGestureOpens gc;
+        midP->addListener (&gc);
+        imager->mouseDown (mev (W * 0.80f, 30.0f, W * 0.80f, 30.0f, false));
+        const int opened = gc.opens;
+        imager->mouseUp   (mev (W * 0.80f, 30.0f, W * 0.80f, 30.0f, true));
+        midP->removeListener (&gc);
+        check (bandsNow() == 3, "leg H: an uninterrupted click on an add area still adds a band");
+        check (opened == 1,     "leg H: ...and opens exactly one gesture on the split it created");
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 //  State test 67 -- an outward drag whose split has since vanished removes
 //  NOTHING, rather than deleting whichever band the index now lands on.
 //
@@ -14121,6 +14559,7 @@ int main (int argc, char* argv[])
     testAGestureWritesOnlyWhatItOwns();
     testTheCheckIsAdjacentToEveryStore();
     testACoupledUpdateIsAllOfItOrNone();
+    testAStoreIsNotCommittedUntilTheParameterSaysSo();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 
