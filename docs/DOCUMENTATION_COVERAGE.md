@@ -9939,13 +9939,14 @@ before body reports *Conditional jump or move depends on uninitialised value(s)*
 leftward pull loop and in the safety pass — and the after body reports nothing. Equivalence for
 every live pin: 29 `(count, pinA, pinB)` combinations with both pins in range, **0 differ**.
 
-**No committed regression test, and that is a gap rather than a judgement that none is wanted.**
-`projectFromOrig`, `beginBandMove` and `moveBand` are all private members of `SpectrumImager`
-(src/gui/SpectrumImager.h:65 onward), the suite has no GUI-instantiating harness, and this repository
-has no `friend`-for-test idiom anywhere in `src/` — its idiom is a public seam struct, which exists
-on the processor and not here. Adding one for this would be a larger change than the fix. The
-harness above is the proof; the follow-up worth doing is a seam that lets the state suite drive a
-band move against a shrinking band count.
+**No committed regression test in this change — and the reason given was wrong.** CORRECTED
+2026-09-07 by the round below, which shipped State test 66. The claim here was that
+`projectFromOrig`, `beginBandMove` and `moveBand` are private (true) and that "the suite has no
+GUI-instantiating harness" (FALSE): `tests/state_tests.cpp` already builds the real editor with
+`proc.createEditor()`, walks its child tree and injects `juce::MouseEvent`s — the value-box gesture
+probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers are public
+overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
+proof for the hour it took to write, and the wrong thing to leave standing.
 
 **BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:526`: `pid::viewParams`
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
@@ -10021,3 +10022,74 @@ render as standing alerts. The analysis says they should; only the dashboard can
 reported-latency change, and no Accepted ADR conflict. The fix is message-thread only and touches no
 audio-thread path. CHANGELOG entry under `[0.9.7]` Fixed: the crossover jump is user-visible
 (`CHANGELOG_POLICY.md` rule 3); the CI guard and the documentation corrections are not. [Verified]
+
+
+## SpectrumImager band-count drag — the review finding closed, with the regression it was missing (2026-09-07)
+
+**Why a second round.** The Code Scanning audit above fixed a stale-PIN read and shipped it with no
+in-repository regression test, on a stated reason that turned out to be false. Review then found
+that the fix covered one direction only. Both are settled here.
+
+**A SECOND defect, and the scanners never saw it either.** `dragOrigX` (src/gui/SpectrumImager.h:249)
+is the drag-start x of every split, seeded once when a gesture begins and read for the whole gesture.
+Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:360)
+and `moveBand` (:448). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
+splits in USE at the press — so a host write of `mbBands` that **raised** Bands mid-gesture made the
+consumers ask `projectFromOrig` for origins nobody had written. Those slots still held the `{0,0,0}`
+initialiser, so unlike the falling case this half was **stale, not indeterminate — never UB**; the
+review's "uninitialised" is imprecise and the consequence is not. x = 0 is left of the plot, so the
+min-gap pass packed the new splits hard against the dragged one and `writeCrossovers` pushed that to
+the host inside the drag's own change gesture: a split jumping to a frequency the user never chose,
+into the automation lane and the undo stack. Measured, from the mutation run below: with one split
+at 100 Hz and two parked at 1 kHz and 8 kHz, raising Bands 2→4 mid-drag drove **mid to 122.2 Hz and
+high to 169.4 Hz**.
+
+**Fix.** One private helper, `SpectrumImager::captureDragOrigins()` (:317), seeds EVERY slot and is
+called at all four drag starts. `freqP[0..2]` all exist whatever Bands says — only some are in *use*
+— so every slot is a real split's live position, and the class becomes impossible rather than
+guarded against. Two extra reads once per gesture, on the message thread; nothing changes for a drag
+at a steady band count, and no automation semantics, parameter mapping or real-time constraint is
+touched. One home for the rule was chosen over four in-place edits precisely because the review's
+complaint was that a future change could restore the failure silently.
+
+**Regression coverage: State test 66**, five legs, each asserting the automation-visible crossover
+frequency rather than that the call returned — (a) 2→4, (b) 2→3 (increase by one, where only the
+first new split is exposed), (c) 2→3→4 inside one drag, (d) the band drag, where `beginBandMove`
+seeds on the first drag event so the rise must land after it, (e) the falling direction through the
+**last** band's solo handle, the only press whose latched pins a falling Bands can make stale,
+asserting that such a drag writes **no parameter at all**.
+
+**Mutation proof, two mutants, both killed.** (1) The pre-fix capture bound
+(`(int) std::size (dragOrigX)` → `bandCount() - 1`) fails **7 checks** across legs a–d. (2) The
+pre-PR-#143 stale-pin behaviour (`leftPin`/`rightPin` from the raw arguments) fails leg e, printing
+`low 8000.0 -> 35.8 Hz`, identical over five runs. Mutant 2 SURVIVED two earlier drafts of leg e and
+both misses are recorded rather than quietly fixed: the first asserted only that the crossover stayed
+legal, which the clamps guarantee under the defect; the second pressed the *first* band's solo
+handle, which latches `soloMoveRight = 0` and stays in range however far Bands falls. Leg e also
+parks the split HIGH on purpose — near the left edge the clamp puts the corrupted value back where it
+started and the defect hides.
+
+**No new production seam, and the out-of-tree harness is retired.** `SpectrumImager` is a
+`juce::Component` whose mouse handlers are public overrides, and this suite already builds the real
+editor, walks its child tree and injects `juce::MouseEvent`s. The one thing a test cannot compute is
+where a handle *is* — `freqToX` (:156) runs a 30-iteration bisection over a private axis table — so
+the probe finds it the way a user does: it sweeps `mouseMove` and reads the public
+`SettableTooltipClient` tooltip, which `setContextTooltip` sets to *Drag to change the split
+frequency* or *Solo this band* exactly when that hotspot is under the cursor. `mouseMove` has no
+destructive side effect, and a sweep that finds nothing fails the test rather than passing vacuously.
+The editor is built with `advancedMode` already on, because `PluginEditor::resized` lays the imager
+out only under `if (advanced && ...)` — an editor built in Simple mode leaves it 0×0 and every hit
+test would answer about nothing; the test prints the measured 904×144 as its liveness proof.
+
+**Adjacent cases checked, none needing a further change.** Increase by one and by several, repeated
+increases inside one drag, and the falling direction are all legs above. `mouseWheelMove` re-seeds
+immediately before its `dragCrossoverTo`, so it was never exposed; `addBandAt`'s press seeds *after*
+the add, so it was consistent already. One residue is recorded and deliberately not fixed: a rise
+also leaves `soloMoveRight` stale at −1 for a band that is no longer the last, so a band move started
+before the rise drags only its left edge. That is a drag-semantics question, not a corruption — the
+positions are now all real — and changing it would alter behaviour the review did not ask about.
+
+**Docs.** `TESTING.md` (State test 66), `CHANGELOG.md` `[0.9.7]` Fixed (the existing bullet broadened
+to both directions rather than a second bullet for one gesture), and the correction above to the
+audit round's own claim. Not a gate item: no parameter ID, serialization, threading-model, DSP-order
+or reported-latency change, and no Accepted ADR conflict; message-thread only. [Verified]

@@ -1599,6 +1599,288 @@ static void testWrapperProcessBlockAudioPath()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 66 -- a split the gesture never captured keeps its own position
+//  when the host RAISES Bands part-way through the drag.
+//
+//  THE DEFECT. `dragOrigX` is the drag-start x of every split, seeded once when a
+//  gesture begins and read for the whole gesture. Both consumers --
+//  SpectrumImager::dragCrossoverTo and ::moveBand -- re-read a LIVE `bandCount()`
+//  and hand `projectFromOrig` that many origins. The seeding loops wrote only the
+//  `bandCount() - 1` splits in USE at the press, so a host write of mbBands that
+//  RAISED Bands mid-gesture (an automation lane, or the sound half of a state
+//  restore) made the consumers ask for origins nobody had written. Those slots
+//  still held the `{0,0,0}` initialiser -- stale, not indeterminate, so this was
+//  never UB -- and x = 0 is left of the plot, so projectFromOrig's min-gap pass
+//  packed the new splits hard against the dragged one and writeCrossovers pushed
+//  that to the host, inside the change gesture the drag had opened: a split
+//  jumping to a frequency the user never chose, into the automation lane and the
+//  undo stack.
+//
+//  THE INVARIANT, and it is the one the fix restores: a split this gesture does
+//  not pin, and which the pinned split does not have to push aside, ENDS THE DRAG
+//  WHERE IT STARTED -- whatever Bands did in between. Asserting "the call
+//  returned" would pass against the defect; asserting the automation-visible
+//  crossover frequency is what the defect actually moved.
+//
+//  NO NEW SEAM. SpectrumImager is a juce::Component whose mouse handlers are
+//  public overrides, and this suite already builds the real editor, walks its
+//  child tree and injects juce::MouseEvents (the value-box gesture probe does
+//  exactly that). The one thing a test cannot compute is where a handle IS on
+//  screen -- freqToX runs a 30-iteration bisection over a private axis table --
+//  so the probe below finds it the way a user does: it sweeps mouseMove across
+//  the plot and reads the PUBLIC SettableTooltipClient tooltip, which
+//  setContextTooltip sets to "Drag to change the split frequency" exactly when a
+//  handle is under the cursor. mouseMove has no destructive side effects, and a
+//  sweep that finds nothing fails the test loudly rather than passing vacuously.
+// ---------------------------------------------------------------------------
+static void testBandRiseDuringDragKeepsUncapturedSplits()
+{
+    std::printf ("State test 66: a split the drag never captured keeps its place when Bands rises (Code Scanning follow-up)\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2408),
+    // and `advanced` is read from the toggle at construction -- so an editor built in
+    // Simple mode leaves the imager 0x0 and every hit test below would answer about
+    // nothing. Setting the parameter first is also what a user's session does.
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the band-drag probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr, "the editor carries a SpectrumImager to drive");
+    if (imager == nullptr) { proc.editorBeingDeleted (ed); delete ed; return; }
+    std::printf ("  imager laid out %dx%d inside a %dx%d editor\n",
+                 imager->getWidth(), imager->getHeight(), ed->getWidth(), ed->getHeight());
+    check (imager->getWidth() > 300 && imager->getHeight() > 120,
+           "the imager is laid out large enough for the split geometry to be real");
+    if (imager->getWidth() <= 300 || imager->getHeight() <= 120)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* advP   = apvts.getParameter (pid::advancedMode);
+    auto* mbOnP  = apvts.getParameter (pid::mbEnable);
+    check (bandsP && loP && midP && hiP && advP && mbOnP, "every parameter the probe drives exists");
+    if (! (bandsP && loP && midP && hiP && advP && mbOnP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float plain)
+    { p->setValueNotifyingHost (p->convertTo0to1 (plain)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+
+    // A host write of mbBands, exactly as an automation lane delivers one.
+    auto hostSetsBands = [&] (float n) { setPlain (bandsP, n); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+
+    // Sweep for a hotspot by its PUBLIC tooltip. Returns -1 when the sweep finds none,
+    // so a geometry change breaks the test loudly instead of silently testing nothing.
+    auto findHotspotX = [&] (const char* want, float y) -> float
+    {
+        for (float x = 2.0f; x < (float) imager->getWidth() - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    // Same probe, scanning from the RIGHT. Leg E needs the LAST band's solo handle:
+    // beginBandMove sets soloMoveLeft = b - 1 and soloMoveRight = -1 only when b is the
+    // last band, and that -1/b-1 pair is the one a falling Bands makes stale. Band 0's
+    // handle pins soloMoveRight = 0, which stays in range however far Bands falls.
+    auto findLastHotspotX = [&] (const char* want, float y) -> float
+    {
+        for (float x = (float) imager->getWidth() - 3.0f; x > 2.0f; x -= 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+
+    const float laneY = 0.5f * (float) imager->getHeight();       // clear of the solo row and the ruler
+    const float soloY = 11.0f;                                    // soloBox is plot().getY() + 3, 15 tall
+
+    // Restore a known two-band world: one split IN USE at 100 Hz, and two splits the
+    // UI is not showing, parked at 1 kHz and 8 kHz. Those two are what a rise exposes.
+    auto resetWorld = [&] ()
+    {
+        imager->cancelActiveDrag();
+        setPlain (advP,  1.0f);
+        setPlain (mbOnP, 1.0f);
+        hostSetsBands (2.0f);
+        setPlain (loP,  100.0f);
+        setPlain (midP, 1000.0f);
+        setPlain (hiP,  8000.0f);
+    };
+
+    // The assertion the defect fails. `wantMid`/`wantHi` are the values read back AFTER
+    // the writes above, so parameter quantisation is not mistaken for corruption.
+    auto checkUntouched = [&] (float wantMid, float wantHi, const char* leg)
+    {
+        const float gotMid = plainOf (midP), gotHi = plainOf (hiP);
+        const bool midOk = std::abs (gotMid - wantMid) <= 0.005f * wantMid;
+        const bool hiOk  = std::abs (gotHi  - wantHi)  <= 0.005f * wantHi;
+        if (! midOk || ! hiOk)
+            std::printf ("  [%s] mid %.1f -> %.1f Hz, high %.1f -> %.1f Hz\n",
+                         leg, (double) wantMid, (double) gotMid, (double) wantHi, (double) gotHi);
+        check (midOk, leg);
+        check (hiOk,  leg);
+    };
+
+    // ---- LEG A: crossover drag, Bands 2 -> 4 (two splits appear at once) -------
+    {
+        resetWorld();
+        const float wantMid = plainOf (midP), wantHi = plainOf (hiP);
+        const float hx = findHotspotX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg A: the split handle is findable by its tooltip");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            hostSetsBands (4.0f);                       // the host lane moves mid-gesture
+            imager->mouseDrag (mev (hx - 20.0f, laneY, hx, laneY, true));
+            imager->mouseUp   (mev (hx - 20.0f, laneY, hx, laneY, true));
+            check (std::abs (plainOf (loP) - 100.0f) > 0.5f,
+                   "leg A: the drag really moved the split it was pinning");
+            checkUntouched (wantMid, wantHi,
+                            "leg A: Bands 2->4 mid-drag leaves the two uncaptured splits where they were");
+        }
+    }
+
+    // ---- LEG B: crossover drag, Bands 2 -> 3 (one split appears) ---------------
+    {
+        resetWorld();
+        const float wantMid = plainOf (midP), wantHi = plainOf (hiP);
+        const float hx = findHotspotX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg B: the split handle is findable by its tooltip");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            hostSetsBands (3.0f);
+            imager->mouseDrag (mev (hx - 20.0f, laneY, hx, laneY, true));
+            imager->mouseUp   (mev (hx - 20.0f, laneY, hx, laneY, true));
+            checkUntouched (wantMid, wantHi,
+                            "leg B: Bands 2->3 mid-drag leaves the first new split where it was");
+        }
+    }
+
+    // ---- LEG C: Bands rises TWICE inside one drag (2 -> 3 -> 4) ----------------
+    {
+        resetWorld();
+        const float wantMid = plainOf (midP), wantHi = plainOf (hiP);
+        const float hx = findHotspotX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg C: the split handle is findable by its tooltip");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            hostSetsBands (3.0f);
+            imager->mouseDrag (mev (hx - 10.0f, laneY, hx, laneY, true));
+            hostSetsBands (4.0f);
+            imager->mouseDrag (mev (hx - 20.0f, laneY, hx, laneY, true));
+            imager->mouseUp   (mev (hx - 20.0f, laneY, hx, laneY, true));
+            checkUntouched (wantMid, wantHi,
+                            "leg C: two rises inside one drag still leave the uncaptured splits alone");
+        }
+    }
+
+    // ---- LEG D: the BAND drag (solo handle dragged sideways), Bands 2 -> 4 -----
+    //  beginBandMove seeds on the FIRST drag event, so the rise has to land after it
+    //  for moveBand to be the consumer that sees the larger count.
+    {
+        resetWorld();
+        const float wantMid = plainOf (midP), wantHi = plainOf (hiP);
+        const float sx = findHotspotX ("Solo this band", soloY);
+        check (sx >= 0.0f, "leg D: a band's solo handle is findable by its tooltip");
+        if (sx >= 0.0f)
+        {
+            imager->mouseDown (mev (sx, soloY, sx, soloY, false));
+            imager->mouseDrag (mev (sx + 8.0f, soloY, sx, soloY, true));   // engages beginBandMove
+            hostSetsBands (4.0f);                                          // ...then the lane moves
+            imager->mouseDrag (mev (sx + 16.0f, soloY, sx, soloY, true));  // moveBand at the larger count
+            imager->mouseUp   (mev (sx + 16.0f, soloY, sx, soloY, true));
+            checkUntouched (wantMid, wantHi,
+                            "leg D: a band move survives Bands 2->4 without moving the uncaptured splits");
+        }
+    }
+
+    // ---- LEG E: the DECREASE case -- the stale-pin guard from PR #143 ----------
+    //  Bands FALLING mid-drag is the other half of "the count moved", and only the
+    //  band-move path can reach it: dragCrossoverTo re-validates its handle against the
+    //  live M and returns, while moveBand's pins are members latched at the press. With
+    //  both pins now past the count, projectFromOrig's validation makes leftPin < 0 and
+    //  the function returns having only copied the origins -- so writeCrossovers sees a
+    //  zero difference and writes NOTHING. That is the assertion: an drag whose pins have
+    //  all gone stale must not move a parameter at all.
+    //
+    //  The split is parked HIGH on purpose. Under the pre-#143 code `out[0]` came out as
+    //  jmin (orig[0], out[1] - gap) with out[1] read past the copied prefix; with orig[0]
+    //  near the LEFT edge the clamp put it back where it started and the defect hid, which
+    //  is how an earlier draft of this leg passed against the mutant. Far right, any value
+    //  that slot holds is below orig[0] and the write happens.
+    {
+        resetWorld();
+        hostSetsBands (4.0f);
+        setPlain (loP,  8000.0f);
+        setPlain (midP, 12000.0f);
+        setPlain (hiP,  16000.0f);
+        const float sx = findLastHotspotX ("Solo this band", soloY);
+        check (sx >= 0.0f, "leg E: the LAST band's solo handle is findable at four bands");
+        if (sx >= 0.0f)
+        {
+            imager->mouseDown (mev (sx, soloY, sx, soloY, false));
+            imager->mouseDrag (mev (sx + 8.0f, soloY, sx, soloY, true));   // beginBandMove seeds here
+            const float settled = plainOf (loP);                            // what the drag has reached
+            hostSetsBands (2.0f);                                           // every latched pin goes stale
+            imager->mouseDrag (mev (sx + 16.0f, soloY, sx, soloY, true));   // moveBand at the smaller count
+            imager->mouseUp   (mev (sx + 16.0f, soloY, sx, soloY, true));
+            const float after = plainOf (loP);
+            if (! juce::exactlyEqual (settled, after))
+                std::printf ("  [leg E] low %.1f -> %.1f Hz after every pin went stale\n",
+                             (double) settled, (double) after);
+            check (juce::exactlyEqual (settled, after),
+                   "leg E: a drag whose pins have all gone stale writes no parameter at all");
+            check (std::isfinite (after) && after >= 20.0f && after <= 20000.0f,
+                   "leg E: ...and the crossover it leaves behind is a legal frequency");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 // ============================================================================
 //  Tooltip source of truth.
 //
@@ -12029,6 +12311,7 @@ int main (int argc, char* argv[])
     testObsoleteRestoreCannotReassertOverNewerOne();
     testDurableCaptureNeverRecordsTwoReplacements();
     testLegacySlotIsCanonicalAtTheBoundary();
+    testBandRiseDuringDragKeepsUncapturedSplits();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

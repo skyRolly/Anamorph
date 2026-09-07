@@ -1,6 +1,7 @@
 #include "SpectrumImager.h"
 #include "LookAndFeel.h"
 #include "PluginParameters.h"
+#include <iterator>
 #include <cmath>
 
 namespace anamorph::gui
@@ -301,6 +302,23 @@ void SpectrumImager::writeCrossovers (const float* xs, int count)
         if (std::abs (freqToX (crossover (k)) - xs[k]) > 0.5f)
             setParam (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])));
 }
+// Seed the drag-start positions for a gesture that is about to start. EVERY slot of
+// dragOrigX, not just the `bandCount() - 1` splits in use at the press -- because the two
+// consumers (dragCrossoverTo, moveBand) re-read a LIVE `bandCount()`, and a host write of
+// mbBands that RAISES Bands part-way through the gesture makes them ask projectFromOrig
+// for more origins than a "splits in use" capture ever wrote. Those slots then still held
+// the {0,0,0} initialiser or a previous drag's positions, and projectFromOrig's copy loop
+// pulled the new splits toward them: x = 0 is left of the plot, so the min-gap pass packed
+// them hard against the dragged split and writeCrossovers pushed that to the host, inside
+// the change gesture the drag had opened -- a split jumping to a frequency the user never
+// chose, into the automation lane and the undo stack. Every slot is a real split's live
+// position (freqP[0..2] all exist whatever Bands says; only some are in USE), so seeding
+// all of them costs two extra reads once per gesture and makes the class impossible.
+void SpectrumImager::captureDragOrigins() noexcept
+{
+    for (int k = 0; k < (int) std::size (dragOrigX); ++k)
+        dragOrigX[k] = freqToX (crossover (k));
+}
 // Pin pinA (and optional pinB) at their target x; every other split is pulled toward
 // its drag-start position `orig`, only pushed aside as far as the min gap demands -- so a
 // neighbour springs straight back to where it began the moment the pin clears it (#8-#11).
@@ -407,7 +425,7 @@ void SpectrumImager::beginBandMove (int b)
     // split tracks the cursor 1:1, the band keeps its width while it pushes neighbours
     // aside, and a pushed neighbour springs back on the way out (0.6.13 #3/#8/#9/#10).
     bandAnchorX = soloDownX;
-    for (int k = 0; k < M; ++k) dragOrigX[k] = freqToX (crossover (k));
+    captureDragOrigins();
     bandStartLeftX  = (soloMoveLeft  >= 0) ? dragOrigX[soloMoveLeft]  : r.getX();
     bandStartRightX = (soloMoveRight >= 0) ? dragOrigX[soloMoveRight] : r.getRight();
 
@@ -1631,8 +1649,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     {
         dragHandle = h; dragBand = -1; dragRemovePending = false;
         handlePressMs = juce::Time::getMillisecondCounter(); handlePressX = p.x; handleHoldActive = false;
-        const int M = bandCount() - 1;
-        for (int k = 0; k < M; ++k) dragOrigX[k] = freqToX (crossover (k));
+        captureDragOrigins();
         dragGrabDX = p.x - freqToX (crossover (h)); // keep the line under the cursor with this offset (#10)
         beginGesture (freqP[h]); repaint(); return;
     }
@@ -1663,8 +1680,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         {
             dragHandle = idx; dragBand = -1; dragRemovePending = false;
             handlePressMs = juce::Time::getMillisecondCounter(); handlePressX = p.x; handleHoldActive = false;
-            const int M = bandCount() - 1;
-            for (int k = 0; k < M; ++k) dragOrigX[k] = freqToX (crossover (k));
+            captureDragOrigins();
             dragGrabDX = p.x - freqToX (crossover (idx));
             beginGesture (freqP[idx]);
         }
@@ -1806,8 +1822,7 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
 
     if (scrollHandle >= 0 && scrollHandle < N - 1)
     {
-        const int M = N - 1;
-        for (int k = 0; k < M; ++k) dragOrigX[k] = freqToX (crossover (k)); // seed the projection from the live spots
+        captureDragOrigins(); // seed the projection from the live spots
         dragCrossoverTo (scrollHandle, freqToX (crossover (scrollHandle)) + dy * 28.0f);
     }
     else if (scrollBand >= 0 && scrollBand < N)

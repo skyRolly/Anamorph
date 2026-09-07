@@ -861,6 +861,37 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 66 — a split the drag never captured keeps its place when the host moves Bands**
+  (Code Scanning follow-up to PR #143). `dragOrigX` is seeded once when a gesture begins and read
+  for the whole gesture, but both consumers — `SpectrumImager::dragCrossoverTo` and `::moveBand` —
+  re-read a **live** `bandCount()`. The seeding loops wrote only the splits in USE at the press, so
+  a host write of `mbBands` that RAISED Bands mid-gesture made them ask `projectFromOrig` for
+  origins nobody had written; those slots still held the `{0,0,0}` initialiser (stale, not
+  indeterminate — this half was never UB), x = 0 sits left of the plot, and the min-gap pass packed
+  the new splits hard against the dragged one, which `writeCrossovers` then pushed to the host
+  inside the drag's own change gesture. `captureDragOrigins()` now seeds every slot. Legs, all
+  asserting the automation-visible crossover frequency rather than that the call returned:
+  (a) crossover drag, Bands 2→4 — both uncaptured splits must stay put; (b) 2→3, the
+  increase-by-one case, where only the first new split is exposed; (c) 2→3→4 **inside one drag**;
+  (d) the **band** drag (solo handle dragged sideways), where `beginBandMove` seeds on the first
+  drag event so the rise has to land after it for `moveBand` to be the consumer that sees the larger
+  count; (e) the falling direction — the PR #143 stale-pin guard — driven through the **last** band's
+  solo handle, the only press that latches `soloMoveLeft = b - 1` with `soloMoveRight = -1` and so
+  the only one a falling Bands makes stale, asserting that a drag whose pins have all gone stale
+  writes **no parameter at all**. Mutation-tested, two mutants each killed: the pre-fix capture
+  bound (`bandCount() - 1`) fails 7 checks in legs a–d, printing mid 1 kHz → 122.2 Hz and high
+  8 kHz → 169.4 Hz; the pre-PR-#143 `leftPin`/`rightPin` from the raw arguments fails leg e,
+  printing low 8 kHz → 35.8 Hz, stable over five runs.
+  **No new production seam.** `SpectrumImager` is a `juce::Component` whose mouse handlers are
+  public overrides, and this suite already builds the real editor, walks its child tree and injects
+  `juce::MouseEvent`s. The one thing a test cannot compute is where a handle *is* — `freqToX` runs a
+  30-iteration bisection over a private axis table — so the probe finds it the way a user does: it
+  sweeps `mouseMove` and reads the public `SettableTooltipClient` tooltip, which
+  `setContextTooltip` sets to *Drag to change the split frequency* / *Solo this band* exactly when
+  that hotspot is under the cursor. A sweep that finds nothing fails the test rather than passing
+  vacuously, and the editor is built with `advancedMode` already on because `PluginEditor::resized`
+  lays the imager out only in Advanced.
+
 * **State test 64 — a durable capture never records a sound assembled from two replacements**
   (round 18, ADR-0036 §25). §24 excluded two replacements from each other but left every READER of
   the live parameters unsynchronised; whether that could persist a mixture depended on the shape of

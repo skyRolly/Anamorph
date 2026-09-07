@@ -63,18 +63,21 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Regression coverage: DSP test 53. Evidence: PR #135. [Verified]
 
 ### Fixed
-- **Dragging a multiband band sideways can no longer throw a crossover frequency to a value you
-  never chose, if the band count changes underneath the drag.** Holding a band's solo handle and
-  moving it sideways remembers which splits sit on that band's edges. If the number of Bands was
-  lowered while you were still dragging — by an automation lane on Bands, or by opening or restoring
-  a project at that moment — those remembered splits could name a split that no longer existed, and
-  the move then computed the new crossover positions from leftover memory instead of from your drag.
-  The result was a crossover jumping to an arbitrary (if legal) frequency, written into your DAW's
+- **Dragging in the Multiband display can no longer throw a crossover frequency to a value you
+  never chose, if the number of Bands changes underneath the drag.** Dragging a split, or holding a
+  band's solo handle and moving it sideways, remembers where every split was when the drag began and
+  which splits sit on the dragged band's edges. If the Bands control moved while you were still
+  dragging — by an automation lane on Bands, or by opening or restoring a project at that moment —
+  both memories went wrong, in opposite directions. **Bands going up** revealed splits the drag had
+  never measured, and their positions were computed from leftover memory instead: the new splits
+  jumped down and packed themselves against the one you were dragging. **Bands going down** left the
+  drag pinning a split that no longer existed, and the move then read leftover memory for that one
+  too. Either way a crossover landed on an arbitrary (if legal) frequency, written into your DAW's
   automation lane and onto the undo stack as though you had dragged it there, with the multiband
-  split audibly moving. A split that no longer exists is now simply treated as unpinned, which
-  leaves the other splits where your drag put them. Nothing changes for a drag that runs to its end
-  at a steady band count — every in-range case computes exactly as before.
-  Evidence: PR #143. [Verified]
+  split audibly moving. A drag now measures every split when it starts, and a split that no longer
+  exists is simply treated as unpinned. Nothing changes for a drag that runs to its end at a steady
+  band count — every such case computes exactly as before.
+  Regression coverage: State test 66. Evidence: PR #143. [Verified]
 - **A/B slots from projects saved before 0.6.4 now record their clean baseline the moment the
   project is opened, and it is decided from the slot's own stored values — never from whatever the
   plug-in happens to be playing.** Those old projects stored each slot as parameter values only, with

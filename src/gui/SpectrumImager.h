@@ -110,6 +110,11 @@ private:
     // split may otherwise be dragged anywhere, pushing its neighbours aside, and a
     // crowded insert spreads the neighbours apart (0.6.10 #1/#25/#26).
     void  projectGaps (float* xs, int count, int pin) const noexcept;
+    // Seeds `dragOrigX` for a gesture that is about to start. EVERY slot, never just the
+    // splits in use: the consumers re-read a LIVE `bandCount()`, so a host raising Bands
+    // mid-drag makes them read entries a "0 .. splits-in-use" capture never wrote. Call
+    // this at every drag start rather than writing the loop again -- one home for the rule.
+    void  captureDragOrigins() noexcept;
     // Reversible projection: pin one or two splits at target x, keep every OTHER split
     // as close to its drag-start position (orig) as the min gap allows, so a pushed
     // neighbour springs back when the pin moves away again (0.6.13 #8/#9/#10/#11).
