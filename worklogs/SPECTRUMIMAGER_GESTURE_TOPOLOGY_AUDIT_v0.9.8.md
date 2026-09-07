@@ -938,9 +938,9 @@ fix, M10 from §46's and M11 from §47's). `check-realtime` 47/0 with its self-t
 against both bases (431 / 415) with self-test 139/139, `git diff --check` clean, `preflight.sh`
 exit 0.
 
-On the final head: **ThreadSanitizer 0 warnings** across the four D-2 probes (×3 each) and the full
-suite; **valgrind memcheck `ERROR SUMMARY: 0 errors from 0 contexts`** on both suites, exit 0, with
-State test 74 confirmed executed under it (the DSP suite reports 390 rather than 396 checks under
+On the final head `98db8db`: **ThreadSanitizer 0 warnings** across the four D-2 probes (×3 each) and
+the full suite (2 680 / 0); **valgrind memcheck `ERROR SUMMARY: 0 errors from 0 contexts`** on both
+suites, exit 0, with State test 74 confirmed executed under it (the DSP suite reports 390 rather than 396 checks under
 `ANAMORPH_TESTS_NO_FTZ=1`, which relaxes the denormal half of one assertion because valgrind emulates
 floating point and does not honour the CPU's FTZ/DAZ bits — the standing arrangement in
 `.github/workflows/build.yml`, not a regression).
