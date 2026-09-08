@@ -2430,6 +2430,28 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     // tick adopted the installed width 1.700, and the drag then wrote 0.650 from an anchor taken
     // before it`. The press ends here; the wheel then acts with nothing in flight, exactly as it
     // does when no button is held. The wheel is not disabled -- the press is finished.
+    //
+    // WHAT "THE PRESS IS FINISHED" COSTS, measured 2026-09-08 and recorded here because the
+    // sentence above states the cause and a review had to ask for the effects. `cancelActiveDrag`
+    // calls `endGesture()` on the dragged parameter, so one tick during a held width drag:
+    //   * closes the host change gesture AT THE TICK rather than at mouseUp, so the host sees the
+    //     automation touch released early (1 open / 1 close either way -- the close just moves);
+    //   * lets `openGestures` reach zero, so the next `pollUndoCoalesce` commits the drag so far as
+    //     its OWN undo step (`canUndo()` 0 -> 1 at the tick, where the uninterrupted drag stays 0
+    //     until release);
+    //   * leaves the held press DEAD -- measured `1.375 -> 1.495` at the tick and still `1.495`
+    //     after a further 35 px of drag, against `2.000` for the same drag uninterrupted.
+    // All three are intended. State test 71 leg C and State test 73 leg A already fail if the press
+    // survives, because their assertion is that the drag does not write over the installed value --
+    // which holds only because the press is finished.
+    //
+    // AND A PENDING CLICK IS A PRESS TOO. `cancelActiveDrag` clears `soloPressBand` and
+    // `pressDeleteBand` as well, so a tick during a held solo button or a held delete-x swallows
+    // that click: the on-release action never fires. Measured -- press a solo, scroll, release, and
+    // the mask stays `0x0` where the uninterrupted press gives `0x1`. That is the SAME rule, not a
+    // second one, and it lands on the conservative side: ADR-0041 leg B already establishes that a
+    // solo click whose world moved under it writes nothing, and the wheel moved the world. Letting
+    // the toggle fire after the tick is the defect ADR-0041 closed, not the behaviour to restore.
     cancelActiveDrag();
     // ADR-0046. ONE TOPOLOGY READING DECIDES THE WHOLE TICK. This handler used to take THREE --
     // this one, a second inside the staleness test below, a third at the stamp -- and let

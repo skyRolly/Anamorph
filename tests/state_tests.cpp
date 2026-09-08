@@ -4571,6 +4571,237 @@ static void testTheFarSideOfACoupledCommitIsCoveredByItsCaller()
 }
 
 
+
+// ---------------------------------------------------------------------------
+//  State test 80 -- a wheel tick during a held drag finishes the press, and
+//  finishing it has three consequences that are all intended.
+//
+//  ADR-0041 made this a product decision and its Consequences section said so in
+//  one line: "a wheel tick during a drag ends the drag. New, deliberate." What it
+//  did not say -- and what a later review had to ask for -- is what ending it
+//  costs, because `cancelActiveDrag()` calls `endGesture()` on the dragged
+//  parameter. This test pins all three, so a future change that quietly restores
+//  drag continuity, or that stops closing the gesture, fails here rather than in
+//  somebody's session.
+//
+//  The behaviour was ALREADY covered indirectly: State test 71 leg C and State
+//  test 73 leg A assert that the drag does not write over a value installed during
+//  the tick, which holds only because the press is finished. That is a real guard
+//  but an oblique one -- it would survive a change that kept the press alive while
+//  breaking ownership some other way. This test asserts the property directly.
+static void testAWheelTickFinishesAHeldPress()
+{
+    std::printf ("State test 80: a wheel tick during a held drag finishes the press\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the wheel-ends-the-press probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (im != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) { im = si; return; }
+            walk (k);
+            if (im != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "the imager is laid out for the wheel-ends-the-press probe");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    check (bandsP && wLoP, "the parameters the wheel-ends-the-press probe drives exist");
+    if (! (bandsP && wLoP)) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float dx, float dy, bool dragged)
+    {
+        return juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                 juce::Time::getCurrentTime(), { dx, dy },
+                                 juce::Time::getCurrentTime(), 1, dragged);
+    };
+    const float W = (float) im->getWidth(), H = (float) im->getHeight();
+    auto findY = [&] (const char* want, float x) -> float
+    {
+        for (float y = 4.0f; y < H - 4.0f; y += 1.0f)
+        {
+            im->mouseMove (mev (x, y, x, y, false));
+            if (im->getTooltip() == juce::String (want)) return y;
+        }
+        return -1.0f;
+    };
+    // What the HOST is told: the gesture opens and closes exactly once either way; what this
+    // measures is WHEN the close lands.
+    struct GestureLog final : public juce::AudioProcessorParameter::Listener
+    {
+        int opens = 0, closes = 0;
+        void parameterValueChanged (int, float) override {}
+        void parameterGestureChanged (int, bool starting) override { if (starting) ++opens; else ++closes; }
+    };
+    auto reset = [&] { im->cancelActiveDrag(); setPlain (bandsP, 1.0f); setPlain (wLoP, 1.0f);
+                       proc.pollUndoCoalesce(); };
+    const float bx = 0.5f * W;
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f; wheel.deltaY = 0.4f;
+    wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+    // ---- LEG A: the press is finished, the gesture closes AT the tick, and the
+    //      drag so far becomes its own undo step.
+    {
+        reset();
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg A: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            GestureLog g; wLoP->addListener (&g);
+            im->mouseDown (mev (bx, wy, bx, wy, false));
+            im->mouseDrag (mev (bx, wy - 10.0f, bx, wy, true));
+            im->mouseDrag (mev (bx, wy - 25.0f, bx, wy, true));
+            proc.pollUndoCoalesce();
+            const bool undoMidDrag = proc.canUndo();
+            const int  closesMidDrag = g.closes;
+
+            im->mouseWheelMove (mev (bx, wy - 25.0f, bx, wy, false), wheel);
+            const float atTick = plainOf (wLoP);
+            proc.pollUndoCoalesce();
+            const bool undoAfterTick  = proc.canUndo();
+            const int  closesAfterTick = g.closes;
+
+            im->mouseDrag (mev (bx, wy - 60.0f, bx, wy, true));   // still holding the button
+            const float afterMoreDrag = plainOf (wLoP);
+            im->mouseUp   (mev (bx, wy - 60.0f, bx, wy, true));
+            wLoP->removeListener (&g);
+
+            if (! juce::exactlyEqual (afterMoreDrag, atTick))
+                std::printf ("  [leg A] the press survived the wheel tick: %.3f -> %.3f on a further"
+                             " drag, where ADR-0041 finishes it\n",
+                             (double) atTick, (double) afterMoreDrag);
+            check (juce::exactlyEqual (afterMoreDrag, atTick),
+                   "leg A: the held press is finished -- a further drag writes nothing");
+            check (closesMidDrag == 0 && closesAfterTick == 1,
+                   "leg A: the host's change gesture closes AT the tick, not at mouseUp");
+            check (! undoMidDrag && undoAfterTick,
+                   "leg A: ...and the drag so far is committed as its own undo step");
+        }
+    }
+
+    // ---- LEG B: control -- the same drag, uninterrupted, keeps going and closes
+    //      its gesture at mouseUp, leaving ONE undo step.
+    //
+    //      ON ITS OWN PROCESSOR, and that is load bearing rather than tidiness:
+    //      `canUndo()` is CUMULATIVE. Leg A has already left an undo entry behind, so
+    //      a leg B sharing that processor would see `canUndo()` already true before it
+    //      pressed anything and could never show the mid-drag -> after-release
+    //      transition it exists to assert. The first version of this test did share
+    //      one, and leg B failed for exactly that reason -- the test was measuring
+    //      leg A's history, not its own. A second processor starts with an empty one.
+    {
+        AnamorphAudioProcessor proc2;
+        proc2.prepareToPlay (48000.0, 512);
+        auto& apvts2 = proc2.getAPVTS();
+        if (auto* a = apvts2.getParameter (pid::advancedMode))
+            a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+        if (auto* m = apvts2.getParameter (pid::mbEnable))
+            m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+        auto* raw2 = proc2.createEditor();
+        auto* ed2  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw2);
+        check (ed2 != nullptr, "leg B: a second editor constructs with an undo history of its own");
+        if (ed2 != nullptr)
+        {
+            anamorph::gui::SpectrumImager* im2 = nullptr;
+            std::function<void (juce::Component*)> walk2 = [&] (juce::Component* c)
+            {
+                if (im2 != nullptr) return;
+                for (int i = 0; i < c->getNumChildComponents(); ++i)
+                {
+                    auto* k = c->getChildComponent (i);
+                    if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) { im2 = si; return; }
+                    walk2 (k);
+                    if (im2 != nullptr) return;
+                }
+            };
+            walk2 (ed2);
+            auto* bands2 = apvts2.getParameter (pid::mbBands);
+            auto* w2     = apvts2.getParameter (pid::mbWidthLow);
+            check (im2 != nullptr && im2->getWidth() > 300 && bands2 && w2,
+                   "leg B: the second imager is laid out and its parameters exist");
+            if (im2 != nullptr && im2->getWidth() > 300 && bands2 && w2)
+            {
+                auto mev2 = [&] (float x, float y, float dx, float dy, bool dragged)
+                {
+                    return juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im2, im2,
+                                             juce::Time::getCurrentTime(), { dx, dy },
+                                             juce::Time::getCurrentTime(), 1, dragged);
+                };
+                const float H2 = (float) im2->getHeight(), bx2 = 0.5f * (float) im2->getWidth();
+                float wy2 = -1.0f;
+                for (float y = 4.0f; y < H2 - 4.0f; y += 1.0f)
+                {
+                    im2->mouseMove (mev2 (bx2, y, bx2, y, false));
+                    if (im2->getTooltip() == juce::String ("Band width")) { wy2 = y; break; }
+                }
+                check (wy2 >= 0.0f, "leg B: the width line is findable");
+                if (wy2 >= 0.0f)
+                {
+                    im2->cancelActiveDrag();
+                    setPlain (bands2, 1.0f); setPlain (w2, 1.0f);
+                    proc2.pollUndoCoalesce();
+                    check (! proc2.canUndo(), "leg B: the second processor starts with no undo history");
+
+                    GestureLog g; w2->addListener (&g);
+                    im2->mouseDown (mev2 (bx2, wy2, bx2, wy2, false));
+                    im2->mouseDrag (mev2 (bx2, wy2 - 10.0f, bx2, wy2, true));
+                    im2->mouseDrag (mev2 (bx2, wy2 - 25.0f, bx2, wy2, true));
+                    const float midDrag = plainOf (w2);
+                    proc2.pollUndoCoalesce();
+                    const bool undoMidDrag   = proc2.canUndo();
+                    const int  closesMidDrag = g.closes;
+                    im2->mouseDrag (mev2 (bx2, wy2 - 60.0f, bx2, wy2, true));
+                    const float afterMoreDrag = plainOf (w2);
+                    im2->mouseUp   (mev2 (bx2, wy2 - 60.0f, bx2, wy2, true));
+                    w2->removeListener (&g);
+                    proc2.pollUndoCoalesce();
+
+                    check (! juce::exactlyEqual (afterMoreDrag, midDrag),
+                           "leg B: an uninterrupted drag keeps writing");
+                    check (closesMidDrag == 0 && g.closes == 1,
+                           "leg B: ...and its gesture closes once, at mouseUp");
+                    check (! undoMidDrag && proc2.canUndo(),
+                           "leg B: ...leaving ONE undo step for the whole drag");
+                }
+            }
+            proc2.editorBeingDeleted (ed2);
+            delete ed2;
+        }
+        else { delete raw2; }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+
 static void testATransactionDoesNotCommitALayoutItDoesNotOwn()
 {
     std::printf ("State test 76: a topology transaction does not commit a layout it does not own\n");
@@ -16314,6 +16545,7 @@ int main (int argc, char* argv[])
     testAPositionalLatchIsVoidOnceItsTopologyMoves();
     testADerivationAnswersUnderTheTopologyItWasGiven();
     testTheFarSideOfACoupledCommitIsCoveredByItsCaller();
+    testAWheelTickFinishesAHeldPress();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

@@ -630,3 +630,128 @@ self-test). It is deliberately left for its own change: it is CI tooling, it nee
 its own to meet the standard those siblings set, and bolting it onto a topology-consistency round
 is the scope creep this series has been avoiding. Recorded here with the exact mechanism so the
 next person does not have to re-derive it from a one-second job failure.
+
+---
+
+# Round 12 — wheel gesture semantics and the suppression match assertion
+
+## 26. Workflow and sub-agent audit
+
+**Inspected.** Container restarted again (PID 1 uptime 1 m 01 s). `ListAgents`: none. `ps`: nothing
+compute-bound. No workflow transcript directories, no task output files. Task list 96/96 completed.
+**Nothing running, nothing unconsumed.**
+
+**Decision: start one read-only audit workflow** (`wf_366cbb73-956`, four tracks + adversarial
+verifiers) — the opposite of the previous round's decision, and for a reason rather than a mood.
+Round 11's finding was one asymmetry in two adjacent functions with five call sites: a trace, not a
+search. This round's Finding 1 asks what a single statement does to *four* separate subsystems —
+host automation gestures, the undo coalescer, drag continuity, and interaction semantics against the
+merge base — which is exactly the shape that repays independent readers. Recorded because "audit
+workflows" is not a ritual: it earns its place when the question is wide, and does not when it is
+narrow.
+
+## 27. Finding 1 — wheel input closes active gestures: **B, intentional; the consequences were the
+gap, not the behaviour**
+
+`cancelActiveDrag()` is the first statement of `mouseWheelMove` (`SpectrumImager.cpp:2433`) and it
+calls `endGesture()` on the dragged parameter.
+
+**Provenance, measured.** It is NOT in the merge base — `git show <merge-base>:src/gui/SpectrumImager.cpp`
+shows `mouseWheelMove` opening straight at `const int N = bandCount();`. It was introduced by
+**ADR-0041** (`e247c11`), an early round of this PR, **not** by the recent ADR-0045/0046 topology and
+wheel work the review suspected. ADR-0041 §Consequences already states it as a product decision:
+*"A wheel tick during a drag ends the drag. New, deliberate, and stated as a product decision."*
+
+**So the behaviour is intentional and documented. What was NOT documented is what it costs** — and
+that is precisely what the review asked for. Measured on the real component:
+
+| | wheel tick mid-drag | control, no tick |
+|---|---|---|
+| `mbWidthLow` | 1.000 → 1.375 → **1.495**, further drag leaves it **1.495** | 1.375 → **2.000** |
+| host gestures | 1 open / 1 close, **closing at the tick** | 1 open / 1 close at mouseUp |
+| `canUndo()` | 0 mid-drag → **1 at the tick** | 1 at release |
+
+So: the host sees the automation touch released early; the drag so far is committed as its **own undo
+step**; and the held press is **dead** until release and re-press. All three intended, none written
+down.
+
+**Shipped:** the three consequences stated at the call site and in an ADR-0041 amendment; a
+**CHANGELOG `### Changed` entry**, because this is a user-visible interaction change against the
+merge base and `[0.9.8]` had none — the two existing wheel entries are about stale topology targets,
+not about scrolling ending a drag; and **State test 80** pinning all three directly.
+
+**Mutation M1** (delete the `cancelActiveDrag()`) kills three checks: State test 73 leg A reproduces
+ADR-0041's original measurement verbatim — `a wheel tick adopted the installed width 1.700, and the
+drag then wrote 0.650 from an anchor taken before it` — plus State test 80's gesture-timing and
+undo-step assertions. **Reported honestly: leg A's "the press is dead" assertion SURVIVES M1**,
+because with the press alive the next drag write is refused by ADR-0040's `ownsWidth` check instead.
+The three assertions have different sensitivities and only two catch this removal.
+
+**A test defect of my own, caught by the test:** leg B first shared leg A's processor and failed,
+because `canUndo()` is cumulative — leg A had already left an entry, so leg B could never show the
+mid-drag → after-release transition it exists to assert. It was measuring leg A's history. Leg B now
+runs on its own processor.
+
+## 28. Finding 2 — TSan suppression match assertion: **A, added; but the review's mechanism was
+refuted first**
+
+The review asked whether "helper rename or pattern drift could silently disable the intended
+suppression". **Measured, and it cannot** — that mode is loud:
+
+| mode | measured result | |
+|---|---|---|
+| entry renamed / pattern drifts, so the inversion resurfaces | **exit 66**, report returned | **LOUD** |
+| a **dead** entry sits alongside the live one | **exit 0**, `Matched 1 suppressions` with **2** entries in the file | **SILENT** |
+
+So the review's stated worry is a false positive, *and* there is a real silent mode next to it — the
+one `tests/tsan-suppressions.txt` itself calls dangerous in its own header: *"An entry that matches
+nothing is not free — it silently widens what a future report can be absorbed by."* The file stated
+the rule and nothing enforced it.
+
+**Shipped:** a `tsan` job step asserting **match-count == entry-count** (not "at least one", which
+would miss exactly the silent mode). Self-tested against all three measured logs before shipping:
+passes on the live file (1/1), fails on the loud mode (1 expected / 0 matched) and on the silent mode
+(2 expected / 1 matched). This is the house standard — every other gate here carries a canary or
+self-test proving it can fail.
+
+## 29. Verify-only items — all unchanged
+
+* **RISK-010** — unchanged. This round touched no reader and no threading; the ten-load snapshot and
+  its accept-and-escalate disposition stand.
+* **Held-audition guard** — unchanged. Re-verified at this head: `tick()` still returns at
+  `if (! isShowing())` before reaching the guard, and the harness never shows the editor. No
+  production seam added.
+* **U4** — unchanged, and *reinforced* rather than reopened. This round's Finding 1 measurement shows
+  the wheel's own width store still creates no undo step (the undo entry at the tick belongs to the
+  **drag** the wheel finished, not to the wheel's edit). That is consistent with U4 and with
+  `KNOWN_ISSUES`; the wheel gesture design is not reopened.
+* **Informational items** — cancelled spreads, ownership parameter equality, partial transaction
+  residue: reviewed, no new evidence, unchanged.
+
+## 30. Two things the audit workflow added, and one honest limit on the new assertion
+
+**A fourth consequence of Finding 1, which I had not measured.** The workflow's track 1 asked what a
+tick does to a held *solo* or *delete-x* press, not just a drag. `cancelActiveDrag()` clears
+`soloPressBand` and `pressDeleteBand` as well, so the tick **swallows that click**. Measured: press a
+solo, scroll, release → mask `0x0`, against `0x1` for the uninterrupted press. Ruled the **same
+intentional rule**, not a second finding and not a defect: ADR-0041 leg (b) already establishes that a
+solo click whose world moved under it writes nothing, and a wheel tick moves the world — so letting
+the toggle fire after the tick is the defect this ADR closed. Documented at the call site and in the
+ADR amendment; behaviour unchanged, per the brief's instruction not to change behaviour without
+evidence, and the evidence points the other way.
+
+**A residual of the new suppression assertion, stated rather than glossed.** Match-count ==
+entry-count catches the two modes measured in §28 — a dead entry (silent) and a drifted one (already
+loud). It does **not** catch a third: an entry *broadened* by a future edit that still matches exactly
+one report, but a wider class of them. The data-race canary cannot see that either, because it proves
+only that data races are still reported, and this is a `deadlock:` entry. What guards it today is the
+file's own header — *"a wider entry is worse than none"* — and review. Recorded as a known limit of
+the assertion rather than left for someone to discover by trusting it too far.
+
+**Workflow disposition.** `wf_366cbb73-956` produced 34 claims across four tracks. Its two
+`needs-action` items that survived verification are the two above; its provenance track independently
+confirmed that `cancelActiveDrag()` entered at `e247c11` (ADR-0041) and appears as unchanged *context*
+in the ADR-0045 and ADR-0046 diffs, which is the direct refutation of the review's hypothesis that the
+recent topology work introduced it. Two claims were refuted on verification (a USER_MANUAL
+contradiction, and a report of the suppression file being mutated — that was this round's own
+temporary measurement, since restored). Consumed in full.

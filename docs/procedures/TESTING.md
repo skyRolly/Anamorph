@@ -861,6 +861,27 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 80 — a wheel tick during a held drag finishes the press** (ADR-0041, measured in
+  full). ADR-0041 made this a product decision and its Consequences section said so in one line; a
+  later review asked what ending the press *costs*, and this test is the answer. `cancelActiveDrag()`
+  calls `endGesture()`, so one tick during a held width drag closes the host's change gesture **at
+  the tick** rather than at mouseUp, lets `openGestures` reach zero so the drag so far is committed
+  as its **own undo step**, and leaves the held press **dead**. Leg A asserts all three; leg B is the
+  uninterrupted control — the drag keeps writing, the gesture closes once at mouseUp, one undo step.
+
+  **Leg B runs on its own processor because `canUndo()` is cumulative.** The first version shared one
+  and leg B failed: leg A had already left an entry, so `canUndo()` was true before leg B pressed
+  anything and the mid-drag → after-release transition it exists to assert could never show. The test
+  was measuring leg A's history rather than its own.
+
+  **Mutation M1** (delete the `cancelActiveDrag()` at the top of `mouseWheelMove`) kills three checks:
+  State test 73 leg A, which reproduces ADR-0041's original measurement verbatim — `a wheel tick
+  adopted the installed width 1.700, and the drag then wrote 0.650 from an anchor taken before it` —
+  and State test 80's gesture-timing and undo-step assertions. Recorded honestly: leg A's *"the press
+  is dead"* assertion **survives** that mutation, because with the press alive the next drag write is
+  refused by ADR-0040's `ownsWidth` check instead, which pins the value by a different mechanism. The
+  three assertions have different sensitivities and only two of them catch this removal.
+
 * **State test 79 — the far side of a coupled commit is covered by its caller** (ADR-0044
   clarification, not a new decision). `setBands` and `setSoloMask` prove BOTH the count and the mask
   on the near side, adjacent to their store, but each re-reads only its OWN parameter afterwards
@@ -1695,7 +1716,7 @@ event — where it is the only job that runs at all.)
 | `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, `python3 scripts/check-realtime.py --self-test` then that lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
 | `sanitizers` | ASan+UBSan over both suites, then valgrind memcheck over both suites (the valgrind step sets `ANAMORPH_TESTS_NO_FTZ=1` — see below) |
 | `realtime` | `cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=realtime`, build `AnamorphTests`, run it with **no `RTSAN_OPTIONS`** (ADR-0029 — `halt_on_error=false` would make it report and pass) |
-| `tsan` | `cmake -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread -DANAMORPH_BUILD_STANDALONE=OFF`, build `AnamorphStateTests`, then with `TSAN_OPTIONS=halt_on_error=1:exitcode=66` run `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe` and `--d2-stress-probe` (five times each in CI) and the suite once; the canary first (`clang++ -fsanitize=thread tests/tsan_canary.cpp` must FAIL with a data-race report). Add `:suppressions=<checkout>/tests/tsan-suppressions.txt:print_suppressions=1` — ONE `deadlock:` entry naming a harness re-entrancy double, for the lock-order inversion State test 75 legs D and G form between two parameters' JUCE `listenerLock`s on the MAIN thread; data races are not suppressed and the canary proves it (RISK-009, and the file itself carries the reasoning). The DSP suite is NOT built under TSan: `tests/AllocationGuard.h`'s global `operator new`/`delete` collide with `libclang_rt.tsan_cxx`, and it has no cross-thread path of its own. Needs `libclang-rt-<major>-dev`; on a kernel with 32-bit ASLR entropy, `sysctl vm.mmap_rnd_bits=28` |
+| `tsan` | `cmake -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread -DANAMORPH_BUILD_STANDALONE=OFF`, build `AnamorphStateTests`, then with `TSAN_OPTIONS=halt_on_error=1:exitcode=66` run `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe` and `--d2-stress-probe` (five times each in CI) and the suite once; the canary first (`clang++ -fsanitize=thread tests/tsan_canary.cpp` must FAIL with a data-race report). Add `:suppressions=<checkout>/tests/tsan-suppressions.txt:print_suppressions=1` — ONE `deadlock:` entry naming a harness re-entrancy double, for the lock-order inversion State test 75 legs D and G form between two parameters' JUCE `listenerLock`s on the MAIN thread; data races are not suppressed and the canary proves it (RISK-009, and the file itself carries the reasoning). The DSP suite is NOT built under TSan: `tests/AllocationGuard.h`'s global `operator new`/`delete` collide with `libclang_rt.tsan_cxx`, and it has no cross-thread path of its own. Needs `libclang-rt-<major>-dev`; on a kernel with 32-bit ASLR entropy, `sysctl vm.mmap_rnd_bits=28` A follow-on step then asserts **match-count == entry-count** on `tests/tsan-suppressions.txt`: an entry that stops matching because its helper was renamed is already loud (the report returns and `halt_on_error=1` exits 66 -- measured), but an entry that matches NOTHING because the legs that produced the report were restructured is silent (measured: `exit=0` with `Matched 1 suppressions` while the file carried 2), and that is the mode the file's own header calls dangerous |
 | `linux-lto-tests` | `cmake -B build-lto -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF -DCMAKE_C_FLAGS=-flto -DCMAKE_CXX_FLAGS=-flto -DCMAKE_EXE_LINKER_FLAGS=-flto`, build both test targets, run both — the suites against the shipped optimization class (see `CI_CD.md`) |
 | `fuzz` | the `AnamorphFuzzState` recipe under §"Opt-in targets" above, verbatim — the CI step adds only `-seed=20260818 -rss_limit_mb=4096 -print_final_stats=1` and an `-artifact_prefix` for the reproducer it uploads on a finding |
 

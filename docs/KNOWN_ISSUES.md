@@ -379,6 +379,11 @@ with the focus-driven `knobSweepTime` easing).
   **true**. The entry above was already correct — this only replaces "verified" with a number,
   and confirms the gap is pre-existing (the merge base carries the same gesture-less
   `setParam`), so it is not a regression of the v0.9.8 SpectrumImager work.
+  **Not contradicted by State test 80** (wheel-gesture round, same day), which asserts that a wheel
+  tick *during a held drag* leaves `canUndo()` **true**: that entry belongs to the **drag** the tick
+  finished -- `cancelActiveDrag` closes its gesture, `openGestures` reaches zero, and the coalescer
+  commits the drag so far. The wheel's own `setParam` still opens no gesture and still contributes
+  no undo step of its own. The two measurements agree; only one of them has a drag in flight.
 - **Scope:** editor-only; automation/preset/serialization unaffected (the value itself lands
   correctly and marks the preset dirty). Severity **Low**.
 - **Evidence [Verified, code path]:** src/PluginEditor.h (`Knob::doReset` gesture wrap + comment);

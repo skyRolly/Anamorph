@@ -3562,7 +3562,40 @@ jobs:
       # real processor, so a torn read in one of them fails here even where the
       # value-level assertion happened to pass.
       - name: The state suite under ThreadSanitizer
-        run: ./build-tsan/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests
+        run: |
+          set -o pipefail
+          ./build-tsan/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests 2>&1 | tee tsan-suite.log
+
+      # EVERY SUPPRESSION MUST STILL EARN ITS PLACE. `tests/tsan-suppressions.txt`
+      # states the rule in its own header -- "an entry that matches nothing is not
+      # free -- it silently widens what a future report can be absorbed by" -- and
+      # until now nothing enforced it. The two failure modes are NOT symmetric, and
+      # this step exists for the second:
+      #
+      #   * an entry that stops matching because the helper it names was renamed, or
+      #     because the pattern drifted, is already LOUD: the inversion it was
+      #     absorbing is reported again and `halt_on_error=1` exits 66. Measured:
+      #     renaming the entry gives `exit=66` with the lock-order report back.
+      #   * an entry that matches NOTHING because the test legs that produced the
+      #     report were removed or restructured is SILENT: the suite exits 0 and the
+      #     dead entry sits in the file widening what a future report can be absorbed
+      #     by. Measured: adding a bogus second entry gives `exit=0` and
+      #     `Matched 1 suppressions` while the file carries 2.
+      #
+      # So the assertion is match-count == entry-count, not "at least one". It runs
+      # only against the FULL SUITE: the D-2 probes above do not drive the legs that
+      # produce the report and legitimately match nothing.
+      - name: Every TSan suppression still matches something
+        run: |
+          expected=$(grep -cE '^[a-z_]+:' tests/tsan-suppressions.txt)
+          got=$(sed -n 's/^ThreadSanitizer: Matched \([0-9]\{1,\}\) suppressions.*/\1/p' tsan-suite.log | head -1)
+          got=${got:-0}
+          echo "suppression entries: $expected ; matched this run: $got"
+          if [ "$got" != "$expected" ]; then
+            echo "::error::tests/tsan-suppressions.txt has $expected entr(ies) but ThreadSanitizer matched $got. A suppression that matches nothing is dead: either the harness double it names is gone (delete the entry) or the legs that produced the report were restructured (delete the entry, or restore the coverage). Do NOT resolve this by broadening the pattern -- the file's own header explains why a wider entry is worse than none."
+            grep -nE '^[a-z_]+:' tests/tsan-suppressions.txt
+            exit 1
+          fi
 
   # -------------------------------------------------------------------------
   # State fuzzing (Linux). libFuzzer over `setStateInformation`, the one entry

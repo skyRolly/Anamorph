@@ -10837,3 +10837,44 @@ complete `KNOWN_ISSUES` record — which gained the measurement and nothing else
 round changes no user-visible behaviour, and `CHANGELOG_POLICY` scopes that file to changes that do.
 Not a gate item: no parameter ID, serialization, threading-model, DSP-order or reported-latency
 change, and no Accepted ADR conflict. [Verified]
+
+## Fourteenth pass — wheel gesture semantics and the suppression match assertion (2026-09-08)
+
+**Finding 1 — "wheel input closes active gestures" (`src/gui/SpectrumImager.cpp:2433`): ruled B,
+intentional.** `cancelActiveDrag()` is not in the merge base; it was introduced by **ADR-0041**, an
+early round of this PR, **not** by the recent ADR-0045/0046 wheel and topology work the review
+suspected, and ADR-0041 already states it as a product decision. What was missing is what ending the
+press *costs*, which is what the review actually asked. Measured on the real component: the host's
+change gesture closes **at the tick** rather than at mouseUp; `openGestures` reaches zero so the drag
+so far is committed as its **own undo step** (`canUndo()` 0 → 1 at the tick); and the held press is
+**dead** (1.375 → 1.495 at the tick, still 1.495 after a further 35 px, against 2.000 uninterrupted).
+All three intended, none previously written down. Now stated at the call site, in an ADR-0041
+amendment, in a **CHANGELOG `### Changed`** entry — this is a user-visible interaction change against
+the merge base and `[0.9.8]` carried none — and pinned by **State test 80**.
+
+**Finding 2 — "TSan suppression lacks a match assertion" (`tests/tsan-suppressions.txt:49`): ruled A,
+assertion added — but the review's mechanism was refuted first.** A renamed or drifted entry does
+**not** fail silently: measured `exit=66` with the lock-order report back, because `halt_on_error=1`
+stops the job. The genuinely silent mode is the other one — a **dead** entry that matches nothing,
+measured as `exit=0` with `Matched 1 suppressions` while the file carried 2 — and it is exactly the
+mode the file's own header calls dangerous. The `tsan` job now asserts **match-count == entry-count**
+(not "at least one", which would miss precisely that mode), self-tested against all three measured
+logs before shipping: passes 1/1 live, fails 1/0 loud and 2/1 silent.
+
+**Two self-corrections recorded rather than quietly fixed.** State test 80 leg B first shared leg A's
+processor and failed, because `canUndo()` is cumulative and leg B was measuring leg A's history; it
+now runs on its own processor. And the mutation record for State test 80 is reported with its real
+sensitivity: M1 kills three checks, but leg A's *"the press is dead"* assertion **survives** it,
+because ADR-0040's `ownsWidth` pins the value by a different mechanism.
+
+**Verify-only items unchanged.** RISK-010 (no reader or threading touched), the held-audition gap
+(`tick()` still returns at `isShowing()` before the guard), U4 (reinforced — the undo entry at the
+tick belongs to the drag the wheel finished, not to the wheel's own store), and the three
+informational items.
+
+**Docs.** `ADR-0041` (amendment), `CHANGELOG.md` `[0.9.8] ### Changed`, `TESTING.md` (State test 80
+and the tsan recipe row), `tests/tsan-suppressions.txt` (the rule marked enforced),
+`.github/workflows/build.yml` (the assertion step),
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§26-29. Not a gate item: no parameter
+ID, serialization, threading-model, DSP-order or reported-latency change, and no Accepted ADR
+conflict — ADR-0041 is amended with its own measured consequences, not contradicted. [Verified]

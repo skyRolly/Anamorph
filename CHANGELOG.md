@@ -20,6 +20,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ## [0.9.8] — 2026-09-08
 
+### Changed
+- **Scrolling the mouse wheel while you are dragging in the Multiband display now finishes the
+  drag.** Previously the drag kept running underneath the scroll, and the two fought over the same
+  band: the scroll would adopt whatever value was current, then the next movement of the still-held
+  drag would write a value computed from where your mouse was *before* the scroll, undoing it. The
+  wheel now ends the press first and then applies its own adjustment, exactly as it does when no
+  button is held. What you will notice: after scrolling mid-drag, moving the mouse does nothing
+  until you release the button and press again, and your DAW records the drag up to that point as a
+  finished edit — so Undo steps back to the scroll rather than to the start of the drag. Scrolling
+  when you are *not* dragging is unchanged.
+  Decision: ADR-0041. Evidence: PR #143. [Verified]
+
 ### Fixed
 - **A scroll or a click on the Multiband display can no longer act on a band that belongs to a
   different layout than the one you were looking at.** Working out which band is under the pointer

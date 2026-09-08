@@ -46,4 +46,18 @@
 # from inside B's on another creates the same cycle for real, on locks JUCE takes
 # around its own listener dispatch. Anamorph cannot close that without a
 # threading-model change (ARCHITECTURE_REVIEW_GATE). See the worklog for v0.9.8.
+#
+# ENFORCED SINCE 2026-09-08. The rule above -- every entry must match something --
+# was stated here and checked by nobody. The `tsan` job now asserts
+# match-count == entry-count against `print_suppressions=1` output. The two
+# failure modes are not symmetric, which is why the assertion counts rather than
+# merely requiring one match:
+#   * an entry that stops matching (helper renamed, pattern drifted) is ALREADY
+#     loud -- the report it was absorbing comes back and halt_on_error=1 exits 66.
+#     Measured: renaming this entry gives `exit=66` with the inversion reported.
+#   * an entry that matches NOTHING, because the legs that produced the report were
+#     removed or restructured, is SILENT. Measured: adding a bogus second entry
+#     gives `exit=0` and `Matched 1 suppressions` with two entries in the file.
+# If that assertion fires, DELETE the dead entry or restore the coverage. Do not
+# broaden the pattern: a wider entry is worse than none, for the reason above.
 deadlock:WriteFromInsideAGestureOpen

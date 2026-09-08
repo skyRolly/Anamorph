@@ -102,6 +102,28 @@ one parameter, and under a lower new count the parameters left behind are ones t
 ## Consequences
 
 - **A wheel tick during a drag ends the drag.** New, deliberate, and stated as a product decision.
+  **Measured in full 2026-09-08**, because this Consequences line named the interaction change but not
+  what it does to the host or to undo, and a later review asked exactly that. `cancelActiveDrag()`
+  calls `endGesture()` on the dragged parameter, so one wheel tick during a held width drag produces
+  *three* effects, all of them intended and none of them previously written down:
+  | | with a wheel tick mid-drag | control, no tick |
+  |---|---|---|
+  | width | 1.000 -> 1.375 -> **1.495**, and a further drag leaves it **1.495** | 1.375 -> **2.000** |
+  | host gestures on `mbWidthLow` | 1 open / 1 close, **closing at the tick** rather than at mouseUp | 1 open / 1 close at mouseUp |
+  | `canUndo()` | 0 mid-drag -> **1 immediately after the tick** | 1 at the end |
+  So the host sees the automation touch released early; the drag is committed as its **own undo
+  step** at the tick rather than as one entry at release; and the held press is **dead** — further
+  mouse movement does nothing until the user releases and presses again. That is the intended
+  reading of *"the press is finished"*, now stated with its consequences instead of only its cause.
+
+  **And a pending click is a press.** `cancelActiveDrag()` clears `soloPressBand` and
+  `pressDeleteBand` too, so a tick during a held solo button or a held delete-x **swallows that
+  click** — the on-release action never fires. Measured: press a solo, scroll, release, and the mask
+  stays `0x0` where the uninterrupted press gives `0x1`. This is the same rule rather than a second
+  one, and it falls on the conservative side by construction: leg (b) of this ADR already establishes
+  that a solo click whose world moved under it writes nothing, and a wheel tick moves the world.
+  Letting the toggle fire after the tick would be the defect this ADR closed, not a behaviour worth
+  restoring.
 - **A solo click whose topology moved under it writes nothing** — the conservative answer, and the
   same one a release lost outside the window already gives.
 - **A topology transaction stops at a refused store** instead of finishing against a precondition
