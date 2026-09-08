@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3297` and `.github/workflows/build.yml:3382`, this round being
+`.github/workflows/build.yml:3316` and `.github/workflows/build.yml:3401`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:972 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:991 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1173`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1205`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:972 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:991 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10742,7 +10742,7 @@ last is the one arrangement that cannot work: an index derived at three bands an
 four that arrived a few instructions later claims a topology it was never derived in, and because
 `scrollBands` is not re-derived for the rest of the burst, every later tick compares against that
 claim and passes. `mouseDown` never had this half — it reads the count at the very top, which is
-what `src/gui/SpectrumImager.cpp:2417` relies on.
+what `src/gui/SpectrumImager.cpp:2453` relies on.
 
 **Fix (ADR-0046).** `bandAtX (x, n)` and `handleNearX (x, n)` answer under the topology they are
 given (`-1` keeps the live read for the hover and paint callers, which stamp nothing);
@@ -10806,7 +10806,7 @@ change, and no Accepted ADR conflict. [Verified]
 topology count commit may still report success"*, and its converse for `setSoloMask`.
 
 **Ruled B — already prevented, invariant documented.** Both halves are true of the code:
-`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:679`) and
+`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:687`) and
 `setSoloMask` returns `stored && soloMask() == mask` (`:662`), so each re-reads only its own
 parameter after its own dispatches even though both prove BOTH on the near side. What covers it is
 the **callers** — every one that acts on the result re-proves the other parameter on its next line,
@@ -10883,7 +10883,7 @@ informational items.
 
 **Correction to the line above, from the audit workflow's full result (worklog §31).** One of those
 three informational items — ownership parameter equality — was NOT unchanged. `ownsSplit` compares
-exactly and is described correctly at `src/gui/SpectrumImager.cpp:398-408` and
+exactly and is described correctly at `src/gui/SpectrumImager.cpp:410-420` and
 `src/gui/SpectrumImager.h:384-390`, but the definition comment of `kSplitMovedPx`
 (`src/gui/SpectrumImager.cpp:14-17`) still said `soundMovedUnderGesture` compares against that
 constant and that "the two must be the same number" — the coupling ADR-0041 removed, unchanged since
@@ -10958,3 +10958,70 @@ unchanged and none was proposed), `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_
 than a line. Not a gate item: no parameter ID, serialization, threading-model, DSP-order or
 reported-latency change, and no Accepted ADR contradicted — ADR-0046's rule is extended, not
 reversed. [Verified]
+
+---
+
+## Sixteenth pass — the release-and-add topology round (2026-09-09)
+
+**CI first: `source-lint` failed on `ea82eab`, and the failure was mine.** One drifted documentation
+anchor (`src/gui/SpectrumImager.cpp:398-408 -> :410-420`), moved by the twelve lines ADR-0047's
+overloads added above `ownsSplit`. **Classified a code issue in the change set, not a tooling or
+formatting one** — the gate did its job. The reason it escaped locally is the durable lesson: CI
+compares against the PREVIOUS COMMIT and I had checked against `origin/main`, which cannot see drift a
+commit introduces and re-anchors within itself.
+
+**Finding 1 — "release-time automation loses a band": ALREADY PREVENTED, and the answer is a mutation
+ladder rather than a comment.** The mechanism is real and REENTRANT — `endGesture` dispatches before
+`removeBand` is reached, so a host recording automation can move `mbBands` from inside it — which makes
+it more reachable than anything else this series has examined. Three guards were removed together and
+State test 71 leg C stayed green, because three more stand behind them: six independent refusals in
+all. **My first reading of that was wrong** and is recorded as such: seeing the entry guard kill no
+test, I wrote it down as a coverage hole, when it is a guard that cannot be reached past its siblings.
+The two conclusions call for opposite actions. The invariant and the ladder are now documented at the
+guard so nobody deletes it as dead.
+
+**Finding 2 — "concurrent topology changes misplace additions": CONFIRMED, fixed (ADR-0048).** The add's
+target index came from the latched count and its band EDGES from a fresh one, so a count raised between
+them clamps the click into a band it was never aimed at. Cross-thread only, hence a probe rather than a
+test: **55 misplacements in 4800 clicks before, 0 after**, with the abandoned-add rate unchanged so no
+add that previously succeeded is suppressed.
+
+**A fix implemented, measured and then REMOVED, which is the more useful half of the record.** Giving
+`addBandAt` the `expectedBands` contract `removeBand` carries looked obviously right. It closed nothing
+(0 either way across 4800 clicks), it costs the user a click under a moving lane, and it is wrong in
+principle: a band INDEX is retargeted by a count change and a FREQUENCY is not — ADR-0045's own
+asymmetry, ruled there for `commitFreqEditor`. The asymmetry is now recorded at both sites as a
+decision.
+
+**The Finding 1 conclusion was corrected by the audit, and the correction is the useful part.** Peeling
+`removeBand`'s comparisons one at a time never fires a test, so I first recorded the entry guard as a
+coverage hole. The audit found the mutation that does fire: changing the CALL SITE to pass a live
+`bandCount()` instead of `pressBands` kills State test 71 leg C twice, with the round's own `Bands 4 ->
+3` diagnostic. What is load-bearing is the argument, not any one comparison inside the callee — and the
+two readings call for opposite actions.
+
+**A NEW finding, escalated rather than patched:** `removeBand` proves the slot each loop iteration
+WRITES but never the slot the value was TAKEN FROM, so a same-count foreign write to the top live split
+or width is discarded while the transaction completes. Fixing it changes when a topology transaction
+abandons, which is ADR-0042's and ADR-0044's measured disposition; it belongs in its own round with
+those legs re-run. Worklog §40b.
+
+**Two further coverage holes, recorded not closed:** the delete-x call site's `pressBands` has no
+mutation that kills anything, and `mouseUp`'s staleness gate can be disabled with a green build (what
+it protects is gesture hygiene, which the state suite does not observe).
+
+**Two probe-construction mistakes are recorded in the probe's own source**, because both changed the
+answer before they were caught: a parked constant that made the pre-fix count fall from 5 to 0, and a
+breakdown test that could not be wrong.
+
+**Verify-only.** RISK-010 unchanged (both findings are GUI-side; RISK-010 is the audio-side reader);
+held-audition guard unchanged; U4 unchanged; TSan suppression unchanged with its corrected assertion
+green in CI. **Wheel gesture closure: no behaviour decision is required, and the three options are laid
+out in worklog §41 anyway because the brief asked — recommendation is to keep ADR-0041's rule.**
+
+**Documentation.** `ADR-0048` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
+`TESTING.md` (the probe, its numbers, its two construction mistakes, State test 82 and the CI recipe
+row), `.github/workflows/build.yml` (the new gate), `removeBand`'s invariant comment,
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§38-41. Not a gate item: no parameter
+ID, serialization, threading-model, DSP-order or reported-latency change, and no Accepted ADR
+contradicted — ADR-0046's rule is extended and ADR-0045's asymmetry is applied, not reversed. [Verified]

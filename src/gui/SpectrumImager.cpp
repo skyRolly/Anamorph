@@ -596,9 +596,17 @@ bool SpectrumImager::dragCrossoverTo (int handle, float x, int n)
     projectFromOrig (out, dragOrigX, M, handle, x, -1, 0.0f);
     return writeCrossovers (out, M);
 }
-bool SpectrumImager::bandAddTarget (int b, float x, float& outX) const noexcept
+// ADR-0048. THE TARGET AND ITS EDGES ANSWER UNDER ONE TOPOLOGY. `b` is derived by the caller --
+// `bandAtX (p.x, gestureBands)` in `mouseDown` -- and this used to read `mbBands` again to work out
+// where that band ENDS. Two readings, three threads: a count raised between them made `b < N - 1`
+// flip, so the click was clamped against a split edge that belongs to a layout the press never saw.
+// Measured before this argument existed: a click at 15 kHz in the top band of a two-band layout was
+// written as a split just under the 8 kHz edge the raised count introduced -- 5 misplacements in 800
+// clicks against a lane moving the count (`--add-target-probe`), against a control that places the
+// split at 15030.7 Hz every time. Same shape and same fix as ADR-0046's for the count itself.
+bool SpectrumImager::bandAddTarget (int b, float x, float& outX, int n) const noexcept
 {
-    const int N = bandCount();
+    const int N = n >= 0 ? juce::jlimit (1, 4, n) : bandCount();
     if (N >= 4) return false;
     auto r = plot();
     // The whole band (minus a small inset) offers an add affordance; the actual
@@ -827,6 +835,17 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
 {
     const int N = bandCount();
     resultingBands = N;          // nothing added -> the caller's gesture keeps the count it had
+    // ADR-0048 CONSIDERED AND REJECTED A REFUSAL HERE, and the reason is the ADR-0044/0045 asymmetry
+    // rather than a scope decision. `removeBand` has taken `expectedBands` since ADR-0039 because its
+    // input is a BAND INDEX: a count change RETARGETS it onto a different band, so acting under an
+    // unvalidated topology performs a different operation. This function's input is a FREQUENCY, and
+    // a frequency means the same thing under every topology -- exactly what ADR-0045 ruled for
+    // `commitFreqEditor`, which needs no topology stamp for the same reason. Adding the refusal was
+    // measured against `--add-target-probe` and closed nothing the clamp argument had not already
+    // closed (0 misplacements either way, across 4800 clicks), while turning a click the user made
+    // into a no-op whenever a lane moved the count in the same instant. The stores below already
+    // prove the count before each of them, which is what protects the TRANSACTION; what this round
+    // fixed is the TARGET, one line up in the caller.
     if (N >= 4) return -1;
     const int M = N - 1; // existing crossovers
     float xs[3];
@@ -972,6 +991,23 @@ void SpectrumImager::removeBand (int b, int expectedBands)
     // holds when the count can move between two of them. `bandCount()` is a live read of a
     // parameter a host can write at any instant; a check in the CALLER can never close that,
     // because the operation reads again afterwards.
+    //
+    // RE-AUDITED 2026-09-09 (release-time removal review round) AND MEASURED, because the review
+    // asked the question this paragraph answers and a comment is not evidence. The mechanism is
+    // real and REENTRANT, which makes it the most reachable window this series has examined:
+    // `mouseUp` proves the count, latches `pressBands`, then calls `endGesture` on the dragged
+    // split -- which DISPATCHES, so a host recording automation can move mbBands from inside it --
+    // and only then reaches this function.
+    //
+    // WHAT IS LOAD-BEARING IS THE ARGUMENT, NOT ANY ONE COMPARISON. Replacing this line, the
+    // `bandCount() != expectedBands` before the solo store and `setSoloMask`'s own precondition --
+    // all three at once -- leaves the whole suite green, because the width loop, the split loop and
+    // `setBands` still each refuse. But changing the CALL SITE to pass a live `bandCount()` instead
+    // of `pressBands` kills State test 71 leg C twice over, with the diagnostic that round measured:
+    // `Bands 4 -> 3: the release read a count the check never saw`. So the five comparisons are
+    // individually redundant BY DESIGN and the contract they enforce is covered; do not read a
+    // survived single-line mutation here as a coverage hole. That is exactly the misreading this
+    // round made first and corrected by peeling further.
     if (N != expectedBands) return;
     if (b < 0 || b >= N) return;
     const int dropX = (b == 0) ? 0 : (b - 1); // delete the split on this band's left (#12)
@@ -2142,7 +2178,8 @@ void SpectrumImager::updateHover (juce::Point<float> p)
     else
     {
         float ax;
-        if (bandAddTarget (b, p.x, ax)) { hoverAdd = b; addX = ax; setMouseCursor (juce::MouseCursor::PointingHandCursor); }
+        // ADR-0048: this pass already read the count at the top; the add target answers under it too.
+        if (bandAddTarget (b, p.x, ax, N)) { hoverAdd = b; addX = ax; setMouseCursor (juce::MouseCursor::PointingHandCursor); }
         else                              setMouseCursor (juce::MouseCursor::NormalCursor);
     }
 
@@ -2260,9 +2297,12 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         return;
     }
     float ax;
-    if (bandAddTarget (b, p.x, ax))
+    // ADR-0048: the target's edges answer under the topology `b` was derived in. `addedBands` used to
+    // be seeded from a THIRD reading of mbBands, which `addBandAt` overwrites with its own before the
+    // caller can use it -- a read that was dead on arrival and read like a latch.
+    if (bandAddTarget (b, p.x, ax, gestureBands))
     {
-        int addedBands = bandCount();
+        int addedBands = gestureBands;
         const int idx = addBandAt (xToFreq (ax), addedBands);
         if (idx >= 0)
         {

@@ -142,11 +142,18 @@ private:
     // ADR-0046: `n` is the topology the caller proved; it sizes the plan so the burst's extent
     // and the per-store proof inside `writeCrossovers` come from ONE reading. -1 = read it here.
     bool  dragCrossoverTo (int handle, float x, int n = -1);
-    bool  bandAddTarget (int b, float x, float& outX) const noexcept;
+    // ADR-0048: `n` is the topology the CALLER derived `b` under, exactly as `bandAtX` and
+    // `handleNearX` take one. -1 keeps the live read for callers that have no latch. Without it the
+    // target index and the band edges came from two readings of `mbBands`, and a count raised
+    // between them clamped the click into a band it was never aimed at.
+    bool  bandAddTarget (int b, float x, float& outX, int n = -1) const noexcept;
 
     // `resultingBands` reports the count this add ESTABLISHED, taken from the same read of
     // `bandCount()` the insertion was computed against -- so the caller's gesture snapshot
     // cannot pick up a different count from a second, later read (ADR-0039).
+    // Takes a FREQUENCY, deliberately, which is why it carries no `expectedBands` the way
+    // `removeBand` does: a frequency means the same thing under every topology, a band index does
+    // not. ADR-0048 records the measurement behind that asymmetry.
     int   addBandAt (float hz, int& resultingBands);
     // `expectedBands` is the topology the caller validated its index against. removeBand reads
     // the live count ONCE and refuses unless it is still that one: the check and the operation

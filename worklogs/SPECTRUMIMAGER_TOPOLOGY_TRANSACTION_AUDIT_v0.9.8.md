@@ -1017,3 +1017,150 @@ outside this round's finding; none is a hard-stop category, and none is claimed 
 
 Recorded here rather than silently dropped, which is the whole point of §32 having re-opened those
 journals in the first place.
+
+## 38. Workflow audit, and the CI failure that was mine
+
+**The CI failure first, because it was blocking.** `source-lint` failed on `ea82eab` at step 10,
+"Check documentation evidence anchors": one drifted anchor,
+`docs/DOCUMENTATION_COVERAGE.md: src/gui/SpectrumImager.cpp:398-408 -> :410-420`, moved by the twelve
+lines ADR-0047's overloads added above `ownsSplit`.
+
+**Classification: a code issue in the change set — a stale documentation anchor — not a formatting or
+tooling problem.** The gate did exactly its job. The reason I did not see it locally is worth more
+than the fix: **CI compares against the PREVIOUS COMMIT, and I had verified against `origin/main`.**
+Those are different questions, and only the first sees drift a commit introduces and then re-anchors
+within itself. The last three rounds each re-anchored against a base chosen by hand; this is the
+round where that habit finally cost a red build. The rule from here: run
+`check-citations.py --check --base HEAD` as the final step before committing, which is what CI runs.
+
+**Workflow audit.** `wf_d3bf30b3-246` (last round's) had returned all six of its tracks — the
+load-bearing half — and eleven of roughly forty-five adversarial verifiers.
+
+| option | evidence | decision |
+|---|---|---|
+| let it finish | the remaining verifiers re-verify claims whose disposition is already implemented, tested and pushed; the eleven read so far refuted NOTHING and only corrected details the shipped fix already covered (the sibling window, the five-site scope, the insertion index) | rejected |
+| stop it | ~34 verifiers left at 2 concurrent agents on a 4-core box, during a round that needs the box for builds, TSan and valgrind; the same calculus recorded for `wf_17153265-ac9` in §25 | **taken** |
+| start a replacement | the two new findings are a different question and need their own tracks | **also taken** (`wf_7a4ee1f6-cc3`) |
+
+Its journals stay on disk and its six track results are consumed in §§33-37 and here. No unread
+result is being carried forward silently — §31 is why that sentence is written every round now.
+
+## 39. Finding 1 — "release-time automation loses a band": ALREADY PREVENTED, and measured six times over
+
+The mechanism the review describes is real and I did not have to argue about it: `mouseUp` proves the
+count with `gestureIsStale()`, latches `pressBands`, clears `gestureBands`, and then calls
+`endGesture (freqP[dragHandle])` — which DISPATCHES — before reaching `removeBand (dragHandle + 1,
+pressBands)`. A host recording automation can move `mbBands` from inside that dispatch. The window is
+not hypothetical and it is not cross-thread-only: it is REENTRANT, which makes it the most reachable
+of any window this series has examined.
+
+**And nothing gets through it.** The mutation run is the evidence:
+
+| mutation | checks killed |
+|---|---|
+| M1 — delete `removeBand`'s entry `N != expectedBands` | **none** (2 814 / 0) |
+| M1 + M4 — also delete the `bandCount() != expectedBands` before the solo store | **none** |
+| M1 + M4 + M-solo — also pass `-1` for `setSoloMask`'s `expectedBands` | **none** |
+| **M-I2 — the CALL SITE passes `bandCount()` instead of `pressBands`** | **2**, with the round's own diagnostic: `Bands 4 -> 3: the release read a count the check never saw` |
+
+**The first three readings were mine and the fourth came from the audit, and the fourth is the one
+that settles it.** Peeling the callee's comparisons one at a time never fires, because the width loop,
+the split loop and `setBands` each still refuse — so I first wrote M1 down as a *coverage hole*, a
+guard no test defends. It is not. What is load-bearing is the `pressBands` ARGUMENT, and State test 71
+leg C pins it precisely: remove the contract at the call site rather than one comparison inside the
+callee and the test fires twice, with the exact `Bands 4 -> 3` the source comment cites.
+
+The distinction matters because the two readings call for opposite actions — write a missing test
+versus write down why a single-line mutation cannot fire — and I would have taken the wrong one. It is
+also the third time this round a first reading needed correcting by measurement rather than argument;
+the other two are the probe's parked constant and its breakdown test in §40.
+
+**Disposition: already prevented; invariant documented at the guard** with the full ladder, so the
+next reader does not rediscover "this line kills no test" and delete it.
+
+**Two coverage holes the audit found while proving that, recorded rather than closed.** The delete-x
+call site's `pressBands` has no mutation that kills anything — the same change there (`removeBand (dB,
+bandCount())`) leaves 2 814 green, because the suite has no adversary for that path's narrower window.
+And `mouseUp`'s own staleness gate can be disabled entirely with a green build: what it protects is
+gesture hygiene (pairing `endChangeGesture`, tearing down the preview), which nothing in the state
+suite observes. Neither is a defect; both are places where a future edit would go unnoticed.
+
+**One thing the ladder does NOT cover, stated rather than implied:** a SAME-COUNT layout change (splits
+moved, count unchanged) landing between `removeBand`'s `fr[]`/`wd[]` snapshot and its first store is
+caught only when the split loop reaches it — after the width loop has already written. That is the
+recorded ADR-0042/0044 partial-transaction residue, unchanged and still accepted.
+
+## 40. Finding 2 — "concurrent topology changes misplace additions": CONFIRMED, fixed, measured
+
+`mouseDown` derives the band under the pointer from the latched count (`bandAtX (p.x, gestureBands)`)
+and then asks `bandAddTarget` where that band ENDS — and that function read `mbBands` for itself. Two
+readings, three writers, and the `b < N - 1` ternary between them decides whether the band's right
+edge is a split or the plot edge. Every call in the span is a pure read, so this one IS cross-thread
+only, unlike Finding 1.
+
+Measured with `--add-target-probe`, added this round: **55 misplacements in 4800 clicks (1.1 %) before,
+0 after**, control placing the split at 15030.7 Hz throughout, and the abandoned-add rate unchanged
+(1534-1582 before, 1569-1588 after) so the fix suppresses no add that previously succeeded.
+
+**The fix is one argument**, in ADR-0046's own shape: `bandAddTarget (b, x, outX, n)` with `mouseDown`
+passing `gestureBands` and `updateHover` passing the `N` it already read. A third reading of `mbBands`
+at the call site, which `addBandAt` overwrites before the caller can use it, is gone with it.
+
+**And the symmetric change on the other side of the call was implemented, measured and REMOVED.**
+Giving `addBandAt` the `expectedBands` contract `removeBand` has carried since ADR-0039 looked
+obviously right — the asymmetry between an add that proves nothing and a removal that proves
+everything reads like a gap. Three things settled it against:
+
+* it closed nothing (`--add-target-probe`: 0 misplacements with and without it, 4800 clicks each);
+* it is wrong in principle, and the principle was already written down — `removeBand` takes a BAND
+  INDEX, which a count change RETARGETS, while `addBandAt` takes a FREQUENCY, which means the same
+  thing under every topology. That is ADR-0045's own asymmetry, ruled there for `commitFreqEditor`;
+* it cost the user a click, turning an add into a no-op whenever a lane moved the count in the instant.
+
+Recorded at both call sites so the asymmetry reads as a decision rather than an oversight.
+
+## 40b. A NEW finding the audit turned up inside `removeBand`, escalated rather than patched
+
+Track 1 of `wf_7a4ee1f6-cc3` was asked whether ADR-0039's fix left any window uncovered, and found one
+that is not the same-count residue already on record: **the plan's SOURCE slot is never proved, only
+its destination.** `removeBand` builds `nf[]`/`nw[]` by shifting values down past the removed band, and
+each loop iteration proves the slot it is about to WRITE against the snapshot (`exactlyEqual (bandWidth
+(k), wd[k])`). It does not prove the slot the value was TAKEN FROM. So a same-count foreign write to
+the top live split or width — a slot the shift reads but never writes — is silently discarded and the
+transaction COMPLETES, rather than abandoning as it does for a write to any other slot.
+
+Measured by the track on its own scratch copy: 3 bands, splits 200/2000, widths 0.500/1.500/1.900,
+mask 6, delete-x on band 0, with a one-shot listener firing from inside `setSoloMask`'s store and
+writing `mbFreqMid` 2000 -> 5000 (split N-2, a plan SOURCE): the burst runs to completion and the
+5000 is gone.
+
+**Escalated, not patched, and the reason is not scope.** The fix — prove the source slot as well as
+the destination in both loops — changes when a topology transaction ABANDONS, which is ADR-0042's and
+ADR-0044's recorded disposition, and those were reached by measuring the alternatives against each
+other. Changing that from inside a round whose brief says *"avoid broad redesign"* would be exactly the
+move this series keeps refusing. It belongs in its own round with ADR-0042's legs re-run, and it is on
+the record here so it is not rediscovered as new.
+
+## 41. Verify-only items
+
+* **RISK-010 — unchanged.** Neither finding touches it: both are GUI-side topology readings, and
+  RISK-010 is the AUDIO-side reader tearing a ten-load snapshot in `toEngine`. No new evidence.
+* **Held-audition guard — unchanged.** `tick()` still returns at `if (! isShowing())` before the
+  guard; the harness still cannot show the editor; no production seam added this round either.
+* **Wheel input closes active gestures — no behaviour decision is required, and the options are laid
+  out anyway because the brief asked.** (A) keep ADR-0041's rule: the tick finishes the press, then
+  acts — the host gesture closes at the tick, the drag so far becomes its own undo step, the press is
+  dead, and a pending solo/delete click is swallowed; all four measured last round, all intended,
+  pinned by State test 80 and described in the CHANGELOG in user-facing terms. (B) make the wheel a
+  no-op while a press is held — preserves drag continuity and adds no undo step, but trades one silent
+  surprise for another and would need its own CHANGELOG entry reversing the last one. (C) defer the
+  tick until release — queued state and a delayed effect the user cannot predict; rejected outright.
+  **Recommendation: keep (A).** No defect is outstanding, (B) has no evidence in its favour beyond
+  taste, and reversing a shipped, documented, tested user-visible rule for taste is the one change
+  this series has consistently refused to make.
+* **U4 / wheel width undo — unchanged, accepted residual.** The wheel's width store still goes through
+  gesture-less `setParam`; nothing this round touched it and no new evidence arrived.
+* **TSan suppression — unchanged, and the corrected assertion held.** Still harness-scoped (the
+  symbol exists only in `tests/state_tests.cpp`); production inversions still visible (an all-production
+  cycle exits 66, measured); the assertion now counts per-entry breakdown lines rather than the summary
+  and ran green in CI on `ea82eab`.

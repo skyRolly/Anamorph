@@ -33,6 +33,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0041. Evidence: PR #143. [Verified]
 
 ### Fixed
+- **A band you add now appears where you clicked, even if your DAW changes the band count at that
+  instant.** Working out which band the pointer is in and working out where that band ENDS were two
+  separate readings of the band count. If an automation lane raised the count between them, the click
+  was clamped into a band it was never aimed at: clicking at 15 kHz in the top half of a two-band
+  layout could add the band down at 8 kHz instead. Measured before the fix at 55 occurrences in 4800
+  clicks against a lane moving the count, and none after; the number of clicks that add nothing at all
+  under such a lane is unchanged, so nothing you could previously do has become a no-op.
+  Decision: ADR-0048. Evidence: PR #143. [Verified]
 - **A split you are dragging can no longer drag a *different* split back to where it used to be.**
   If your DAW moved one of the other crossover frequencies — an automation lane playing back, a
   control surface, a linked macro — at the exact moment you pressed the mouse, the drag could take

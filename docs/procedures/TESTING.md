@@ -502,7 +502,36 @@ it was a logical one over two correctly-synchronised reads, which is exactly why
 behavioural gate and why TSan could never have found it. The large "drags that wrote nothing" count the probe reports alongside is the safe path
 working: a lane that moves during the drag makes `gestureIsStale()` true and the gesture abandons.
 
-`AnamorphStateTests --reprepare-race-probe` is the eighth, and like `--state-thread-probe` it is
+`AnamorphStateTests --add-target-probe` (ADR-0048) is the second probe of that kind and the second
+CI gate built on one. It drives an automation thread moving `mbBands` while the message thread clicks
+to add a band high in the top band of a two-band layout. The verdict is a message-thread write into
+[7 kHz, 8 kHz) — a frequency the correctly targeted path never produces (the control places the split
+at 15030.7 Hz every time) and the lane never writes, so no other event can be mistaken for it.
+
+| | run 1 | run 2 | run 3 | pooled |
+|---|---|---|---|---|
+| before ADR-0048 | 6 / 1600 | 28 / 1600 | 21 / 1600 | **55 / 4800 (1.1 %)** |
+| after | 0 | 0 | 0 | **0 / 4800** |
+
+**Read the "no add" column too.** Under a lane that keeps moving the count, most clicks add nothing —
+the ADR-0040 per-store proofs abandon the burst — and that rate is 1534–1582 before the change and
+1569–1588 after. It is reported precisely so a future reader can check that the fix did not buy its
+misplacement number by turning clicks into no-ops.
+
+**Two mistakes made while building this probe are recorded in its source, because both changed the
+answer.** Parking `mbFreqHigh` at 9 kHz instead of 16 kHz made the pre-fix misplacement count fall
+from 5 to 0, which for a moment looked like the defect evaporating: the observable needs the lane to
+have raised the count to three so that the click's add is a 3 → 4 add, and that constant is one of
+the four bands' edges. And the "a split stands near the click" half of the breakdown was testing
+`f2 > 12000`, which the 16 kHz parking satisfies on its own — a verdict that cannot be wrong is not
+evidence. The misplacement count never depended on either, because that verdict is the listener.
+
+**Its discriminating power is real but probabilistic**, unlike `--split-snapshot-probe`'s 7.7 %:
+pooled 0.83 % across every pre-fix run, so the CI step's 1200 clicks expect about ten hits. A single
+run is a strong detector, not a certain one, and one pre-fix run in six produced none at all. That
+outlier is on the record rather than averaged away.
+
+`AnamorphStateTests --reprepare-race-probe` is the ninth, and like `--state-thread-probe` it is
 built to run under ThreadSanitizer: a thread that is not the message thread moves Drive and then
 re-prepares the processor, 200 times over, while the main thread does only what the real message
 thread would — serve the processor's own 20 Hz latency timer. On the pre-round-15 code TSan names
@@ -899,6 +928,18 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   (§5, State test 42). The oracle is built from §9's rule rather than from any production merge.
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
+
+* **State test 82 — the add target and its edges answer under one topology** (ADR-0048). Same honest
+  scope as State test 81, stated in its own header: it CANNOT fail on the defect ADR-0048 fixes,
+  because `bandAtX` and `bandAddTarget` are both pure reads with no dispatch between them and only
+  another thread can put a count change in that window. What it pins is the CLAMP CONTRACT the fix
+  must not have changed — leg A, a click high in the TOP band of a two-band layout adds a split near
+  the click because that band's right edge is the plot edge; leg B, the same click inside the MIDDLE
+  band of a three-band layout is clamped to that band's own right edge, which is the behaviour the
+  racing case produced by accident and this one produces legitimately; leg C, the position the hover
+  affordance offers is one the press accepts. **Mutation record:** reverting ADR-0048 (letting
+  `bandAddTarget` read the count for itself again) leaves all 2814 checks green. The probe is the
+  coverage.
 
 * **State test 81 — the plan and the proof are one reading** (ADR-0047). Its honest scope is stated
   in its own header and repeated here: **this test cannot fail on the defect ADR-0047 fixes.** That
@@ -1772,6 +1813,7 @@ event — where it is the only job that runs at all.)
 |---|---|
 | `docs` | `python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py` |
 | `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, `python3 scripts/check-realtime.py --self-test` then that lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
+| `linux` (the ADR-0048 step) | `./build/.../AnamorphStateTests --add-target-probe 300` — exits non-zero if any click is clamped into a band it was not aimed at. Self-tested in both directions: exit 1 on the pre-fix tree, 0 on this one |
 | `linux` (the ADR-0047 step only) | `./build/.../AnamorphStateTests --split-snapshot-probe 300` — exits non-zero if anything launders. It is the only race gate outside the sanitizer jobs, because the thing it measures is a LOGICAL race over two correctly-synchronised atomic reads, which no sanitizer can see (TSan is silent over it, verified) |
 | `sanitizers` | ASan+UBSan over both suites, then valgrind memcheck over both suites (the valgrind step sets `ANAMORPH_TESTS_NO_FTZ=1` — see below) |
 | `realtime` | `cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=realtime`, build `AnamorphTests`, run it with **no `RTSAN_OPTIONS`** (ADR-0029 — `halt_on_error=false` would make it report and pass) |

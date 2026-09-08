@@ -16549,6 +16549,146 @@ static void testThePlanAndTheProofAreOneReading()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 82 -- the add target and its band edges answer under one topology
+//  (ADR-0048), at the corners a single thread can reach.
+//
+//  HONEST SCOPE, FIRST: like State test 81, this CANNOT fail on the defect
+//  ADR-0048 fixes. `bandAtX` and `bandAddTarget` are both pure reads with no
+//  dispatch between them, so only another thread can put a count change in the
+//  window -- `--add-target-probe` is what reaches it, and it measured 55
+//  misplacements in 4800 clicks before the fix and 0 after. What this test pins
+//  is the CLAMP CONTRACT the fix must not have changed:
+//
+//    leg A  a click in the TOP band of a two-band layout adds a split near the
+//           click, because the band's right edge is the plot edge.
+//    leg B  the same click in the MIDDLE band of a three-band layout is clamped
+//           to that band's right edge instead -- the behaviour the racing case
+//           produced by accident, here produced legitimately.
+//    leg C  the hover affordance and the click agree: whatever `updateHover`
+//           offers as the add position is what the press installs.
+static void testTheAddTargetAnswersUnderOneTopology()
+{
+    std::printf ("State test 82: the add target and its edges answer under one topology\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the add-target test");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the add-target test");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    check (bandsP && loP && midP && hiP, "the multiband parameters the add-target test drives exist");
+    if (! (bandsP && loP && midP && hiP)) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto bandsNow = [&] { return juce::roundToInt (plainOf (bandsP)); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    const float laneY = 0.62f * (float) imager->getHeight();
+    auto mev = [&] (float x, float y, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+    auto highestSplit = [&] (int n)
+    {
+        float best = 0.0f;
+        if (n > 1) best = juce::jmax (best, plainOf (loP));
+        if (n > 2) best = juce::jmax (best, plainOf (midP));
+        if (n > 3) best = juce::jmax (best, plainOf (hiP));
+        return best;
+    };
+    // The x the add affordance offers, found the way the hover path itself decides.
+    auto addX = [&] () -> float
+    {
+        for (float x = (float) imager->getWidth() - 8.0f; x > 8.0f; x -= 1.0f)
+        {
+            imager->mouseMove (mev (x, laneY, false));
+            if (imager->getMouseCursor() == juce::MouseCursor::PointingHandCursor) return x - 40.0f;
+        }
+        return -1.0f;
+    };
+
+    // ---- leg A: two bands, a click high in the TOP band lands near the click ----
+    {
+        setPlain (bandsP, 2.0f); setPlain (loP, 1000.0f); setPlain (midP, 8000.0f); setPlain (hiP, 16000.0f);
+        const float x = addX();
+        check (x > 0.0f, "leg A: the add affordance is offered in the top band");
+        if (x > 0.0f)
+        {
+            imager->mouseDown (mev (x, laneY, false));
+            imager->mouseUp   (mev (x, laneY, false));
+            check (bandsNow() == 3, "leg A: the click adds a band");
+            check (highestSplit (bandsNow()) > 12000.0f,
+                   "leg A: ...and the new split lands high, where the plot edge is the band's edge");
+        }
+    }
+
+    // ---- leg B: three bands, the same x is clamped to the middle band's edge ----
+    {
+        setPlain (bandsP, 3.0f); setPlain (loP, 1000.0f); setPlain (midP, 8000.0f); setPlain (hiP, 16000.0f);
+        const float x = 0.55f * (float) imager->getWidth();   // inside the middle band
+        imager->mouseMove (mev (x, laneY, false));
+        imager->mouseDown (mev (x, laneY, false));
+        imager->mouseUp   (mev (x, laneY, false));
+        check (bandsNow() == 4, "leg B: the click adds a band in the middle band");
+        check (highestSplit (4) <= 16000.0f + 0.5f,
+               "leg B: ...and nothing was written above the band's own right edge");
+    }
+
+    // ---- leg C: the hover offer and the press agree ----------------------------
+    {
+        setPlain (bandsP, 2.0f); setPlain (loP, 1000.0f); setPlain (midP, 8000.0f); setPlain (hiP, 16000.0f);
+        const float x = addX();
+        check (x > 0.0f, "leg C: the add affordance is offered");
+        if (x > 0.0f)
+        {
+            imager->mouseMove (mev (x, laneY, false));       // the hover computes its target
+            const int before = bandsNow();
+            imager->mouseDown (mev (x, laneY, false));       // the press computes its own
+            imager->mouseUp   (mev (x, laneY, false));
+            check (bandsNow() == before + 1,
+                   "leg C: the position the hover offered is one the press accepts");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 // ADR-0047 probe: can a gesture's PLAN BASIS and its OWNERSHIP STAMP come from
 // two different reads of the same parameter, and does the difference launder a
 // host automation write?
@@ -16771,6 +16911,204 @@ static int runSplitSnapshotProbe (int iterations)
     return totalLaundered == 0 ? 0 : 1;
 }
 
+// ---------------------------------------------------------------------------
+// ADD-TARGET probe (2026-09-09 review round): does the add's TARGET INDEX and its
+// CLAMP BOUNDARY come from the same topology?
+//
+// NOT part of the suite. `mouseDown` derives the band under the pointer from the
+// LATCHED count -- `bandAtX (p.x, gestureBands)` -- and then hands that index to
+// `bandAddTarget`, which reads `bandCount()` for ITSELF to work out the band's
+// edges. Every call in the span is a pure read, so nothing dispatches and the
+// window is CROSS-THREAD ONLY, which is what this probe drives.
+//
+// THE SIGNATURE. Two bands, split 0 at 1000 Hz and mbFreqMid parked at 8000 Hz
+// so that RAISING the count to three inserts an edge at 8000. The click is at
+// 15 kHz, inside band 1 under the two-band layout the press latched. With both
+// readings agreeing, `bandAddTarget` clamps against the PLOT EDGE and the new
+// split lands near the click. With the count raised between the two readings, it
+// clamps against the 8 kHz edge instead and the split lands there -- a band added
+// where the user did not click. The probe asks one question of the settled
+// layout: is there a split above 12 kHz?
+//     AnamorphStateTests --add-target-probe [iterations]
+static int runAddTargetProbe (int iterations)
+{
+    std::printf ("add-target probe: the click's band vs the clamp's band\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    if (ed == nullptr) { delete raw; std::printf ("  no editor\n"); return 1; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; std::printf ("  no imager\n"); return 1; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    if (! (bandsP && loP && midP && hiP))
+    { proc.editorBeingDeleted (ed); delete ed; std::printf ("  no params\n"); return 1; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto bandsNow = [&] { return juce::roundToInt (plainOf (bandsP)); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    const float laneY = 0.62f * (float) imager->getHeight();   // below the solo row, above the width line
+    auto mev = [&] (float x, float y, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+
+    // kHi STAYS AT 16 kHz, and the first attempt to "tidy" it to 9 kHz is worth recording: moving it
+    // made the pre-fix misplacement count fall from 5 to 0, which for a moment looked like the
+    // defect disappearing. It is not -- the observable needs the lane to have raised the count to
+    // three so that this click's add is a 3 -> 4 add, and kHi is one of the four bands' edges in
+    // that layout. The lesson is about the BREAKDOWN, not the verdict: "a split stands near the
+    // click" was testing `f2 > 12000`, which kHi = 16000 satisfies on its own. The window is now
+    // narrow and centred on what the control actually produces.
+    constexpr float kLo = 1000.0f, kMid = 8000.0f, kHi = 16000.0f, kClickHz = 15000.0f;
+    auto reset = [&]
+    {
+        imager->mouseUp (mev (-500.0f, laneY, false));
+        setPlain (loP, kLo); setPlain (midP, kMid); setPlain (hiP, kHi);
+        setPlain (bandsP, 2.0f);
+    };
+
+    // The click x, found by sweeping for the position whose tooltip names the band we mean.
+    reset();
+    float clickX = -1.0f;
+    {
+        // freqToX is private; locate the click by bisecting on the delete-x/tooltip geometry is
+        // fragile, so sweep for the x whose ADD affordance sits furthest right inside band 1.
+        for (float x = (float) imager->getWidth() - 8.0f; x > 8.0f; x -= 1.0f)
+        {
+            imager->mouseMove (mev (x, laneY, false));
+            if (imager->getMouseCursor() == juce::MouseCursor::PointingHandCursor) { clickX = x - 40.0f; break; }
+        }
+    }
+    if (clickX < 0.0f)
+    { proc.editorBeingDeleted (ed); delete ed; std::printf ("  no add affordance found\n"); return 1; }
+
+    // THE VERDICT CANNOT BE THE FINAL LAYOUT, because the lane is writing the COUNT and its last
+    // write decides what `bandsNow()` says. It is the WRITE the click makes: a correctly targeted
+    // add stores the new split near the click (the control below measures 15030 Hz); an add whose
+    // clamp came from the raised count stores it just below the 8 kHz edge instead. So the
+    // signature is a message-thread write into [7000, 8000) Hz, a value the correct path never
+    // produces and the lane never writes.
+    struct ClampDetector : juce::AudioProcessorParameter::Listener
+    {
+        std::atomic<bool> armed { false }, sawClamp { false };
+        std::thread::id gui {};
+        juce::RangedAudioParameter* p = nullptr;
+        void parameterValueChanged (int, float newNorm) override
+        {
+            if (! armed.load (std::memory_order_acquire) || p == nullptr) return;
+            if (std::this_thread::get_id() != gui) return;
+            const float hz = p->convertFrom0to1 (newNorm);
+            if (hz >= 7000.0f && hz < 8000.0f) sawClamp.store (true, std::memory_order_release);
+        }
+        void parameterGestureChanged (int, bool) override {}
+    };
+    ClampDetector det[3];
+    juce::RangedAudioParameter* fp[3] { loP, midP, hiP };
+    for (int i = 0; i < 3; ++i) { det[i].gui = std::this_thread::get_id(); det[i].p = fp[i]; fp[i]->addListener (&det[i]); }
+
+    std::atomic<int>  phase { 0 };
+    std::atomic<int>  spin  { 0 };
+    std::atomic<bool> quit  { false }, writing { false };
+    bool flip = false;
+    std::thread automation ([&]
+    {
+        while (! quit.load (std::memory_order_acquire))
+        {
+            while (phase.load (std::memory_order_acquire) == 1)
+            {
+                writing.store (true, std::memory_order_release);
+                const int n = spin.load (std::memory_order_relaxed);
+                for (int i = 0; i < n; ++i) std::atomic_signal_fence (std::memory_order_acq_rel);
+                flip = ! flip;
+                setPlain (bandsP, flip ? 3.0f : 2.0f);   // the lane moves the COUNT
+            }
+            writing.store (false, std::memory_order_release);
+        }
+    });
+
+    // CONTROL FIRST, with the lane silent: the same click must add a split near 15 kHz, or the
+    // probe is measuring its own aim rather than the defect.
+    {
+        reset();
+        imager->mouseDown (mev (clickX, laneY, false));
+        imager->mouseUp   (mev (clickX, laneY, false));
+        std::printf ("  control (no lane): clickX %.1f -> bands %d, splits %.1f / %.1f / %.1f\n",
+                     clickX, bandsNow(), plainOf (loP), plainOf (midP), plainOf (hiP));
+    }
+
+    int misplaced = 0, placed = 0, noAdd = 0;
+    for (const int sp : { 0, 40, 120, 400 })
+    {
+        int m = 0, ok = 0, none = 0;
+        for (int it = 0; it < iterations; ++it)
+        {
+            reset();
+            for (auto& d : det) d.sawClamp.store (false, std::memory_order_release);
+            for (auto& d : det) d.armed.store (true, std::memory_order_release);
+            spin.store (sp, std::memory_order_relaxed);
+            phase.store (1, std::memory_order_release);
+
+            imager->mouseDown (mev (clickX, laneY, false));
+            imager->mouseUp   (mev (clickX, laneY, false));
+
+            phase.store (0, std::memory_order_release);
+            while (writing.load (std::memory_order_acquire)) { }
+            for (auto& d : det) d.armed.store (false, std::memory_order_release);
+
+            bool clamped = false;
+            for (auto& d : det) clamped = clamped || d.sawClamp.load (std::memory_order_acquire);
+            const float f0 = plainOf (loP), f1 = plainOf (midP), f2 = plainOf (hiP);
+            auto nearClick = [] (float f) { return f > 14000.0f && f < 15500.0f; };
+            const bool high = nearClick (f0) || nearClick (f1) || nearClick (f2);
+            if (clamped)   ++m;      // the click was clamped into a band it was not aimed at
+            else if (high) ++ok;     // a split stands near the click
+            else           ++none;   // nothing was added
+        }
+        misplaced += m; placed += ok; noAdd += none;
+        std::printf ("  spin %3d: misplaced %d / %d   (placed near the click %d, no add %d)\n",
+                     sp, m, iterations, ok, none);
+    }
+    quit.store (true, std::memory_order_release);
+    automation.join();
+    for (int i = 0; i < 3; ++i) fp[i]->removeListener (&det[i]);
+
+    std::printf ("  TOTAL MISPLACED: %d   (placed %d, no add %d)\n", misplaced, placed, noAdd);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+    return misplaced == 0 ? 0 : 1;
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -16832,6 +17170,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--split-snapshot-probe") == 0)
         return runSplitSnapshotProbe (argc > 2 ? std::atoi (argv[2]) : 1000);
+
+    if (argc > 1 && std::strcmp (argv[1], "--add-target-probe") == 0)
+        return runAddTargetProbe (argc > 2 ? std::atoi (argv[2]) : 300);
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -16923,6 +17264,7 @@ int main (int argc, char* argv[])
     testTheFarSideOfACoupledCommitIsCoveredByItsCaller();
     testAWheelTickFinishesAHeldPress();
     testThePlanAndTheProofAreOneReading();
+    testTheAddTargetAnswersUnderOneTopology();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

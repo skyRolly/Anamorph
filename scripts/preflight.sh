@@ -108,9 +108,25 @@ fi
 # from a commit earlier in the same branch, and both `origin/main` bases already
 # carried the re-aimed spelling, so preflight was green and `source-lint` was
 # not. That is a false green in the one script whose purpose is to prevent one.
-PREV="$(git rev-parse HEAD~1 2>/dev/null || true)"
+# WHICH COMMIT IS THE PUSH PREDECESSOR DEPENDS ON WHETHER THE CHANGE SET IS
+# COMMITTED YET, and getting that wrong is the same false green from the other
+# side. Run after committing, CI will compare the new HEAD against HEAD~1. Run on
+# a DIRTY tree -- which is when preflight is most useful, before the commit -- the
+# work in hand becomes the next commit and CI will compare it against HEAD. Using
+# HEAD~1 there checks one commit too far back: it reports drift the last commit
+# already re-anchored, and can pass a tree whose anchors drifted only within it.
+# Measured 2026-09-09: on the dirty tree of the ADR-0048 round, HEAD~1 reported 9
+# stale anchors that HEAD reported as clean, and CI (comparing against HEAD) was
+# the one that was right.
+if git diff --quiet HEAD 2>/dev/null; then
+    PREV="$(git rev-parse HEAD~1 2>/dev/null || true)"
+    PREV_WHY="the push predecessor"
+else
+    PREV="$(git rev-parse HEAD 2>/dev/null || true)"
+    PREV_WHY="the push predecessor of this UNCOMMITTED change set"
+fi
 if [ -n "$PREV" ] && [ "$PREV" != "$MERGE_BASE" ]; then
-    echo "-- against the push predecessor ($PREV), which is what CI compares"
+    echo "-- against $PREV_WHY ($PREV), which is what CI compares"
     python3 scripts/check-citations.py --check --base "$PREV"
 fi
 
