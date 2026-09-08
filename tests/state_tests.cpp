@@ -4071,6 +4071,73 @@ static void testACommitWithNoIntentWritesNothing()
         }
     }
 
+    // ---- LEG F: the same, on the RESET path. Resetting the third split of a
+    //  layout packed against the LEFT edge slides the cluster right, so the pin
+    //  lands at 4732.0 Hz rather than its 3000 Hz default -- the projection doing
+    //  its job. A host moving a neighbour from inside the reset's own gesture-open
+    //  must not leave that pin standing on a world that has gone.
+    {
+        auto packedLow = [&] ()
+        {
+            imager->cancelActiveDrag();
+            imager->cancelInlineEdit();
+            setPlain (bandsP, 4.0f);
+            setPlain (soloP,  0.0f);
+            setPlain (loP,    21.0f);
+            setPlain (midP,   25.0f);
+            setPlain (hiP, 19000.0f);
+        };
+        auto lastHandleX = [&] () -> float
+        {
+            for (float x = W - 3.0f; x > 2.0f; x -= 1.0f)
+            {
+                imager->mouseMove (mev (x, laneY, x, laneY, false));
+                if (imager->getTooltip() == juce::String ("Drag to change the split frequency")) return x;
+            }
+            return -1.0f;
+        };
+        const auto altMods = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                                 | juce::ModifierKeys::altModifier);
+        auto altClick = [&] (float x)
+        {
+            imager->mouseDown (juce::MouseEvent (source, { x, laneY }, altMods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                                 imager, imager, juce::Time::getCurrentTime(),
+                                                 { x, laneY }, juce::Time::getCurrentTime(), 1, false));
+        };
+
+        packedLow();
+        const float hx = lastHandleX();
+        check (hx >= 0.0f, "leg F: the last split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            altClick (hx);
+            check (plainOf (hiP) > 3500.0f,
+                   "leg F: an uninterrupted reset of a packed layout still slides its cluster");
+        }
+
+        packedLow();
+        const float hx2 = lastHandleX();
+        if (hx2 >= 0.0f)
+        {
+            WriteFromInsideAGestureOpen poke;
+            poke.target = midP;
+            poke.to     = 8000.0f;
+            hiP->addListener (&poke);
+            poke.armed = true;
+            altClick (hx2);
+            const bool landed = poke.fired;
+            hiP->removeListener (&poke);
+
+            check (landed, "leg F: the probe write landed inside the reset's own gesture-open");
+            if (landed && ! (plainOf (hiP) > plainOf (midP)))
+                std::printf ("  [leg F] the reset pin was stored against splits that had moved:"
+                             " %.1f / %.1f / %.1f\n", (double) plainOf (loP),
+                             (double) plainOf (midP), (double) plainOf (hiP));
+            check (! landed || plainOf (hiP) > plainOf (midP),
+                   "leg F: a reset whose projection depended on the neighbours is computed from where they ARE");
+        }
+    }
+
     proc.editorBeingDeleted (ed);
     delete ed;
 }

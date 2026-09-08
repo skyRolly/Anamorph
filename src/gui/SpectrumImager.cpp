@@ -655,24 +655,29 @@ void SpectrumImager::resetCrossover (int i)
 {
     auto* p = (i >= 0 && i < 3) ? freqP[i] : nullptr;
     if (p == nullptr) return;
-    const int M = bandCount() - 1;
-    if (i >= M) return;   // same rule as commitFreqEditor: the handle must still name a live split
-    float xs[3] {}, was[3] {};
-    for (int k = 0; k < M && k < (int) std::size (freqP); ++k)
-    {
-        xs[k]  = freqToX (crossover (k));
-        was[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;   // the world the plan is computed from
-    }
-    xs[i] = freqToX (p->convertFrom0to1 (p->getDefaultValue()));
-    projectGaps (xs, M, i);
+    if (i >= bandCount() - 1) return;   // same rule as commitFreqEditor: the handle must still be live
     if (onSweep) onSweep();
-    // ADR-0042: the reset is confirmed before anything is moved to make room for it -- every
-    // neighbour position below was computed against this split landing where it was told to.
-    float owned = 0.0f;
+    // ADR-0043: the plan is computed AFTER the gesture opens, for the reason spelled out in
+    // commitFreqEditor -- `projectGaps` slides the pin by an amount derived from the NEIGHBOURS, and
+    // `beginChangeGesture` dispatches to the host before the store. ADR-0042: the reset is then
+    // confirmed before anything is moved to make room for it.
     p->beginChangeGesture();
-    const bool landed = storeOwned (p, juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i])), owned);
+    const int M = bandCount() - 1;
+    float xs[3] {}, was[3] {}, owned = 0.0f;
+    bool ok = (i < M);
+    if (ok)
+    {
+        for (int k = 0; k < M && k < (int) std::size (freqP); ++k)
+        {
+            xs[k]  = freqToX (crossover (k));
+            was[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;   // the world the plan is computed from
+        }
+        xs[i] = freqToX (p->convertFrom0to1 (p->getDefaultValue()));
+        projectGaps (xs, M, i);
+        ok = storeOwned (p, juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i])), owned);
+    }
     p->endChangeGesture();
-    if (! landed || ! juce::exactlyEqual (p->getValue(), owned)) return;
+    if (! ok || ! juce::exactlyEqual (p->getValue(), owned)) return;
     (void) spreadSplits (xs, was, M, i);
 }
 
@@ -886,6 +891,7 @@ void SpectrumImager::openFreqEditor (int i)
         freqEditor->setColour (juce::TextEditor::highlightColourId, colours::accent.withAlpha (0.4f));
         freqEditor->setFont (juce::Font (juce::FontOptions (11.0f)));
         freqEditor->setSelectAllWhenFocused (true);
+        freqEditor->onTextChange = [this] { editTextEdited = true; };
         freqEditor->onReturnKey  = [this] { commitFreqEditor(); };
         freqEditor->onEscapeKey  = [this] { closeFreqEditor(); };
         freqEditor->onFocusLost  = [this] { commitFreqEditor(); };
@@ -894,6 +900,8 @@ void SpectrumImager::openFreqEditor (int i)
     auto chip = numberChip (i).expanded (6.0f, 4.0f);
     freqEditor->setBounds (chip.toNearestInt());
     freqEditor->setText (freqText (crossover (i)), juce::dontSendNotification);
+    editTextEdited = false;              // seeded, not typed: `dontSendNotification` fires nothing
+    editOpenText   = freqEditor->getText();
     freqEditor->setVisible (true);
     freqEditor->grabKeyboardFocus();
     freqEditor->selectAll();
@@ -902,32 +910,49 @@ void SpectrumImager::commitFreqEditor()
 {
     if (editingHandle < 0) return;
     const int i = editingHandle;
-    const int M = bandCount() - 1;
     // ADR-0039's rule, at this commit point too: the handle names a split by POSITION, and
     // `openFreqEditor` proved it live when the editor OPENED. Nothing closes the editor when the
     // band count moves -- not the 24 Hz reconcile, not `cancelActiveDrag` -- so a host lane that
     // drops Bands while the user is typing leaves this committing a split the topology no longer
     // uses, and spreading the live ones around a pin that is not there. REFUSE, never clamp.
-    if (i >= M) { closeFreqEditor(); return; }
-    float xs[3] {}, was[3] {};
-    for (int k = 0; k < M && k < (int) std::size (freqP); ++k)
+    if (i >= bandCount() - 1) { closeFreqEditor(); return; }
+    // ADR-0043. A COMMIT CARRIES INTENT, OR IT CARRIES NOTHING. The box is SEEDED from the live
+    // split when the chip opens, and this function is reached by Return, by FOCUS LOSS and by any
+    // mouseDown in the component -- so opening the chip and clicking away used to re-commit the
+    // value the split had at open time. Measured: `5000.0 Hz was installed and 200.0 Hz was written
+    // over it`, and, with nothing moving at all, one automation touch and one undo step for an edit
+    // that never happened. A typed value is a different matter entirely and still wins: the user's
+    // own action is the newer authority (ADR-0036 section 25).
+    if (! editTextEdited && freqEditor->getText() == editOpenText) { closeFreqEditor(); return; }
+    auto* p = freqP[i];
+    if (p == nullptr) { closeFreqEditor(); return; }
+    const float want = juce::jlimit (kFreqLo, kFreqHi, parseFreq (freqEditor->getText()));
+
+    // ADR-0043. THE PLAN IS COMPUTED AFTER THE GESTURE OPENS. `projectGaps` pins the edited split
+    // and then slides the WHOLE cluster -- the pin included -- back inside the plot edges by an
+    // amount derived from the NEIGHBOURS, and `beginChangeGesture` dispatches to the host before the
+    // store. Computed before the open, the stored value could therefore be a projection of a world
+    // that had already moved: measured `8440.1 / 3000.0 / 19500.0`, the first split above the
+    // second. Computed here, `projectGaps` is pure and nothing dispatches between the snapshot and
+    // the store, so the projection is a function of the world one statement earlier.
+    p->beginChangeGesture();
+    const int M = bandCount() - 1;
+    float xs[3] {}, was[3] {}, owned = 0.0f;
+    bool ok = (i < M);
+    if (ok)
     {
-        xs[k]  = freqToX (crossover (k));
-        was[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;
+        for (int k = 0; k < M && k < (int) std::size (freqP); ++k)
+        {
+            xs[k]  = freqToX (crossover (k));
+            was[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;
+        }
+        xs[i] = freqToX (want);
+        projectGaps (xs, M, i);
+        ok = storeOwned (p, juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i])), owned);
     }
-    xs[i] = freqToX (juce::jlimit (kFreqLo, kFreqHi, parseFreq (freqEditor->getText())));
-    projectGaps (xs, M, i);
-    if (auto* p = freqP[i])
-    {
-        // ADR-0042: same shape as resetCrossover -- the typed value is confirmed, then the
-        // neighbours that were positioned around it are spread, and only while they are still ours.
-        float owned = 0.0f;
-        p->beginChangeGesture();
-        const bool landed = storeOwned (p, juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i])), owned);
-        p->endChangeGesture();
-        if (landed && juce::exactlyEqual (p->getValue(), owned))
-            (void) spreadSplits (xs, was, M, i);
-    }
+    p->endChangeGesture();
+    if (ok && juce::exactlyEqual (p->getValue(), owned))
+        (void) spreadSplits (xs, was, M, i);
     closeFreqEditor();
 }
 void SpectrumImager::closeFreqEditor()
@@ -1202,6 +1227,16 @@ void SpectrumImager::tick (double dt)
         redSettled = ! any;
         dataMoved |= any;
     }
+
+    // ADR-0043. THE THIRD CONSUMER ASKS THE SAME QUESTION THE OTHER TWO DO. `mouseDrag` and
+    // `mouseUp` both refuse to act on a gesture whose world has moved; this promotion acted on
+    // `soloPressBand` -- a band index by POSITION, latched at mouseDown -- on a purely TIME-BASED
+    // condition, so a host lane that changed the topology during the hold auditioned a band the
+    // user never pressed: press band 3 of four, Bands drops to two, and `SoloMonitor` masks
+    // `0x8 & 0x3` to nothing, so the user holds a solo button and hears no solo at all. Fires once
+    // rather than every frame, because `cancelActiveDrag` clears `gestureBands`; and it returns
+    // before any repaint when no identifier is latched, so an Alt-click reset costs one int store.
+    if (gestureIsStale()) cancelActiveDrag();
 
     // Press-and-hold a headphone -> momentary audition of that band (engine override).
     if (soloPressBand >= 0 && ! soloHoldActive && ! soloMovedBand

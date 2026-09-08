@@ -195,6 +195,15 @@ private:
 
     std::unique_ptr<juce::TextEditor> freqEditor;
     int editingHandle = -1;
+    // ADR-0043: did the user actually change the text? `openFreqEditor` seeds the box from the live
+    // split, so a commit with neither of these true is a store of a value nobody asked for -- and,
+    // if a host moved that split while the box was open, a store of a value from before it did.
+    // TWO signals, because one of them is asynchronous: `onTextChange` is delivered through
+    // `postCommandMessage` (juce_TextEditor.cpp:594-599), which is reliable in a running message
+    // loop and catches even a retyped identical string, but never arrives without one. The text
+    // comparison is synchronous and needs no message loop. Either is sufficient.
+    bool editTextEdited = false;
+    juce::String editOpenText;
 
     static constexpr int fftOrder = 13;
     static constexpr int fftSize  = 1 << fftOrder; // 8192
