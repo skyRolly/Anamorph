@@ -569,14 +569,21 @@ void SpectrumImager::resetParam (juce::RangedAudioParameter* p)
 // still reported success. Measured: `the count store did not stand (Bands 2) and the press still
 // latched the add and opened 1 gesture(s) on the new split`. The count is re-read once, after the
 // gesture closes, which is the last instant this function can still be believed.
-bool SpectrumImager::setBands (int n, int expectedBands)
+bool SpectrumImager::setBands (int n, int expectedBands, int expectedMask)
 {
     auto* p = bandsP;
     if (p == nullptr) return false;
     const int want = juce::jlimit (1, 4, n);
     bool stored = false;
     p->beginChangeGesture();
-    if (expectedBands < 0 || bandCount() == expectedBands)
+    // ADR-0044. `expectedMask` is why this guard is more than a repeat of the caller's. The count
+    // is the store that REINTERPRETS the solo word (`SoloMonitor::process` masks it with
+    // ((1 << bands) - 1)), and `beginChangeGesture` above dispatches to every listener BEFORE this
+    // line -- so a host answering the gesture open by writing mbSolo is invisible to any check the
+    // caller makes outside. Same shape `setSoloMask` has carried since ADR-0041, same reason: the
+    // check and the store it guards must have nothing between them.
+    if ((expectedBands < 0 || bandCount() == expectedBands)
+        && (expectedMask < 0 || soloMask() == expectedMask))
     {
         p->setValueNotifyingHost (p->convertTo0to1 ((float) want));
         stored = true;
@@ -741,10 +748,13 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
     // standing. A legitimately begun operation truncated by a newer authority is ADR-0036 section
     // 25's rule, not a stale overwrite.
     //
-    // ADR-0042 CORRECTION: this used to say "at most ONE already-issued store behind", and that was
-    // simply wrong -- an add at N = 3 issues nine stores and a removal at N = 4 issues seven, so the
-    // largest residue is eight and six. The number is bounded and knowable, not one, and it is
-    // counted honestly in the worklog rather than understated here. What DOES reduce it is eliding
+    // ADR-0042 CORRECTION, ITSELF CORRECTED (ADR-0044). This used to say "at most ONE already-issued
+    // store behind", which was simply wrong; ADR-0042 replaced it with "an add at N = 3 issues nine
+    // stores and a removal at N = 4 issues seven, so the largest residue is eight and six", and that
+    // is one too high for the add. Re-counted from this code: the first `ins + 1` width slots are
+    // ALWAYS elided (`nw[i] == wd[i]` below the insertion), so an add at N = 3 issues EIGHT value
+    // stores and the largest residue is SEVEN. The number is bounded and knowable, not one, and it
+    // is counted honestly in the worklog rather than understated here. What DOES reduce it is eliding
     // the stores whose plan equals the snapshot: below the insertion (or above the removal) most of
     // the plan is the world it was computed from, and re-writing those slots bought nothing but
     // reentrancy surface -- plus, for the splits, a pixel round trip that MOVED them. Measured on a
@@ -752,14 +762,35 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
     // never touched, reported to the host as an automation and undo entry.
     // `N` is this transaction's expected topology, read once at entry (ADR-0039). A caller that
     // sees -1 knows nothing it planned was completed as planned.
-    // ADR-0041: a refusal is heard. The transaction cannot go on to change the band count with
-    // the mask still in the old numbering -- that is the half-applied commit T3 measured.
+    // ADR-0041: a refusal is heard. This used to add "the transaction cannot go on to change the
+    // band count with the mask still in the old numbering", which was FALSE and is corrected by
+    // ADR-0044: this guard tests a change landing BEFORE the mask store, and said nothing about one
+    // landing after it. That is what the `soloMask() != nm` checks below and `setBands`'s
+    // `expectedMask` now close, measured as `Bands 3 with mask 0x8`.
+    //
+    // ADR-0044: AND THE MASK IS RE-PROVED ALL THE WAY TO THE COUNT. The paragraph above looks
+    // FORWARD -- it proves the store about to happen, against the snapshot its plan came from. The
+    // solo word needs the other direction too, because the COUNT is what reinterprets it:
+    // `SoloMonitor::process` masks it with ((1 << bands) - 1), so a word written for the old
+    // numbering, committed under the new count, silently drops or moves a soloed band. `soloMask()`
+    // used to be read exactly twice in this function -- the snapshot and the guard before
+    // `setSoloMask` -- and never again, while up to six further synchronous dispatches ran before
+    // the count store. Measured on a removal at N = 4 with the probe firing from inside a LATER
+    // store: `Bands 3 with mask 0x8`, a word for four bands that three bands then mask to nothing.
+    //
+    // The widths and the splits deliberately do NOT get this treatment. ADR-0042 measured aborting
+    // at a width leaf and found it WORSE -- `Bands 3 mask 0x5 wLo 1.750`, the intended layout with
+    // the newer authority's width standing -- because the mask is stored first and is only correct
+    // once the count changes. `mbWidthLow` means band 0's width under either topology; `mbSolo`
+    // does not mean the same thing under both. That asymmetry is the whole of this decision, and
+    // State test 76 legs B and C are the controls that keep it.
     if (bandCount() != N || soloMask() != oldMask) return -1;
     if (! setSoloMask (nm, N, oldMask)) return -1;
 
     for (int i = 0; i <= N; ++i)
     {
         if (bandCount() != N || ! juce::exactlyEqual (bandWidth (i), wd[i])) return -1;
+        if (soloMask() != nm) return -1;                   // ADR-0044
         if (juce::exactlyEqual (nw[i], wd[i])) continue;   // the plan IS the world here
         setParam (widthP[i], nw[i]);
     }
@@ -778,11 +809,15 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
         // 30-iteration bisection over a monotone-spline log axis, not the identity, so storing an
         // unmoved split MOVED it -- measured at -1.678e-04 Hz on a two-band add, into the host's
         // automation lane and the undo stack for a split the user never touched.
+        if (soloMask() != nm) return -1;                  // ADR-0044
         if (i < M && juce::exactlyEqual (nx[i], xs[i])) continue;
         setParam (freqP[i],  juce::jlimit (kFreqLo, kFreqHi, xToFreq (nx[i])));
     }
-    if (bandCount() != N) return -1;
-    if (! setBands (N + 1, N)) return -1;
+    // ADR-0044: the mask is proved INSIDE the count store's own gesture bracket, not out here --
+    // `setBands`'s `beginChangeGesture` dispatches before its guard, so a host answering the
+    // gesture open is invisible to any check the caller makes. The `bandCount()` test that used to
+    // sit here was already dominated by `setBands`'s own, with nothing dispatching in between.
+    if (! setBands (N + 1, N, nm)) return -1;
     resultingBands = N + 1;      // from THIS read of the count, not a second one (ADR-0039)
     return ins;
 }
@@ -847,33 +882,40 @@ void SpectrumImager::removeBand (int b, int expectedBands)
     // standing. A legitimately begun operation truncated by a newer authority is ADR-0036 section
     // 25's rule, not a stale overwrite.
     //
-    // ADR-0042 CORRECTION: this used to say "at most ONE already-issued store behind", and that was
-    // simply wrong -- an add at N = 3 issues nine stores and a removal at N = 4 issues seven, so the
-    // largest residue is eight and six. The number is bounded and knowable, not one, and it is
-    // counted honestly in the worklog rather than understated here. What DOES reduce it is eliding
+    // ADR-0042 CORRECTION, ITSELF CORRECTED (ADR-0044). This used to say "at most ONE already-issued
+    // store behind", which was simply wrong; ADR-0042 replaced it with "an add at N = 3 issues nine
+    // stores and a removal at N = 4 issues seven, so the largest residue is eight and six", and that
+    // is one too high for the add. Re-counted from this code: the first `ins + 1` width slots are
+    // ALWAYS elided (`nw[i] == wd[i]` below the insertion), so an add at N = 3 issues EIGHT value
+    // stores and the largest residue is SEVEN. The number is bounded and knowable, not one, and it
+    // is counted honestly in the worklog rather than understated here. What DOES reduce it is eliding
     // the stores whose plan equals the snapshot: below the insertion (or above the removal) most of
     // the plan is the world it was computed from, and re-writing those slots bought nothing but
     // reentrancy surface -- plus, for the splits, a pixel round trip that MOVED them. Measured on a
     // two-band add: `split0 200.000015259 -> 199.999847412, delta -1.678e-04` for a split the user
     // never touched, reported to the host as an automation and undo entry.
     // ADR-0041: a refusal is heard -- see addBandAt.
+    // ADR-0044: the mask is re-proved all the way to the count -- see addBandAt for the reasoning
+    // and the measurement, and for why the widths and splits deliberately keep ADR-0042's
+    // disposition instead.
     if (bandCount() != expectedBands || soloMask() != oldMask) return;
     if (! setSoloMask (nm, expectedBands, oldMask)) return;
 
     for (int k = 0; k < N - 1; ++k)
     {
         if (bandCount() != expectedBands || ! juce::exactlyEqual (bandWidth (k), wd[k])) return;
+        if (soloMask() != nm) return;                      // ADR-0044
         if (juce::exactlyEqual (nw[k], wd[k])) continue;   // the plan IS the world here
         setParam (widthP[k], nw[k]);
     }
     for (int k = 0; k < N - 2; ++k)
     {
         if (bandCount() != expectedBands || ! juce::exactlyEqual (crossover (k), fr[k])) return;
+        if (soloMask() != nm) return;                      // ADR-0044
         if (juce::exactlyEqual (nf[k], fr[k])) continue;
         setParam (freqP[k],  nf[k]);
     }
-    if (bandCount() != expectedBands) return;
-    (void) setBands (N - 1, expectedBands); // last store: nothing follows it to abandon
+    (void) setBands (N - 1, expectedBands, nm); // last store: nothing follows it to abandon
 }
 
 // ----------------------------------------------------------------------------

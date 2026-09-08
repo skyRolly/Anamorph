@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:816 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:851 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:999`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1041`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10034,7 +10034,7 @@ that the fix covered one direction only. Both are settled here.
 **A SECOND defect, and the scanners never saw it either.** `dragOrigX` (src/gui/SpectrumImager.h:249)
 is the drag-start x of every split, seeded once when a gesture begins and read for the whole gesture.
 Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:521)
-and `moveBand` (:650). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
+and `moveBand` (:657). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
 splits in USE at the press — so a host write of `mbBands` that **raised** Bands mid-gesture made the
 consumers ask `projectFromOrig` for origins nobody had written. Those slots still held the `{0,0,0}`
 initialiser, so unlike the falling case this half was **stale, not indeterminate — never UB**; the
@@ -10114,7 +10114,7 @@ records its removal). Four bands, drag split 2 out, host drops Bands to 2, relea
 **Fix, at the call site.** `if (dragRemovePending && dragHandle < bandCount() - 1)`. Splits are
 `0 .. bandCount() - 2`, so that is exactly "the dragged split still exists", and the same condition
 `removeBand` would need for `dragHandle + 1` to name a real band. `removeBand`'s clamp is left alone:
-its only other caller (:2168) already proves its argument live through `deleteHit`, so with this call
+its only other caller (:2210) already proves its argument live through `deleteHit`, so with this call
 site guarded the clamp has no reachable stale input and is defence rather than behaviour. Tightening
 it into a reject would have changed a shared helper for one caller's bug.
 
@@ -10135,7 +10135,7 @@ is defined relative to and whether its consumer revalidates:
 | `dragHandle` → `removeBand` | split position at press | **no** → **FIXED this round** | a different live band deleted |
 | `dragOrigX[]` | split positions at press | n/a — every slot now seeded | none (fixed in the previous pass) |
 | `soloMoveLeft` / `soloMoveRight` | split positions at `beginBandMove` | **yes** — `projectFromOrig` validates both pins | the move does less, never something else |
-| `pressDeleteBand` | band index at press | **yes** — `deleteHit (e.position) == dB` (:2168) | none |
+| `pressDeleteBand` | band index at press | **yes** — `deleteHit (e.position) == dB` (:2210) | none |
 | `scrollHandle` / `scrollBand` | index at hover | **yes** — `< N - 1` / `< N` in `mouseWheelMove` | none |
 | `dragBand` → width write | band index at press | no | writes a vanished band's own Width parameter |
 | `soloPressBand` → `toggleSoloBit` | band index at press | no | sets a mask bit for a vanished band |
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:816 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:851 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10528,6 +10528,52 @@ re-ruling, chronology, the final audit table, validation), `ADR-0042` + the `ADR
 `ADR_INDEX`, `TESTING.md` (State test 74), `CHANGELOG.md` `[0.9.7]` Fixed. Not a gate item: no
 parameter ID, serialization, threading-model, DSP-order or reported-latency change, and no Accepted
 ADR conflict. [Verified]
+
+## SpectrumImager — a transaction owns what it has written, and the changelog moves to 0.9.8 (2026-09-08, tenth pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: the solo word is re-proved before every store of
+both topology bursts, and `setBands` takes an `expectedMask` it proves **inside** its own gesture
+bracket. `tests/state_tests.cpp`: State test 76. `CHANGELOG.md`: this PR's thirteen entries move
+from `[0.9.7]` to a new `[0.9.8]`, with `CMakeLists.txt` and the three current-version documents
+following.
+
+**Why.** ADR-0040 re-validates before every store and ADR-0042 confirms every store on its far side,
+and read together they sound complete. Both look **forward**. Nothing re-proved a value the
+transaction had already committed, and the band count — written last — is the one store that
+*reinterprets* another: `SoloMonitor::process` masks the solo word with `((1 << bands) - 1)`.
+Measured on `91e20d9`: `Bands 3 with mask 0x8`, a word written for four bands that three bands then
+mask to nothing while the button stays lit. Two further measurements separated the two mechanisms
+the fix needs — `split0 2000.0` for a transaction that ran on past the divergence, and the same
+`Bands 3 with mask 0x8` again from inside `setBands`'s **own** `beginChangeGesture`, the window no
+caller-side check can reach.
+
+**The round's audit refuted the round's first fix, and that is recorded rather than dropped.** The
+first implementation proved the whole written prefix — mask, widths *and* splits — and converted the
+burst leaves from `setParam` to `storeOwned`. It passed its own tests. It also (1) contradicted
+ADR-0042 on a **measured** point: that ADR keeps `setParam` `void` because aborting at a width leaf
+was measured worse (`Bands 3 mask 0x5 wLo 1.750`), and aborting on a width leaves the old count with
+an already-remapped mask — the very incoherence being fixed; and (2) left the gesture-open window
+open, because the prefix proof sat outside `setBands`'s bracket. `mbWidthLow` means band 0's width
+under either topology; `mbSolo` does not mean the same thing under both. Legs B and C were rewritten
+from assertions into **controls** that keep that asymmetry.
+
+**Two in-source claims corrected.** *"The transaction cannot go on to change the band count with the
+mask still in the old numbering"* was false — the guard it sat under tests a change landing
+**before** the mask store. And the store census, itself an ADR-0042 correction of an earlier "at
+most one", is one too high: an add at N = 3 issues **eight** value stores, not nine, because the
+first `ins + 1` width slots are always elided, so the largest residue is **seven**.
+
+**The ADR-0025 disclosure understated its own gap.** `tick` opens with `if (! isShowing()) return;`
+and the harness never shows the editor, so even a public `tick (dt)` would return before reaching
+the held-solo guard. The vblank was never the only obstacle. Disposition unchanged, disclosure
+corrected, and the concrete closing change now named.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` (the running-work inventory,
+the reproduction, what the audit did to the first fix, the F2 residue table, the F3 determination,
+the F4 re-evaluation and the A–E option verdicts), `ADR-0044` + `ADR_INDEX`, `TESTING.md` (State
+test 76 and the corrected `FrameClock` gap entry), `CHANGELOG.md` `[0.9.8]`. Not a gate item: no
+parameter ID, serialization, threading-model, DSP-order or reported-latency change, and ADR-0042 is
+completed and narrowed with the measurement that narrows it. [Verified]
 
 ## SpectrumImager — a commit carries intent, and a plan is computed where it is used (2026-09-08, ninth pass)
 

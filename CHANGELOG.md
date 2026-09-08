@@ -21,6 +21,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 ## [0.9.8] — 2026-09-08
 
 ### Fixed
+- **Adding or removing a band can no longer end with a band count that does not match which bands
+  are soloed.** Adding or removing a band is not one change but several: which bands are soloed is
+  remapped first, then the widths, then the split frequencies, and the number of bands **last**. Each
+  of those tells your DAW about itself as it happens, and a DAW that answers by writing the solo
+  buttons back — an automation lane, a control surface, an undo — was doing it into a window nothing
+  looked at again. The band count then landed on top, and because the number of bands decides which
+  solo buttons *mean* anything, a band you had soloed could simply stop being heard while its button
+  stayed lit: measured as three bands left holding a solo word written for four. The count is now
+  refused if the solo buttons have moved since the operation remapped them, right up to and inside
+  the moment it is written. Widths and split frequencies are deliberately left alone: those mean the
+  same thing whichever number of bands you end up with, so a change arriving from your DAW during
+  the operation still stands, exactly as before.
+  Decision: ADR-0044. Regression coverage: State test 76. Evidence: PR #143. [Verified]
 - **Opening a split's frequency box and clicking away no longer re-writes the value it had when you
   opened it.** Double-clicking the number under a split opens a small box seeded with the frequency
   that split currently has. Clicking somewhere else commits the box — and with nothing typed, that

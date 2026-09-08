@@ -861,6 +861,27 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 76 — a topology transaction does not commit a layout it does not own** (ADR-0044).
+  ADR-0040's *"re-validated before every store"* and ADR-0042's *"committed only when the parameter
+  says so"* both look FORWARD; neither re-proves a value the transaction committed EARLIER, and the
+  band count is written LAST. Because `SoloMonitor::process` masks the solo word with
+  `((1 << bands) - 1)`, the count is the one store that *reinterprets* another value. Legs: (A) the
+  mask replaced from inside a LATER store of the same transaction does not let the count commit
+  (`Bands 3 with mask 0x8` before — a word for four bands that three bands then mask to nothing,
+  while the button stays lit); (F) the transaction stops **at** the divergence rather than at the
+  end, asserted by the splits never being written (`split0 2000.0` before, untouched is 200.0) —
+  this is the ONLY leg that distinguishes re-proving before every store from re-proving once before
+  the count; (G) the mask written from inside `setBands`'s **own** `beginChangeGesture`, the one
+  window a caller-side check cannot reach, because that dispatch precedes the guard. Controls, and
+  the line a careless fix must not cross: (B) a **width** and (C) a **split** replaced mid-burst do
+  **not** abandon the transaction and the newer value stands — `mbWidthLow` means band 0's width
+  under either topology, and ADR-0042 measured aborting there to be worse; (D) an uninterrupted
+  removal still commits and remaps; (E) an uninterrupted add still commits. Mutations: Q1 (in-loop
+  mask re-proof removed) → **F only**; Q2 (`setBands` stops proving `expectedMask`) and Q3 (call
+  sites pass −1) → **G only**; Q4 (both) → **A, F and G**, leg A being doubly covered. The round's
+  own first fix — proving the whole prefix and converting the leaves to `storeOwned` — is what legs
+  B, C and G were written to refute.
+
 * **State test 75 — a commit that carries no user intent writes nothing** (ADR-0043). Two shapes on
   the frequency chip and its sibling reset. Legs: (A) the chip editor **dismissed without typing**
   does not write its opening snapshot over a newer host value (`5000.0 Hz was installed and 200.0 Hz
@@ -1683,7 +1704,12 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      (`FrameClock::start`, `src/gui/FrameClock.h:44-58`). The suite constructs the editor but never
      shows it (`tests/state_tests.cpp:6-11`: "no peer, no message loop, no interaction"), and a
      component with no peer receives no vblank, so nothing in the harness can make a tick happen. No
-     existing test drives one.
+     existing test drives one. **Corrected 2026-09-08 (ADR-0044's round), because the original
+     disclosure understated the depth:** the vblank is not the only obstacle. `tick` opens with
+     `if (! isShowing()) { wasShowing = false; return; }`, and `isShowing()` requires a peer, so
+     even a PUBLIC `tick (dt)` called directly from the suite would return at that line without ever
+     reaching the guard. Making `tick` public — the obvious first idea — is therefore not sufficient
+     on its own, which is why item 4 names a shown editor rather than a visibility change.
   2. *What replaced it.* A source-level proof plus the two sibling consumers. The promotion is the
      third reader of `soloPressBand`, a band index by POSITION; the other two — `mouseDrag`
      (`SpectrumImager.cpp:2044`) and `mouseUp` (`:2107`) — already ask `gestureIsStale()` before
@@ -1699,7 +1725,13 @@ rather than deleted, because a gap that was real and is now covered is worth bei
      none of which has coverage today. It was not done in this change because adding a production
      seam to test a one-line guard inverts the cost, and because a driven-message-loop harness is
      the same infrastructure the GUI-lifetime entry below is waiting on. Per ADR-0025 §5 this entry
-     is revisited when that harness lands.
+     is revisited when that harness lands. **Re-examined 2026-09-08** on maintainer instruction, and
+     the disposition is unchanged with the options recorded: (a) making `tick` public is
+     insufficient (see item 1); (b) splitting the hold promotion into its own public method is the
+     smallest change that yields real coverage, and is a production seam existing only for the test
+     — the maintainer's call, not a review round's; (c) showing the editor (`addToDesktop`) changes
+     the harness's contract on all three CI platforms for one guard. (b) is what ADR-0025 §5's
+     "what would close it" now names.
 
 - **GUI-lifetime defects have no headless test.** This is a **`TESTING_POLICY` rule-1 exception
   under ADR-0025**, and this entry is the register that ADR names. Its four required disclosures:

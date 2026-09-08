@@ -172,7 +172,10 @@ private:
     void setParam (juce::RangedAudioParameter*, float plain);
     void endGesture (juce::RangedAudioParameter*);
     void resetParam (juce::RangedAudioParameter*);
-    bool setBands (int n, int expectedBands = -1);
+    // ADR-0044: `expectedMask` proves the solo word INSIDE the count store's own gesture bracket.
+    // -1 means "do not prove it". The count is what reinterprets the mask, and
+    // `beginChangeGesture` dispatches before the guard, so no caller-side check can cover it.
+    bool setBands (int n, int expectedBands = -1, int expectedMask = -1);
 
     void updateHover (juce::Point<float>);
     void setContextTooltip();               // per-control tooltip (0.6.9 #18)

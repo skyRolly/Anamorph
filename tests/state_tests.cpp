@@ -4227,6 +4227,286 @@ static void testACommitWithNoIntentWritesNothing()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 76 -- a topology transaction does not COMMIT a layout it no
+//  longer owns.
+//
+//  ADR-0040 re-validates the burst before EVERY store and ADR-0042 makes each
+//  store report whether it committed. Both look FORWARD: the check immediately
+//  before store k proves store k's own target against the entry snapshot. What
+//  neither does is look BACK. Once a store has committed, nothing re-proves it,
+//  so a listener that replaces an ALREADY-WRITTEN value while a later store is
+//  dispatching is invisible to the rest of the transaction -- and the count,
+//  written last, commits anyway.
+//
+//  The count is the one discontinuous quantity and the one that reinterprets
+//  every other value (SoloMonitor.cpp masks the solo word with
+//  ((1 << bands) - 1); MultibandWidth uses only the prefix of splits and
+//  widths). Committing it over a prefix the transaction no longer owns is
+//  exactly "a new band count with values still numbered for the old topology".
+//
+//  Legs A, B and C are the three halves of that -- the mask, a width and a
+//  split. D and E are the positive controls that a fix must not break.
+// ---------------------------------------------------------------------------
+static void testATransactionDoesNotCommitALayoutItDoesNotOwn()
+{
+    std::printf ("State test 76: a topology transaction does not commit a layout it does not own\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the transaction-commit probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300,
+           "the imager is laid out for the transaction-commit probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* wMidP  = apvts.getParameter (pid::mbWidthMid);
+    check (bandsP && soloP && loP && midP && hiP && wLoP && wMidP,
+           "the parameters the transaction-commit probe drives exist");
+    if (! (bandsP && soloP && loP && midP && hiP && wLoP && wMidP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto bandsNow = [&] { return juce::roundToInt (plainOf (bandsP)); };
+    auto maskNow  = [&] { return juce::roundToInt (plainOf (soloP)); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+    const float H    = (float) imager->getHeight();
+    const float delX = 13.0f, delY = H - 30.0f;   // the leftmost band's delete chip -> band 0
+
+    // Four bands, band 1 soloed, and two DISTINCT widths so the width loop of a
+    // removal actually stores rather than eliding every slot.
+    auto resetWorld = [&] ()
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (soloP,  2.0f);      // 0b0010 -- band 1
+        setPlain (loP,   200.0f);
+        setPlain (midP, 2000.0f);
+        setPlain (hiP, 10000.0f);
+        setPlain (wLoP,   1.5f);
+        setPlain (wMidP,  0.5f);
+    };
+    // Removing band 0 remaps: mask 0b0010 -> 0b0001, widths shift down one,
+    // splits shift down one (200/2000/10000 -> 2000/10000).
+    auto removeBandZero = [&] ()
+    {
+        imager->mouseDown (mev (delX, delY, delX, delY, false));
+        imager->mouseUp   (mev (delX, delY, delX, delY, true));
+    };
+
+    // ---- LEG A: the MASK is replaced after its own store committed ----------
+    //  setSoloMask stores 0b0001 and confirms it (ADR-0042). A later split store
+    //  dispatches, and a host writes 0b1000 -- band 3 of the OLD four-band
+    //  layout. Nothing re-proves the mask, so the count store lands and Bands 3
+    //  carries a word written for four bands; SoloMonitor.cpp:85 then masks it
+    //  with 0b0111 and the soloed band is simply gone.
+    {
+        resetWorld();
+        WriteFromInsideAStore poke;
+        poke.target = soloP;
+        poke.to     = 8.0f;                      // 0b1000 -- band 3, which 3 bands cannot hold
+        loP->addListener (&poke);
+        poke.armed = true;
+        removeBandZero();
+        const bool landed = poke.fired;
+        loP->removeListener (&poke);
+
+        check (landed, "leg A: the probe write landed inside a later store of the same transaction");
+        if (landed && bandsNow() != 4)
+            std::printf ("  [leg A] the count committed over a mask the transaction no longer owned:"
+                         " Bands %d with mask 0x%X\n", bandsNow(), maskNow());
+        check (! landed || bandsNow() == 4,
+               "leg A: a transaction whose mask was replaced after it stored does not change the count");
+        check (! landed || maskNow() == 8,
+               "leg A: ...and the newer mask stands");
+    }
+
+    // ---- LEG B: a WIDTH replaced mid-burst is NOT a reason to abandon ------
+    //  The control that keeps ADR-0042's measured asymmetry. `mbWidthLow` means
+    //  band 0's width under BOTH topologies, so a host that writes it mid-burst
+    //  is a newer authority on a value the count does not reinterpret: the
+    //  transaction completes and that newer width stands. ADR-0042 measured
+    //  aborting here and found it WORSE, because the mask is stored first and is
+    //  only correct once the count changes -- abandoning leaves the old count
+    //  with a remapped mask, which is the incoherence leg A is about.
+    {
+        resetWorld();
+        WriteFromInsideAStore poke;
+        poke.target = wLoP;
+        poke.to     = 1.5f;                      // the width band 0 had BEFORE the removal
+        loP->addListener (&poke);
+        poke.armed = true;
+        removeBandZero();
+        const bool landed = poke.fired;
+        loP->removeListener (&poke);
+
+        check (landed, "leg B: the probe write landed inside a later store of the same transaction");
+        check (! landed || bandsNow() == 3,
+               "leg B: a width replaced mid-burst does not abandon the transaction (ADR-0042)");
+        check (! landed || std::abs (plainOf (wLoP) - 1.5f) < 1.0e-4f,
+               "leg B: ...and the newer width stands over the plan's");
+        check (! landed || maskNow() == 1,
+               "leg B: ...and the mask is the remapped one, so the layout is coherent");
+    }
+
+    // ---- LEG C: a SPLIT replaced mid-burst is NOT a reason to abandon ------
+    //  The same control for the splits. `mbFreqLow` is split 0 under both
+    //  topologies, and `MultibandWidth::setCrossovers` clamps and force-orders
+    //  whatever it is given, so the newer value is legal wherever it lands.
+    {
+        resetWorld();
+        WriteFromInsideAStore poke;
+        poke.target = loP;
+        poke.to     = 200.0f;                    // the split the removal drops
+        midP->addListener (&poke);
+        poke.armed = true;
+        removeBandZero();
+        const bool landed = poke.fired;
+        midP->removeListener (&poke);
+
+        check (landed, "leg C: the probe write landed inside a later store of the same transaction");
+        check (! landed || bandsNow() == 3,
+               "leg C: a split replaced mid-burst does not abandon the transaction (ADR-0042)");
+        check (! landed || std::abs (plainOf (loP) - 200.0f) < 1.0f,
+               "leg C: ...and the newer split stands over the plan's");
+        check (! landed || maskNow() == 1,
+               "leg C: ...and the mask is the remapped one, so the layout is coherent");
+    }
+
+    // ---- LEG F: the transaction stops AT the divergence, not at the end -----
+    //  Re-proving only before the count store would already make the commit
+    //  correct, so legs A-C cannot tell the two apart. This one can: the probe
+    //  reverts the mask from inside the FIRST width store, and what is asserted
+    //  is that the splits were never written at all. With the prefix re-proved
+    //  before every store the transaction returns at the next iteration; with it
+    //  checked only at the end, three more stores land first and the residue the
+    //  user is left holding is that much larger.
+    {
+        resetWorld();
+        WriteFromInsideAStore poke;
+        poke.target = soloP;
+        poke.to     = 8.0f;
+        wLoP->addListener (&poke);           // the FIRST store of the width loop
+        poke.armed = true;
+        removeBandZero();
+        const bool landed = poke.fired;
+        wLoP->removeListener (&poke);
+
+        check (landed, "leg F: the probe write landed inside the first width store");
+        if (landed && std::abs (plainOf (loP) - 200.0f) > 1.0f)
+            std::printf ("  [leg F] the transaction ran on past the divergence: split0 %.1f"
+                         " (untouched is 200.0), Bands %d\n", (double) plainOf (loP), bandsNow());
+        check (! landed || bandsNow() == 4,
+               "leg F: the count still does not commit");
+        check (! landed || std::abs (plainOf (loP) - 200.0f) < 1.0f,
+               "leg F: ...and no split is written after the divergence became observable");
+    }
+
+    // ---- LEG G: the LAST window -- setBands' own gesture open ---------------
+    //  `setBands` calls beginChangeGesture BEFORE its guard, and that dispatch
+    //  reaches every listener. A mask check placed in the caller, immediately
+    //  before setBands, cannot see it. This probe writes the mask from inside
+    //  that gesture open, which is the one window a caller-side check leaves.
+    {
+        resetWorld();
+        struct WriteOnGestureOpen final : public juce::AudioProcessorParameter::Listener
+        {
+            juce::RangedAudioParameter* target = nullptr;
+            float to = 0.0f;
+            bool armed = false, fired = false;
+            void parameterValueChanged (int, float) override {}
+            void parameterGestureChanged (int, bool starting) override
+            {
+                if (! armed || ! starting || target == nullptr) return;
+                armed = false;
+                fired = true;
+                target->setValueNotifyingHost (target->convertTo0to1 (to));
+            }
+        } poke;
+        poke.target = soloP;
+        poke.to     = 8.0f;
+        bandsP->addListener (&poke);
+        poke.armed = true;
+        removeBandZero();
+        const bool landed = poke.fired;
+        bandsP->removeListener (&poke);
+
+        check (landed, "leg G: the probe write landed inside setBands' own gesture open");
+        if (landed && bandsNow() != 4)
+            std::printf ("  [leg G] the count committed from inside its own gesture open:"
+                         " Bands %d with mask 0x%X\n", bandsNow(), maskNow());
+        check (! landed || bandsNow() == 4,
+               "leg G: the count store proves the mask INSIDE its own gesture bracket");
+        check (! landed || maskNow() == 8, "leg G: ...and the newer mask stands");
+    }
+
+    // ---- LEG D: positive control -- an uninterrupted removal still commits --
+    {
+        resetWorld();
+        removeBandZero();
+        check (bandsNow() == 3, "leg D: an uninterrupted removal still lowers the band count");
+        check (maskNow() == 1, "leg D: ...and remaps the solo word");
+        check (std::abs (plainOf (loP)  - 2000.0f)  < 1.0f, "leg D: ...and shifts split 0");
+        check (std::abs (plainOf (midP) - 10000.0f) < 1.0f, "leg D: ...and split 1");
+        check (std::abs (plainOf (wLoP) - 0.5f) < 1.0e-4f,  "leg D: ...and shifts the widths");
+    }
+
+    // ---- LEG E: positive control -- an uninterrupted add still commits -----
+    {
+        resetWorld();
+        setPlain (bandsP, 2.0f);
+        const float addY = 30.0f;
+        const float W    = (float) imager->getWidth();
+        imager->mouseDown (mev (0.5f * W, addY, 0.5f * W, addY, false));
+        imager->mouseUp   (mev (0.5f * W, addY, 0.5f * W, addY, false));
+        check (bandsNow() == 3, "leg E: an uninterrupted add still raises the band count");
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 //  State test 67 -- an outward drag whose split has since vanished removes
 //  NOTHING, rather than deleting whichever band the index now lands on.
 //
@@ -15139,6 +15419,7 @@ int main (int argc, char* argv[])
     testACoupledUpdateIsAllOfItOrNone();
     testAStoreIsNotCommittedUntilTheParameterSaysSo();
     testACommitWithNoIntentWritesNothing();
+    testATransactionDoesNotCommitALayoutItDoesNotOwn();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 
