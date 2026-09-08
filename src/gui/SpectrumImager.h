@@ -351,7 +351,11 @@ private:
     // equality, not an epsilon: the gesture records the READ-BACK after each of its own stores, so
     // its own write can never read as somebody else's, and there is no epsilon to invent for a path
     // (the width drag) that has no write-suppression threshold of its own. `gestureBands < 0` means
-    // no gesture is in flight -- the wheel path -- and then nothing is owned and nothing is refused.
+    // nothing is in flight, and then nothing is owned and nothing is refused. ADR-0043: that is no
+    // longer the wheel's state while it writes. `mouseWheelMove` ends any drag first, which clears
+    // `gestureBands`, but its own burst is up to three stores with a host dispatch between each, so
+    // it latches the count around `dragCrossoverTo` and clears it again immediately. The waiver is
+    // for having no gesture, not for being the wheel.
     bool  ownsSplit (int k) const noexcept;
     bool  ownsWidth (int b) const noexcept;
     // True once the count has moved under an active gesture. Message thread only; a plain

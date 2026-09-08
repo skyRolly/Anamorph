@@ -380,8 +380,11 @@ bool SpectrumImager::spreadSplits (const float* xs, const float* was, int count,
     return true;
 }
 // The two halves of the one rule, so a future consumer has one place to read it. `gestureBands < 0`
-// is "no gesture in flight" -- the wheel path -- and then there is nothing to own and nothing to
-// refuse. BOTH halves compare the normalised value EXACTLY: this paragraph used to say a split was
+// is "nothing in flight", and then there is nothing to own and nothing to refuse. ADR-0043: the
+// WHEEL is no longer an example of that state while it writes -- it ends any drag (clearing
+// `gestureBands`) and then latches the count around its own burst, because that burst is up to
+// three stores with a host dispatch between each. The waiver is for having no gesture, not for
+// being a particular caller. BOTH halves compare the normalised value EXACTLY: this paragraph used to say a split was
 // owned "within the same half pixel `writeCrossovers` uses to decide a write is worth making", which
 // is what ADR-0041 removed and what the paragraph below replaces it with -- a reader arriving here
 // was told the opposite of what the code does.

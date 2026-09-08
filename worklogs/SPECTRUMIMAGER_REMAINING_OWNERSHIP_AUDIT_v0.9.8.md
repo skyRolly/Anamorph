@@ -352,11 +352,11 @@ in the tree:
 
 | Anchor | Named | Then | Now |
 |---|---|---|---|
-| `moveBand` | `bool SpectrumImager::moveBand` | :588 | :647 |
-| `captureDragOrigins()` | its definition | :317 | :433 |
+| `moveBand` | `bool SpectrumImager::moveBand` | :588 | :650 |
+| `captureDragOrigins()` | its definition | :317 | :436 |
 | `freqToX` | its definition | :156 | :161 |
-| `dragCrossoverTo` refuses a dead handle (×2) | `handle >= M` early return | :363 | :521 |
-| `removeBand`'s live-argument caller (×2) | `deleteHit (e.position) == dB` | :1741 | :2162 |
+| `dragCrossoverTo` refuses a dead handle (×2) | `handle >= M` early return | :363 | :524 |
+| `removeBand`'s live-argument caller (×2) | `deleteHit (e.position) == dB` | :1741 | :2168 |
 | `removeBand` **clamps** | `b = juce::jlimit (0, N - 1, b)` | :521 | **gone** |
 
 The first five rows — seven of the eight occurrences — name constructs that still exist and still
