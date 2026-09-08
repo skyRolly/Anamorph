@@ -21,6 +21,23 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 ## [0.9.8] — 2026-09-08
 
 ### Fixed
+- **Scrolling over the Multiband display no longer keeps adjusting the band it started on after the
+  layout changes underneath it.** A wheel scroll picks whatever is under the pointer on its first
+  click and keeps adjusting that until you move the mouse — so a burst of scrolls stays on one band
+  even if your hand drifts a little. If the number of bands changed while you were scrolling and
+  your hand was still — an automation lane, an undo, a preset load — the display was re-drawn
+  underneath the pointer but the scroll carried on adjusting whatever it picked before, which was no
+  longer what you were pointing at: measured as a band's width continuing to move while the pointer
+  sat over a different band. A scroll now notices that the layout changed and picks again from where
+  the pointer actually is, which is exactly what it already did when you moved the mouse. Scrolling
+  with the layout unchanged is untouched.
+- **Alt-clicking a band's width to reset it can no longer reset a band that has just gone.** The
+  reset works out which band you clicked, then tells your DAW the edit is starting, then writes the
+  default. A DAW that answered by reducing the number of bands left the reset writing a default for
+  a band that no longer existed — an automation touch and an undo step for something not on screen,
+  and a value that reappeared if the band count went back up. The reset now checks the layout has
+  not moved between those two steps. Ordinary alt-click resets are untouched.
+  Decision: ADR-0045. Regression coverage: State test 77. Evidence: PR #143. [Verified]
 - **Adding or removing a band can no longer end with a band count that does not match which bands
   are soloed.** Adding or removing a band is not one change but several: which bands are soloed is
   remapped first, then the widths, then the split frequencies, and the number of bands **last**. Each

@@ -363,7 +363,7 @@ DELIBERATE_REAIMS = {
     # declaration and the reason not to write one for a plain move.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:521"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:530"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

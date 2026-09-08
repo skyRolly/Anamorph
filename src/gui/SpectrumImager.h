@@ -171,7 +171,9 @@ private:
     void beginGesture (juce::RangedAudioParameter*);
     void setParam (juce::RangedAudioParameter*, float plain);
     void endGesture (juce::RangedAudioParameter*);
-    void resetParam (juce::RangedAudioParameter*);
+    // ADR-0045: `expectedBands` proves the topology between this reset's own gesture open and
+    // its store; -1 for callers with no band index to prove.
+    void resetParam (juce::RangedAudioParameter*, int expectedBands = -1);
     // ADR-0044: `expectedMask` proves the solo word INSIDE the count store's own gesture bracket.
     // -1 means "do not prove it". The count is what reinterprets the mask, and
     // `beginChangeGesture` dispatches before the guard, so no caller-side check can cover it.
@@ -290,6 +292,9 @@ private:
 
     int   scrollHandle = -1;
     int   scrollBand   = -1;
+    // ADR-0045: the band count the two latches above were taken in. A latch is a positional
+    // identifier and is only meaningful in its own topology; -1 means nothing is latched.
+    int   scrollBands  = -1;
     juce::Point<float> scrollAnchor;
 
     // Solo press machine (0.6.9 #8/#9): a quick click latches the band's solo

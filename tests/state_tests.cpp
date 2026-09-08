@@ -2343,6 +2343,22 @@ namespace
 // AudioProcessorParameter::Listener::parameterValueChanged synchronously from
 // sendValueChangedMessageToListeners, so attaching this to the first parameter a
 // burst writes puts the write in the exact window between that store and the rest.
+// ADR-0045: fires from inside a parameter's own beginChangeGesture dispatch -- the window
+// between a gesture open and the store it brackets, which no check outside that bracket sees.
+struct WriteOnGestureOpen final : public juce::AudioProcessorParameter::Listener
+{
+    juce::RangedAudioParameter* target = nullptr;
+    float to = 0.0f;
+    bool  armed = false, fired = false;
+    void parameterValueChanged (int, float) override {}
+    void parameterGestureChanged (int, bool starting) override
+    {
+        if (! armed || ! starting || target == nullptr) return;
+        armed = false;
+        fired = true;
+        target->setValueNotifyingHost (target->convertTo0to1 (to));
+    }
+};
 struct WriteFromInsideAStore final : public juce::AudioProcessorParameter::Listener
 {
     juce::RangedAudioParameter* target = nullptr;
@@ -4311,7 +4327,17 @@ static void testATransactionDoesNotCommitALayoutItDoesNotOwn()
                                  { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
     };
     const float H    = (float) imager->getHeight();
+    const float W    = (float) imager->getWidth();
     const float delX = 13.0f, delY = H - 30.0f;   // the leftmost band's delete chip -> band 0
+    auto findFirstX = [&] (const char* want, float y) -> float
+    {
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
 
     // Four bands, band 1 soloed, and two DISTINCT widths so the width loop of a
     // removal actually stores rather than eliding every slot.
@@ -4440,6 +4466,12 @@ static void testATransactionDoesNotCommitALayoutItDoesNotOwn()
                "leg F: the count still does not commit");
         check (! landed || std::abs (plainOf (loP) - 200.0f) < 1.0f,
                "leg F: ...and no split is written after the divergence became observable");
+        // ...and the WIDTH loop's own check, isolated. The removal at N = 4 stores widths at
+        // k = 0 and k = 1 (0.5 then 1.0; k = 2's plan equals its snapshot and is elided), so a
+        // check present only in the SPLIT loop would still let slot 1 land. Without this the
+        // width-loop check is an unkilled mutation.
+        check (! landed || std::abs (plainOf (wMidP) - 0.5f) < 1.0e-4f,
+               "leg F: ...and no later width either -- the width loop proves the mask too");
     }
 
     // ---- LEG G: the LAST window -- setBands' own gesture open ---------------
@@ -4449,20 +4481,7 @@ static void testATransactionDoesNotCommitALayoutItDoesNotOwn()
     //  that gesture open, which is the one window a caller-side check leaves.
     {
         resetWorld();
-        struct WriteOnGestureOpen final : public juce::AudioProcessorParameter::Listener
-        {
-            juce::RangedAudioParameter* target = nullptr;
-            float to = 0.0f;
-            bool armed = false, fired = false;
-            void parameterValueChanged (int, float) override {}
-            void parameterGestureChanged (int, bool starting) override
-            {
-                if (! armed || ! starting || target == nullptr) return;
-                armed = false;
-                fired = true;
-                target->setValueNotifyingHost (target->convertTo0to1 (to));
-            }
-        } poke;
+        WriteOnGestureOpen poke;
         poke.target = soloP;
         poke.to     = 8.0f;
         bandsP->addListener (&poke);
@@ -4478,6 +4497,41 @@ static void testATransactionDoesNotCommitALayoutItDoesNotOwn()
         check (! landed || bandsNow() == 4,
                "leg G: the count store proves the mask INSIDE its own gesture bracket");
         check (! landed || maskNow() == 8, "leg G: ...and the newer mask stands");
+    }
+
+    // ---- LEG H: the ADD path, which had no ADR-0044 coverage at all ---------
+    //  Every adversarial leg above drives `removeBand`. `addBandAt` carries the
+    //  same three windows -- the two in-loop checks and `setBands (N + 1, N, nm)`
+    //  -- and until this leg every one of them was an unkilled mutation.
+    {
+        resetWorld();
+        setPlain (bandsP, 2.0f);
+        setPlain (soloP,  2.0f);                 // 0b0010, so the add's remap is a real store
+        const float addY = 30.0f;
+        const float ax = findFirstX ("Click to add a band split", addY);
+        check (ax >= 0.0f, "leg H: an add area is findable at two bands");
+        if (ax >= 0.0f)
+        {
+            WriteFromInsideAStore poke;
+            poke.target = soloP;
+            poke.to     = 8.0f;                  // 0b1000 -- a word the add's plan never produces
+            // Attached to every split: which slot the add stores first depends on where the
+            // insertion lands, and this leg is about the MASK, not about the geometry.
+            for (auto* fp : { loP, midP, hiP }) fp->addListener (&poke);
+            poke.armed = true;
+            imager->mouseDown (mev (ax, addY, ax, addY, false));
+            imager->mouseUp   (mev (ax, addY, ax, addY, false));
+            const bool landed = poke.fired;
+            for (auto* fp : { loP, midP, hiP }) fp->removeListener (&poke);
+
+            check (landed, "leg H: the probe write landed inside a later store of the add");
+            if (landed && bandsNow() != 2)
+                std::printf ("  [leg H] the ADD committed over a mask it no longer owned:"
+                             " Bands %d with mask 0x%X\n", bandsNow(), maskNow());
+            check (! landed || bandsNow() == 2,
+                   "leg H: an add whose mask was replaced after it stored does not change the count");
+            check (! landed || maskNow() == 8, "leg H: ...and the newer mask stands");
+        }
     }
 
     // ---- LEG D: positive control -- an uninterrupted removal still commits --
@@ -4496,10 +4550,260 @@ static void testATransactionDoesNotCommitALayoutItDoesNotOwn()
         resetWorld();
         setPlain (bandsP, 2.0f);
         const float addY = 30.0f;
-        const float W    = (float) imager->getWidth();
         imager->mouseDown (mev (0.5f * W, addY, 0.5f * W, addY, false));
         imager->mouseUp   (mev (0.5f * W, addY, 0.5f * W, addY, false));
         check (bandsNow() == 3, "leg E: an uninterrupted add still raises the band count");
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 77 -- a positional identifier is void once its topology moves,
+//  and a reset proves its topology inside its own gesture bracket (ADR-0045).
+//
+//  Two paths that the ADR-0038..0044 chain left out, both found by this
+//  round's own audit rather than by the review:
+//
+//    * the WHEEL's latch. `scrollHandle`/`scrollBand` are latched at the first
+//      tick of a burst and reused by every later one, dropped only by a >3 px
+//      mouseMove or by mouseExit. A band count that moves between two ticks
+//      re-lays the display out under a hand that has not moved, so the next
+//      tick steered a band the pointer was no longer over. A bounds test does
+//      not close that -- an index that LANDS in the new range is the case
+//      ADR-0039 refused to accept for removeBand.
+//
+//    * `resetParam`. Its callers derive the band index from `bandAtX` OUTSIDE
+//      the call, and its own `beginChangeGesture` dispatches before the store,
+//      so a host answering the gesture open by dropping Bands left it
+//      resetting the width of a band that no longer exists.
+// ---------------------------------------------------------------------------
+static void testAPositionalLatchIsVoidOnceItsTopologyMoves()
+{
+    std::printf ("State test 77: a positional latch is void once its topology moves\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the positional-latch probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the latch probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* wMidP  = apvts.getParameter (pid::mbWidthMid);
+    auto* wHiP   = apvts.getParameter (pid::mbWidthHigh);
+    check (bandsP && loP && midP && hiP && wLoP && wMidP && wHiP,
+           "the parameters the latch probe drives exist");
+    if (! (bandsP && loP && midP && hiP && wLoP && wMidP && wHiP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+    auto mevAlt = [&] (float x, float y)
+    {
+        const auto mods = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                              | juce::ModifierKeys::altModifier);
+        return juce::MouseEvent (source, { x, y }, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
+    const float W     = (float) imager->getWidth();
+    const float H     = (float) imager->getHeight();
+    const float laneY = 0.5f * H;
+
+    auto findY = [&] (const char* want, float x) -> float
+    {
+        for (float y = 4.0f; y < H - 4.0f; y += 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return y;
+        }
+        return -1.0f;
+    };
+    auto wheelAt = [&] (float x, float y, float delta)
+    {
+        juce::MouseWheelDetails wheel;
+        wheel.deltaX = 0.0f; wheel.deltaY = delta; wheel.isReversed = false;
+        wheel.isSmooth = false; wheel.isInertial = false;
+        imager->mouseWheelMove (mev (x, y, x, y, false), wheel);
+    };
+    auto resetWorld = [&] ()
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 2000.0f);
+        setPlain (hiP, 10000.0f);
+        setPlain (wLoP, 1.0f); setPlain (wMidP, 1.0f); setPlain (wHiP, 1.0f);
+    };
+
+    auto widths = [&] { return std::array<float,3> { plainOf (wLoP), plainOf (wMidP), plainOf (wHiP) }; };
+    // Which of the three observed widths moved, if any -- the legs assert about the SLOT the wheel
+    // chose without asserting which slot the geometry ought to produce, because the geometry is the
+    // component's business and the test is not given it.
+    auto movedIndex = [] (const std::array<float,3>& a, const std::array<float,3>& b) -> int
+    {
+        for (int i = 0; i < 3; ++i) if (! juce::exactlyEqual (a[i], b[i])) return i;
+        return -1;
+    };
+    // The centres of the split handles, swept from the tooltip -- the test has no access to the
+    // component's private geometry and is not given any.
+    auto handleCentres = [&] ()
+    {
+        std::vector<float> c; float runStart = -1.0f;
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, laneY, x, laneY, false));
+            const bool on = imager->getTooltip() == juce::String ("Drag to change the split frequency");
+            if (on && runStart < 0.0f) runStart = x;
+            if (! on && runStart >= 0.0f) { c.push_back (0.5f * (runStart + x - 1.0f)); runStart = -1.0f; }
+        }
+        if (runStart >= 0.0f) c.push_back (0.5f * (runStart + W - 3.0f));
+        return c;
+    };
+
+    // ---- LEG A: the wheel's latch survives a band-count change ---------------
+    //  A point between split 1 (2 kHz) and split 2 (10 kHz) is band 1 while two
+    //  bands are live -- only split 0 is consulted -- and band 2 once four are.
+    //  Nothing about the point moves; the layout under it does.
+    {
+        resetWorld();
+        const auto cs = handleCentres();
+        check (cs.size() == 3, "leg A: all three split handles are findable at four bands");
+        if (cs.size() == 3)
+        {
+            const float probeX = 0.5f * (cs[1] + cs[2]);
+            setPlain (bandsP, 2.0f);
+            const auto before2 = widths();
+            wheelAt (probeX, laneY, 0.20f);              // latches at TWO bands
+            const auto after2 = widths();
+            const int latched = movedIndex (before2, after2);
+            check (latched >= 0,
+                   "leg A: at two bands the tick moves the band the pointer is over");
+
+            setPlain (bandsP, 4.0f);                     // re-laid out under a hand that has not moved
+            const auto frozen = widths();
+            wheelAt (probeX, laneY, 0.20f);              // the SECOND tick of the same burst
+            const auto now = widths();
+
+            if (latched >= 0 && ! juce::exactlyEqual (frozen[latched], now[latched]))
+                std::printf ("  [leg A] the wheel steered a band its latch named in another"
+                             " topology: band %d moved %.3f -> %.3f after the count changed"
+                             " under a hand that never moved\n",
+                             latched, (double) frozen[latched], (double) now[latched]);
+            check (latched < 0 || juce::exactlyEqual (frozen[latched], now[latched]),
+                   "leg A: a wheel latch taken in another topology does not steer its old band");
+        }
+    }
+
+    // ---- LEG B: positive control -- an uninterrupted burst keeps its latch ---
+    {
+        resetWorld();
+        const auto cs = handleCentres();
+        if (cs.size() == 3)
+        {
+            const float probeX = 0.5f * (cs[1] + cs[2]);
+            const auto before = widths();
+            wheelAt (probeX, laneY, 0.20f);
+            const auto afterFirst = widths();
+            const int first = movedIndex (before, afterFirst);
+            wheelAt (probeX, laneY, 0.20f);
+            const auto afterSecond = widths();
+            const int second = movedIndex (afterFirst, afterSecond);
+            // Vacuous unless this point is over a band rather than a split handle; when it is over
+            // a handle the wheel steers a split and neither tick touches a width, which is equally
+            // fine as a control -- what must hold is that the two ticks agree.
+            check (first == second,
+                   "leg B: two ticks with the topology unchanged steer the same thing");
+        }
+    }
+
+    // ---- LEG C: a reset proves its topology inside its own gesture bracket ---
+    {
+        resetWorld();
+        setPlain (wLoP, 1.6f); setPlain (wMidP, 1.6f); setPlain (wHiP, 1.6f);
+        const float bx = 0.5f * W;
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg C: a band's width line is findable");
+        if (wy >= 0.0f)
+        {
+            WriteOnGestureOpen poke;
+            poke.target = bandsP;
+            poke.to     = 2.0f;                      // the count drops from inside the gesture open
+            for (auto* wp : { wLoP, wMidP, wHiP }) wp->addListener (&poke);
+            poke.armed = true;
+            imager->mouseDown (mevAlt (bx, wy));
+            const bool landed = poke.fired;
+            for (auto* wp : { wLoP, wMidP, wHiP }) wp->removeListener (&poke);
+
+            const auto w = widths();
+            const bool anyReset = std::abs (w[0] - 1.0f) < 1.0e-3f || std::abs (w[1] - 1.0f) < 1.0e-3f
+                               || std::abs (w[2] - 1.0f) < 1.0e-3f;
+            check (landed, "leg C: the probe write landed inside resetParam's own gesture open");
+            if (landed && anyReset)
+                std::printf ("  [leg C] a reset stored a width after the topology moved under it:"
+                             " %.3f / %.3f / %.3f (all were 1.600)\n",
+                             (double) w[0], (double) w[1], (double) w[2]);
+            check (! landed || ! anyReset,
+                   "leg C: a reset whose topology moved inside its gesture open stores nothing");
+        }
+    }
+
+    // ---- LEG D: positive control -- an ordinary width reset still resets -----
+    {
+        resetWorld();
+        setPlain (wLoP, 1.6f); setPlain (wMidP, 1.6f); setPlain (wHiP, 1.6f);
+        const float bx = 0.5f * W;
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg D: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            imager->mouseDown (mevAlt (bx, wy));
+            const auto w = widths();
+            const bool anyReset = std::abs (w[0] - 1.0f) < 1.0e-3f || std::abs (w[1] - 1.0f) < 1.0e-3f
+                               || std::abs (w[2] - 1.0f) < 1.0e-3f;
+            check (anyReset, "leg D: an uninterrupted alt-click still resets a width to its default");
+        }
     }
 
     proc.editorBeingDeleted (ed);
@@ -15420,6 +15724,7 @@ int main (int argc, char* argv[])
     testAStoreIsNotCommittedUntilTheParameterSaysSo();
     testACommitWithNoIntentWritesNothing();
     testATransactionDoesNotCommitALayoutItDoesNotOwn();
+    testAPositionalLatchIsVoidOnceItsTopologyMoves();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

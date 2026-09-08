@@ -106,6 +106,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-007 | **RESOLVED 2026-09-03 (D-2, ADR-0036)** — State calls on a non-main host thread raced message-thread state (AU autosave; out-of-spec VST3 hosts); program metadata is now message-thread-owned and exchanged through two lock-free cells | — | — |
 | RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Low — real-host validated in REAPER; other Linux hosts unverified |
 | RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once |
+| RISK-010 | The DSP snapshot of the ten multiband parameters is ten independent `load()` calls, so the audio thread can read a layout that never existed as a whole | Medium | **Certain** — it is the shipped reader model; what is bounded is the harm, not the occurrence |
 
 ---
 
@@ -243,6 +244,33 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   an inversion whose stacks contain only production frames still fails the `tsan` job, and the
   canary step proves on every run that data-race detection is untouched. Reopen this risk if a
   host is ever observed writing cross-parameter from inside a dispatch on two threads.
+
+## RISK-010 — The DSP's multiband snapshot is not a snapshot (ESCALATED as an architecture-review item)
+- **Risk:** `PluginParameters::toEngine` builds the per-block DSP view of the multiband layout from
+  **ten separate `std::atomic<float>::load()` calls** (`src/PluginParameters.cpp:365-374`), with no
+  seqlock, generation counter or coherence guard. The audio thread can therefore observe a band
+  count from one instant and a solo word, width or split from another. The GUI is not the only
+  writer: host automation writes these parameters from the audio thread through the format wrapper.
+- **Impact:** bounded, and the bound is the reason this has been an accepted trade through
+  ADR-0041, ADR-0042 and ADR-0044 rather than a defect. `mbBands` is written **last** by every GUI
+  transaction and read **first** by `toEngine`, and the loads are `seq_cst` in source order, so a
+  snapshot carrying the NEW count necessarily carries the whole transaction — only the reverse
+  direction, an old count under newer values, is reachable. The DSP then repairs what it is given:
+  splits clamped to `[20 Hz, 0.45·sr]` and force-ordered `1.1×`, the solo word masked with
+  `((1 << bands) - 1)`, the count clamped to `[1, 4]`, every continuous quantity smoothed. The
+  result is a legal layout that is briefly not the one the user has — never NaN, never unbounded.
+- **Likelihood:** **certain** as a mechanism; it is the shipped reader model, not an edge case.
+- **Why it is escalated rather than fixed:** a write-side atomic commit does not help, because the
+  READER is what tears — this was measured and is why ADR-0042 rejected that option. Closing it
+  means replacing the read: one immutable published layout object, or a seqlock, consumed by the
+  DSP. That is a **DSP-parameter-model and threading-model change**, which
+  `docs/policies/ARCHITECTURE_REVIEW_GATE.md` makes a hard-stop item requiring human review. It is
+  therefore recorded here as the architecture-review item rather than accepted silently inside a
+  review round, which is the decision the 2026-09-08 round was asked to make: **accept the trade for
+  now AND escalate**, not one or the other.
+- **Mitigation until then:** the store order (`mbBands` last) and the DSP's own clamping are load
+  bearing and must not be changed casually; ADR-0041 §"why the store order is kept" and ADR-0044
+  both depend on them.
 
 ---
 

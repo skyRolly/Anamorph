@@ -169,3 +169,73 @@ replacing the *read* — a DSP-parameter and threading-model change, and so an
 State **2 733 / 0** · DSP **396 / 0** · `check-realtime` 47/0 · `check-portability` 57/0 ·
 `check-docs` 131 clean · `check-citations` clean · `git diff --check` clean. No lock, no allocation,
 no blocking, no audio-path change, no parameter-model change, no sanitizer finding suppressed.
+
+---
+
+# Final review round (2026-09-08, second half) — the sub-agent audit, consumed and acted on
+
+## 10. Which agents were checked, what they held, and what was done
+
+| Workflow | State | Contents | Action |
+|---|---|---|---|
+| `wf_17153265-ac9` (this round's) | running, 12 area results + verify verdicts landed | the reconstructions below | **consumed in full** |
+| `wf_b53560a1-266` | stopped last round | RO-1 write-path audit; conclusions shipped as ADR-0043 | no unresolved item; left stopped |
+| `wf_5743c961-dad` | ended without a synthesis (120/122) | the reentrant-store round; its reconstructions were read and acted on at the time | sampled; nothing unconsumed |
+| `wf_893cff2c-94b` | complete | `kSplitMovedPx`, writer inventory, wheel anchors, solo semantics — all shipped as ADR-0040/0041 | no action |
+| sub-agents / other sessions | none (`ListAgents`) | — | — |
+
+The three verify agents on F1-A all **refuted** it — correctly: the brief named `91e20d9`, the tree
+was two commits ahead at `8a00946`, and each independently established that the finding was exact
+against the named baseline and closed on the shipped head. That is the outcome a verify phase is
+for, and it is recorded rather than treated as noise.
+
+## 11. Every consumed result, classified and acted on
+
+### Confirmed defects — fixed, with coverage
+| # | Finding | Action |
+|---|---|---|
+| **Finding B** / W1 / RT-2 | the wheel's `scrollHandle`/`scrollBand` latch survives a band-count change | **ADR-0045**: stamped with `scrollBands`. State test 77 leg A; mutation R1 measured `band 1 moved 1.060 -> 1.120 after the count changed under a hand that never moved` |
+| RT-1 | `resetParam` has a gesture bracket with no topology proof inside it | **ADR-0045**: `expectedBands`. Leg C; mutation R2 measured `1.600 / 1.000 / 1.600` |
+| TH-1 | `addBandAt`'s ADR-0044 mask re-proof had **zero** coverage — every leg drove `removeBand` | State test 76 **leg H**; mutation R3 measured `Bands 3 with mask 0x8` on the add path |
+| TH-2 | leg F did not enforce its own claim: removing the mask check from the WIDTH loop alone left both its assertions true | leg F gains the width assertion; mutation R4 kills it and nothing else |
+
+### Documentation / process — corrected
+| # | Finding | Action |
+|---|---|---|
+| F2-C1…C8 | the store census is wrong in six places; an add at N = 3 issues **eight** stores, not nine, so the standing residue is **seven** | corrected in `ADR-0042`, `ADR-0044` and the in-source comments; both halves now counted the same way (stores that stand), which is the discrepancy that let it drift |
+| DC-6 | an **abandoned** transaction gets no duck: its residue arrives on the continuous path and stands, where a completed mixed layout would at least have been ducked into | recorded in ADR-0044 — this is the sharper statement of F2's cost, and the reason the in-loop checks earn their integer read |
+| RT-3 | the previous worklog's *"removes its only single-threaded trigger"* overstates the ADR-0043 fix | corrected in place, §7 |
+| F3-2 / F3-3 / TH-5 | the ADR-0025 disclosure understated its own gap, and the seam it named would not work | corrected in `TESTING.md` in the previous half of this round; re-confirmed here |
+| F2-D1 | *"ADR-0044 has no row in ADR_INDEX"* | **false positive** — the agent read a stale snapshot; the row is present |
+
+### Architecture trade-offs — decided
+| # | Finding | Decision |
+|---|---|---|
+| F4-A…D | the DSP's ten-load multiband snapshot | **accept the trade AND escalate**, which is the answer to a question posed as A-or-B: it is now **RISK-010** in `FUTURE_RISKS.md`, named as an `ARCHITECTURE_REVIEW_GATE` item, because the only real fix replaces the READER. F4-D is new and worth keeping: store-count-last plus read-count-first makes "new count over old values" unreachable, so only the benign direction remains |
+| F3-1/F3-4 | the held-audition guard's coverage | **B — accepted GUI-only gap.** Option (b), extracting the promotion into a public method, is the only thing that would work (`tick` returns at `isShowing()` before the guard), and it is a production seam existing solely for a test. ADR-0025 §5 keeps it revisitable |
+
+### False positives — no action, reason recorded
+| # | Finding | Why not |
+|---|---|---|
+| **W2** | *"`soundMovedUnderGesture` loops the full arrays and voids a gesture for a slot the topology does not use"* | Implemented, and it **broke State test 71 leg G**, which deliberately requires a foreign write to slot 2 at two bands to stop the drag. The plan is `projectFromOrig` over ALL slots from a capture that seeded ALL of them, and the count can rise at any moment. Reverted; the rejection is recorded beside the predicate so it is not re-proposed |
+| **Finding A** | *"`commitFreqEditor` only rejects disappeared handles; a surviving index may refer to a different topology"* | **Not a defect**, and the audit's own area agent (RT-4) says so independently. The ADR-0044 asymmetry decides it: `mbFreqLow` is split 0 under every topology, so a surviving index names the same parameter — unlike `removeBand`'s band index, which ADR-0039 had to refuse because a surviving index there RETARGETED the operation. What must be proved is that the split still exists (the bounds line) and that the plan comes from the live layout (ADR-0043 moved it inside the bracket, where `M` is re-read and `i < M` proves the handle a second time). The reasoning is now in the source at that line |
+| PR-5, TH-6, DC-1, DC-7, W4, W5, U5 | various | each states plainly that the shipped code is correct; no change |
+
+### Informational — recorded, unchanged
+* **U4** — a mouse-wheel Width edit produces **no undo step at all** (`setParam` opens no gesture). Real
+  and user-visible, and deliberately **not** fixed here: the brief says *preserve existing wheel
+  behaviour*, and adding gesture brackets to the wheel changes it. Recorded for a future round.
+* **U1/U2/U3** — `undo()`/`redo()` pass a member by const reference into `applyStateSet`, and a
+  re-entrant poll can split one topology transaction into two undo steps whose midpoint is a layout
+  the user never had. In `PluginProcessor`, outside this round's subsystem; recorded, not chased.
+* **DC-3/DC-4** — widths are consumed by slot and crossovers are force-ordered, so a numbering
+  mismatch puts a wrong-but-legal width on a real band. Already the accepted residue's shape.
+* **cancelled spread handle ordering**, **parameter-space ownership comments** — reviewed, unchanged.
+
+## 12. A correction to this round's own reporting
+
+I read *"2749 checks, 0 failure(s)"* from a **stale binary** after restoring a mutation, and reported
+leg H as passing when it had never passed. It was found by re-running, not by anything else. The leg
+needed the add area located by tooltip rather than assumed at mid-plot; it now kills mutation R3.
+Recorded because the same class of mistake — trusting a test binary that had not been relinked —
+has now happened twice in this PR.

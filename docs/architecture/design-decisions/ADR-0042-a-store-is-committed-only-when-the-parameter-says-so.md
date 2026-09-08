@@ -151,8 +151,10 @@ and both are closed here:
 
 A third round of the same pass, over the transaction half, corrected two more claims and removed one
 more defect. Both burst comments said abandoning leaves *"at most one already-issued store behind"*;
-an add at N = 3 issues nine stores and a removal at N = 4 issues seven, so the largest residue is
-**eight** and **six**, corrected in place. And below the insertion point — or above the removal —
+an add at N = 3 issues EIGHT value stores and a removal at N = 4 issues seven, so the largest residue is
+**seven** and **six**, corrected in place — *and corrected again by ADR-0044's round, which
+re-counted from the loops: the add's first `ins + 1` width slots are always elided, so the add
+issues EIGHT value stores and its largest standing residue is SEVEN, not eight.* And below the insertion point — or above the removal —
 most of the plan *is* the world it was computed from, yet the burst wrote those slots anyway: for
 the widths a redundant dispatch, for the **splits** a value change, because the plan is carried in
 pixels and `xToFreq (freqToX (f))` is a bisection over a monotone-spline axis, not the identity.

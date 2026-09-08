@@ -11,7 +11,9 @@ Both were right and both were implemented in one direction only.
 
 ## Context
 
-A topology edit is not one write. `addBandAt` issues up to nine stores and `removeBand` up to seven:
+A topology edit is not one write. `addBandAt` issues up to **eight** value stores and `removeBand`
+up to seven (re-counted from the loops in this round's audit — the add's first `ins + 1` width
+slots are always elided, which the previously recorded "nine" did not account for):
 the solo word, then the widths, then the splits, and the band count **last**. Every one is a
 `setValueNotifyingHost`, which dispatches every listener **synchronously from inside itself**
 (`juce_AudioProcessorParameter.cpp:59-63`, `:111-121` → `juce_AudioProcessor.cpp:1467`), so a host
@@ -142,6 +144,22 @@ authority. What changes is the shape and the size:
 | a foreign **mask** write mid-burst | **new count** committed over a word in the old numbering | count refused; the newer mask stands |
 | stores issued after the divergence is observable | the rest of the transaction (measured: three, leg F's shape) | none — the next check returns |
 | a foreign **width or split** write mid-burst | transaction completes, newer value stands | **unchanged** — ADR-0042's measured disposition, now covered by legs B and C |
+
+**Re-counted in the follow-up round, because the figure had been wrong twice.** An add at N = 3
+issues **eight** value stores, not nine — the first `ins + 1` width slots are always elided — so its
+largest STANDING residue is **seven**. A removal at N = 4 issues seven and stands at six, as
+recorded. Both halves are now counted the same way (stores that stand, not stores dispatched), which
+is the discrepancy that let the add's figure drift in the first place.
+
+**And the DSP treats the two residues differently, which the earlier rounds did not say.** A
+*completed* transaction changes `mbBands`, and any change to `mbBands` opens the click-free switch:
+fade to silence, adopt the whole pending snapshot at the bottom, reset both crossover banks, fade
+back in. An *abandoned* one never stores the count, so nothing in its residue is discrete — the new
+mask, widths and splits glide in on the continuous path over ~20 ms and simply stand. So the residue
+this ADR leaves is **audible immediately and permanent until the next edit**, where a completed
+mixed layout would at least have been ducked into. That asymmetry is the honest cost of abandoning,
+and it is why the in-loop checks — which stop the transaction AT the divergence — are worth their
+one integer read.
 
 The DSP is what makes the remaining residue survivable, re-derived rather than assumed:
 `MultibandWidth::setCrossovers` clamps every split to `[20 Hz, 0.45·sr]` and forces strict `1.1×`

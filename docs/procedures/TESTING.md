@@ -861,6 +861,17 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 77 — a positional latch is void once its topology moves** (ADR-0045). Two paths the
+  ADR-0038/0039 chain never covered, both found by the round's own audit. Legs: (A) a wheel burst
+  whose band count changes between two ticks does not keep steering the band its first tick latched
+  (`band 1 moved 1.060 -> 1.120 after the count changed under a hand that never moved` under
+  mutation R1); (C) an alt-click width reset whose count drops from inside `resetParam`'s own
+  `beginChangeGesture` stores nothing (`1.600 / 1.000 / 1.600` under mutation R2). Controls: (B) two
+  ticks with the topology unchanged steer the same thing; (D) an ordinary alt-click still resets.
+  Both controls are green under both mutants, so neither fix is a false refusal. The legs assert
+  about the slot the wheel *chose* rather than the slot the geometry ought to produce — the test is
+  given no access to the component's private layout and none was added for it.
+
 * **State test 76 — a topology transaction does not commit a layout it does not own** (ADR-0044).
   ADR-0040's *"re-validated before every store"* and ADR-0042's *"committed only when the parameter
   says so"* both look FORWARD; neither re-proves a value the transaction committed EARLIER, and the
@@ -876,9 +887,13 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   the line a careless fix must not cross: (B) a **width** and (C) a **split** replaced mid-burst do
   **not** abandon the transaction and the newer value stands — `mbWidthLow` means band 0's width
   under either topology, and ADR-0042 measured aborting there to be worse; (D) an uninterrupted
-  removal still commits and remaps; (E) an uninterrupted add still commits. Mutations: Q1 (in-loop
-  mask re-proof removed) → **F only**; Q2 (`setBands` stops proving `expectedMask`) and Q3 (call
-  sites pass −1) → **G only**; Q4 (both) → **A, F and G**, leg A being doubly covered. The round's
+  removal still commits and remaps; (E) an uninterrupted add still commits. Leg (H) is the same
+  adversarial shape on the **add** path, which had no coverage at all until the follow-up round —
+  every other leg drives `removeBand` (`Bands 3 with mask 0x8` under mutation R3). Mutations: Q1
+  (in-loop mask re-proof removed) → **F only**; Q2 (`setBands` stops proving `expectedMask`) and Q3
+  (call sites pass −1) → **G only**; Q4 (both) → **A, F and G**, leg A being doubly covered; R3
+  (the add path's three windows) → **H only**; R4 (the removal's WIDTH-loop check alone) → **F's
+  width assertion only**, which is why leg F carries one. The round's
   own first fix — proving the whole prefix and converting the leaves to `storeOwned` — is what legs
   B, C and G were written to refute.
 

@@ -476,6 +476,15 @@ void SpectrumImager::captureGestureSound() noexcept
 bool SpectrumImager::soundMovedUnderGesture() const noexcept
 {
     if (gestureBands < 0) return false;
+    // ADR-0045 CONSIDERED AND REJECTED. This round's audit proposed narrowing these two loops to
+    // the slots the LATCHED count uses -- `gestureBands - 1` splits, `gestureBands` widths -- on the
+    // grounds that a foreign write to a slot the live layout does not read voids a gesture for
+    // nothing. It is a FALSE POSITIVE, and State test 71 leg G is the test that says so: at two
+    // bands a foreign write to slot 2 must stop the drag, deliberately. The gesture's plan is
+    // `projectFromOrig` over ALL slots from a `captureDragOrigins` that seeded ALL of them, so a
+    // slot this pass did not write is still part of the world the plan was computed in -- and the
+    // count can rise at any moment and start reading it. Voiding is the conservative half of
+    // ADR-0038, and the narrowing was measured to break that leg.
     for (int k = 0; k < (int) std::size (gestureX); ++k) if (! ownsSplit (k)) return true;
     for (int b = 0; b < (int) std::size (gestureW); ++b) if (! ownsWidth (b)) return true;
     return false;
@@ -549,9 +558,22 @@ void SpectrumImager::setParam (juce::RangedAudioParameter* p, float plain)
 {
     if (p) p->setValueNotifyingHost (p->convertTo0to1 (plain));
 }
-void SpectrumImager::resetParam (juce::RangedAudioParameter* p)
+void SpectrumImager::resetParam (juce::RangedAudioParameter* p, int expectedBands)
 {
-    if (p) { if (onSweep) onSweep(); p->beginChangeGesture(); p->setValueNotifyingHost (p->getDefaultValue()); p->endChangeGesture(); }
+    if (p == nullptr) return;
+    if (onSweep) onSweep();
+    // ADR-0045. The band index its callers pass is derived from `bandAtX` OUTSIDE this call, and
+    // `beginChangeGesture` below dispatches to every listener before the store -- so a host lane
+    // answering the gesture open by dropping Bands left this resetting the width of a band the
+    // topology no longer has: an automation touch and an undo step for a band that is not there,
+    // and a value that pops into the sound if the count ever rises again. The same shape
+    // `setBands` and `setSoloMask` have carried since ADR-0041: the check and the store it guards
+    // have nothing between them. -1 means the caller has no topology to prove (the non-multiband
+    // resets).
+    p->beginChangeGesture();
+    if (expectedBands < 0 || bandCount() == expectedBands)
+        p->setValueNotifyingHost (p->getDefaultValue());
+    p->endChangeGesture();
 }
 // ADR-0040, round-3 correction 3: THE COMMIT POINT OPENS A GESTURE FIRST, so a check in the caller
 // is NOT adjacent to this store. `beginChangeGesture` dispatches parameterGestureChanged(idx, true)
@@ -972,6 +994,15 @@ void SpectrumImager::commitFreqEditor()
     // band count moves -- not the 24 Hz reconcile, not `cancelActiveDrag` -- so a host lane that
     // drops Bands while the user is typing leaves this committing a split the topology no longer
     // uses, and spreading the live ones around a pin that is not there. REFUSE, never clamp.
+    // ADR-0045 RULED THIS SUFFICIENT, having been asked whether the editor needs a topology stamp
+    // like the drag and the wheel do. It does not, and the reason is the ADR-0044 asymmetry: a
+    // SPLIT parameter means the same thing under every topology. `mbFreqLow` is split 0 whether
+    // there are two bands or four, so an index that survives names the same parameter the user
+    // opened the chip on -- unlike `removeBand`'s band index, which ADR-0039 had to refuse because
+    // a surviving index there RETARGETED the operation onto a different band. What must be proved
+    // is only that the split still EXISTS, which is this line, and that the plan is computed from
+    // the live layout, which ADR-0043 moved inside the gesture bracket below (`M` is re-read there
+    // and `ok = (i < M)` proves the handle a second time, after the open has dispatched).
     if (i >= bandCount() - 1) { closeFreqEditor(); return; }
     // ADR-0043. A COMMIT CARRIES INTENT, OR IT CARRIES NOTHING. The box is SEEDED from the live
     // split when the chip opens, and this function is reached by Return, by FOCUS LOSS and by any
@@ -2029,13 +2060,13 @@ void SpectrumImager::updateHover (juce::Point<float> p)
 void SpectrumImager::mouseMove (const juce::MouseEvent& e)
 {
     if ((scrollHandle >= 0 || scrollBand >= 0) && e.position.getDistanceFrom (scrollAnchor) > 3.0f)
-        scrollHandle = scrollBand = -1;
+        scrollHandle = scrollBand = scrollBands = -1;
     updateHover (e.position);
 }
 void SpectrumImager::mouseExit (const juce::MouseEvent&)
 {
     hoverHandle = hoverWidth = hoverAdd = hoverDelete = hoverDeleteExact = hoverSolo = -1;
-    scrollHandle = scrollBand = -1;
+    scrollHandle = scrollBand = scrollBands = -1;
 }
 void SpectrumImager::mouseDown (const juce::MouseEvent& e)
 {
@@ -2067,7 +2098,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     if (alt)
     {
         if (h >= 0) resetCrossover (h);
-        else { const int b = bandAtX (p.x); if (nearWidthLine (p, b)) resetParam (widthP[b]); }
+        else { const int b = bandAtX (p.x); if (nearWidthLine (p, b)) resetParam (widthP[b], bandCount()); }
         return;
     }
     if (h >= 0)
@@ -2305,7 +2336,7 @@ void SpectrumImager::mouseDoubleClick (const juce::MouseEvent& e)
         if (numberChip (i).contains (p)) { openFreqEditor (i); return; }
     const int h = handleNearX (p.x);
     if (h >= 0) resetCrossover (h);
-    else { const int b = bandAtX (p.x); if (nearWidthLine (p, b)) resetParam (widthP[b]); }
+    else { const int b = bandAtX (p.x); if (nearWidthLine (p, b)) resetParam (widthP[b], bandCount()); }
 }
 void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
@@ -2319,12 +2350,26 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     // does when no button is held. The wheel is not disabled -- the press is finished.
     cancelActiveDrag();
     const int N = bandCount();
+    // ADR-0045. THE WHEEL'S LATCH IS STAMPED WITH THE TOPOLOGY IT WAS TAKEN IN. `scrollHandle` and
+    // `scrollBand` are positional identifiers latched at the FIRST tick of a burst and reused by
+    // every later one; they are dropped by a >3 px `mouseMove` or by `mouseExit`, and by nothing
+    // else. A band count that moves between two ticks -- a host lane, an undo, a preset -- re-lays
+    // the whole display out under a hand that has not moved, so the next tick steered a split the
+    // pointer was no longer over. Bounds alone do not close that: an index that LANDS inside the
+    // new range is exactly the case ADR-0039 refused to accept for `removeBand`. Every other
+    // positional identifier in this class is stamped by `gestureBands` and tested by
+    // `gestureIsStale()`; this one was not. Dropping the latch re-derives it from the cursor on the
+    // very next tick, which is what a `mouseMove` already did -- so an uninterrupted burst behaves
+    // exactly as before.
+    if (scrollBands >= 0 && bandCount() != scrollBands)
+        scrollHandle = scrollBand = scrollBands = -1;
     if (scrollHandle < 0 && scrollBand < 0)
     {
         const int h = handleNearX ((float) e.position.x);
         if (h >= 0) scrollHandle = h;
         else        scrollBand = bandAtX ((float) e.position.x);
         scrollAnchor = e.position;
+        scrollBands  = bandCount();   // ADR-0045: the topology this latch is only valid in
     }
     const float dy = (wheel.isReversed ? -1.0f : 1.0f) * wheel.deltaY;
     if (std::abs (dy) < 1.0e-4f) return;
