@@ -832,6 +832,34 @@ jobs:
             echo "${name} green under a 1 MB stack"
           done
 
+      # ADR-0047. THE ONE GATE IN THIS WORKFLOW THAT MEASURES A RACE RATHER THAN
+      # ASKING A SANITIZER. What it drives is not a data race -- every read and
+      # write involved is on a `std::atomic<float>`, and TSan is silent over this
+      # probe, verified -- but a LOGICAL one: the drag's plan basis and its
+      # ownership stamp used to come from two separate reads of the same
+      # parameter, so an automation write landing between them was proved absent
+      # and then written over, inside the user's own change gesture.
+      #
+      # It asserts rather than reports, and it can: after ADR-0047 the pair is one
+      # reading by construction, so the expected count is not "low" but ZERO. The
+      # discriminating power is measured, not hoped for -- 92 laundered splits in
+      # 1200 drags before the fix, 0 after, and the exit code was self-tested in
+      # both directions (1 on the pre-fix tree, 0 on this one).
+      - name: The split snapshot is still one reading (ADR-0047)
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
+        run: |
+          BIN="$(find build -maxdepth 8 -name AnamorphStateTests -type f)"
+          test "$(printf '%s' "$BIN" | grep -c .)" -eq 1
+          "$BIN" --split-snapshot-probe 300 || {
+            echo "::error::A gesture's plan basis and its ownership stamp are no longer the same"\
+                 " reading (ADR-0047). A parameter is being read twice where one reading has to"\
+                 " serve both, so a host automation write landing between the two reads is proved"\
+                 " absent and then written over. Find the second read and derive it from the first;"\
+                 " do not add a lock or a re-check. docs/procedures/TESTING.md carries the probe's"\
+                 " numbers and the 200 us widened-window recipe."
+            exit 1
+          }
+
       - name: pluginval (deterministic x3 -- release gate)
         # Explicit condition rather than relying on "no `if:`, so it self-skips".
         # Both pluginval steps carry the SAME condition, naming exactly what must
@@ -3585,12 +3613,25 @@ jobs:
       # So the assertion is match-count == entry-count, not "at least one". It runs
       # only against the FULL SUITE: the D-2 probes above do not drive the legs that
       # produce the report and legitimately match nothing.
+      # COUNT THE BREAKDOWN LINES, NOT THE SUMMARY NUMBER. The first version of this
+      # step parsed `ThreadSanitizer: Matched N suppressions`, which is the SUM OF
+      # HIT COUNTS, not the number of entries that matched. Measured with a
+      # purpose-built two-inversion binary under the same clang:
+      #   one entry, two distinct reports  -> `Matched 2` and ONE breakdown line
+      #   two entries, one report each     -> `Matched 2` and TWO breakdown lines
+      # so the summary is wrong in BOTH directions: it fails a correct file whose
+      # single entry absorbed two reports, and it PASSES a file with a dead entry
+      # beside one that was hit twice -- which is precisely the silent mode this
+      # step exists to catch. The per-entry breakdown `print_suppressions` emits
+      # after the summary has exactly one line per entry that matched at least
+      # once, so counting those lines is the question actually being asked.
       - name: Every TSan suppression still matches something
         run: |
           expected=$(grep -cE '^[a-z_]+:' tests/tsan-suppressions.txt)
-          got=$(sed -n 's/^ThreadSanitizer: Matched \([0-9]\{1,\}\) suppressions.*/\1/p' tsan-suite.log | head -1)
+          got=$(sed -n '/^ThreadSanitizer: Matched [0-9][0-9]* suppressions/,$p' tsan-suite.log \
+                | grep -cE '^[0-9]+ [a-z_]+:' || true)
           got=${got:-0}
-          echo "suppression entries: $expected ; matched this run: $got"
+          echo "suppression entries: $expected ; entries that matched this run: $got"
           if [ "$got" != "$expected" ]; then
             echo "::error::tests/tsan-suppressions.txt has $expected entr(ies) but ThreadSanitizer matched $got. A suppression that matches nothing is dead: either the harness double it names is gone (delete the entry) or the legs that produced the report were restructured (delete the entry, or restore the coverage). Do NOT resolve this by broadening the pattern -- the file's own header explains why a wider entry is worse than none."
             grep -nE '^[a-z_]+:' tests/tsan-suppressions.txt

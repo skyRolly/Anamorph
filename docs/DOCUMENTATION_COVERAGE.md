@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3269` and `.github/workflows/build.yml:3354`, this round being
+`.github/workflows/build.yml:3297` and `.github/workflows/build.yml:3382`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -9915,7 +9915,7 @@ the working tree: 0 files missing, 0 lines past EOF, 0 pointing at unrelated cod
 
 **MUST FIX — one, and the scanners did not report it.** PREfast's four `C6001` results are false
 positives, but auditing the second pair's surface found a real one three functions away:
-`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:506) validated its pin arguments
+`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:546) validated its pin arguments
 against `count` when *writing* them and not when computing `leftPin`/`rightPin`, so a stale pin
 survived into the pull loops and `out[k + 1]` read a slot the copy loop never wrote. Reachable:
 `beginBandMove` (:398) latches `soloMoveLeft`/`soloMoveRight` from the band count at the press;
@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:929 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:972 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1128`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1173`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10033,7 +10033,7 @@ that the fix covered one direction only. Both are settled here.
 
 **A SECOND defect, and the scanners never saw it either.** `dragOrigX` (src/gui/SpectrumImager.h:249)
 is the drag-start x of every split, seeded once when a gesture begins and read for the whole gesture.
-Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:547)
+Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:591)
 and `moveBand` (:704). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
 splits in USE at the press — so a host write of `mbBands` that **raised** Bands mid-gesture made the
 consumers ask `projectFromOrig` for origins nobody had written. Those slots still held the `{0,0,0}`
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:929 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:972 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10684,7 +10684,12 @@ takes around its own dispatch; that is **RISK-009**, and closing it is a threadi
 `tests/tsan-suppressions.txt` carries one `deadlock:` entry naming the harness double so the report
 stays visible for any stack made of production frames, wired into the workflow with
 `print_suppressions=1`; the canary, run under the same file, still fails with a data race. Worklog
-§18.
+§18. **Corrected 2026-09-08 (split-snapshot round, §36):** "for any stack made of production frames"
+is stronger than the measurement supports. A TSan suppression is REPORT-scoped, so it is accurate
+only for a report whose stacks are ALL production frames — that case was measured and still exits 66;
+a MIXED cycle pairing a production edge with the harness edge IS absorbed. The residual is bounded
+(the harness double is not compiled into a shipped build) and is now recorded in the suppression file
+rather than claimed away here.
 
 **A wrong-typed argument in the code this round rewrote.** `juce::TextEditor::setText` takes
 `(const String&, bool sendTextChangeMessage)`; `juce::Label::setText` takes
@@ -10737,7 +10742,7 @@ last is the one arrangement that cannot work: an index derived at three bands an
 four that arrived a few instructions later claims a topology it was never derived in, and because
 `scrollBands` is not re-derived for the rest of the burst, every later tick compares against that
 claim and passes. `mouseDown` never had this half — it reads the count at the very top, which is
-what `src/gui/SpectrumImager.cpp:2362` relies on.
+what `src/gui/SpectrumImager.cpp:2417` relies on.
 
 **Fix (ADR-0046).** `bandAtX (x, n)` and `handleNearX (x, n)` answer under the topology they are
 given (`-1` keeps the live read for the hover and paint callers, which stamp nothing);
@@ -10801,7 +10806,7 @@ change, and no Accepted ADR conflict. [Verified]
 topology count commit may still report success"*, and its converse for `setSoloMask`.
 
 **Ruled B — already prevented, invariant documented.** Both halves are true of the code:
-`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:639`) and
+`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:679`) and
 `setSoloMask` returns `stored && soloMask() == mask` (`:662`), so each re-reads only its own
 parameter after its own dispatches even though both prove BOTH on the near side. What covers it is
 the **callers** — every one that acts on the result re-proves the other parameter on its next line,
@@ -10840,7 +10845,10 @@ change, and no Accepted ADR conflict. [Verified]
 
 ## Fourteenth pass — wheel gesture semantics and the suppression match assertion (2026-09-08)
 
-**Finding 1 — "wheel input closes active gestures" (`src/gui/SpectrumImager.cpp:2455`): ruled B,
+**Finding 1 — "wheel input closes active gestures" (the `cancelActiveDrag()` at the top of
+`SpectrumImager::mouseWheelMove`; cited by FUNCTION rather than by line because that line moved three
+times inside this PR as the comment above it grew, and the citation gate cannot see a new anchor
+drift): ruled B,
 intentional.** `cancelActiveDrag()` is not in the merge base; it was introduced by **ADR-0041**, an
 early round of this PR, **not** by the recent ADR-0045/0046 wheel and topology work the review
 suspected, and ADR-0041 already states it as a product decision. What was missing is what ending the
@@ -10896,3 +10904,57 @@ and the tsan recipe row), `tests/tsan-suppressions.txt` (the rule marked enforce
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§26-29. Not a gate item: no parameter
 ID, serialization, threading-model, DSP-order or reported-latency change, and no Accepted ADR
 conflict — ADR-0041 is amended with its own measured consequences, not contradicted. [Verified]
+
+---
+
+## Fifteenth pass — the split-snapshot round (2026-09-08)
+
+**Finding — "split snapshots can launder automation" (`SpectrumImager::captureDragOrigins`): ruled A,
+confirmed defect, fixed, and MEASURED before it was ruled.** The plan basis (`dragOrigX`) and the
+ownership stamp (`gestureX`) were two separate reads of the same parameter. Neither read dispatches,
+so the window is reachable only from another thread — which is why no deterministic test in the suite
+could see it, and why this round added `AnamorphStateTests --split-snapshot-probe` rather than
+arguing. An automation write landing between the reads leaves the plan holding the old position and
+the stamp holding the new value: `ownsSplit` agrees, the drag proceeds, and `writeCrossovers` writes
+the moved split back to where it was — inside the change gesture the drag opened, so into the
+automation lane and the undo stack. **92 laundered splits in 1200 drags (7.7 %) before the change,
+0 after; 200/200 against 0/200 with the window widened to 200 µs as a diagnostic.**
+
+**The class was wider than the finding.** The review named four sites; the audit found eight. Two of
+them (`writeCrossovers` and `spreadSplits`) had the same shape between the ownership proof and the
+write-worth test, and two more (the wheel tick target, the add-branch anchor) were failing SAFE but
+lossily — a refused user edit for no visible reason. All eight now take ONE reading and derive both
+values from it, which removes reads rather than adding them.
+
+**Decision: ADR-0047**, which is ADR-0046's own rule — *"One reading, used by the derivation and by the
+proof, has neither failure"* — applied to the split and width VALUES instead of the band count.
+`ownsSplit (int, float)` and `ownsWidth (int, float)` carry the caller's reading.
+
+**Two self-corrections in the measurement, both recorded because both changed the answer.** The first
+probe reset only one parameter between iterations, so after the first drag the handle had walked away
+from the swept x and 3000 iterations measured nothing at all. And the first writer fired one write per
+drag, which reaches the window about once in 4000 drags — enough to prove the class, useless as a
+detector, because a lane is only straddled at a transition. A third correction came from the mutation
+run: State test 81's comment credited the wrong guard for leg B (the per-slot `ownsSplit` proof rather
+than the `mouseDrag` staleness gate), and disabling each in turn settled it.
+
+**Coverage with its limit stated.** State test 81 pins the corners either side of the window; reverting
+ADR-0047 leaves all 2804 checks green, which is recorded in the test's own header, in `TESTING.md` and
+in the ADR. The probe is the coverage.
+
+**Verify-only items.** RISK-010 unchanged and explicitly NOT this finding (audio-side reader, not
+GUI-side snapshot); held-audition guard unchanged (`tick()` still returns at `isShowing()`, no
+production seam added); wheel gesture closure unchanged (ADR-0041, State test 80); U4 unchanged; the
+TSan suppression verified harness-scoped by grep — `WriteFromInsideAGestureOpen` exists only at
+`tests/state_tests.cpp:2715` — with the match-count assertion green in CI on `03a6e39`; both
+informational items unchanged.
+
+**Documentation.** `ADR-0047` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
+`TESTING.md` (the probe, its numbers, the widened-window recipe, State test 81 and its mutation
+record), `THREADING_POLICY.md` (one row added for the audio/host-thread WRITES to automatable
+parameters the GUI reads — the direction the table described in only one direction; the model is
+unchanged and none was proposed), `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md`
+§§32-35. Two anchors that had drifted for the third time inside this PR now cite the FUNCTION rather
+than a line. Not a gate item: no parameter ID, serialization, threading-model, DSP-order or
+reported-latency change, and no Accepted ADR contradicted — ADR-0046's rule is extended, not
+reversed. [Verified]

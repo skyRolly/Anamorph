@@ -380,6 +380,16 @@ private:
     // for having no gesture, not for being the wheel.
     bool  ownsSplit (int k) const noexcept;
     bool  ownsWidth (int b) const noexcept;
+    // ADR-0047. THE PROOF AND THE PLAN ARE ONE READING. The predicates above read the parameter
+    // for themselves, which is right where the caller has nothing else to compare -- but every
+    // caller that goes on to USE the value was reading it a SECOND time, and a foreign write
+    // between the two reads passes the proof while the plan carries the older world. These
+    // overloads take the reading the caller already has, so the value proved and the value used
+    // are the same measurement by construction. Measured before the fix, against a continuously
+    // moving automation lane: 92 laundered splits in 1200 drags (7.7%) on a 4-core box, 0 after --
+    // and 200/200 against 0/200 with the window widened to 200 us. `--split-snapshot-probe`.
+    bool  ownsSplit (int k, float norm) const noexcept;
+    bool  ownsWidth (int b, float norm) const noexcept;
     // True once the count has moved under an active gesture. Message thread only; a plain
     // comparison of two ints, no lock and no allocation -- the audio thread is not involved
     // in any of this and must never be.

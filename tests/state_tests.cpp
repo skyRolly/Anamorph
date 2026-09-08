@@ -16398,6 +16398,379 @@ static void testLegacySlotIsCanonicalAtTheBoundary()
     }
 }
 
+
+// ---------------------------------------------------------------------------
+//  State test 81 -- the plan and the proof are one reading (ADR-0047), at the
+//  two corners a single thread can actually reach.
+//
+//  HONEST SCOPE, STATED FIRST: this test CANNOT fail on the defect ADR-0047
+//  fixes. That defect lives between two pure reads of the same parameter, and
+//  pure reads dispatch nothing, so the window is reachable only from another
+//  thread -- `--split-snapshot-probe` is what reaches it, and it measured 1-3
+//  laundered splits per 4000 drags before the fix and 0 after. What this test
+//  pins is the pair of corners on either side of that window, both of which the
+//  fix must leave exactly as they were:
+//
+//    leg A  the automation write lands BEFORE the capture. Both reads see it, so
+//           the gesture owns the new world and the drag proceeds normally --
+//           the write must NOT be reverted, and split 0 must still move.
+//    leg B  the write lands AFTER the capture, between the press and the drag.
+//           The gesture then refuses: the drag abandons, the write survives, and
+//           split 0 does not move. MEASURED, not assumed: the guard that owns this
+//           leg is the ADR-0038/0039 staleness gate at the TOP of `mouseDrag`
+//           (`if (gestureIsStale()) { cancelActiveDrag(); return; }`), not the
+//           per-slot `ownsSplit` proof inside `writeCrossovers`. Disabling the
+//           gate fails this leg and two of State test 71's leg G checks;
+//           disabling the per-slot proof fails State test 71 legs B and H and
+//           leaves this leg green. The first draft of this comment named the
+//           wrong guard, and the mutation run corrected it.
+//           This is why the fix is safe rather than novel: everything OUTSIDE the
+//           old window was already covered, which is exactly what made the window
+//           worth closing rather than papering over.
+//    leg C  control: nothing foreign writes, the drag moves split 0 and leaves
+//           split 1 alone.
+//
+//  MUTATION RECORD, in full and including the miss: reverting ADR-0047 itself
+//  (`captureDragOrigins` back to two reads) leaves ALL 2804 checks green. That is
+//  the honest limit of this test and the reason the probe exists.
+static void testThePlanAndTheProofAreOneReading()
+{
+    std::printf ("State test 81: the plan and the proof are one reading\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the one-reading test");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the one-reading test");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    check (bandsP && loP && midP && hiP, "the multiband parameters the one-reading test drives exist");
+    if (! (bandsP && loP && midP && hiP)) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    const float laneY = 0.5f * (float) imager->getHeight();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+
+    constexpr float kLo = 200.0f, kMid = 2000.0f, kHi = 8000.0f, kMidMoved = 3000.0f;
+    auto reset = [&]
+    {
+        imager->mouseUp (mev (-500.0f, laneY, -500.0f, laneY, false));
+        setPlain (bandsP, 4.0f);
+        setPlain (loP, kLo); setPlain (midP, kMid); setPlain (hiP, kHi);
+    };
+    auto firstSplitX = [&] () -> float
+    {
+        for (float x = 2.0f; x < (float) imager->getWidth() - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, laneY, x, laneY, false));
+            const auto tip = imager->getTooltip();
+            if (tip.containsIgnoreCase ("split") || tip.containsIgnoreCase ("crossover")) return x;
+        }
+        return -1.0f;
+    };
+
+    reset();
+    const float h0 = firstSplitX();
+    check (h0 > 0.0f, "the first split's handle is findable for the one-reading test");
+    if (h0 <= 0.0f) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    // ---- leg A: the write lands BEFORE the capture -------------------------------------
+    reset();
+    setPlain (midP, kMidMoved);                       // automation, then the user presses
+    imager->mouseDown (mev (h0, laneY, h0, laneY, false));
+    imager->mouseDrag (mev (h0 + 6.0f, laneY, h0, laneY, true));
+    imager->mouseUp   (mev (h0 + 6.0f, laneY, h0, laneY, true));
+    check (std::abs (plainOf (midP) - kMidMoved) < 1.0f,
+           "leg A: a write that lands before the capture is part of the gesture's world, not reverted");
+    check (std::abs (plainOf (loP) - kLo) > 0.5f,
+           "leg A: and the drag still moved the split the user grabbed");
+
+    // ---- leg B: the write lands AFTER the capture --------------------------------------
+    reset();
+    imager->mouseDown (mev (h0, laneY, h0, laneY, false));
+    setPlain (midP, kMidMoved);                       // automation, inside the gesture
+    imager->mouseDrag (mev (h0 + 6.0f, laneY, h0, laneY, true));
+    imager->mouseUp   (mev (h0 + 6.0f, laneY, h0, laneY, true));
+    check (std::abs (plainOf (midP) - kMidMoved) < 1.0f,
+           "leg B: a write that lands after the capture is not written over -- the gesture refuses");
+    check (std::abs (plainOf (loP) - kLo) < 0.01f,
+           "leg B: and the drag wrote nothing at all, which is what refusing means");
+
+    // ---- leg C: control -----------------------------------------------------------------
+    reset();
+    imager->mouseDown (mev (h0, laneY, h0, laneY, false));
+    imager->mouseDrag (mev (h0 + 6.0f, laneY, h0, laneY, true));
+    imager->mouseUp   (mev (h0 + 6.0f, laneY, h0, laneY, true));
+    check (std::abs (plainOf (loP) - kLo) > 0.5f,
+           "leg C: with nothing foreign writing, the drag moves the split it grabbed");
+    check (std::abs (plainOf (midP) - kMid) < 0.01f,
+           "leg C: and leaves the split it did not grab exactly where it was");
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
+// ADR-0047 probe: can a gesture's PLAN BASIS and its OWNERSHIP STAMP come from
+// two different reads of the same parameter, and does the difference launder a
+// host automation write?
+//
+// NOT part of the suite, and it exists because the answer could not be reached
+// any other way. Before ADR-0047 `captureDragOrigins` filled `dragOrigX` from
+// `crossover (k)` and then called `captureGestureSound()`, which filled
+// `gestureX[k]` from a SECOND read of the same parameter. Both reads are pure,
+// so nothing can dispatch between them on this thread -- the window is
+// CROSS-THREAD ONLY, and a single-threaded test cannot reach it. This probe
+// drives it with the writer the threading model names: an automation thread,
+// modelling the host writing through the format wrapper, moving mbFreqMid while
+// the message thread starts a drag on split 0.
+//
+// THE SIGNATURE IS SPECIFIC AND NOTHING ELSE PRODUCES IT. Split 0 is dragged
+// 2 px, far from split 1, so the plan for split 1 is `dragOrigX[1]` verbatim.
+// With both reads in the same world, |live - plan| is zero and `writeCrossovers`
+// writes nothing. With the automation write BETWEEN the two reads, `dragOrigX[1]`
+// holds the old position while `gestureX[1]` holds the new value: `ownsSplit (1)`
+// passes, the plan is stale, and mbFreqMid is written back to where it was before
+// the automation moved it -- inside the drag's own change gesture, so into the
+// automation lane and the undo stack.
+//
+// MEASURED 2026-09-08 on a 4-core box, 300 drags per spin setting against a
+// continuously moving lane:
+//     before ADR-0047   18, 17, 6, 51 laundered of 300  (spins 0, 40, 120, 400)
+//                       -- 92 of 1200, 7.7%
+//     after  ADR-0047   0, 0, 0, 0
+// Repeated twice more on the same box: 84 and 72 of 1200. The rate varies with
+// scheduling; what does not vary is that it is never zero before the change and
+// always zero after it, which is what makes the assertion at the end sound.
+// The first version of this probe fired ONE write per drag and reached the
+// window about once in 4000 drags: enough to prove the class, useless as a
+// detector. A lane only crosses the window at a TRANSITION, so a writer that
+// keeps writing the same value has one; the alternating lane above has
+// thousands. Independently, with a 200 us sleep inserted between the two reads,
+// one write timed into it laundered 200/200 before the fix and 0/200 after --
+// the fix removes the second read, so there is no window left to widen.
+//
+// A large "drags that wrote nothing" count is EXPECTED and is the safe path
+// working: the lane moves during the drag, `gestureIsStale()` sees it and the
+// gesture abandons. That is ADR-0039 doing its job; the laundered count is the
+// residue it cannot see, because the stamp agreed with the world.
+//     AnamorphStateTests --split-snapshot-probe [iterations-per-spin]
+static int runSplitSnapshotProbe (int iterations)
+{
+    std::printf ("ADR-0047 probe: an automation write against the drag's own capture\n");
+    std::printf ("  (a laundered split is one written back to its pre-automation position)\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    if (ed == nullptr) { delete raw; std::printf ("  no editor\n"); return 1; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; std::printf ("  no imager\n"); return 1; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    if (! (bandsP && loP && midP && hiP))
+    { proc.editorBeingDeleted (ed); delete ed; std::printf ("  no params\n"); return 1; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+
+    constexpr float kLoBase = 200.0f, kMidBase = 2000.0f, kHiBase = 8000.0f;
+    constexpr float kMidMovedA = 2600.0f, kMidMovedB = 3400.0f;
+    setPlain (bandsP, 4.0f);
+    setPlain (loP, kLoBase); setPlain (midP, kMidBase); setPlain (hiP, kHiBase);
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    const float laneY = 0.5f * (float) imager->getHeight();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+
+    // The x of the FIRST split, found the way the suite finds handles.
+    float split0X = -1.0f;
+    for (float x = 2.0f; x < (float) imager->getWidth() - 2.0f; x += 1.0f)
+    {
+        imager->mouseMove (mev (x, laneY, x, laneY, false));
+        const auto tip = imager->getTooltip();
+        if (tip.containsIgnoreCase ("split") || tip.containsIgnoreCase ("crossover")) { split0X = x; break; }
+    }
+    if (split0X < 0.0f) { proc.editorBeingDeleted (ed); delete ed; std::printf ("  no handle found\n"); return 1; }
+
+    // A CONTINUOUS writer, not a single shot. The first version of this probe fired one write per
+    // drag on a spin lattice and reached the window about once in 4000 drags -- enough to prove the
+    // class, far too rare to detect a regression. A host playing back an automation lane writes the
+    // parameter on every block, so the faithful model is a writer that keeps moving it while the
+    // press is armed; that reaches the window in double-digit percentages, which is what makes this
+    // probe usable as a detector rather than only as a demonstration.
+    // THE DISCRIMINATOR IS THE THREAD, WHICH IS EXACT. Only two parties write mbFreqMid here: the
+    // automation thread, and -- if and only if the capture straddled one of its writes -- the drag,
+    // on the message thread. The drag is dragging split 0, six pixels, nowhere near split 1, so with
+    // one reading behind it the plan for split 1 IS split 1's live position and `writeCrossovers`
+    // writes nothing. Any message-thread write to this parameter while the lane is armed is
+    // therefore the stale plan being applied, and nothing else in the program produces one. Value
+    // comparison cannot do this job: a laundered split is written back to the automation's PREVIOUS
+    // value, which the lane itself was writing a moment earlier.
+    struct RevertDetector : juce::AudioProcessorParameter::Listener
+    {
+        std::atomic<bool> armed { false }, sawRevert { false };
+        std::thread::id gui {};
+        void parameterValueChanged (int, float) override
+        {
+            if (armed.load (std::memory_order_acquire) && std::this_thread::get_id() == gui)
+                sawRevert.store (true, std::memory_order_release);
+        }
+        void parameterGestureChanged (int, bool) override {}
+    };
+    RevertDetector detector;
+    detector.gui = std::this_thread::get_id();
+    midP->addListener (&detector);
+
+    std::atomic<int>  phase { 0 };   // 1 = keep writing, the press is armed
+    std::atomic<int>  spin  { 0 };   // pause between writes, sweeping where the window falls
+    std::atomic<bool> quit  { false };
+
+    std::atomic<bool> writing { false };
+    bool flip = false;
+    std::thread automation ([&]
+    {
+        while (! quit.load (std::memory_order_acquire))
+        {
+            while (phase.load (std::memory_order_acquire) == 1)
+            {
+                writing.store (true, std::memory_order_release);
+                // A signal fence rather than a volatile counter: incrementing a volatile is
+                // deprecated in C++20 and the first draft of this loop earned a -Wdeprecated-volatile
+                // the warning gate would have failed on. The fence is not optimised away either.
+                const int n = spin.load (std::memory_order_relaxed);
+                for (int i = 0; i < n; ++i) std::atomic_signal_fence (std::memory_order_acq_rel);
+                // ALTERNATING, because a lane that writes the same value twice has one transition
+                // in it and the window can only be crossed at a transition. Both values are far
+                // from the drag's own splits, so nothing the drag legitimately does looks like this.
+                flip = ! flip;
+                setPlain (midP, flip ? kMidMovedA : kMidMovedB);
+            }
+            writing.store (false, std::memory_order_release);
+        }
+    });
+
+    int totalLaundered = 0;
+    for (const int sp : { 0, 40, 120, 400 })
+    {
+        int laundered = 0, survived = 0, silent = 0, other = 0;
+        for (int it = 0; it < iterations; ++it)
+        {
+            imager->mouseUp (mev (split0X, laneY, split0X, laneY, false)); // nothing held
+            setPlain (loP, kLoBase);    // every iteration starts from the same geometry, or the
+            setPlain (midP, kMidBase);  // handle walks away from split0X and no drag happens at all
+            setPlain (hiP, kHiBase);
+
+            detector.sawRevert.store (false, std::memory_order_release);
+            detector.armed.store (true, std::memory_order_release);
+            spin.store (sp, std::memory_order_relaxed);
+            phase.store (1, std::memory_order_release);   // the automation lane starts moving
+
+            imager->mouseDown (mev (split0X, laneY, split0X, laneY, false));
+            imager->mouseDrag (mev (split0X + 2.0f, laneY, split0X, laneY, true));
+            imager->mouseUp   (mev (split0X + 2.0f, laneY, split0X, laneY, true));
+
+            phase.store (0, std::memory_order_release);   // and stops
+            while (writing.load (std::memory_order_acquire)) { }
+            detector.armed.store (false, std::memory_order_release);
+
+            // THE VERDICT IS THE LISTENER, NOT THE FINAL VALUE. With a lane that keeps writing, the
+            // last write wins, so reading mbFreqMid afterwards says nothing -- a laundering write is
+            // painted over by the very next automation write. What cannot be painted over is that
+            // the write HAPPENED, on the message thread, which is the discriminator above.
+            const float lo = plainOf (loP);
+            if (std::abs (lo - kLoBase) < 0.01f) ++silent;                // the drag wrote nothing
+            if (detector.sawRevert.load (std::memory_order_acquire))      ++laundered;
+            else                                                          ++survived;
+            (void) other;
+        }
+        totalLaundered += laundered;
+        std::printf ("  spin %3d: laundered %d / %d   (survived %d, drags that wrote nothing %d, other %d)\n",
+                     sp, laundered, iterations, survived, silent, other);
+    }
+    quit.store (true, std::memory_order_release);
+    automation.join();
+    midP->removeListener (&detector);
+
+   std::printf ("  TOTAL LAUNDERED: %d  (ADR-0047 expects 0; before the fix this box gave 92 of 1200)\n",
+                 totalLaundered);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+    // THIS PROBE ASSERTS, unlike the sanitizer probes above, and it can: after ADR-0047 the pair is
+    // one reading by construction, so the expected count is not "low" but ZERO. The measured
+    // discriminating power is 92 in 1200 before the fix against 0 after, so a regression that
+    // reintroduces a second read fails here rather than in somebody's session.
+    return totalLaundered == 0 ? 0 : 1;
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -16456,6 +16829,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--d2-stress-probe") == 0)
         return runD2StressProbe();
+
+    if (argc > 1 && std::strcmp (argv[1], "--split-snapshot-probe") == 0)
+        return runSplitSnapshotProbe (argc > 2 ? std::atoi (argv[2]) : 1000);
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
@@ -16546,6 +16922,7 @@ int main (int argc, char* argv[])
     testADerivationAnswersUnderTheTopologyItWasGiven();
     testTheFarSideOfACoupledCommitIsCoveredByItsCaller();
     testAWheelTickFinishesAHeldPress();
+    testThePlanAndTheProofAreOneReading();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

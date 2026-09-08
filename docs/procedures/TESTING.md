@@ -463,7 +463,46 @@ legacy paths side by side — because the review that raised the finding located
 on the modern path, 0 of 6 on the legacy one**. Keep the two columns; they are what stops the two
 paths being confused again.
 
-`AnamorphStateTests --reprepare-race-probe` is the seventh, and like `--state-thread-probe` it is
+`AnamorphStateTests --split-snapshot-probe` (ADR-0047) is the one probe in this list that MEASURES A
+DEFECT RATE rather than handing the verdict to a sanitizer, because the thing it drives is not a data
+race — every read and write involved is on a `std::atomic<float>` — but a **logical** one: the drag's
+plan basis and its ownership stamp came from two separate reads of the same parameter, so an
+automation write landing between them was proved absent and then written over. An automation thread
+alternates `mbFreqMid` between two values while the message thread presses, drags split 0 six pixels
+and releases; a message-thread write to `mbFreqMid` while that lane is armed is the laundering, and
+nothing else in the program produces one. **Thread identity is the discriminator, not the value** — a
+laundered split is written back to the lane's PREVIOUS value, which the lane itself wrote a moment
+earlier, so comparing values cannot tell the two apart.
+
+| | spin 0 | spin 40 | spin 120 | spin 400 | total |
+|---|---|---|---|---|---|
+| before ADR-0047 | 18 | 17 | 6 | 51 | **92 / 1200 (7.7 %)** |
+| after | 0 | 0 | 0 | 0 | **0 / 1200** |
+
+Repeated twice more on the same box after unrelated edits to the probe's spin loop: **84** and **72** of 1200. The rate varies with scheduling; what does not vary is that it is never zero before the change and always zero after it.
+
+Two things about this probe are worth keeping in mind. **The writer had to be continuous.** The first
+version fired one write per drag on a spin lattice and reached the window about once in 4000 drags —
+enough to prove the class existed, useless as a detector — because a lane can only be straddled at a
+TRANSITION, and a one-shot lane has one. **And the strong proof is not in the probe.** Inserting
+`std::this_thread::sleep_for (std::chrono::microseconds (200))` between the two reads in
+`captureDragOrigins` and timing one write into it gives 200/200 laundered before the fix and 0/200
+after — the fix removes the second read, so there is nothing left to widen. That diagnostic edits
+production code for one build and is therefore NOT shipped; the recipe is here so anyone can redo it
+in one line.
+
+**It is the one gate in the workflow that measures a race instead of asking a sanitizer, and it
+ASSERTS.** `--split-snapshot-probe` exits non-zero when anything launders, because after ADR-0047 the
+expected count is not "low" but zero — the pair is one reading by construction. The `linux` job runs
+it at 300 drags per spin after the self-tests ("The split snapshot is still one reading (ADR-0047)"),
+and the exit code was self-tested in both directions: 1 on the pre-fix tree (84 laundered that run),
+0 on the fixed one. **ThreadSanitizer is silent over this probe** — verified, exit 0 with no warning —
+because every read and write involved is on a `std::atomic<float>`. The defect was never a data race;
+it was a logical one over two correctly-synchronised reads, which is exactly why it needed a
+behavioural gate and why TSan could never have found it. The large "drags that wrote nothing" count the probe reports alongside is the safe path
+working: a lane that moves during the drag makes `gestureIsStale()` true and the gesture abandons.
+
+`AnamorphStateTests --reprepare-race-probe` is the eighth, and like `--state-thread-probe` it is
 built to run under ThreadSanitizer: a thread that is not the message thread moves Drive and then
 re-prepares the processor, 200 times over, while the main thread does only what the real message
 thread would — serve the processor's own 20 Hz latency timer. On the pre-round-15 code TSan names
@@ -860,6 +899,25 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   (§5, State test 42). The oracle is built from §9's rule rather than from any production merge.
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
+
+* **State test 81 — the plan and the proof are one reading** (ADR-0047). Its honest scope is stated
+  in its own header and repeated here: **this test cannot fail on the defect ADR-0047 fixes.** That
+  defect lives between two pure reads of the same parameter, and pure reads dispatch nothing, so the
+  window is reachable only from another thread — `--split-snapshot-probe` above is what reaches it.
+  What the test pins is the pair of corners either side of the window, both of which the fix leaves
+  exactly as they were: leg A, an automation write landing BEFORE the capture is part of the
+  gesture's world and is not reverted (and the drag still moves the split the user grabbed); leg B,
+  a write landing AFTER the capture makes the gesture refuse — it writes nothing at all; leg C, the
+  control.
+
+  **The guard behind leg B was established by mutation, not assumed.** The first draft of the test's
+  comment credited the per-slot `ownsSplit` proof inside `writeCrossovers`. Disabling that proof
+  fails State test 71 legs B and H and leaves leg B green; disabling the ADR-0038/0039 staleness gate
+  at the top of `mouseDrag` fails leg B and two of State test 71's leg G checks. The gate owns it.
+
+  **Mutation record, including the miss:** reverting ADR-0047 itself — `captureDragOrigins` back to
+  two reads — leaves all 2804 checks green. That is the limit of the deterministic suite here and the
+  whole reason the probe exists.
 
 * **State test 80 — a wheel tick during a held drag finishes the press** (ADR-0041, measured in
   full). ADR-0041 made this a product decision and its Consequences section said so in one line; a
@@ -1714,9 +1772,10 @@ event — where it is the only job that runs at all.)
 |---|---|
 | `docs` | `python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py` |
 | `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, `python3 scripts/check-realtime.py --self-test` then that lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
+| `linux` (the ADR-0047 step only) | `./build/.../AnamorphStateTests --split-snapshot-probe 300` — exits non-zero if anything launders. It is the only race gate outside the sanitizer jobs, because the thing it measures is a LOGICAL race over two correctly-synchronised atomic reads, which no sanitizer can see (TSan is silent over it, verified) |
 | `sanitizers` | ASan+UBSan over both suites, then valgrind memcheck over both suites (the valgrind step sets `ANAMORPH_TESTS_NO_FTZ=1` — see below) |
 | `realtime` | `cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=realtime`, build `AnamorphTests`, run it with **no `RTSAN_OPTIONS`** (ADR-0029 — `halt_on_error=false` would make it report and pass) |
-| `tsan` | `cmake -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread -DANAMORPH_BUILD_STANDALONE=OFF`, build `AnamorphStateTests`, then with `TSAN_OPTIONS=halt_on_error=1:exitcode=66` run `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe` and `--d2-stress-probe` (five times each in CI) and the suite once; the canary first (`clang++ -fsanitize=thread tests/tsan_canary.cpp` must FAIL with a data-race report). Add `:suppressions=<checkout>/tests/tsan-suppressions.txt:print_suppressions=1` — ONE `deadlock:` entry naming a harness re-entrancy double, for the lock-order inversion State test 75 legs D and G form between two parameters' JUCE `listenerLock`s on the MAIN thread; data races are not suppressed and the canary proves it (RISK-009, and the file itself carries the reasoning). The DSP suite is NOT built under TSan: `tests/AllocationGuard.h`'s global `operator new`/`delete` collide with `libclang_rt.tsan_cxx`, and it has no cross-thread path of its own. Needs `libclang-rt-<major>-dev`; on a kernel with 32-bit ASLR entropy, `sysctl vm.mmap_rnd_bits=28` A follow-on step then asserts **match-count == entry-count** on `tests/tsan-suppressions.txt`: an entry that stops matching because its helper was renamed is already loud (the report returns and `halt_on_error=1` exits 66 -- measured), but an entry that matches NOTHING because the legs that produced the report were restructured is silent (measured: `exit=0` with `Matched 1 suppressions` while the file carried 2), and that is the mode the file's own header calls dangerous |
+| `tsan` | `cmake -B build-tsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=thread -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread -DANAMORPH_BUILD_STANDALONE=OFF`, build `AnamorphStateTests`, then with `TSAN_OPTIONS=halt_on_error=1:exitcode=66` run `--state-thread-probe`, `--state-prepare-race-probe`, `--reprepare-race-probe` and `--d2-stress-probe` (five times each in CI) and the suite once; the canary first (`clang++ -fsanitize=thread tests/tsan_canary.cpp` must FAIL with a data-race report). Add `:suppressions=<checkout>/tests/tsan-suppressions.txt:print_suppressions=1` — ONE `deadlock:` entry naming a harness re-entrancy double, for the lock-order inversion State test 75 legs D and G form between two parameters' JUCE `listenerLock`s on the MAIN thread; data races are not suppressed and the canary proves it (RISK-009, and the file itself carries the reasoning). The DSP suite is NOT built under TSan: `tests/AllocationGuard.h`'s global `operator new`/`delete` collide with `libclang_rt.tsan_cxx`, and it has no cross-thread path of its own. Needs `libclang-rt-<major>-dev`; on a kernel with 32-bit ASLR entropy, `sysctl vm.mmap_rnd_bits=28` A follow-on step then asserts that the number of ENTRIES THAT MATCHED equals the number of entries in `tests/tsan-suppressions.txt`: an entry that stops matching because its helper was renamed is already loud (the report returns and `halt_on_error=1` exits 66 -- measured), but an entry that matches NOTHING because the legs that produced the report were restructured is silent (measured: `exit=0` with one breakdown line while the file carried 2), and that is the mode the file's own header calls dangerous. **It counts the per-entry breakdown lines, NOT the summary number, and the first version got that wrong for a day.** `ThreadSanitizer: Matched N suppressions` is the SUM OF HIT COUNTS -- measured on a purpose-built two-inversion binary: one entry absorbing two reports prints `Matched 2` with ONE breakdown line (so the summary FAILS a correct file), and a dead entry beside one hit twice also prints `Matched 2` (so the summary PASSES the exact file the step exists to reject). Two further measurements from the same session, both recorded in the suppression file: a suppression is REPORT-scoped, so an inversion pairing a production edge with a harness edge is absorbed while one whose stacks are ALL production is still reported (exit 66, verified); and two entries that both match the same report are credited as ONE, which is why the file's old note that `WriteFromInsideAStore` "matched nothing" was wrong -- it was redundant, not dead |
 | `linux-lto-tests` | `cmake -B build-lto -G Ninja -DCMAKE_BUILD_TYPE=Release -DANAMORPH_BUILD_STANDALONE=OFF -DCMAKE_C_FLAGS=-flto -DCMAKE_CXX_FLAGS=-flto -DCMAKE_EXE_LINKER_FLAGS=-flto`, build both test targets, run both — the suites against the shipped optimization class (see `CI_CD.md`) |
 | `fuzz` | the `AnamorphFuzzState` recipe under §"Opt-in targets" above, verbatim — the CI step adds only `-seed=20260818 -rss_limit_mb=4096 -print_final_stats=1` and an `-artifact_prefix` for the reproducer it uploads on a finding |
 

@@ -330,7 +330,11 @@ void SpectrumImager::projectGaps (float* xs, int count, int pin) const noexcept
 //    `soundMovedUnderGesture()` could not see it either.
 //
 // Now: `ownsSplit (k)` is compared and the store follows it with nothing in between, so a write
-// nested inside store k-1 is seen by iteration k; the record is taken from the read-back of THIS
+// nested inside store k-1 is seen by iteration k. ADR-0047 sharpens what "nothing in between" has to
+// mean: nothing DISPATCHES between them, and nothing RE-READS the parameter either. It used to
+// re-read -- the write-worth test below took its own `crossover (k)` -- so a cross-thread write
+// landing between the proof and that test was proved absent and then measured against, and a foreign
+// value farther from the plan than half a pixel was written over. One reading now serves both; the record is taken from the read-back of THIS
 // slot immediately, so nothing a later iteration lets in can be adopted; and slots past `count`
 // are left alone rather than adopted wholesale -- the write loop is bounded by the live split count
 // while the record used to be bounded by the array size, which adopted the unused slots for free.
@@ -342,8 +346,14 @@ bool SpectrumImager::writeCrossovers (const float* xs, int count)
         // ADR-0040, round-3 correction 1: the COUNT is re-proved too, not only the value. `count`
         // was read once before this loop and a listener can move mbBands from inside any store.
         if (gestureBands >= 0 && bandCount() != gestureBands) return false;
-        if (! ownsSplit (k)) return false;
-        if (std::abs (freqToX (crossover (k)) - xs[k]) <= kSplitMovedPx)
+        // ADR-0047: the proof and the write-worth test are ONE reading. They were two, and a write
+        // landing between them was proved absent and then measured against -- so a foreign value
+        // FARTHER from the plan than half a pixel was written over, which is the ADR-0040 failure
+        // in its cross-thread half.
+        const float nk = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;
+        if (! ownsSplit (k, nk)) return false;
+        if (std::abs (freqToX ((freqP[k] != nullptr) ? freqP[k]->convertFrom0to1 (nk) : kFreqLo)
+                      - xs[k]) <= kSplitMovedPx)
             continue;                                  // nothing to write; the record already stands
         // ADR-0040 round-3 correction 2, sharpened by ADR-0041: confirm the store landed before
         // owning it, in PARAMETER space and exactly. A listener writing this same parameter from
@@ -382,8 +392,10 @@ bool SpectrumImager::spreadSplits (const float* xs, const float* was, int count,
         // mbBands is a different parameter.
         if (bandCount() - 1 != count) return false;
         if (k == except || freqP[k] == nullptr) continue;
-        if (! juce::exactlyEqual (freqP[k]->getValue(), was[k])) return false;
-        if (std::abs (freqToX (crossover (k)) - xs[k]) <= kSplitMovedPx) continue;
+        // ADR-0047: one reading for the proof and for the write-worth test below.
+        const float nk = freqP[k]->getValue();
+        if (! juce::exactlyEqual (nk, was[k])) return false;
+        if (std::abs (freqToX (freqP[k]->convertFrom0to1 (nk)) - xs[k]) <= kSplitMovedPx) continue;
         float owned = 0.0f;
         if (! storeOwned (freqP[k], juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[k])), owned))
             return false;
@@ -418,6 +430,28 @@ bool SpectrumImager::ownsWidth (int b) const noexcept
     if (b < 0 || b >= (int) std::size (gestureW) || widthP[b] == nullptr) return true;
     return juce::exactlyEqual (widthP[b]->getValue(), gestureW[b]);
 }
+// ADR-0047. THE SAME QUESTION, ASKED ABOUT A READING THE CALLER ALREADY HAS. Every caller that
+// proves ownership and then USES the value was reading the parameter twice: once here and once for
+// the plan, the anchor or the write-worth test. Both reads are pure, so nothing can dispatch
+// between them on this thread -- but the audio thread writes these parameters through the format
+// wrapper, and a write that lands between the two passes the proof while the plan still carries the
+// world from before it. Measured on the drag capture against a continuously moving automation lane:
+// 92 splits in 1200 drags written back to their pre-automation position, inside the user's own
+// change gesture, and 200/200 with the window widened to 200 us -- 0 for both after this change.
+// Taking the caller's reading makes the pair one measurement and the class unreachable by
+// construction, at no cost: it removes a read rather than adding one (`--split-snapshot-probe`).
+bool SpectrumImager::ownsSplit (int k, float norm) const noexcept
+{
+    if (gestureBands < 0) return true;
+    if (k < 0 || k >= (int) std::size (gestureX) || freqP[k] == nullptr) return true;
+    return juce::exactlyEqual (norm, gestureX[k]);
+}
+bool SpectrumImager::ownsWidth (int b, float norm) const noexcept
+{
+    if (gestureBands < 0) return true;
+    if (b < 0 || b >= (int) std::size (gestureW) || widthP[b] == nullptr) return true;
+    return juce::exactlyEqual (norm, gestureW[b]);
+}
 // Store, then confirm the parameter holds THIS store's result before owning it. `expect` is computed
 // by the same two conversions the parameter itself performs (juce_AudioParameterFloat.cpp:97-98), so
 // with nothing else writing it is bit-identical to the read-back -- and any difference is somebody
@@ -446,9 +480,19 @@ bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, flo
 // all of them costs two extra reads once per gesture and makes the class impossible.
 void SpectrumImager::captureDragOrigins() noexcept
 {
-    for (int k = 0; k < (int) std::size (dragOrigX); ++k)
-        dragOrigX[k] = freqToX (crossover (k));
+    // ADR-0047. THE STAMP IS TAKEN FIRST AND THE ORIGIN IS DERIVED FROM IT, because the two used to
+    // be separate reads of the same parameter: `crossover (k)` here and `freqP[k]->getValue()` a
+    // line later inside `captureGestureSound`. An automation write landing between them left the
+    // ORIGIN holding the old position and the STAMP holding the new value -- so `ownsSplit` said the
+    // gesture owned a world it had never measured, and the drag wrote the split back to where it was
+    // before the automation moved it, inside its own change gesture. Measured 92 times in 1200 drags
+    // against a moving lane, and 200/200 with the window widened. Derived, they are one
+    // measurement: `convertFrom0to1` is pure arithmetic, so with nothing racing this is bit-identical
+    // to what the second read returned.
     captureGestureSound(); // the gesture starts owning exactly what it just measured
+    for (int k = 0; k < (int) std::size (dragOrigX); ++k)
+        dragOrigX[k] = (freqP[k] != nullptr) ? freqToX (freqP[k]->convertFrom0to1 (gestureX[k]))
+                                             : freqToX (kFreqLo);
 }
 // The positions this gesture last left behind. Called at every gesture start (through
 // captureDragOrigins) and after every write the gesture makes (through writeCrossovers), so
@@ -766,8 +810,9 @@ void SpectrumImager::resetCrossover (int i)
     {
         for (int k = 0; k < M && k < (int) std::size (freqP); ++k)
         {
-            xs[k]  = freqToX (crossover (k));
+            // ADR-0047: the plan and the world it is computed from are ONE reading, not two.
             was[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;   // the world the plan is computed from
+            xs[k]  = freqToX ((freqP[k] != nullptr) ? freqP[k]->convertFrom0to1 (was[k]) : kFreqLo);
         }
         xs[i] = freqToX (p->convertFrom0to1 (p->getDefaultValue()));
         projectGaps (xs, M, i);
@@ -786,7 +831,9 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
     const int M = N - 1; // existing crossovers
     float xs[3];
     float fr[3] {};      // the same splits in PARAMETER space, for the ownership compare below
-    for (int k = 0; k < M; ++k) { xs[k] = freqToX (crossover (k)); fr[k] = crossover (k); }
+    // ADR-0047: one reading, converted twice -- these were two separate reads of the same split,
+    // the first becoming the plan and the second the value every store below proves itself against.
+    for (int k = 0; k < M; ++k) { fr[k] = crossover (k); xs[k] = freqToX (fr[k]); }
     const float clickX = freqToX (juce::jlimit (kFreqLo, kFreqHi, hz));
 
     int ins = 0;
@@ -882,6 +929,10 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
         // -- 32 Hz at 10 kHz -- so a foreign move that size read as "unchanged" and the burst wrote
         // its own plan over it. `removeBand`'s split guard has compared exactly since ADR-0040;
         // this now matches it. Found by an adversarial pass over the shipped ADR-0042 code.
+        // ADR-0047 supplied the other half of what makes it sound: exactness is only worth having if
+        // `fr[i]` and the plan `xs[i]` came from the SAME reading. They did not -- the capture called
+        // `crossover (k)` twice per slot -- so a write landing between the two left this comparing
+        // the post-write world with itself while the plan carried the pre-write one, and passing.
         if (i < M && ! juce::exactlyEqual (crossover (i), fr[i])) return -1;
         // ...and the split it did not move is not written at all. `xToFreq (freqToX (f))` is a
         // 30-iteration bisection over a monotone-spline log axis, not the identity, so storing an
@@ -1087,8 +1138,10 @@ void SpectrumImager::commitFreqEditor()
     {
         for (int k = 0; k < M && k < (int) std::size (freqP); ++k)
         {
-            xs[k]  = freqToX (crossover (k));
+            // ADR-0047: one reading answers both -- the plan below and the ownership baseline
+            // `spreadSplits` proves each neighbour against.
             was[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;
+            xs[k]  = freqToX ((freqP[k] != nullptr) ? freqP[k]->convertFrom0to1 (was[k]) : kFreqLo);
         }
         xs[i] = freqToX (want);
         projectGaps (xs, M, i);
@@ -2183,7 +2236,8 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         dragHandle = h; dragBand = -1; dragRemovePending = false;
         handlePressMs = juce::Time::getMillisecondCounter(); handlePressX = p.x; handleHoldActive = false;
         captureDragOrigins();
-        dragGrabDX = p.x - freqToX (crossover (h)); // keep the line under the cursor with this offset (#10)
+        // ADR-0047: the anchor comes from the capture, not from a third read of the same parameter.
+        dragGrabDX = p.x - dragOrigX[h]; // keep the line under the cursor with this offset (#10)
         beginGesture (freqP[h]); repaint(); return;
     }
 
@@ -2226,7 +2280,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
             dragHandle = idx; dragBand = -1; dragRemovePending = false;
             handlePressMs = juce::Time::getMillisecondCounter(); handlePressX = p.x; handleHoldActive = false;
             captureDragOrigins();
-            dragGrabDX = p.x - freqToX (crossover (idx));
+            dragGrabDX = p.x - dragOrigX[idx]; // ADR-0047: from the capture, not a third read
             beginGesture (freqP[idx]);
         }
         hoverAdd = -1; addA = 0.0f; // snap away the preview so nothing lingers (#5)
@@ -2284,11 +2338,20 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
         // the anchor and re-emitted inside the user's own change gesture. Both are the gesture
         // writing state it does not own; both now void it, which is the answer ADR-0038 gives for
         // the count and ADR-0039 for the splits.
-        if (! ownsWidth (dragBand)) { cancelActiveDrag(); return; }
+        // ADR-0047: ONE READING PROVES AND ANCHORS. The proof below and the anchor two lines down
+        // were two reads of the same width, so a write landing between them was refused by neither
+        // and then adopted as the anchor -- the very failure the paragraph above says ADR-0040
+        // closed, surviving in the cross-thread half of the window.
+        const float wNorm = (dragBand >= 0 && dragBand < (int) std::size (gestureW)
+                             && widthP[dragBand] != nullptr) ? widthP[dragBand]->getValue() : 0.0f;
+        if (! ownsWidth (dragBand, wNorm)) { cancelActiveDrag(); return; }
         if (! widthHoldActive && std::abs ((float) e.position.y - widthPressY) > 3.0f)
         {
             widthHoldActive = true;
-            dragGrabDY = (float) e.position.y - widthToY (bandWidth (dragBand));
+            const float wPlain = (dragBand >= 0 && dragBand < (int) std::size (gestureW)
+                                  && widthP[dragBand] != nullptr)
+                               ? widthP[dragBand]->convertFrom0to1 (wNorm) : 1.0f;
+            dragGrabDY = (float) e.position.y - widthToY (wPlain);
         }
         if (widthHoldActive)
         {
@@ -2510,7 +2573,11 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
         // not a fresh read. A fresh read would hand `writeCrossovers` a count to prove against
         // that the latch had never been checked against, which is the whole defect one branch up.
         gestureBands = N;
-        dragCrossoverTo (scrollHandle, freqToX (crossover (scrollHandle)) + dy * 28.0f, N);
+        // ADR-0047: the tick's target starts from the position `captureDragOrigins` just stamped,
+        // not from a fresh read of the same split. A fresh read failed SAFE -- `ownsSplit` refuses a
+        // value the stamp does not know -- but a refusal is a wheel tick the user loses for no
+        // reason they can see, which is the same trade ADR-0046 closed one branch up for the count.
+        dragCrossoverTo (scrollHandle, dragOrigX[scrollHandle] + dy * 28.0f, N);
         gestureBands = -1;
     }
     else if (scrollBand >= 0 && scrollBand < N)

@@ -653,7 +653,8 @@ narrow.
 ## 27. Finding 1 — wheel input closes active gestures: **B, intentional; the consequences were the
 gap, not the behaviour**
 
-`cancelActiveDrag()` is the first statement of `mouseWheelMove` (`SpectrumImager.cpp:2455`) and it
+`cancelActiveDrag()` is the first statement of `mouseWheelMove` (cited by function: the line moved
+three times inside this PR, §31 and §35) and it
 calls `endGesture()` on the dragged parameter.
 
 **Provenance, measured.** It is NOT in the merge base — `git show <merge-base>:src/gui/SpectrumImager.cpp`
@@ -801,3 +802,218 @@ they are new anchors, unverifiable against `origin/main` -- which is the same bl
 **One workflow claim declined.** W-A's precision note that a band move closes "0, 1 or 2 gestures,
 not always 2" (`beginBandMove:708-709` sets `soloMoveLeft`/`soloMoveRight` to `-1` at the ends) is
 correct about the code, but no shipped text of mine claims two, so there is nothing to correct.
+
+## 32. Workflow and sub-agent audit (split-snapshot round)
+
+**Collected first.** No workflow was running (`ps` shows no agent, no build, no probe). Three journals
+exist from this session's earlier rounds:
+
+| run | state | results in journal | recorded disposition | what I did with it now |
+|---|---|---|---|---|
+| `wf_366cbb73-956` | finished; its result arrived LATE and overturned a shipped conclusion (§31) | 38 | "consumed in full", then corrected | nothing left; §31 closed it |
+| `wf_17153265-ac9` | stopped mid-run by decision, tail unread | 70 | "consume and stop", tail judged redundant | **re-opened for audit** — see below |
+| `wf_5743c961-dad` | ended without a synthesis | 120 | "sampled; nothing unconsumed" | **re-opened for audit** |
+
+**The decision, and why it is not the same as last round's.** §31 established that "recorded as
+consumed" is not evidence of having been consumed: a workflow whose result file is zero bytes was read
+only through its streamed partials, and one such result later contradicted a shipped conclusion. Both
+remaining journals are in exactly that state. Re-reading them costs one agent; the failure mode it
+guards against has already happened once in this session, on this PR. **Decision: start ONE new
+read-only audit workflow (`wf_d3bf30b3-246`) whose sixth track re-reads both journals end to end and
+reports only the items that are still unaddressed at HEAD.** Continuing the stopped run was rejected
+for the reason it was stopped — its remaining agents re-verify findings already implemented and
+mutation-proved — and doing nothing was rejected on the §31 evidence.
+
+## 33. The finding, measured before it was classified
+
+**"Split snapshots can launder automation"** (`SpectrumImager::captureDragOrigins`). The plan basis and
+the ownership stamp were two separate reads of the same parameter:
+
+```cpp
+for (int k = 0; k < 3; ++k) dragOrigX[k] = freqToX (crossover (k));  // read A -- the PLAN
+captureGestureSound();                                               // read B -- the STAMP
+```
+
+`crossover (i)` is `freqP[i]->convertFrom0to1 (freqP[i]->getValue())`, so both reads hit the same
+parameter object. Neither dispatches, so **reentrancy cannot cross the window; only another thread
+can** — which makes the class invisible to every deterministic test in the suite and is why it needed
+a probe rather than an argument.
+
+**The consequence chain, traced and then measured.** A write landing between the reads leaves the plan
+holding the old position and the stamp holding the new value. `ownsSplit (k)` compares the stamp with
+the live parameter, finds them equal, and reports the gesture owns a world it never measured; the drag
+proceeds; `writeCrossovers` finds the plan more than half a pixel from live and writes it. The
+automation value is overwritten **inside the change gesture the drag opened** — automation lane, undo
+stack, the lot.
+
+**`--split-snapshot-probe`, added this round.** An automation thread alternates `mbFreqMid` while the
+message thread presses, drags split 0 six pixels and releases. The discriminator is the THREAD, not
+the value: only the drag can write that parameter from the message thread, and a laundered split is
+written back to the lane's *previous* value, which the lane itself wrote a moment earlier, so no value
+comparison can separate them.
+
+| | spin 0 | spin 40 | spin 120 | spin 400 | total |
+|---|---|---|---|---|---|
+| before | 18 | 17 | 6 | 51 | **92 / 1200 (7.7 %)** |
+| after | 0 | 0 | 0 | 0 | **0 / 1200** |
+
+Repeated twice more on the same box: **84** and **72** of 1200. The rate varies with scheduling; what does not vary is that it is never zero before the change and always zero after it.
+
+**Two corrections to my own first attempt, recorded because both changed the answer.** The first probe
+reset only `mbFreqMid` between iterations, so after the first drag the handle had walked away from the
+swept x and no drag happened at all — 3000 iterations of nothing, reported as "no laundering". And the
+first writer fired ONE write per drag: that reaches the window about once in 4000 drags, enough to
+prove the class and useless as a detector, because a lane is only straddled at a TRANSITION and a
+one-shot lane has one. A continuously alternating lane has thousands.
+
+**The mechanism proof is separate from the rate.** Inserting a 200 µs sleep between the two reads and
+timing one write into it gives **200/200** laundered before the fix and **0/200** after. That build
+edits production code and is not shipped; the recipe is in `TESTING.md` so it can be redone in one
+line.
+
+**Classification: A — confirmed defect.** Not a tradeoff: the window is reachable on this box without
+help, the damage is a silent overwrite of automation inside the user's own gesture, and the fix removes
+reads rather than adding them.
+
+## 34. The fix is ADR-0046's own rule, one level down
+
+ADR-0046 settled this for the band COUNT and wrote the principle out: *"One reading, used by the
+derivation and by the proof, has neither failure."* It was never applied to the split and width VALUES.
+Eight sites carried the paired-read shape; the review named four of them and the audit found the rest:
+
+| site | was | is |
+|---|---|---|
+| `captureDragOrigins` | plan from `crossover`, stamp from `getValue` | stamp first, plan derived from it |
+| `mouseDown` (handle press, add branch) | `dragGrabDX` from a third read | `dragGrabDX = p.x - dragOrigX[h]` |
+| `mouseWheelMove` | tick target from a fresh `crossover` | from `dragOrigX[scrollHandle]` |
+| width drag engage | `ownsWidth` reads, `bandWidth` reads again for the anchor | one `getValue`, proved and anchored |
+| `addBandAt` | `crossover (k)` **twice in one statement** | once, converted twice |
+| `resetCrossover`, `commitFreqEditor` | `xs[]` from `crossover`, `was[]` from `getValue` | `was[]` first, `xs[]` derived |
+| `writeCrossovers`, `spreadSplits` | proof read, then the write-worth read | one reading for both |
+
+`ownsSplit (int, float)` and `ownsWidth (int, float)` carry the caller's reading. `convertFrom0to1` is
+pure arithmetic, so with nothing racing every derived value is bit-identical to what the second read
+returned — which is why the whole suite is unchanged.
+
+**Fixing the named site alone would not have closed it, and that is measured rather than asserted.**
+An independent verification pass applied ONLY the `captureDragOrigins` change to HEAD and measured
+**267 laundered splits in 8000 drags (3.3 %)** against 885 (11.1 %) unfixed — a 70 % reduction. The
+residual was `writeCrossovers`' own pair of reads. With every site converted the same probe measures
+**0 in 8000**.
+
+**Two of those sites were failing SAFE, not open, and were still worth fixing.** The wheel tick's
+target and the add branch's anchor were third reads taken AFTER the stamp, so a foreign write between
+them made `ownsSplit` refuse. Safe — but a refusal is a user edit dropped for no reason the user can
+see, the same lossy trade ADR-0046 closed one branch up for the count.
+
+**Coverage, with its limit stated rather than implied.** State test 81 pins the two corners either side
+of the window (a write before the capture is owned; a write after it makes the gesture refuse and write
+nothing). Its mutation record is honest: **reverting ADR-0047 leaves all 2804 checks green.** The
+window holds no dispatch, so no deterministic test can enter it. The probe is the coverage. A further
+mutation run corrected the test's own comment: leg B is owned by the ADR-0038/0039 staleness gate at
+the top of `mouseDrag`, not by the per-slot `ownsSplit` proof I first credited — disabling the proof
+fails State test 71 legs B and H and leaves leg B green, disabling the gate fails leg B.
+
+## 35. Verify-only items, and one documentation gap the audit found
+
+* **RISK-010 — unchanged, and specifically NOT this finding.** RISK-010 is the AUDIO-side reader
+  tearing a ten-load snapshot in `toEngine`; this was the GUI-side snapshot tearing under a foreign
+  write. Opposite direction, different code. The register carried no row for the GUI direction, and
+  now needs none: the defect is closed rather than accepted. The wording corrected on 2026-09-08
+  ("read before every parameter the count reinterprets") re-checked against
+  `src/PluginParameters.cpp:365-374` and still accurate.
+* **Held-audition guard — unchanged.** `tick()` still returns at `if (! isShowing())` before reaching
+  the guard, and the harness still never shows the editor. No production seam added this round either;
+  the new probe drives public mouse entry points only.
+* **Wheel gesture closure — unchanged, B (intentional).** ADR-0041 owns it, State test 80 pins it, and
+  the automation/undo/host consequences measured last round still hold. This round CHANGED the line it
+  sits on for the third time in one PR, which is the second half of this entry.
+* **U4 — unchanged, accepted residual.** The wheel's width store still goes through gesture-less
+  `setParam`; nothing this round touched it, and the wheel gesture design is not reopened.
+* **TSan suppression — unchanged and still harness-scoped, verified rather than assumed.** The single
+  entry names `WriteFromInsideAGestureOpen`, and a repository-wide grep finds that symbol in exactly
+  one place: `tests/state_tests.cpp:2715`, a test double. No production symbol carries the name, so no
+  production lock inversion can be absorbed by it, and the data-race canary proves data races are still
+  reported. The match-count == entry-count assertion ran green in CI on `03a6e39` (job `tsan`, step
+  "Every TSan suppression still matches something"). Its recorded residual — a pattern BROADENED to
+  still match exactly one report — is unchanged.
+* **Informational items — reviewed, unchanged.** Cancelled spreads and partial transaction residue:
+  no new evidence, no action.
+
+**The anchor that drifted three times.** `docs/DOCUMENTATION_COVERAGE.md` and §27 both cited the
+wheel's `cancelActiveDrag()` by line: `:2433` when written, `:2455` after that commit's comment, and
+`:2510` after this one's. The citation gate cannot catch this — new anchors have no `origin/main`
+counterpart to compare against (§18, §31). Rather than re-aim a fourth time, both now cite the
+FUNCTION, which cannot drift. The one gate-visible drift this round, `dragCrossoverTo`'s declared
+re-aim, was caught by `check-citations.py` and re-derived to `:587`.
+
+**A documentation gap the audit surfaced, corrected at its smallest.** `THREADING_POLICY.md`'s table of
+allowed communication paths had a row for GUI → Audio (automatable params) and no row for the reverse:
+host automation writing those same parameters from the AUDIO thread through the format wrapper, and
+`setStateInformation` writing them from the HOST STATE thread. The fact was in the file — the KI-027
+note states it for the latency path — but not as a path. That absence is why a GUI-side snapshot could
+be written without anyone asking what writes underneath it. One row added, describing the model as it
+already is; no threading-model change, and none proposed.
+
+## 36. The suppression assertion I shipped yesterday was wrong, and two claims beside it with it
+
+The audit's TSan track did what §35's verify-only pass did not: it read the assertion's PARSE rather
+than its intent. Three corrections follow, all measured on a purpose-built two-inversion binary under
+the same clang, not argued.
+
+**The assertion was wrong in BOTH directions.** `ThreadSanitizer: Matched N suppressions` is the
+**sum of hit counts**, not the number of entries that matched:
+
+| file | reports | summary | breakdown lines |
+|---|---|---|---|
+| one entry | two distinct | `Matched 2` | **1** |
+| two entries | one each | `Matched 2` | **2** |
+| two entries, one dead, one hit twice | two | `Matched 2` | **1** |
+
+So the step I added yesterday would have **failed a correct file** whose single entry absorbed two
+reports, and **passed the exact file it exists to reject** — a dead entry beside one hit twice. It
+returned green on `03a6e39` only because the real suite produces one report. The fix counts the
+per-entry breakdown lines, which is one line per entry that matched at least once. Self-tested
+against five logs: 1-entry/1-hit pass, 1-entry/2-hits pass (the old parse failed it), 2-entries with
+one dead fail (the old parse passed it), the real suite log pass, no-summary-at-all fail.
+
+**One consequence found while measuring, and recorded in the file:** two entries that both match the
+SAME report are credited as ONE — and in the scratch run the credited entry was the SECOND in the
+file, so it is not "the first entry wins". The new assertion therefore reads a redundant entry as
+dead and fails. That is the intended answer, but it is a surprise if met cold.
+
+**The suppression file's safety claim was stronger than the truth.** It said no production stack can
+contain the symbol "so this entry cannot mask that class". A TSan suppression is REPORT-scoped: if
+any frame of any stack matches, the whole report is absorbed. Measured: an inversion whose stacks are
+ALL production frames is still reported (exit 66 with the entry loaded); a MIXED cycle pairing a
+production edge with the harness edge **is** absorbed. The residual is real and now recorded rather
+than claimed away — bounded only by the fact that the double is not compiled into a shipped build.
+The same overstatement was echoed in `DOCUMENTATION_COVERAGE.md` and is corrected there too.
+
+**And the reason the second entry was dropped was false.** The file said `WriteFromInsideAStore`
+"matched nothing" because `print_suppressions=1` reported `Matched 1`, not two. Given the measurement
+above, that observation cannot distinguish "matched nothing" from "matched the same report and was
+not credited" — and the latter is what happened. The entry was REDUNDANT, not dead. The conclusion
+(one entry) survives; the stated mechanism did not, and a rule kept for a wrong reason is one edit
+away from being dropped for a wrong reason.
+
+**A dependence nothing recorded:** the entry names the double reached from State test 75 leg D only
+because leg D precedes leg H. Re-aiming or removing leg D turns the report into an H-vs-G cycle the
+pattern does not name. One sentence in the file now says so.
+
+## 37. What the audit found that this round did NOT act on
+
+The sixth track re-read the two journals §32 re-opened. These items are real enough to record and
+outside this round's finding; none is a hard-stop category, and none is claimed as handled:
+
+| item | where | why not now |
+|---|---|---|
+| `applyStateSet` takes its `StateSet` by const reference and is called with the member `committed`, so a re-entrant `pollUndoCoalesce` can retarget a restore mid-burst | `src/PluginProcessor.cpp` | a one-token fix (by value), but it is the undo/restore path, not this round's class, and `FUTURE_RISKS` RISK-011 claims to cover U1-U3 while its text describes a different mechanism. Needs its own round with its own regression |
+| `undo()`/`redo()` re-establish `committedSig` after the restore burst but never `committed` | `src/PluginProcessor.cpp` | same path, same reasoning |
+| a whole-session restore landing before the count store lets `setBands` commit a count over the restored session — with no recorded disposition anywhere | `SpectrumImager::setBands` | ADR-0042 legs B and C would have to be re-run before ruling it; that is a round, not a patch |
+| State test 76 has ADR-0042's asymmetry controls for `removeBand` but not for `addBandAt` | `tests/state_tests.cpp` | controls, not defect finders; worth adding, not worth wedging into this round |
+| the abandonment-residue store census is checkable and unchecked | `tests/state_tests.cpp` | same |
+| ~10 stale figures and cross-references (an ADR-0042 residue count, a `[0.9.7]`→`[0.9.8]` block, a `FrameClock::fire` seam that cannot work, `soloPreviewMask` as an eleventh publication channel, THREAD_MODEL's blanket no-locking sentence) | docs | documentation-only drift found by a track that was looking for something else; a documentation-sync round should take them together rather than have each round take one |
+
+Recorded here rather than silently dropped, which is the whole point of §32 having re-opened those
+journals in the first place.

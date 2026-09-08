@@ -27,19 +27,49 @@
 # two ints -- deliberately, and its comment records that `--d2-stress-probe` once
 # reported exactly this detector for an APVTS/listenerLock inversion, which was
 # fixed by REMOVING the nesting rather than by a suppression. No production stack
-# can contain the symbol named below, so this entry cannot mask that class.
+# can contain the symbol named below.
+#
+# WHAT THAT DOES AND DOES NOT BUY, corrected 2026-09-08 after measuring it rather
+# than reasoning about it. A TSan suppression is REPORT-scoped, not stack-scoped:
+# if ANY frame of ANY stack in a report matches, the whole report is absorbed. So
+# the accurate statement is narrower than the one this paragraph used to make:
+#   * an inversion whose stacks are ALL production frames is STILL REPORTED --
+#     measured with a purpose-built two-lock binary under the same clang: exit 66
+#     with this entry loaded and neither stack naming it;
+#   * an inversion that pairs a production edge with a harness edge IS absorbed --
+#     also measured. That is a real residual, accepted here rather than claimed
+#     away, and it is bounded by the fact that the harness edge exists only in the
+#     harness: a mixed cycle cannot occur in a shipped build, where the double is
+#     not compiled at all.
+# The sentence this replaces said the entry "cannot mask that class" without the
+# distinction, which is the stronger claim and the false one.
 #
 # It is narrow ON PURPOSE: it names the harness double, not the JUCE function.
 # `deadlock:juce::AudioProcessorParameter::sendValueChangedMessageToListeners`
 # would have worked too and would have switched the detector off for every
 # parameter-lock inversion in the tree, including one a host really could reach.
 #
-# ONLY THE ENTRY THAT ACTUALLY MATCHES IS HERE. `WriteFromInsideAStore` was tried
-# alongside it and `print_suppressions=1` reported `Matched 1 suppressions`, not
-# two: TSan matches the first stack, and leg D's is the one it walks. An entry
-# that matches nothing is not free -- it silently widens what a future report can
-# be absorbed by, which is the same failure mode `scripts/check-citations.py`
-# names for a stale re-aim declaration.
+# ONLY ONE ENTRY IS NEEDED, and the reason recorded here was WRONG until
+# 2026-09-08. `WriteFromInsideAStore` was tried alongside it and
+# `print_suppressions=1` reported `Matched 1 suppressions`, not two; that was read
+# as "the second entry matches nothing". It does not follow, and the measurement
+# says otherwise: with TWO entries that both match the SAME report, TSan credits
+# exactly ONE -- verified on a scratch binary, where the credited entry was the
+# SECOND in the file, so it is not even "the first entry wins". The second entry
+# was therefore REDUNDANT (a second match on one report), not dead. The conclusion
+# survives -- one entry, and the file stays minimal -- but the stated mechanism did
+# not, and a rule kept for a wrong reason is one edit away from being dropped for a
+# wrong reason too.
+#
+# An entry that matches nothing is still not free: it silently widens what a
+# future report can be absorbed by, which is the same failure mode
+# `scripts/check-citations.py` names for a stale re-aim declaration.
+#
+# THE ENTRY ALSO DEPENDS ON LEG ORDER, which nothing else records. It names the
+# double reached from State test 75 leg D because leg D precedes leg H; re-aiming
+# or removing leg D turns the report into an H-vs-G cycle whose stacks this
+# pattern does not name. Editing those legs means re-checking this file, not
+# assuming it still applies.
 #
 # The residual this does NOT close, recorded rather than suppressed away: a HOST
 # that writes parameter B from inside A's dispatch on one thread while writing A
@@ -48,16 +78,31 @@
 # threading-model change (ARCHITECTURE_REVIEW_GATE). See the worklog for v0.9.8.
 #
 # ENFORCED SINCE 2026-09-08. The rule above -- every entry must match something --
-# was stated here and checked by nobody. The `tsan` job now asserts
-# match-count == entry-count against `print_suppressions=1` output. The two
-# failure modes are not symmetric, which is why the assertion counts rather than
-# merely requiring one match:
+# was stated here and checked by nobody. The `tsan` job now counts the ENTRIES
+# THAT MATCHED, from the per-entry breakdown `print_suppressions=1` prints, and
+# requires that count to equal the number of entries in this file.
+#
+# It counted the SUMMARY number for one day, and that was wrong in both directions
+# -- measured, not supposed: `ThreadSanitizer: Matched N suppressions` is the SUM
+# OF HIT COUNTS. One entry absorbing two distinct reports prints `Matched 2` with
+# ONE breakdown line (a correct file, failed), and a file with a dead entry beside
+# one hit twice also prints `Matched 2` (a broken file, passed) -- which is exactly
+# the mode the assertion exists to catch. The breakdown has one line per entry that
+# matched at least once, so it answers the question the summary does not.
+#
+# One consequence worth knowing before adding an entry: two entries that both match
+# the SAME report are credited as ONE, so the second reads as dead and fails this
+# step. That is the intended answer -- an entry whose only matches are already
+# absorbed is redundant -- but it is a surprise if you meet it cold.
+#
+# The two failure modes are not symmetric, which is why the assertion counts rather
+# than merely requiring one match:
 #   * an entry that stops matching (helper renamed, pattern drifted) is ALREADY
 #     loud -- the report it was absorbing comes back and halt_on_error=1 exits 66.
 #     Measured: renaming this entry gives `exit=66` with the inversion reported.
 #   * an entry that matches NOTHING, because the legs that produced the report were
 #     removed or restructured, is SILENT. Measured: adding a bogus second entry
-#     gives `exit=0` and `Matched 1 suppressions` with two entries in the file.
+#     gives `exit=0` and ONE breakdown line with two entries in the file.
 # If that assertion fires, DELETE the dead entry or restore the coverage. Do not
 # broaden the pattern: a wider entry is worse than none, for the reason above.
 deadlock:WriteFromInsideAGestureOpen

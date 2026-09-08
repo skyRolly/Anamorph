@@ -33,6 +33,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0041. Evidence: PR #143. [Verified]
 
 ### Fixed
+- **A split you are dragging can no longer drag a *different* split back to where it used to be.**
+  If your DAW moved one of the other crossover frequencies — an automation lane playing back, a
+  control surface, a linked macro — at the exact moment you pressed the mouse, the drag could take
+  its starting positions from just before that change and its ownership record from just after it.
+  Everything downstream then agreed the drag owned the display, and the first mouse movement wrote
+  the moved split back to its old frequency, inside your own edit, so it landed in the automation
+  lane and the undo history as if you had done it. Measured before the fix at 92 occurrences in
+  1200 drags against a continuously moving lane, and none after. Nothing changes when no automation
+  is running.
+  Decision: ADR-0047. Evidence: PR #143. [Verified]
 - **A scroll or a click on the Multiband display can no longer act on a band that belongs to a
   different layout than the one you were looking at.** Working out which band is under the pointer
   and recording how many bands there were at that moment used to be two separate readings, and the

@@ -371,9 +371,16 @@ DELIBERATE_REAIMS = {
     # Re-derived once more inside the SAME round (:541 -> :547) when the audit's own
     # W4 finding put a six-line header on this function: the first re-derivation of
     # a round is not always the last, which is exactly why the check exists.
+    # And twice more in the split-snapshot round (:547 -> :587 -> :591), both times
+    # caught HERE rather than by a reader. Four re-derivations in one PR is the
+    # argument for citing a FUNCTION where the line adds nothing -- which is what
+    # the two `cancelActiveDrag()` citations now do, after drifting three times with
+    # nothing to catch them (a NEW anchor has no origin/main counterpart, so the
+    # drift check cannot see it). This one keeps its line because the declaration
+    # makes the drift visible; a bare anchor would not.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:547"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:591"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the
