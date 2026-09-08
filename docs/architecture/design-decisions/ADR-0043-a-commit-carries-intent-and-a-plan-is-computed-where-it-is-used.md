@@ -128,12 +128,23 @@ bounded trade by ADR-0042 §41.
   it can no longer land on a position justified by splits that have moved.
 * A held solo audition ends when the topology or the sound moves under it, instead of continuing to
   audition a band by a stale index.
+* A neighbour spread stops when the split it was making room for moves, rather than rearranging the
+  row around a split that is no longer there; and a wheel burst proves each store the way a drag
+  does. Both abandon part-way, which is the ADR-0040/0042 semantics — the user repeats the edit.
+* `spreadSplits` gains a parameter and cannot be called without naming the pin, so the next caller
+  inherits the check instead of having to remember it.
 
 ## Related code
 
-`src/gui/SpectrumImager.cpp` — `resetCrossover`, `openFreqEditor`, `commitFreqEditor`, `tick`;
-`src/gui/SpectrumImager.h` — `editTextEdited`, `editOpenText`, and the corrected
-`soundMovedUnderGesture` comment.
+`src/gui/SpectrumImager.cpp` — `resetCrossover`, `openFreqEditor`, `commitFreqEditor`, `tick`,
+`spreadSplits`, `mouseWheelMove`; `src/gui/SpectrumImager.h` — `editTextEdited`, `editOpenText`,
+`spreadSplits`' `pinNorm`, and the corrected `soundMovedUnderGesture` comment.
+
+`openFreqEditor`'s seed also passes `false` rather than `juce::dontSendNotification`:
+`juce::TextEditor::setText` takes `(const String&, bool sendTextChangeMessage)`, not the
+`(String, NotificationType)` of `juce::Label`, and the Label spelling compiled only because that
+enumerator is 0. No behaviour change, and the same confusion is what produced this round's first
+wrong attempt above.
 
 ## Evidence + confidence
 
