@@ -67,10 +67,15 @@ into no-ops would be a worse defect than the one it closes.
 bool bandAddTarget (int b, float x, float& outX, int n = -1) const noexcept;
 ```
 
-`mouseDown` passes `gestureBands`; `updateHover` passes the `N` it already reads at the top of the
-pass, so the hover's delete target and its add target stop answering under different readings. `-1`
-keeps the live read for any caller with nothing to name. The third reading — `addedBands =
-bandCount()`, which `addBandAt` overwrites with its own before the caller can use it — is gone.
+`mouseDown` passes `gestureBands`. `updateHover` passes the `N` it already reads at the top of the
+pass — **and threads it into `handleNearX` and `bandAtX` there too**, which the first draft of this
+change did not. Passing `N` to the add target alone would have moved the mismatch one line up rather
+than closing it: the hover's band index would still have come from a fresh reading while its edges
+came from `N`. The audit caught that in the working tree; it is the same defect this ADR is about,
+one severity band down (display only, so it cannot fail open), and it costs two reads to remove
+rather than to reason about. `-1` keeps the live read for any caller with nothing to name. The third
+reading — `addedBands = bandCount()`, which `addBandAt` overwrites with its own before the caller can
+use it — is gone.
 
 ## What was rejected, and why it is not a scope decision
 
@@ -97,6 +102,13 @@ sites, rather than being a gap someone will "fix" later.
 * One parameter read is removed from the press path and one from the hover path; none is added.
 * Behaviour with nothing racing is unchanged — the whole suite is unchanged at 2814 checks, and the
   probe's control places the split at 15030.7 Hz before and after.
+* **The count is only half of a topology, and this closes only that half.** `lo` and `hi` still read
+  `crossover()` live, so the band's edges can be split VALUES a same-count layout change has already
+  repositioned. Closing that needs ADR-0047's instrument rather than this one — a single capture of
+  the split array shared by the derivation and the target — and it is recorded as a residual rather
+  than reached for. Also worth stating: only the RISING count direction misplaces. A count falling in
+  the window widens the clamp, and one rising past four drops the click entirely — fail-safe but
+  lossy, in ADR-0046's own vocabulary.
 * **The deterministic suite cannot see this defect, and State test 82 says so in its own header.**
   Reverting this ADR leaves all 2814 checks green. The probe is the coverage, and the `linux` job
   runs it as an assertion. Its discriminating power is real but probabilistic — pooled 0.83 %

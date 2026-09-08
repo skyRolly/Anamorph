@@ -601,9 +601,18 @@ bool SpectrumImager::dragCrossoverTo (int handle, float x, int n)
 // where that band ENDS. Two readings, three threads: a count raised between them made `b < N - 1`
 // flip, so the click was clamped against a split edge that belongs to a layout the press never saw.
 // Measured before this argument existed: a click at 15 kHz in the top band of a two-band layout was
-// written as a split just under the 8 kHz edge the raised count introduced -- 5 misplacements in 800
-// clicks against a lane moving the count (`--add-target-probe`), against a control that places the
-// split at 15030.7 Hz every time. Same shape and same fix as ADR-0046's for the count itself.
+// written as a split just under the 8 kHz edge the raised count introduced -- 55 misplacements in
+// 4800 clicks against a lane moving the count (`--add-target-probe`: 6, 28 and 21 per 1600), against
+// a control that places the split at 15030.7 Hz every time, and 0 in 4800 after. Same shape and same
+// fix as ADR-0046's for the count itself.
+//
+// WHAT THIS DOES NOT CLOSE, because the count is only half of a topology: `lo` and `hi` still read
+// `crossover()` LIVE, so the edges can be split VALUES a same-count layout change has already
+// repositioned. Closing that needs ADR-0047's instrument rather than ADR-0046's -- one capture of
+// the split array shared by the derivation and the target -- and it is recorded as a residual rather
+// than reached for here. Only the RISING count direction misplaces, too: a count falling in the
+// window widens the clamp (safe), and one rising past four drops the click entirely (fail-safe but
+// lossy, in ADR-0046's own vocabulary).
 bool SpectrumImager::bandAddTarget (int b, float x, float& outX, int n) const noexcept
 {
     const int N = n >= 0 ? juce::jlimit (1, 4, n) : bandCount();
@@ -2165,11 +2174,19 @@ void SpectrumImager::updateHover (juce::Point<float> p)
     const int   wasDelete = hoverDelete, wasDeleteExact = hoverDeleteExact, wasSolo = hoverSolo;
     const float wasAddX   = addX;
 
+    // ADR-0048: ONE READING FOR THE WHOLE PASS. `N` was already read here and used for the delete
+    // target, while `handleNearX` and `bandAtX` re-read for themselves -- so a hover could offer a
+    // delete on one layout and an add on another. Threading `N` into the add target ALONE would have
+    // recreated that mismatch one line up rather than closing it, which is the correction this round
+    // took from its own audit: the derivation and every boundary derived from it answer under the
+    // same reading, exactly as `mouseDown` has since ADR-0046. Display only, so nothing here fails
+    // open -- but a cursor that offers one band's affordance while naming another's is the same
+    // defect one severity band down, and it costs two reads to remove rather than to reason about.
     const int N = bandCount();
     hoverHandle = hoverWidth = hoverAdd = hoverDelete = hoverDeleteExact = hoverSolo = -1;
 
-    const int h = handleNearX (p.x);
-    const int b = bandAtX (p.x);
+    const int h = handleNearX (p.x, N);
+    const int b = bandAtX (p.x, N);
     const int sh = soloHit (p);
 
     if (sh >= 0)                   { hoverSolo = sh; setMouseCursor (juce::MouseCursor::PointingHandCursor); }

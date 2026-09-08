@@ -1164,3 +1164,27 @@ the record here so it is not rediscovered as new.
   symbol exists only in `tests/state_tests.cpp`); production inversions still visible (an all-production
   cycle exits 66, measured); the assertion now counts per-entry breakdown lines rather than the summary
   and ran green in CI on `ea82eab`.
+
+## 42. Two corrections the audit made to the ADR-0048 change itself
+
+Both were found in the WORKING TREE, before the round closed, which is the first time that has
+happened rather than a round later.
+
+**The hover fix recreated the defect one line up.** `updateHover` reads `N` at the top of the pass and
+uses it for the delete target, while `handleNearX` and `bandAtX` re-read for themselves. Threading `N`
+into `bandAddTarget` ALONE therefore left the band index coming from a fresh reading and the band's
+edges from `N` — the exact mismatch ADR-0048 is about, moved rather than closed. `N` is now threaded
+into all three. Display only, so nothing there fails open; but a cursor that offers one band's
+affordance while naming another's is the same defect one severity band down, and it costs two reads to
+remove rather than to reason about.
+
+**A figure in my own comment was not reproducible.** The `bandAddTarget` comment quoted "5
+misplacements in 800 clicks" — the FIRST version of the probe, before its geometry reset and its
+listener verdict were fixed. The shipped probe measures 55 in 4800. Corrected everywhere it appears.
+A number that cannot be reproduced from the tree that carries it is worse than no number.
+
+**And a residual the count fix does not reach, now stated in the source and the ADR:** `lo` and `hi`
+still read `crossover()` live, so the edges can be split VALUES a same-count layout change has already
+repositioned. That needs ADR-0047's instrument — one capture of the split array shared by the
+derivation and the target — not this one. Only the RISING count direction misplaces; falling widens
+the clamp, and rising past four drops the click (fail-safe but lossy).
