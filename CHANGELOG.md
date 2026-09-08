@@ -88,6 +88,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   none at all (the plug-in ignores a solo above the current band count, so you would hold the button
   and hear no solo whatever). Releasing already handled it; now the audition ends the moment the
   layout moves under it, exactly as a drag does.
+- **Moving the other splits aside now stops if the split they are making room for moves.** Typing a
+  frequency or resetting one in a crowded layout writes the split you set and then walks the others
+  outward to keep the minimum spacing. Every one of those positions was worked out to make room for
+  *your* split, and each write tells your DAW about it — so a DAW answering by moving your split left
+  the plug-in walking the rest of the row outward for a split that had gone somewhere else entirely:
+  measured as splits landing at 300 Hz, 11.4 kHz and 15.1 kHz for a layout planned around 8.4 kHz.
+  The walk now stops the moment your split is no longer where the plan put it, leaving the DAW's
+  change standing and the row part-way rather than rearranged around a split that is not there.
+  Ordinary typing and resetting are unchanged.
 - **Scrolling the mouse wheel over a split no longer undoes a change that arrives while it is
   writing.** A wheel tick over a split can move that split and push its neighbour, and those are two
   separate writes. The plug-in checks, before each write of a drag, that the value it is about to
