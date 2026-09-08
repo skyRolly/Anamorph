@@ -1012,11 +1012,19 @@ void SpectrumImager::removeBand (int b, int expectedBands)
     // `bandCount() != expectedBands` before the solo store and `setSoloMask`'s own precondition --
     // all three at once -- leaves the whole suite green, because the width loop, the split loop and
     // `setBands` still each refuse. But changing the CALL SITE to pass a live `bandCount()` instead
-    // of `pressBands` kills State test 71 leg C twice over, with the diagnostic that round measured:
+    // of `pressBands` kills State test 69 leg C twice over, with the diagnostic that round measured:
     // `Bands 4 -> 3: the release read a count the check never saw`. So the five comparisons are
     // individually redundant BY DESIGN and the contract they enforce is covered; do not read a
     // survived single-line mutation here as a coverage hole. That is exactly the misreading this
     // round made first and corrected by peeling further.
+    //
+    // WHICH CALL SITE, EXACTLY -- because the answer is not "all of them", and the round's audit had
+    // to measure per site to get it right. Replacing `pressBands` with a live read at the OUTWARD-DRAG
+    // site alone kills those two checks; at the delete-x site alone, or at the two solo sites alone,
+    // it kills NOTHING. That is not one guard and three holes: the outward-drag site is the only tail
+    // store with a synchronous DISPATCH in front of it (`endGesture` on the dragged split, which is
+    // exactly what leg C's listener fires inside), so it is the only one whose window a
+    // single-threaded harness can enter. The others' windows are cross-thread-only.
     if (N != expectedBands) return;
     if (b < 0 || b >= N) return;
     const int dropX = (b == 0) ? 0 : (b - 1); // delete the split on this band's left (#12)

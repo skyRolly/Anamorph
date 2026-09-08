@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1214`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1222`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10742,7 +10742,7 @@ last is the one arrangement that cannot work: an index derived at three bands an
 four that arrived a few instructions later claims a topology it was never derived in, and because
 `scrollBands` is not re-derived for the rest of the burst, every later tick compares against that
 claim and passes. `mouseDown` never had this half — it reads the count at the very top, which is
-what `src/gui/SpectrumImager.cpp:2470` relies on.
+what `src/gui/SpectrumImager.cpp:2478` relies on.
 
 **Fix (ADR-0046).** `bandAtX (x, n)` and `handleNearX (x, n)` answer under the topology they are
 given (`-1` keeps the live read for the hover and paint callers, which stamp nothing);
@@ -11006,9 +11006,19 @@ or width is discarded while the transaction completes. Fixing it changes when a 
 abandons, which is ADR-0042's and ADR-0044's measured disposition; it belongs in its own round with
 those legs re-run. Worklog §40b.
 
-**Two further coverage holes, recorded not closed:** the delete-x call site's `pressBands` has no
-mutation that kills anything, and `mouseUp`'s staleness gate can be disabled with a green build (what
-it protects is gesture hygiene, which the state suite does not observe).
+**One coverage hole and one unreachable window, and the audit's per-site measurement told them apart.**
+`mouseUp`'s staleness gate can be disabled with a green build — a real hole, since what it protects is
+gesture hygiene, which the state suite does not observe. The delete-x call site's `pressBands` is NOT
+one: replacing it with a live read kills nothing because only pure reads precede it, so its window is
+cross-thread-only, where the outward-drag site alone has a dispatch (`endGesture`) in front of it and
+is covered. Two readings, opposite actions, a third time. The kill also belongs to State test **69**
+leg C, not 71, as first recorded.
+
+**Five further findings from the audit's tracks 3 and 5, escalated rather than patched** (worklog §44):
+every per-store re-proof in both `removeBand` loops is uncovered; `moveBand` and `beginBandMove` size
+their plans and pins from their own readings rather than the caller's latch — the same class this round
+fixed, in the sibling function; three sites clear their latched identifiers after the `endGesture`
+dispatch rather than before; and `bandSoloed` is dead code.
 
 **Two probe-construction mistakes are recorded in the probe's own source**, because both changed the
 answer before they were caught: a parked constant that made the pre-fix count fall from 5 to 0, and a

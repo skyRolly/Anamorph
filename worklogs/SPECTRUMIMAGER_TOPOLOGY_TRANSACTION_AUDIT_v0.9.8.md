@@ -1061,14 +1061,25 @@ of any window this series has examined.
 | M1 — delete `removeBand`'s entry `N != expectedBands` | **none** (2 814 / 0) |
 | M1 + M4 — also delete the `bandCount() != expectedBands` before the solo store | **none** |
 | M1 + M4 + M-solo — also pass `-1` for `setSoloMask`'s `expectedBands` | **none** |
-| **M-I2 — the CALL SITE passes `bandCount()` instead of `pressBands`** | **2**, with the round's own diagnostic: `Bands 4 -> 3: the release read a count the check never saw` |
+| **M-I2 — the OUTWARD-DRAG call site passes `bandCount()` instead of `pressBands`** | **2**, with the round's own diagnostic: `Bands 4 -> 3: the release read a count the check never saw` |
+| the same substitution at the DELETE-X call site alone | none |
+| the same substitution at the two SOLO call sites alone | none |
 
 **The first three readings were mine and the fourth came from the audit, and the fourth is the one
 that settles it.** Peeling the callee's comparisons one at a time never fires, because the width loop,
 the split loop and `setBands` each still refuse — so I first wrote M1 down as a *coverage hole*, a
-guard no test defends. It is not. What is load-bearing is the `pressBands` ARGUMENT, and State test 71
+guard no test defends. It is not. What is load-bearing is the `pressBands` ARGUMENT, and **State test 69**
 leg C pins it precisely: remove the contract at the call site rather than one comparison inside the
 callee and the test fires twice, with the exact `Bands 4 -> 3` the source comment cites.
+
+**And it is ONE call site, not all four.** The audit measured the substitution per site: the
+outward-drag site kills two checks, the delete-x site none, the two solo sites none. That is not one
+guard and three holes — the outward-drag site is the only tail store with a synchronous DISPATCH in
+front of it (`endGesture` on the dragged split, which is what leg C's `BandsMoveOnGestureEnd` listener
+fires inside), so it is the only one a single-threaded harness can reach. The others are
+cross-thread-only. **That corrects §39's own "two coverage holes" line below**: the delete-x site is an
+unreachable window, not an undefended guard. Also corrected: the test is State test **69** leg C, not
+71 — the audit's verifier caught that misattribution in the comment I had just written.
 
 The distinction matters because the two readings call for opposite actions — write a missing test
 versus write down why a single-line mutation cannot fire — and I would have taken the wrong one. It is
@@ -1215,3 +1226,29 @@ on its own processor; mutation M-W2 kills exactly one check, leg C's second, and
 Documenting a measurement is not the same as pinning it, and this is the second time this session that
 distinction mattered — the first was §39's guard, where a survived mutation meant the opposite of what
 it looked like.
+
+## 44. The audit's full result, and five findings escalated from it
+
+`wf_7a4ee1f6-cc3` finished all five tracks and 34 agents. Tracks 1, 2 and 4 are consumed in §§39-43.
+What tracks 3 and 5 add is below. **None of it is patched here**, and that is a decision rather than
+fatigue: each item is the same class this round just fixed, which means each deserves the same
+treatment — a measurement, a minimal fix, a mutation record — and doing four of those inside a round
+whose brief named two findings is how a round stops being reviewable.
+
+**Two corrections to my own records came out of the same run and ARE applied** (§39): the mutation
+kill belongs to State test **69** leg C, not 71, and the per-site attribution shows the delete-x call
+site is an unreachable window rather than the coverage hole I called it.
+
+| # | finding | evidence | why not now |
+|---|---|---|---|
+| A | **Every per-store re-proof in BOTH `removeBand` loops is uncovered** — the whole ADR-0040 loop guard can be deleted and the suite stays green | mutations M4/M4b/M5/M5b/M4c, all surviving | a real coverage gap with a concrete fix (two legs on State test 76, modelled on leg F with `poke.target = bandsP` and a value target). It is test work, not a code change, and it belongs with the §40b source-slot finding since both live in the same loops |
+| B | **`moveBand` sizes its plan from a reading its own proof never sees** — `const int M = bandCount() - 1` while `writeCrossovers` proves against `gestureBands` | the ADR-0046 shape, in the sibling one line from `dragCrossoverTo` which that ADR fixed | same class as this round's Finding 2 and the same one-argument fix, but the band-move path carries two pins and a `bandTmin`/`bandTmax` pair; it needs its own measurement rather than an argument by analogy |
+| C | **`beginBandMove` derives every band-move identifier and bound from its own reading**, two of them used across its own gesture dispatches | same track | fixing B without C leaves the plan's extent proved and its pins still derived under an unproved topology — so they are one change, not two |
+| D | **`mouseUp`, `cancelActiveDrag` and `endBandMove` clear their latched identifiers AFTER the `endGesture` dispatch**, so a reentrant cancel can fire `endChangeGesture` twice | static, three sites | the fix (copy to a local, null the member, then dispatch) is small but it is a reentrancy-semantics change in the gesture bracket, which is where this series has been most careful |
+| E | `bandSoloed` is dead code — the last helper that re-reads `soloMask` to interpret a caller's index, with a comment already warning against calling it | no callers | trivial, and trivial changes still need a round that is looking at that file |
+
+**One thing the audit says about the whole `removeBand` ensemble is worth carrying forward as a rule
+rather than a finding:** no single layer of its six-layer count proof is measurable, and no three
+layers are — only the whole set. So a surviving single-line mutation there is not evidence of a hole,
+and a surviving ENSEMBLE mutation on the loops (item A) is. That is the general form of the mistake I
+made twice this round.
