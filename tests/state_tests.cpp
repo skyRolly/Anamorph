@@ -3793,6 +3793,289 @@ static void testAStoreIsNotCommittedUntilTheParameterSaysSo()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 75 -- a commit that carries no user intent writes nothing, and a
+//  plan whose projection depends on the neighbours proves them before it stores.
+//
+//  THE DEFECTS, both on the frequency chip's inline editor and its sibling reset:
+//
+//   * `openFreqEditor` seeds the text box from `crossover(i)` at the moment it
+//     opens, and `commitFreqEditor` stores whatever is in the box. The editor is
+//     committed by Return, by FOCUS LOSS, and by a mouseDown anywhere in the
+//     component -- so opening the chip and clicking away re-commits the value the
+//     split had when the editor opened. If a host lane moved that split while the
+//     editor was open, the newer value is overwritten by a stale one; and even
+//     when nothing moved, the dismissal still reaches the host as an automation
+//     touch and an undo step for an edit the user never made.
+//
+//   * `projectGaps` pins the edited split and then, at :300-301, slides the WHOLE
+//     cluster back inside the plot edges -- the pin included -- by an amount
+//     derived from the NEIGHBOURS' snapshot. So when the slide fires, the value
+//     the primary store writes is a projection of a world the store never
+//     re-proves, and `beginChangeGesture` dispatches to the host before it.
+//
+//  THE INVARIANT is the one every round of this series has been about: a gesture
+//  stores an authoritative value only while that value is still the one its plan
+//  was computed from. A typed value and an Alt-click reset are the USER's own
+//  authority and legitimately replace a host write -- legs B and E hold that line,
+//  so a fix that simply refused whenever a split had moved would fail them.
+// ---------------------------------------------------------------------------
+namespace
+{
+// Counts value changes on one parameter, so "wrote nothing" is an assertion
+// rather than an inference from the value happening to match.
+struct CountValueChanges final : public juce::AudioProcessorParameter::Listener
+{
+    int changes = 0;
+    void parameterValueChanged (int, float) override { ++changes; }
+    void parameterGestureChanged (int, bool) override {}
+};
+} // namespace
+
+static void testACommitWithNoIntentWritesNothing()
+{
+    std::printf ("State test 75: a commit that carries no user intent writes nothing\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the no-intent probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the no-intent probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    check (bandsP && soloP && loP && midP && hiP, "the parameters the no-intent probe drives exist");
+    if (! (bandsP && soloP && loP && midP && hiP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+    const float W     = (float) imager->getWidth();
+    const float H     = (float) imager->getHeight();
+    const float laneY = 0.5f * H;
+    const float chipY = H - 15.0f;
+
+    auto findFirstX = [&] (const char* want, float y) -> float
+    {
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto textEditorOf = [&] () -> juce::TextEditor*
+    {
+        for (int i = 0; i < imager->getNumChildComponents(); ++i)
+            if (auto* t = dynamic_cast<juce::TextEditor*> (imager->getChildComponent (i)))
+                if (t->isVisible()) return t;
+        return nullptr;
+    };
+    auto resetWorld = [&] ()
+    {
+        imager->cancelActiveDrag();
+        imager->cancelInlineEdit();
+        setPlain (bandsP, 4.0f);
+        setPlain (soloP,  0.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 2000.0f);
+        setPlain (hiP, 10000.0f);
+    };
+
+    // ---- LEG A: dismissing the editor without typing writes nothing over a
+    //  newer host value. The box still holds the text it was seeded with when the
+    //  chip opened; committing it is a store of a value the user never chose.
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg A: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDoubleClick (mev (hx, chipY, hx, chipY, false));
+            auto* te = textEditorOf();
+            check (te != nullptr, "leg A: the chip editor opens");
+            if (te != nullptr)
+            {
+                setPlain (loP, 5000.0f);                 // a host lane moves it while the box is open
+                const float installed = plainOf (loP);
+                if (te->onFocusLost) te->onFocusLost();  // click away: commit with nothing typed
+                if (std::abs (plainOf (loP) - installed) > 1.0f)
+                    std::printf ("  [leg A] a dismissed editor wrote its opening snapshot over a newer"
+                                 " host value: %.1f Hz was installed and %.1f Hz was written over it\n",
+                                 (double) installed, (double) plainOf (loP));
+                check (std::abs (plainOf (loP) - installed) <= 1.0f,
+                       "leg A: a dismissed editor does not write its opening snapshot over a newer value");
+            }
+        }
+    }
+
+    // ---- LEG B: positive control -- a TYPED value is the user's own authority
+    //  and must still replace whatever the host installed while the box was open.
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        if (hx >= 0.0f)
+        {
+            imager->mouseDoubleClick (mev (hx, chipY, hx, chipY, false));
+            auto* te = textEditorOf();
+            check (te != nullptr, "leg B: the chip editor opens");
+            if (te != nullptr)
+            {
+                setPlain (loP, 5000.0f);                 // the host moves it...
+                te->setText ("300", juce::sendNotificationSync);   // ...and the user types anyway
+                if (te->onReturnKey) te->onReturnKey();
+                check (std::abs (plainOf (loP) - 300.0f) < 2.0f,
+                       "leg B: a typed value still replaces a host write made while the box was open");
+            }
+        }
+    }
+
+    // ---- LEG C: dismissing the editor with nothing moved writes nothing at all.
+    //  Not merely "the value is unchanged" -- no store is issued, so the host sees
+    //  no automation touch and the undo stack gains no step.
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        if (hx >= 0.0f)
+        {
+            imager->mouseDoubleClick (mev (hx, chipY, hx, chipY, false));
+            auto* te = textEditorOf();
+            check (te != nullptr, "leg C: the chip editor opens");
+            if (te != nullptr)
+            {
+                CountValueChanges w;
+                loP->addListener (&w);
+                if (te->onFocusLost) te->onFocusLost();
+                loP->removeListener (&w);
+                if (w.changes != 0)
+                    std::printf ("  [leg C] dismissing an untouched editor issued %d store(s)\n", w.changes);
+                check (w.changes == 0,
+                       "leg C: dismissing an untouched editor issues no store at all");
+            }
+        }
+    }
+
+    // ---- LEG D: a plan whose projection depends on the neighbours proves them.
+    //  `projectGaps` pins the edited split and then slides the WHOLE cluster back
+    //  inside the plot edges -- the pin included -- by an amount derived from the
+    //  neighbours' snapshot. Typing 15 kHz into the first split of a layout packed
+    //  against the right edge therefore stores something quite different: measured
+    //  `200 / 18000 / 19500` becomes `8440.1 / 11407.5 / 15122.0`, which is the
+    //  projection doing its job. But `beginChangeGesture` dispatches to the host
+    //  BEFORE the store, so a host answering it by moving a neighbour leaves the
+    //  pin at a position justified by splits that are no longer there. Measured:
+    //  `8440.1 / 3000.0 / 19500.0` -- the first split ABOVE the second.
+    {
+        auto crowded = [&] ()
+        {
+            imager->cancelActiveDrag();
+            imager->cancelInlineEdit();
+            setPlain (bandsP, 4.0f);
+            setPlain (soloP,  0.0f);
+            setPlain (loP,   200.0f);
+            setPlain (midP, 18000.0f);
+            setPlain (hiP,  19500.0f);
+        };
+        crowded();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg D: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDoubleClick (mev (hx, chipY, hx, chipY, false));
+            auto* te = textEditorOf();
+            check (te != nullptr, "leg D: the chip editor opens on the crowded layout");
+            if (te != nullptr)
+            {
+                te->setText ("15 kHz", juce::sendNotificationSync);
+                WriteFromInsideAGestureOpen poke;
+                poke.target = midP;                  // a host moves a NEIGHBOUR from inside the open
+                poke.to     = 3000.0f;
+                loP->addListener (&poke);
+                poke.armed = true;
+                if (te->onReturnKey) te->onReturnKey();
+                const bool landed = poke.fired;
+                loP->removeListener (&poke);
+
+                check (landed, "leg D: the probe write landed inside the pin's own gesture-open");
+                if (landed && ! (plainOf (midP) > plainOf (loP)))
+                    std::printf ("  [leg D] the pin was stored against splits that had moved:"
+                                 " %.1f / %.1f / %.1f\n", (double) plainOf (loP),
+                                 (double) plainOf (midP), (double) plainOf (hiP));
+                check (! landed || plainOf (midP) > plainOf (loP),
+                       "leg D: a commit whose projection depended on the neighbours is computed from where they ARE");
+                check (! landed || plainOf (hiP) > plainOf (midP),
+                       "leg D: ...and the layout it leaves is ordered");
+            }
+        }
+    }
+
+    // ---- LEG E: positive control -- the same crowded commit, uninterrupted,
+    //  must still slide the cluster and land the ordered projection it always did.
+    {
+        imager->cancelActiveDrag();
+        imager->cancelInlineEdit();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 18000.0f);
+        setPlain (hiP,  19500.0f);
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        if (hx >= 0.0f)
+        {
+            imager->mouseDoubleClick (mev (hx, chipY, hx, chipY, false));
+            if (auto* te = textEditorOf())
+            {
+                te->setText ("15 kHz", juce::sendNotificationSync);
+                if (te->onReturnKey) te->onReturnKey();
+            }
+            check (plainOf (loP) > 5000.0f && plainOf (midP) > plainOf (loP)
+                   && plainOf (hiP) > plainOf (midP),
+                   "leg E: an uninterrupted crowded commit still lands its ordered projection");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 //  State test 67 -- an outward drag whose split has since vanished removes
 //  NOTHING, rather than deleting whichever band the index now lands on.
 //
@@ -14704,6 +14987,7 @@ int main (int argc, char* argv[])
     testTheCheckIsAdjacentToEveryStore();
     testACoupledUpdateIsAllOfItOrNone();
     testAStoreIsNotCommittedUntilTheParameterSaysSo();
+    testACommitWithNoIntentWritesNothing();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 
