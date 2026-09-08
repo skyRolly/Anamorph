@@ -287,3 +287,129 @@ F2's fix is one call to an existing predicate, and its **trigger** cannot be dri
    today. Not done here because adding a production seam to test a one-line guard inverts the cost,
    and because the driven-message-loop harness is the same infrastructure the GUI-lifetime entry in
    the same register is waiting on. Revisited when that lands, per ADR-0025 §5.
+
+## 13. Two more the audit found, and one it found that is not a defect
+
+The read-only fan-out over every write path — the systematic half the round asked for — found two
+further gaps of the same family, both outside the two the review named and both **inside the brief's
+own scope**, which is that the invariant "must remain true for every write path". Both are closed
+here; neither needed a new mechanism.
+
+**W1 — `spreadSplits` re-proved the neighbours but never the PIN.** Every position in `xs` was
+computed to make room for the split the spread is spreading *around*, and each neighbour store
+dispatches to the host. A host that moves the pin from inside the **first** neighbour's store left
+the rest of the plan being applied around a split that is no longer there. **Measured**, State
+test 75 leg G: the pin dragged to `300.0` Hz and the neighbours still spread for a pin at `8440`,
+leaving `300.0 / 11407.5 / 15122.0`. Closed by passing the pin's confirmed normalised value —
+`storeOwned` already hands it back — and re-proving it at the top of each iteration. Mutation N5.
+
+**W2 — the wheel's burst had no per-store ownership at all.** `mouseWheelMove` calls
+`cancelActiveDrag()` first, which is right (no press is in flight) but also clears `gestureBands`,
+and `gestureBands < 0` waives **both** `ownsSplit` and the count re-proof inside `writeCrossovers`.
+The burst that follows is up to three stores with a host dispatch between each — so the one path
+ADR-0040 did not cover still had the defect ADR-0040 was written for. **Measured**, State test 75
+leg H: `5000.0 Hz was installed and 1476.4 Hz was written over it`. Closed by naming the topology
+alongside the sound `captureDragOrigins()` has just recorded, for the duration of the burst only:
+`gestureBands = bandCount(); … ; gestureBands = -1;`. The wheel still leaves nothing in flight, which
+is ADR-0041's decision; what changes is only that the burst it issues owns what it writes.
+Mutation N6.
+
+**Not a defect: `freqText` and `parseFreq` are not inverses at exactly 20 Hz.** `freqText (20.0f)`
+is `"20"` (`SpectrumImager.cpp:86-89`) and `parseFreq ("20")` returns **20 000 Hz**, because values
+at or below 20 are read as kilohertz (`:870-877`) — a deliberate shorthand, since 20 Hz is the very
+bottom of the range and nobody types it. The asymmetry mattered only through the untouched
+dismissal, which §3's fix removes: a box the user did not change is never committed, so the seeded
+text is never parsed. What remains is a user deliberately typing `20`, which gets the documented
+20 kHz. Recorded rather than changed: altering the shorthand is a product decision about text entry,
+not an ownership question, and it is not this round's to make.
+
+## 14. Mutation proofs, complete
+
+| # | Mutation | Killed by |
+|---|---|---|
+| N1 | `commitFreqEditor` drops the intent gate | leg A **and** leg C |
+| N2 | `commitFreqEditor` computes the plan before the gesture opens | leg D |
+| N3 | `resetCrossover` computes the plan before the gesture opens | leg F |
+| N4 | `tick()` drops the stale check | **nothing** — §12 |
+| N5 | `spreadSplits` drops the pin re-proof | leg G |
+| N6 | the wheel does not own its burst | leg H |
+
+## 15. Anchor rot found while re-anchoring, and the split that decides each case
+
+The change set moved `dragCrossoverTo` (`writeCrossovers` +1 line, `spreadSplits` +8 for the pin
+re-proof), so `docs/DOCUMENTATION_COVERAGE.md`'s tracked citation had to be re-derived a **third**
+time (`:471 → :493 → :509 → :518`) together with its `DELIBERATE_REAIMS` target — a stale target
+switches the drift check OFF for that anchor and is invisible in every other way
+(`scripts/check-citations.py:341-365`).
+
+Re-deriving it exposed a class the gate cannot see. `check-citations.py:34-44` narrows ownership on
+purpose: a citation is the gate's only when it names its path from the repository root, so a
+**continuation anchor** — `` `moveBand` (:588) ``, the bare form the document uses after a full path
+in the same sentence — is left alone. Seven of those in the 2026-09-07 stale-drag block had rotted,
+all of them by this line of rounds moving the file beneath them, none of them detectable by any gate
+in the tree:
+
+| Anchor | Named | Then | Now |
+|---|---|---|---|
+| `moveBand` | `bool SpectrumImager::moveBand` | :588 | :647 |
+| `captureDragOrigins()` | its definition | :317 | :433 |
+| `freqToX` | its definition | :156 | :161 |
+| `dragCrossoverTo` refuses a dead handle (×2) | `handle >= M` early return | :363 | :521 |
+| `removeBand`'s live-argument caller (×2) | `deleteHit (e.position) == dB` | :1741 | :2162 |
+| `removeBand` **clamps** | `b = juce::jlimit (0, N - 1, b)` | :521 | **gone** |
+
+The first five name constructs that still exist and still support the sentence, so they are
+re-aimed. The last does not: ADR-0038 replaced that clamp with a refusal, and re-aiming it at the
+comment recording its removal would attach a live line number to a claim about code that no longer
+exists — the exact failure `check-citations.py:26-32` warns is invisible because a drifted anchor
+"reads like a repair". It is de-numbered instead, in the wording this document already uses one
+paragraph above for `removeBand (dragHandle + 1)` ("line 1804 as this entry anchored it").
+
+**Not fixed here, and why.** The natural repair — teach the parser to resolve `(:NNN)` against the
+last full path in the paragraph — would put a rewriting tool onto anchors whose owning file is
+*inferred*. `check-citations.py:34-44` records that this tool has already corrupted a citation once
+by misclassifying it, and set the ownership test deliberately narrow afterwards. Inference is the
+opposite direction. The alternative that costs nothing is a convention: write the full path every
+time a citation is worth checking. This round's own entries do. Recorded rather than patched, since
+the fix is a change to a validation tool's ownership model and this round's brief is the imager's
+write paths.
+
+## 16. A wrong-typed argument in the code this round rewrote, and the gate that did not see it
+
+Re-running the sanitizer build over the new legs produced four
+`-Wint-in-bool-context` diagnostics on `tests/state_tests.cpp`, and following them found the same
+mistake in **production** code:
+
+```
+juce::TextEditor::setText (const String& newText, bool sendTextChangeMessage = true)
+juce::Label::setText      (const String& newText, NotificationType notification)
+```
+
+`SpectrumImager::openFreqEditor` seeded the chip with
+`freqEditor->setText (freqText (crossover (i)), juce::dontSendNotification)`. `freqEditor` is a
+`TextEditor`, so that argument is not a `NotificationType` at all — it converted to `bool` and
+compiled **only because `dontSendNotification` is 0**. The behaviour was and is correct (`false` =
+seed without a change message, which is what the intent gate needs, §3), so this is a
+spelling defect, not a live one — but it is exactly the confusion that produced the round's first
+wrong attempt, where the fix was written against `onTextChange` as though `setText` dispatched it
+synchronously (§10). Nine call sites corrected: one in `src/gui/SpectrumImager.cpp` and eight in
+`tests/state_tests.cpp` (four of them `sendNotificationSync`, whose value happens to be non-zero —
+`true` — and which reads as a *synchronous* listener call that `TextEditor::setText` has never
+offered; it calls `textChanged()`, which posts).
+
+**Why no gate caught it.** `check-gcc-warnings.py:207-213` gates five flags — `-Wshadow`,
+`-Wmisleading-indentation`, `-Wduplicated-cond`, `-Wduplicated-branches`, `-Wlogical-op` — and
+`-Wint-in-bool-context` is not among them, so GCC emitted it into the build log and nothing read it.
+`-Wint-in-bool-context` is in `-Wall`, so the diagnostic costs nothing to produce; only the gating
+is missing.
+
+**Not added here, deliberately.** `scripts/gcc-warning-baseline.txt` is pinned to **gcc-16** and this
+container carries gcc-13, so the gate declines to compare locally
+(`baseline describes gcc-16 but the log came from gcc-13`) and a new flag's first-party count can
+only be measured on the CI runner. The script's own rule for that situation is to re-baseline and
+**read the diff** in the same change. Adding `"-Wint-in-bool-context"` to `GATED_FLAGS` is a
+one-line change, but a blind one from here: it would either pass with a baseline I could not verify
+or turn CI red on gcc-16 sites I cannot see. Recorded as the concrete next step rather than guessed
+at. After the fix the first-party tally over a full rebuild of `src/` and `tests/` is
+`-Wmismatched-new-delete` 17, `-Wfloat-equal` 13, `-Wsign-conversion` 8, `-Wshadow` 4,
+`-Wswitch-enum` 2, `-Wmisleading-indentation` 2, and **`-Wint-in-bool-context` 0**.

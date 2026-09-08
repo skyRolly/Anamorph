@@ -878,7 +878,16 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   authority; (E) and (F)(i) an uninterrupted crowded commit and reset still land their ordered
   projection. Mutations, each killed by exactly the intended leg: the intent gate removed → A and C;
   the plan computed before the gesture opens, in `commitFreqEditor` → D and in `resetCrossover` → F.
-  The held-solo half of the same round has **no test** — see the `FrameClock` entry in §Gaps.
+  Legs (G) and (H) come from the systematic half of the same round — the audit of *every* write path,
+  not only the two the review named: (G) a spread whose **pin** moves under it writes no further
+  neighbour, because every position in the plan was computed to make room for that pin (`300.0 /
+  11407.5 / 15122.0` before, the pin dragged to 300 Hz and the neighbours still spread for a pin at
+  8440); (H) a **wheel** burst does not write a neighbour that is no longer its own — `mouseWheelMove`
+  clears `gestureBands`, which waived both `ownsSplit` and the count re-proof for the burst that
+  follows, so the one path ADR-0040 did not cover still carried the defect ADR-0040 was written for
+  (`5000.0 Hz was installed and 1476.4 Hz was written over it`). Mutations: the pin re-proof removed
+  → G; the wheel burst unowned → H. The held-solo half of the same round has **no test** — see the
+  `FrameClock` entry in §Gaps.
 
 * **State test 74 — a store is not committed until the parameter says so** (ADR-0042). The far side
   of the window ADR-0040's round-3 correction closed on the near side: `setValueNotifyingHost`

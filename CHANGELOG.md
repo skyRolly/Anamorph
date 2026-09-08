@@ -88,6 +88,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   none at all (the plug-in ignores a solo above the current band count, so you would hold the button
   and hear no solo whatever). Releasing already handled it; now the audition ends the moment the
   layout moves under it, exactly as a drag does.
+- **Scrolling the mouse wheel over a split no longer undoes a change that arrives while it is
+  writing.** A wheel tick over a split can move that split and push its neighbour, and those are two
+  separate writes. The plug-in checks, before each write of a drag, that the value it is about to
+  replace is still the one it planned against — but that check was switched off for the wheel,
+  because the wheel deliberately ends any drag first. So a change arriving from your DAW between the
+  two writes was overwritten by the second: measured as 5 kHz installed and 1.48 kHz written over it.
+  The wheel now makes the same check a drag does. Ordinary scrolling is unchanged.
   Decision: ADR-0043. Regression coverage: State test 75. Evidence: PR #143. [Verified]
 - **A change arriving from your DAW while the Multiband display is writing is no longer overwritten,
   and an edit that was overwritten no longer carries on as though it had worked.** Adding or removing

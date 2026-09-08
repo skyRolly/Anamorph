@@ -351,10 +351,19 @@ bool SpectrumImager::writeCrossovers (const float* xs, int count)
 // `was[k]` is the normalised value the plan was computed from; a slot that no longer holds it is
 // somebody else's, and the spread stops there exactly as `writeCrossovers` stops. `kSplitMovedPx`
 // keeps its one real job -- deciding whether a write is worth making at all.
-bool SpectrumImager::spreadSplits (const float* xs, const float* was, int count, int except)
+bool SpectrumImager::spreadSplits (const float* xs, const float* was, int count, int except,
+                                   float pinNorm)
 {
     for (int k = 0; k < count && k < (int) std::size (freqP); ++k)
     {
+        // ADR-0043: THE PIN IS RE-PROVED TOO. Every position in `xs` was computed to make room for
+        // it, and each neighbour store dispatches to the host, so a host that moves the pin from
+        // inside the FIRST neighbour's store leaves the rest of the plan being applied around a
+        // split that is no longer there. Measured: `300.0 / 11407.5 / 15122.0` -- the pin dragged
+        // to 300 Hz and the neighbours still spread for a pin at 8440.
+        if (except >= 0 && except < (int) std::size (freqP) && freqP[except] != nullptr
+            && ! juce::exactlyEqual (freqP[except]->getValue(), pinNorm))
+            return false;
         // ADR-0042, the same correction ADR-0040's round 3 made to `writeCrossovers`: the COUNT is
         // re-proved as well as the value. `count` was read before the plan was computed and three
         // dispatches follow it -- the primary store, the gesture close and each neighbour store --
@@ -678,7 +687,7 @@ void SpectrumImager::resetCrossover (int i)
     }
     p->endChangeGesture();
     if (! ok || ! juce::exactlyEqual (p->getValue(), owned)) return;
-    (void) spreadSplits (xs, was, M, i);
+    (void) spreadSplits (xs, was, M, i, owned);
 }
 
 int SpectrumImager::addBandAt (float hz, int& resultingBands)
@@ -899,8 +908,11 @@ void SpectrumImager::openFreqEditor (int i)
     }
     auto chip = numberChip (i).expanded (6.0f, 4.0f);
     freqEditor->setBounds (chip.toNearestInt());
-    freqEditor->setText (freqText (crossover (i)), juce::dontSendNotification);
-    editTextEdited = false;              // seeded, not typed: `dontSendNotification` fires nothing
+    // `false` is the argument this overload takes -- juce::TextEditor::setText is
+    // (const String&, bool sendTextChangeMessage), NOT the (String, NotificationType) of
+    // juce::Label. `juce::dontSendNotification` compiled here only because it is 0.
+    freqEditor->setText (freqText (crossover (i)), false);
+    editTextEdited = false;              // seeded, not typed: no change message, so onTextChange never fires
     editOpenText   = freqEditor->getText();
     freqEditor->setVisible (true);
     freqEditor->grabKeyboardFocus();
@@ -952,7 +964,7 @@ void SpectrumImager::commitFreqEditor()
     }
     p->endChangeGesture();
     if (ok && juce::exactlyEqual (p->getValue(), owned))
-        (void) spreadSplits (xs, was, M, i);
+        (void) spreadSplits (xs, was, M, i, owned);
     closeFreqEditor();
 }
 void SpectrumImager::closeFreqEditor()
@@ -2276,7 +2288,17 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     if (scrollHandle >= 0 && scrollHandle < N - 1)
     {
         captureDragOrigins(); // seed the projection from the live spots
+        // ADR-0043. THE WHEEL OWNS THE BURST IT ISSUES. `cancelActiveDrag()` above clears
+        // `gestureBands`, which is right -- no press is in flight -- but it also waives `ownsSplit`
+        // and the count re-proof inside `writeCrossovers` for the burst that follows, and that burst
+        // is up to three stores with a host dispatch between each. So the one path ADR-0040 did not
+        // cover had no per-store ownership at all: measured `5000.0 Hz was installed and 1476.4 Hz
+        // was written over it`. `captureDragOrigins` has just recorded exactly what this burst is
+        // about to steer, so naming the topology alongside it costs one int and makes both checks
+        // live. Cleared again immediately: the wheel still leaves nothing in flight.
+        gestureBands = bandCount();
         dragCrossoverTo (scrollHandle, freqToX (crossover (scrollHandle)) + dy * 28.0f);
+        gestureBands = -1;
     }
     else if (scrollBand >= 0 && scrollBand < N)
     {

@@ -354,9 +354,16 @@ DELIBERATE_REAIMS = {
     # handles it and NO second declaration is warranted -- but this entry's target
     # must follow, because `verify_reaim_targets()` checks the token at the spelling
     # named here and a target left at :471 would silently switch the check off.
+    #
+    # 2026-09-08 (ADR-0043, W1/W2): the same target re-derived again, :509 -> :518.
+    # `writeCrossovers` gains one line and `spreadSplits` eight (the pin re-proof),
+    # both above the function: a pure insertion again, so still one entry and still
+    # no second declaration -- only the spelling `verify_reaim_targets()` reads.
+    # This is the third re-derivation of this one target, which is the cost of a
+    # declaration and the reason not to write one for a plain move.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:509"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:518"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

@@ -3441,7 +3441,7 @@ static void testAStoreIsNotCommittedUntilTheParameterSaysSo()
             check (te != nullptr, "leg C: the frequency text editor opens on the number chip");
             if (te != nullptr)
             {
-                te->setText ("500", juce::dontSendNotification);
+                te->setText ("500", false);
                 WriteFromInsideAStore poke;
                 poke.target = midP;
                 poke.to     = 5000.0f;
@@ -3510,7 +3510,7 @@ static void testAStoreIsNotCommittedUntilTheParameterSaysSo()
             imager->mouseDoubleClick (mev (hx0, chipY, hx0, chipY, false));
             if (auto* te = textEditorOf())
             {
-                te->setText ("5 kHz", juce::dontSendNotification);
+                te->setText ("5 kHz", false);
                 if (te->onReturnKey) te->onReturnKey();
             }
             check (plainOf (midP) > 2100.0f,
@@ -3526,7 +3526,7 @@ static void testAStoreIsNotCommittedUntilTheParameterSaysSo()
             check (te != nullptr, "leg I: the frequency text editor opens for the second half");
             if (te != nullptr)
             {
-                te->setText ("5 kHz", juce::dontSendNotification);
+                te->setText ("5 kHz", false);
                 EchoTheSameParameter echo;
                 echo.self = loP;                 // take the primary store away from inside itself
                 echo.to   = 300.0f;
@@ -3712,7 +3712,7 @@ static void testAStoreIsNotCommittedUntilTheParameterSaysSo()
                 setPlain (bandsP, 2.0f);            // the split being edited is now unused
                 const float frozenHi = plainOf (hiP);
                 const float frozenLo = plainOf (loP);
-                te->setText ("5 kHz", juce::dontSendNotification);
+                te->setText ("5 kHz", false);
                 if (te->onReturnKey) te->onReturnKey();
 
                 if (! juce::exactlyEqual (frozenHi, plainOf (hiP)))
@@ -3764,7 +3764,7 @@ static void testAStoreIsNotCommittedUntilTheParameterSaysSo()
             check (te != nullptr, "leg G: the frequency text editor opens on the number chip");
             if (te != nullptr)
             {
-                te->setText ("500", juce::dontSendNotification);
+                te->setText ("500", false);
                 if (te->onReturnKey) te->onReturnKey();
                 check (std::abs (plainOf (loP) - 500.0f) < 2.0f,
                        "leg G: an uninterrupted text commit still writes its split");
@@ -3960,7 +3960,7 @@ static void testACommitWithNoIntentWritesNothing()
             if (te != nullptr)
             {
                 setPlain (loP, 5000.0f);                 // the host moves it...
-                te->setText ("300", juce::sendNotificationSync);   // ...and the user types anyway
+                te->setText ("300", true);               // ...and the user types anyway
                 if (te->onReturnKey) te->onReturnKey();
                 check (std::abs (plainOf (loP) - 300.0f) < 2.0f,
                        "leg B: a typed value still replaces a host write made while the box was open");
@@ -4024,7 +4024,7 @@ static void testACommitWithNoIntentWritesNothing()
             check (te != nullptr, "leg D: the chip editor opens on the crowded layout");
             if (te != nullptr)
             {
-                te->setText ("15 kHz", juce::sendNotificationSync);
+                te->setText ("15 kHz", true);
                 WriteFromInsideAGestureOpen poke;
                 poke.target = midP;                  // a host moves a NEIGHBOUR from inside the open
                 poke.to     = 3000.0f;
@@ -4062,7 +4062,7 @@ static void testACommitWithNoIntentWritesNothing()
             imager->mouseDoubleClick (mev (hx, chipY, hx, chipY, false));
             if (auto* te = textEditorOf())
             {
-                te->setText ("15 kHz", juce::sendNotificationSync);
+                te->setText ("15 kHz", true);
                 if (te->onReturnKey) te->onReturnKey();
             }
             check (plainOf (loP) > 5000.0f && plainOf (midP) > plainOf (loP)
@@ -4135,6 +4135,90 @@ static void testACommitWithNoIntentWritesNothing()
                              (double) plainOf (midP), (double) plainOf (hiP));
             check (! landed || plainOf (hiP) > plainOf (midP),
                    "leg F: a reset whose projection depended on the neighbours is computed from where they ARE");
+        }
+    }
+
+    // ---- LEG G: the spread re-proves the PIN, not only the neighbours. Every
+    //  neighbour position was computed to make room for the pin, so a host that
+    //  moves the pin from inside the FIRST neighbour's store leaves the rest of
+    //  the plan being applied around a split that is no longer there.
+    {
+        imager->cancelActiveDrag();
+        imager->cancelInlineEdit();
+        setPlain (bandsP, 4.0f);
+        setPlain (soloP,  0.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 18000.0f);
+        setPlain (hiP,  19500.0f);
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg G: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDoubleClick (mev (hx, chipY, hx, chipY, false));
+            auto* te = textEditorOf();
+            check (te != nullptr, "leg G: the chip editor opens");
+            if (te != nullptr)
+            {
+                te->setText ("15 kHz", true);
+                const float frozenHi = plainOf (hiP);
+                WriteFromInsideAStore poke;
+                poke.target = loP;                    // move the PIN from inside neighbour 1's store
+                poke.to     = 300.0f;
+                midP->addListener (&poke);
+                poke.armed = true;
+                if (te->onReturnKey) te->onReturnKey();
+                const bool landed = poke.fired;
+                midP->removeListener (&poke);
+
+                check (landed, "leg G: the probe write landed inside the first neighbour's store");
+                if (landed && ! juce::exactlyEqual (frozenHi, plainOf (hiP)))
+                    std::printf ("  [leg G] the spread carried on around a pin that had moved:"
+                                 " %.1f / %.1f / %.1f\n", (double) plainOf (loP),
+                                 (double) plainOf (midP), (double) plainOf (hiP));
+                check (! landed || juce::exactlyEqual (frozenHi, plainOf (hiP)),
+                       "leg G: a spread whose pin moved under it writes no further neighbour");
+            }
+        }
+    }
+
+    // ---- LEG H: the WHEEL owns what it writes. `cancelActiveDrag()` runs first
+    //  and clears `gestureBands`, which waives `ownsSplit` and the count re-proof
+    //  for the whole burst -- so a wheel tick that pushes a neighbour had no
+    //  per-store ownership at all, and a host writing that neighbour from inside
+    //  the first store was overwritten by the second. This is the ADR-0040 defect,
+    //  still alive on the one path that round did not cover.
+    {
+        imager->cancelActiveDrag();
+        imager->cancelInlineEdit();
+        setPlain (bandsP, 4.0f);
+        setPlain (soloP,  0.0f);
+        setPlain (loP,   1000.0f);
+        setPlain (midP,  1010.0f);
+        setPlain (hiP,  10000.0f);
+        juce::MouseWheelDetails wheel;
+        wheel.deltaX = 0.0f; wheel.deltaY = 0.25f; wheel.isReversed = false;
+        wheel.isSmooth = false; wheel.isInertial = false;
+
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg H: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            WriteFromInsideAStore poke;
+            poke.target = midP;                       // the neighbour the burst is about to push
+            poke.to     = 5000.0f;
+            loP->addListener (&poke);
+            poke.armed = true;
+            imager->mouseWheelMove (mev (hx, laneY, hx, laneY, false), wheel);
+            const bool landed = poke.fired;
+            loP->removeListener (&poke);
+
+            check (landed, "leg H: the probe write landed inside the wheel's first store");
+            if (landed && std::abs (plainOf (midP) - 5000.0f) > 1.0f)
+                std::printf ("  [leg H] the wheel burst reclaimed a newer authoritative write:"
+                             " 5000.0 Hz was installed and %.1f Hz was written over it\n",
+                             (double) plainOf (midP));
+            check (! landed || std::abs (plainOf (midP) - 5000.0f) <= 1.0f,
+                   "leg H: a wheel burst does not write a neighbour that is no longer its own");
         }
     }
 

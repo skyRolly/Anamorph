@@ -9915,7 +9915,7 @@ the working tree: 0 files missing, 0 lines past EOF, 0 pointing at unrelated cod
 
 **MUST FIX — one, and the scanners did not report it.** PREfast's four `C6001` results are false
 positives, but auditing the second pair's surface found a real one three functions away:
-`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:474) validated its pin arguments
+`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:483) validated its pin arguments
 against `count` when *writing* them and not when computing `leftPin`/`rightPin`, so a stale pin
 survived into the pull loops and `out[k + 1]` read a slot the copy loop never wrote. Reachable:
 `beginBandMove` (:398) latches `soloMoveLeft`/`soloMoveRight` from the band count at the press;
@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:804 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:813 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:984`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:996`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10033,8 +10033,8 @@ that the fix covered one direction only. Both are settled here.
 
 **A SECOND defect, and the scanners never saw it either.** `dragOrigX` (src/gui/SpectrumImager.h:249)
 is the drag-start x of every split, seeded once when a gesture begins and read for the whole gesture.
-Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:509)
-and `moveBand` (:588). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
+Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:518)
+and `moveBand` (:647). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
 splits in USE at the press — so a host write of `mbBands` that **raised** Bands mid-gesture made the
 consumers ask `projectFromOrig` for origins nobody had written. Those slots still held the `{0,0,0}`
 initialiser, so unlike the falling case this half was **stale, not indeterminate — never UB**; the
@@ -10045,7 +10045,7 @@ into the automation lane and the undo stack. Measured, from the mutation run bel
 at 100 Hz and two parked at 1 kHz and 8 kHz, raising Bands 2→4 mid-drag drove **mid to 122.2 Hz and
 high to 169.4 Hz**.
 
-**Fix.** One private helper, `SpectrumImager::captureDragOrigins()` (:317), seeds EVERY slot and is
+**Fix.** One private helper, `SpectrumImager::captureDragOrigins()` (:433), seeds EVERY slot and is
 called at all four drag starts. `freqP[0..2]` all exist whatever Bands says — only some are in *use*
 — so every slot is a real split's live position, and the class becomes impossible rather than
 guarded against. Two extra reads once per gesture, on the message thread; nothing changes for a drag
@@ -10073,7 +10073,7 @@ started and the defect hides.
 **No new production seam, and the out-of-tree harness is retired.** `SpectrumImager` is a
 `juce::Component` whose mouse handlers are public overrides, and this suite already builds the real
 editor, walks its child tree and injects `juce::MouseEvent`s. The one thing a test cannot compute is
-where a handle *is* — `freqToX` (:156) runs a 30-iteration bisection over a private axis table — so
+where a handle *is* — `freqToX` (:161) runs a 30-iteration bisection over a private axis table — so
 the probe finds it the way a user does: it sweeps `mouseMove` and reads the public
 `SettableTooltipClient` tooltip, which `setContextTooltip` sets to *Drag to change the split
 frequency* or *Solo this band* exactly when that hotspot is under the cursor. `mouseMove` has no
@@ -10102,18 +10102,19 @@ split outside the plot arms `dragRemovePending`, and the release deletes the ban
 `removeBand (dragHandle + 1)` — one argument then, at line 1804 as this entry anchored it; the
 call takes the press's topology as a second argument since ADR-0039, so the citation is left
 de-numbered rather than re-aimed at a line that no longer says what this paragraph describes.
-`dragHandle` is latched at
-`mouseDown` and names a split by **position**. A host write of `mbBands` that LOWERS Bands mid-drag
-makes it stale — `dragCrossoverTo` stops steering it, correctly (:363) — but the drag stays **armed**,
+`dragHandle` is latched at `mouseDown` and names a split by **position**. A host write of `mbBands` that LOWERS Bands mid-drag
+makes it stale — `dragCrossoverTo` stops steering it, correctly (:521) — but the drag stays **armed**,
 and `removeBand` **clamps** its argument into the live range (`b = juce::jlimit (0, N - 1, b)`,
-:521). Four bands, drag split 2 out, host drops Bands to 2, release: `removeBand (3)` clamped to
-band 1 and Bands fell to 1. Measured under the mutation run: `Bands 2 -> 1 on release of a drag whose
-split had gone`.
+line 521 as this pass anchored it — the clamp is GONE today, ADR-0038 having replaced it with a
+refusal, so this citation too is left de-numbered rather than re-aimed at the comment that
+records its removal). Four bands, drag split 2 out, host drops Bands to 2, release:
+`removeBand (3)` clamped to band 1 and Bands fell to 1. Measured under the mutation run:
+`Bands 2 -> 1 on release of a drag whose split had gone`.
 
 **Fix, at the call site.** `if (dragRemovePending && dragHandle < bandCount() - 1)`. Splits are
 `0 .. bandCount() - 2`, so that is exactly "the dragged split still exists", and the same condition
 `removeBand` would need for `dragHandle + 1` to name a real band. `removeBand`'s clamp is left alone:
-its only other caller (:1741) already proves its argument live through `deleteHit`, so with this call
+its only other caller (:2162) already proves its argument live through `deleteHit`, so with this call
 site guarded the clamp has no reachable stale input and is defence rather than behaviour. Tightening
 it into a reject would have changed a shared helper for one caller's bug.
 
@@ -10130,11 +10131,11 @@ is defined relative to and whether its consumer revalidates:
 
 | Cached state | Defined relative to | Revalidated by its consumer? | Consequence if stale |
 |---|---|---|---|
-| `dragHandle` → `dragCrossoverTo` | split position at press | **yes** — `handle >= M` returns (:363) | none |
+| `dragHandle` → `dragCrossoverTo` | split position at press | **yes** — `handle >= M` returns (:521) | none |
 | `dragHandle` → `removeBand` | split position at press | **no** → **FIXED this round** | a different live band deleted |
 | `dragOrigX[]` | split positions at press | n/a — every slot now seeded | none (fixed in the previous pass) |
 | `soloMoveLeft` / `soloMoveRight` | split positions at `beginBandMove` | **yes** — `projectFromOrig` validates both pins | the move does less, never something else |
-| `pressDeleteBand` | band index at press | **yes** — `deleteHit (e.position) == dB` (:1741) | none |
+| `pressDeleteBand` | band index at press | **yes** — `deleteHit (e.position) == dB` (:2162) | none |
 | `scrollHandle` / `scrollBand` | index at hover | **yes** — `< N - 1` / `< N` in `mouseWheelMove` | none |
 | `dragBand` → width write | band index at press | no | writes a vanished band's own Width parameter |
 | `soloPressBand` → `toggleSoloBit` | band index at press | no | sets a mask bit for a vanished band |
@@ -10169,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:804 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:813 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10560,6 +10561,17 @@ behaviour, not a defect: fixing it directly would mean drawing a layout the plug
 or refusing to abandon a spread and writing a stale value over a newer authority. The round removes
 its only single-threaded trigger.
 
+**The systematic half found two more.** Auditing *every* write path rather than only the two the
+review named turned up the same family twice more, both closed here without a new mechanism:
+`spreadSplits` re-proved the neighbours but never the **pin** every position in the plan was computed
+to make room for (`300.0 / 11407.5 / 15122.0` before); and the **wheel** burst had no per-store
+ownership at all, because `cancelActiveDrag()` clears `gestureBands` and that waives both `ownsSplit`
+and the count re-proof — so the one path ADR-0040 did not cover still carried the defect ADR-0040 was
+written for (`5000.0 Hz was installed and 1476.4 Hz was written over it`). Legs G and H, mutations N5
+and N6. Also recorded and deliberately not changed: `freqText` and `parseFreq` are not inverses at
+exactly 20 Hz, because values at or below 20 are read as kilohertz — a deliberate text-entry
+shorthand whose only harmful route, the untouched dismissal, this round removes.
+
 **One thing has no test, and says so.** F2's fix is one call to an existing predicate, and its
 trigger lives in `tick()`, driven only by `juce::VBlankAttachment`. It ships under ADR-0025's
 documented exception with the four disclosures recorded in `TESTING.md` §Gaps and the worklog §12,
@@ -10570,10 +10582,34 @@ and broke four existing legs, because that callback is delivered through `postCo
 never arrives without a running message loop. Recorded in the worklog §10 rather than quietly
 amended.
 
+**A wrong-typed argument in the code this round rewrote.** `juce::TextEditor::setText` takes
+`(const String&, bool sendTextChangeMessage)`; `juce::Label::setText` takes
+`(const String&, NotificationType)`. `openFreqEditor` seeded the chip with the *Label* spelling,
+which compiled only because `juce::dontSendNotification` is 0. No behaviour change — `false` is what
+the intent gate needs — but it is the same confusion that made the round's first attempt assume
+`setText` dispatched `onTextChange` synchronously. Nine call sites corrected, one in `src/` and eight
+in `tests/`. No gate saw it: `-Wint-in-bool-context` is in `-Wall` and GCC emitted it, but
+`check-gcc-warnings.py:207-213` gates five other flags. Adding it is one line and is **not** done
+here, because `gcc-warning-baseline.txt` is pinned to gcc-16 and a new flag's first-party count can
+only be measured on the runner — the script's own rule is to re-baseline and read the diff in the
+same change. Worklog §16.
+
+**A class of anchor the citation gate cannot see.** Re-deriving this change set's tracked
+`dragCrossoverTo` anchor for the third time (`:471 → :493 → :509 → :518`, target and declaration
+both) exposed seven **continuation** anchors — the bare `(:588)` form the second-pass entry above
+uses after a full path — that had rotted as these rounds moved the file beneath them.
+`check-citations.py:34-44` leaves them alone on purpose: a citation is the gate's only when it names
+its path from the repository root, and inferring the owning file from an earlier sentence would put
+a rewriting tool onto anchors it guessed the file for, which is how it corrupted one already. Six
+are re-aimed here; the seventh named `removeBand`'s clamp, which ADR-0038 deleted, so it is
+de-numbered in the wording this entry's predecessor already uses rather than re-aimed at the comment
+recording its removal. Worklog §15; the convention that costs nothing is to spell the full path
+whenever a citation is worth checking, as this entry does.
+
 **Docs.** `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_v0.9.8.md` (findings, the full
 write-path table, the reproduction, the rulings, rejected approaches, the decision, chronology,
-mutations, the ADR-0025 disclosures), `ADR-0043` + `ADR_INDEX`, `TESTING.md` (State test 75 and the
-new `FrameClock` gap entry), `CHANGELOG.md` `[0.9.7]` Fixed. Two comments that contradicted the
+mutations, the ADR-0025 disclosures, the anchor audit), `ADR-0043` + `ADR_INDEX`, `TESTING.md`
+(State test 75 and the new `FrameClock` gap entry), `CHANGELOG.md` `[0.9.7]` Fixed. Two comments that contradicted the
 shipped code corrected: the pixel-tolerance description above `soundMovedUnderGesture`, and a
 mangled sentence in `spreadSplits`. Not a gate item: no parameter ID, serialization, threading-model,
 DSP-order or reported-latency change, and no Accepted ADR conflict. [Verified]

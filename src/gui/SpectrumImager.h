@@ -131,7 +131,10 @@ private:
     // ADR-0042: the neighbour spread of a reset or a text commit, applied only to the world the plan
     // was computed from. `was` holds each split's normalised value at plan time; a slot that no
     // longer holds it belongs to somebody else and the spread stops there. Returns false then.
-    bool  spreadSplits (const float* xs, const float* was, int count, int except);
+    // `pinNorm` is the normalised value the PIN was just confirmed to hold: every position in `xs`
+    // was computed to make room for it, so a spread that carries on after the pin has moved applies
+    // its plan around a split that is no longer there (ADR-0043).
+    bool  spreadSplits (const float* xs, const float* was, int count, int except, float pinNorm);
     bool  dragCrossoverTo (int handle, float x);
     bool  bandAddTarget (int b, float x, float& outX) const noexcept;
 

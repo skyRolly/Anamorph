@@ -88,6 +88,25 @@ for what they guard, and the two gaps were a plan computed too early and a consu
 Option C would put a second answer to "is this gesture still valid?" beside `gestureIsStale()`, which
 is the mistake ADR-0038 was written to end.
 
+## Two more the systematic half found
+
+The audit of *every* write path — not only the two the review named — found two further gaps of the
+same family, both closed here without a new mechanism.
+
+* **`spreadSplits` re-proved the neighbours but never the PIN.** Every position in the plan was
+  computed to make room for the split being spread around, and each neighbour store dispatches to
+  the host. Measured: the pin dragged to `300.0` Hz from inside the first neighbour's store, and the
+  spread carried on for a pin at `8440`, leaving `300.0 / 11407.5 / 15122.0`. `storeOwned` already
+  hands back the value the pin was confirmed to hold; `spreadSplits` now takes it and re-proves it.
+* **The wheel's burst had no per-store ownership at all.** `mouseWheelMove` clears `gestureBands` —
+  correct, no press is in flight — and `gestureBands < 0` waives **both** `ownsSplit` and the count
+  re-proof inside `writeCrossovers`. The burst that follows is up to three stores with a host
+  dispatch between each, so the one path ADR-0040 did not cover still carried the defect ADR-0040
+  was written for. Measured: `5000.0 Hz was installed and 1476.4 Hz was written over it`. The
+  topology is now named alongside the sound `captureDragOrigins()` records, for the duration of the
+  burst only. This does not change ADR-0041's decision that the wheel leaves nothing in flight; it
+  changes only that the burst owns what it writes.
+
 ## The informational item, ruled and not fixed
 
 A spread that abandons part-way can leave the splits out of order **on screen**. The DSP is
@@ -118,10 +137,11 @@ bounded trade by ADR-0042 §41.
 
 ## Evidence + confidence
 
-**Verified.** State test 75 legs A, C, D and F fail before and pass after; legs B, E and F(i) are the
-positive controls a careless fix would break. Mutations N1 (the intent gate removed), N2 and N3 (the
-plan computed before the gesture opens, in each function) each killed by exactly the intended leg.
-State suite 2 700 / 0, DSP 396 / 0.
+**Verified.** State test 75 legs A, C, D, F, G and H fail before and pass after; legs B, E and F(i)
+are the positive controls a careless fix would break. Mutations N1 (the intent gate removed), N2 and
+N3 (the plan computed before the gesture opens, in each function), N5 (the pin re-proof removed) and
+N6 (the wheel burst unowned) each killed by exactly the intended leg. State suite 2 707 / 0, DSP
+396 / 0.
 
 **Bounded, and stated as such.** F2's trigger lives in `tick()`, which is driven only by
 `juce::VBlankAttachment` and has no headless surface, so it ships under ADR-0025's documented
