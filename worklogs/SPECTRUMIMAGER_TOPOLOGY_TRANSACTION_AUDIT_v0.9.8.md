@@ -239,3 +239,17 @@ leg H as passing when it had never passed. It was found by re-running, not by an
 needed the add area located by tooltip rather than assumed at mid-plot; it now kills mutation R3.
 Recorded because the same class of mistake — trusting a test binary that had not been relinked —
 has now happened twice in this PR.
+
+**And a second one, in the other direction: a false alarm I raised myself.** The final valgrind run
+reported `390 checks, 1 failures` on the DSP suite — *"engine output free of NaN/Inf/denormals"* —
+while the same binary passed natively and `memcheck` reported `ERROR SUMMARY: 0 errors from 0
+contexts`. It is not a defect and it is not this branch's: `AnamorphTests` links **zero**
+`SpectrumImager` symbols and the DSP sources are byte-identical to the merge base. valgrind emulates
+floating point and does not honour the FTZ/DAZ bits `juce::ScopedNoDenormals` sets, so denormals
+survive into the output and that one assertion fails on a build that is correct on every real CPU.
+`.github/workflows/build.yml` sets **`ANAMORPH_TESTS_NO_FTZ=1`** for exactly this step, and
+`TESTING.md`'s own recipe row says so — **my local invocation just did not follow it**. Re-run as CI
+runs it: `ALL TESTS PASSED`, and the binary announces its own relaxation
+(*"the denormal invariant was NOT asserted"*). No repository change is warranted; what this cost was
+one round of investigation, and the earlier valgrind DSP runs in this PR that passed without the
+variable did so by luck of denormal production, not by method.
