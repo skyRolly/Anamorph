@@ -105,6 +105,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the commercial JUCE licence required by the closed-source model is not yet obtained | High | High (already true) |
 | RISK-007 | **RESOLVED 2026-09-03 (D-2, ADR-0036)** — State calls on a non-main host thread raced message-thread state (AU autosave; out-of-spec VST3 hosts); program metadata is now message-thread-owned and exchanged through two lock-free cells | — | — |
 | RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Low — real-host validated in REAPER; other Linux hosts unverified |
+| RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once |
 
 ---
 
@@ -205,6 +206,43 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` (host-matrix item).
 - **Mitigation:** Enforce the manual audition + host-matrix line items at release; expand the
   documented host coverage as it is performed.
+
+## RISK-009 — Two parameters' `listenerLock`s nested in opposite orders by a host's re-entrant write
+- **Risk:** `juce::AudioProcessorParameter::sendValueChangedMessageToListeners` holds the
+  parameter's **own** `listenerLock` for the whole listener loop
+  (`juce_audio_processors_headless/processors/juce_AudioProcessorParameter.cpp:111-121`), and
+  `beginChangeGesture` does the same for the gesture dispatch (`:82`). A listener that writes a
+  **different** parameter from inside that dispatch therefore holds one parameter's lock while
+  taking another's. If a host does that for A-then-B on one thread and B-then-A on another — a
+  control surface writing back on the message thread while automation writes back on the audio
+  thread — the two acquisitions form a cycle and can deadlock. The locks are JUCE's and are taken
+  by JUCE around its own dispatch; the plug-in is not a party to the ordering.
+- **Impact:** a hang, not a wrong value — and in the worst place, since one of the two threads
+  would be the audio thread. Nothing partial is written; the process stops.
+- **Likelihood (evidence-based):** **Low.** It requires the HOST to write cross-parameter from
+  inside a dispatch, on two threads, in opposite orders, overlapping. **No listener in this
+  plug-in creates the nesting at all:** `AnamorphAudioProcessor::parameterValueChanged`
+  (`src/PluginProcessor.h:171-174`) is a single relaxed `fetch_add`,
+  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:315`) the same, and
+  `parameterGestureChanged` (`src/PluginProcessor.cpp:812-826`) touches two ints — the last
+  deliberately, its comment recording that `--d2-stress-probe` once reported this same detector
+  for an APVTS/`listenerLock` inversion, closed by **removing** the nesting.
+- **How it surfaced:** ThreadSanitizer's deadlock detector, on `AnamorphStateTests` at
+  `1c14b9b` — `lock-order-inversion (potential deadlock)`, cycle `M0 => M1 => M0`, both orders
+  taken by the **main thread** at different times, so the suite itself cannot deadlock. State
+  test 75 leg D supplies one order (hold the edited split, write a neighbour from inside the
+  gesture open) and leg G the other (hold a neighbour being spread, write the pin from inside its
+  store). The harness's re-entrancy doubles are what create the nesting; they exist precisely to
+  stand in for a host that does this.
+- **Mitigation:** none available inside this plug-in. Removing the nesting is not ours to do —
+  it is the host's write and JUCE's lock. Serialising all parameter writes onto one thread, or
+  taking the locks in a fixed global order, is a **threading-model change** and so an
+  `ARCHITECTURE_REVIEW_GATE` item, not a fix to slip into a review round. What is done instead:
+  the report is kept visible rather than absorbed — `tests/tsan-suppressions.txt` carries ONE
+  deadlock entry naming the harness double (`WriteFromInsideAGestureOpen`) and nothing else, so
+  an inversion whose stacks contain only production frames still fails the `tsan` job, and the
+  canary step proves on every run that data-race detection is untouched. Reopen this risk if a
+  host is ever observed writing cross-parameter from inside a dispatch on two threads.
 
 ---
 

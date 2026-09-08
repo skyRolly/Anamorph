@@ -424,3 +424,61 @@ at. After the fix the first-party tally over a full rebuild of `src/` and `tests
   sentence with, was not counted. Commit `3ebb8c0`'s message carries the wrong figure and is left as
   written; the documents of record are corrected here rather than the history rewritten. Nothing
   about which anchors moved, or how each was ruled, changes.
+
+## 18. The round's own coverage found a lock-order inversion, and it is not this plug-in's to close
+
+Re-running ThreadSanitizer on `1c14b9b` rather than trusting the `61b884d` measurement was the point
+of re-running it. The four D-2 probes are clean, three runs each; the **full suite** reports one
+`lock-order-inversion (potential deadlock)`, and CI's `tsan` job would have failed on it
+(`halt_on_error=1:exitcode=66`).
+
+**The cycle.** `sendValueChangedMessageToListeners` holds the parameter's own `listenerLock` for the
+whole listener loop (`juce_AudioProcessorParameter.cpp:111-121`); `beginChangeGesture` does the same
+(`:82`). A listener writing a *different* parameter therefore nests two parameters' locks, and this
+round's two new legs nest them in opposite orders:
+
+| Leg | Holds | Takes | Via |
+|---|---|---|---|
+| D (`state_tests.cpp:4033`) | the edited split, in `beginChangeGesture` | a neighbour | `WriteFromInsideAGestureOpen` |
+| G (`state_tests.cpp:4169`) | a neighbour, in `storeOwned` → `spreadSplits` | the pin | `WriteFromInsideAStore` |
+
+`M0 => M1 => M0`. **Both orders are taken by the main thread**, at different times, so the suite
+cannot deadlock; TSan's detector is an order-graph, not an interleaving.
+
+**Whose it is.** Not the plug-in's. Every production listener is enumerable and none writes a
+parameter: `parameterValueChanged` (`src/PluginProcessor.h:171-174`) is one relaxed `fetch_add`,
+`ViewGenWatcher::parameterValueChanged` (`:315`) the same,
+`parameterGestureChanged` (`src/PluginProcessor.cpp:812-826`) touches two ints — and *that* comment
+already records this same detector firing once before, for an APVTS/`listenerLock` inversion, closed
+by **removing** the nesting rather than by suppressing it. The nesting here is created only by the
+harness's re-entrancy doubles, which exist to stand in for a host. A real host writing
+cross-parameter from inside a dispatch on two threads in opposite orders would form the cycle for
+real, on locks JUCE takes around its own dispatch — recorded as **RISK-009**, and closing it means
+serialising parameter writes or fixing a global lock order, which is a threading-model change and an
+`ARCHITECTURE_REVIEW_GATE` item, not a review-round fix.
+
+**What was NOT done, and why.** `detect_deadlocks=0` — switches off a whole detector the project has
+already used once to find something real. `deadlock:juce::AudioProcessorParameter::sendValueChanged‑
+MessageToListeners` — would absorb every parameter-lock inversion in the tree, including one a host
+could actually reach. Re-aiming leg G at a different handle so the mutex pair differs — that is
+gaming the sanitizer, and it would silently un-fix itself the next time the layout changed.
+
+**What was done.** `tests/tsan-suppressions.txt`, **one** entry:
+`deadlock:WriteFromInsideAGestureOpen`. It names the harness double, so no stack made only of
+production frames can match it. Wired into `.github/workflows/build.yml`'s job-level
+`TSAN_OPTIONS` with `print_suppressions=1`, so a run that stops matching says so.
+
+**Proven, not assumed.** With the file: suite `2707 checks, 0 failure(s)`, exit 0,
+`Matched 1 suppressions: 1 deadlock:WriteFromInsideAGestureOpen`. `tests/tsan_canary.cpp` compiled
+and run under the **same** file still exits 66 with `WARNING: ThreadSanitizer: data race` — the
+suppression does not touch race detection, which is what CI's canary step re-proves on every run.
+A second entry for `WriteFromInsideAStore` was tried and `print_suppressions` reported one match,
+not two: TSan walks leg D's stack first. It was removed, because an entry that matches nothing is
+not free — it widens what a future report can be absorbed by, the same failure mode
+`check-citations.py` names for a stale re-aim declaration.
+
+**One correction to the round's earlier report.** The first local TSan attempt built
+`AnamorphTests` as well and failed to link — `tests/AllocationGuard.h`'s global `operator new`/
+`delete` collide with `libclang_rt.tsan_cxx`. That was my script, not the tree: CI's `tsan` job
+builds the state suite only, with a comment saying the DSP suite has no cross-thread path of its
+own. The local recipe in `TESTING.md` now says so too.

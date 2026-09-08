@@ -1,0 +1,49 @@
+# ThreadSanitizer suppressions for AnamorphStateTests.
+#
+# ONE entry, and it is the DEADLOCK detector only. Data races are NOT suppressed
+# here and must never be: `tests/tsan_canary.cpp` still fails with a data-race
+# report under this file, which is what the `tsan` job's canary step proves on
+# every run.
+#
+# WHAT IT SUPPRESSES, and why that is not hiding a defect.
+#
+# `juce::AudioProcessorParameter::sendValueChangedMessageToListeners` holds the
+# parameter's OWN `listenerLock` while it calls listeners
+# (juce_audio_processors_headless/processors/juce_AudioProcessorParameter.cpp:111-121),
+# and `beginChangeGesture` does the same for the gesture dispatch (:82). So a
+# listener that writes a DIFFERENT parameter from inside a dispatch nests two
+# parameters' locks. Two legs of State test 75 nest them in OPPOSITE orders --
+# leg D holds the edited split and writes a neighbour from inside the gesture
+# open; leg G holds a neighbour being spread and writes the pin from inside its
+# store -- which closes a cycle in TSan's lock-order graph and is reported as a
+# potential deadlock. Both orders are taken by the MAIN thread, at different
+# times, so the suite itself cannot deadlock.
+#
+# The nesting exists only because the harness's re-entrancy doubles create it.
+# Anamorph's production listeners do not write parameters at all:
+# `AnamorphAudioProcessor::parameterValueChanged` (src/PluginProcessor.h:171-174)
+# is one relaxed `fetch_add`, `ViewGenWatcher::parameterValueChanged` (:315) the
+# same, and `parameterGestureChanged` (src/PluginProcessor.cpp:812-826) touches
+# two ints -- deliberately, and its comment records that `--d2-stress-probe` once
+# reported exactly this detector for an APVTS/listenerLock inversion, which was
+# fixed by REMOVING the nesting rather than by a suppression. No production stack
+# can contain the symbol named below, so this entry cannot mask that class.
+#
+# It is narrow ON PURPOSE: it names the harness double, not the JUCE function.
+# `deadlock:juce::AudioProcessorParameter::sendValueChangedMessageToListeners`
+# would have worked too and would have switched the detector off for every
+# parameter-lock inversion in the tree, including one a host really could reach.
+#
+# ONLY THE ENTRY THAT ACTUALLY MATCHES IS HERE. `WriteFromInsideAStore` was tried
+# alongside it and `print_suppressions=1` reported `Matched 1 suppressions`, not
+# two: TSan matches the first stack, and leg D's is the one it walks. An entry
+# that matches nothing is not free -- it silently widens what a future report can
+# be absorbed by, which is the same failure mode `scripts/check-citations.py`
+# names for a stale re-aim declaration.
+#
+# The residual this does NOT close, recorded rather than suppressed away: a HOST
+# that writes parameter B from inside A's dispatch on one thread while writing A
+# from inside B's on another creates the same cycle for real, on locks JUCE takes
+# around its own listener dispatch. Anamorph cannot close that without a
+# threading-model change (ARCHITECTURE_REVIEW_GATE). See the worklog for v0.9.8.
+deadlock:WriteFromInsideAGestureOpen

@@ -10582,6 +10582,20 @@ and broke four existing legs, because that callback is delivered through `postCo
 never arrives without a running message loop. Recorded in the worklog §10 rather than quietly
 amended.
 
+**ThreadSanitizer, re-run on this head rather than trusted from the last one, found a lock-order
+inversion.** `sendValueChangedMessageToListeners` holds the parameter's own `listenerLock` for the
+whole listener loop and `beginChangeGesture` does the same, so a listener writing a *different*
+parameter nests two of them — and this round's legs D and G nest them in opposite orders
+(`M0 => M1 => M0`), which CI's `tsan` job would have failed on. **Both orders are the main thread's**,
+so the suite cannot deadlock, and no production listener creates the nesting at all: the three of
+them do one relaxed `fetch_add`, one relaxed `fetch_add`, and two int updates. A host writing
+cross-parameter from inside a dispatch on two threads *could* form the cycle for real, on locks JUCE
+takes around its own dispatch; that is **RISK-009**, and closing it is a threading-model change.
+`tests/tsan-suppressions.txt` carries one `deadlock:` entry naming the harness double so the report
+stays visible for any stack made of production frames, wired into the workflow with
+`print_suppressions=1`; the canary, run under the same file, still fails with a data race. Worklog
+§18.
+
 **A wrong-typed argument in the code this round rewrote.** `juce::TextEditor::setText` takes
 `(const String&, bool sendTextChangeMessage)`; `juce::Label::setText` takes
 `(const String&, NotificationType)`. `openFreqEditor` seeded the chip with the *Label* spelling,
@@ -10610,7 +10624,9 @@ whenever a citation is worth checking, as this entry does.
 **Docs.** `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_v0.9.8.md` (findings, the full
 write-path table, the reproduction, the rulings, rejected approaches, the decision, chronology,
 mutations, the ADR-0025 disclosures, the anchor audit), `ADR-0043` + `ADR_INDEX`, `TESTING.md`
-(State test 75 and the new `FrameClock` gap entry), `CHANGELOG.md` `[0.9.7]` Fixed. Two comments that contradicted the
+(State test 75, the new `FrameClock` gap entry and the `tsan` recipe), `FUTURE_RISKS.md` RISK-009,
+`tests/tsan-suppressions.txt`, `.github/workflows/build.yml` (`TSAN_OPTIONS`),
+`CHANGELOG.md` `[0.9.7]` Fixed. Two comments that contradicted the
 shipped code corrected: the pixel-tolerance description above `soundMovedUnderGesture`, and a
 mangled sentence in `spreadSplits`. Not a gate item: no parameter ID, serialization, threading-model,
 DSP-order or reported-latency change, and no Accepted ADR conflict. [Verified]

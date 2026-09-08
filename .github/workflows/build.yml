@@ -3480,7 +3480,10 @@ jobs:
       CCACHE_COMPILERCHECK: content
       # The probes run with these; the canary runs with the same so the two
       # cannot disagree about what a report looks like.
-      TSAN_OPTIONS: halt_on_error=1:exitcode=66:report_bugs=1
+      # `suppressions` carries ONE deadlock entry naming a harness re-entrancy
+      # double; data races are not suppressed and the canary step below proves
+      # it on every run. `tests/tsan-suppressions.txt` carries the reasoning.
+      TSAN_OPTIONS: halt_on_error=1:exitcode=66:report_bugs=1:suppressions=${{ github.workspace }}/tests/tsan-suppressions.txt:print_suppressions=1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
