@@ -4683,7 +4683,11 @@ static void testAPositionalLatchIsVoidOnceItsTopologyMoves()
     // component's business and the test is not given it.
     auto movedIndex = [] (const std::array<float,3>& a, const std::array<float,3>& b) -> int
     {
-        for (int i = 0; i < 3; ++i) if (! juce::exactlyEqual (a[i], b[i])) return i;
+        // `std::array::operator[]` takes size_type, so the loop index is unsigned and the
+        // sentinel is applied on the way out -- the first-party Clang gate rejects an implicit
+        // int -> size_type conversion, and it is right to.
+        for (std::size_t i = 0; i < a.size(); ++i)
+            if (! juce::exactlyEqual (a[i], b[i])) return (int) i;
         return -1;
     };
     // The centres of the split handles, swept from the tooltip -- the test has no access to the
@@ -4726,12 +4730,13 @@ static void testAPositionalLatchIsVoidOnceItsTopologyMoves()
             wheelAt (probeX, laneY, 0.20f);              // the SECOND tick of the same burst
             const auto now = widths();
 
-            if (latched >= 0 && ! juce::exactlyEqual (frozen[latched], now[latched]))
+            const std::size_t li = (std::size_t) juce::jmax (0, latched);
+            if (latched >= 0 && ! juce::exactlyEqual (frozen[li], now[li]))
                 std::printf ("  [leg A] the wheel steered a band its latch named in another"
                              " topology: band %d moved %.3f -> %.3f after the count changed"
                              " under a hand that never moved\n",
-                             latched, (double) frozen[latched], (double) now[latched]);
-            check (latched < 0 || juce::exactlyEqual (frozen[latched], now[latched]),
+                             latched, (double) frozen[li], (double) now[li]);
+            check (latched < 0 || juce::exactlyEqual (frozen[li], now[li]),
                    "leg A: a wheel latch taken in another topology does not steer its old band");
         }
     }

@@ -253,3 +253,79 @@ runs it: `ALL TESTS PASSED`, and the binary announces its own relaxation
 (*"the denormal invariant was NOT asserted"*). No repository change is warranted; what this cost was
 one round of investigation, and the earlier valgrind DSP runs in this PR that passed without the
 variable did so by luck of denormal production, not by method.
+
+---
+
+# Closure round (2026-09-08) — CI resolution, remaining findings, merge decision
+
+## 13. Workflow inventory, with the decision recorded rather than assumed
+
+| Id | Purpose | State | Results | Consumed? | Remaining value | **Decision + reason** |
+|---|---|---|---|---|---|---|
+| `wf_17153265-ac9` | this PR's topology-transaction audit: 13 areas → 3-lens adversarial verify → A–E judging | running; 12 area results + verify verdicts | yes, all read | the verify/judge tail on findings **already ruled** | **Consume and stop.** Benefit of continuing: re-verification of findings whose disposition is already implemented, tested and mutation-proved. Cost: a 4-core box at 2 concurrent agents for hours, against a round whose purpose is a merge decision. The area results — the load-bearing half — are all in. Stopped |
+| `wf_b53560a1-266` | RO-1 write-path audit | stopped last round | 45 | yes → ADR-0043 | none | leave stopped |
+| `wf_5743c961-dad` | reentrant-store round; **ended without a synthesis** (120/122) | complete-but-unsynthesised | 120 | yes, at the time | none — its reconstructions shipped as ADR-0042 | no action; recorded because "ended without a synthesis" is exactly the case worth re-checking |
+| `wf_893cff2c-94b` | `kSplitMovedPx`, writer inventory, wheel anchors, solo semantics | complete | 24 | yes → ADR-0040/0041 | none | no action |
+| background tasks | TSan, valgrind, CI monitors | all completed | — | yes | none | none running |
+| sub-agents / sessions | — | none (`ListAgents`) | — | — | — | — |
+
+## 14. The CI failure — code regression, mine, fixed
+
+**Exactly one failing step in the whole matrix**, and it was never the platforms: `linux` step 20,
+*"Gate first-party Clang warnings"* —
+
+```
+-Wsign-conversion in tests/state_tests.cpp: 8 site(s), baseline allows 0.
+```
+
+`tsan`, `sanitizers` (ASan+UBSan **and** valgrind), `realtime`, `linux-lto-tests`, `fuzz`, `docs`,
+`source-lint`, `windows`, `windows-avx2-ab`, `macos`, `macos-intel` and `macos-crossslice` all
+succeeded.
+
+**Classification: code regression, and mine.** All eight sites are `std::array` indexed with `int` in
+**State test 77**, which I added last round. Reproduced locally by extracting the TU's own compile
+line from ninja and re-running it under `clang++-18` with `-Wsign-conversion`: 8 sites before, 0
+after. The remaining first-party Clang warnings in both changed TUs are exactly the baseline's
+(`src/PluginEditor.h` `-Wshadow-field` 1; `src/dsp/ScopeBuffer.h` `-Wsign-conversion` 2).
+
+**Why it escaped me.** My local gate is GCC, and `check-gcc-warnings.py` gates five flags that do not
+include `-Wsign-conversion`; the Clang gate has a different, larger set and is the one that runs on
+`linux`. `check-clang-warnings.py` pins `--clang-major 22` and this container has 18, so the script
+itself declines locally — which is correct behaviour and not a substitute for compiling the changed
+TU with the flag. **The procedure that would have caught it is the one used to fix it**: take the
+TU's compile line from the build and re-run it under clang with the gated flags. Worth doing on any
+change that touches `tests/` or `src/`.
+
+**The `pull_request`-event run is not evidence.** For the same SHA the PR run reported success and
+the push run reported failure. Every heavy job carries
+`if: github.event_name != 'pull_request' || …head.repo.full_name != github.repository`, so on a
+same-repo PR they are **skipped** — the PR run is green because it did nothing. The push run is the
+one that gates. Recorded because reading the PR run as the answer is an easy and expensive mistake.
+
+## 15. The remaining review findings, ruled
+
+* **§3A topology stamps protect stale targets** (`:2101`, `:2368-2372`) — **already fixed** by
+  ADR-0045, and the cited lines on this head contain the fixes. But the review's wording named a
+  window the first implementation did **not** close: `resetParam (widthP[b], bandCount())` derives
+  the index and *then* reads the count, and `mbBands` is written by the **audio thread** too, so a
+  write landing between the two makes the guard agree while `b` is stale. **Tightened**: both call
+  sites read the count first and derive from it, so that window fails as a refusal. No UX change.
+* **§4 cross-thread partial layouts** (`:725`) — trade-off remains correct and **RISK-010 is the
+  right instrument**: the reader is what tears, so no writer-side change is honest, and replacing the
+  reader is a threading-model change. Escalated, not silently accepted. No local fix added.
+* **§5 held-audition guard** (`:1327`) — **accept the GUI-only gap.** The only seam that reaches it
+  is a public promotion method existing solely for a test (`tick` returns at `isShowing()` before the
+  guard, so making `tick` public does nothing). Regression risk is low — the guard is one call to a
+  predicate two tested siblings already use — and the maintenance cost of a permanent production seam
+  is not. ADR-0025 §5 keeps it revisitable when a shown-editor harness lands.
+* **§6 informational** — `:354` cancelled spreads: accepted; the DSP force-orders, `handleNearX` is
+  order-independent, and the only cost is an unreachable affordance for one band until the next edit.
+  `:398` parameter-space equality: intentional and explained at the definition (ADR-0041) — exact
+  comparison of a read-back, no epsilon to invent. `:725` partial edits: ADR-0044's residual,
+  accepted with its size now counted correctly and its no-duck asymmetry recorded.
+* **§7 U4** (a wheel Width edit produces no undo step) — **future work, not a blocker.** Fixing it
+  means bracketing the wheel in gestures, which changes wheel behaviour; the round that found it was
+  told to preserve that behaviour. It is a pre-existing limitation, not a regression of this PR.
+* **§7 U1–U3** (undo re-entrancy in `PluginProcessor`) — **architecture item, future work.** Outside
+  this PR's subsystem, unproven by any test here, and a fix touches the undo model. Recorded so it
+  is not lost; not a blocker for a PR that does not change that code.

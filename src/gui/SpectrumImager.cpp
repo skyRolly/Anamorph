@@ -2098,7 +2098,14 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     if (alt)
     {
         if (h >= 0) resetCrossover (h);
-        else { const int b = bandAtX (p.x); if (nearWidthLine (p, b)) resetParam (widthP[b], bandCount()); }
+        // ADR-0045, tightened: the count is read BEFORE the index is derived from it, so the
+        // topology `resetParam` proves is the one `bandAtX` answered under. Reading it after would
+        // leave a window a few instructions wide in which an AUDIO-THREAD automation write moves
+        // the count between the two, making the guard agree with a live count while `b` was
+        // derived under the old one -- the reentrancy fix closes the dispatch window, not that one.
+        // Ordering the two reads costs nothing and closes it in the safe direction (a refusal).
+        else { const int n = bandCount(); const int b = bandAtX (p.x);
+               if (b >= 0 && b < n && nearWidthLine (p, b)) resetParam (widthP[b], n); }
         return;
     }
     if (h >= 0)
@@ -2336,7 +2343,9 @@ void SpectrumImager::mouseDoubleClick (const juce::MouseEvent& e)
         if (numberChip (i).contains (p)) { openFreqEditor (i); return; }
     const int h = handleNearX (p.x);
     if (h >= 0) resetCrossover (h);
-    else { const int b = bandAtX (p.x); if (nearWidthLine (p, b)) resetParam (widthP[b], bandCount()); }
+    // ADR-0045, tightened -- see mouseDown for why the count is read first.
+    else { const int n = bandCount(); const int b = bandAtX (p.x);
+           if (b >= 0 && b < n && nearWidthLine (p, b)) resetParam (widthP[b], n); }
 }
 void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {

@@ -65,6 +65,18 @@ Measured (State test 77 leg C, mutation R2):
   store, the shape `setBands` and `setSoloMask` have carried since ADR-0041 and ADR-0044. `-1` means
   the caller has no topology to prove.
 
+## Tightened after the first implementation, on the review's own wording
+
+The first implementation wrote `resetParam (widthP[b], bandCount())` — deriving the index and *then*
+reading the count. That closes the **dispatch** window, which is what the reentrancy chain is about,
+and leaves a second one a few instructions wide: `mbBands` is written by the **audio thread** as well
+(host automation through the format wrapper), so a write landing between `bandAtX` and `bandCount()`
+makes the guard agree with a live count while `b` was derived under the old one. The review named
+exactly that pair. Both call sites now read the count **first** and derive from it
+(`const int n = bandCount(); const int b = bandAtX (p.x); if (b >= 0 && b < n && …) resetParam (widthP[b], n);`),
+so a count that moves in that window makes the guard disagree and the reset refuses. Ordering two
+reads costs nothing, changes no UX, and fails in the safe direction — a refusal, per ADR-0039.
+
 ## What was proposed and REJECTED, because a shipped test said so
 
 The same audit proposed narrowing `soundMovedUnderGesture()` to the slots the latched count uses —
