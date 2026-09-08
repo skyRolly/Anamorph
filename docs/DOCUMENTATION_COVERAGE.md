@@ -10596,12 +10596,13 @@ same change. Worklog §16.
 
 **A class of anchor the citation gate cannot see.** Re-deriving this change set's tracked
 `dragCrossoverTo` anchor for the third time (`:471 → :493 → :509 → :518`, target and declaration
-both) exposed seven **continuation** anchors — the bare `(:588)` form the second-pass entry above
-uses after a full path — that had rotted as these rounds moved the file beneath them.
+both) exposed **eight** rotted **continuation** anchors — the bare `(:588)` form the second-pass
+entry above uses after a full path, six distinct citations of which that entry makes two twice —
+left behind as these rounds moved the file beneath them.
 `check-citations.py:34-44` leaves them alone on purpose: a citation is the gate's only when it names
 its path from the repository root, and inferring the owning file from an earlier sentence would put
-a rewriting tool onto anchors it guessed the file for, which is how it corrupted one already. Six
-are re-aimed here; the seventh named `removeBand`'s clamp, which ADR-0038 deleted, so it is
+a rewriting tool onto anchors it guessed the file for, which is how it corrupted one already. Seven
+are re-aimed here; the eighth named `removeBand`'s clamp, which ADR-0038 deleted, so it is
 de-numbered in the wording this entry's predecessor already uses rather than re-aimed at the comment
 recording its removal. Worklog §15; the convention that costs nothing is to spell the full path
 whenever a citation is worth checking, as this entry does.

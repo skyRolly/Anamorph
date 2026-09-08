@@ -345,7 +345,8 @@ switches the drift check OFF for that anchor and is invisible in every other way
 Re-deriving it exposed a class the gate cannot see. `check-citations.py:34-44` narrows ownership on
 purpose: a citation is the gate's only when it names its path from the repository root, so a
 **continuation anchor** — `` `moveBand` (:588) ``, the bare form the document uses after a full path
-in the same sentence — is left alone. Seven of those in the 2026-09-07 stale-drag block had rotted,
+in the same sentence — is left alone. **Eight** of those had rotted in the 2026-09-07 stale-drag
+block — six distinct citations, two of which the entry makes twice —
 all of them by this line of rounds moving the file beneath them, none of them detectable by any gate
 in the tree:
 
@@ -358,8 +359,8 @@ in the tree:
 | `removeBand`'s live-argument caller (×2) | `deleteHit (e.position) == dB` | :1741 | :2162 |
 | `removeBand` **clamps** | `b = juce::jlimit (0, N - 1, b)` | :521 | **gone** |
 
-The first five name constructs that still exist and still support the sentence, so they are
-re-aimed. The last does not: ADR-0038 replaced that clamp with a refusal, and re-aiming it at the
+The first five rows — seven of the eight occurrences — name constructs that still exist and still
+support the sentence, so they are re-aimed. The last does not: ADR-0038 replaced that clamp with a refusal, and re-aiming it at the
 comment recording its removal would attach a live line number to a claim about code that no longer
 exists — the exact failure `check-citations.py:26-32` warns is invisible because a drifted anchor
 "reads like a repair". It is de-numbered instead, in the wording this document already uses one
@@ -413,3 +414,13 @@ or turn CI red on gcc-16 sites I cannot see. Recorded as the concrete next step 
 at. After the fix the first-party tally over a full rebuild of `src/` and `tests/` is
 `-Wmismatched-new-delete` 17, `-Wfloat-equal` 13, `-Wsign-conversion` 8, `-Wshadow` 4,
 `-Wswitch-enum` 2, `-Wmisleading-indentation` 2, and **`-Wint-in-bool-context` 0**.
+
+## 17. Corrections this round made to its own record
+
+* **§15 and the ninth-pass coverage entry said "seven" continuation anchors; there are eight.** Six
+  distinct citations, two of which the 2026-09-07 entry makes twice — the `dragCrossoverTo` refusal
+  and `removeBand`'s live-argument caller each appear once in prose and once in the stale-state
+  table. The `moveBand` anchor, re-aimed in the same step as the *tracked* citation it shares a
+  sentence with, was not counted. Commit `3ebb8c0`'s message carries the wrong figure and is left as
+  written; the documents of record are corrected here rather than the history rewritten. Nothing
+  about which anchors moved, or how each was ruled, changes.
