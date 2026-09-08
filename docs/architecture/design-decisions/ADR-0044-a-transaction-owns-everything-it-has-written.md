@@ -198,3 +198,43 @@ Evidence [Verified]:
   `src/dsp/SoloMonitor.cpp:85`.
 - The torn reader that rules out option D: `src/PluginParameters.cpp:365-374`.
 - Suites: state 2 733 / 0, DSP 396 / 0.
+
+---
+
+## Amendment — 2026-09-08 (topology-transaction review round): what the FAR side does not prove
+
+A later review asked whether the two coupled commits can report success across each other's changes:
+*"when listeners modify solo selection during `setBands`, the topology count commit may still report
+success; conversely, `setSoloMask` may report success after a late band-count change."*
+
+**Both halves are true of the code.** Each function proves the count AND the mask on the near side —
+that is this ADR's contribution — but each re-reads only its **own** parameter after its dispatches
+(`SpectrumImager.cpp:639`, `:662`). A listener moving the other parameter from inside the store's own
+`setValueNotifyingHost` dispatch, or from inside `endChangeGesture`, is invisible to the function that
+just committed.
+
+**It is nonetheless not a defect, and the reasoning is recorded here because it was not written down
+anywhere before.** Two things cover it, neither of them inside these functions:
+
+1. **The callers.** Every caller that ACTS on the result re-proves the other parameter on its very
+   next line, with only pure reads in between (`addBandAt:839`, `removeBand:953`). The rest either
+   discard the result (`removeBand:965`, both solo-click sites) or use it only for mask-independent
+   values (`addBandAt:867` → `resultingBands` and the returned split index).
+2. **ADR-0039's parked solo bit.** The state the window reaches is a solo bit above the live count —
+   inert while hidden (`SoloMonitor.cpp:85` and the painter both mask with `((1 << bands) - 1)`) and
+   exact when the count returns. State test 79 leg A measures this against a control that uses no
+   reentrancy at all: `Bands 2, mask 0x8, live 0x0` → round trip → `mask 0x8, live 0x8`, **identical**
+   on both paths. The window publishes nothing the plug-in does not already publish by design.
+
+**Cross-reading the other parameter on the far side was evaluated and REJECTED.** It would make
+`setBands` return `false` when the count *did* commit, so `addBandAt` would abandon a successful add
+because a foreign writer touched the mask afterwards — the same *"aborting at a leaf is measured
+worse than completing"* this ADR already records at `Bands 3 mask 0x5 wLo 1.750`. A more precise
+report bought with worse behaviour is not a trade this ADR makes.
+
+**What did change:** the invariant is now stated at both functions in the source, and State test 79
+pins it. Its leg C is the guard on point 1 — an add whose count moves inside the mask store must
+abandon. The mutation record is honest about being defence in depth: M1 (that single re-proof
+removed) **survives**, because `setBands`' near-side guard is a second layer; M2 (every layer
+removed) kills leg C. No single-line mutation proof exists here and none is claimed.
+

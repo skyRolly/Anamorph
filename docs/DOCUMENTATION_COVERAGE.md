@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:898 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:929 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1097`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1128`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:898 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:929 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10737,7 +10737,7 @@ last is the one arrangement that cannot work: an index derived at three bands an
 four that arrived a few instructions later claims a topology it was never derived in, and because
 `scrollBands` is not re-derived for the rest of the burst, every later tick compares against that
 claim and passes. `mouseDown` never had this half — it reads the count at the very top, which is
-what `src/gui/SpectrumImager.cpp:2331` relies on.
+what `src/gui/SpectrumImager.cpp:2362` relies on.
 
 **Fix (ADR-0046).** `bandAtX (x, n)` and `handleNearX (x, n)` answer under the topology they are
 given (`-1` keeps the live read for the hover and paint callers, which stamp nothing);
@@ -10792,5 +10792,48 @@ last two used as shorthand labels for findings, not as live citations) and `:512
 **Docs.** `ADR-0046` + `ADR_INDEX`, `TESTING.md` (State test 78 and its measured coverage limit),
 `FUTURE_RISKS.md` (RISK-010 narrowed, RISK-011 added), `CHANGELOG.md` `[0.9.8]` Fixed,
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§16-19, `check-citations.py`.
+Not a gate item: no parameter ID, serialization, threading-model, DSP-order or reported-latency
+change, and no Accepted ADR conflict. [Verified]
+
+## Thirteenth pass — coupled-commit consistency (ADR-0044 amendment, 2026-09-08)
+
+**Scope.** The review's finding that *"when listeners modify solo selection during `setBands`, the
+topology count commit may still report success"*, and its converse for `setSoloMask`.
+
+**Ruled B — already prevented, invariant documented.** Both halves are true of the code:
+`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:639`) and
+`setSoloMask` returns `stored && soloMask() == mask` (`:662`), so each re-reads only its own
+parameter after its own dispatches even though both prove BOTH on the near side. What covers it is
+the **callers** — every one that acts on the result re-proves the other parameter on its next line,
+and the rest discard it — and **ADR-0039's parked solo bit**.
+
+**The measurement is what settled it, and it corrected the round's own first reading.** A probe on
+the real component produced `Bands 2, mask 0x8, live-solo 0x0`, which reads like the
+`Bands 3 with mask 0x8` incoherence ADR-0044 named. The round trip showed otherwise: the far-side
+window and a plain count drop with **no reentrancy anywhere** produce byte-identical states, before
+(`mask 0x8, live 0x0`) and after the count returns (`mask 0x8, live 0x8`). The window publishes
+nothing the plug-in does not already publish by design.
+
+**Cross-reading the other parameter on the far side was evaluated and rejected** — it would return
+`false` when the count *did* commit, abandoning a successful add over a foreign mask write, which is
+ADR-0042's measured "aborting at a leaf is worse than completing".
+
+**Coverage.** State test 79, four legs, 16 checks; leg C is the guard on the caller-side re-proof.
+Mutation record reported as **defence in depth**: M1 (the single re-proof leg C names) **survives**
+because `setBands`' near-side guard is a second layer; M2 (every layer removed) kills leg C and
+State test 76 leg H together. No single-line proof exists and none is claimed.
+
+**Re-evaluations.** ADR-0046 confirmed correct and unrelated (a handler's topology reading, not a
+store's far side). RISK-010 confirmed correct and unchanged (cross-thread reader, not message-thread
+reentrancy). The held-audition gap re-verified — `tick()` still returns at `isShowing()`
+(`:1286-1289`) before the guard at `:1352`. **U4 measured for the first time**: wheel 1.000 → 1.180
+with `canUndo()` false, drag 1.000 → 1.750 with `canUndo()` true; kept deferred because it is
+pre-existing at the merge base, is a missing undo entry rather than a wrong value, and already has a
+complete `KNOWN_ISSUES` record — which gained the measurement and nothing else.
+
+**Docs.** `ADR-0044` (amendment section), `TESTING.md` (State test 79 and its mutation record),
+`KNOWN_ISSUES.md` (the U4 corroboration),
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§20-23. **No CHANGELOG entry**: the
+round changes no user-visible behaviour, and `CHANGELOG_POLICY` scopes that file to changes that do.
 Not a gate item: no parameter ID, serialization, threading-model, DSP-order or reported-latency
 change, and no Accepted ADR conflict. [Verified]

@@ -861,6 +861,37 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 79 — the far side of a coupled commit is covered by its caller** (ADR-0044
+  clarification, not a new decision). `setBands` and `setSoloMask` prove BOTH the count and the mask
+  on the near side, adjacent to their store, but each re-reads only its OWN parameter afterwards
+  (`SpectrumImager.cpp:639` and `:662`) — so a listener moving the other parameter from inside the
+  store's own dispatch is invisible to the function that just committed. Legs: (A) a solo click
+  whose count drops from inside the mask store parks the solo bit *exactly* as a plain count drop
+  does, and the bit returns identically when the count returns — measured against a control that
+  uses no reentrancy at all, so the window publishes no state ADR-0039 does not already publish by
+  design; (B) a removal whose mask is re-asserted from inside the count store commits its own count
+  and leaves the newer mask parked above it; (C) **the cover** — an add whose count moves inside the
+  mask store abandons at the caller's next re-proof. Control: (D) both operations complete normally
+  unprobed.
+
+  **The mutation record is defence in depth, and is reported as such.** M1 (remove the one
+  re-proof leg C names, `addBandAt:839`) **survives** — `setBands`' own near-side `expectedBands`
+  guard is a second layer. M2 (remove both loop count re-proofs *and* that guard) kills leg C with
+  `the add committed its count (Bands 3) after the topology it proved had already moved to 4 inside
+  the mask store`, and kills State test 76 leg H alongside it. Leg C therefore pins the
+  *combination*, not a single line; no single-line mutation proof exists here and none is claimed.
+
+  **Leg B runs on a second processor, and that is load bearing.** Legs A and C nest the two
+  parameters' JUCE `listenerLock`s solo -> bands; leg B nests them bands -> solo. Both orders on the
+  main thread close a cycle in ThreadSanitizer's lock-order graph -- the RISK-009 shape, harmless
+  because one thread takes both orders at different times, but a report the `tsan` job halts on. The
+  first version of this test did exactly that and **failed TSan**, caught by running the job rather
+  than by review. Widening `tests/tsan-suppressions.txt` to cover `WriteFromInsideAStore` was
+  rejected: the round that narrowed that file to a single entry did so precisely because a wider
+  entry absorbs future reports too. Giving leg B a processor of its own -- constructed while the
+  first is still alive, so the mutex addresses cannot be recycled -- means no cycle forms, nothing is
+  suppressed, and the detector keeps its teeth.
+
 * **State test 78 — a derivation answers under the topology it was given** (ADR-0046). Four probes,
   one per band of a four-band layout, each at least 20 px clear of every split handle (the handle
   grab radius is 7 px) and located from the component's own tooltip, never from the test's idea of

@@ -4263,6 +4263,314 @@ static void testACommitWithNoIntentWritesNothing()
 //  Legs A, B and C are the three halves of that -- the mask, a width and a
 //  split. D and E are the positive controls that a fix must not break.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+//  State test 79 -- the FAR side of a coupled commit is covered by its CALLER,
+//  not by itself, and it publishes no state the plug-in does not already reach
+//  by design.
+//
+//  THE FINDING (review round, 2026-09-08). `setBands` and `setSoloMask` both prove
+//  BOTH the count and the mask on the NEAR side -- after their own
+//  `beginChangeGesture`, adjacent to the store (ADR-0044) -- but each re-reads only
+//  its OWN parameter on the far side: `setBands` returns
+//  `stored && bandCount() == want` (`SpectrumImager.cpp:639`) and `setSoloMask`
+//  returns `stored && soloMask() == mask` (`:662`). So a listener that moves the
+//  OTHER parameter from inside the store's own dispatch, or from inside
+//  `endChangeGesture`, is invisible to the function that just committed.
+//
+//  IT IS REAL, AND IT IS COVERED -- by two things, neither of them inside these
+//  functions, which is why this test exists rather than a code change:
+//
+//   1. every caller that ACTS on the return value re-proves the other parameter on
+//      its very next line, with only pure reads in between (`addBandAt:839`,
+//      `removeBand:953`). The two callers that do not re-prove discard the value
+//      (`removeBand:965` and the solo click) or use it only for mask-independent
+//      results (`addBandAt:867` -> `resultingBands` / `ins`);
+//   2. the state the window publishes is EXACTLY ADR-0039's parked solo bit -- a
+//      bit above the live count, inert while hidden and exact when the count
+//      returns. Leg A measures that against a control that uses no reentrancy at
+//      all, and the two are identical.
+//
+//  MAKING THE FAR SIDE SYMMETRIC WAS EVALUATED AND REJECTED. Cross-reading the
+//  other parameter would flip `addBandAt:867` to `false` when the count DID commit,
+//  abandoning a successful add because a foreign writer touched the mask
+//  afterwards -- the same "aborting at a leaf is worse than completing" that
+//  ADR-0042 measured at `Bands 3 mask 0x5 wLo 1.750`. The report would become more
+//  precise and the behaviour would become worse.
+//
+//  Leg C is the one that matters: it fails if a future change removes a caller's
+//  next-line re-proof, which is the only thing holding this up.
+static void testTheFarSideOfACoupledCommitIsCoveredByItsCaller()
+{
+    std::printf ("State test 79: the far side of a coupled commit is covered by its caller\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the coupled-commit far-side probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300,
+           "the imager is laid out for the coupled-commit far-side probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    check (bandsP && soloP && loP && midP && hiP,
+           "the parameters the coupled-commit probe drives exist");
+    if (! (bandsP && soloP && loP && midP && hiP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto bandsNow = [&] { return juce::roundToInt (plainOf (bandsP)); };
+    auto maskNow  = [&] { return juce::roundToInt (plainOf (soloP)); };
+    // What the DSP and the painter actually consult -- both mask with ((1 << bands) - 1)
+    // (`SoloMonitor.cpp:85`, `SpectrumImager.cpp:1515`/`:1614`).
+    auto liveSolo = [&] { return maskNow() & ((1 << bandsNow()) - 1); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, imager, imager,
+                                 juce::Time::getCurrentTime(), { x, y },
+                                 juce::Time::getCurrentTime(), 1, false);
+    };
+    const float W = (float) imager->getWidth();
+    const float H = (float) imager->getHeight();
+    auto findY = [&] (const char* want) -> float
+    {
+        for (float y = 4.0f; y < H - 4.0f; y += 1.0f)
+            for (float x = 2.0f; x < W - 2.0f; x += 2.0f)
+            {
+                imager->mouseMove (mev (x, y));
+                if (imager->getTooltip() == juce::String (want)) return y;
+            }
+        return -1.0f;
+    };
+    auto findLastX = [&] (const char* want, float y) -> float
+    {
+        float last = -1.0f;
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, y));
+            if (imager->getTooltip() == juce::String (want)) last = x;
+        }
+        return last;
+    };
+    auto findFirstX = [&] (const char* want, float y) -> float
+    {
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, y));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto world4 = [&] { imager->cancelActiveDrag(); setPlain (bandsP, 4.0f);
+                        setPlain (loP, 200.0f); setPlain (midP, 2000.0f); setPlain (hiP, 10000.0f); };
+    const float delX = 13.0f, delY = H - 30.0f;   // the leftmost band's delete chip
+
+    // ---- LEG A: the solo click, with the count dropped from inside the MASK store's
+    //      own dispatch, publishes exactly the state ADR-0039 publishes on its own.
+    {
+        world4(); setPlain (soloP, 0.0f);
+        const float sy = findY ("Solo this band");
+        const float sx = (sy >= 0.0f) ? findLastX ("Solo this band", sy) : -1.0f;
+        check (sx > 0.0f && sy >= 0.0f, "leg A: the last band's solo box is findable at four bands");
+        if (sx > 0.0f && sy >= 0.0f)
+        {
+            WriteFromInsideAStore poke;
+            poke.target = bandsP; poke.to = 2.0f; poke.armed = true;
+            soloP->addListener (&poke);
+            imager->mouseDown (mev (sx, sy));
+            imager->mouseUp   (mev (sx, sy));
+            soloP->removeListener (&poke);
+            check (poke.fired, "leg A: the probe write landed inside the mask store's own dispatch");
+
+            const int parkedBands = bandsNow(), parkedMask = maskNow(), parkedLive = liveSolo();
+            setPlain (bandsP, 4.0f);
+            const int backMask = maskNow(), backLive = liveSolo();
+
+            // The control: the SAME parked bit reached with no reentrancy anywhere.
+            imager->cancelActiveDrag();
+            setPlain (bandsP, 4.0f); setPlain (soloP, (float) parkedMask);
+            setPlain (bandsP, 2.0f);
+            const int ctlBands = bandsNow(), ctlMask = maskNow(), ctlLive = liveSolo();
+            setPlain (bandsP, 4.0f);
+            const int ctlBackMask = maskNow(), ctlBackLive = liveSolo();
+
+            if (! (parkedBands == ctlBands && parkedMask == ctlMask && parkedLive == ctlLive
+                   && backMask == ctlBackMask && backLive == ctlBackLive))
+                std::printf ("  [leg A] the far-side window published a state the plain count drop"
+                             " does not: Bands %d mask 0x%X live 0x%X -> 0x%X/0x%X, control"
+                             " Bands %d mask 0x%X live 0x%X -> 0x%X/0x%X\n",
+                             parkedBands, parkedMask, parkedLive, backMask, backLive,
+                             ctlBands, ctlMask, ctlLive, ctlBackMask, ctlBackLive);
+            check (parkedBands == ctlBands && parkedMask == ctlMask && parkedLive == ctlLive,
+                   "leg A: the far-side window parks the solo bit exactly as a plain count drop does");
+            check (backMask == ctlBackMask && backLive == ctlBackLive,
+                   "leg A: ...and the bit comes back exactly the same when the count returns (ADR-0039)");
+        }
+    }
+
+    // ---- LEG B: the removal, with the mask re-asserted from inside the COUNT store's
+    //      own dispatch. The count is the transaction's; the mask is the newer
+    //      authority's; the pair is the same parked-bit class as leg A.
+    //
+    //      IT GETS ITS OWN PROCESSOR, and that is not incidental. Legs A and C nest the
+    //      two parameters' JUCE `listenerLock`s in the order solo -> bands; this leg
+    //      nests them bands -> solo. Both orders on the main thread close a cycle in
+    //      ThreadSanitizer's lock-order graph -- the RISK-009 shape exactly, harmless
+    //      here because one thread takes both orders at different times, but a report
+    //      the `tsan` job fails on. The alternatives were to widen
+    //      `tests/tsan-suppressions.txt` to cover `WriteFromInsideAStore` -- which the
+    //      round that narrowed that file to one entry deliberately avoided, because a
+    //      wider entry absorbs future reports too -- or to give this leg parameters of
+    //      its own. A second live processor has distinct mutexes (it is constructed
+    //      while the first is still alive, so the addresses cannot be recycled), so no
+    //      cycle forms, nothing is suppressed, and the detector keeps its teeth.
+    {
+        AnamorphAudioProcessor proc2;
+        proc2.prepareToPlay (48000.0, 512);
+        auto& apvts2 = proc2.getAPVTS();
+        if (auto* a = apvts2.getParameter (pid::advancedMode))
+            a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+        if (auto* m = apvts2.getParameter (pid::mbEnable))
+            m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+        auto* raw2 = proc2.createEditor();
+        auto* ed2  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw2);
+        check (ed2 != nullptr, "leg B: a second editor constructs with parameters of its own");
+        if (ed2 != nullptr)
+        {
+            anamorph::gui::SpectrumImager* im2 = nullptr;
+            std::function<void (juce::Component*)> walk2 = [&] (juce::Component* c)
+            {
+                if (im2 != nullptr) return;
+                for (int i = 0; i < c->getNumChildComponents(); ++i)
+                {
+                    auto* kid = c->getChildComponent (i);
+                    if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { im2 = si; return; }
+                    walk2 (kid);
+                    if (im2 != nullptr) return;
+                }
+            };
+            walk2 (ed2);
+            auto* bands2 = apvts2.getParameter (pid::mbBands);
+            auto* solo2  = apvts2.getParameter (pid::mbSolo);
+            auto* lo2    = apvts2.getParameter (pid::mbFreqLow);
+            auto* mid2   = apvts2.getParameter (pid::mbFreqMid);
+            auto* hi2    = apvts2.getParameter (pid::mbFreqHigh);
+            check (im2 != nullptr && im2->getWidth() > 300 && bands2 && solo2 && lo2 && mid2 && hi2,
+                   "leg B: the second imager is laid out and its parameters exist");
+            if (im2 != nullptr && im2->getWidth() > 300 && bands2 && solo2 && lo2 && mid2 && hi2)
+            {
+                auto mev2 = [&] (float x, float y)
+                {
+                    return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im2, im2,
+                                             juce::Time::getCurrentTime(), { x, y },
+                                             juce::Time::getCurrentTime(), 1, false);
+                };
+                auto bands2Now = [&] { return juce::roundToInt (plainOf (bands2)); };
+                auto mask2Now  = [&] { return juce::roundToInt (plainOf (solo2)); };
+                const float H2 = (float) im2->getHeight();
+
+                im2->cancelActiveDrag();
+                setPlain (bands2, 4.0f);
+                setPlain (lo2, 200.0f); setPlain (mid2, 2000.0f); setPlain (hi2, 10000.0f);
+                setPlain (solo2, 8.0f);
+
+                WriteFromInsideAStore poke;
+                poke.target = solo2; poke.to = 8.0f; poke.armed = true;
+                bands2->addListener (&poke);
+                im2->mouseDown (mev2 (13.0f, H2 - 30.0f));
+                im2->mouseUp   (mev2 (13.0f, H2 - 30.0f));
+                bands2->removeListener (&poke);
+
+                check (poke.fired, "leg B: the probe write landed inside the count store's own dispatch");
+                check (! poke.fired || bands2Now() == 3,
+                       "leg B: the removal's own count still commits");
+                check (! poke.fired || mask2Now() == 8,
+                       "leg B: ...and the newer mask stands over the transaction's remap");
+                check (! poke.fired || (mask2Now() & ((1 << bands2Now()) - 1)) == 0,
+                       "leg B: ...leaving the bit parked above the count, not applied to a live band");
+            }
+            proc2.editorBeingDeleted (ed2);
+            delete ed2;
+        }
+        else { delete raw2; }
+    }
+
+    // ---- LEG C: THE COVER. `setSoloMask` reports success with a moved count, and the
+    //      caller's NEXT LINE catches it. This is the leg that fails if that re-proof
+    //      is ever removed -- nothing inside `setSoloMask` would notice.
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 2.0f); setPlain (loP, 200.0f); setPlain (soloP, 0.0f);
+        const float ax = findFirstX ("Click to add a band split", 30.0f);
+        check (ax >= 0.0f, "leg C: an add area is findable at two bands");
+        if (ax >= 0.0f)
+        {
+            WriteFromInsideAStore poke;
+            poke.target = bandsP; poke.to = 4.0f; poke.armed = true;   // != 2, and != the add's 3
+            soloP->addListener (&poke);
+            imager->mouseDown (mev (ax, 30.0f));
+            imager->mouseUp   (mev (ax, 30.0f));
+            soloP->removeListener (&poke);
+            if (poke.fired && bandsNow() == 3)
+                std::printf ("  [leg C] the add committed its count (Bands 3) after the topology it"
+                             " proved had already moved to 4 inside the mask store\n");
+            check (poke.fired, "leg C: the probe write landed inside the mask store's own dispatch");
+            check (! poke.fired || bandsNow() == 4,
+                   "leg C: the add abandons at the caller's next re-proof, leaving the newer count");
+        }
+    }
+
+    // ---- LEG D: positive control -- both operations complete normally unprobed ----
+    {
+        world4(); setPlain (soloP, 8.0f);
+        imager->mouseDown (mev (delX, delY));
+        imager->mouseUp   (mev (delX, delY));
+        check (bandsNow() == 3, "leg D: an unprobed removal still commits its count");
+        check (liveSolo() != 0,
+               "leg D: ...and its remapped mask still solos a live band");
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+
 static void testATransactionDoesNotCommitALayoutItDoesNotOwn()
 {
     std::printf ("State test 76: a topology transaction does not commit a layout it does not own\n");
@@ -16005,6 +16313,7 @@ int main (int argc, char* argv[])
     testATransactionDoesNotCommitALayoutItDoesNotOwn();
     testAPositionalLatchIsVoidOnceItsTopologyMoves();
     testADerivationAnswersUnderTheTopologyItWasGiven();
+    testTheFarSideOfACoupledCommitIsCoveredByItsCaller();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

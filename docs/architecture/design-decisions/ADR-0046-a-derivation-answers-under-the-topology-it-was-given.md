@@ -62,7 +62,7 @@ No wrong band is touched, but a user edit is dropped for a reason the user canno
 
 `mouseDown` never had the fail-open half — it reads the count at the very top, before any branch
 derives anything, so its stamp is the *older* reading and a disagreement always resolves as a
-refusal. `SpectrumImager.cpp:2331` states the invariant it relies on: *"handleNearX and addBandAt
+refusal. `SpectrumImager.cpp:2362` states the invariant it relies on: *"handleNearX and addBandAt
 both return an index inside the count they read"*. That sentence is only usable if the count they
 read is the count the caller proved. It was not.
 

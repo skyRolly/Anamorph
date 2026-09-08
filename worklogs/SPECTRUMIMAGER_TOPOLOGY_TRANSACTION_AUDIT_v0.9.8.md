@@ -454,3 +454,134 @@ to establish that claim by measurement instead of asserting it.
 Leg B was tightened during the round: its first form asserted only `hit < 2`, which a tick that
 steered **nothing** satisfies, and Q1 is caught by the bound as silence rather than as a wrong band.
 Both halves are now asserted.
+
+---
+
+# Round 11 — coupled-commit consistency (ADR-0044 amendment)
+
+## 20. Workflow and sub-agent audit
+
+**Inspected.** The container had restarted again (PID 1 uptime 5 m 22 s at the start of the round).
+`ListAgents`: none. Task list: 95/95 completed. `ps`: no compute-bound process. No workflow
+transcript directories survive, and no task output files remain. **Nothing was running, and nothing
+was left unconsumed** — the previous round's workflow (`wf_92fb0c32-f6e`) had already been consumed
+and its 50 claims and 29 verdicts recorded in §16 before it was stopped, so its loss with the
+container costs nothing.
+
+**Decision: start nothing.** The finding is one precisely-located asymmetry in two adjacent
+functions with five call sites; the work is a trace and a measurement, not a search. Fanning it out
+would have cost wall-clock on a 4-core box and returned claims about code I can read in full. Recorded
+because the alternative — spawning a workflow reflexively because the previous round did — is the
+failure mode this audit step exists to prevent.
+
+## 21. The finding, measured
+
+`setBands` and `setSoloMask` each prove BOTH the count and the mask on the **near** side, adjacent to
+the store (ADR-0044), and each re-reads only its **own** parameter on the **far** side
+(`SpectrumImager.cpp:639`, `:662`). Both halves of the review's wording are true of the code.
+
+A temporary probe drove the real component with `WriteFromInsideAStore` on each parameter:
+
+```
+[leg 1] solo click, count dropped inside the mask store   -> Bands 2, mask 0x8, live-solo 0x0
+[leg 2] removal, mask re-asserted inside the count store  -> Bands 3, mask 0x8, live-solo 0x0
+[leg 3] control, unprobed removal                         -> Bands 3, mask 0x4, live-solo 0x4
+```
+
+`live-solo 0x0` looked at first like the `Bands 3 with mask 0x8` incoherence ADR-0044 named, and I
+recorded it as such before finishing the measurement. **That reading was wrong**, and the round trip
+is what showed it:
+
+```
+[leg 1] far-side window   -> Bands 2, mask 0x8, live 0x0  -> count returns -> mask 0x8, live 0x8
+[leg 1] ADR-0039 control  -> Bands 2, mask 0x8, live 0x0  -> count returns -> mask 0x8, live 0x8
+```
+
+Identical, and the control uses **no reentrancy anywhere** — it is a plain count drop. So the state
+the far-side window publishes is ADR-0039's deliberately parked solo bit: inert while hidden
+(`SoloMonitor.cpp:85` and the painter both mask with `((1 << bands) - 1)`) and exact when the count
+returns. The window publishes nothing the plug-in does not already publish by design.
+
+## 22. Classification: **B — already prevented; invariant documented**
+
+Two things cover the far side, neither inside the two functions:
+
+1. **The callers.** Every caller that ACTS on the result re-proves the other parameter on its next
+   line with only pure reads in between (`addBandAt:839`, `removeBand:953`). The rest discard it
+   (`removeBand:965`, both solo-click sites) or use it only for mask-independent values
+   (`addBandAt:867` → `resultingBands`, `ins`).
+2. **ADR-0039's parked bit**, measured above.
+
+**Cross-reading the other parameter on the far side was evaluated and rejected on evidence**, not
+preference: it would return `false` when the count *did* commit, so `addBandAt` would abandon a
+successful add because a foreign writer touched the mask afterwards — the "aborting at a leaf is
+measured worse than completing" class ADR-0042 recorded at `Bands 3 mask 0x5 wLo 1.750`. A more
+precise report bought with worse behaviour.
+
+Shipped: the invariant stated at both functions, ADR-0044 amended, and **State test 79** (four legs,
+16 checks) pinning it. Leg C is the guard on point 1.
+
+**Mutation record, reported as defence in depth rather than dressed up as a single-line proof:**
+
+| Mutation | Result |
+|---|---|
+| M1 — remove the one re-proof leg C names (`addBandAt:839`) | **survives**; `setBands`' near-side `expectedBands` is a second layer |
+| M2 — remove both loop count re-proofs *and* that guard | **kills leg C**: `the add committed its count (Bands 3) after the topology it proved had already moved to 4 inside the mask store`, and kills State test 76 leg H alongside |
+
+No single-line mutation proof exists here and none is claimed.
+
+**No CHANGELOG entry.** `CHANGELOG_POLICY` scopes the file to user-visible changes; this round ships
+comments, an ADR amendment and a test, and changes no behaviour. Recorded so the absence reads as a
+decision rather than an oversight.
+
+## 23. The re-evaluations the round required
+
+* **ADR-0046** — **confirmed correct.** Untouched by this finding: ADR-0046 is about a handler taking
+  one topology reading for its derivations; this is about what a store re-reads after its own
+  dispatch. Different mechanism, no interaction.
+* **RISK-010** — **confirmed correct, unchanged.** This is a message-thread *reentrancy* window
+  (listener dispatch); RISK-010 is the audio thread's ten-load *cross-thread* read. Different
+  mechanism. The round does reinforce RISK-010's existing statement that the DSP-side masking is load
+  bearing — legs A and B measure exactly that — but the risk text already says so and needs no edit.
+* **Held-audition gap** — **remains accepted.** Re-verified at this head: `tick()` returns at
+  `if (! isShowing())` (`SpectrumImager.cpp:1286-1289`) before reaching the guard at `:1352`, and the
+  harness never shows the editor. No new evidence; no production seam added.
+* **U4 (wheel Width undo)** — **remains an accepted residual; does not block merge.** Measured for
+  the first time, side by side on the same parameter: a wheel tick moved `mbWidthLow` 1.000 → 1.180
+  with `canUndo()` **false**; a width drag moved it 1.000 → 1.750 with `canUndo()` **true**. So it is
+  a real, everyday, race-free inconsistency between two ways of editing one control. Deferred anyway,
+  on evidence: it is **pre-existing** (the merge base carries the same gesture-less `setParam`), it is
+  a *missing* undo entry rather than a wrong value or an incoherent state, and it is already recorded
+  completely in `KNOWN_ISSUES.md` with a scope decision and the open UX question a fix must answer
+  (a gesture per tick or per burst). That question belongs to its own change; the KI entry gained the
+  measurement and nothing else, because the entry was already correct.
+* **Informational items** — `:390` cancelled spreads, `:435` ownership parameter equality, `:725`
+  partial transaction residue: **reviewed, unchanged.** Confirmed byte-identical to `5c7f225`; this
+  round's two hunks are both comment insertions at `:639` and `:682` and touch none of them.
+
+## 24. The test's own TSan regression, and why it was not suppressed
+
+The first version of State test 79 **failed the `tsan` lane**, and the full-suite run is what caught
+it — not review:
+
+```
+WARNING: ThreadSanitizer: lock-order-inversion (potential deadlock)
+  Cycle in lock order graph: M0 => M1 => M0
+  ... WriteFromInsideAStore::parameterValueChanged -> setSoloMask -> toggleSoloBit -> mouseUp
+```
+
+Legs A and C nest the two parameters' JUCE `listenerLock`s **solo → bands**; leg B nested them
+**bands → solo**. Both orders on the main thread close a cycle in TSan's lock-order graph. It is the
+RISK-009 shape exactly — harmless, because a single thread takes both orders at different times and
+no deadlock is possible — but `halt_on_error=1` stops the job, and the one entry in
+`tests/tsan-suppressions.txt` names `WriteFromInsideAGestureOpen`, so it does not match
+`WriteFromInsideAStore`.
+
+**Widening the suppression was rejected.** The round that reduced that file to a single entry did so
+because a second one *matched nothing* and would only widen what a future report can be absorbed by;
+adding an entry now that it does match would trade a detector for a green lane. Instead leg B was
+given **its own processor**, constructed while the first is still alive so the mutex addresses cannot
+be recycled. Distinct mutexes, no cycle, nothing suppressed, and the leg keeps its full assertion set.
+
+Recorded because the tempting fix was the wrong one, and because it is a second instance this round
+of the same lesson: the measurement, not the reading, is what settles these.

@@ -373,6 +373,12 @@ with the focus-driven `knobSweepTime` easing).
   the deferred UX questions below, so it was **fixed the same day**: the box now holds a
   `juce::Slider::ScopedDragNotification` across the press, exactly as a knob drag does. The
   sentence above is complete again for what remains open.
+  **Corroborated 2026-09-08** (topology-transaction review round) with the two imager paths
+  measured side by side on the same parameter: a wheel tick moved `mbWidthLow` 1.000 -> 1.180
+  and left `canUndo()` **false**; a width drag moved it 1.000 -> 1.750 and left `canUndo()`
+  **true**. The entry above was already correct — this only replaces "verified" with a number,
+  and confirms the gap is pre-existing (the merge base carries the same gesture-less
+  `setParam`), so it is not a regression of the v0.9.8 SpectrumImager work.
 - **Scope:** editor-only; automation/preset/serialization unaffected (the value itself lands
   correctly and marks the preset dirty). Severity **Low**.
 - **Evidence [Verified, code path]:** src/PluginEditor.h (`Knob::doReset` gesture wrap + comment);

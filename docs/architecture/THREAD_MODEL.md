@@ -99,7 +99,7 @@ freed while another thread can reach it, because a pointer is reachable from exa
 | Host-hidden params (Oversampling, view) | `InternalState` `juce::ValueTree` + `int`/`float` atomics | GUI `juce::Value` binding | audio (oversample only) | InternalState.h:60-138 |
 | Momentary solo audition | `std::atomic<int> soloPreviewMask` (relaxed, −1 = use param) | GUI `setSoloPreview` | audio processBlock | PluginProcessor.h:72-73,130; .cpp:128 |
 | Meter hold reset | `std::atomic<int> resetReq` (exchange) | GUI `resetHold()` | audio `process()` | LevelMeters.h:58,62 |
-| UI-animation flag → imager | `const std::atomic<float>*` (relaxed) | InternalState | GUI imager timer | src/InternalState.h:72; src/gui/SpectrumImager.cpp:1097 |
+| UI-animation flag → imager | `const std::atomic<float>*` (relaxed) | InternalState | GUI imager timer | src/InternalState.h:72; src/gui/SpectrumImager.cpp:1128 |
 
 ## Forbidden
 

@@ -636,6 +636,26 @@ bool SpectrumImager::setBands (int n, int expectedBands, int expectedMask)
         stored = true;
     }
     p->endChangeGesture();
+    // WHAT THIS FAR SIDE DOES NOT PROVE, and why that is enough (review round 2026-09-08).
+    // It re-reads the COUNT only. A listener that moves mbSolo from inside the store's own
+    // dispatch, or from inside `endChangeGesture`, is invisible here and this still returns true --
+    // the mirror of the same gap in `setSoloMask` below. Two things cover it, neither of them in
+    // this function, which is why the answer is a documented invariant and a test rather than a
+    // wider re-read:
+    //   1. the only caller that ACTS on this result is `addBandAt`, and it uses it for
+    //      `resultingBands` and the returned split index -- both mask-independent. `removeBand`
+    //      discards it, and both are the LAST store of their transaction, so there is nothing left
+    //      to abandon on a mask that moved after the count already committed;
+    //   2. the state that reaches is ADR-0039's PARKED SOLO BIT -- a bit above the live count,
+    //      inert while hidden (`SoloMonitor.cpp:85` and the painter both mask with
+    //      ((1 << bands) - 1)) and exact when the count returns. State test 79 leg A measures that
+    //      against a control that uses no reentrancy at all and finds the two states identical,
+    //      before and after the round trip.
+    // CROSS-READING THE MASK HERE WAS EVALUATED AND REJECTED: it would return false when the count
+    // DID commit, so `addBandAt` would abandon a successful add because a foreign writer touched
+    // the mask afterwards. That is the "aborting at a leaf is worse than completing" ADR-0042
+    // measured at `Bands 3 mask 0x5 wLo 1.750` -- a more precise report bought with worse
+    // behaviour.
     return stored && bandCount() == want;
 }
 
@@ -659,6 +679,17 @@ bool SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
     // rather than the gesture open: `the mask store was overwritten from inside its dispatch and the
     // transaction carried on: Bands 3 with mask 0x9`. `soloMask()` rounds through std::lround, so
     // the store's own round trip cannot move the word this decodes to.
+    // AND THE SAME LIMIT AS `setBands`, mirrored: this re-reads the MASK only, so a listener that
+    // moves mbBands from inside this store's dispatch leaves this returning true with the topology
+    // it was handed already gone. What covers it is the CALLER'S NEXT LINE -- `addBandAt:839` and
+    // `removeBand:953` both re-prove the count as the first thing they do after this returns, with
+    // only pure reads in between -- plus `setBands`' own `expectedBands` at the end of the burst.
+    // The solo-click callers discard the result entirely and store nothing after it. State test 79
+    // leg C holds that cover: it drives an add whose count moves inside THIS store and asserts the
+    // transaction abandons. Mutation M1 (that one re-proof removed) survives, because
+    // `setBands`' near-side guard is a second layer; M2 (every layer removed) kills leg C with
+    // `the add committed its count (Bands 3) after the topology it proved had already moved to 4`.
+    // The cover is defence in depth, not one line, and leg C pins the combination.
     return stored && soloMask() == mask;
 }
 // ADR-0041: the toggle reads the word it is about to replace and names it, so the store proves both
@@ -2411,7 +2442,7 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     // later tick of the burst then compares against that claim and passes. `mouseDown` has always
     // read the count FIRST, at the top, before any branch derives anything from it, and
     // `SpectrumImager.cpp:2292` relies on exactly that: "handleNearX and addBandAt both return an
-    // index inside the count they read" (`SpectrumImager.cpp:2331`). The wheel is now the same
+    // index inside the count they read" (`SpectrumImager.cpp:2362`). The wheel is now the same
     // shape, and `N` is threaded into
     // the derivation so the count the index is derived under and the count it is stamped with are
     // ONE READ rather than two that usually agree. Bound, stamp, staleness test and the width
