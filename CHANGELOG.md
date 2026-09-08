@@ -18,49 +18,7 @@ not accept and which those entries predate. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.7] — 2026-09-05
-
-### Changed
-- **The Settings row that sets the vectorscope's afterglow is now labelled *Vectorscope
-  Persistence*.** It read *Vectorscope Persist*. The control itself is untouched — same place in
-  the Settings overlay, same 0 … 100 % range, same default, same behaviour while you drag it — and
-  the value your projects already store is read and written exactly as before, so every saved
-  session opens the same as it did. Display name only: the identifier `int_scopePersist` is
-  unchanged, as the ID-immutability rule requires (`PARAMETER_COMPATIBILITY_POLICY` rule 2).
-  Evidence: PR #139. [Verified]
-- **Turning up Drive, or changing algorithm, no longer interrupts the sound when Oversampling is
-  on.** The latency the plug-in reports to your DAW used to depend on whether the oversampler was
-  actually running, and it only runs when it has something to do — so with Oversampling set to 2×,
-  4× or 8×, nudging Drive off zero (or switching to Chorus / Dimension-D) switched it on and changed
-  the reported latency mid-move. DAWs answer a latency change by restarting their audio graph, which
-  you hear as a dropout in the middle of an ordinary knob move. The reported latency now depends on
-  the **Oversampling setting and nothing else**, so it changes when you change that setting and at
-  no other time. Everything else about oversampling is unchanged, including the part that matters
-  for CPU: the oversampler is still switched off whenever there is no nonlinear work for it, and the
-  saving was measured to confirm it (2×/4×/8× with Drive at 0 cost the same as Oversampling Off,
-  within run-to-run noise). While it is off, a plain delay of the same few samples holds the timing
-  steady in its place, so the plug-in still delivers exactly the delay it declares.
-  **What changes for you:** selecting 2×/4×/8× now shows a few samples of latency in your DAW even on
-  a fully linear chain, where it used to show none — that is the price of the sound no longer being
-  interrupted, and the delay is compensated as it always was. One trade in the other direction: an
-  A/B, preset or undo switch **that changes the Oversampling setting itself** while Drive is at zero
-  now dips briefly, where it used to be seamless — the same short dip the Oversampling menu has
-  always had, so both ways of changing that setting now behave alike, and switching Oversampling is
-  the one moment a dip is expected. Sessions are unaffected — nothing in the saved file changed.
-  Decision: ADR-0034. Regression coverage: DSP test 52.
-  Evidence: PR #135. [Verified]
-- **Turning Drive through zero with Oversampling on is now seamless, not merely un-interrupted.**
-  Crossing that point switches the plug-in between two internal paths, and the short dip that used to
-  cover the switch could not actually cover it: the dip is applied at the very end of the chain,
-  *after* Haas and Velvet Noise, whose delay lines are 12–35 ms long. The switch's discontinuity went
-  into those delay lines at full level and came back out one delay later, with the dip already over —
-  which is why the interruption was reported specifically for Haas and Velvet Noise. The two paths
-  are now **crossfaded** instead, so there is nothing to cover and no dip at all. Measured on a steady
-  tone across every combination of 2×/4×/8×, Haas and Velvet Noise, Drive rising through zero and
-  falling through it, as an instant jump and as a 300 ms knob turn: the result is now identical to
-  the same move with Oversampling switched off. The oversampler is still switched off when there is
-  no nonlinear work for it, so the CPU saving is unchanged. Decision: ADR-0035.
-  Regression coverage: DSP test 53. Evidence: PR #135. [Verified]
+## [0.9.8] — 2026-09-08
 
 ### Fixed
 - **Opening a split's frequency box and clicking away no longer re-writes the value it had when you
@@ -215,6 +173,52 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   exists is simply treated as unpinned. Nothing changes for a drag that runs to its end at a steady
   band count — every such case computes exactly as before.
   Regression coverage: State test 66. Evidence: PR #143. [Verified]
+
+## [0.9.7] — 2026-09-05
+
+### Changed
+- **The Settings row that sets the vectorscope's afterglow is now labelled *Vectorscope
+  Persistence*.** It read *Vectorscope Persist*. The control itself is untouched — same place in
+  the Settings overlay, same 0 … 100 % range, same default, same behaviour while you drag it — and
+  the value your projects already store is read and written exactly as before, so every saved
+  session opens the same as it did. Display name only: the identifier `int_scopePersist` is
+  unchanged, as the ID-immutability rule requires (`PARAMETER_COMPATIBILITY_POLICY` rule 2).
+  Evidence: PR #139. [Verified]
+- **Turning up Drive, or changing algorithm, no longer interrupts the sound when Oversampling is
+  on.** The latency the plug-in reports to your DAW used to depend on whether the oversampler was
+  actually running, and it only runs when it has something to do — so with Oversampling set to 2×,
+  4× or 8×, nudging Drive off zero (or switching to Chorus / Dimension-D) switched it on and changed
+  the reported latency mid-move. DAWs answer a latency change by restarting their audio graph, which
+  you hear as a dropout in the middle of an ordinary knob move. The reported latency now depends on
+  the **Oversampling setting and nothing else**, so it changes when you change that setting and at
+  no other time. Everything else about oversampling is unchanged, including the part that matters
+  for CPU: the oversampler is still switched off whenever there is no nonlinear work for it, and the
+  saving was measured to confirm it (2×/4×/8× with Drive at 0 cost the same as Oversampling Off,
+  within run-to-run noise). While it is off, a plain delay of the same few samples holds the timing
+  steady in its place, so the plug-in still delivers exactly the delay it declares.
+  **What changes for you:** selecting 2×/4×/8× now shows a few samples of latency in your DAW even on
+  a fully linear chain, where it used to show none — that is the price of the sound no longer being
+  interrupted, and the delay is compensated as it always was. One trade in the other direction: an
+  A/B, preset or undo switch **that changes the Oversampling setting itself** while Drive is at zero
+  now dips briefly, where it used to be seamless — the same short dip the Oversampling menu has
+  always had, so both ways of changing that setting now behave alike, and switching Oversampling is
+  the one moment a dip is expected. Sessions are unaffected — nothing in the saved file changed.
+  Decision: ADR-0034. Regression coverage: DSP test 52.
+  Evidence: PR #135. [Verified]
+- **Turning Drive through zero with Oversampling on is now seamless, not merely un-interrupted.**
+  Crossing that point switches the plug-in between two internal paths, and the short dip that used to
+  cover the switch could not actually cover it: the dip is applied at the very end of the chain,
+  *after* Haas and Velvet Noise, whose delay lines are 12–35 ms long. The switch's discontinuity went
+  into those delay lines at full level and came back out one delay later, with the dip already over —
+  which is why the interruption was reported specifically for Haas and Velvet Noise. The two paths
+  are now **crossfaded** instead, so there is nothing to cover and no dip at all. Measured on a steady
+  tone across every combination of 2×/4×/8×, Haas and Velvet Noise, Drive rising through zero and
+  falling through it, as an instant jump and as a 300 ms knob turn: the result is now identical to
+  the same move with Oversampling switched off. The oversampler is still switched off when there is
+  no nonlinear work for it, so the CPU saving is unchanged. Decision: ADR-0035.
+  Regression coverage: DSP test 53. Evidence: PR #135. [Verified]
+
+### Fixed
 - **A/B slots from projects saved before 0.6.4 now record their clean baseline the moment the
   project is opened, and it is decided from the slot's own stored values — never from whatever the
   plug-in happens to be playing.** Those old projects stored each slot as parameter values only, with
@@ -2147,6 +2151,7 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
+[0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8
 [0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/

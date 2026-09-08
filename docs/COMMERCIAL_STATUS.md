@@ -27,7 +27,7 @@ review date stands and moves only when the substance does.
 
 ## 2. Current phase — internal testing
 
-The current pre-1.0 build (**v0.9.7**; see `docs/HANDOVER.md`) is being prepared for
+The current pre-1.0 build (**v0.9.8**; see `docs/HANDOVER.md`) is being prepared for
 **internal / beta testing**, not for sale.
 
 - Builds reach testers as per-push CI artifacts today; the **GitHub Release** route is implemented
