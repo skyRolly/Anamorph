@@ -1188,3 +1188,30 @@ still read `crossover()` live, so the edges can be split VALUES a same-count lay
 repositioned. That needs ADR-0047's instrument — one capture of the split array shared by the
 derivation and the target — not this one. Only the RISING count direction misplaces; falling widens
 the clamp, and rising past four drops the click (fail-safe but lossy).
+
+## 43. The audit's track 4, and the one thing in it that was actionable
+
+Track 4 re-audited the standing decisions and corroborated every one of §41's conclusions
+independently — RISK-010 unchanged and not this round's direction, the held-audition guard unchanged
+with no production seam added, U4 not reopened, and the TSan suppression harness-scoped with the
+corrected assertion right in both directions AND in the no-summary case (it is pipefail-agnostic by
+construction, `|| true`).
+
+**On the wheel it produced a better argument than mine.** I recommended keeping ADR-0041's rule partly
+on the grounds that option (B) — a wheel that does nothing while a press is held — had no evidence in
+its favour. The track MEASURED the cost instead: making the wheel a no-op fires State test 73 leg A
+with `a wheel tick adopted the installed width 1.700, and the drag then wrote 0.650 from an anchor
+taken before it`, because `captureDragOrigins` can re-seed the ownership record but not `dragGrabDX`
+/`dragGrabDY`, the anchors a held press computes its next write from. So (B) reintroduces the
+ADR-0041 defect unless those anchors are re-seeded too — a larger change than it looks. The
+recommendation is unchanged and now rests on a measurement rather than on taste.
+
+**And it found one actionable gap, which is now closed.** ADR-0041's rule has four consequences; State
+test 80 pinned three. The fourth — a tick swallowing a pending solo or delete-x click — was measured
+when the wheel round found it and then only documented. Stopping `cancelActiveDrag` clearing
+`soloPressBand` left all 2814 checks green. **Leg C** now runs the control and the interrupted press
+on its own processor; mutation M-W2 kills exactly one check, leg C's second, and nothing else.
+
+Documenting a measurement is not the same as pinning it, and this is the second time this session that
+distinction mattered — the first was §39's guard, where a survived mutation meant the opposite of what
+it looked like.

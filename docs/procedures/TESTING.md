@@ -973,6 +973,15 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   anything and the mid-drag → after-release transition it exists to assert could never show. The test
   was measuring leg A's history rather than its own.
 
+  **Leg C, added 2026-09-09, closes the gap the round's own audit found by mutation.** ADR-0041's rule
+  has FOUR consequences and this test pinned three; the fourth — `cancelActiveDrag` clears
+  `soloPressBand` and `pressDeleteBand` too, so a tick during a held solo button discards the click —
+  had been measured when it was found (mask `0x0` against `0x1`) and then only written down. Stopping
+  the wheel clearing `soloPressBand` left all 2814 checks green, which is the definition of a
+  documented-but-unpinned behaviour. Leg C runs the control and the interrupted press on its own
+  processor and asserts both. **Mutation M-W2** (drop `soloPressBand` from `cancelActiveDrag`'s clear
+  list) kills exactly one check — leg C's second — and nothing else.
+
   **Mutation M1** (delete the `cancelActiveDrag()` at the top of `mouseWheelMove`) kills three checks:
   State test 73 leg A, which reproduces ADR-0041's original measurement verbatim — `a wheel tick
   adopted the installed width 1.700, and the drag then wrote 0.650 from an anchor taken before it` —

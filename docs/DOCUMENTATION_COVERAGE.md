@@ -11016,8 +11016,18 @@ breakdown test that could not be wrong.
 
 **Verify-only.** RISK-010 unchanged (both findings are GUI-side; RISK-010 is the audio-side reader);
 held-audition guard unchanged; U4 unchanged; TSan suppression unchanged with its corrected assertion
-green in CI. **Wheel gesture closure: no behaviour decision is required, and the three options are laid
-out in worklog §41 anyway because the brief asked — recommendation is to keep ADR-0041's rule.**
+green in CI and verified right in the no-summary case too. **Wheel gesture closure: no behaviour
+decision is required**, and the three options are laid out in worklog §41 because the brief asked. The
+recommendation to keep ADR-0041's rule now rests on a MEASUREMENT rather than on taste: the audit
+showed that making the wheel a no-op during a press fires State test 73 leg A, because
+`captureDragOrigins` cannot re-seed `dragGrabDX`/`dragGrabDY` — so option (B) reintroduces the
+ADR-0041 defect unless those anchors are re-seeded too.
+
+**One actionable gap from that audit, closed here.** ADR-0041's rule has four consequences and State
+test 80 pinned three; the fourth — a tick swallowing a pending solo or delete-x click — had been
+measured and then only written down, and stopping `cancelActiveDrag` clearing `soloPressBand` left all
+2814 checks green. **Leg C** pins it; mutation M-W2 kills exactly one check and nothing else.
+Documenting a measurement is not the same as pinning it. Worklog §43.
 
 **Documentation.** `ADR-0048` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
 `TESTING.md` (the probe, its numbers, its two construction mistakes, State test 82 and the CI recipe

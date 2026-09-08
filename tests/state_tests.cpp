@@ -4797,6 +4797,97 @@ static void testAWheelTickFinishesAHeldPress()
         else { delete raw2; }
     }
 
+    // ---- LEG C: a PENDING CLICK is a press too, and the tick swallows it ---------
+    //
+    //      ADR-0041's rule has four consequences and this test pinned three. The
+    //      fourth -- `cancelActiveDrag` clears `soloPressBand` and `pressDeleteBand`
+    //      as well, so a tick during a held solo button discards the click -- was
+    //      MEASURED when the round found it (mask `0x0` against `0x1` for the
+    //      uninterrupted press) and then only written down. This round's audit found
+    //      that gap by mutation: stop the wheel clearing `soloPressBand` and all 2814
+    //      checks stay green. Documenting a measurement is not the same as pinning it.
+    //
+    //      The outcome is the conservative one and it is the rule, not an accident:
+    //      ADR-0041 leg B already establishes that a click whose world moved under it
+    //      writes nothing, and a wheel tick moves the world.
+    {
+        AnamorphAudioProcessor proc3;
+        proc3.prepareToPlay (48000.0, 512);
+        auto& apvts3 = proc3.getAPVTS();
+        if (auto* a = apvts3.getParameter (pid::advancedMode))
+            a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+        if (auto* m = apvts3.getParameter (pid::mbEnable))
+            m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+        auto* raw3 = proc3.createEditor();
+        auto* ed3  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw3);
+        check (ed3 != nullptr, "leg C: a third editor constructs");
+        if (ed3 != nullptr)
+        {
+            anamorph::gui::SpectrumImager* im3 = nullptr;
+            std::function<void (juce::Component*)> walk3 = [&] (juce::Component* c)
+            {
+                if (im3 != nullptr) return;
+                for (int i = 0; i < c->getNumChildComponents(); ++i)
+                {
+                    auto* k = c->getChildComponent (i);
+                    if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) { im3 = si; return; }
+                    walk3 (k);
+                    if (im3 != nullptr) return;
+                }
+            };
+            walk3 (ed3);
+            auto* bands3 = apvts3.getParameter (pid::mbBands);
+            auto* solo3  = apvts3.getParameter (pid::mbSolo);
+            if (im3 != nullptr && im3->getWidth() > 300 && bands3 != nullptr && solo3 != nullptr)
+            {
+                auto set3 = [] (juce::RangedAudioParameter* p, float v)
+                { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+                auto mask3 = [&] { return juce::roundToInt (solo3->convertFrom0to1 (solo3->getValue())); };
+                const auto src3 = juce::Desktop::getInstance().getMainMouseSource();
+                auto mev3 = [&] (float x, float y)
+                {
+                    return juce::MouseEvent (src3, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im3, im3,
+                                             juce::Time::getCurrentTime(), { x, y },
+                                             juce::Time::getCurrentTime(), 1, false);
+                };
+                const float soloY = 11.0f;
+                // The solo button of band 0, found by sweeping the tooltip the way the suite does.
+                float sx = -1.0f;
+                for (float x = 2.0f; x < (float) im3->getWidth() - 2.0f; x += 1.0f)
+                {
+                    im3->mouseMove (mev3 (x, soloY));
+                    if (im3->getTooltip().containsIgnoreCase ("solo")) { sx = x; break; }
+                }
+                check (sx > 0.0f, "leg C: a solo button is findable");
+                if (sx > 0.0f)
+                {
+                    set3 (bands3, 4.0f);
+                    set3 (solo3, 0.0f);
+
+                    // The control first, on the SAME processor: an uninterrupted press toggles.
+                    im3->mouseDown (mev3 (sx, soloY));
+                    im3->mouseUp   (mev3 (sx, soloY));
+                    const int uninterrupted = mask3();
+
+                    set3 (solo3, 0.0f);
+                    im3->mouseDown (mev3 (sx, soloY));
+                    im3->mouseWheelMove (mev3 (sx, soloY), wheel);   // the tick lands on the held press
+                    im3->mouseUp   (mev3 (sx, soloY));
+                    const int afterTick = mask3();
+
+                    check (uninterrupted != 0,
+                           "leg C: control -- an uninterrupted solo press toggles the band");
+                    check (afterTick == 0,
+                           "leg C: ...and a wheel tick during the press swallows the click");
+                }
+            }
+            proc3.editorBeingDeleted (ed3);
+            delete ed3;
+        }
+        else { delete raw3; }
+    }
+
     proc.editorBeingDeleted (ed);
     delete ed;
 }
