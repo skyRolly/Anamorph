@@ -329,3 +329,128 @@ one that gates. Recorded because reading the PR run as the answer is an easy and
 * **§7 U1–U3** (undo re-entrancy in `PluginProcessor`) — **architecture item, future work.** Outside
   this PR's subsystem, unproven by any test here, and a fix touches the undo model. Recorded so it
   is not lost; not a blocker for a PR that does not change that code.
+
+---
+
+# Round 10 — topology identity (ADR-0046)
+
+## 16. Workflow and sub-agent audit, decided on evidence
+
+**What was inspected.** The container had restarted (PID 1 uptime 17 s at the start of the round),
+so every workflow, background task and sub-agent from the previous rounds was already gone with it —
+`ListAgents` reported none, the task list was 94/94 completed, and `ps` showed no compute-bound
+process. There was nothing running to consume, continue or stop, and nothing left unconsumed: the
+scratch directory held only the previous rounds' task outputs, all of which had been read.
+
+**What was started, and why.** With no inherited work, the decision was whether to *create* parallel
+audit capacity. Two things argued for it: the round asks for previous conclusions to be re-verified
+rather than preserved, and it warns against following any single agent. One four-track read-only
+workflow (`wf_92fb0c32-f6e`) was launched: an exhaustive ordering sweep, a re-verification of six
+recorded conclusions, a consequence analysis of a mis-stamped wheel latch in DSP terms, and a
+re-examination of the five accepted residuals — each followed by adversarial verifiers instructed to
+default to *refuted*.
+
+**What it found.** 50 claims from the four tracks. The primary finding was independently confirmed
+(track 1, W1: the wheel stamp was read after the derivation), and four claims were classed
+`needs-action`. Every one of them was then checked in the code by hand before being acted on:
+
+| Claim | What it said | What the code said | Action |
+|---|---|---|---|
+| V7 | `mouseDown` still lets `handleNearX`/`bandAtX` take their own count reads | true of the file the agent read (pre-edit) | already closed by this round's fix |
+| W4 | the wheel's write EXTENT comes from a second live read inside `dragCrossoverTo`, so "one reading decides the tick" was not actually achieved | **true** — `const int M = bandCount() - 1` | **fixed**: `dragCrossoverTo (handle, x, n)` |
+| W12 | the wheel's width store proves the topology but not the VALUE, unlike the crossover stores beside it | true, and correct as designed — the wheel is a read-modify-write on the live value, so it *builds on* a foreign write rather than overwriting one; `cancelActiveDrag()` waives ownership for exactly that reason (ADR-0043) | **ruled a false positive**, reason recorded |
+| M5 | `bandAddTarget` reads the count after its band index was derived | true; `lo` cannot be affected and the only affected term (`hi`) can only NARROW the range, and `addBandAt` re-proves the count anyway | **no action**, inert |
+
+**And one correction to this round's own work,** which is the reason the workflow paid for itself:
+claim W8 caught that the comment I had just written at the wheel's width store copied ADR-0045's
+wording — *"an automation touch and an undo step for a band that is not there"* — onto a store that
+opens **no gesture**. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns
+the return to zero into the undo entry (`PluginProcessor.cpp:812-825`), so a bare `setParam` makes
+**no** undo step at all. That is worse than the claim, not better: the value still reaches the host
+and is folded into the committed baseline with nothing to reverse it. The comment now says so, and
+says why `resetParam`'s wording is right where it stands.
+
+**The decision to stop it.** At 80 minutes the workflow had produced all 50 claims and 29 of the
+~50 verifier verdicts (13 refuted, 16 survived), and was working through verifiers on a snapshot of
+`SpectrumImager.cpp` that the fix had since replaced. Continuing would have re-adjudicated claims
+already adjudicated by hand, against code that no longer exists, while holding 2 of this box's 4
+cores — the same two the TSan and valgrind runs need. **Consumed and stopped** (`TaskStop`), with
+the tally recorded above rather than discarded. The judgement is not that the tail was worthless; it
+is that its marginal information value had fallen below the cost it was imposing on the gating
+validation.
+
+## 17. Finding A — confirmed defect, and worse than the wording suggested
+
+The review located it at `:2377` with `:2368-2372` related. On the head it arrived at, the tick read
+the count **three** times and let the derivation take a fourth:
+
+```
+const int N = bandCount();                          // 1 -- the write BOUND
+if (scrollBands >= 0 && bandCount() != scrollBands) // 2 -- the staleness test
+const int h = handleNearX (x);                      // 3 -- inside the helper
+scrollBands  = bandCount();                         // 4 -- the STAMP, taken LAST
+```
+
+There is **no dispatch** anywhere in that span — `bandAtX`, `handleNearX`, `crossover` and
+`bandCount` are plain `getValue()` reads — so reentrancy cannot cross it and only another thread
+can. That is exactly the window the review named.
+
+Two failures, in opposite directions:
+
+* **fail-open (the stamp).** An index derived at three bands and stamped with the four that arrived
+  a few instructions later claims a topology it was never derived in. `scrollBands` is not
+  re-derived for the rest of the burst, so every later tick compares against that claim and
+  **passes** — a stamp naming the wrong topology is worse than no stamp, because it silences the
+  check that exists to catch this. ADR-0039 already refused this shape for `removeBand`.
+* **fail-safe but lossy (the bound).** Reading 1 is taken before the staleness test; a count that
+  *rises* in that window leaves a latch re-derived under the new topology bounded by the old,
+  smaller one, and the tick writes nothing.
+
+Verdict: **A — confirmed defect requiring implementation.** `mouseDown` never had the fail-open half
+because it reads the count at the very top, which is what `SpectrumImager.cpp:2331` relies on
+(*"handleNearX and addBandAt both return an index inside the count they read"*) — a sentence that is
+only usable if the count they read is the count the caller proved.
+
+## 18. The fix, and what it deliberately does not do
+
+ADR-0046: **a derivation answers under the topology it is given, and a handler reads that topology
+once.** `bandAtX`/`handleNearX` take the count to answer under; `mouseWheelMove`, `mouseDown` and
+`mouseDoubleClick` each take one reading and use it for the staleness test, the derivations, the
+stamp, the write bounds, `gestureBands`, the plan extent inside `dragCrossoverTo`, and the store's
+own proof. `setParam` gains `expectedBands`, closing the one store in the class that had no topology
+proof at all.
+
+Making the derivation and the stamp *atomic* in the strong sense would need a lock, which ADR-0038
+already rejected because `mbBands` is written from the audio thread. Making them **the same read**
+needs nothing. Not a threading-model change; not a gate item.
+
+**Not done, in writing:** `soloHit` and `deleteHit` still re-read the count, because threading a
+topology into them means threading it through `deleteBox`, `soloBox`, `bandLeftX` and `bandRightX`
+as well — six signatures for the fail-safe half only. The line is: fail-open is fixed; fail-safe-
+but-lossy is fixed where it costs one argument, and named where it does not.
+
+## 19. Coverage, and the part of it that is honestly untestable
+
+State test 78 (four legs, 12 checks) holds the contract: at four bands four probes steer four
+different bands in order; at two bands no probe reaches a band the topology has not got **and** every
+probe still steers the band it is over; an alt-click resets no band outside the topology; and the
+control still resets exactly one.
+
+| Mutation | Killed by |
+|---|---|
+| Q1 — the wheel derives under a topology the tick did not prove | State test 77 leg A **and** State test 78 leg B (`steered nothing: 0 1 -1 -1`) |
+| Q2 — the Alt reset derives under an unproved topology, bound kept | **nothing** (the bound refuses it first) |
+| Q2b — the Alt reset derives *and* bounds under an unproved topology | State test 78 leg C (`reset a width for band 3, which a two-band topology does not have`) |
+| Q3 — the wheel's width store loses its topology proof | **nothing** |
+| Q4 — the wheel stamps with a later read (the exact pre-fix shape) | **nothing** |
+
+**Q3 and Q4 surviving is the measured result, not an oversight.** The window holds no dispatch, so a
+deterministic test cannot enter it: it would have to move `mbBands` from another thread inside a few
+instructions and then observe the store and the live count atomically. A stress probe was considered
+and rejected — it can assert no invariant across that window that is sound without observing both
+together, and a probe that cannot fail for the right reason is worse than none. Q3 and Q4 were run
+to establish that claim by measurement instead of asserting it.
+
+Leg B was tightened during the round: its first form asserted only `hit < 2`, which a tick that
+steered **nothing** satisfies, and Q1 is caught by the bound as silence rather than as a wrong band.
+Both halves are now asserted.

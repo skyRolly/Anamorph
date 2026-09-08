@@ -861,6 +861,30 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 78 — a derivation answers under the topology it was given** (ADR-0046). Four probes,
+  one per band of a four-band layout, each at least 20 px clear of every split handle (the handle
+  grab radius is 7 px) and located from the component's own tooltip, never from the test's idea of
+  where a band ought to be. Legs: (A) at four bands the four probes steer four *different* bands in
+  left-to-right order; (B) at two bands, with the hand not moved, no probe steers a band the
+  topology has not got **and** every probe still steers the band it is over — both halves matter,
+  because the write bound turns a derivation under the wrong topology into *silence* rather than
+  into a wrong band, and silence is a lost user edit (`steered nothing: 0 1 -1 -1` under mutation
+  Q1); (C) at two bands an alt-click resets no band outside the topology (`reset a width for band 3,
+  which a two-band topology does not have` under mutation Q2b). Control: (D) an uninterrupted
+  alt-click still resets exactly one band's width.
+
+  **Mutations Q2, Q3 and Q4 survive, and were run to measure that rather than to assert it.** Q2
+  (the derivation alone answers under an unproved topology) is caught by the bound, not by a test.
+  Q3 (the wheel's width store loses its topology proof) and Q4 (the wheel stamps with a later read —
+  the exact pre-ADR-0046 shape) are **not deterministically testable**: the window ADR-0046 closes
+  holds no dispatch, so a test would have to move `mbBands` from another thread inside a span of a
+  few instructions and then observe the store and the count atomically, which it cannot do. A stress
+  probe was considered and rejected — it can assert no invariant across that window that is sound
+  without observing both together, and a probe that cannot fail for the right reason is worse than
+  none. What State test 78 holds is the *contract* the fix rests on; Q1 and Q2b show that contract
+  is live. Recorded here rather than left implicit: this is a deliberate, measured coverage limit,
+  not an oversight.
+
 * **State test 77 — a positional latch is void once its topology moves** (ADR-0045). Two paths the
   ADR-0038/0039 chain never covered, both found by the round's own audit. Legs: (A) a wheel burst
   whose band count changes between two ticks does not keep steering the band its first tick latched

@@ -361,9 +361,19 @@ DELIBERATE_REAIMS = {
     # no second declaration -- only the spelling `verify_reaim_targets()` reads.
     # This is the third re-derivation of this one target, which is the cost of a
     # declaration and the reason not to write one for a plain move.
+    #
+    # 2026-09-08 (ADR-0046, one topology reading per handler): the same target
+    # re-derived a FOURTH time, :530 -> :541. `bandAtX`/`handleNearX` gain their
+    # eleven-line header and `setParam` its six, all above the function -- a pure
+    # insertion again, so still one entry and still no second declaration. The
+    # count of re-derivations is left visible on purpose: it is the running cost
+    # of the one declaration in this table, and the argument against adding more.
+    # Re-derived once more inside the SAME round (:541 -> :547) when the audit's own
+    # W4 finding put a six-line header on this function: the first re-derivation of
+    # a round is not always the last, which is exactly why the check exists.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:530"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:547"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

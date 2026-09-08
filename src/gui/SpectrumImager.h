@@ -87,8 +87,12 @@ private:
     int   soloMask() const noexcept;           // 4-bit solo mask
     bool  bandSoloed (int b) const noexcept;
 
-    int   bandAtX (float x) const noexcept;
-    int   handleNearX (float x) const noexcept;
+    // ADR-0046: `n` is the topology to answer under. A caller that has already read the count,
+    // and is going to stamp an index with it, MUST pass it -- otherwise these re-read the live
+    // count and can answer under a topology the caller never proved. -1 means "read it yourself",
+    // which is right for the hover/paint callers that prove nothing and stamp nothing.
+    int   bandAtX (float x, int n = -1) const noexcept;
+    int   handleNearX (float x, int n = -1) const noexcept;
     bool  nearWidthLine (juce::Point<float> p, int b) const noexcept;
     juce::Rectangle<float> deleteBox (int b) const noexcept;   // x to remove a band (bottom-left)
     juce::Rectangle<float> soloBox (int b) const noexcept;     // headphone solo, top-centre
@@ -135,7 +139,9 @@ private:
     // was computed to make room for it, so a spread that carries on after the pin has moved applies
     // its plan around a split that is no longer there (ADR-0043).
     bool  spreadSplits (const float* xs, const float* was, int count, int except, float pinNorm);
-    bool  dragCrossoverTo (int handle, float x);
+    // ADR-0046: `n` is the topology the caller proved; it sizes the plan so the burst's extent
+    // and the per-store proof inside `writeCrossovers` come from ONE reading. -1 = read it here.
+    bool  dragCrossoverTo (int handle, float x, int n = -1);
     bool  bandAddTarget (int b, float x, float& outX) const noexcept;
 
     // `resultingBands` reports the count this add ESTABLISHED, taken from the same read of
@@ -169,7 +175,10 @@ private:
     void  endBandMove();
 
     void beginGesture (juce::RangedAudioParameter*);
-    void setParam (juce::RangedAudioParameter*, float plain);
+    // ADR-0046: `expectedBands` refuses a store whose topology has moved since the caller
+    // proved it -- the same contract `resetParam` carries. -1 for the callers that have
+    // just proved the count with nothing in between.
+    void setParam (juce::RangedAudioParameter*, float plain, int expectedBands = -1);
     void endGesture (juce::RangedAudioParameter*);
     // ADR-0045: `expectedBands` proves the topology between this reset's own gesture open and
     // its store; -1 for callers with no band index to prove.

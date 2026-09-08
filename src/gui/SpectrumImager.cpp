@@ -238,17 +238,28 @@ juce::Rectangle<float> SpectrumImager::numberChip (int i) const noexcept
     return { freqToX (crossover (i)) - 22.0f, rulerY() - 6.0f, 44.0f, 13.0f };
 }
 
-int SpectrumImager::bandAtX (float x) const noexcept
+// ADR-0046. A DERIVATION ANSWERS UNDER THE TOPOLOGY IT IS GIVEN, NOT THE ONE IT FINDS.
+// Both of these used to re-read `bandCount()` for themselves. That is right for a caller that
+// only wants to know what is under the cursor RIGHT NOW (hover, paint) and stamps nothing. It is
+// wrong for a caller that reads the count, derives an index, and then stamps that index with a
+// count: the derivation's read and the caller's read are two different reads of a value THREE
+// threads write, so the index could be answered under one topology and stamped with another --
+// and a stamp that names a topology the index was never derived in cannot detect anything.
+// Passing `n` in makes the two the same read by construction, which is the only way to close the
+// window without a lock: `SpectrumImager.cpp:2292` already relies on "handleNearX and addBandAt
+// both return an index inside the count they read", and this is what makes that true of the
+// count the CALLER read rather than of some later one.
+int SpectrumImager::bandAtX (float x, int n) const noexcept
 {
-    const int N = bandCount();
+    const int N = n >= 0 ? juce::jlimit (1, 4, n) : bandCount();
     const float f = xToFreq (x);
     for (int i = 0; i < N - 1; ++i)
         if (f < crossover (i)) return i;
     return N - 1;
 }
-int SpectrumImager::handleNearX (float x) const noexcept
+int SpectrumImager::handleNearX (float x, int n) const noexcept
 {
-    const int N = bandCount();
+    const int N = n >= 0 ? juce::jlimit (1, 4, n) : bandCount();
     int best = -1; float bestD = 7.0f;
     for (int i = 0; i < N - 1; ++i)
     {
@@ -527,9 +538,15 @@ void SpectrumImager::projectFromOrig (float* out, const float* orig, int count,
     out[count - 1] = juce::jmin (out[count - 1], hi);
     for (int k = count - 2; k >= 0; --k)    out[k] = juce::jmin (out[k], out[k + 1] - kMinGapPx);
 }
-bool SpectrumImager::dragCrossoverTo (int handle, float x)
+// ADR-0046: `n` is the topology the CALLER proved, and it decides how many splits the plan
+// covers. Reading it here instead would make the plan's extent a different reading from the one
+// `writeCrossovers` proves each store against -- which cannot write a wrong value (the first
+// store's `bandCount() != gestureBands` refuses the whole burst) but does leave the burst's
+// extent and the burst's proof disagreeing, and an ABA return to the stamped count between the
+// two reads would let a plan sized under the wrong topology through. -1 keeps the live read.
+bool SpectrumImager::dragCrossoverTo (int handle, float x, int n)
 {
-    const int M = bandCount() - 1;
+    const int M = (n >= 0 ? juce::jlimit (1, 4, n) : bandCount()) - 1;
     if (handle < 0 || handle >= M) return true; // nothing to steer is not a loss of ownership
     float out[3];
     projectFromOrig (out, dragOrigX, M, handle, x, -1, 0.0f);
@@ -554,9 +571,17 @@ bool SpectrumImager::bandAddTarget (int b, float x, float& outX) const noexcept
 // ----------------------------------------------------------------------------
 void SpectrumImager::beginGesture (juce::RangedAudioParameter* p) { if (p) p->beginChangeGesture(); }
 void SpectrumImager::endGesture   (juce::RangedAudioParameter* p) { if (p) p->endChangeGesture(); }
-void SpectrumImager::setParam (juce::RangedAudioParameter* p, float plain)
+// ADR-0046: the same contract `resetParam` has carried since ADR-0045, for the one store that
+// had no proof at all. `expectedBands` is checked with NOTHING between it and the store -- this
+// function opens no gesture, so unlike `resetParam` there is no dispatch to step over, and the
+// only thing that can move the count in the gap is another thread. -1 keeps the four stores
+// inside `addBandAt` / `removeBand` exactly as they were: they prove the count in their own loops
+// one line above, and doubling that up would say the same thing twice.
+void SpectrumImager::setParam (juce::RangedAudioParameter* p, float plain, int expectedBands)
 {
-    if (p) p->setValueNotifyingHost (p->convertTo0to1 (plain));
+    if (p == nullptr) return;
+    if (expectedBands >= 0 && bandCount() != expectedBands) return;
+    p->setValueNotifyingHost (p->convertTo0to1 (plain));
 }
 void SpectrumImager::resetParam (juce::RangedAudioParameter* p, int expectedBands)
 {
@@ -2075,6 +2100,15 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     // sound with it. Taken once, at the top, so every branch below -- solo press, delete press,
     // handle drag, width drag -- is covered by the one snapshot rather than each latching its
     // own. The ADD branch is the exception and re-takes it: see there.
+    // ADR-0046: and it is the topology every derivation below ANSWERS UNDER, not merely the one
+    // they are compared against afterwards. `handleNearX` and `bandAtX` used to re-read the count
+    // for themselves; with three threads writing mbBands that is a second read, and a second read
+    // can differ. Here the difference was always safe -- the stamp is the OLDER of the two, so a
+    // disagreement makes `gestureIsStale()` refuse -- but a refusal is a user edit dropped for no
+    // reason the user can see. `soloHit` and `deleteHit` still re-read: threading the count into
+    // them means threading it through `deleteBox`/`soloBox`/`bandLeftX`/`bandRightX` as well, six
+    // signatures for a window that already fails safe. That is the deliberate line: fail-OPEN is
+    // fixed, fail-safe-but-lossy is fixed where it costs one argument, and named where it does not.
     gestureBands = bandCount();
     captureGestureSound();
     const auto p = e.position;
@@ -2094,7 +2128,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     // held, the add affordance stays hidden (0.6.16 #2).
     if (! alt) if (const int dB = deleteHit (p); dB >= 0) { pressDeleteBand = dB; hoverAdd = -1; addA = 0.0f; repaint(); return; }
 
-    const int h = handleNearX (p.x);
+    const int h = handleNearX (p.x, gestureBands);
     if (alt)
     {
         if (h >= 0) resetCrossover (h);
@@ -2104,7 +2138,12 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         // the count between the two, making the guard agree with a live count while `b` was
         // derived under the old one -- the reentrancy fix closes the dispatch window, not that one.
         // Ordering the two reads costs nothing and closes it in the safe direction (a refusal).
-        else { const int n = bandCount(); const int b = bandAtX (p.x);
+        // ADR-0046: ordering NARROWED that window; passing `n` into `bandAtX` CLOSES it. Ordered
+        // but re-reading, the derivation could still answer under a count newer than the one being
+        // proved -- harmless here (the guard then refuses) but a refusal is still a lost edit, and
+        // the same shape one line down in `mouseWheelMove` was not harmless at all. One reading,
+        // used by the derivation and by the proof, has neither failure.
+        else { const int n = gestureBands; const int b = bandAtX (p.x, n);
                if (b >= 0 && b < n && nearWidthLine (p, b)) resetParam (widthP[b], n); }
         return;
     }
@@ -2117,7 +2156,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         beginGesture (freqP[h]); repaint(); return;
     }
 
-    const int b = bandAtX (p.x);
+    const int b = bandAtX (p.x, gestureBands);
     if (nearWidthLine (p, b))
     {
         // Press only BEGINS the width ("Bandwidth") interaction -- the value is written by
@@ -2197,7 +2236,7 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
         // A real drag IS a sustained hold -> show the band-pass preview (but a tiny jitter
         // between the two clicks of a double-click must not, hence the small threshold).
         if (! handleHoldActive && std::abs (e.position.x - handlePressX) > 3.0f) handleHoldActive = true;
-        if (! out && ! dragCrossoverTo (dragHandle, (float) e.position.x - dragGrabDX))
+        if (! out && ! dragCrossoverTo (dragHandle, (float) e.position.x - dragGrabDX, gestureBands))
         { cancelActiveDrag(); return; }
     }
     else if (dragBand >= 0)
@@ -2341,11 +2380,14 @@ void SpectrumImager::mouseDoubleClick (const juce::MouseEvent& e)
     const int N = bandCount();
     for (int i = 0; i < N - 1; ++i)
         if (numberChip (i).contains (p)) { openFreqEditor (i); return; }
-    const int h = handleNearX (p.x);
-    if (h >= 0) resetCrossover (h);
     // ADR-0045, tightened -- see mouseDown for why the count is read first.
-    else { const int n = bandCount(); const int b = bandAtX (p.x);
-           if (b >= 0 && b < n && nearWidthLine (p, b)) resetParam (widthP[b], n); }
+    // ADR-0046: and read ONCE. `N` already bounds the chip loop above; the derivation and the
+    // reset's proof now use the same `N` rather than taking a second and a third reading of a
+    // parameter three threads write.
+    const int h = handleNearX (p.x, N);
+    if (h >= 0) resetCrossover (h);
+    else { const int b = bandAtX (p.x, N);
+           if (b >= 0 && b < N && nearWidthLine (p, b)) resetParam (widthP[b], N); }
 }
 void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
@@ -2358,6 +2400,22 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     // before it`. The press ends here; the wheel then acts with nothing in flight, exactly as it
     // does when no button is held. The wheel is not disabled -- the press is finished.
     cancelActiveDrag();
+    // ADR-0046. ONE TOPOLOGY READING DECIDES THE WHOLE TICK. This handler used to take THREE --
+    // this one, a second inside the staleness test below, a third at the stamp -- and let
+    // `handleNearX` / `bandAtX` take a fourth of their own. Between any two of them an
+    // AUDIO-THREAD automation write of mbBands can land: there is no dispatch anywhere in this
+    // stretch, so reentrancy cannot cross it, but three threads write this parameter and a
+    // cross-thread write needs no seam. The stamp was the last of the four, which is the one
+    // ordering that cannot work: an index derived at count 3 and stamped with the count 4 that
+    // arrived a few instructions later claims a topology it was never derived in, and every
+    // later tick of the burst then compares against that claim and passes. `mouseDown` has always
+    // read the count FIRST, at the top, before any branch derives anything from it, and
+    // `SpectrumImager.cpp:2292` relies on exactly that: "handleNearX and addBandAt both return an
+    // index inside the count they read" (`SpectrumImager.cpp:2331`). The wheel is now the same
+    // shape, and `N` is threaded into
+    // the derivation so the count the index is derived under and the count it is stamped with are
+    // ONE READ rather than two that usually agree. Bound, stamp, staleness test and the width
+    // store all use it, so the tick has a single topology or it has none.
     const int N = bandCount();
     // ADR-0045. THE WHEEL'S LATCH IS STAMPED WITH THE TOPOLOGY IT WAS TAKEN IN. `scrollHandle` and
     // `scrollBand` are positional identifiers latched at the FIRST tick of a burst and reused by
@@ -2370,15 +2428,15 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     // `gestureIsStale()`; this one was not. Dropping the latch re-derives it from the cursor on the
     // very next tick, which is what a `mouseMove` already did -- so an uninterrupted burst behaves
     // exactly as before.
-    if (scrollBands >= 0 && bandCount() != scrollBands)
+    if (scrollBands >= 0 && N != scrollBands)
         scrollHandle = scrollBand = scrollBands = -1;
     if (scrollHandle < 0 && scrollBand < 0)
     {
-        const int h = handleNearX ((float) e.position.x);
+        const int h = handleNearX ((float) e.position.x, N);
         if (h >= 0) scrollHandle = h;
-        else        scrollBand = bandAtX ((float) e.position.x);
+        else        scrollBand = bandAtX ((float) e.position.x, N);
         scrollAnchor = e.position;
-        scrollBands  = bandCount();   // ADR-0045: the topology this latch is only valid in
+        scrollBands  = N;   // ADR-0045/0046: the topology this latch was DERIVED in
     }
     const float dy = (wheel.isReversed ? -1.0f : 1.0f) * wheel.deltaY;
     if (std::abs (dy) < 1.0e-4f) return;
@@ -2395,14 +2453,30 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
         // was written over it`. `captureDragOrigins` has just recorded exactly what this burst is
         // about to steer, so naming the topology alongside it costs one int and makes both checks
         // live. Cleared again immediately: the wheel still leaves nothing in flight.
-        gestureBands = bandCount();
-        dragCrossoverTo (scrollHandle, freqToX (crossover (scrollHandle)) + dy * 28.0f);
+        // ADR-0046: and the topology it names is `N`, the one `scrollHandle` was derived under --
+        // not a fresh read. A fresh read would hand `writeCrossovers` a count to prove against
+        // that the latch had never been checked against, which is the whole defect one branch up.
+        gestureBands = N;
+        dragCrossoverTo (scrollHandle, freqToX (crossover (scrollHandle)) + dy * 28.0f, N);
         gestureBands = -1;
     }
     else if (scrollBand >= 0 && scrollBand < N)
     {
         const float step = sgn * juce::jmax (0.01f, std::abs (dy) * 0.30f); // velocity-aware (#15 prior)
-        setParam (widthP[scrollBand], juce::jlimit (0.0f, 2.0f, bandWidth (scrollBand) + step));
+        // ADR-0046: the split branch above proves the topology at every store, through
+        // `gestureBands` inside `writeCrossovers`. This one had no proof at all -- one bare store,
+        // reached from a latch proved at the top of the handler, with the whole tick in between.
+        // WHAT A WIDTH STORE FOR A VANISHED BAND ACTUALLY COSTS, which is NOT what ADR-0045 says
+        // at `resetParam`: `setParam` opens no gesture, so `parameterGestureChanged` never fires
+        // and `openGestures` never returns to zero (`PluginProcessor.cpp:812-825`) -- there is no
+        // undo step. That is worse, not better. The value is forwarded to the host as a parameter
+        // change all the same, and it is folded into the committed baseline by the next poll with
+        // no undo entry to reverse it; and because `MultibandWidth` glides only the widths the
+        // live count uses, a width parked on a hidden band is inert until the count RISES, when it
+        // is adopted at full magnitude instead of gliding in. (`resetParam` does open a gesture,
+        // so ADR-0045's wording is right there and wrong here -- the two stores are not the same
+        // shape, and the audit that copied the sentence across was corrected on this point.)
+        setParam (widthP[scrollBand], juce::jlimit (0.0f, 2.0f, bandWidth (scrollBand) + step), N);
     }
     repaint();
 }

@@ -21,6 +21,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 ## [0.9.8] — 2026-09-08
 
 ### Fixed
+- **A scroll or a click on the Multiband display can no longer act on a band that belongs to a
+  different layout than the one you were looking at.** Working out which band is under the pointer
+  and recording how many bands there were at that moment used to be two separate readings, and the
+  scroll took them in the wrong order: it worked out the band first and read the band count
+  afterwards. If your DAW changed the number of bands in between — an automation lane moving, a
+  preset arriving — the scroll recorded the NEW count against a band it had picked out of the OLD
+  layout, and every later scroll of that burst then checked itself against that wrong record and
+  passed. The count is now read once per scroll or click, and the same reading decides which band is
+  under the pointer, what gets remembered, what range is allowed and what the edit checks before it
+  is written. Scrolling and clicking with the layout still are untouched, and a scroll that is
+  refused because the layout moved now picks again from where the pointer actually is instead of
+  being dropped.
+  Decision: ADR-0046. Regression coverage: State test 78. Evidence: PR #143. [Verified]
 - **Scrolling over the Multiband display no longer keeps adjusting the band it started on after the
   layout changes underneath it.** A wheel scroll picks whatever is under the pointer on its first
   click and keeps adjusting that until you move the mouse — so a burst of scrolls stays on one band

@@ -107,6 +107,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Low — real-host validated in REAPER; other Linux hosts unverified |
 | RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once |
 | RISK-010 | The DSP snapshot of the ten multiband parameters is ten independent `load()` calls, so the audio thread can read a layout that never existed as a whole | Medium | **Certain** — it is the shipped reader model; what is bounded is the harm, not the occurrence |
+| RISK-011 | A gesture count that returns to zero mid-transaction lets a poll record an undo step for a layout the user never had (the v0.9.8 rounds' residuals U1-U3) | Medium | Low as observed, **structural** as a mechanism — nothing in the current code prevents it |
 
 ---
 
@@ -253,9 +254,17 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   writer: host automation writes these parameters from the audio thread through the format wrapper.
 - **Impact:** bounded, and the bound is the reason this has been an accepted trade through
   ADR-0041, ADR-0042 and ADR-0044 rather than a defect. `mbBands` is written **last** by every GUI
-  transaction and read **first** by `toEngine`, and the loads are `seq_cst` in source order, so a
-  snapshot carrying the NEW count necessarily carries the whole transaction — only the reverse
-  direction, an old count under newer values, is reachable. The DSP then repairs what it is given:
+  topology transaction and read **first** by `toEngine`, and the loads are `seq_cst` in source
+  order, so a snapshot carrying the NEW count necessarily carries the whole of **that** transaction
+  — for a GUI transaction, only the reverse direction, an old count under newer values, is
+  reachable. **Narrowed 2026-09-08 (ADR-0046 round), because the sentence used to claim more than
+  is proved:** the store-order argument covers `addBandAt` and `removeBand`, the only writers that
+  order their stores deliberately. It does **not** cover a host automation write (which moves one
+  parameter with no transaction around it, so there is nothing for it to be incoherent WITH) and it
+  does **not** cover a whole-state restore, whose store order is the APVTS's and not this rule's —
+  there a new count CAN be published ahead of the values it reinterprets. That third case is why
+  the DSP's own repair below is load bearing rather than merely belt-and-braces, and it is part of
+  what the escalation is asking to be reviewed. The DSP then repairs what it is given:
   splits clamped to `[20 Hz, 0.45·sr]` and force-ordered `1.1×`, the solo word masked with
   `((1 << bands) - 1)`, the count clamped to `[1, 4]`, every continuous quantity smoothed. The
   result is a legal layout that is briefly not the one the user has — never NaN, never unbounded.
@@ -271,6 +280,30 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Mitigation until then:** the store order (`mbBands` last) and the DSP's own clamping are load
   bearing and must not be changed casually; ADR-0041 §"why the store order is kept" and ADR-0044
   both depend on them.
+
+## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps
+- **Risk:** `AnamorphAudioProcessor::parameterGestureChanged` counts open gestures and sets
+  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:812-825`), and
+  `pollUndoCoalesce` turns that into an undo entry. A `SpectrumImager` topology transaction is a
+  burst of stores, several of which open and close their own gesture (`setBands`, `setSoloMask`,
+  `resetParam`), so the open count returns to zero **inside** the burst. A poll that runs there —
+  a re-entrant one reached through a listener, or a preset/undo path that polls — records an undo
+  step whose state is a layout that existed only mid-transaction and that the user never had.
+- **Impact:** an undo history containing a step the user cannot recognise; undoing to it installs a
+  half-applied layout (a count without its widths, or a solo word the count no longer reinterprets
+  the same way). Not an audio-safety problem — every such layout is still clamped and masked by the
+  DSP, as RISK-010 describes — but it is a state-correctness one.
+- **Likelihood:** Low as observed (no reported occurrence, and no test in the suite reaches it),
+  **structural** as a mechanism: nothing in the current code prevents it.
+- **Evidence [Verified]:** `src/PluginProcessor.cpp:812-825` (the counter), `:827-834`
+  (`pollUndoCoalesce`), `src/gui/SpectrumImager.cpp` `addBandAt` / `removeBand` (the multi-gesture
+  bursts). Carried through the v0.9.8 review rounds as residuals **U1–U3** with a deliberate
+  no-fix decision; recorded here on 2026-09-08 because a decision carried only in a worklog is a
+  decision that gets lost.
+- **Mitigation until then:** none in code. A fix means either suppressing the poll for the duration
+  of a burst or giving a transaction one outer gesture, both of which change the undo model and so
+  are `ARCHITECTURE_REVIEW_GATE` items in their own right. Deliberately **not** attempted inside a
+  GUI review round.
 
 ---
 

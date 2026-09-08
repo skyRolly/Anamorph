@@ -4816,6 +4816,280 @@ static void testAPositionalLatchIsVoidOnceItsTopologyMoves()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 78 -- a derivation answers under the topology its handler PROVED,
+//  not under whatever the count happens to be when the derivation runs.
+//
+//  THE DEFECT (ADR-0046). `bandAtX` and `handleNearX` used to read `bandCount()`
+//  for themselves. Every caller that goes on to STAMP the index it just derived
+//  -- `mouseWheelMove` with `scrollBands`, `mouseDown` with `gestureBands`, the
+//  two width resets with `resetParam`'s `expectedBands` -- therefore took TWO
+//  reads of a parameter three threads write, and stamped an index derived under
+//  one with the other. `mouseWheelMove` had it the fatal way round: it stamped
+//  LAST, so an index derived at three bands could be stamped with the four that
+//  arrived a few instructions later, and every later tick of the burst then
+//  compared against that claim and passed. The window holds no dispatch, so no
+//  deterministic test can enter it (see the ADR); what IS deterministic, and is
+//  what this test holds, is the contract the fix rests on -- a derivation given
+//  a topology answers UNDER it, so the index and the stamp cannot disagree.
+//
+//  The legs are geometry-free in the sense State test 77 established: the split
+//  positions come from the component's own tooltip, never from the test's idea
+//  of where a band ought to be.
+static void testADerivationAnswersUnderTheTopologyItWasGiven()
+{
+    std::printf ("State test 78: a derivation answers under the topology it was given\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the derivation-topology probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the derivation probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    // All FOUR widths this time: the whole point is that a band the topology does
+    // not have must never be reached, and band 3 is the one that proves it.
+    auto* w0P = apvts.getParameter (pid::mbWidthLow);
+    auto* w1P = apvts.getParameter (pid::mbWidthMid);
+    auto* w2P = apvts.getParameter (pid::mbWidthHiMid);
+    auto* w3P = apvts.getParameter (pid::mbWidthHigh);
+    check (bandsP && loP && midP && hiP && w0P && w1P && w2P && w3P,
+           "the parameters the derivation probe drives exist");
+    if (! (bandsP && loP && midP && hiP && w0P && w1P && w2P && w3P))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
+    auto mevAlt = [&] (float x, float y)
+    {
+        const auto mods = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                              | juce::ModifierKeys::altModifier);
+        return juce::MouseEvent (source, { x, y }, mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
+    const float W     = (float) imager->getWidth();
+    const float H     = (float) imager->getHeight();
+    const float laneY = 0.5f * H;
+
+    auto findY = [&] (const char* want, float x) -> float
+    {
+        for (float y = 4.0f; y < H - 4.0f; y += 1.0f)
+        {
+            imager->mouseMove (mev (x, y));
+            if (imager->getTooltip() == juce::String (want)) return y;
+        }
+        return -1.0f;
+    };
+    auto wheelAt = [&] (float x, float y, float delta)
+    {
+        juce::MouseWheelDetails wheel;
+        wheel.deltaX = 0.0f; wheel.deltaY = delta; wheel.isReversed = false;
+        wheel.isSmooth = false; wheel.isInertial = false;
+        imager->mouseWheelMove (mev (x, y), wheel);
+    };
+    // The wheel's latch survives between ticks by design (ADR-0045); every probe here is a fresh
+    // burst, so the latch is dropped explicitly rather than relying on the >3 px move rule.
+    auto dropLatch = [&] (float x) { imager->mouseExit (mev (x, laneY)); };
+
+    auto widths = [&] { return std::array<float,4> { plainOf (w0P), plainOf (w1P),
+                                                     plainOf (w2P), plainOf (w3P) }; };
+    auto movedIndex = [] (const std::array<float,4>& a, const std::array<float,4>& b) -> int
+    {
+        for (std::size_t i = 0; i < a.size(); ++i)
+            if (! juce::exactlyEqual (a[i], b[i])) return (int) i;
+        return -1;
+    };
+    auto movedCount = [] (const std::array<float,4>& a, const std::array<float,4>& b)
+    {
+        int n = 0;
+        for (std::size_t i = 0; i < a.size(); ++i)
+            if (! juce::exactlyEqual (a[i], b[i])) ++n;
+        return n;
+    };
+    auto setWidths = [&] (float v)
+    { setPlain (w0P, v); setPlain (w1P, v); setPlain (w2P, v); setPlain (w3P, v); };
+    auto layout4 = [&] ()
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 2000.0f);
+        setPlain (hiP, 10000.0f);
+        setWidths (1.0f);
+    };
+    // The centres of the split handles, swept from the tooltip -- as State test 77 does, because
+    // the component's geometry is its own business and the test is not given it.
+    auto handleCentres = [&] ()
+    {
+        std::vector<float> c; float runStart = -1.0f;
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, laneY));
+            const bool on = imager->getTooltip() == juce::String ("Drag to change the split frequency");
+            if (on && runStart < 0.0f) runStart = x;
+            if (! on && runStart >= 0.0f) { c.push_back (0.5f * (runStart + x - 1.0f)); runStart = -1.0f; }
+        }
+        if (runStart >= 0.0f) c.push_back (0.5f * (runStart + W - 3.0f));
+        return c;
+    };
+
+    layout4();
+    const auto cs = handleCentres();
+    check (cs.size() == 3, "all three split handles are findable at four bands");
+    if (cs.size() != 3) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    // One probe per band of the FOUR-band layout, each at least 20 px clear of any handle so the
+    // wheel steers a width and not a split (the handle grab radius is 7 px).
+    const std::vector<float> probes
+    {
+        juce::jmax (6.0f, cs[0] - 24.0f),
+        0.5f * (cs[0] + cs[1]),
+        0.5f * (cs[1] + cs[2]),
+        juce::jmin (W - 6.0f, cs[2] + 24.0f),
+    };
+    bool clear = true;
+    for (const auto x : probes)
+        for (const auto c : cs)
+            if (std::abs (x - c) < 20.0f) clear = false;
+    check (clear, "the four band probes are clear of every split handle");
+
+    // ---- LEG A: at four bands the four probes reach four DIFFERENT bands ----
+    //  This is what a derivation answering under the wrong topology destroys: with
+    //  a count of 1 every probe answers band 0, with 2 they collapse onto {0,1}.
+    if (clear)
+    {
+        std::array<int,4> hit { -1, -1, -1, -1 };
+        for (std::size_t i = 0; i < probes.size(); ++i)
+        {
+            layout4();
+            dropLatch (probes[i]);
+            const auto before = widths();
+            wheelAt (probes[i], laneY, 0.20f);
+            hit[i] = movedIndex (before, widths());
+        }
+        const bool rising = hit[0] >= 0 && hit[1] > hit[0] && hit[2] > hit[1] && hit[3] > hit[2];
+        if (! rising)
+            std::printf ("  [leg A] four probes across four bands did not reach four distinct"
+                         " bands: %d %d %d %d\n", hit[0], hit[1], hit[2], hit[3]);
+        check (rising, "leg A: at four bands, four probes left to right steer four bands in order");
+    }
+
+    // ---- LEG B: at two bands NO probe reaches a band the topology has not got --
+    //  The hand has not moved: the same four x positions, a two-band layout under
+    //  them. A derivation that answered under four would steer band 2 or 3, which
+    //  exist as parameters but are not in the sound -- an automation touch and an
+    //  undo step for a band that is not there.
+    if (clear)
+    {
+        std::array<int,4> hit { -1, -1, -1, -1 };
+        for (std::size_t i = 0; i < probes.size(); ++i)
+        {
+            layout4();
+            setPlain (bandsP, 2.0f);
+            setWidths (1.0f);
+            dropLatch (probes[i]);
+            const auto before = widths();
+            wheelAt (probes[i], laneY, 0.20f);
+            hit[i] = movedIndex (before, widths());
+        }
+        // Both halves matter. `>= 0` rules out the tick that steered NOTHING -- the bound
+        // `scrollBand < N` refuses an out-of-range index, so a derivation answering under the
+        // wrong topology shows up as silence rather than as a wrong band, and silence is a lost
+        // user edit. `< 2` rules out the band the topology has not got.
+        bool inside = true, landed = true;
+        for (const auto h : hit) { if (h >= 2) inside = false; if (h < 0) landed = false; }
+        if (! inside || ! landed)
+            std::printf ("  [leg B] a wheel tick at two bands steered %s: %d %d %d %d\n",
+                         inside ? "nothing" : "a band the topology does not have",
+                         hit[0], hit[1], hit[2], hit[3]);
+        check (inside, "leg B: at two bands no wheel probe steers a band outside the topology");
+        check (landed, "leg B: at two bands every wheel probe still steers the band it is over");
+    }
+
+    // ---- LEG C: the alt-click width reset obeys the same topology ------------
+    if (clear)
+    {
+        layout4();
+        setPlain (bandsP, 2.0f);
+        setWidths (1.6f);
+        const float px = probes[3];
+        const float wy = findY ("Band width", px);
+        check (wy >= 0.0f, "leg C: a band's width line is findable at two bands");
+        if (wy >= 0.0f)
+        {
+            const auto before = widths();
+            imager->mouseDown (mevAlt (px, wy));
+            const auto after = widths();
+            const int hit = movedIndex (before, after);
+            if (hit >= 2)
+                std::printf ("  [leg C] an alt-click reset a width for band %d, which a two-band"
+                             " topology does not have\n", hit);
+            check (hit < 2, "leg C: at two bands an alt-click resets no band outside the topology");
+        }
+    }
+
+    // ---- LEG D: positive control -- the reset still resets, exactly one band --
+    if (clear)
+    {
+        layout4();
+        setWidths (1.6f);
+        const float px = probes[2];
+        const float wy = findY ("Band width", px);
+        check (wy >= 0.0f, "leg D: the width line is findable at four bands");
+        if (wy >= 0.0f)
+        {
+            const auto before = widths();
+            imager->mouseDown (mevAlt (px, wy));
+            const auto after = widths();
+            check (movedCount (before, after) == 1,
+                   "leg D: an uninterrupted alt-click resets exactly one band's width");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 //  State test 67 -- an outward drag whose split has since vanished removes
 //  NOTHING, rather than deleting whichever band the index now lands on.
 //
@@ -15730,6 +16004,7 @@ int main (int argc, char* argv[])
     testACommitWithNoIntentWritesNothing();
     testATransactionDoesNotCommitALayoutItDoesNotOwn();
     testAPositionalLatchIsVoidOnceItsTopologyMoves();
+    testADerivationAnswersUnderTheTopologyItWasGiven();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 
