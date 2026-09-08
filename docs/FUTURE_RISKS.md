@@ -254,15 +254,20 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   writer: host automation writes these parameters from the audio thread through the format wrapper.
 - **Impact:** bounded, and the bound is the reason this has been an accepted trade through
   ADR-0041, ADR-0042 and ADR-0044 rather than a defect. `mbBands` is written **last** by every GUI
-  topology transaction and read **first** by `toEngine`, and the loads are `seq_cst` in source
-  order, so a snapshot carrying the NEW count necessarily carries the whole of **that** transaction
-  — for a GUI transaction, only the reverse direction, an old count under newer values, is
-  reachable. **Narrowed 2026-09-08 (ADR-0046 round), because the sentence used to claim more than
-  is proved:** the store-order argument covers `addBandAt` and `removeBand`, the only writers that
-  order their stores deliberately. It does **not** cover a host automation write (which moves one
-  parameter with no transaction around it, so there is nothing for it to be incoherent WITH) and it
-  does **not** cover a whole-state restore, whose store order is the APVTS's and not this rule's —
-  there a new count CAN be published ahead of the values it reinterprets. That third case is why
+  topology transaction and read by `toEngine` **before every parameter the count reinterprets**, and
+  the loads are `seq_cst` in source order, so a snapshot carrying the NEW count necessarily carries
+  the whole of **that** transaction — for a GUI transaction, only the reverse direction, an old
+  count under newer values, is reachable. **Narrowed 2026-09-08 (ADR-0046 round), because the
+  sentence used to claim more than is proved (and, 2026-09-08 wheel-gesture round, "read
+  **first**" corrected to what is actually true — `e.mbEnable` is loaded at
+  `src/PluginParameters.cpp:365`, one line ahead of the count, and no topology transaction writes
+  `mbEnable`; the solo word, the splits and the widths, which ARE the parameters the count
+  reinterprets, are all loaded after it):** the store-order argument covers
+  `addBandAt` and `removeBand`, the only writers that order their stores deliberately. It does
+  **not** cover a host automation write (which moves one parameter with no transaction around it,
+  so there is nothing for it to be incoherent WITH) and it does **not** cover a whole-state
+  restore, whose store order is the APVTS's and not this rule's — there a new count CAN be
+  published ahead of the values it reinterprets. That third case is why
   the DSP's own repair below is load bearing rather than merely belt-and-braces, and it is part of
   what the escalation is asking to be reviewed. The DSP then repairs what it is given:
   splits clamped to `[20 Hz, 0.45·sr]` and force-ordered `1.1×`, the solo word masked with

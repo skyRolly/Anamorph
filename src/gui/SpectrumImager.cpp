@@ -11,10 +11,10 @@ static constexpr float kFreqLo = 20.0f, kFreqHi = 20000.0f;
 static constexpr float kMinDb = -90.0f, kMaxDb = 0.0f;
 static constexpr float kWidthGrab = 8.0f;
 static constexpr float kMinGapPx  = 46.0f; // constant on-screen split spacing (#1/#26)
-// The distance at which a split counts as HAVING MOVED. `writeCrossovers` uses it to decide
-// a write is worth making, and `soundMovedUnderGesture` uses it to decide somebody else made
-// one; the two must be the same number, or a difference too small for this imager to write
-// could still read as an outside change and cancel a live drag (ADR-0039).
+// The distance at which a split counts as WORTH WRITING -- `writeCrossovers` and `spreadSplits`,
+// and nothing else. This paragraph also said `soundMovedUnderGesture` compared against it and that
+// "the two must be the same number" (ADR-0039); ADR-0041 removed that coupling -- ownership is a
+// parameter question, compared exactly, see `ownsSplit` -- and this was its third stale copy.
 static constexpr float kSplitMovedPx = 0.5f;
 
 namespace

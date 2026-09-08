@@ -10840,7 +10840,7 @@ change, and no Accepted ADR conflict. [Verified]
 
 ## Fourteenth pass — wheel gesture semantics and the suppression match assertion (2026-09-08)
 
-**Finding 1 — "wheel input closes active gestures" (`src/gui/SpectrumImager.cpp:2433`): ruled B,
+**Finding 1 — "wheel input closes active gestures" (`src/gui/SpectrumImager.cpp:2455`): ruled B,
 intentional.** `cancelActiveDrag()` is not in the merge base; it was introduced by **ADR-0041**, an
 early round of this PR, **not** by the recent ADR-0045/0046 wheel and topology work the review
 suspected, and ADR-0041 already states it as a product decision. What was missing is what ending the
@@ -10869,8 +10869,26 @@ because ADR-0040's `ownsWidth` pins the value by a different mechanism.
 
 **Verify-only items unchanged.** RISK-010 (no reader or threading touched), the held-audition gap
 (`tick()` still returns at `isShowing()` before the guard), U4 (reinforced — the undo entry at the
-tick belongs to the drag the wheel finished, not to the wheel's own store), and the three
+tick belongs to the drag the wheel finished, not to the wheel's own store, and `KNOWN_ISSUES.md`
+KI-010 now says so where State test 80's measurement could read as contradicting it), and the three
 informational items.
+
+**Correction to the line above, from the audit workflow's full result (worklog §31).** One of those
+three informational items — ownership parameter equality — was NOT unchanged. `ownsSplit` compares
+exactly and is described correctly at `src/gui/SpectrumImager.cpp:398-408` and
+`src/gui/SpectrumImager.h:384-390`, but the definition comment of `kSplitMovedPx`
+(`src/gui/SpectrumImager.cpp:14-17`) still said `soundMovedUnderGesture` compares against that
+constant and that "the two must be the same number" — the coupling ADR-0041 removed, unchanged since
+the ADR-0039 round, and the third copy of a defect this PR had already corrected by name twice.
+Corrected line-count-neutral. Two more, from the same result: `src/gui/SpectrumImager.h:351` said
+"Every write this gesture makes refreshes these" of `gestureX`, which `resetCrossover` and
+`spreadSplits` do not (fail-safe — the gesture cancels itself — so a comment correction, not a code
+change); and `docs/FUTURE_RISKS.md`'s RISK-010 bound said `mbBands` is "read **first** by
+`toEngine`" where `e.mbEnable` precedes it, corrected to "read before every parameter the count
+reinterprets", which is what the argument actually needs. The accept-and-escalate decision is
+untouched. Also re-aimed: two anchors in this file and in §27 that cited the wheel's
+`cancelActiveDrag()` at `:2433`, which the comment added above it in the same commit moved to
+`:2455` — new anchors, so the citation gate could not see them. [Verified]
 
 **Docs.** `ADR-0041` (amendment), `CHANGELOG.md` `[0.9.8] ### Changed`, `TESTING.md` (State test 80
 and the tsan recipe row), `tests/tsan-suppressions.txt` (the rule marked enforced),

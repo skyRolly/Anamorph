@@ -347,8 +347,13 @@ private:
     // ADR-0039. WHERE THIS GESTURE LAST LEFT EACH SPLIT, in pixels. `gestureBands` catches an
     // authoritative change that moves the COUNT; a whole-sound install at the same count moves
     // nothing it watches, and the drag then keeps projecting from `dragOrigX` -- the positions
-    // of the sound that was just replaced -- and writes the unpinned splits back over it. Every
-    // write this gesture makes refreshes these, so a difference means someone else wrote.
+    // of the sound that was just replaced -- and writes the unpinned splits back over it. The
+    // drag's own writes refresh these (`writeCrossovers` stores THROUGH `gestureX[k]`), so a
+    // difference means someone else wrote. TWO OF THE CLASS'S OWN STORES DO NOT REFRESH THEM:
+    // `resetCrossover` and `spreadSplits` take the read-back into a local, so a gesture that
+    // Alt-click-resets a split then reads its own store as foreign and cancels itself. That is the
+    // safe direction and it costs one int store, not a frame of repaints (see the timer's comment);
+    // it is recorded here because this paragraph used to say "every write", which is not true.
     // ADR-0041: the NORMALISED parameter value, not a pixel. A pixel was a GUI quantisation
     // tolerance doing an ownership job: half a display pixel is 0.30-0.65 % of the frequency
     // (0.19 Hz at 30 Hz, 32 Hz at 10 kHz, 61 Hz at 20 kHz on the harness's 902 px plot), while the

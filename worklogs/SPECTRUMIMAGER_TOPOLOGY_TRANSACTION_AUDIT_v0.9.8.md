@@ -211,7 +211,7 @@ for, and it is recorded rather than treated as noise.
 ### Architecture trade-offs — decided
 | # | Finding | Decision |
 |---|---|---|
-| F4-A…D | the DSP's ten-load multiband snapshot | **accept the trade AND escalate**, which is the answer to a question posed as A-or-B: it is now **RISK-010** in `FUTURE_RISKS.md`, named as an `ARCHITECTURE_REVIEW_GATE` item, because the only real fix replaces the READER. F4-D is new and worth keeping: store-count-last plus read-count-first makes "new count over old values" unreachable, so only the benign direction remains |
+| F4-A…D | the DSP's ten-load multiband snapshot | **accept the trade AND escalate**, which is the answer to a question posed as A-or-B: it is now **RISK-010** in `FUTURE_RISKS.md`, named as an `ARCHITECTURE_REVIEW_GATE` item, because the only real fix replaces the READER. F4-D is new and worth keeping: store-count-last plus read-count-first makes "new count over old values" unreachable, so only the benign direction remains (wording corrected 2026-09-08, §31: the count is not read *first* -- `mbEnable` precedes it -- but it is read before every parameter it reinterprets, which is what the argument needs) |
 | F3-1/F3-4 | the held-audition guard's coverage | **B — accepted GUI-only gap.** Option (b), extracting the promotion into a public method, is the only thing that would work (`tick` returns at `isShowing()` before the guard), and it is a production seam existing solely for a test. ADR-0025 §5 keeps it revisitable |
 
 ### False positives — no action, reason recorded
@@ -653,7 +653,7 @@ narrow.
 ## 27. Finding 1 — wheel input closes active gestures: **B, intentional; the consequences were the
 gap, not the behaviour**
 
-`cancelActiveDrag()` is the first statement of `mouseWheelMove` (`SpectrumImager.cpp:2433`) and it
+`cancelActiveDrag()` is the first statement of `mouseWheelMove` (`SpectrumImager.cpp:2455`) and it
 calls `endGesture()` on the dragged parameter.
 
 **Provenance, measured.** It is NOT in the merge base — `git show <merge-base>:src/gui/SpectrumImager.cpp`
@@ -755,3 +755,49 @@ in the ADR-0045 and ADR-0046 diffs, which is the direct refutation of the review
 recent topology work introduced it. Two claims were refuted on verification (a USER_MANUAL
 contradiction, and a report of the suppression file being mutated — that was this round's own
 temporary measurement, since restored). Consumed in full.
+
+## 31. The audit workflow's late result, and the one §29 conclusion it overturned
+
+`wf_366cbb73-956` returned its full 34-claim result after §30 was written from the streamed
+partials. Reading it end to end turned up two verified items that §29 had disposed of as "reviewed,
+no new evidence, unchanged", plus two stale anchors of my own. All four are documentation; no
+behaviour changed and no test changed.
+
+**§29 was WRONG about the ownership-equality informational item.** I recorded it as needing no
+action. It does. `ownsSplit` compares exactly and is correctly described at its own definition
+(`SpectrumImager.cpp:398-408`) and in the header (`SpectrumImager.h:384-390`) -- but the DEFINITION
+COMMENT of `kSplitMovedPx` (`SpectrumImager.cpp:14-17`) still said `soundMovedUnderGesture` compares
+against that constant and that "the two must be the same number". ADR-0041 removed the coupling;
+`git log -L 14,18` shows that paragraph unchanged since `6e37e6e` (the ADR-0039 round that wrote
+it). It is the **third** copy of a defect this PR already found and corrected by name twice, at
+`:398-401` and `SpectrumImager.h:384-387` -- both of which end with "a reader arriving here was told
+the opposite of what the code does" -- and it states the falsehood more strongly than either, at the
+site a reader reaches first. Corrected in place, line-count-neutral so no citation anchor into that
+file moves.
+
+**A second header sentence that is literally false, fail-safe rather than defective.**
+`SpectrumImager.h:351` said "Every write this gesture makes refreshes these" of `gestureX`. Two of
+the class's own stores do not: `resetCrossover` (`:774`) and `spreadSplits` (`:387-388`) take the
+read-back into a local, so an Alt-click reset inside a latched gesture makes `ownsSplit` report the
+gesture's own store as foreign and the timer cancels it. The direction is safe and the cost is
+already documented at the timer (`:1380-1382`: one int store, fires once, no repaint), so this is a
+comment correction, not a code change. Recorded rather than quietly fixed, because the previous
+round asserted the invariant without qualification.
+
+**RISK-010's bound was one word stronger than the code.** `FUTURE_RISKS.md` said `mbBands` is "read
+**first** by `toEngine`". It is not: `e.mbEnable` loads at `PluginParameters.cpp:365`, one line
+ahead of the count. Harmless -- no topology transaction writes `mbEnable` (its only writers repo-wide
+are the toggle attachment and preset load), so every parameter the count reinterprets is still read
+strictly after it -- but the accurate wording is "read before every parameter the count
+reinterprets". Corrected in `FUTURE_RISKS.md` and at the worklog's own echo (§ Architecture
+trade-offs). The accept-and-escalate decision is untouched.
+
+**Two anchors of mine went stale inside my own commit.** `DOCUMENTATION_COVERAGE.md` and §27 both
+cited the wheel's `cancelActiveDrag()` at `SpectrumImager.cpp:2433`; the 22-line comment I added
+above it in the same commit pushed the call to `:2455`. The citation gate could not catch these --
+they are new anchors, unverifiable against `origin/main` -- which is the same blind spot recorded in
+§18. Re-aimed by hand.
+
+**One workflow claim declined.** W-A's precision note that a band move closes "0, 1 or 2 gestures,
+not always 2" (`beginBandMove:708-709` sets `soloMoveLeft`/`soloMoveRight` to `-1` at the ends) is
+correct about the code, but no shipped text of mine claims two, so there is nothing to correct.
