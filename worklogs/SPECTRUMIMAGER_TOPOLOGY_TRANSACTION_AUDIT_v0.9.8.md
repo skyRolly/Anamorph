@@ -585,3 +585,48 @@ be recycled. Distinct mutexes, no cycle, nothing suppressed, and the leg keeps i
 
 Recorded because the tempting fix was the wrong one, and because it is a second instance this round
 of the same lesson: the measurement, not the reading, is what settles these.
+
+## 25. The `macos` CI failure — infrastructure, and the latent fragility behind it
+
+Run 34235865436 attempt 1 failed one job, `macos`, with all four pluginval steps dying in **under a
+second each**:
+
+```
+Fetching pluginval (pluginval_macOS.zip)...
+100  157k  100  157k    0     0  1394k
+  End-of-central-directory signature not found.
+unzip: cannot find zipfile directory in one of pluginval.zip or ...
+##[error]Process completed with exit code 9.
+```
+
+**Classified infrastructure, on evidence rather than convenience:**
+
+* the download *succeeded* and returned **157 KB** — `pluginval_macOS.zip` is megabytes, so what
+  landed was an HTML error or rate-limit page from the release CDN, not an archive;
+* the plug-in is never loaded — the failure is in fetching an external tool;
+* `macos-intel` ran **the same four pluginval steps** against the same plug-in and passed;
+* `linux` and `windows` pluginval passed;
+* `macos`'s own steps 9 and 10 — the self-tests on arm64 **and** the x86_64 slice under Rosetta —
+  passed, so the code is fine on that platform;
+* the previous run (`5c7f225`) passed `macos` twenty minutes earlier on the same code paths;
+* this round's diff is comments plus one test, which cannot affect a `curl` of a release asset.
+
+One re-run was taken, which is the whole allowance for a failure that is not this PR's: attempt 2
+returned **success**. Confirmed transient.
+
+**The latent fragility is real and is NOT fixed here.** `scripts/run-pluginval.sh:477-478` is
+
+```bash
+curl -L "https://github.com/Tracktion/pluginval/releases/latest/download/$PV_ZIP" -o "$TOOLS_DIR/pluginval.zip"
+(cd "$TOOLS_DIR" && unzip -o pluginval.zip >/dev/null)
+```
+
+`curl -L` **without `--fail`** exits 0 on an HTTP error page, so the error page is written to
+`pluginval.zip` and the job reports a confusing *"End-of-central-directory signature not found"*
+instead of *"the download failed"*. A `--fail` plus a size or magic-byte assertion would turn a
+misleading archive error into an accurate one, and the repository already has the matching
+self-test culture (the pluginval verdict self-test, the warning-gate self-test, the ABI floor
+self-test). It is deliberately left for its own change: it is CI tooling, it needs a self-test of
+its own to meet the standard those siblings set, and bolting it onto a topology-consistency round
+is the scope creep this series has been avoiding. Recorded here with the exact mechanism so the
+next person does not have to re-derive it from a one-second job failure.
