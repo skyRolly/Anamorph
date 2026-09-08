@@ -356,10 +356,14 @@ private:
     // in any of this and must never be.
     bool  topologyMovedUnderGesture() const noexcept
     { return gestureBands >= 0 && bandCount() != gestureBands; }
-    // True once any split OR any width has moved under an active gesture -- a split by more than the
-    // amount `writeCrossovers` itself treats as a change, a width at all. The drag's own writes, read
-    // back through the same conversion and recorded at the store, can never register as somebody
-    // else's (ADR-0039 for the splits, ADR-0040 for the widths).
+    // True once any split OR any width has moved under an active gesture. BOTH are compared in the
+    // parameter's own normalised units, EXACTLY (ADR-0041) -- this comment used to describe the
+    // splits as owned "by more than the amount `writeCrossovers` itself treats as a change", the
+    // pixel tolerance that round removed, and a reader arriving here was told the opposite of what
+    // `ownsSplit` does. `kSplitMovedPx` keeps its one real job, deciding whether a write is worth
+    // making. The drag's own writes, read back through the same conversion and recorded at the
+    // store, can never register as somebody else's (ADR-0039 for the splits, ADR-0040 for the
+    // widths).
     bool  soundMovedUnderGesture() const noexcept;
     // The one question mouseDrag and mouseUp ask: is this gesture still defined against the
     // world it was latched in?

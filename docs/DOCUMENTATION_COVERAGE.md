@@ -10527,3 +10527,53 @@ re-ruling, chronology, the final audit table, validation), `ADR-0042` + the `ADR
 `ADR_INDEX`, `TESTING.md` (State test 74), `CHANGELOG.md` `[0.9.7]` Fixed. Not a gate item: no
 parameter ID, serialization, threading-model, DSP-order or reported-latency change, and no Accepted
 ADR conflict. [Verified]
+
+## SpectrumImager — a commit carries intent, and a plan is computed where it is used (2026-09-08, ninth pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: `openFreqEditor` records the seeded text and
+clears an edited flag, `TextEditor::onTextChange` sets it, and `commitFreqEditor` returns without
+storing when neither says the user changed anything; `resetCrossover` and `commitFreqEditor` compute
+their snapshot, projection and store **inside** the change-gesture bracket; `tick()` asks
+`gestureIsStale()` before promoting a press to a held audition. `tests/state_tests.cpp`: State
+test 75.
+
+**Why.** The round's brief was to audit every write path before patching anything, and the audit
+(worklog §2) found the ADR-0038..0042 invariant fully applied everywhere except two rows — the two
+the review named. Measured against `ae86963`: `5000.0 Hz was installed and 200.0 Hz was written over
+it` for an editor dismissed without typing; `1 store(s)` issued for the same dismissal with nothing
+moved; and `8440.1 / 3000.0 / 19500.0` — the first split above the second — for a typed commit whose
+projection had slid the pin by an amount derived from neighbours that then moved.
+
+**What the audit found NOT to be a defect, and why the round says so instead of patching it.** An
+ownership check on the primary store's own target would be a **false refusal**: a reset targets the
+parameter's default and a typed commit the user's typed value, neither computed from the split's
+current value, and the user's action is the newer authority at the moment of the commit (ADR-0036
+§25). State test 75 leg B is the guard that keeps such a check out. Three of the review's four cited
+line numbers also do not name what the finding describes on this head; the drift is reported in the
+worklog §1 and the audit follows the substance.
+
+**The informational item, ruled.** A cancelled spread can leave the splits out of order **on
+screen**. The DSP force-orders whatever it reads and `handleNearX` is order-independent, so every
+handle stays grabbable and one drag restores the order — but `bandAtX` and `soloHit` both assume
+ordering and degrade to *unreachable affordances* for the band between an inverted pair. Accepted
+behaviour, not a defect: fixing it directly would mean drawing a layout the plug-in does not have,
+or refusing to abandon a spread and writing a stale value over a newer authority. The round removes
+its only single-threaded trigger.
+
+**One thing has no test, and says so.** F2's fix is one call to an existing predicate, and its
+trigger lives in `tick()`, driven only by `juce::VBlankAttachment`. It ships under ADR-0025's
+documented exception with the four disclosures recorded in `TESTING.md` §Gaps and the worklog §12,
+including the concrete harness change that would close it.
+
+**A correction the first attempt forced.** The intent gate was written against `onTextChange` alone
+and broke four existing legs, because that callback is delivered through `postCommandMessage` and
+never arrives without a running message loop. Recorded in the worklog §10 rather than quietly
+amended.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_v0.9.8.md` (findings, the full
+write-path table, the reproduction, the rulings, rejected approaches, the decision, chronology,
+mutations, the ADR-0025 disclosures), `ADR-0043` + `ADR_INDEX`, `TESTING.md` (State test 75 and the
+new `FrameClock` gap entry), `CHANGELOG.md` `[0.9.7]` Fixed. Two comments that contradicted the
+shipped code corrected: the pixel-tolerance description above `soundMovedUnderGesture`, and a
+mangled sentence in `spreadSplits`. Not a gate item: no parameter ID, serialization, threading-model,
+DSP-order or reported-latency change, and no Accepted ADR conflict. [Verified]

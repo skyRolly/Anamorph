@@ -861,6 +861,25 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 75 — a commit that carries no user intent writes nothing** (ADR-0043). Two shapes on
+  the frequency chip and its sibling reset. Legs: (A) the chip editor **dismissed without typing**
+  does not write its opening snapshot over a newer host value (`5000.0 Hz was installed and 200.0 Hz
+  was written over it`) — `openFreqEditor` seeds the box from the live split and the commit is
+  reached by Return, by focus loss and by any `mouseDown` in the component; (C) the same dismissal
+  with nothing moved issues **no store at all**, asserted by counting `parameterValueChanged` rather
+  than by inferring it from the value; (D) a typed commit whose `projectGaps` projection **slid the
+  pin** — the cluster slide at `SpectrumImager.cpp:300-301` moves the pin by an amount derived from
+  the neighbours — is computed from where those neighbours ARE, so a host moving one from inside the
+  gesture open can no longer leave the first split above the second
+  (`8440.1 / 3000.0 / 19500.0` before); (F) the same on the **reset** path, where a layout packed to
+  the left slides the other way and resets its third split to `4732.0` Hz rather than its `3000` Hz
+  default. Positive controls, and the line a careless fix must not cross: (B) a **typed** value still
+  replaces a host write made while the box was open, because the user's own action is the newer
+  authority; (E) and (F)(i) an uninterrupted crowded commit and reset still land their ordered
+  projection. Mutations, each killed by exactly the intended leg: the intent gate removed → A and C;
+  the plan computed before the gesture opens, in `commitFreqEditor` → D and in `resetCrossover` → F.
+  The held-solo half of the same round has **no test** — see the `FrameClock` entry in §Gaps.
+
 * **State test 74 — a store is not committed until the parameter says so** (ADR-0042). The far side
   of the window ADR-0040's round-3 correction closed on the near side: `setValueNotifyingHost`
   dispatches every listener synchronously from inside itself, so a host write-back lands between the
@@ -1646,6 +1665,32 @@ exactly when the raw SARIF is most worth keeping.
 Things the gates above do **not** do. All are recorded so nobody assumes coverage that
 doesn't exist. One entry — automated AU validation — is now **closed** and kept struck through
 rather than deleted, because a gap that was real and is now covered is worth being able to find.
+
+- **The `FrameClock` tick has no headless test.** A **`TESTING_POLICY` rule-1 exception under
+  ADR-0025**, invoked by ADR-0043 for the held-solo audition. Its four required disclosures:
+
+  1. *Why no reliable test exists.* The promotion lives in `SpectrumImager::tick (double)`, which is
+     private (`src/gui/SpectrumImager.h:66`) and is driven only by `juce::VBlankAttachment`
+     (`FrameClock::start`, `src/gui/FrameClock.h:44-58`). The suite constructs the editor but never
+     shows it (`tests/state_tests.cpp:6-11`: "no peer, no message loop, no interaction"), and a
+     component with no peer receives no vblank, so nothing in the harness can make a tick happen. No
+     existing test drives one.
+  2. *What replaced it.* A source-level proof plus the two sibling consumers. The promotion is the
+     third reader of `soloPressBand`, a band index by POSITION; the other two — `mouseDrag`
+     (`SpectrumImager.cpp:2044`) and `mouseUp` (`:2107`) — already ask `gestureIsStale()` before
+     acting on it and cancel through `cancelActiveDrag()`. The fix is the same call in the same
+     place, so the behaviour it produces is the behaviour those two are tested for. What is not
+     covered is only the TRIGGER: that a tick, rather than a mouse event, is what notices.
+  3. *Where the gap is tracked.* Here, and cross-referenced from ADR-0043 and
+     `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_v0.9.8.md` §12.
+  4. *Whether infrastructure could close it.* **Yes, concretely, and it is a harness change on its
+     own merits.** A test seam that lets the suite step one frame — either a public
+     `FrameClock::fire (double dt)` for tests or a shown editor with a driven message loop — would
+     reach this and every other per-frame behaviour (the eases, the display glide, the idle gates),
+     none of which has coverage today. It was not done in this change because adding a production
+     seam to test a one-line guard inverts the cost, and because a driven-message-loop harness is
+     the same infrastructure the GUI-lifetime entry below is waiting on. Per ADR-0025 §5 this entry
+     is revisited when that harness lands.
 
 - **GUI-lifetime defects have no headless test.** This is a **`TESTING_POLICY` rule-1 exception
   under ADR-0025**, and this entry is the register that ADR names. Its four required disclosures:

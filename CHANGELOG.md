@@ -63,6 +63,32 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Regression coverage: DSP test 53. Evidence: PR #135. [Verified]
 
 ### Fixed
+- **Opening a split's frequency box and clicking away no longer re-writes the value it had when you
+  opened it.** Double-clicking the number under a split opens a small box seeded with the frequency
+  that split currently has. Clicking somewhere else commits the box — and with nothing typed, that
+  commit wrote the seeded value straight back. Most of the time you could not tell, because it was
+  the value already there; but if your DAW had moved that split in the meantime — an automation lane,
+  a control surface, an undo — the older value was written over the newer one. Even when nothing had
+  moved, the dismissal still counted as an edit: an automation touch and an undo step for a change
+  you never made. Opening the box and leaving it alone now does nothing at all. Typing a frequency is
+  unchanged and still replaces whatever is there, including something that arrived while the box was
+  open.
+- **A typed frequency, or a reset, in a crowded layout is now worked out from where the other splits
+  actually are.** When the splits are packed close together, setting one of them has to push the
+  others aside, and when they run out of room the whole group slides to fit — which moves the one you
+  set as well. That arithmetic was done before the plug-in told your DAW the edit was starting, so a
+  DAW that answered by moving one of the other splits left your split parked where it would have gone
+  had nothing changed: measured as the first split ending up *above* the second. The arithmetic now
+  happens after, from the live positions, so what you get is the layout the plug-in actually
+  computed. Ordinary typing and resetting are untouched, including the sliding itself.
+- **Holding a band's solo button no longer keeps auditioning a band that has gone.** Press and hold a
+  band's headphone and the plug-in auditions that band while you hold. The band is identified by its
+  position, and nothing checked that position was still valid — so if the number of Bands changed
+  while you were holding, you could be auditioning a different band than the one you pressed, or
+  none at all (the plug-in ignores a solo above the current band count, so you would hold the button
+  and hear no solo whatever). Releasing already handled it; now the audition ends the moment the
+  layout moves under it, exactly as a drag does.
+  Decision: ADR-0043. Regression coverage: State test 75. Evidence: PR #143. [Verified]
 - **A change arriving from your DAW while the Multiband display is writing is no longer overwritten,
   and an edit that was overwritten no longer carries on as though it had worked.** Adding or removing
   a band writes the solo buttons, the band widths, the split frequencies and the band count in turn,

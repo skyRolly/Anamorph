@@ -230,3 +230,60 @@ default, automation flag or serialization field moves, and no Accepted ADR is co
 which is driven only by `juce::VBlankAttachment` (`FrameClock::start`, `FrameClock.h:44-58`) and has
 no headless surface: `tick` is private, no test in the suite drives it, and a component with no peer
 receives no vblank. §12 records what is testable, what is not, and the disclosures ADR-0025 requires.
+
+## 10. Implementation chronology
+
+1. The write-path table (§2) built by reading every store and preview site, before any edit.
+2. State test 75 written against `ae86963` with legs A, C and D red and B and E green, and the two
+   measurements quoted in §3 and §4 taken from that run.
+3. The decision record above written and committed before any production edit, per the round's gate.
+4. `openFreqEditor` records the seeded text and clears the edited flag; `TextEditor::onTextChange`
+   sets it; `commitFreqEditor` returns without storing when neither says the user changed anything.
+5. `resetCrossover` and `commitFreqEditor` restructured so the snapshot, `projectGaps` and the store
+   all sit inside the change-gesture bracket, in that order.
+6. `tick()` gains `if (gestureIsStale()) cancelActiveDrag();` before the hold promotion.
+7. Leg F added for the reset path after measuring that it slides the cluster the other way
+   (`21 / 25 / 19000` resets its third split to `4732.0` Hz, not its `3000` Hz default).
+8. **A correction the first attempt forced.** The intent gate was first written against
+   `onTextChange` alone. That broke four existing legs — State test 74 legs C, G and I and the new
+   leg B — because `TextEditor::onTextChange` is delivered through `postCommandMessage`
+   (`juce_TextEditor.cpp:594-599`) and never arrives without a running message loop. An asynchronous
+   signal is a poor basis for a correctness gate in any case; the synchronous comparison against the
+   seeded text was added beside it, and either is now sufficient. Recorded rather than quietly
+   amended: the first design would have shipped a gate that only works when a message loop happens
+   to be pumping.
+
+## 11. Mutation proofs
+
+| # | Mutation | Killed by |
+|---|---|---|
+| N1 | `commitFreqEditor` drops the intent gate | leg A **and** leg C |
+| N2 | `commitFreqEditor` computes the plan before the gesture opens | leg D |
+| N3 | `resetCrossover` computes the plan before the gesture opens | leg F |
+| N4 | `tick()` drops the stale check | **nothing** — see §12 |
+
+## 12. The one thing that has no test, and the four disclosures ADR-0025 requires
+
+F2's fix is one call to an existing predicate, and its **trigger** cannot be driven headlessly.
+
+1. **Why no reliable test exists.** The promotion is in `SpectrumImager::tick (double)`, private
+   (`SpectrumImager.h:66`) and driven only by `juce::VBlankAttachment` (`FrameClock::start`,
+   `FrameClock.h:44-58`). The suite constructs the editor but never shows it
+   (`tests/state_tests.cpp:6-11`: "no peer, no message loop, no interaction"), a component with no
+   peer receives no vblank, and no existing test drives a tick. Every other way in was checked:
+   `mouseDrag`'s promotion at `:2050` is already behind `gestureIsStale()`, so a test through it
+   cannot discriminate the fix; `paint` is drivable but must not have side effects; and
+   `cancelActiveDrag()` is public but calling it directly would test the test.
+2. **What replaced it.** A source-level proof plus the two sibling consumers. The promotion is the
+   third reader of `soloPressBand`; `mouseDrag` (`:2044`) and `mouseUp` (`:2107`) already ask
+   `gestureIsStale()` and cancel through `cancelActiveDrag()`, and both are covered by State tests
+   68–74. The fix is the same call, in the same shape, at the third site. What is uncovered is only
+   *that a tick, rather than a mouse event, is what notices*.
+3. **Where the gap is tracked.** `docs/procedures/TESTING.md` §"Gaps in the automated coverage",
+   as the new `FrameClock` entry, cross-referenced from ADR-0043.
+4. **Whether infrastructure could close it.** Yes, concretely: a seam that lets the suite step one
+   frame — a test-only `FrameClock::fire (double)`, or a shown editor with a driven message loop —
+   would reach this and every other per-frame behaviour in the imager, none of which has coverage
+   today. Not done here because adding a production seam to test a one-line guard inverts the cost,
+   and because the driven-message-loop harness is the same infrastructure the GUI-lifetime entry in
+   the same register is waiting on. Revisited when that lands, per ADR-0025 §5.

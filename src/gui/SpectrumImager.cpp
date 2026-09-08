@@ -355,11 +355,11 @@ bool SpectrumImager::spreadSplits (const float* xs, const float* was, int count,
 {
     for (int k = 0; k < count && k < (int) std::size (freqP); ++k)
     {
-        // ADR-0042, and it is the same correction ADR-0040 round-3 made to `writeCrossovers` at
-        // to `writeCrossovers`: the COUNT is re-proved as well as the value. `count` was read before the plan
-        // was computed and four dispatches follow it -- the gesture open, the primary store, the
-        // gesture close and each neighbour store -- any of which a host can answer by writing
-        // mbBands. `was[k]` cannot see that: mbBands is a different parameter.
+        // ADR-0042, the same correction ADR-0040's round 3 made to `writeCrossovers`: the COUNT is
+        // re-proved as well as the value. `count` was read before the plan was computed and three
+        // dispatches follow it -- the primary store, the gesture close and each neighbour store --
+        // any of which a host can answer by writing mbBands. `was[k]` cannot see that, because
+        // mbBands is a different parameter.
         if (bandCount() - 1 != count) return false;
         if (k == except || freqP[k] == nullptr) continue;
         if (! juce::exactlyEqual (freqP[k]->getValue(), was[k])) return false;
