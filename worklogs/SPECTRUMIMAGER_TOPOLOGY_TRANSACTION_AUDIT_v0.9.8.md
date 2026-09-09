@@ -1680,3 +1680,36 @@ verified that across all seven with its own workflow — but "does a band-move e
 **None reopened, and none needed a change.** The one thing worth carrying forward is that a residual
 list is only as good as the question asked of it: "is it still true" and "did what I just did move it"
 are different questions, and only the second is this round's to answer.
+
+## 57. The `macos-intel` failure on `6356cc6` — not this PR's, and how that was established
+
+```
+Fetching pluginval (pluginval_macOS.zip)...
+curl: (6) Could not resolve host: github.com
+##[error]Process completed with exit code 6.
+```
+
+**Exit 6 is curl's, not pluginval's** — `CURLE_COULDNT_RESOLVE_HOST`. The step died fetching the
+validator over the network; pluginval never started, the bundle was never loaded, and nothing about
+the plug-in was tested. That is the "died before any test body ran" category, not a validation
+result.
+
+**Established rather than assumed, from the same job's own evidence:**
+
+* the failing step is `pluginval VST3 (deterministic x3)`, and the very next step,
+  `pluginval VST3 (randomise x3)`, fetched pluginval successfully and passed **3/3 on the identical
+  bundle**;
+* the two AU steps then passed **3/3 and 3/3** on the same build;
+* so nine validation passes succeeded on the artifact the failed step never got as far as opening;
+* and the job's own state suite reported **2805 checks, 0 failures** before any of it. (2805, not
+  2840: `Editor lifetime` is skipped off Linux under KI-007, which is the recorded platform
+  difference and not an anomaly.)
+
+**Action: one re-run, which is the whole allowance.** The rule this file keeps is that "flake" is not
+a root cause — a re-run is justified only for a failure that dies before a test body runs, and only
+once. This is that case, the root cause is named above rather than shrugged at, and if the re-run
+fails again the failure is real and belongs to this PR.
+
+**What is NOT concluded from this:** nothing about `run-pluginval.sh`. The script's own
+`classify_pass_exit` never saw an exit code, because the failure happened in the fetch that precedes
+it. There is no gap in the classifier to fix here, and inventing one would be the wrong lesson.
