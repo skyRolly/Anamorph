@@ -122,14 +122,18 @@ private:
     // split may otherwise be dragged anywhere, pushing its neighbours aside, and a
     // crowded insert spreads the neighbours apart (0.6.10 #1/#25/#26).
     void  projectGaps (float* xs, int count, int pin) const noexcept;
-    // Seeds `dragOrigX` for a gesture that is about to start. EVERY slot, never just the
-    // splits in use: the consumers re-read a LIVE `bandCount()`, so a host raising Bands
-    // mid-drag makes them read entries a "0 .. splits-in-use" capture never wrote. Call
-    // this at every drag start rather than writing the loop again -- one home for the rule.
+    // Seeds `dragOrigX` for a gesture that is about to START, and stamps the ownership record for
+    // it. EVERY slot, never just the splits in use: the consumers re-read a LIVE `bandCount()`, so a
+    // host raising Bands mid-drag makes them read entries a "0 .. splits-in-use" capture never
+    // wrote. Call this only where no record is in force, or where this class has just changed the
+    // row itself before any identifier existed -- MID-GESTURE it launders a foreign write into the
+    // gesture's own claim, which is what `beginBandMove` did until 2026-09-09.
     void  captureDragOrigins() noexcept;
-    // ADR-0051: the origin half of `captureDragOrigins`, on its own, for the one caller that has
-    // ALREADY stamped this press (`mouseDown` stamps at the top, for every branch). Stamping twice
-    // in one press is two readings of the same row, which is the defect this ADR is about.
+    // ADR-0051: the origin half of `captureDragOrigins`, on its own, for the callers that have
+    // ALREADY stamped and had that stamp proved -- `mouseDown`'s handle branch (`mouseDown` stamps
+    // at the top, for every branch) and `beginBandMove` (reached with `mouseDrag`'s gate one step
+    // behind it). Stamping twice in one press is two readings of the same row, which is the defect
+    // this ADR is about; stamping twice with a PROVED record in force also destroys it.
     void  seedDragOrigins() noexcept;
     void  captureGestureSound() noexcept;
     // ADR-0041. Store, then confirm IN PARAMETER SPACE that this store is what the parameter now
@@ -196,7 +200,12 @@ private:
     // one. `beginBandMove` derives the two pins and the T range from it, and `moveBand` sizes the
     // plan's EXTENT with it -- so the extent and the per-store proof inside `writeCrossovers` are one
     // reading rather than two that usually agree. -1 keeps the live read for a caller with no latch.
-    void  beginBandMove (int b, int n = -1); // drag a solo handle sideways to move the band (0.6.9 #9)
+    // NO DEFAULT for `n`, deliberately, and that is load-bearing since ADR-0051 reached this
+    // function: it now derives its origins from the ownership record instead of re-reading the
+    // parameters, so it depends on its caller having PROVED that record a moment earlier. A
+    // defaulted `n` would let a future second caller reach that dependency with nothing proved and
+    // no diagnostic. One caller exists (`mouseDrag`), and it passes `gestureBands`.
+    void  beginBandMove (int b, int n); // drag a solo handle sideways to move the band (0.6.9 #9)
     bool  moveBand (float mouseX, int n = -1);
     void  endBandMove();
 

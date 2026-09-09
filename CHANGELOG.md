@@ -33,6 +33,20 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0041. Evidence: PR #143. [Verified]
 
 ### Fixed
+- **Sliding a band sideways can no longer take a change your DAW made mid-gesture and treat it as
+  your own.** The plugin keeps a record of the sound your edit started from, and every check that
+  refuses to overwrite somebody else's change compares against that record. Starting a band slide
+  re-took the record from whatever the parameters held at that instant. A change arriving from your
+  DAW — an automation lane, a preset, a control surface, an undo — in the moment between the check
+  and that line was therefore copied *into* the record: the slide then treated the new value as its
+  own for the rest of the gesture, and neither that gesture nor the release could ever notice it had
+  arrived. Band widths were affected worst, because a band slide never writes a width, so nothing
+  else was watching them. The slide now takes its starting positions from the record it has already
+  checked instead of re-reading, so a change arriving in that moment stops the slide as any other
+  change during a drag does. A slide with nothing else happening behaves exactly as before, to the
+  digit. Measured before the fix at 148 occurrences in 18 000 slides against such a change, and none
+  after.
+  Decision: ADR-0051. Evidence: PR #143. [Verified]
 - **A drag that is abandoned rather than released is now reported to your DAW exactly once.** When a
   drag in the Multiband display has to be cancelled — most often because you released the mouse
   button outside the plugin window, so the plugin never sees the release — the plugin tells your DAW

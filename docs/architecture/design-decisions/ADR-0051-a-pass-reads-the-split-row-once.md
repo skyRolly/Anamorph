@@ -103,3 +103,63 @@ false-confidence failure the TSan suppression assertion was corrected for on 202
 
 Wired into the `linux` CI job. State 2 840 / 0.
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §47.
+
+## Applied again 2026-09-09 — the band move, the second caller of this rule
+
+The Decision above is general — *"a pass that has already stamped the row derives from the stamp
+rather than stamping again"* — and names exactly one exception, the add branch. When it was written
+only `mouseDown`'s handle branch was converted. A follow-up review filed the band-move path as a Bug
+(*"band drags adopt later automation"*, `SpectrumImager.cpp:829`), and it is the same rule's second
+site. **No new decision, and nothing here is narrowed or amended:** ADR-0051's Status and Decision
+stand as accepted, and no `ARCHITECTURE_REVIEW_GATE.md` item is triggered.
+
+**Why the band move is inside the rule, and the add branch still is not.** `beginBandMove` is reached
+from `mouseDrag`, whose first statement is `if (gestureIsStale()) { cancelActiveDrag(); return; }`.
+So at that point the press's stamp exists *and has just been proved* — all three splits and all four
+widths, compared with `juce::exactlyEqual` in normalised units. Between that gate and the call there
+is `plot()`, two integer assignments and one float assignment: no store, therefore no dispatch. The
+add branch is different for the reason this ADR already gives: `addBandAt` has just changed the count
+**and** written the row, so the press's first stamp describes a layout that no longer exists. The
+wheel's call is a third case and also legitimate — `cancelActiveDrag()` has cleared `gestureBands`, so
+no record is in force there at all.
+
+**This one is worse than a duplicated reading, which is why the review filed it as a Bug and not a
+cleanup.** `captureDragOrigins()` is `captureGestureSound(); seedDragOrigins();`, and the stamping
+half is a *blanket, provenance-free* copy of the live row into the ownership record. Called where a
+proved record is in force, a foreign write landing in the window is not merely missed — it is
+**adopted**: written into the record every later check proves against, after which `ownsSplit` and
+`ownsWidth` compare the foreign value with itself and answer "mine" for the rest of the gesture.
+
+The width half is the worse one. A band move never writes a width, so `writeCrossovers` has no
+per-store check that could catch a laundered one — `gestureW` is proved by the per-event gate alone.
+Adopted there, a foreign width change is invisible to that gate, to `mouseUp`'s gate and to `tick`'s
+reconcile for the whole rest of the drag: ADR-0040's width half, silently disarmed.
+
+**Evidence, on an instrument built for it** (`--band-move-adopt-probe`; the existing
+`--band-move-probe` drives `mbBands` and cannot see a value-half defect at all):
+
+```
+before   148 / 18000 band moves
+after      0 / 18000
+```
+
+one second either way, with the probe's mandatory control line printing *late crossover stores SEEN*
+in both. The mutation is the one-word revert.
+
+**Inert outside the race, and measured to be so rather than argued.** With the fix and with the
+pre-fix line restored, State test 84 leg A reports the same frequencies to the digit, and the whole
+2 860-check suite is unchanged — which is what the gate one step earlier guarantees: past a *passing*
+`soundMovedUnderGesture`, `gestureX[k] == freqP[k]->getValue()` bit-for-bit, so the dropped stamp
+would have written back identical bits and `convertFrom0to1` is pure arithmetic on them.
+
+**What it does NOT do, stated rather than implied.** It makes the race adoption-free, not write-free.
+A foreign width landing in the old window is now refused at the *next* event's gate, so the crossover
+burst of the event already in flight still goes out. That is unchanged in kind from any other foreign
+write during a drag, and it is what the probe measures as the post-fix behaviour.
+
+`beginBandMove`'s `n` lost its default argument in the same change: the function now depends on its
+caller having proved the record a moment earlier, and a defaulted parameter would let a future second
+caller reach that dependency with nothing proved and no diagnostic.
+
+State 2 860 / 0, DSP 396 / 0, TSan 0 warnings, valgrind 0 errors, all five probes 0.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §60.

@@ -905,6 +905,20 @@ jobs:
             exit 1
           }
 
+      # ADR-0051 reached its second caller: `beginBandMove` derived its origins by
+      # RE-STAMPING the ownership record from the live parameters, so a same-count
+      # host write landing between `mouseDrag`'s gate and that line was adopted INTO
+      # the record every later check proves against. Cross-thread only -- the window
+      # holds no store and so no dispatch -- which is why this is a probe and not a
+      # state test. The probe's own control line must read "late crossover stores
+      # SEEN": a silent control means the instrument measured nothing, which is the
+      # failure this repository has recorded twice, and the probe aborts rather than
+      # print a total it cannot support. 3000 x 6 delays is 18 000 band moves and runs
+      # in about a second; the same count measured 148 adoptions before the fix, so
+      # this gate has the power to catch the defect coming back rather than merely
+      # asserting a zero nothing could have disturbed.
+      - name: A band move's origins come from the record it proved (ADR-0051)
+        run: ./build/AnamorphStateTests_artefacts/Release/AnamorphStateTests --band-move-adopt-probe 3000
       - name: pluginval (deterministic x3 -- release gate)
         # Explicit condition rather than relying on "no `if:`, so it self-skips".
         # Both pluginval steps carry the SAME condition, naming exactly what must

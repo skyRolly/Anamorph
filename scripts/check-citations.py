@@ -380,7 +380,7 @@ DELIBERATE_REAIMS = {
     # makes the drift visible; a bare anchor would not.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:619"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:629"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

@@ -507,7 +507,9 @@ void SpectrumImager::captureDragOrigins() noexcept
     captureGestureSound(); // the gesture starts owning exactly what it just measured
     seedDragOrigins();
 }
-// ADR-0051. THE ORIGIN HALF ON ITS OWN, for the caller that has already stamped. `mouseDown` stamps
+// ADR-0051. THE ORIGIN HALF ON ITS OWN, for the callers that have already stamped -- TWO of them
+// since 2026-09-09: `mouseDown`'s handle-press branch, and `beginBandMove`, which is reached
+// mid-gesture with a record the drag handler's gate has just proved. `mouseDown` stamps
 // at the TOP of the handler, for every branch (ADR-0038/0039), and the handle-press branch then
 // called `captureDragOrigins()` -- which stamps AGAIN. Two stamps in one press are two readings of
 // the row this press is about to steer: the index came from the first and the anchor from the
@@ -522,9 +524,17 @@ void SpectrumImager::seedDragOrigins() noexcept
         dragOrigX[k] = (freqP[k] != nullptr) ? freqToX (freqP[k]->convertFrom0to1 (gestureX[k]))
                                              : freqToX (kFreqLo);
 }
-// The positions this gesture last left behind. Called at every gesture start (through
+// The positions this gesture last left behind. Called at every gesture START (through
 // captureDragOrigins) and after every write the gesture makes (through writeCrossovers), so
 // the array always answers "where did I leave the splits?" and never "where were they once".
+//
+// AT A START, AND NOWHERE ELSE. This is a blanket, provenance-free copy of the live row into the
+// record, so it is correct exactly where no record is in force -- or where this class has just
+// changed the row itself, synchronously, before any identifier existed (the add branch). Called
+// with a live record it does the opposite of its job: it launders somebody else's write into the
+// gesture's own ownership claim. `beginBandMove` did that until 2026-09-09; it now calls
+// `seedDragOrigins` instead. A future caller reaching for this function mid-gesture is the same
+// defect again.
 void SpectrumImager::captureGestureSound() noexcept
 {
     for (int k = 0; k < (int) std::size (gestureX); ++k)
@@ -825,7 +835,48 @@ void SpectrumImager::beginBandMove (int b, int n)
     // split tracks the cursor 1:1, the band keeps its width while it pushes neighbours
     // aside, and a pushed neighbour springs back on the way out (0.6.13 #3/#8/#9/#10).
     bandAnchorX = soloDownX;
-    captureDragOrigins();
+    // ADR-0051, THE SECOND CALLER OF ITS OWN RULE. This line was `captureDragOrigins()`, which is
+    // `captureGestureSound(); seedDragOrigins();` -- and the stamping half had no business here.
+    //
+    // A BAND MOVE IS NOT A GESTURE START. The press stamped the record at the top of `mouseDown`,
+    // and `mouseDrag`'s first statement -- `if (gestureIsStale()) { cancelActiveDrag(); return; }`
+    // -- has just PROVED that stamp still describes the world, all three splits and all four widths,
+    // compared exactly. This function is reached a few instructions later, having written nothing.
+    // So there was a live, freshly-proved record here, and the old line overwrote it wholesale from
+    // whatever the parameters happened to hold at that instant. A same-count write landing in that
+    // gap was not merely missed, it was ADOPTED: copied into the very record every later check
+    // proves against, after which `ownsSplit`/`ownsWidth` compare the foreign value with itself and
+    // answer "mine" for the rest of the gesture. That is the exact inverse of what the record is
+    // for -- `exactlyEqual (freqP[k]->getValue(), gestureX[k])` is a decision procedure for "it
+    // moved and I did not move it" only while nothing but this gesture's own confirmed stores
+    // (`storeOwned`) ever writes it.
+    //
+    // THE WIDTH HALF IS THE WORSE ONE, and it is the reason this is not merely tidier. A band move
+    // never writes a width, so `writeCrossovers` has no per-store check that could catch a laundered
+    // one; `gestureW` is proved ONLY by the per-event gate. Adopted there, a foreign width change is
+    // invisible to that gate, to `mouseUp`'s gate and to `tick`'s reconcile for the whole rest of
+    // the drag -- ADR-0040's width half, silently disarmed.
+    //
+    // `seedDragOrigins()` is the half this function actually needs: it derives `dragOrigX` FROM the
+    // record and writes nothing back to it. Everything below is computed from `dragOrigX`
+    // (`bandStartLeftX`/`bandStartRightX`, and the T range from those), so after this change the
+    // function reads no live parameter at all -- the window does not narrow, it stops existing.
+    //
+    // INERT OUTSIDE THE RACE, and provably so rather than by inspection: the gate one step earlier
+    // is `soundMovedUnderGesture`, which compares every slot of both rows with `juce::exactlyEqual`
+    // in normalised units, so past a PASSING gate `gestureX[k] == freqP[k]->getValue()` bit-for-bit.
+    // `captureGestureSound` would have written those same bits back. `convertFrom0to1` is pure
+    // arithmetic on them, so `dragOrigX` is identical. ADR-0051's Decision says this in general --
+    // "a pass that has already stamped the row derives from the stamp rather than stamping again" --
+    // and names ONE exception, the add branch, because `addBandAt` has just changed the count and
+    // written the row. This is not that branch, so this is the rule applied, not a new one.
+    //
+    // WHAT IT DOES NOT DO, said here rather than left to be discovered: it makes the race
+    // ADOPTION-free, not WRITE-free. A foreign width landing in the old window is now refused --
+    // but at the NEXT event's gate, so the crossover burst of the event already in flight still
+    // goes out. That is unchanged in kind from any other foreign write during a drag, and it is
+    // what `--band-move-adopt-probe` measures as the post-fix behaviour.
+    seedDragOrigins();
     bandStartLeftX  = (soloMoveLeft  >= 0) ? dragOrigX[soloMoveLeft]  : r.getX();
     bandStartRightX = (soloMoveRight >= 0) ? dragOrigX[soloMoveRight] : r.getRight();
 

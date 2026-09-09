@@ -981,6 +981,37 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 84 — a band move derives its origins from the record it proved** (ADR-0051, applied
+  again). Honest scope in its own header and repeated here: **this test cannot fail on the defect it
+  accompanies.** That defect lives between `mouseDrag`'s ownership gate and `beginBandMove`'s
+  seeding, a stretch containing `plot()` and three scalar assignments — no store, so no dispatch, so
+  nothing single-threaded can be injected into it. `--band-move-adopt-probe` is what reaches it. What
+  the test pins is the contract the fix must not have changed: leg A, the move is **reversible** —
+  bring the cursor back to the press point and every split returns to where the press found it, which
+  is a direct assertion that `dragOrigX` still holds the PRESS's row; legs B and C, a foreign width
+  and a foreign split change during the move each still void the gesture (the width half is the one
+  the pre-fix re-stamp disarmed outright, because `writeCrossovers` proves splits and nothing else);
+  leg D, the positive control that an undisturbed move keeps committing. **A first draft of leg A
+  asserted the wrong contract and is recorded in the header rather than quietly replaced** — it
+  claimed a rigid pixel translation leaves the two edges' frequency ratio invariant, which it does
+  not (10.000 → 9.357), because the three split parameters have their own ranges and quantisation.
+  **Mutation record:** reverting `beginBandMove`'s `seedDragOrigins()` to `captureDragOrigins()`
+  leaves all 2860 checks green *and reports leg A's frequencies to the digit* — which is the
+  inertness claim measured rather than argued. The probe is the coverage.
+
+* **`--band-move-adopt-probe` — a foreign write taken INTO the ownership record.** Distinct
+  instrument from `--band-move-probe`, which drives `mbBands` and cannot see a value-half defect. The
+  lane writes `mbWidthHigh` **once** per iteration, timed by a spin-fence sweep, because a band move
+  never writes a width so any width change during one is unambiguously foreign — and because a
+  *continuous* lane leaves the record stale again by the next event, which makes both builds abort
+  and measures nothing. `before 148 / 18000, after 0 / 18000`, one second either way. Its control
+  line must print *late crossover stores SEEN* or it aborts. Two aiming mistakes are recorded in its
+  header because both changed the answer: pointing the detector at `freqP[1]` while pressing band 0's
+  solo button (a band-0 move never moves `freqP[1]`), and releasing the lane *after* `mouseDown` (a
+  blocked thread's wakeup latency alone carried the write past all of drag event 1). The reading is
+  load-sensitive — the same instrument measured 4 / 1200 on a box busy with another build — so a
+  small total is not evidence of a small defect, though a non-zero one is always a real adoption.
+
 * **State test 83 — a cancellation closes each open gesture exactly once** (ADR-0050, amended). The
   reachable half of the reentrant double-close class ADR-0050 escalated for three sites and closed
   for one. Unlike State tests 81 and 82 this one CAN fail on its own defect, because `endGesture` is
