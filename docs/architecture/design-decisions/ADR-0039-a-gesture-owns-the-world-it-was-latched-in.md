@@ -143,6 +143,13 @@ Message thread only. No lock, no allocation, no blocking, no wait; the audio thr
 - **A removal is refused when the topology moved inside `mouseUp`.** The user's release does nothing
   instead of merging bands of a layout they never saw. Doing nothing is the conservative answer, and
   the same one a release lost outside the window already gives.
+  **This consequence covered only the COUNT half until 2026-09-09, and the sentence read as though it
+  covered both.** The mechanism it rests on is `removeBand`'s `expectedBands`, which compares counts;
+  a different layout at the SAME count reached the removal untouched, because `mouseUp` cleared
+  `gestureBands` before the `endGesture` dispatch that lets one in and `gestureIsStale()` answers
+  `false` unconditionally in that state. The sound half is closed by
+  [ADR-0050](ADR-0050-a-gestures-ownership-ends-with-its-last-on-release-action.md), and State test 69
+  legs C and G are the two halves.
 - **A drag stops when an authoritative sound change lands under it**, at any band count. Previously
   it stopped only when the count moved. A user holding a split while a preset loads now loses the
   grip — which is the point: the sound they were editing no longer exists.

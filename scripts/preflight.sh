@@ -73,6 +73,40 @@ python3 scripts/check-gcc-warnings.py --self-test
 echo "note: the FULL warning gates need a build log from the pinned compiler"
 echo "      (CI: linux, linux-lto-tests); only their self-tests ran here."
 
+# ...WHICH IS HOW A -Wunused-variable IN tests/state_tests.cpp REACHED CI TWICE.
+# The two gates above compare against a baseline stamped with a compiler major and
+# REFUSE to run against a different one -- correctly, because diagnostic counts move
+# between majors. Locally that means they never run at all (gcc-13 / clang-18 against
+# a pinned gcc-16 / clang-22), so a brand-new warning in first-party code is invisible
+# until the push builds. A whole class of those is version-INDEPENDENT, though, and
+# this is the cheap half: syntax-only the first-party translation units with whatever
+# compiler is installed and report anything it says about a file under src/ or tests/.
+# Advisory, never fatal -- the authoritative gate is still CI's pinned major, and this
+# must not become a second baseline to argue with. It is a smoke alarm, not a gate.
+LOCAL_CXX="$(command -v clang++ || command -v g++ || true)"
+if [ -n "$LOCAL_CXX" ] && [ -d build/_deps/juce-src/modules ]; then
+    echo "== preflight: local first-party warning sweep ($(basename "$LOCAL_CXX")) =="
+    SWEEP_LOG="$(mktemp)"
+    for TU in src/gui/SpectrumImager.cpp tests/state_tests.cpp; do
+        "$LOCAL_CXX" -std=c++23 -fsyntax-only -Wall -Wextra \
+            -I src -I src/dsp -I src/gui -I build/_deps/juce-src/modules \
+            -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_STANDALONE_APPLICATION=1 \
+            -DJUCE_WEB_BROWSER=0 -DJUCE_USE_CURL=0 \
+            "$TU" 2>>"$SWEEP_LOG" || true
+    done
+    if grep -E '^(src|tests)/[^:]+:[0-9]+:[0-9]+: warning:' "$SWEEP_LOG" > /dev/null 2>&1; then
+        echo "warning: the local compiler reports first-party warnings. CI gates on the"
+        echo "         PINNED major and may disagree, but these are worth reading before"
+        echo "         pushing -- a new one here is usually a new one there:"
+        grep -E '^(src|tests)/[^:]+:[0-9]+:[0-9]+: warning:' "$SWEEP_LOG" | sort -u | head -40
+    else
+        echo "local sweep: no first-party warnings from $(basename "$LOCAL_CXX")."
+    fi
+    rm -f "$SWEEP_LOG"
+else
+    echo "note: no local compiler or no fetched JUCE -- the local warning sweep was skipped."
+fi
+
 python3 scripts/check-linux-abi.py --self-test
 # The ONE of the three that can also run for real locally: an ordinary Release
 # build produces the artifact it reads. Skipped WITH A NOTE when absent, never

@@ -531,6 +531,34 @@ pooled 0.83 % across every pre-fix run, so the CI step's 1200 clicks expect abou
 run is a strong detector, not a certain one, and one pre-fix run in six produced none at all. That
 outlier is on the record rather than averaged away.
 
+`AnamorphStateTests --add-edge-probe` (ADR-0051) is the third of that kind, and it measures the
+residual ADR-0048 recorded and did not close: with the band COUNT held fixed, `bandAtX` and
+`bandAddTarget` still read the split VALUES separately, so a click's band index and that band's edges
+could come from two readings of the row. The lane alternates `mbFreqLow` between 500 Hz and 16 kHz —
+**across** the click, which is what the defect needs — at a constant two bands, and the verdict is a
+message-thread write above 16 000.5 Hz or into (400, 499.5) Hz.
+
+| | before ADR-0051 | after |
+|---|---|---|
+| spin 0 / 40 / 120 / 400, 400 clicks each | 15 / 11 / 22 / 27 | 0 / 0 / 0 / 0 |
+| pooled | **75 / 1600 (4.7 %)** | **0 / 1600** |
+| placed correctly (the control column) | 856 | 847 |
+
+The placed-correctly column is unchanged across the fix, so the misplacement number was not bought by
+turning clicks into no-ops: the 75 become adds that `addBandAt` abandons on its own ADR-0040 proofs,
+which is the fail-safe direction.
+
+**THE CLAMP HAS TWO DIRECTIONS AND THE FIRST TWO AIMS OF THIS PROBE SAW NEITHER.** A detector written
+only for the upward clamp (`bandAtX` reads the split below the click, `bandAddTarget` reads it above,
+so the new split is dragged up to the band's left edge) measured **0 before and 0 after** — as did a
+lane that moved the split between 500 Hz and 6 kHz without ever crossing the click. Both are what an
+instrument pointed at the wrong place looks like, and neither is distinguishable from a defect that
+does not exist. Only the DOWNWARD clamp fires here (`bandAtX` reads the split above the click and
+answers "the band below"; `bandAddTarget` then reads it below, putting that band's right edge to the
+left of the pointer). Both windows are watched now, and the three aims are recorded in the probe's own
+header rather than tidied away, for the same reason the TSan suppression's assertion mechanism was
+corrected on 2026-09-08: a gate that cannot fail is worse than no gate.
+
 `AnamorphStateTests --reprepare-race-probe` is the ninth, and like `--state-thread-probe` it is
 built to run under ThreadSanitizer: a thread that is not the message thread moves Drive and then
 re-prepares the processor, 200 times over, while the main thread does only what the real message
@@ -1823,6 +1851,7 @@ event — where it is the only job that runs at all.)
 | `docs` | `python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py` |
 | `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, `python3 scripts/check-realtime.py --self-test` then that lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
 | `linux` (the ADR-0048 step) | `./build/.../AnamorphStateTests --add-target-probe 300` — exits non-zero if any click is clamped into a band it was not aimed at. Self-tested in both directions: exit 1 on the pre-fix tree, 0 on this one |
+| `linux` (the ADR-0051 step) | `./build/.../AnamorphStateTests --add-edge-probe 300` — the same question with the band COUNT held fixed and a split moving across the click instead. Exits non-zero if the click's band index and that band's EDGES came from two readings of the split row. Self-tested in both directions: exit 1 on the pre-fix tree (75 / 1600), 0 on this one |
 | `linux` (the ADR-0047 step only) | `./build/.../AnamorphStateTests --split-snapshot-probe 300` — exits non-zero if anything launders. It is the only race gate outside the sanitizer jobs, because the thing it measures is a LOGICAL race over two correctly-synchronised atomic reads, which no sanitizer can see (TSan is silent over it, verified) |
 | `sanitizers` | ASan+UBSan over both suites, then valgrind memcheck over both suites (the valgrind step sets `ANAMORPH_TESTS_NO_FTZ=1` — see below) |
 | `realtime` | `cmake -B build-rtsan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C(XX)_COMPILER=clang(++)-<major> -DCMAKE_C(XX)_FLAGS="-fsanitize=realtime -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=realtime`, build `AnamorphTests`, run it with **no `RTSAN_OPTIONS`** (ADR-0029 — `halt_on_error=false` would make it report and pass) |

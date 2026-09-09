@@ -33,6 +33,38 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0041. Evidence: PR #143. [Verified]
 
 ### Fixed
+- **Removing a band no longer discards a change your DAW made to the band above it.** Removing a band
+  moves every band above it down one place, and the plugin was checking only the place each value was
+  moved TO, never the place it was taken FROM. If an automation lane, a control surface or a preset
+  changed the topmost band's Width or the topmost split at the instant of the removal, the removal
+  carried on with the values it had read a moment earlier: the surviving band came out holding the
+  old Width, and your change was left parked on a band that no longer exists. The removal now checks
+  both ends of every value it moves and stops if either has changed under it, leaving your DAW's
+  newer value standing. Removing a band with nothing else happening is completely unchanged.
+  Decision: ADR-0049. Evidence: PR #143. [Verified]
+- **Dragging a split off the edge to merge two bands no longer removes a band when your DAW has just
+  replaced the layout.** Releasing an outward drag tells your DAW the edit is finished, and your DAW
+  can answer that in the same instant — an automation lane, a returning preset, a control surface.
+  The plugin already refused the merge if the number of bands changed there, but a *different* layout
+  with the SAME number of bands slipped through, and the merge then removed a band of a layout you
+  had never seen. The release now re-checks that the sound is still the one you were dragging.
+  Releasing an ordinary outward drag still merges, exactly as before.
+  Decision: ADR-0050. Evidence: PR #143. [Verified]
+- **A band you add now appears where you clicked even when your DAW moves a *split* at that instant,
+  not just when it changes the band count.** The previous release fixed the band-count half of this.
+  The other half was the split positions themselves: working out which band the pointer was in and
+  working out where that band's edges are were two separate readings of the crossover frequencies, so
+  a split moving across your click between them clamped the new band up or down to that split
+  instead. Measured before the fix at 75 occurrences in 1600 clicks against a lane moving a split at
+  a fixed band count, and none after, with the number of clicks that place correctly unchanged.
+  Decision: ADR-0051. Evidence: PR #143. [Verified]
+- **A sideways or too-small scroll on the Multiband display no longer ends what you were doing.** A
+  horizontal scroll on a trackpad, or a scroll too small to register, was ending a held drag, closing
+  that edit in your DAW's automation and undo history, and throwing away a solo or delete button you
+  were holding down — and then doing nothing else, because there was no adjustment to make. Only a
+  scroll that actually adjusts something now finishes a held press, which is what the behaviour above
+  under **Changed** was always meant to say.
+  Decision: ADR-0052. Evidence: PR #143. [Verified]
 - **A band you add now appears where you clicked, even if your DAW changes the band count at that
   instant.** Working out which band the pointer is in and working out where that band ENDS were two
   separate readings of the band count. If an automation lane raised the count between them, the click

@@ -87,12 +87,21 @@ private:
     int   soloMask() const noexcept;           // 4-bit solo mask
     bool  bandSoloed (int b) const noexcept;
 
+    // ADR-0051. THE COUNT IS ONLY HALF OF A TOPOLOGY: the SPLIT ROW is the other half, and it needs
+    // the same treatment. `captureSplits` takes all three at once; `splitAt` answers from that
+    // capture, or reads live when the caller has none (`fHz == nullptr`), so a caller that passes
+    // nothing behaves exactly as it did. A pass that derives an index from the splits and then
+    // derives a BOUNDARY from them again was taking two readings of a row three threads write.
+    void  captureSplits (float* fHz) const noexcept;
+    float splitAt (int i, const float* fHz) const noexcept;
+
     // ADR-0046: `n` is the topology to answer under. A caller that has already read the count,
     // and is going to stamp an index with it, MUST pass it -- otherwise these re-read the live
     // count and can answer under a topology the caller never proved. -1 means "read it yourself",
     // which is right for the hover/paint callers that prove nothing and stamp nothing.
-    int   bandAtX (float x, int n = -1) const noexcept;
-    int   handleNearX (float x, int n = -1) const noexcept;
+    // ADR-0051: and `fHz` is the split row to answer under, on the same terms.
+    int   bandAtX (float x, int n = -1, const float* fHz = nullptr) const noexcept;
+    int   handleNearX (float x, int n = -1, const float* fHz = nullptr) const noexcept;
     bool  nearWidthLine (juce::Point<float> p, int b) const noexcept;
     juce::Rectangle<float> deleteBox (int b) const noexcept;   // x to remove a band (bottom-left)
     juce::Rectangle<float> soloBox (int b) const noexcept;     // headphone solo, top-centre
@@ -119,6 +128,10 @@ private:
     // mid-drag makes them read entries a "0 .. splits-in-use" capture never wrote. Call
     // this at every drag start rather than writing the loop again -- one home for the rule.
     void  captureDragOrigins() noexcept;
+    // ADR-0051: the origin half of `captureDragOrigins`, on its own, for the one caller that has
+    // ALREADY stamped this press (`mouseDown` stamps at the top, for every branch). Stamping twice
+    // in one press is two readings of the same row, which is the defect this ADR is about.
+    void  seedDragOrigins() noexcept;
     void  captureGestureSound() noexcept;
     // ADR-0041. Store, then confirm IN PARAMETER SPACE that this store is what the parameter now
     // holds, and hand back the value to own. False means somebody wrote from inside the store.
@@ -146,7 +159,10 @@ private:
     // `handleNearX` take one. -1 keeps the live read for callers that have no latch. Without it the
     // target index and the band edges came from two readings of `mbBands`, and a count raised
     // between them clamped the click into a band it was never aimed at.
-    bool  bandAddTarget (int b, float x, float& outX, int n = -1) const noexcept;
+    // ADR-0051: `fHz` closes the residual that one left open -- `lo` and `hi` still read the splits
+    // live, so the band index could be answered under one split row and clamped against another.
+    bool  bandAddTarget (int b, float x, float& outX, int n = -1,
+                         const float* fHz = nullptr) const noexcept;
 
     // `resultingBands` reports the count this add ESTABLISHED, taken from the same read of
     // `bandCount()` the insertion was computed against -- so the caller's gesture snapshot

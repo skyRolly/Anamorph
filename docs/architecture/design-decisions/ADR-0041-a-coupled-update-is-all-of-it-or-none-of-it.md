@@ -5,6 +5,11 @@ input reviving stale width drags, solo clicks targeting replaced layouts, failed
 changing bands — plus a ruling on the half-pixel ownership threshold and on the cross-thread topology
 transaction, with the instruction to find the common invariant before patching any of them).
 
+**Scoped by [ADR-0052](ADR-0052-an-input-that-performs-no-edit-has-no-side-effects.md)
+(2026-09-09): not superseded — every sentence of this decision is about a wheel event that makes an
+EDIT, and ADR-0052 records that an event which writes nothing is not one and must not pay any of the
+costs below.**
+
 **Completes [ADR-0040](ADR-0040-a-gesture-stores-only-what-it-still-owns.md); supersedes nothing.**
 ADR-0040 moved the ownership question from handler entry to the store. It left two things unstated
 that this ADR settles: what a *refusal* obliges the caller to do, and what units ownership is

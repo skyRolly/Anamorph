@@ -285,6 +285,21 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Mitigation until then:** the store order (`mbBands` last) and the DSP's own clamping are load
   bearing and must not be changed casually; ADR-0041 §"why the store order is kept" and ADR-0044
   both depend on them.
+- **What should reopen this (added 2026-09-09, because the record had no reopen condition where its
+  neighbour RISK-009 does — the gap was found by this round's verify-only audit, not by the
+  review):** any change to the **store order** that stops `mbBands` being written last by
+  `addBandAt` and `removeBand`; any **new writer** of the multiband set that is not one of those two
+  transactions; any weakening or removal of the DSP's own repairs
+  (`MultibandWidth.cpp:102-112`, `SoloMonitor.cpp:68-77` and `:85`, and the two
+  `setBandCount` clamps at `MultibandWidth.h:56` / `SoloMonitor.h:53`); or a **measured audible
+  artefact** from the whole-state-restore case this record already flags as uncovered by the
+  store-order argument. Absent one of those, a new round should re-verify this record and move on.
+- **Not changed by the 2026-09-09 round, and the reason is worth stating rather than implying.**
+  That round fixed three ownership defects in `SpectrumImager` (ADR-0049, ADR-0050, ADR-0051). All
+  three are **message-thread writers**; RISK-010 is the **audio-thread reader** in
+  `src/PluginParameters.cpp`, which the PR does not touch at all. Fixing a writer cannot narrow a
+  tearing window on the reader side, so none of them is evidence about this risk in either
+  direction.
 
 ## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps
 - **Risk:** `AnamorphAudioProcessor::parameterGestureChanged` counts open gestures and sets

@@ -1252,3 +1252,268 @@ rather than a finding:** no single layer of its six-layer count proof is measura
 layers are — only the whole set. So a surviving single-line mutation there is not evidence of a hole,
 and a surviving ENSEMBLE mutation on the loops (item A) is. That is the general form of the mistake I
 made twice this round.
+
+## 45. Finding — "band removal discards concurrent edits": CONFIRMED, fixed (ADR-0049)
+
+This is §40b, escalated last round and returned by the review as a MUST-RESOLVE. Two readings of the
+same evidence, one round apart, and the second one is the review's.
+
+**The mechanism, from the index arithmetic rather than from the prose.** `removeBand` builds its plan
+as `nw[j] = wd[j]` for `j < b` and `wd[j + 1]` for `j >= b`, and `nf[j] = fr[j]` for `j < dropX` and
+`fr[j + 1]` for `j >= dropX`. So a store is a MOVE: slot `k` is written with what slot `k + 1` held at
+plan time. The guards proved `bandWidth (k) == wd[k]` and `crossover (k) == fr[k]` — the destination —
+and nothing else. `bandWidth (N - 1)` is compared with `wd[N - 1]` at no point in the function, and
+`crossover (N - 2)` with `fr[N - 2]` at no point either. A mid source IS proved, but by the NEXT
+iteration's destination check: one store after the store that consumed it, with that store's dispatch
+in between.
+
+**REENTRANT, and that is what separates this from the ADR-0046/0047/0048 family.** `setSoloMask` and
+every `setParam` in the loops dispatch, so a single-threaded harness enters the window with an
+ordinary listener. Those three ADRs all close windows bounded by pure reads, which is why each of them
+records honestly that reverting it leaves the whole suite green. This one does not have that excuse,
+and it does not need it.
+
+**Where the first draft of this section was wrong, corrected by the round's own verifier.** I wrote
+that the host's value was "discarded in silence". It is not: the count store puts the top slot ABOVE
+the live topology, where `MultibandWidth` (`.h:53-56`, `.cpp:140`) does not read it, so the value is
+PARKED — inert while hidden, exact if the count returns, which is the same disposition ADR-0039
+records for the parked solo bit. The accurate charge is MISATTRIBUTION: the surviving band inherits
+the pre-write snapshot under a host edit that had already replaced it. Saying "discarded" makes the
+defect sound worse than the evidence supports, which is precisely the failure this file's
+measurements exist to prevent.
+
+**What the fix does not disturb.** ADR-0044's audit removed a WIDE fix that re-proved the whole
+written PREFIX, because ADR-0042 measured aborting there and found it worse; State test 76 legs B and
+C are the controls that keep it. Both legs write a slot the transaction has already written, and no
+guard added here re-reads the prefix. Both pass unchanged, and leg D — the uninterrupted positive
+control — still commits with every new guard passing.
+
+**And the sibling stays alone, for a reason I got wrong first.** I argued `addBandAt` was
+structurally safe because the destination guard at iteration `i` is also the source proof for
+iteration `i + 1`. Half true: it proves the source at the last instant it exists, which is the
+strongest statement available, and that half survives. What it does NOT cover is a host write landing
+on slot `i - 1` AFTER the transaction's own store to it — `nw[i] = (i <= ins) ? wd[i] : wd[i - 1]`
+re-attributes that slot to a different band, so the newer value stands on a band the user did not aim
+it at, the same misattribution shape one severity band down. The symmetric guard cannot be added:
+`bandWidth (i - 1) == wd[i - 1]` fails on the transaction's OWN store and would abandon every
+non-elided add. So it stays ADR-0042's measured disposition, now NAMED at the site as a residual
+rather than implied by silence.
+
+| Mutation | Killed |
+|---|---|
+| M-A1 — the width source proof removed | State test 76 leg I only, 2 checks |
+| M-A2 — the split source proof removed | State test 76 leg J only, 2 checks |
+
+## 46. Finding — "release-time automation loses a band": CONFIRMED, fixed (ADR-0050)
+
+Last round I recorded this finding as ALREADY PREVENTED and spent six measurements proving the
+`pressBands` argument was load-bearing. That was true and it was the wrong half of the question. The
+review re-asked it and the answer is different, because the two halves are different:
+
+* **the COUNT half** — a `mbBands` move inside `endGesture`'s dispatch — IS caught, by `pressBands`
+  and `removeBand`'s `expectedBands`, and State test 69 leg C measures it (`Bands 4 -> 3: the release
+  read a count the check never saw`);
+* **the SOUND half** — a different layout at the SAME count — was caught by nothing, and the reason
+  is one line: `gestureBands = -1` ran BEFORE `endGesture`, and `gestureIsStale()` returns false
+  unconditionally when `gestureBands < 0` (both `topologyMovedUnderGesture` and
+  `soundMovedUnderGesture` short-circuit there). The window was not merely unchecked; it was
+  un-CHECKABLE.
+
+`ownsSplit`/`ownsWidth` are the only things in the class that see a same-count install, and they had
+been disarmed one line above the dispatch that lets one in. The pending removal then merged a band of
+a layout the press had never seen.
+
+**The fix is where the clear goes, and both halves of it are load-bearing** — measured separately,
+because "move the line AND add the check" is two changes and a round that does not tell them apart
+cannot say which one matters:
+
+| Mutation | Killed |
+|---|---|
+| M-B1 — the post-dispatch `! gestureIsStale()` removed | State test 69 leg G only, 1 check |
+| M-B2 — the clear restored above the branches, re-proof left in place | State test 69 leg G only, 1 check |
+
+Nothing in the two early-return branches reads `gestureBands` (`setParam`, `setBands`, `setSoloMask`,
+`toggleSoloBit` and `endBandMove` do not), so they keep clearing it exactly where they did and their
+behaviour is unchanged. An uninterrupted release still removes: `writeCrossovers` stores THROUGH
+`gestureX[k]`, so the stamp equals the world the drag just wrote. State test 69 leg E is that control.
+
+## 47. Finding — "concurrent split moves misplace new bands": CONFIRMED, fixed (ADR-0051)
+
+The residual ADR-0048 recorded in its own source comment and index row, returned by the review as a
+MUST-RESOLVE. The COUNT was one reading per pass; the split ROW was not. `bandAtX`, `handleNearX` and
+`bandAddTarget` each read `crossover()` for themselves, so one press took THREE readings of a
+three-element row three threads write, and `updateHover`, `mouseDoubleClick` and `mouseWheelMove` did
+the same.
+
+`mouseDown` carried a second instance of the same shape that the review did not name and the audit
+found: the press stamps the whole row at the top (`captureGestureSound`) and the handle branch then
+called `captureDragOrigins()`, which stamps AGAIN — the index from the first stamp, the drag's grab
+anchor from the second. `seedDragOrigins()` derives the origins from the stamp the press already
+holds, so the press is now one reading end to end and one reading SHORTER than before.
+
+**The instrument had to be aimed three times, and that is the part of this section worth keeping.**
+
+1. Lane alternating split 0 between 500 Hz and 6 kHz, click at 15 kHz, detector on the upward clamp:
+   **0 misplaced before, 0 after**, across 3200 clicks. The lane never crossed the click, so the
+   band's left edge stayed left of the pointer under both readings and `jlimit` never clamped.
+2. Lane crossing the click (500 Hz ↔ 16 kHz), same upward detector, and a 2 000 000-iteration
+   volatile spin inserted between the two readings to widen the window by ~1 ms: **still 0 before,
+   0 after**. The upward direction requires `bandAtX` to answer "the band above" and
+   `bandAddTarget` to then read the split above the click — and in this geometry the other direction
+   is the one that fires.
+3. The same lane with the detector watching BOTH clamp directions, natural window, no spin:
+
+   ```
+   before   15, 11, 22, 27  --  75 of 1600 (4.7%)
+   after     0,  0,  0,  0  --   0 of 1600
+   ```
+
+   with the correctly-placed column unchanged (856 before, 847 after), so no add that previously
+   succeeded is suppressed: the 75 become adds `addBandAt` abandons on its own ADR-0040 proofs, which
+   is the fail-safe direction.
+
+Attempts 1 and 2 are recorded in the probe's header rather than deleted, because **a verdict of 0
+from an instrument that cannot see the defect is indistinguishable from a verdict of 0 from a defect
+that is not there**, and shipping the first as if it were the second is the same false-confidence
+failure the TSan suppression assertion was corrected for on 2026-09-08. Had I stopped at attempt 1 I
+would have reported "the class does not reproduce" and shipped a CI gate that can never fail.
+
+## 48. Finding — "ignored wheel input ends held presses": CONFIRMED, fixed (ADR-0052)
+
+The review filed this alongside "wheel input closes active gestures" and warned against assuming they
+share a classification. They do not, and the split is clean:
+
+* **8.2 — a REAL tick ends a held press: REFUTED as a defect.** ADR-0041's recorded decision,
+  re-measured last round (making the wheel a no-op during a held press fires State test 73 leg A,
+  because `captureDragOrigins` re-seeds the ownership record but cannot re-seed
+  `dragGrabDX`/`dragGrabDY`), and pinned by State test 80 legs A–C. Unchanged, and re-affirmed.
+* **8.1 — an IGNORED event ends a held press: CONFIRMED defect.** `cancelActiveDrag()` ran at the
+  first line of `mouseWheelMove` and the delta threshold forty lines later. `deltaX` is read NOWHERE
+  in this class, so a horizontal trackpad scroll arrives with `deltaY == 0` and is ignored — after
+  ending the drag, closing its host gesture early (committing the drag so far as its own undo step)
+  and swallowing a pending solo or delete click. ADR-0041's rule is about OWNERS, and an event that
+  writes nothing is not one.
+
+Window class: **none** — this is a single-threaded message-thread ordering defect needing no second
+thread and no listener, which is why State test 80 leg D is an ordinary deterministic test.
+
+**The gate question was asked rather than assumed.** `docs/policies/ARCHITECTURE_REVIEW_GATE.md`
+lists *conflict with an Accepted ADR* as a hard stop. ADR-0052 narrows ADR-0041's SCOPE, and the
+reasoning for calling that a clarification rather than a conflict is written into the ADR itself:
+ADR-0041's premise is its own first sentence — *the wheel is its own instantaneous edit* — and every
+event it reasoned about behaves identically after the change. The in-source ADR-0041 comment block
+was reconciled rather than left stranded, and ADR-0041 carries a `Scoped by` cross-link.
+
+| Mutation | Killed |
+|---|---|
+| M-C1 — `cancelActiveDrag()` restored in front of the threshold | State test 80 leg D only, all 3 checks |
+
+## 49. The CI failure on `e45b3e4`, and the gate that could not have caught it locally
+
+`linux` step 22, *Gate first-party Clang warnings*, exit 1:
+
+```
+tests/state_tests.cpp:17084:68: warning: [-Wunused-variable]
+-Wunused-variable in tests/state_tests.cpp: 1 site(s), baseline allows 0.
+```
+
+`kClickHz`, left behind when State test 82's probe changed from a fixed click frequency to a swept
+one. **A CODE ISSUE IN THE CHANGE SET**, not a formatting or tooling one — the gate did its job, and
+the fix is to delete the constant.
+
+**Why it escaped locally, which is the durable half.** `check-clang-warnings.py` refuses to run when
+the log's compiler major differs from the baseline's, and it is right to: diagnostic counts move
+between majors. This box has clang-18 and gcc-13 against a pinned clang-22 and gcc-16, so BOTH
+warning gates decline locally on every run and a brand-new first-party warning is invisible until the
+push builds. That is the second CI cycle this PR has spent on a class that a local compiler would
+have named instantly.
+
+`scripts/preflight.sh` now carries a **local first-party warning sweep**: `-fsyntax-only -Wall
+-Wextra` over `src/gui/SpectrumImager.cpp` and `tests/state_tests.cpp` with whatever compiler is
+installed, reporting anything it says about a file under `src/` or `tests/`. It is **advisory and
+never fatal**, and the comment says why in the file: the authoritative gate is still CI's pinned
+major, and this must not become a second baseline to argue with. It is a smoke alarm, not a gate.
+`-Wunused-variable` is version-independent and in `-Wall`, so it would have fired.
+
+## 50. Two attributions in the tree, re-measured and corrected
+
+Both were found by this round's adversarial verifier rather than by the review, and both are the same
+class of error I corrected twice last round: a leg named from memory instead of from a mutation.
+
+**"State test 71 leg C and State test 73 leg A already fail if the press survives"** — the sentence
+in `mouseWheelMove`'s ADR-0041 block and in State test 80's own header. Measured by removing
+`cancelActiveDrag()` from the handler entirely:
+
+```
+[FAIL] leg A: a refresh that cannot refresh the anchor does not adopt the value either   (State test 73)
+[FAIL] leg A: the host's change gesture closes AT the tick, not at mouseUp               (State test 80)
+[FAIL] leg A: ...and the drag so far is committed as its own undo step                   (State test 80)
+```
+
+Three checks, in **73 leg A and 80 leg A**. State test 71 leg C is *"a Bands change from INSIDE the
+removal burst stands"* and has nothing to do with the wheel; State test 72 leg C *is* a wheel leg
+(*"a wheel tick mid-drag must not re-seed ownership"*) and does **not** fail either, so the
+verifier's proposed correction was wrong too and is recorded here as such. Corrected at both sites.
+
+**`docs/DOCUMENTATION_COVERAGE.md` still carried "State test 71 leg C"** in two places for the
+`pressBands` mutation, where last round corrected the source and the worklog to **69** leg C and
+missed the coverage document. Corrected.
+
+## 51. A mutation that used to fire and no longer does, which is a strengthening
+
+Re-measuring §50 turned up a third thing. Last round's headline evidence for `removeBand`'s
+`pressBands` argument was that substituting a live `bandCount()` at the OUTWARD-DRAG call site kills
+State test 69 leg C twice. On this tree it kills **nothing**.
+
+The reason is ADR-0050: `! gestureIsStale()` now sits in front of that call, and
+`topologyMovedUnderGesture` compares the live count against the **still-latched** `gestureBands` — so
+leg C's `mbBands` move is refused one level earlier, whatever `expectedBands` says. Removing **both**
+gives the measurement that now stands:
+
+```
+[FAIL] leg C: a Bands move inside mouseUp removes no band
+[FAIL] leg C: ...and rewrites no split or width of the topology it never saw
+[FAIL] leg G: a same-count sound install inside mouseUp removes no band
+```
+
+This is the third time in two rounds that reading a mutation result at face value would have produced
+the wrong action, and the third distinct shape of the mistake:
+
+| | what it looked like | what it was |
+|---|---|---|
+| round 3 | `removeBand`'s entry guard survives every single-line mutation → a coverage hole | an unreachable guard behind five siblings |
+| round 3 | the delete-x call site survives → a second coverage hole | a cross-thread-only window no harness can enter |
+| **this round** | the outward-drag mutation no longer fires → coverage LOST | a stronger guard moved in front of it |
+
+`pressBands` is kept as defence in depth, and the guard's comment now says why, so the next round does
+not delete it as dead: it is the only cover if the staleness gate ever moves again, and the delete-x
+and solo call sites have no gate in front of them at all.
+
+## 52. The cost of keeping the latch alive, and how ADR-0050 pays it
+
+Named by the round's own verifier, not by the review, and worth the two lines it costs.
+
+Keeping `gestureBands` latched across `endGesture` is what makes the sound re-proof possible. It is
+also what makes `tick`'s reconcile — `if (gestureIsStale()) cancelActiveDrag();` at 24 Hz — have
+something to find inside that dispatch, if a host pumps the message loop from a gesture callback.
+With `dragHandle` still set, that reconcile calls `endGesture` on the SAME parameter a second time
+while the first call is on the stack: a negative open-gesture count in the processor and a spurious
+undo entry. That is escalated finding (D) from section 44, and widening its reachability inside a
+round whose whole subject is ownership would be the wrong trade.
+
+So the identifier is latched into a local and the member cleared BEFORE the dispatch. A reentrant
+reconcile then takes `cancelActiveDrag`'s cheap exit and closes nothing twice — but that exit clears
+`gestureBands` and does NOT clear `dragRemovePending`, so the removal would proceed under a gesture
+something else had just cancelled, with `gestureIsStale()` answering `false` because the latch is
+gone. `gestureBands == pressBands` refuses instead.
+
+**That third comparison is UNMEASURED and the source says so.** No harness reaches a host that pumps
+the message loop from inside `endChangeGesture`, so removing it leaves all 2 840 checks green. It is
+the same disposition as `removeBand`'s delete-x `pressBands`, recorded the same way: a guard whose
+window is real and whose test does not exist, named rather than dressed up as measured.
+
+**An earlier shape of this fix was measured and discarded.** Clearing `dragHandle` WITHOUT the latch
+comparison closes the double-close and opens the stale removal; keeping `dragHandle` set closes the
+stale removal (`cancelActiveDrag` clears `dragRemovePending` on that path) and leaves the
+double-close. Only the pair closes both, which is why both are in the code and why the mutation table
+has a row that kills nothing.

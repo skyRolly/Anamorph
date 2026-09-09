@@ -879,6 +879,19 @@ jobs:
             exit 1
           }
 
+      - name: The add target's EDGES answer under one reading too (ADR-0051)
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
+        run: |
+          BIN="$(find build -maxdepth 8 -name AnamorphStateTests -type f)"
+          test "$(printf '%s' "$BIN" | grep -c .)" -eq 1
+          "$BIN" --add-edge-probe 300 || {
+            echo "::error::A click's band index and the band's EDGES no longer come from the same"\
+                 " reading of the split row (ADR-0051) -- the residual ADR-0048 left open. Capture"\
+                 " the splits once per pass and pass them to bandAtX and bandAddTarget together;"\
+                 " docs/procedures/TESTING.md carries the probe's numbers and both clamp directions."
+            exit 1
+          }
+
       - name: pluginval (deterministic x3 -- release gate)
         # Explicit condition rather than relying on "no `if:`, so it self-skips".
         # Both pluginval steps carry the SAME condition, naming exactly what must
