@@ -981,6 +981,39 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 77 legs E and F — the wheel latch's ROW half** (ADR-0045, applied again). Leg A covers
+  the count; leg E covers the split row, which the latch did not stamp. Unlike State tests 81, 82 and
+  84 this one **can** fail on its own defect, and did: the window is between two wheel ticks, i.e.
+  user time, so no thread and no probe are needed. Pre-fix diagnostic: *"band 1 moved 1.060 → 1.120
+  after a same-count split move under a hand that never moved"*. Leg E also asserts the tick still
+  edits **something** — that pins re-deriving over aborting the burst. **Leg F is the control the row
+  half needs**: a split burst writes the very row leg E watches, so a stamp not refreshed by the
+  burst's own confirmed stores would drop the latch on the second tick of every ordinary wheel burst.
+  Its delta is **1.0 and that is the instrument** — at the 0.20 used elsewhere the split stays inside
+  `handleNearX`'s 7 px grab radius, so a wrongly dropped latch re-derives onto the same handle and the
+  leg passes on broken code (measured: at 0.20 it killed neither stamp mutation). **Mutation record:**
+  the row comparison removed → leg E (1 check); the stamp refresh removed → leg F (1 check); the seed
+  at latch creation removed → **nothing**, recorded as unkilled rather than deleted, because
+  re-deriving a width burst's latch over an unchanged row is idempotent.
+
+* **State test 76 legs K and L — `removeBand`'s per-store DESTINATION re-proof.** This closes the
+  coverage gap escalated by the round-4 audit and re-measured open on this tree: deleting
+  `bandCount() != expectedBands || ! exactlyEqual (bandWidth (k), wd[k])` and its split twin from both
+  loops left all 2866 checks green. Leg F kills the ADR-0044 **mask** re-proof; legs B and C are the
+  ADR-0042 controls; none of them touched this one. **Why these are not the opposite of legs B and C:**
+  those poke a slot the transaction has already finished with, and ADR-0042 says such a write is a
+  newer authority and must stand. K and L poke a slot the plan has **not yet reached**, from inside the
+  store one iteration earlier — already-written versus about-to-be-written is the line ADR-0042 draws.
+  Both are isolated from the ADR-0049 **source** proof, which at the relevant iteration reads a slot
+  the legs never touch. **Mutation record:** the width destination re-proof removed → leg K (3 checks);
+  the split one removed → leg L (2 checks); both → 5. **Leg K sets band 2's width explicitly**, and
+  that is not decoration: at the shared fixture's values `nw[1]` equalled `wd[1]` and the k = 1 store
+  was elided, which made one of its checks vacuously true under the mutation — measured, then fixed.
+  Both legs use a **non-notifying** probe (`WriteFromInsideAStoreQuietly`): the notifying one takes the
+  target's listener lock while the source's is held, and leg L must poke the same parameter pair as
+  leg C in the opposite direction, which gave ThreadSanitizer a lock-order cycle. Removing the second
+  lock was preferred to adding a second `deadlock:` suppression.
+
 * **State test 84 — a band move derives its origins from the record it proved** (ADR-0051, applied
   again). Honest scope in its own header and repeated here: **this test cannot fail on the defect it
   accompanies.** That defect lives between `mouseDrag`'s ownership gate and `beginBandMove`'s

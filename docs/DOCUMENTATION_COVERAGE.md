@@ -10949,7 +10949,7 @@ in the ADR. The probe is the coverage.
 GUI-side snapshot); held-audition guard unchanged (`tick()` still returns at `isShowing()`, no
 production seam added); wheel gesture closure unchanged (ADR-0041, State test 80); U4 unchanged; the
 TSan suppression verified harness-scoped by grep — `WriteFromInsideAGestureOpen` exists only at
-`tests/state_tests.cpp:2761` — with the match-count assertion green in CI on `03a6e39`; both
+`tests/state_tests.cpp:2786` — with the match-count assertion green in CI on `03a6e39`; both
 informational items unchanged.
 
 **Documentation.** `ADR-0047` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
@@ -11233,4 +11233,52 @@ by measurement, with the instrument deliberately left alone since only the label
 **Gate status.** Not a gate item and no new ADR: no accepted decision changes, one call site changes
 in one private function, `beginBandMove`'s `n` loses its default so the newly load-bearing
 precondition cannot be reached silently, and there is no parameter ID, serialization, threading-model,
+DSP-order or reported-latency change, no lock and no allocation. [Verified]
+
+## Twenty-first pass — the wheel latch's row half, and a coverage gap closed (2026-09-09)
+
+**Lifecycle decision, recorded.** No workflow was started this round: ultracode is off, so the
+Workflow tool's standing opt-in does not apply, and both questions — one latch's lifecycle in one
+handler, and whether the suite covers one guard — are answered exactly by reading the code and
+running mutations. CI on `20647a9` (20 successful check runs, 14 skipped, none red) was consumed as
+the baseline rather than re-derived.
+
+**The finding, confirmed from the code.** `scrollBands` stores `bandCount()` and nothing else, while
+`scrollHandle`/`scrollBand` are INDICES and `scrollAnchor` tracks the POINTER. The three
+invalidations — a >3 px `mouseMove`, `mouseExit`, and a count change — all miss a same-count split
+move, which re-lays the display out under a stationary hand exactly as a count change does.
+ADR-0045's own bullet argues that case in those words for the count half only.
+
+**Deterministic, unlike the three windows before it.** This one lies between two wheel TICKS, i.e.
+user time, so State test 77 leg E enters it with no thread and no probe, and failed pre-fix with
+*"band 1 moved 1.060 → 1.120 after a same-count split move under a hand that never moved"*.
+
+**The fix** stamps the row beside the count from the same single `captureSplits` reading the
+derivation uses, and refreshes it after a split store by DERIVING from `gestureX` — the record
+`storeOwned` maintains — rather than re-reading the parameters. Re-hit-testing every tick and
+invalidating the burst were both rejected, with reasons, because the wheel's own edits move the split
+it steers. ADR-0041/0052 are untouched: the delta test and `cancelActiveDrag()` still run first.
+
+**Mutations, one surviving and reported as such.** Row comparison removed → leg E; stamp refresh
+removed → leg F; the seed at latch creation removed → **nothing**, because re-deriving a width
+burst's latch over an unchanged row is idempotent. Leg F itself had to be re-aimed from a 0.20 delta
+to 1.0: below `handleNearX`'s 7 px grab radius a wrongly dropped latch re-derives onto the same
+handle and the leg passes on broken code.
+
+**The `removeBand` per-store destination re-proof gap is closed.** Re-measured open first (deleting it
+from both loops left 2866 checks green), then covered by State test 76 legs K and L — width loop 3
+checks, split loop 2, both 5. No production line changed. Two test-construction mistakes are recorded
+because each changed the answer: leg K's middle check was vacuously true under its own mutation until
+band 2's width was set explicitly, and leg L gave ThreadSanitizer a real lock-order cycle by poking
+leg C's parameter pair in the opposite direction — resolved by a non-notifying probe rather than a
+second suppression, so the suppression file stays at one entry.
+
+**Documentation.** `ADR-0045` (applied again — no new decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
+`TESTING.md` (State test 77 legs E/F and State test 76 legs K/L, with both aiming corrections);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §61.
+
+**Gate status.** Not a gate item and no new ADR: ADR-0045's Decision already reads "a positional
+identifier is stamped with the topology it was taken in and is void once that topology moves", and
+ADR-0039/ADR-0051 already settled that the count is not the whole topology. One private member array
+is added and one handler gains a comparison; no parameter ID, serialization, threading-model,
 DSP-order or reported-latency change, no lock and no allocation. [Verified]

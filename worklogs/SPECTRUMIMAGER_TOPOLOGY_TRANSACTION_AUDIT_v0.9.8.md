@@ -2016,3 +2016,136 @@ function and touches no store, no plan, no proof and no audio-side reader. The h
 question at `SpectrumImager.cpp:794` was likewise left alone — no correctness or documentation error
 was found in that block; the three stale comments listed above are elsewhere and were fixed on their
 own merits.
+
+## 61. The wheel latch's ROW half (ADR-0045 applied again), and the removeBand coverage gap closed
+
+### 61a. Workflow audit and lifecycle decision
+
+Nothing was running: no subagent, no workflow, no monitor, no build; one zero-byte task stub with
+nothing in it. One unconsumed artefact, consumed rather than re-derived: CI on `20647a9` —
+**20 successful check runs, 14 skipped, none red** across every workflow on that SHA.
+
+**No workflow was started, and that is the recorded decision.** Ultracode is off for this round, so
+the Workflow tool's standing opt-in does not apply; and the two questions here — the lifecycle of one
+latch in one handler, and whether an existing suite covers one guard — are answered by reading the
+code and by running mutations against the suite, both of which are direct and exact. A fan-out would
+have duplicated reading with less precision. The previous round's nine-agent panel was justified
+because the invariant was contested; this one is not.
+
+### 61b. The finding: CONFIRMED
+
+*"Wheel bursts target stale bands."* Established from the code rather than assumed:
+
+* **What `scrollBands` stores:** `bandCount()` at latch creation, and nothing else.
+* **What the latch IS:** `scrollHandle`/`scrollBand`, **indices**, derived from the pointer x under
+  one reading of the count and one of the split row. `scrollAnchor` stores the pointer position, not
+  the target's.
+* **Created:** on the first tick of a burst, when both indices are negative.
+* **Invalidated:** by `mouseMove` more than 3 px from `scrollAnchor`, by `mouseExit`, and by
+  `bandCount() != scrollBands`. **By nothing else.**
+* **Which automation invalidates it without changing the count:** any write to `mbFreqLow/Mid/High`.
+  The split row alone decides where every handle and every band boundary is drawn, so a same-count
+  split move re-lays the display out under a stationary hand — and none of the three invalidations
+  above can see it. `scrollAnchor` cannot, because it tests the POINTER, and the pointer has not
+  moved.
+
+The ADR's own bullet argues this case in its own words for the count: a change "re-lays the whole
+display out under a hand that has not moved, so the next tick steered a split the pointer was no
+longer over". Only the count half was implemented.
+
+**Reproduced before patching**, and unlike the ADR-0046/0047/0051 windows this one is deterministic:
+it lies **between two wheel ticks**, i.e. user time, so a single-threaded test enters it directly.
+State test 77 leg E on the pre-fix tree:
+
+```
+[leg E] the wheel steered a band its latch named under another split row:
+        band 1 moved 1.060 -> 1.120 after a same-count split move under a hand that never moved
+```
+
+### 61c. What the next tick should do, and why
+
+Four options were considered against the existing wheel UX:
+
+* **Re-hit-test every tick** — REJECTED. The wheel's own edits move the split it is steering, so the
+  burst would jump to a neighbour mid-burst. This is precisely why the latch exists.
+* **Invalidate the burst** — REJECTED, for the reason the count case already gives: dropping and
+  re-deriving costs the user nothing, because the re-derivation happens in the SAME tick and the tick
+  still edits.
+* **Revalidate by re-deriving at `scrollAnchor`** — REJECTED. The burst's own edits walk the target
+  away from the anchor, so an ordinary split burst would invalidate itself after one tick.
+* **Stamp the row beside the count, and refresh it with the burst's own confirmed stores** — CHOSEN.
+  It is ADR-0045's rule with "topology" read as ADR-0039 and ADR-0051 define it.
+
+### 61d. Implementation
+
+`scrollFx[3]` records the split row the latch was derived in, seeded from the **same single**
+`captureSplits` reading the derivation uses (ADR-0051 — the read is hoisted so the staleness test and
+any re-derivation share one reading). A tick whose live row differs drops the latch, and the existing
+re-derivation block re-aims it in the same tick.
+
+After a split store the stamp is **derived** from `gestureX`, which `writeCrossovers` maintains
+through `storeOwned`, rather than re-read from the parameters — one reading per pass, and no window
+in which a foreign write could be adopted, which is the defect §60 closed one function away. A
+refused store leaves the stamp at the pre-store row, so the next tick retargets: a store this burst
+did not land is not a row this burst owns.
+
+ADR-0041 and ADR-0052 are untouched — the delta test and `cancelActiveDrag()` still run first and
+first, so an input that performs no edit still has no side effects. No lock, no audio-thread change.
+
+### 61e. Mutations, including one that survives
+
+| Mutation | Killed |
+|---|---|
+| the row comparison removed (the pre-fix, count-only shape) | leg E, 1 check |
+| the stamp refresh after a split store removed | leg F, 1 check |
+| the seed at latch creation removed | **nothing** |
+
+The third is recorded as unkilled rather than hidden or deleted. Without the seed a **width** burst
+re-derives its latch every tick, and over an unchanged row that is idempotent, so nothing observable
+differs; what it really costs is that `scrollAnchor` is re-stamped each tick, so the 3 px pointer test
+stops measuring drift from where the burst began. No test here separates those.
+
+**Leg F had to be re-aimed, and the reason is recorded in the test.** At the 0.20 delta the rest of
+the test uses, one tick moves the split 5.6 px — inside `handleNearX`'s 7 px grab radius — so a
+wrongly dropped latch re-derives onto the SAME handle and the leg passes on broken code. Measured: at
+0.20 it killed neither stamp mutation. At 1.0 the handle walks 28 px clear and the leg discriminates.
+
+### 61f. The `removeBand` per-store re-proof gap — measured, then closed
+
+Re-measured open on this tree first: deleting the destination re-proof from **both** loops left all
+2 866 checks green. Leg F of State test 76 kills the ADR-0044 **mask** re-proof, legs B and C are the
+ADR-0042 controls, and legs I/J cover the spread — none of them touches this one.
+
+New legs K (width loop) and L (split loop). **They are not the opposite of legs B and C**, which is
+the question to ask before adding them: B and C poke a slot the transaction has ALREADY finished with,
+and ADR-0042 rules that such a write is a newer authority and must stand — it does, and they still
+pass. K and L poke a slot the plan has NOT yet reached, from inside the store one iteration earlier.
+Already-written versus about-to-be-written is exactly the line ADR-0042 draws. Both are isolated from
+the ADR-0049 source proof, which at the relevant iteration reads a slot the legs never touch.
+
+| Mutation | Killed |
+|---|---|
+| the width loop's destination re-proof removed | leg K, 3 checks |
+| the split loop's destination re-proof removed | leg L, 2 checks |
+| both | 5 checks |
+
+**No production line changed for this**, per the instruction: the legs assert shipped behaviour.
+
+**Two test-construction mistakes are recorded because each changed the answer.** Leg K's "the newer
+width is not overwritten" check was **vacuously true** under its own mutation at the shared fixture's
+values — `nw[1]` equalled `wd[1]`, so the k = 1 store was elided by the loop's own "the plan IS the
+world here" line. Band 2's width is now set explicitly in the leg and the check discriminates.
+And leg L, which must poke the same parameter PAIR as leg C in the opposite direction, gave
+ThreadSanitizer a **lock-order cycle** (M0 ⇒ M1 ⇒ M0) through `setValueNotifyingHost`'s listener
+lock — a real red TSan run on this tree, single-threaded and impossible to deadlock, but red. The
+choice was a second `deadlock:` suppression or removing the second lock; removing it won.
+`WriteFromInsideAStoreQuietly` uses `setValue`, which changes exactly what the guard reads and takes
+no listener lock, so the suppression file stays at ONE entry and the CI count assertion is untouched.
+
+### 61g. Not touched
+
+RISK-010, the `addBandAt` re-attribution window, the held-audition vblank gap, wheel gesture closure,
+U4, ADR-0044's partial-transaction residue, cancelled-spread visual ordering, the TSan suppression
+scope and the historical comments at `SpectrumImager.cpp:794` were all out of bounds by instruction.
+None was reopened, and no new evidence about any of them appeared. The `:794` block was read while
+tracing the latch and contains no correctness or documentation error.

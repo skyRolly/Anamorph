@@ -2405,6 +2405,31 @@ struct WriteOnGestureOpen final : public juce::AudioProcessorParameter::Listener
         target->setValueNotifyingHost (target->convertTo0to1 (to));
     }
 };
+// The same probe, but the nested write does NOT notify. `setValueNotifyingHost` takes the target
+// parameter's listener lock while the source parameter's is still held, so two legs that poke the
+// same PAIR in opposite directions give ThreadSanitizer a lock-order cycle -- M0 => M1 => M0 -- and
+// it reports a potential deadlock even though every frame is on the message thread and no second
+// thread exists. Leg C pokes mbFreqLow from inside mbFreqMid's store; leg L has to poke mbFreqMid
+// from inside mbFreqLow's, because the ONLY way to reach the split loop's destination re-proof is
+// to change a slot after the previous iteration's source proof has already passed over it. The
+// choice was between a second `deadlock:` suppression and removing the second lock, and removing it
+// is better: `setValue` changes exactly what the guard reads (`crossover`/`bandWidth` go through
+// `getValue`), takes no listener lock, and leaves the suppression file as tight as the review asks.
+struct WriteFromInsideAStoreQuietly final : public juce::AudioProcessorParameter::Listener
+{
+    juce::RangedAudioParameter* target = nullptr;
+    float to = 0.0f;
+    bool  armed = false;
+    bool  fired = false;
+    void parameterValueChanged (int, float) override
+    {
+        if (! armed || target == nullptr) return;
+        armed = false;
+        fired = true;
+        target->setValue (target->convertTo0to1 (to));
+    }
+    void parameterGestureChanged (int, bool) override {}
+};
 struct WriteFromInsideAStore final : public juce::AudioProcessorParameter::Listener
 {
     juce::RangedAudioParameter* target = nullptr;
@@ -5467,6 +5492,84 @@ static void testATransactionDoesNotCommitALayoutItDoesNotOwn()
         check (bandsNow() == 3, "leg E: an uninterrupted add still raises the band count");
     }
 
+    // ---- LEG K: the width loop's DESTINATION re-proof, isolated --------------
+    //  The gap this closes was escalated by the round-4 audit (worklog section 44 item A) and
+    //  re-measured open on this tree: deleting the destination re-proof from BOTH loops --
+    //  `bandCount() != expectedBands || ! exactlyEqual (bandWidth (k), wd[k])` and its split
+    //  twin -- left all 2866 checks green. Leg F kills the ADR-0044 MASK re-proof in both loops
+    //  and legs B and C are the ADR-0042 controls; none of them touches this one.
+    //
+    //  WHY THIS IS NOT THE OPPOSITE OF LEGS B AND C, which is the question to ask before adding
+    //  it. Those legs write a slot the transaction has ALREADY finished with -- leg B pokes
+    //  `mbWidthLow` from a split store, long after the width loop passed it; leg C pokes
+    //  `mbFreqLow` from the LAST split store, with no iteration left to see it. ADR-0042's rule
+    //  is that such a write is a newer authority and must stand, and it does. This leg pokes a
+    //  slot the plan has NOT yet reached, from inside the store one iteration earlier: the
+    //  transaction is about to overwrite a value somebody else has just set, and the re-proof
+    //  refuses. Already-written versus about-to-be-written is exactly the line ADR-0042 draws.
+    //
+    //  ISOLATED from the ADR-0049 SOURCE proof, deliberately: at k = 1 that one reads slot 2,
+    //  which this leg never touches, so only the destination check can produce the abort.
+    {
+        resetWorld();
+        // BAND 2'S WIDTH IS SET EXPLICITLY, and that is not decoration. `nw[1]` is `wd[2]`, so
+        // with the two equal the k = 1 store is ELIDED by the loop's own "the plan IS the world
+        // here" line -- and then the "newer width is not overwritten" check below is vacuously
+        // true even under the mutation, which is the kind of assertion this file keeps having to
+        // correct. Measured: at resetWorld's values it passed under MUT-Dw. Made distinct, k = 1
+        // is a real store and the check discriminates.
+        auto* wHiMidP = apvts.getParameter (pid::mbWidthHiMid);
+        check (wHiMidP != nullptr, "leg K: band 2's width parameter exists");
+        if (wHiMidP != nullptr) setPlain (wHiMidP, 1.20f);
+
+        WriteFromInsideAStoreQuietly poke;    // see the struct: no nested listener lock
+        poke.target = wMidP;
+        poke.to     = 1.75f;                  // a slot the width loop has NOT reached yet
+        wLoP->addListener (&poke);            // ...poked from the FIRST width store
+        poke.armed = true;
+        removeBandZero();
+        const bool landed = poke.fired;
+        wLoP->removeListener (&poke);
+
+        check (landed, "leg K: the probe write landed inside the first width store");
+        if (landed && (bandsNow() != 4 || std::abs (plainOf (wMidP) - 1.75f) > 1.0e-4f))
+            std::printf ("  [leg K] the removal ran on over a width it was about to overwrite:"
+                         " Bands %d, wMid %.3f (the newer value is 1.750)\n",
+                         bandsNow(), (double) plainOf (wMidP));
+        check (! landed || bandsNow() == 4,
+               "leg K: a width the plan has not reached, replaced mid-burst, abandons the removal");
+        check (! landed || std::abs (plainOf (wMidP) - 1.75f) < 1.0e-4f,
+               "leg K: ...and the newer width is not overwritten by the plan's");
+        check (! landed || std::abs (plainOf (loP) - 200.0f) < 1.0f,
+               "leg K: ...and the split loop never runs");
+    }
+
+    // ---- LEG L: the SPLIT loop's destination re-proof, the same shape --------
+    //  The width loop completes untouched here, so the abort can only come from the split
+    //  loop's own check -- and at k = 1 the ADR-0049 source proof reads slot 2, which this leg
+    //  leaves alone. Without this leg the split-loop half of the re-proof is an unkilled
+    //  mutation even with leg K present.
+    {
+        resetWorld();
+        WriteFromInsideAStoreQuietly poke;    // see the struct: no nested listener lock
+        poke.target = midP;
+        poke.to     = 7000.0f;                // neither the snapshot (2 kHz) nor the plan (10 kHz)
+        loP->addListener (&poke);             // ...poked from the FIRST split store
+        poke.armed = true;
+        removeBandZero();
+        const bool landed = poke.fired;
+        loP->removeListener (&poke);
+
+        check (landed, "leg L: the probe write landed inside the first split store");
+        if (landed && bandsNow() != 4)
+            std::printf ("  [leg L] the removal committed over a split it was about to overwrite:"
+                         " Bands %d, mid %.1f Hz\n", bandsNow(), (double) plainOf (midP));
+        check (! landed || bandsNow() == 4,
+               "leg L: a split the plan has not reached, replaced mid-burst, abandons the removal");
+        check (! landed || std::abs (plainOf (midP) - 7000.0f) < 1.0f,
+               "leg L: ...and the newer split is not overwritten by the plan's");
+    }
+
     proc.editorBeingDeleted (ed);
     delete ed;
 }
@@ -5720,6 +5823,90 @@ static void testAPositionalLatchIsVoidOnceItsTopologyMoves()
             const bool anyReset = std::abs (w[0] - 1.0f) < 1.0e-3f || std::abs (w[1] - 1.0f) < 1.0e-3f
                                || std::abs (w[2] - 1.0f) < 1.0e-3f;
             check (anyReset, "leg D: an uninterrupted alt-click still resets a width to its default");
+        }
+    }
+
+    // ---- LEG E: the row half -- a SAME-COUNT split move retargets the burst --
+    //  ADR-0045's rule is "stamped with the topology it was taken in and void once that topology
+    //  moves", and ADR-0039 settled that the COUNT IS NOT THE WHOLE TOPOLOGY. Leg A covers the
+    //  count. This leg covers the other half: the split row moves, the band count does not, and
+    //  the display re-lays out under a hand that never moved -- the same sentence leg A's comment
+    //  already uses, applied to the half the latch did not stamp.
+    //
+    //  Deterministic, and worth saying why: the window here is BETWEEN two wheel ticks, which is
+    //  user time. No thread and no probe -- unlike the ADR-0046/0047/0051 windows, this one a
+    //  single-threaded test walks straight into.
+    {
+        resetWorld();
+        const auto cs = handleCentres();
+        check (cs.size() == 3, "leg E: all three split handles are findable at four bands");
+        if (cs.size() == 3)
+        {
+            // A point between split 0 (200 Hz) and split 1 (2 kHz): inside BAND 1, and far enough
+            // from both handles that the wheel latches a band rather than a handle.
+            const float probeX = 0.5f * (cs[0] + cs[1]);
+            const auto before = widths();
+            wheelAt (probeX, laneY, 0.20f);                 // latches band 1
+            const auto afterFirst = widths();
+            const int latched = movedIndex (before, afterFirst);
+            check (latched >= 0, "leg E: the first tick moves the band the pointer is over");
+
+            // Split 0 jumps ABOVE the probe point. The count never changes; the band under the
+            // pointer becomes band 0. Nothing about the pointer moves, so no mouseMove fires and
+            // the >3 px anchor test cannot see it.
+            setPlain (loP, 1200.0f);
+            const auto frozen = widths();
+            wheelAt (probeX, laneY, 0.20f);                 // the SECOND tick of the same burst
+            const auto now = widths();
+
+            const std::size_t li = (std::size_t) juce::jmax (0, latched);
+            const bool oldUntouched = latched < 0 || juce::exactlyEqual (frozen[li], now[li]);
+            if (! oldUntouched)
+                std::printf ("  [leg E] the wheel steered a band its latch named under another"
+                             " split row: band %d moved %.3f -> %.3f after a same-count split move"
+                             " under a hand that never moved\n",
+                             latched, (double) frozen[li], (double) now[li]);
+            check (oldUntouched,
+                   "leg E: a wheel latch taken under another split row does not steer its old band");
+            // ...and it RETARGETS rather than aborting: the user's tick still edits something,
+            // which is what dropping-and-re-deriving buys over invalidating the burst.
+            check (movedIndex (frozen, now) >= 0,
+                   "leg E: the tick still edits the band the pointer is over now");
+        }
+    }
+
+    // ---- LEG F: the control the row half needs -- a burst that moves the row --
+    //  A SPLIT burst writes the very row leg E watches, so a stamp that is not refreshed by the
+    //  burst's own confirmed stores would drop the latch on the second tick of every ordinary
+    //  wheel burst. This leg is what stops the row half being implemented that way.
+    //
+    //  THE DELTA IS 1.0 AND THAT IS THE WHOLE INSTRUMENT. `handleNearX`'s grab radius is 7 px and
+    //  a tick moves the split by `dy * 28` px, so at the 0.20 this test uses elsewhere the handle
+    //  stays INSIDE its own grab radius: a latch wrongly dropped is re-derived onto the very same
+    //  handle and the leg passes on broken code. Measured -- at 0.20 this leg kills neither the
+    //  missing stamp refresh nor the missing seed. At 1.0 the handle walks 28 px clear of the
+    //  anchor after one tick, so a wrongly dropped latch re-derives onto a BAND and the tick edits
+    //  a width instead, leaving `mbFreqMid` still.
+    {
+        resetWorld();
+        const auto cs = handleCentres();
+        check (cs.size() == 3, "leg F: all three split handles are findable at four bands");
+        if (cs.size() == 3)
+        {
+            const float probeX = cs[1];                     // split 1's handle
+            const float f0 = plainOf (midP);
+            wheelAt (probeX, laneY, 1.00f);
+            const float f1 = plainOf (midP);
+            wheelAt (probeX, laneY, 1.00f);                 // same burst, no pointer movement
+            const float f2 = plainOf (midP);
+            const bool firstMoved  = ! juce::exactlyEqual (f0, f1);
+            const bool secondMoved = ! juce::exactlyEqual (f1, f2);
+            const bool sameWay = (f1 - f0) * (f2 - f1) > 0.0f;
+            if (! (firstMoved && secondMoved && sameWay))
+                std::printf ("  [leg F] split 1 across two ticks: %.1f -> %.1f -> %.1f Hz\n",
+                             (double) f0, (double) f1, (double) f2);
+            check (firstMoved && secondMoved && sameWay,
+                   "leg F: a split burst keeps its latch though its own edits move the row");
         }
     }
 

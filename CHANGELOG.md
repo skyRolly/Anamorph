@@ -33,6 +33,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0041. Evidence: PR #143. [Verified]
 
 ### Fixed
+- **Scrolling the mouse wheel over the Multiband display no longer keeps adjusting the control it
+  started on after your DAW has moved that control out from under the pointer.** A wheel burst
+  remembers which split or which band you started on, so that your own scrolling does not make it
+  jump to a neighbour halfway through. It gave that memory up if the *number* of bands changed, but
+  not if a crossover simply moved — and a crossover moving re-arranges the display just as much. So
+  if an automation lane, a preset or an undo slid a crossover across your pointer while you scrolled,
+  the next notch went on adjusting the band or split that used to be there, not the one now under
+  your cursor. The burst now also gives up its memory when the crossovers move, and re-aims at
+  whatever the pointer is actually over — the same notch still edits, it just edits the right thing.
+  Scrolling with nothing else happening is completely unchanged, including the way your own scrolling
+  moves a split without the burst losing its grip on it.
+  Decision: ADR-0045. Evidence: PR #143. [Verified]
 - **Sliding a band sideways can no longer take a change your DAW made mid-gesture and treat it as
   your own.** The plugin keeps a record of the sound your edit started from, and every check that
   refuses to overwrite somebody else's change compares against that record. Starting a band slide

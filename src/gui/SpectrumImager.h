@@ -339,6 +339,13 @@ private:
     // ADR-0045: the band count the two latches above were taken in. A latch is a positional
     // identifier and is only meaningful in its own topology; -1 means nothing is latched.
     int   scrollBands  = -1;
+    // ADR-0045's other half: the SPLIT ROW the latch was derived in, beside the count. A latch is
+    // void once the topology it was taken in moves, and the count is not the whole topology
+    // (ADR-0039, ADR-0051) -- a same-count split move re-lays the display out under a stationary
+    // hand exactly as a count change does, and `scrollAnchor` cannot see it because that tests the
+    // POINTER. Refreshed from the record the burst's own confirmed stores maintain, so a split
+    // burst does not invalidate itself; see `mouseWheelMove`.
+    float scrollFx[3] { 0.0f, 0.0f, 0.0f };
     juce::Point<float> scrollAnchor;
 
     // Solo press machine (0.6.9 #8/#9): a quick click latches the band's solo

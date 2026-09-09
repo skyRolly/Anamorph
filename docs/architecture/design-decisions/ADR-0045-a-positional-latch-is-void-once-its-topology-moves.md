@@ -101,3 +101,69 @@ Evidence [Verified]:
   still resets) and are green under both mutants, so neither fix is a false refusal.
 - The rejected narrowing: State test 71 leg G (`tests/state_tests.cpp`), measured failing.
 - Suites: state 2 749 / 0, DSP 396 / 0.
+
+## Applied again 2026-09-09 — the wheel latch's other half, the split ROW
+
+The Decision above is general: *a positional identifier is stamped with the topology it was taken in
+and is void once that topology moves.* When it was written, `scrollBands` recorded `bandCount()` and
+nothing else — and ADR-0039 had already settled that **the count is not the whole topology**, with
+ADR-0051 making the split row the other half explicitly. A follow-up review filed the gap as a Bug
+(*"wheel bursts target stale bands"*, `SpectrumImager.cpp:2943`). It is confirmed. **No new decision:
+this ADR's Status and Decision stand, and no `ARCHITECTURE_REVIEW_GATE.md` item is triggered.**
+
+**The bullet above argues this case in its own words.** It says a tick whose live count differs
+"drops the latch and re-derives it from the pointer — which is precisely what a `mouseMove` already
+did". A **same-count split move** re-lays the display out under a stationary hand in exactly the same
+way, and none of the three existing invalidations sees it:
+
+| invalidation | what it watches | sees a same-count split move? |
+|---|---|---|
+| `mouseMove`, `> 3 px` from `scrollAnchor` | the **pointer** | no — the pointer has not moved |
+| `mouseExit` | the pointer leaving | no |
+| `scrollBands != bandCount()` | the **count** | no — the count is unchanged |
+
+So a burst latched over band 1 kept editing band 1's width after automation slid a split across the
+cursor, and a burst latched on handle 1 kept steering handle 1 after the row put a different handle
+under the pointer.
+
+**Deterministic, unlike the ADR-0046/0047/0051 windows.** Those live between two pure reads inside one
+handler and need a probe. This window is **between two wheel ticks** — user time — so a
+single-threaded test walks straight into it. State test 77 **leg E** does, and failed on the pre-fix
+tree with the diagnostic *"band 1 moved 1.060 → 1.120 after a same-count split move under a hand that
+never moved"*.
+
+**The fix is the row beside the count.** `scrollFx[3]` records the split row the latch was derived in,
+from the same single `captureSplits` reading the derivation uses (ADR-0051), and a tick whose live row
+differs drops the latch and re-derives — in the same tick, so the user's tick still edits, it just
+edits what the pointer is actually over. Re-hit-testing every tick was rejected: the wheel's own edits
+move the split it is steering, so the burst would jump to a neighbour mid-burst. Invalidating the
+burst outright was rejected for the same reason the count case re-derives.
+
+**The stamp follows the burst's own edits, and that is load-bearing.** A split burst writes the very
+row the test watches. `writeCrossovers` stores through `gestureX[k]` via `storeOwned`, so `scrollFx`
+is **derived** from that record after the store rather than re-read from the parameters — one reading
+per pass (ADR-0047/0051), and no window in which a foreign write could be adopted. A refused store
+leaves the stamp at the pre-store row, so the next tick retargets: correct, because a store this burst
+did not land is not a row this burst owns.
+
+**ADR-0041 and ADR-0052 are untouched.** The delta test and `cancelActiveDrag()` above are unchanged
+and still run first, so an input that performs no edit still has no side effects and a real tick still
+finishes a held press.
+
+**Mutations:**
+
+| Mutation | Killed |
+|---|---|
+| the row comparison removed (count-only, the pre-fix shape) | leg E, 1 check |
+| the stamp refresh after a split store removed | leg F, 1 check |
+| the seed at latch creation removed | **nothing** — see below |
+
+The seed survives mutation and that is recorded rather than hidden. With it gone, `scrollFx` starts at
+zeros and a **width** burst re-derives its latch on every tick; over an unchanged row that
+re-derivation is idempotent, so no observable differs. Its real effect is that the latch — and with it
+`scrollAnchor` — persists instead of being re-stamped each tick, which is what makes the `> 3 px`
+pointer test measure drift from where the burst began. No test in this suite separates those, and the
+line is kept as the correct expression of "the row it was derived in" rather than deleted as unkilled.
+
+State 2 874 / 0, DSP 396 / 0, TSan 0 warnings, valgrind 0 errors, all five probes 0.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §61.

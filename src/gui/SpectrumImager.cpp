@@ -2940,19 +2940,40 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     // `gestureIsStale()`; this one was not. Dropping the latch re-derives it from the cursor on the
     // very next tick, which is what a `mouseMove` already did -- so an uninterrupted burst behaves
     // exactly as before.
-    if (scrollBands >= 0 && N != scrollBands)
-        scrollHandle = scrollBand = scrollBands = -1;
+    // ADR-0051: ONE reading of the split row per tick, used by the staleness test below AND by any
+    // re-derivation it causes. It was taken inside the re-derivation branch, which is right as far
+    // as it goes, but the test that decides whether to re-derive needs the same row -- and two
+    // readings of it would be the defect that ADR its own subject.
+    float fx[3]; captureSplits (fx);
+    // ...AND THE ROW IS HALF OF THE TOPOLOGY, which is the half this latch did not stamp.
+    // ADR-0045's rule is that a positional identifier is void once the topology it was taken in
+    // MOVES, and ADR-0039 settled that the count is not the whole topology -- ADR-0051 made the
+    // split row the other half explicitly. The paragraph above argues the count case in exactly the
+    // terms that apply here: a change "re-lays the whole display out under a hand that has not
+    // moved, so the next tick steered a split the pointer was no longer over". A same-count split
+    // move does precisely that. `scrollAnchor` cannot see it -- that is the >3 px test against the
+    // POINTER, and the pointer has not moved; only the layout under it has. So a burst latched over
+    // band 1 kept editing band 1's width after automation slid a split across the cursor, and a
+    // burst latched on handle 1 kept steering handle 1 after the row put a different handle there.
+    // State test 77 leg E is that, deterministically: the window is BETWEEN two ticks, i.e. user
+    // time, so unlike the ADR-0046/0047/0051 windows it needs no thread and no probe.
+    if (scrollBands >= 0)
+    {
+        bool moved = (N != scrollBands);
+        for (int k = 0; ! moved && k < 3; ++k) moved = ! juce::exactlyEqual (fx[k], scrollFx[k]);
+        if (moved) scrollHandle = scrollBand = scrollBands = -1;
+    }
     if (scrollHandle < 0 && scrollBand < 0)
     {
         // ADR-0051: the latch is derived from ONE reading of the split row as well as one of the
         // count. It is stamped with `scrollBands = N` and reused by every later tick of the burst,
         // so a row read twice here names a handle the pointer was never over.
-        float fx[3]; captureSplits (fx);
         const int h = handleNearX ((float) e.position.x, N, fx);
         if (h >= 0) scrollHandle = h;
         else        scrollBand = bandAtX ((float) e.position.x, N, fx);
         scrollAnchor = e.position;
         scrollBands  = N;   // ADR-0045/0046: the topology this latch was DERIVED in
+        for (int k = 0; k < 3; ++k) scrollFx[k] = fx[k];  // ...and the ROW it was derived in
     }
     const float sgn = dy > 0.0f ? 1.0f : -1.0f;
 
@@ -2977,6 +2998,19 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
         // reason they can see, which is the same trade ADR-0046 closed one branch up for the count.
         dragCrossoverTo (scrollHandle, dragOrigX[scrollHandle] + dy * 28.0f, N);
         gestureBands = -1;
+        // THE STAMP FOLLOWS THE BURST'S OWN EDITS, and without this the row half above would drop
+        // the latch on the second tick of every ordinary split burst -- because a split burst
+        // writes the very row that test watches. DERIVED, not re-read (ADR-0047): `writeCrossovers`
+        // stores THROUGH `gestureX[k]` via `storeOwned`, so that array already holds what this
+        // burst's own stores CONFIRMED, and `convertFrom0to1` is pure arithmetic on it. Reading the
+        // parameters again here would take a second reading of a row this pass has already
+        // measured, and would quietly adopt a foreign write landing in between -- which is the
+        // defect the previous round closed one function away. A refused store leaves the stamp at
+        // the pre-store row, so the next tick sees the difference and retargets: correct, because a
+        // store this burst did not land is not a row this burst owns. State test 77 leg F is the
+        // control that an uninterrupted split burst keeps its latch across all of this.
+        for (int k = 0; k < 3; ++k)
+            scrollFx[k] = (freqP[k] != nullptr) ? freqP[k]->convertFrom0to1 (gestureX[k]) : kFreqLo;
     }
     else if (scrollBand >= 0 && scrollBand < N)
     {
