@@ -42,13 +42,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   both ends of every value it moves and stops if either has changed under it, leaving your DAW's
   newer value standing. Removing a band with nothing else happening is completely unchanged.
   Decision: ADR-0049. Evidence: PR #143. [Verified]
-- **Dragging a split off the edge to merge two bands no longer removes a band when your DAW has just
-  replaced the layout.** Releasing an outward drag tells your DAW the edit is finished, and your DAW
-  can answer that in the same instant — an automation lane, a returning preset, a control surface.
-  The plugin already refused the merge if the number of bands changed there, but a *different* layout
-  with the SAME number of bands slipped through, and the merge then removed a band of a layout you
-  had never seen. The release now re-checks that the sound is still the one you were dragging.
-  Releasing an ordinary outward drag still merges, exactly as before.
+- **Releasing a click on the Multiband display no longer acts on a layout your DAW replaced in the
+  same instant.** Letting go of a drag, a delete x or a solo button tells your DAW the edit is
+  finished, and your DAW can answer that immediately — an automation lane, a returning preset, a
+  control surface. The plugin already refused if the *number* of bands changed there, but a
+  different layout with the SAME number of bands slipped through, so the release could merge, delete
+  or solo a band whose frequencies you had never seen. All three release actions now re-check that
+  the sound is still the one you were working on. An ordinary release still does exactly what it
+  did.
   Decision: ADR-0050. Evidence: PR #143. [Verified]
 - **A band you add now appears where you clicked even when your DAW moves a *split* at that instant,
   not just when it changes the band count.** The previous release fixed the band-count half of this.

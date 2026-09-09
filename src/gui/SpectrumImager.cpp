@@ -2553,42 +2553,76 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     // same count; `removeBand`'s `expectedBands` compares COUNTS and sees nothing; and the removal
     // merges a band of a layout the press never saw. The press's ownership has to last as long as
     // the on-release actions that depend on it, which is what this shape says and the old one did
-    // not. Nothing else in the two early branches reads `gestureBands` (`setParam`, `setBands`,
-    // `setSoloMask`, `toggleSoloBit` and `endBandMove` do not), so moving the clear costs them
-    // nothing and they keep clearing it exactly where they did.
+    // not.
+    //
+    // APPLIED TO ALL THREE BRANCHES, and the first implementation of this ADR applied it to ONE.
+    // It moved the clear off the shared line and then put it straight back at the top of the delete
+    // and solo branches, which is the same defect in two more places and is exactly what this ADR's
+    // own title forbids. The review found it; the argument was already written down here. Those two
+    // windows hold no dispatch -- `deleteHit` is a pure read, and the solo store paths are the
+    // `else` of the branch that calls `endBandMove` -- so they are CROSS-THREAD ONLY and no
+    // deterministic test enters them. That is the class ADR-0046, ADR-0047, ADR-0048 and ADR-0051
+    // all CLOSED rather than accepted, and the reason is the same here: with the latch cleared, the
+    // question is not merely unasked, it is unanswerable, so a later reader cannot add the check
+    // without also finding this line.
     const int pressBands = gestureBands;
     if (pressDeleteBand >= 0)
     {
-        gestureBands = -1;
+        // The identifier goes first (ADR-0050, the drag branch's reasoning), so a reentrant
+        // `cancelActiveDrag` -- `tick`'s staleness reconcile -- takes its cheap exit rather than
+        // re-running this branch's action underneath it.
         const int dB = pressDeleteBand;
         pressDeleteBand = -1;
-        if (deleteHit (e.position) == dB) removeBand (dB, pressBands); // released over the same x -> delete
+        // ...AND THE SOUND IS PROVED AT THE ACTION, not only at the top of the handler. `pressBands`
+        // gives `removeBand` the COUNT this press was made in; nothing gave it the VALUES, and a
+        // same-count install between the gate above and this line retargets the delete onto a band
+        // whose boundaries the user never saw.
+        if (deleteHit (e.position) == dB && ! gestureIsStale())
+            removeBand (dB, pressBands);                 // released over the same x -> delete
+        gestureBands = -1;                               // ADR-0050: after the action, not before it
         updateHover (e.position);
         repaint();
         return;
     }
     if (soloPressBand >= 0)
     {
-        gestureBands = -1;
-        if (soloHoldActive) { if (onClearSoloPreview) onClearSoloPreview(); if (soloMovedBand) endBandMove(); }
-        // ADR-0041: the solo click names the topology it was aimed at. `gestureBands` has already
-        // been cleared above, so without `pressBands` these stores ran at the `expectedBands = -1`
-        // default and a Bands change inside the store applied a stale band index to a layout that
-        // never had that band. Measured: `the click soloed band 3 of a four-band layout, Bands
-        // became 2 inside the store, and the mask was written as 0x8 anyway`.
-        else if (soloPressAlt) // Alt/Option quick click: inactive band -> EXCLUSIVE solo
-        {
-            // ONE read, and the decision is made from it. `bandSoloed` would re-read mbSolo, so
-            // the word the branch chose from and the word named as `expectedMask` could differ --
-            // the same "two reads where the rule needs one" this whole series has been about.
-            const int m = soloMask();
-            (void) setSoloMask (((m >> soloPressBand) & 1) != 0 ? 0 // active: all solos off (0.8.9)
-                                                                : (1 << soloPressBand), // 0.8.10: only this band
-                                pressBands, m);
-        }
-        else                  (void) toggleSoloBit (soloPressBand, pressBands);
+        // Same shape: every latched identifier is taken into locals and cleared BEFORE anything
+        // dispatches. `endBandMove` closes two change gestures, and `cancelActiveDrag` re-runs both
+        // `onClearSoloPreview` and `endBandMove` when `soloPressBand`/`soloMovedBand` are still set
+        // -- so a reconcile reaching this branch mid-dispatch would close the same two parameters
+        // twice.
+        const int  sb    = soloPressBand;
+        const bool alt2  = soloPressAlt;
+        const bool held  = soloHoldActive;
+        const bool moved = soloMovedBand;
         soloPressBand = -1;
         soloHoldActive = soloMovedBand = false;
+        // ADR-0041: the solo click names the topology it was aimed at. Without `pressBands` these
+        // stores ran at the `expectedBands = -1` default and a Bands change inside the store applied
+        // a stale band index to a layout that never had that band. Measured: `the click soloed band
+        // 3 of a four-band layout, Bands became 2 inside the store, and the mask was written as 0x8
+        // anyway`. ADR-0050 adds the other half: the SOUND is proved here too, so a same-count
+        // install landing after the handler's gate does not get the click applied to it.
+        if (held)
+        {
+            if (onClearSoloPreview) onClearSoloPreview();
+            if (moved) endBandMove();
+        }
+        else if (! gestureIsStale())
+        {
+            if (alt2) // Alt/Option quick click: inactive band -> EXCLUSIVE solo
+            {
+                // ONE read, and the decision is made from it. `bandSoloed` would re-read mbSolo, so
+                // the word the branch chose from and the word named as `expectedMask` could differ
+                // -- the same "two reads where the rule needs one" this series has been about.
+                const int m = soloMask();
+                (void) setSoloMask (((m >> sb) & 1) != 0 ? 0 // active: all solos off (0.8.9)
+                                                         : (1 << sb), // 0.8.10: only this band
+                                    pressBands, m);
+            }
+            else (void) toggleSoloBit (sb, pressBands);
+        }
+        gestureBands = -1;                               // ADR-0050: after the action, not before it
         updateHover (e.position);
         repaint();
         return;
@@ -2640,7 +2674,15 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
         if (dragRemovePending && gestureBands == pressBands && ! gestureIsStale())
             removeBand (h + 1, pressBands); // drop the dragged split, merge (#18)
     }
-    if (dragBand >= 0) endGesture (widthP[dragBand]);
+    // ADR-0050, the same two lines as the split-drag branch and for the same reason -- found by
+    // walking the class rather than by a later review. The WIDTH drag fires no on-release action, so
+    // it needs no staleness re-proof; what it does need is not to be closed twice. Keeping the latch
+    // alive to here (which this ADR does) makes `tick`'s reconcile reachable inside this dispatch,
+    // and with `dragBand` still set `cancelActiveDrag` would call `endGesture (widthP[dragBand])` a
+    // second time while the first is on the stack. Cleared first, that reconcile takes the cheap
+    // exit. This window was NOT open before this ADR -- the clear used to happen at the top of the
+    // handler -- so closing it here is paying for what the ADR opened, not fixing an old defect.
+    if (dragBand >= 0) { const int wb = dragBand; dragBand = -1; endGesture (widthP[wb]); }
     gestureBands = -1;                 // ADR-0050: after the on-release actions, not before them
     dragHandle = dragBand = -1;
     dragRemovePending = false;

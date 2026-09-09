@@ -65,6 +65,41 @@ This is the same window State test 69 leg C already covers from the other side �
 own stores keep current (`writeCrossovers` stores **through** `gestureX[k]`, see `storeOwned`), so an
 uninterrupted release still removes exactly as before: the stamp equals the world it just wrote.
 
+## Applied to all three branches — and the first implementation applied it to one
+
+**Amended 2026-09-09, same day, from a review finding at `SpectrumImager.cpp:2562`.** The first
+implementation of this decision moved the clear off the shared line and then put it straight back at
+the top of the `pressDeleteBand` and `soloPressBand` branches. That is the same defect in two more
+places, and it is what this ADR's own title forbids. The review found it; the argument was already
+written in the file.
+
+**Both remaining windows are cross-thread only**, and that is stated rather than glossed:
+`deleteHit` is a pure read, and the solo store paths are the `else` of the branch that calls
+`endBandMove`, so no dispatch separates the handler's gate from either action and **no deterministic
+test can enter them**. It is nevertheless the class ADR-0046, ADR-0047, ADR-0048 and ADR-0051 all
+**closed** rather than accepted, and the reason applies unchanged here: with the latch cleared the
+question is not merely unasked, it is *unanswerable*, so a later reader cannot add the check without
+first finding the clear.
+
+Both branches now take their latched identifiers into locals and clear them **before** anything
+dispatches — `cancelActiveDrag` re-runs `onClearSoloPreview` and `endBandMove` while
+`soloPressBand`/`soloMovedBand` are set, so a reconcile reaching the held-solo path mid-dispatch
+would close the same two change gestures twice — and prove `gestureIsStale()` at the action.
+
+**What can be measured is the other direction, and it is measured.** The risk of adding a gate is
+that it refuses something valid. Forcing each new gate to refuse **always**:
+
+| Mutation | Killed |
+|---|---|
+| the delete branch always refuses | **25 checks**, across State tests 69, 71, 74, 75, 76 and 79 |
+| the solo branch always refuses | **6 checks**, across State tests 76, 79 and 80 |
+
+So the actions these gates guard are heavily covered, and a fix that over-refused would have failed
+loudly rather than quietly. The defect direction remains unmeasurable, and no probe is shipped for
+it: with a lane moving the sound continuously the handler's own gate refuses nearly every release,
+so the narrow window contributes nothing an instrument could separate — a probe here would report a
+number that means nothing, which is the failure ADR-0051's header exists to warn about.
+
 ## Consequences
 
 * A same-count install during the release dispatch now refuses the removal instead of performing it.

@@ -2,6 +2,11 @@
 
 **Status:** Accepted (maintainer instruction, 2026-09-09 — *final topology and gesture review round*,
 review finding *"ignored wheel input ends held presses"* at `SpectrumImager.cpp:2583`).
+**Architecture Review Gate: APPROVED by the maintainer, 2026-09-09.** The scope narrowing of
+Accepted [ADR-0041](ADR-0041-a-coupled-update-is-all-of-it-or-none-of-it.md) was raised as a
+hard-stop item under `docs/policies/ARCHITECTURE_REVIEW_GATE.md`, put to human review in the pull
+request rather than decided by a green build, and approved. The reasoning it was approved on is the
+*Architecture Review Gate* section below, unchanged.
 
 **Clarifies [ADR-0041](ADR-0041-a-coupled-update-is-all-of-it-or-none-of-it.md) and
 [ADR-0043](ADR-0043-a-commit-carries-intent-and-a-plan-is-computed-where-it-is-used.md); supersedes

@@ -1517,3 +1517,88 @@ comparison closes the double-close and opens the stale removal; keeping `dragHan
 stale removal (`cancelActiveDrag` clears `dragRemovePending` on that path) and leaves the
 double-close. Only the pair closes both, which is why both are in the code and why the mutation table
 has a row that kills nothing.
+
+## 53. ADR-0050 applied to ONE branch of three, and the review caught it
+
+Filed as a Bug at `src/gui/SpectrumImager.cpp:2562` in the same review that approved ADR-0052:
+*"Automation can replace a same-count layout after the release check but before a pending delete or
+solo action. Both paths clear `gestureBands` before acting, so `gestureIsStale()` cannot stop the
+action from targeting the replacement layout."*
+
+**Confirmed, and it is my own ADR's title used against my own implementation.** ADR-0050 is *"a
+gesture's ownership ends with its LAST on-release action, not with its first"*. I moved the clear off
+the shared line, wrote three paragraphs about why the press's ownership has to outlive the actions
+that depend on it — and then put `gestureBands = -1` straight back at the top of the delete branch
+and the top of the solo branch. Two of the three exits kept the exact shape the ADR was written to
+remove. The paragraph I added even asserted the opposite as a justification: *"nothing else in the
+two early branches reads `gestureBands` ... so moving the clear costs them nothing"*. True and
+irrelevant: the point was never what those branches read, it was what they could no longer be
+ASKED.
+
+**Reachability, stated before the fix rather than after.** Neither remaining window holds a dispatch:
+
+* the delete branch runs `deleteHit (e.position)` — `bandCount()`, `deleteBox`, `bandLeftX`,
+  `bandRightX`, `crossover()`, all pure — between the handler's gate and `removeBand`;
+* the solo branch's stores are the `else` of the branch that calls `endBandMove()`, so the one
+  dispatch in that branch (`endGesture` on the two moved splits) and the stores are mutually
+  exclusive. `onClearSoloPreview` is a relaxed atomic store into the processor
+  (`PluginProcessor.h:137`) and dispatches nothing.
+
+So both are **cross-thread only**. That is the class ADR-0046, ADR-0047, ADR-0048 and ADR-0051 all
+CLOSED this PR rather than accepted, and the structural argument is the stronger half anyway: with
+the latch cleared the question is not merely unasked, it is unanswerable.
+
+**The double-close trap, again.** Keeping the latch alive across the held-solo path makes `tick`'s
+reconcile reachable there, and `cancelActiveDrag` re-runs BOTH `onClearSoloPreview` and
+`endBandMove` while `soloPressBand`/`soloMovedBand` are still set — two change gestures closed
+twice. Both branches now take every latched identifier into locals and clear the members before
+anything dispatches, exactly as the drag branch already did.
+
+**WHAT IS MEASURED, AND WHAT IS NOT.** The defect direction is unmeasurable and no probe is shipped
+for it. A lane moving the sound continuously makes the handler's own gate refuse nearly every
+release, so the few-instruction window contributes nothing an instrument could separate — a probe
+here would print a number that means nothing, which is precisely what section 47 exists to warn
+about. The RISK direction of adding a gate is measurable and was measured: forcing each new gate to
+refuse always kills **25 checks** (delete) and **6 checks** (solo) across State tests 69, 71, 74, 75,
+76, 79 and 80. The actions are heavily covered, so an over-refusing fix would have failed loudly.
+
+**The pattern worth naming.** Three rounds running, the mistake has been the same shape: a rule
+stated correctly and applied to the instance in front of me. Round 3 recorded a mutation ladder for
+one call site of four and called it four. This round wrote *"ends with its LAST on-release action"*
+and shipped it for one branch of three. A rule that names a class has to be walked over the whole
+class before the round closes, and "the review will find the rest" is not a method.
+
+## 54. The whole class, walked — every gesture-close site in the file
+
+Section 53 ends with "a rule that names a class has to be walked over the whole class", so here is
+the walk rather than the promise. Every site that closes a change gesture or clears a latched
+identifier:
+
+| Site | Ordering | Disposition |
+|---|---|---|
+| `mouseUp` delete branch | identifier cleared before the action; `gestureIsStale()` proved at it | **fixed** (§53) |
+| `mouseUp` solo branch | all four identifiers cleared before `endBandMove`; staleness proved at the stores | **fixed** (§53) |
+| `mouseUp` drag branch (`:2643`) | `dragHandle` cleared before `endGesture` | fixed in the first pass |
+| `mouseUp` tail (`:2685`, the WIDTH drag) | `dragBand` cleared before `endGesture` | **fixed here** |
+| `cancelActiveDrag` (`:2713-2718`) | `gestureBands = -1` is its FIRST statement, so a reentrant reconcile finds `gestureIsStale()` false and cannot recurse | **self-protected**, unchanged |
+| `endBandMove` (`:836-840`) | clears `soloMoveLeft`/`Right` AFTER its own two `endGesture`s | escalated (§44 item D), and now **unreachable by reentrancy from both of its callers** |
+
+**The width-drag tail was opened by this ADR, not found by it.** The clear used to happen at the top
+of the handler, which disarmed `tick`'s reconcile for the whole of `mouseUp`; keeping the latch alive
+to the end is what made the reconcile reachable at `endGesture (widthP[dragBand])`. Closing it is
+paying for what the ADR opened. The width drag fires no on-release action, so it needs no staleness
+re-proof — only the two lines that stop it being closed twice.
+
+**`endBandMove`'s own ordering is materially narrowed rather than fixed.** Its two callers are
+`mouseUp`'s solo branch, which now clears `soloPressBand`/`soloMovedBand` before calling it (so a
+reconcile takes `cancelActiveDrag`'s cheap exit), and `cancelActiveDrag` itself, which clears
+`gestureBands` first (so the reconcile's predicate is false). The internal ordering is still worth
+tidying, and stays escalated — but it is no longer reachable from either path.
+
+**Mutation record after the amendment**, re-run against the final shape:
+
+| Mutation | Killed |
+|---|---|
+| the drag branch's post-dispatch re-proof removed | State test 69 leg G only, 1 check |
+| the delete branch always refuses | 25 checks, State tests 69, 71, 74, 75, 76, 79 |
+| the solo branch always refuses | 6 checks, State tests 76, 79, 80 |
