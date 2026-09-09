@@ -1243,7 +1243,7 @@ site is an unreachable window rather than the coverage hole I called it.
 |---|---|---|---|
 | A | **Every per-store re-proof in BOTH `removeBand` loops is uncovered** — the whole ADR-0040 loop guard can be deleted and the suite stays green | mutations M4/M4b/M5/M5b/M4c, all surviving | a real coverage gap with a concrete fix (two legs on State test 76, modelled on leg F with `poke.target = bandsP` and a value target). It is test work, not a code change, and it belongs with the §40b source-slot finding since both live in the same loops |
 | B | **`moveBand` sizes its plan from a reading its own proof never sees** — `const int M = bandCount() - 1` while `writeCrossovers` proves against `gestureBands` | the ADR-0046 shape, in the sibling one line from `dragCrossoverTo` which that ADR fixed | same class as this round's Finding 2 and the same one-argument fix, but the band-move path carries two pins and a `bandTmin`/`bandTmax` pair; it needs its own measurement rather than an argument by analogy |
-| C | **`beginBandMove` derives every band-move identifier and bound from its own reading**, two of them used across its own gesture dispatches | same track | fixing B without C leaves the plan's extent proved and its pins still derived under an unproved topology — so they are one change, not two |
+| C | **`beginBandMove` derives every band-move identifier and bound from its own reading**, two of them used across its own gesture dispatches | same track | fixing B without C leaves the plan's extent proved and its pins still derived under an unproved topology — so they are one change, not two. **CORRECTED BY MEASUREMENT in §55: they are not.** Reverting `moveBand` alone fires 7/1200; reverting `beginBandMove` alone fires 0/1200. The extent is load-bearing for the observable; the pins are threaded on the rule, not on evidence, and §55 says so |
 | D | **`mouseUp`, `cancelActiveDrag` and `endBandMove` clear their latched identifiers AFTER the `endGesture` dispatch**, so a reentrant cancel can fire `endChangeGesture` twice | static, three sites | the fix (copy to a local, null the member, then dispatch) is small but it is a reentrancy-semantics change in the gesture bracket, which is where this series has been most careful |
 | E | `bandSoloed` is dead code — the last helper that re-reads `soloMask` to interpret a caller's index, with a comment already warning against calling it | no callers | trivial, and trivial changes still need a round that is looking at that file |
 
@@ -1602,3 +1602,81 @@ tidying, and stays escalated — but it is no longer reachable from either path.
 | the drag branch's post-dispatch re-proof removed | State test 69 leg G only, 1 check |
 | the delete branch always refuses | 25 checks, State tests 69, 71, 74, 75, 76, 79 |
 | the solo branch always refuses | 6 checks, State tests 76, 79, 80 |
+
+## 55. Finding — "band drags adopt replacement layouts": CONFIRMED, fixed (ADR-0046 completed)
+
+Escalated as §44 items B and C, returned by the review as the round's one confirmed defect. The
+classification did not need re-deriving — §44 already had it, and ADR-0046's own comment on
+`dragCrossoverTo` states both the mechanism and the ABA consequence in the ADR's own words. What was
+missing was the measurement §44 itself asked for ("it needs its own measurement rather than an
+argument by analogy"), so that is what this section is.
+
+**Three readings, one proof.** `beginBandMove` reads `bandCount()` for the two pins and the T range;
+`moveBand` reads it again for the plan's EXTENT; `writeCrossovers` proves each store against
+`gestureBands`, the PRESS's latch. Readings 1 and 2 are separated by `beginBandMove`'s own
+`beginGesture` calls, which dispatch — so a host answering the gesture open moves them apart
+deterministically. Nothing proves reading 2 at all.
+
+**Why the count check does not save it.** A plan sized HIGH is refused by the first store's
+`bandCount() != gestureBands` — unless the count has come BACK by then. That is the ABA, it is
+cross-thread only, and ADR-0046 wrote it down a year of rounds ago as the reason `dragCrossoverTo`
+takes `n` from its caller.
+
+**Reproduced before fixing, and the instrument had to be corrected twice** — recorded because both
+corrections changed the answer:
+
+1. **Geometry.** With `mbFreqHigh` parked at 15 kHz the min-gap packing in `projectFromOrig` never
+   reaches it, so `out[2]` equals its origin and `writeCrossovers` elides the store: **0 before and
+   0 after**, including with a 300 000-iteration spin widening the ABA window. That is an instrument
+   pointed at the wrong place, and it is indistinguishable from a defect that is not there. Parked at
+   5.6 kHz — just above split 1, so a rightward move pushes it — the signature fires.
+2. **A false positive in the verdict.** Running the lane across `mouseDown` lets some presses latch
+   `gestureBands = 4`, after which writing `freqP[2]` is entirely CORRECT. That is what left the
+   first post-fix run at 1/1200 rather than 0, and a CI gate built on it would have flaked for a
+   reason no reader could reconstruct. The lane is now quiet for the press; the window under test
+   lies entirely inside the drag events, so nothing is lost.
+
+**Measured**, pooled over 3600 band moves at four lane spacings: **40 before (1.1%), 0 after**, with
+the control writing `freqP[2]` never.
+
+**AND §44 ITEM C IS WRONG, WHICH THE MEASUREMENT SAYS AND THE ANALOGY DID NOT.** That note asserted
+`moveBand` and `beginBandMove` were "one change, not two". Mutated separately:
+
+| Mutation | out-of-range writes |
+|---|---|
+| only `moveBand` reverted (the EXTENT) | 7 / 1200 |
+| only `beginBandMove` reverted (the PINS and T range) | **0 / 1200** |
+| both reverted (the shipped code) | 40 / 3600 |
+| neither | 0 / 3600 |
+
+The extent is load-bearing for this signature; the pins are not. They are threaded anyway — one
+reading for the derivation and the proof is ADR-0046's rule, it removes a read rather than adding
+one, and a wrong T range is a wrong CLAMP that `projectFromOrig`'s safety pass re-clamps — but that
+half is **unmeasured, and the probe header and the ADR both say so** rather than borrowing the
+extent's evidence. This is the fourth time this series has had to separate "argued" from "measured",
+and the first time the argument came from my own escalation note.
+
+**No new ADR.** This changes no accepted decision: it applies ADR-0046's own rule to the one site
+that ADR named and skipped, so it is recorded as an amendment to ADR-0046 rather than as ADR-0053.
+No gate item — two private member functions gain a defaulted argument.
+
+## 56. Remaining-review audit — the seven standing residuals, against THIS round's change
+
+The production change is six lines: two private signatures gain a defaulted `int n`, two reads become
+`n >= 0 ? jlimit (1, 4, n) : bandCount()`, and two call sites pass `gestureBands`. Nothing else in
+`src/` moves. So the question for each residual is not "is it still accurate" — the previous round
+verified that across all seven with its own workflow — but "does a band-move extent fix bear on it".
+
+| Residual | Bears on it? | Status |
+|---|---|---|
+| **RISK-010**, cross-thread topology READER | No. This is a message-thread WRITER in `SpectrumImager`; RISK-010 is `toEngine`'s ten independent `load()`s in `PluginParameters.cpp`, which this PR does not touch at all | unchanged, reopen condition as recorded |
+| **`addBandAt` re-attribution window** (ADR-0042) | No. Different function, different transaction; the add's loops are untouched | unchanged, named at the site |
+| **held-audition vblank gap** | No. `tick` is untouched and still returns at `isShowing()` before the guard | unchanged, no clean production seam |
+| **wheel closure** (ADR-0052) | No. `mouseWheelMove` is untouched; State test 80 legs A–D all pass | unchanged, approved 2026-09-09 |
+| **U4**, wheel width undo | No. The wheel's width store is untouched and still opens no gesture | unchanged |
+| **partial transaction residue** (ADR-0044) | Not the same residue. ADR-0044's figures are the `addBandAt`/`removeBand` bursts; `moveBand`'s burst is `writeCrossovers`, which is not in that record. The fix does bound `writeCrossovers`' residue to the proved topology, but ADR-0044's statement needs no edit because it never covered this path | unchanged |
+| **TSan suppression scope** | No. The file is untouched and the run still reports `Matched 1 suppressions` with one breakdown line | unchanged |
+
+**None reopened, and none needed a change.** The one thing worth carrying forward is that a residual
+list is only as good as the question asked of it: "is it still true" and "did what I just did move it"
+are different questions, and only the second is this round's to answer.

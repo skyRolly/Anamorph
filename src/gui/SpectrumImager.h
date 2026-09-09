@@ -193,8 +193,12 @@ private:
     bool  setSoloMask (int mask, int expectedBands = -1, int expectedMask = -1);
     bool  toggleSoloBit (int b, int expectedBands = -1);
     int   effectiveSoloMask() const noexcept; // includes the momentary hold preview
-    void  beginBandMove (int b);            // drag a solo handle sideways to move the band (0.6.9 #9)
-    bool  moveBand (float mouseX);
+    // ADR-0046, completed: `n` is the topology the CALLER proved, exactly as `dragCrossoverTo` takes
+    // one. `beginBandMove` derives the two pins and the T range from it, and `moveBand` sizes the
+    // plan's EXTENT with it -- so the extent and the per-store proof inside `writeCrossovers` are one
+    // reading rather than two that usually agree. -1 keeps the live read for a caller with no latch.
+    void  beginBandMove (int b, int n = -1); // drag a solo handle sideways to move the band (0.6.9 #9)
+    bool  moveBand (float mouseX, int n = -1);
     void  endBandMove();
 
     void beginGesture (juce::RangedAudioParameter*);

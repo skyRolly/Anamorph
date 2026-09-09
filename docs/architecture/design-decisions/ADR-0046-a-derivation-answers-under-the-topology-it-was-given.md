@@ -112,6 +112,54 @@ two readings of one parameter. RISK-010 is about `PluginParameters::toEngine` ta
 `load()` calls over ten different parameters. Nothing here touches that; nothing here changes the
 ADR-0042/0044 conclusion that a write-side commit is re-torn by that reader and buys nothing.
 
+## Amended 2026-09-09 — the sibling this ADR named and did not convert
+
+**Review finding at `SpectrumImager.cpp:807`, *"band drags adopt replacement layouts"*.** This ADR
+converted `mouseWheelMove`, `mouseDoubleClick` and `mouseDown`'s handle/width/alt branches, and gave
+`dragCrossoverTo` an `n` argument. It did not convert the **band move**, and its own comment on
+`dragCrossoverTo` — one screen above `moveBand` — already described what that costs:
+
+> Reading it here instead would make the plan's extent a different reading from the one
+> `writeCrossovers` proves each store against — which cannot write a wrong value (the first store's
+> `bandCount() != gestureBands` refuses the whole burst) but does leave the burst's extent and the
+> burst's proof disagreeing, **and an ABA return to the stamped count between the two reads would let
+> a plan sized under the wrong topology through.**
+
+A band move took **three** readings and proved one of them: `beginBandMove`'s `bandCount()` (the two
+pins and the T range), `moveBand`'s `bandCount() - 1` (the plan's **extent**), and
+`writeCrossovers`'s per-store `bandCount() != gestureBands` (against the **press**). Readings 1 and 2
+are separated by `beginBandMove`'s own `beginGesture` calls, which dispatch, so a host answering the
+gesture open moves them apart deterministically; nothing proves reading 2 at all.
+
+**Measured** at three bands against a lane alternating `mbBands` 3/4, pooled over 3 600 band moves:
+
+| | out-of-range writes |
+|---|---|
+| before | **40 / 3 600 (1.1 %)** |
+| after | **0 / 3 600** |
+
+The observable is a message-thread store to `mbFreqHigh` during a three-band band move — a split that
+layout does not use — written inside the user's own change gesture, and so into the host's automation
+lane and undo history.
+
+**The two halves are not equally load-bearing, and the escalation note that raised this finding said
+they were.** Measured separately:
+
+| Mutation | out-of-range writes |
+|---|---|
+| only `moveBand` reverted (the **extent**) | 7 / 1 200 |
+| only `beginBandMove` reverted (the **pins** and T range) | **0 / 1 200** |
+
+The extent is what produces this signature. The pins are threaded anyway — one reading for the
+derivation and the proof is this ADR's rule, it removes a read rather than adding one, and a wrong T
+range is a wrong *clamp* that `projectFromOrig`'s safety pass re-clamps — but that half is
+**unmeasured by this instrument and is not claimed as measured**. `worklogs/…_v0.9.8.md` §44 item C
+is corrected accordingly.
+
+**Not a new gate item.** This changes no accepted decision: it applies this ADR's own rule to the one
+site it named and skipped. Two private member functions gain a defaulted argument; no parameter ID,
+serialization, threading-model, DSP-order or reported-latency change, no lock, no allocation.
+
 ## Consequences
 
 **Verified (State test 78, and State test 77 which was already in the tree):**

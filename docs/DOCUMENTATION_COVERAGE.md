@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3329` and `.github/workflows/build.yml:3414`, this round being
+`.github/workflows/build.yml:3342` and `.github/workflows/build.yml:3427`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:1031 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:1054 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1311`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1334`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1031 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1054 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -11091,3 +11091,38 @@ DSP-order or reported-latency change. ADR-0052 narrows the SCOPE of Accepted ADR
 question was put explicitly rather than assumed — the reasoning for calling it a clarification, and
 not a conflict, is written into ADR-0052's own *Architecture Review Gate* section, and the in-source
 ADR-0041 comment block was reconciled rather than left stranded. [Verified]
+
+## Eighteenth pass — the band-move extent (2026-09-09)
+
+**Scope.** One confirmed review defect: *"band drags adopt replacement layouts"* at
+`SpectrumImager.cpp:807`. No new ADR — it completes ADR-0046 at the one site that ADR's own comment
+named and skipped — and a re-verification sweep over the seven standing residuals, none of which
+moved.
+
+**Production change.** `beginBandMove (int b, int n = -1)` and `moveBand (float mouseX, int n = -1)`
+take the topology the caller proved, exactly as `dragCrossoverTo` has since ADR-0046. `mouseDrag`'s
+solo path passes `gestureBands` to both.
+
+**Coverage added.** `--band-move-probe`, wired into the `linux` job. Pooled 40 out-of-range writes in
+3600 band moves before, 0 after.
+
+**What is measured and what is not, kept apart.** The plan's EXTENT is load-bearing (7/1200 when
+reverted alone); the PINS and T range are not (0/1200 when reverted alone). The pins are threaded on
+ADR-0046's rule rather than on evidence, and the ADR, the probe header and worklog §55 all say so.
+Worklog §44 item C claimed the two were "one change, not two" — that claim is corrected in place by
+the measurement rather than left standing.
+
+**Instrument corrections, both recorded rather than tidied away.** Parking `mbFreqHigh` beyond the
+min-gap packing made the probe report 0 before AND after, even with the ABA window widened 300 000
+iterations. Running the lane across `mouseDown` let some presses latch four bands, making a
+legitimate four-band move look like a defect — the false positive that left one post-fix run at
+1/1200.
+
+**Documentation.** `ADR-0046` (amended) and its index row; `CHANGELOG.md` `[0.9.8] ### Fixed`;
+`TESTING.md` (the probe, its numbers, its two corrections, the CI recipe row);
+`.github/workflows/build.yml`; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §55 and
+the correction to §44.
+
+**Gate status.** Not a gate item and no new ADR: no accepted decision changes, two private member
+functions gain a defaulted argument, no parameter ID, serialization, threading-model, DSP-order or
+reported-latency change, no lock and no allocation. [Verified]

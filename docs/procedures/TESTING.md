@@ -559,6 +559,30 @@ left of the pointer). Both windows are watched now, and the three aims are recor
 header rather than tidied away, for the same reason the TSan suppression's assertion mechanism was
 corrected on 2026-09-08: a gate that cannot fail is worse than no gate.
 
+`AnamorphStateTests --band-move-probe` (ADR-0046, completed) is the fourth of that kind. A band move
+takes THREE readings of `mbBands` and proves one of them: `beginBandMove`'s (the pins and the T
+range), `moveBand`'s (the plan's EXTENT), and `writeCrossovers`'s per-store check against the press's
+latch. Three bands, so the live splits are `freqP[0]` and `freqP[1]`; the lane alternates the count
+3/4 as an ABA generator; the verdict is a message-thread write to `mbFreqHigh` during the move, which
+a correct three-band band move cannot produce.
+
+| | before | after |
+|---|---|---|
+| pooled over 3600 moves | **40 (1.1 %)** | **0** |
+| only `moveBand` reverted (the extent) | 7 / 1200 | — |
+| only `beginBandMove` reverted (the pins) | **0 / 1200** | — |
+
+**The extent is the load-bearing half and the pins are not**, which is stated here because the
+escalation note that raised this finding asserted the opposite. The pins are threaded on ADR-0046's
+rule rather than on evidence, and the probe header says so instead of borrowing the extent's numbers.
+
+**Two corrections to the instrument, both of which changed the answer, are in its header.** Parking
+`mbFreqHigh` at 15 kHz put it beyond the min-gap packing, so `out[2]` equalled its origin and the
+store was elided — 0 before AND after, even with a 300 000-iteration spin widening the ABA window.
+And running the lane across `mouseDown` let some presses latch four bands, after which writing
+`freqP[2]` is CORRECT; that false positive is what left the first post-fix run at 1/1200. The lane is
+now quiet for the press, and the window under test lies entirely inside the drag events.
+
 `AnamorphStateTests --reprepare-race-probe` is the ninth, and like `--state-thread-probe` it is
 built to run under ThreadSanitizer: a thread that is not the message thread moves Drive and then
 re-prepares the processor, 200 times over, while the main thread does only what the real message
@@ -1851,6 +1875,7 @@ event — where it is the only job that runs at all.)
 | `docs` | `python3 scripts/check-docs.py --self-test && python3 scripts/check-docs.py` |
 | `source-lint` | `python3 scripts/check-portability.py --self-test` then the lint, `python3 scripts/check-realtime.py --self-test` then that lint, then `python3 scripts/check-citations.py --self-test` then `--check --base <rev>` |
 | `linux` (the ADR-0048 step) | `./build/.../AnamorphStateTests --add-target-probe 300` — exits non-zero if any click is clamped into a band it was not aimed at. Self-tested in both directions: exit 1 on the pre-fix tree, 0 on this one |
+| `linux` (the ADR-0046 completion step) | `./build/.../AnamorphStateTests --band-move-probe 300` — exits non-zero if a band move sizes its plan from a reading nothing proves, so a split outside the pressed layout is written inside the user's gesture. Self-tested in both directions: exit 1 on the pre-fix tree (40 / 3600), 0 on this one |
 | `linux` (the ADR-0051 step) | `./build/.../AnamorphStateTests --add-edge-probe 300` — the same question with the band COUNT held fixed and a split moving across the click instead. Exits non-zero if the click's band index and that band's EDGES came from two readings of the split row. Self-tested in both directions: exit 1 on the pre-fix tree (75 / 1600), 0 on this one |
 | `linux` (the ADR-0047 step only) | `./build/.../AnamorphStateTests --split-snapshot-probe 300` — exits non-zero if anything launders. It is the only race gate outside the sanitizer jobs, because the thing it measures is a LOGICAL race over two correctly-synchronised atomic reads, which no sanitizer can see (TSan is silent over it, verified) |
 | `sanitizers` | ASan+UBSan over both suites, then valgrind memcheck over both suites (the valgrind step sets `ANAMORPH_TESTS_NO_FTZ=1` — see below) |

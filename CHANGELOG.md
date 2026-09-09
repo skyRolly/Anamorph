@@ -33,6 +33,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0041. Evidence: PR #143. [Verified]
 
 ### Fixed
+- **Dragging a band sideways no longer moves a crossover that band layout does not have.** Sliding a
+  band by its solo button worked out how many crossovers to move by re-reading the band count, rather
+  than using the count the press was made in. If your DAW changed the count and changed it back
+  while you were dragging — an automation lane, a preset arriving — the drag could plan for one more
+  crossover than the layout has and write it, so a frequency you were not editing moved inside your
+  own edit and landed in your DAW's automation and undo history. Measured before the fix at 40
+  occurrences in 3600 drags against such a lane, and none after. An ordinary band drag is unchanged.
+  Decision: ADR-0046. Evidence: PR #143. [Verified]
 - **Removing a band no longer discards a change your DAW made to the band above it.** Removing a band
   moves every band above it down one place, and the plugin was checking only the place each value was
   moved TO, never the place it was taken FROM. If an automation lane, a control surface or a preset

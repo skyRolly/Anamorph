@@ -792,9 +792,31 @@ bool SpectrumImager::toggleSoloBit (int b, int expectedBands)
     return setSoloMask (m ^ (1 << b), expectedBands, m);
 }
 
-void SpectrumImager::beginBandMove (int b)
+// ADR-0046, COMPLETED HERE -- and this function is the sibling that ADR named and did not convert.
+// Its own comment on `dragCrossoverTo`, one screen below, states the mechanism and the failure:
+// taking the extent from a live read "cannot write a wrong value (the first store's
+// `bandCount() != gestureBands` refuses the whole burst) but does leave the burst's extent and the
+// burst's proof disagreeing, and an ABA return to the stamped count between the two reads would let
+// a plan sized under the wrong topology through."
+//
+// A BAND MOVE TOOK THREE READINGS AND PROVED ONE OF THEM:
+//   1. here, `bandCount()` -- the two pins (`soloMoveLeft`/`soloMoveRight`) and the T range;
+//   2. `moveBand`, `bandCount() - 1` -- the plan's EXTENT;
+//   3. `writeCrossovers`, `bandCount() != gestureBands` -- the per-store proof, against the PRESS.
+// Reading 1 is separated from reading 2 by this function's own `beginGesture` calls, which dispatch,
+// so a host answering the gesture open moves them apart deterministically. Nothing proves reading 2
+// at all, so a count read HIGH there sizes the plan for a layout the press never saw, and an ABA
+// return to the stamped count lets every per-store check pass over it. MEASURED at three bands
+// against a lane alternating mbBands 3/4: 11 band moves in 1200 wrote `mbFreqHigh` -- a split a
+// three-band layout does not use -- inside the user's own change gesture, and so into the host's
+// automation lane and undo history. 0 after (`--band-move-probe`).
+//
+// Both this function and `moveBand` now take the caller's proved topology, and they are ONE change:
+// fixing the extent while the pins stay derived under an unproved reading leaves the plan proved and
+// its pins still not.
+void SpectrumImager::beginBandMove (int b, int n)
 {
-    const int N = bandCount();
+    const int N = (n >= 0 ? juce::jlimit (1, 4, n) : bandCount());
     const int M = N - 1;
     auto r = plot();
     soloMoveLeft  = (b > 0)     ? b - 1 : -1;
@@ -824,9 +846,10 @@ void SpectrumImager::beginBandMove (int b)
     if (soloMoveLeft  >= 0) beginGesture (freqP[soloMoveLeft]);
     if (soloMoveRight >= 0) beginGesture (freqP[soloMoveRight]);
 }
-bool SpectrumImager::moveBand (float mouseX)
+bool SpectrumImager::moveBand (float mouseX, int n)
 {
-    const int M = bandCount() - 1;
+    // ADR-0046: the EXTENT is the topology the caller proved, not a fourth reading of it.
+    const int M = (n >= 0 ? juce::jlimit (1, 4, n) : bandCount()) - 1;
     if (M <= 0) return true;
     const float T = juce::jlimit (bandTmin, bandTmax, mouseX - bandAnchorX);
     float out[3];
@@ -2468,11 +2491,11 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
     {
         if (soloMovedBand || std::abs (e.position.x - soloDownX) > 4.0f)
         {
-            if (! soloMovedBand)  { soloMovedBand = true; beginBandMove (soloPressBand); }
+            if (! soloMovedBand)  { soloMovedBand = true; beginBandMove (soloPressBand, gestureBands); }
             if (! soloHoldActive) { soloHoldActive = true; if (onSoloPreview) onSoloPreview (1 << soloPressBand); }
             // ADR-0040: the move abandons its burst the moment a split stops being ours, and a
             // gesture that has lost ownership is void -- the same answer the entry guard gives.
-            if (! moveBand ((float) e.position.x)) { cancelActiveDrag(); return; }
+            if (! moveBand ((float) e.position.x, gestureBands)) { cancelActiveDrag(); return; }
         }
         return;
     }

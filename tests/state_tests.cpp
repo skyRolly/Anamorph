@@ -17688,6 +17688,243 @@ static int runAddEdgeProbe (int iterations)
     return misplaced == 0 ? 0 : 1;
 }
 
+// ---------------------------------------------------------------------------
+//  --band-move-probe -- the ADR-0046 sibling `dragCrossoverTo` was fixed and
+//  `moveBand` was not. ADR-0046's own comment on `dragCrossoverTo` names this
+//  mechanism and this failure: taking the extent from a live read "cannot write a
+//  wrong value (the first store's `bandCount() != gestureBands` refuses the whole
+//  burst) but does leave the burst's extent and the burst's proof disagreeing, and an
+//  ABA return to the stamped count between the two reads would let a plan sized under
+//  the wrong topology through."
+//
+//  THREE READINGS, ONE PROOF. A band move takes them all:
+//    1. `beginBandMove`  `const int N = bandCount();`      -- pins and the T range
+//    2. `moveBand`       `const int M = bandCount() - 1;`  -- the plan's EXTENT
+//    3. `writeCrossovers` `bandCount() != gestureBands`    -- the per-store proof
+//  Reading 3 is against the press's latch. Nothing proves reading 2, so a count read
+//  HIGH there sizes the plan for a layout the press never saw, and an ABA return to
+//  the stamped count lets every per-store check pass over it.
+//
+//  THE SIGNATURE. Three bands, so the live splits are freqP[0] and freqP[1] and a
+//  correct band move can never write freqP[2]. The lane alternates mbBands between 3
+//  and 4. A MESSAGE-THREAD write to mbFreqHigh during the move is therefore a plan
+//  sized under four bands applied to a three-band layout -- a split the user never
+//  touched, moved inside their own change gesture and into the host's automation lane
+//  and undo history. The lane never writes a crossover at all, and its thread is
+//  excluded by id in any case.
+//
+//  MEASURED, pooled over 3600 band moves at four lane spacings:
+//      before   40 / 3600  (1.1%)
+//      after     0 / 3600
+//  and the two halves of the fix are NOT equally load-bearing, which is worth recording because
+//  the escalation note that raised this finding asserted they were:
+//      only `moveBand` reverted (the plan's EXTENT)        7 / 1200
+//      only `beginBandMove` reverted (the PINS and T range) 0 / 1200
+//  The extent is what produces this signature. The pins are threaded anyway -- ADR-0046's rule is
+//  one reading for the derivation and the proof, it removes a read rather than adding one, and a
+//  wrong T range is a wrong CLAMP that `projectFromOrig`'s safety pass then re-clamps -- but that
+//  half is unmeasured by this instrument and is not claimed as measured.
+//
+//     AnamorphStateTests --band-move-probe [iterations]
+static int runBandMoveProbe (int iterations)
+{
+    std::printf ("band-move probe: the plan's extent vs the topology the press proved\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    if (ed == nullptr) { delete raw; std::printf ("  no editor\n"); return 1; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (im != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { im = si; return; }
+            walk (kid);
+            if (im != nullptr) return;
+        }
+    };
+    walk (ed);
+    if (im == nullptr || im->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; std::printf ("  no imager\n"); return 1; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    if (! (bandsP && loP && midP && hiP && soloP))
+    { proc.editorBeingDeleted (ed); delete ed; std::printf ("  no params\n"); return 1; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p2, float v)
+    { p2->setValueNotifyingHost (p2->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p2)
+    { return p2->convertFrom0to1 (p2->getValue()); };
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float dx, float dy, bool dragged)
+    {
+        return juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                 juce::Time::getCurrentTime(), { dx, dy },
+                                 juce::Time::getCurrentTime(), 1, dragged);
+    };
+
+    // THE GEOMETRY IS THE INSTRUMENT, and the first aim of this probe had it wrong: with freqP[2]
+    // parked at 15 kHz the min-gap packing in `projectFromOrig` never reaches it, so `out[2]` equals
+    // its origin, `writeCrossovers` elides the store, and the probe measures 0 before AND after --
+    // which is what an instrument pointed at the wrong place looks like. Parked just above split 1,
+    // a rightward band move pushes it, so an over-sized plan produces a REAL store.
+    constexpr float kHiPark = 5600.0f;    // freqP[2]: unused at three bands, close enough to be pushed
+    auto reset = [&]
+    {
+        im->cancelActiveDrag();
+        setPlain (bandsP, 3.0f);
+        setPlain (soloP, 0.0f);
+        setPlain (loP,   500.0f);
+        setPlain (midP, 5000.0f);
+        setPlain (hiP,  kHiPark);
+    };
+
+    // Band 1's solo button, found by sweeping the tooltip the way the suite does.
+    reset();
+    const float soloY = 11.0f;
+    float sx = -1.0f;
+    {
+        int seen = 0;
+        for (float x = 2.0f; x < (float) im->getWidth() - 2.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (x, soloY, x, soloY, false));
+            if (im->getTooltip().containsIgnoreCase ("solo"))
+            {
+                // The FIRST run of solo-tooltip pixels is band 0's; take the second.
+                while (x < (float) im->getWidth() - 2.0f && im->getTooltip().containsIgnoreCase ("solo"))
+                { x += 1.0f; im->mouseMove (mev (x, soloY, x, soloY, false)); }
+                if (++seen == 1) continue;
+            }
+            if (seen == 1 && im->getTooltip().containsIgnoreCase ("solo")) { sx = x; break; }
+        }
+        if (sx < 0.0f)
+            for (float x = 2.0f; x < (float) im->getWidth() - 2.0f; x += 1.0f)
+            {
+                im->mouseMove (mev (x, soloY, x, soloY, false));
+                if (im->getTooltip().containsIgnoreCase ("solo")) { sx = x; break; }
+            }
+    }
+    if (sx < 0.0f)
+    { proc.editorBeingDeleted (ed); delete ed; std::printf ("  no solo button found\n"); return 1; }
+
+    struct ExtentDetector : juce::AudioProcessorParameter::Listener
+    {
+        std::atomic<bool> armed { false }, sawOutOfRange { false };
+        std::thread::id gui {};
+        juce::RangedAudioParameter* p = nullptr;
+        void parameterValueChanged (int, float newNorm) override
+        {
+            if (! armed.load (std::memory_order_acquire) || p == nullptr) return;
+            if (std::this_thread::get_id() != gui) return;
+            const float hz = p->convertFrom0to1 (newNorm);
+            if (std::abs (hz - kHiPark) > 1.0f) sawOutOfRange.store (true, std::memory_order_release);
+        }
+        void parameterGestureChanged (int, bool) override {}
+    };
+    ExtentDetector det;
+    det.gui = std::this_thread::get_id();
+    det.p = hiP;
+    hiP->addListener (&det);
+
+    std::atomic<int>  phase { 0 };
+    std::atomic<int>  spin  { 0 };
+    std::atomic<bool> quit  { false }, writing { false };
+    bool flip = false;
+    std::thread automation ([&]
+    {
+        while (! quit.load (std::memory_order_acquire))
+        {
+            while (phase.load (std::memory_order_acquire) == 1)
+            {
+                writing.store (true, std::memory_order_release);
+                const int n = spin.load (std::memory_order_relaxed);
+                for (int i = 0; i < n; ++i) std::atomic_signal_fence (std::memory_order_acq_rel);
+                flip = ! flip;
+                setPlain (bandsP, flip ? 4.0f : 3.0f);   // the ABA generator
+            }
+            writing.store (false, std::memory_order_release);
+        }
+    });
+
+    // THE LANE IS QUIET FOR THE PRESS, and that is the difference between a signature and a
+    // coincidence. Run it across `mouseDown` too and some presses latch `gestureBands = 4`, after
+    // which a band move writing freqP[2] is entirely CORRECT -- a legitimate four-band move, counted
+    // as a defect by a detector that only looks at the parameter. That false positive is what left
+    // the first post-fix run at 1/1200 instead of 0, and a CI gate built on it would flake for a
+    // reason no reader could reconstruct. Pressing with the lane stopped pins `gestureBands` at
+    // three, so any freqP[2] store during the drag is a plan sized past what the press proved.
+    // The window under test lies entirely inside the drag events, so the lane loses nothing.
+    auto oneMove = [&] (bool laneOn)
+    {
+        im->mouseDown (mev (sx, soloY, sx, soloY, false));           // lane quiet: gestureBands == 3
+        if (laneOn) phase.store (1, std::memory_order_release);
+        im->mouseDrag (mev (sx + 12.0f, soloY, sx, soloY, true));   // crosses the 4 px gate -> beginBandMove
+        im->mouseDrag (mev (sx + 26.0f, soloY, sx, soloY, true));
+        im->mouseDrag (mev (sx + 40.0f, soloY, sx, soloY, true));
+        if (laneOn)
+        {
+            phase.store (0, std::memory_order_release);
+            while (writing.load (std::memory_order_acquire)) { }
+        }
+        im->mouseUp   (mev (sx + 40.0f, soloY, sx, soloY, true));
+    };
+
+    {
+        reset();
+        det.sawOutOfRange.store (false, std::memory_order_release);
+        det.armed.store (true, std::memory_order_release);
+        oneMove (false);
+        det.armed.store (false, std::memory_order_release);
+        std::printf ("  control (no lane): solo x %.1f -> bands %.0f, splits %.1f / %.1f / %.1f%s\n",
+                     sx, (double) plainOf (bandsP), (double) plainOf (loP), (double) plainOf (midP),
+                     (double) plainOf (hiP),
+                     det.sawOutOfRange.load (std::memory_order_acquire) ? "  [!! control wrote freqP[2]]" : "");
+    }
+
+    int outOfRange = 0;
+    for (const int sp : { 0, 40, 120, 400 })
+    {
+        int m = 0;
+        for (int it = 0; it < iterations; ++it)
+        {
+            reset();
+            det.sawOutOfRange.store (false, std::memory_order_release);
+            det.armed.store (true, std::memory_order_release);
+            spin.store (sp, std::memory_order_relaxed);
+
+            oneMove (true);
+
+            det.armed.store (false, std::memory_order_release);
+            if (det.sawOutOfRange.load (std::memory_order_acquire)) ++m;
+        }
+        outOfRange += m;
+        std::printf ("  spin %3d: plans sized past the proved topology %d / %d\n", sp, m, iterations);
+    }
+    quit.store (true, std::memory_order_release);
+    automation.join();
+    hiP->removeListener (&det);
+
+    std::printf ("  TOTAL OUT-OF-RANGE WRITES: %d\n", outOfRange);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+    return outOfRange == 0 ? 0 : 1;
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -17755,6 +17992,9 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--add-edge-probe") == 0)
         return runAddEdgeProbe (argc > 2 ? std::atoi (argv[2]) : 300);
+
+    if (argc > 1 && std::strcmp (argv[1], "--band-move-probe") == 0)
+        return runBandMoveProbe (argc > 2 ? std::atoi (argv[2]) : 300);
 
     const bool writeSnapshot = argc > 1 && std::strcmp (argv[1], "--write-snapshot") == 0;
 
