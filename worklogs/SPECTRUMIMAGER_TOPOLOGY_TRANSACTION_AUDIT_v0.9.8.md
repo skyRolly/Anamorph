@@ -1728,3 +1728,146 @@ four topology probe gates green — ADR-0047 (the split snapshot is one reading)
 target answers under one topology), ADR-0051 (its edges answer under one reading too) and **ADR-0046
 (a band move's plan is sized by the topology the press proved)** — alongside the Clang warning gate,
 the ABI floor assertion and both Linux pluginval gates.
+
+## 58. Cleanup round — the two escalated double-close sites, and the dead solo helper
+
+Scope given: audit `cancelActiveDrag` and `endBandMove`'s latch-clear ordering, fix it only if it is
+safe, and delete `bandSoloed` if nothing calls it. RISK-010, U4 and the accepted ADR trade-offs were
+explicitly out of bounds and were not touched.
+
+### 58a. Workflow audit before any edit
+
+No background agent, workflow or build was running at the start of this round. The two CI monitors
+from §57 (`bczeocj85` on `6356cc6`, `b7zp3mbdx` on `031c7f4`) had both ended, and their last events
+were consumed rather than re-derived: `sanitizers: cancelled` and `macos: cancelled` on the
+superseded run are the concurrency group doing its job, not failures. Nothing was started that
+existing evidence already answered — in particular the reachability question here is a *static* one
+about two predicates and a *deterministic* one about a listener, so no probe and no sub-agent could
+have answered it better than reading the two call sites.
+
+### 58b. Item 1 — `cancelActiveDrag` and `endBandMove`: CONFIRMED, and it is safe to fix
+
+The review filed it as a Bug: *"`cancelActiveDrag` leaves drag identifiers live while `endGesture`
+notifies the host. Reentrant cancellation closes the same gesture again."* Confirmed, and the
+mechanism is not the one the early clear was thought to cover.
+
+`cancelActiveDrag` clears `gestureBands` at the top, before its cheap exit. **That protects exactly
+one of the two reentrant paths into it:**
+
+* `SpectrumImager::tick` — `if (gestureIsStale()) cancelActiveDrag();`. The predicate reads the
+  latch, which is already `-1`, so a reentrant tick takes the cheap exit. Covered.
+* `AnamorphAudioProcessorEditor`'s stuck-drag reconcile — `if (isMouseButtonDownAnywhere() &&
+  ! anyPhysicalMouseButtonDown()) { …; imager->cancelActiveDrag(); }`. **Not covered.** That
+  predicate never reads `gestureBands`; it reads the mouse. And KI-013 is why it can still be true on
+  the re-entry: the macOS realtime query does not refresh JUCE's cached button state, so the gate
+  does not go quiet by itself there the way the comment above it describes for other platforms.
+
+Reached that way from inside `endChangeGesture`, with `dragBand`/`dragHandle`/`soloPressBand` still
+live, the nested call **closes the same parameter's gesture a second time** and then clears the
+identifiers — so the outer call, on resumption, **skips the sibling gesture it had not reached yet
+and leaves it open**. The review named the first half; the second is worse and was found by walking
+the function rather than by reading the finding.
+
+**Reproduced before patching**, because the class is reentrant and therefore deterministic — no
+thread, no sleep, no test-only production seam. State test 83 arms a real
+`AudioProcessorParameter::Listener` that calls `cancelActiveDrag()` from the close it is watching:
+
+```
+pre-fix   leg A (split drag)  closed 2 times
+          leg B (width drag)  closed 2 times
+          leg C (band move)   closed 2 times
+          leg D (control)     closed 1 time      <- correct before AND after
+post-fix  all four legs       closed 1 time
+```
+
+**Safe:** both functions make the same calls, on the same parameters, in the same order, and end in
+the same state; only the point at which the members are cleared moves. No ownership predicate changes
+its answer on any non-reentrant path — leg D is the control that says so, and the whole 2 851-check
+suite is the wider one. The one behaviour that changes is the reentrant path, from a double close
+plus a leaked-open sibling to a cheap exit. No new ADR: this is ADR-0050's own rule applied to the
+two sites that ADR escalated and carried, so it is an amendment to an Accepted decision, not a new
+one, and no `ARCHITECTURE_REVIEW_GATE.md` item is triggered.
+
+**Mutations — and they correct what I first wrote at both sites:**
+
+| Mutation | Killed |
+|---|---|
+| `cancelActiveDrag`'s clear moved back after the dispatches | legs A + B, 2 checks |
+| `endBandMove`'s clear moved back after the dispatches | **nothing** |
+| both (the pre-fix tree) | legs A + B + C, 3 checks |
+
+The first draft of both source comments read the second row alone and called `endBandMove`'s half
+"defence in depth with no reachable test". The third row says otherwise: leg C is held by the
+**pair**, and `endBandMove`'s clear is the layer that still refuses the double close once
+`cancelActiveDrag`'s cheap exit is gone. Both comments are corrected in place. This is the same "no
+single layer is measurable, only the ensemble" shape §44 records for the `removeBand` count proof,
+and the reason a surviving single-line mutation at either site is not evidence of a hole.
+
+### 58c. Item 2 — `bandSoloed` removed
+
+No production caller, no test caller, no doc that depended on the symbol existing. Declaration
+(`SpectrumImager.h`) and definition (`SpectrumImager.cpp`) both deleted. The one comment that named
+it — the ADR-0041 note in `mouseUp`'s Alt-click solo branch explaining why that branch reads
+`soloMask()` **once** instead of asking a helper — is kept and reworded: the argument is about the
+double read, not about a symbol, and the note now records that the helper existed, lost its last
+caller when the branch was rewritten, and was removed rather than left as a pattern to reach for.
+`docs/DOCUMENTATION_COVERAGE.md`'s escalation line is updated from "is dead code" to closed.
+
+### 58d. What this round did NOT do, and why
+
+* **RISK-010, U4, and the ADR-0042/0044 accepted trade-offs** — explicitly out of scope, untouched,
+  and re-verified as unmoved by this change: it edits two release/cancel paths and deletes a private
+  helper, and touches no store, no plan, no proof and no audio-side reader.
+* **The review's Investigate item at `SpectrumImager.cpp:795`** (*"audit history obscures
+  invariants"* — the large historical comment blocks) is a real style question and is deliberately
+  NOT acted on here. Shrinking those blocks is exactly the kind of edit that loses the measurement a
+  later round needs, and this file has twice had a claim restored from a comment that a tidier
+  version would have dropped. It belongs to a round that is doing that on purpose, with the
+  measurements moved into the ADRs first rather than deleted.
+* **The Bug the review filed at `SpectrumImager.cpp:829`** is separately confirmed and is NOT fixed
+  here — see §59.
+
+## 59. The review's other Bug, at `SpectrumImager.cpp:829` — CONFIRMED, and deliberately not fixed here
+
+*"Band drags adopt later automation. A same-count write between the ownership check and
+`captureDragOrigins` replaces the press snapshot. `moveBand` then moves automation the gesture never
+owned."*
+
+Verified against the tree rather than taken from the finding, and it is real. It is a **different**
+defect from §55's, at the same function: §55 was about the plan's EXTENT being sized by an unproved
+reading, and is fixed. This one is about the gesture's ownership RECORD being replaced mid-gesture.
+
+**The chain, with the line each step is on.** `mouseDrag` proves the gesture at its entry
+(`if (gestureIsStale()) { cancelActiveDrag(); return; }`), then on the first movement past the 4 px
+threshold calls `beginBandMove (soloPressBand, gestureBands)`, which calls `captureDragOrigins()`.
+That helper is `captureGestureSound(); seedDragOrigins();` — and `captureGestureSound()` **re-stamps**
+all seven `gestureX`/`gestureW` slots from the live parameters. So a same-count write landing between
+the gate and that line is written INTO the record the gesture proves against, and `writeCrossovers`
+can never refuse it afterwards: it compares against the adopted stamp. `bandAnchorX` is still
+`soloDownX`, the press's x, so the projection is anchored to the press while its origins come from
+the replacement.
+
+**Why the count half does not save it:** `writeCrossovers` also tests `bandCount() != gestureBands`,
+and `gestureBands` is NOT re-stamped, so a count move in that window is still refused. Only a
+same-count sound change is adopted — precisely what the review says.
+
+**Class: cross-thread only.** The window runs from `mouseDrag`'s gate to `beginBandMove`'s
+`captureDragOrigins()` and contains `plot()` and two integer assignments — no dispatch, no store.
+Same class as ADR-0047's, ADR-0048's and ADR-0051's windows, all of which this series CLOSED rather
+than accepted, and reachable by a probe rather than by a deterministic test.
+
+**The fix is one word, and is already designed.** `SpectrumImager.h` says of `seedDragOrigins` that
+it is *"the origin half of `captureDragOrigins`, on its own, for the one caller that has"* a stamp
+already — ADR-0051 split the helper for exactly this shape and converted `mouseDown`'s handle branch.
+`beginBandMove` is the same kind of caller: it runs mid-gesture, after `mouseDown` stamped and after
+`mouseDrag`'s gate proved that stamp still current, so it should derive its origins from the stamp it
+holds instead of taking a new one. And the conversion is provably inert when nothing is racing:
+`soundMovedUnderGesture` compares all seven slots in normalised units **exactly**, so past the gate
+the stamp equals the live values bit-for-bit and `seedDragOrigins()` yields identical `dragOrigX`.
+
+**Not applied in this round, and that is a scope decision rather than a disposition.** The brief for
+this round named two items and listed what not to touch; a third production change to the band-move
+path — the same path §55 changed — belongs with its own measurement (`--band-move-probe` extended to
+count adopted layouts, before and after) rather than as a rider on a cleanup pass. It is carried as
+an OPEN confirmed finding, not as an accepted residual, and it is the one review blocker this round
+leaves standing.

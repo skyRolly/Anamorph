@@ -156,3 +156,58 @@ front of them at all — and the guard's own comment now records this so the nex
 delete it as dead.
 
 State 2 840 / 0. `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §46.
+
+## Amended 2026-09-09 — the other two escalated sites, closed
+
+The paragraph above names "the reentrant double-close class already escalated for **three** sites in
+this file" and closes one of them, `mouseUp`. A follow-up review filed the second as a Bug —
+*"cancellation closes gestures twice"* — and it is confirmed, reproduced and fixed here. No new
+decision: this is the same rule applied to the two sites that were carried, so ADR-0050's Status and
+its Decision are unchanged.
+
+**What was actually wrong, and why `gestureBands = -1` was not already cover.** `cancelActiveDrag`
+clears the snapshot first and then dispatches with `dragBand` / `dragHandle` / `soloPressBand` still
+live. That ordering protects exactly one reentrant path and was mistaken for protecting all of them:
+
+| reentrant path into `cancelActiveDrag` | predicate | covered by the early `gestureBands = -1`? |
+|---|---|---|
+| `SpectrumImager::tick` | `if (gestureIsStale()) …` | **yes** — the predicate reads the latch, which is already gone |
+| `AnamorphAudioProcessorEditor`'s stuck-drag reconcile | `isMouseButtonDownAnywhere() && ! anyPhysicalMouseButtonDown()` | **no** — it never reads the latch; it reads the mouse |
+
+The second predicate is the one that matters, and KI-013 is why it can still be true on the re-entry:
+the macOS realtime query does not refresh JUCE's cached button state, so
+`isMouseButtonDownAnywhere()` does not go quiet by itself there. Reached that way from inside
+`endChangeGesture`, the nested call closed the **same** parameter's gesture a second time, and — the
+half the review did not name — cleared the identifiers, so the outer call then **skipped** the
+sibling gesture it had not reached yet and left it open.
+
+`endBandMove` is the third site and gets the same two lines.
+
+**Reproduced before it was patched**, because this class is reentrant rather than cross-thread and so
+is deterministic: a real `AudioProcessorParameter::Listener` on a real parameter, re-entering
+`cancelActiveDrag` from the close it is watching. State test 83, legs A (split drag), B (width drag)
+and C (band move) each counted **2** closes on the pre-fix tree; leg D is the control that an
+uninterrupted cancellation still closes exactly **once**, so clearing first cannot have turned the
+function into a no-op.
+
+**The two sites are one ensemble, and the mutations say so:**
+
+| Mutation | Killed |
+|---|---|
+| `cancelActiveDrag`'s clear moved back after the dispatches | legs A + B, 2 checks |
+| `endBandMove`'s clear moved back after the dispatches | **nothing** |
+| both (the pre-fix tree) | legs A + B + C, 3 checks |
+
+So `endBandMove`'s clear is not dead weight and not a single-line proof either: it is the layer that
+still refuses the double close once `cancelActiveDrag`'s cheap exit is gone. That is the same "no
+single layer is measurable, only the ensemble" shape the `removeBand` count proof already carries,
+and the reason a surviving single-line mutation at either site is not evidence of a hole. **An
+earlier draft of both source comments called `endBandMove`'s half "defence in depth with no reachable
+test"** — that was written from the first mutation alone and is corrected in place; leg C reaches it.
+
+**Ownership and gesture semantics are unchanged.** Both functions make the same calls, on the same
+parameters, in the same order; only the point at which the members are cleared moves. What changes is
+the reentrant path — from a double close plus a leaked-open sibling, to a cheap exit.
+
+State 2 851 / 0, TSan 0 warnings with `Matched 1 suppressions`, all four topology probes 0.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §58.

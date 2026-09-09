@@ -208,7 +208,6 @@ int SpectrumImager::soloMask() const noexcept
     if (auto* p = soloP) return (int) std::lround (p->convertFrom0to1 (p->getValue())) & 0x0F;
     return 0;
 }
-bool SpectrumImager::bandSoloed (int b) const noexcept { return (soloMask() & (1 << b)) != 0; }
 int  SpectrumImager::effectiveSoloMask() const noexcept
 {
     return (soloHoldActive && soloPressBand >= 0) ? (1 << soloPressBand) : soloMask();
@@ -856,11 +855,25 @@ bool SpectrumImager::moveBand (float mouseX, int n)
     projectFromOrig (out, dragOrigX, M, soloMoveLeft, bandStartLeftX + T, soloMoveRight, bandStartRightX + T);
     return writeCrossovers (out, M);
 }
+// ADR-0050, the third and last site it escalated. The pins are latched and the members cleared
+// before either dispatch, so this function is self-protecting instead of relying on its callers:
+// reached twice, the second call closes nothing.
+//
+// MEASURED, AND THE MEASUREMENT IS NOT THE ONE THIS COMMENT FIRST CLAIMED. Reverting these two
+// lines ALONE leaves every check green -- `cancelActiveDrag`'s cheap exit stands in front of the
+// only reentrant path, and `mouseUp` clears `soloPressBand`/`soloMovedBand` before calling here --
+// so a first draft of this note called it defence in depth with no reachable test. Reverting BOTH
+// sites fails State test 83 leg C, while reverting `cancelActiveDrag` alone fails only legs A and
+// B. So this clear is not dead weight: it is the layer that still refuses the double close when the
+// other one is gone. That is the same "no single layer is measurable, only the ensemble" shape the
+// `removeBand` count proof already carries, and the reason a surviving single-line mutation here is
+// not evidence of a hole.
 void SpectrumImager::endBandMove()
 {
-    if (soloMoveLeft  >= 0) endGesture (freqP[soloMoveLeft]);
-    if (soloMoveRight >= 0) endGesture (freqP[soloMoveRight]);
+    const int l = soloMoveLeft, r = soloMoveRight;
     soloMoveLeft = soloMoveRight = -1;
+    if (l >= 0) endGesture (freqP[l]);
+    if (r >= 0) endGesture (freqP[r]);
 }
 
 void SpectrumImager::resetCrossover (int i)
@@ -2635,9 +2648,12 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
         {
             if (alt2) // Alt/Option quick click: inactive band -> EXCLUSIVE solo
             {
-                // ONE read, and the decision is made from it. `bandSoloed` would re-read mbSolo, so
-                // the word the branch chose from and the word named as `expectedMask` could differ
-                // -- the same "two reads where the rule needs one" this series has been about.
+                // ONE read, and the decision is made from it. Asking a "is band b soloed?" helper
+                // here would re-read mbSolo, so the word the branch chose from and the word named
+                // as `expectedMask` could differ -- the same "two reads where the rule needs one"
+                // this series has been about. There used to be such a helper, `bandSoloed`; it lost
+                // its last caller when this branch was rewritten to one reading and was removed
+                // rather than left as a pattern for someone to reach for.
                 const int m = soloMask();
                 (void) setSoloMask (((m >> sb) & 1) != 0 ? 0 // active: all solos off (0.8.9)
                                                          : (1 << sb), // 0.8.10: only this band
@@ -2733,18 +2749,44 @@ void SpectrumImager::cancelActiveDrag()
     gestureBands = -1;
     if (dragBand < 0 && dragHandle < 0 && soloPressBand < 0 && pressDeleteBand < 0)
         return;
-    if (dragBand   >= 0) endGesture (widthP[dragBand]);
-    if (dragHandle >= 0) endGesture (freqP[dragHandle]);
-    if (soloPressBand >= 0)
-    {
-        if (soloHoldActive && onClearSoloPreview) onClearSoloPreview();
-        if (soloMovedBand) endBandMove();
-    }
+    // ADR-0050, THE SECOND OF THE TWO SITES IT ESCALATED. Everything this function is about to
+    // close is latched into locals and every member is cleared BEFORE anything dispatches, for the
+    // reason `mouseUp` already gives at each of its four exits: `endGesture` is
+    // `endChangeGesture()`, which notifies every listener SYNCHRONOUSLY and reaches the host, and a
+    // host that pumps the message loop from there re-enters the editor while this call is still on
+    // the stack.
+    //
+    // `gestureBands = -1` above is NOT enough cover, which is what the escalation was about. It
+    // protects the reconcile in THIS class -- `tick`'s `if (gestureIsStale()) cancelActiveDrag();`,
+    // whose predicate is false the moment the latch is gone -- and nothing else. The editor's
+    // stuck-drag reconcile (PluginEditor.cpp, `isMouseButtonDownAnywhere() &&
+    // ! anyPhysicalMouseButtonDown()`) calls straight in here and never reads `gestureBands` at
+    // all; it reads the MOUSE, and under KI-013 the macOS realtime query does not refresh JUCE's
+    // cached button state, so that gate can still be true on the re-entry. Reached with the
+    // identifiers still live, the nested call closed the same parameter's gesture a second time --
+    // a negative open-gesture count in the processor and a spurious undo boundary -- and, worse,
+    // cleared the identifiers, so the OUTER call then skipped the sibling gesture it had not
+    // reached yet and left it open. State test 83 legs A, B and C hold all three shapes.
+    const int  wb    = dragBand;
+    const int  h     = dragHandle;
+    const int  sb    = soloPressBand;
+    const bool held  = soloHoldActive;
+    const bool moved = soloMovedBand;
     dragBand = dragHandle = soloPressBand = pressDeleteBand = -1;
     dragRemovePending = false;
     handleHoldActive  = false;
     widthHoldActive   = false;
     soloHoldActive = soloMovedBand = false;
+    // The same calls in the same order as before, from the locals. A reentrant cancel now takes the
+    // cheap exit above and closes nothing; leg D is the control that an UNINTERRUPTED cancel still
+    // closes exactly once, because clearing first must not turn this function into a no-op.
+    if (wb >= 0) endGesture (widthP[wb]);
+    if (h  >= 0) endGesture (freqP[h]);
+    if (sb >= 0)
+    {
+        if (held && onClearSoloPreview) onClearSoloPreview();
+        if (moved) endBandMove();
+    }
     updateHover (getMouseXYRelative().toFloat());
     repaint();
 }

@@ -33,6 +33,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0041. Evidence: PR #143. [Verified]
 
 ### Fixed
+- **A drag that is abandoned rather than released is now reported to your DAW exactly once.** When a
+  drag in the Multiband display has to be cancelled — most often because you released the mouse
+  button outside the plugin window, so the plugin never sees the release — the plugin tells your DAW
+  that the edit is finished. Your DAW can answer that immediately, and if it does, the cancellation
+  could run a second time on top of the first: the same edit was reported finished twice, and a
+  second edit that was about to be closed was skipped and left open instead. Either one can leave a
+  stray step in your DAW's undo history or an edit that never appears to end. The cancellation now
+  drops everything it is holding before it reports anything, so a repeat is a no-op. A drag you
+  release normally, inside the window, was never affected and is unchanged.
+  Decision: ADR-0050. Evidence: PR #143. [Verified]
 - **Dragging a band sideways no longer moves a crossover that band layout does not have.** Sliding a
   band by its solo button worked out how many crossovers to move by re-reading the band count, rather
   than using the count the press was made in. If your DAW changed the count and changed it back

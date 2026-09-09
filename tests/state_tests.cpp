@@ -17925,6 +17925,266 @@ static int runBandMoveProbe (int iterations)
     return outOfRange == 0 ? 0 : 1;
 }
 
+// ---------------------------------------------------------------------------
+//  State test 83 -- a cancellation closes each open gesture exactly ONCE.
+//
+//  THE CLASS, AND WHY IT IS THIS FILE'S RATHER THAN A REVIEWER'S OPINION.
+//  ADR-0050 moved `mouseUp`'s identifier clears in front of its `endGesture`
+//  dispatches and, in the same pass, ESCALATED the two remaining sites that
+//  still clear afterwards: `cancelActiveDrag` and `endBandMove`. This test is
+//  the reachable half of that escalation.
+//
+//  `endGesture` is `RangedAudioParameter::endChangeGesture()`, which calls
+//  `parameterGestureChanged (idx, false)` on every listener SYNCHRONOUSLY
+//  (juce_AudioProcessorParameter.cpp:88-109) and forwards to the host through
+//  `AudioProcessor::audioProcessorGestureChanged`. A host that pumps the
+//  message loop from that callback -- a modal automation-write dialog, a
+//  control-surface echo, any nested run loop -- can re-enter the editor while
+//  the first close is still on the stack. `cancelActiveDrag` is reachable from
+//  there by TWO paths, and only one of them was self-protected:
+//
+//    * `SpectrumImager::tick`, `if (gestureIsStale()) cancelActiveDrag();` --
+//      protected, because `cancelActiveDrag` clears `gestureBands` FIRST, so a
+//      reentrant tick's predicate is already false;
+//    * `AnamorphAudioProcessorEditor`'s stuck-drag reconcile
+//      (PluginEditor.cpp:1538-1543), `if (isMouseButtonDownAnywhere() &&
+//      ! anyPhysicalMouseButtonDown()) { ...; imager->cancelActiveDrag(); }` --
+//      NOT protected. That predicate never reads `gestureBands`; it reads the
+//      mouse. And under KI-013 the macOS realtime query does not refresh JUCE's
+//      cached button state, so the gate can still be true on the re-entry.
+//
+//  Reached that way with `dragBand`/`dragHandle`/`soloPressBand` still set, the
+//  reentrant call closes the SAME parameter's gesture a second time: a negative
+//  open-gesture count in the processor, a spurious undo boundary, and -- on the
+//  outer call's resumption -- a sibling gesture that is now skipped and stays
+//  OPEN, because the inner call already cleared its identifier.
+//
+//  This is REENTRANT, not cross-thread, so it is deterministic: a real listener
+//  on a real parameter, no thread and no sleep. Each leg counts the closes on
+//  the one parameter the gesture opened and asserts ONE.
+//
+//  THE TWO SITES ARE ONE ENSEMBLE, WHICH THE MUTATIONS SAY AND AN EARLIER DRAFT
+//  OF THIS COMMENT GOT WRONG. Reverting `cancelActiveDrag`'s clear alone fails
+//  legs A and B; reverting `endBandMove`'s alone fails NOTHING (the cheap exit
+//  stands in front of it); reverting BOTH fails legs A, B and C. So leg C is
+//  held by the pair, and `endBandMove`'s clear is the layer that still refuses
+//  the double close once the other is gone -- not dead weight, and not a
+//  single-line mutation proof either.
+// ---------------------------------------------------------------------------
+namespace
+{
+// A host answering the CLOSE of a change gesture by pumping the message loop, which lands the
+// editor's stuck-drag reconcile inside the dispatch. One shot: the nested cancel must not
+// re-enter forever. `closes` counts every close seen on the parameter it is attached to, so a
+// double close is visible even when the second one comes from the nested call.
+struct ReenterCancelOnClose final : public juce::AudioProcessorParameter::Listener
+{
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    bool armed  = false;
+    int  closes = 0;
+    void parameterValueChanged (int, float) override {}
+    void parameterGestureChanged (int, bool starting) override
+    {
+        if (starting) return;
+        ++closes;
+        if (! armed || imager == nullptr) return;
+        armed = false;
+        imager->cancelActiveDrag();
+    }
+};
+} // namespace
+
+static void testACancellationClosesEachGestureOnce()
+{
+    std::printf ("State test 83: a cancellation closes each open gesture exactly once\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the double-close probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the double-close probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* wMidP  = apvts.getParameter (pid::mbWidthMid);
+    auto* wHiMidP = apvts.getParameter (pid::mbWidthHiMid);
+    check (bandsP && soloP && loP && midP && hiP && wLoP && wMidP && wHiMidP,
+           "the multiband parameters the double-close probe drives exist");
+    if (! (bandsP && soloP && loP && midP && hiP && wLoP && wMidP && wHiMidP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float downX, float downY, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
+    };
+    const float W     = (float) imager->getWidth();
+    const float H     = (float) imager->getHeight();
+    const float laneY = 0.5f * H;
+    const float soloY = 11.0f;
+
+    auto findFirstX = [&] (const char* want, float y) -> float
+    {
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto findLastX = [&] (const char* want, float y) -> float
+    {
+        for (float x = W - 3.0f; x > 2.0f; x -= 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto findY = [&] (const char* want, float x) -> float
+    {
+        for (float y = 2.0f; y < H - 2.0f; y += 1.0f)
+        {
+            imager->mouseMove (mev (x, y, x, y, false));
+            if (imager->getTooltip() == juce::String (want)) return y;
+        }
+        return -1.0f;
+    };
+    auto resetWorld = [&] ()
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (soloP,  0.0f);
+        setPlain (loP,   200.0f);
+        setPlain (midP, 2000.0f);
+        setPlain (hiP, 10000.0f);
+        setPlain (wLoP,   1.0f);
+        setPlain (wMidP,  1.0f);
+        setPlain (wHiMidP, 1.0f);
+    };
+
+    ReenterCancelOnClose probe;
+    probe.imager = imager;
+
+    // ---- LEG A: a SPLIT drag cancelled from inside its own close --------------
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg A: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));   // beginGesture (freqP[0])
+            probe.closes = 0; probe.armed = true;
+            loP->addListener (&probe);
+            imager->cancelActiveDrag();
+            loP->removeListener (&probe);
+            if (probe.closes != 1)
+                std::printf ("  [leg A] the split's change gesture was closed %d times\n", probe.closes);
+            check (probe.closes == 1,
+                   "leg A: a cancelled split drag closes its change gesture once, not twice");
+        }
+    }
+
+    // ---- LEG B: a WIDTH drag, same shape -------------------------------------
+    {
+        resetWorld();
+        const float s0 = findFirstX ("Drag to change the split frequency", laneY);
+        const float wx = (s0 > 0.0f) ? s0 + 40.0f : -1.0f;   // inside band 1
+        const float wy = (wx > 0.0f) ? findY ("Band width", wx) : -1.0f;
+        check (wy >= 0.0f, "leg B: band 1's width line is findable");
+        if (wy >= 0.0f)
+        {
+            imager->mouseDown (mev (wx, wy, wx, wy, false));   // beginGesture (widthP[1])
+            probe.closes = 0; probe.armed = true;
+            wMidP->addListener (&probe);
+            imager->cancelActiveDrag();
+            wMidP->removeListener (&probe);
+            if (probe.closes != 1)
+                std::printf ("  [leg B] the width change gesture was closed %d times\n", probe.closes);
+            check (probe.closes == 1,
+                   "leg B: a cancelled width drag closes its change gesture once, not twice");
+        }
+    }
+
+    // ---- LEG C: a BAND MOVE, whose pins are closed through endBandMove --------
+    //  The last band's solo handle at four bands moves ONE pin (soloMoveLeft = 2,
+    //  soloMoveRight = -1 because b == N - 1), so mbFreqHigh carries the whole count.
+    {
+        resetWorld();
+        const float sx = findLastX ("Solo this band", soloY);
+        check (sx >= 0.0f, "leg C: the last band's solo handle is findable");
+        if (sx >= 0.0f)
+        {
+            imager->mouseDown (mev (sx, soloY, sx, soloY, false));
+            imager->mouseDrag (mev (sx + 8.0f, soloY, sx, soloY, true)); // beginBandMove opens the pin
+            probe.closes = 0; probe.armed = true;
+            hiP->addListener (&probe);
+            imager->cancelActiveDrag();
+            hiP->removeListener (&probe);
+            if (probe.closes != 1)
+                std::printf ("  [leg C] the band move's pin gesture was closed %d times\n", probe.closes);
+            check (probe.closes == 1,
+                   "leg C: a cancelled band move closes its pin's change gesture once, not twice");
+        }
+    }
+
+    // ---- LEG D: the positive control -- an ordinary cancellation still closes --
+    //  Clearing the identifiers before the dispatch must not make the cancel a no-op.
+    {
+        resetWorld();
+        const float hx = findFirstX ("Drag to change the split frequency", laneY);
+        check (hx >= 0.0f, "leg D: the first split's handle is findable");
+        if (hx >= 0.0f)
+        {
+            imager->mouseDown (mev (hx, laneY, hx, laneY, false));
+            probe.closes = 0; probe.armed = false;          // no re-entry this time
+            loP->addListener (&probe);
+            imager->cancelActiveDrag();
+            loP->removeListener (&probe);
+            check (probe.closes == 1,
+                   "leg D: an uninterrupted cancellation still closes the gesture exactly once");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -18087,6 +18347,7 @@ int main (int argc, char* argv[])
     testAWheelTickFinishesAHeldPress();
     testThePlanAndTheProofAreOneReading();
     testTheAddTargetAnswersUnderOneTopology();
+    testACancellationClosesEachGestureOnce();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

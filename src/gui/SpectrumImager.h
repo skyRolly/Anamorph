@@ -85,7 +85,6 @@ private:
     float bandRightX (int b) const noexcept;
     bool  enabled() const noexcept;
     int   soloMask() const noexcept;           // 4-bit solo mask
-    bool  bandSoloed (int b) const noexcept;
 
     // ADR-0051. THE COUNT IS ONLY HALF OF A TOPOLOGY: the SPLIT ROW is the other half, and it needs
     // the same treatment. `captureSplits` takes all three at once; `splitAt` answers from that

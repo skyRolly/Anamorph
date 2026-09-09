@@ -981,6 +981,22 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 83 — a cancellation closes each open gesture exactly once** (ADR-0050, amended). The
+  reachable half of the reentrant double-close class ADR-0050 escalated for three sites and closed
+  for one. Unlike State tests 81 and 82 this one CAN fail on its own defect, because `endGesture` is
+  `endChangeGesture()` — a synchronous listener dispatch — so a real
+  `AudioProcessorParameter::Listener` re-entering `cancelActiveDrag` from the close it is watching
+  reproduces the production path (a host pumping the message loop, reaching the editor's stuck-drag
+  reconcile, whose predicate reads the MOUSE and not `gestureBands`). Leg A a split drag, leg B a
+  width drag, leg C a band move whose pin is closed through `endBandMove`; each counted **2** closes
+  before the fix. Leg D is the control: an uninterrupted cancellation still closes exactly once, so
+  clearing the identifiers first cannot have made the function a no-op. **Mutation record, and the
+  two sites are one ensemble:** reverting `cancelActiveDrag`'s clear alone fails legs A and B (2
+  checks); reverting `endBandMove`'s alone fails **nothing**, because the first one's cheap exit
+  stands in front of it; reverting **both** fails legs A, B and C (3 checks). A surviving single-line
+  mutation at either site is therefore not evidence of a hole — the same shape `removeBand`'s count
+  proof already carries.
+
 * **State test 82 — the add target and its edges answer under one topology** (ADR-0048). Same honest
   scope as State test 81, stated in its own header: it CANNOT fail on the defect ADR-0048 fixes,
   because `bandAtX` and `bandAddTarget` are both pure reads with no dispatch between them and only
