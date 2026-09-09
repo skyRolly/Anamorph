@@ -1713,3 +1713,18 @@ fails again the failure is real and belongs to this PR.
 **What is NOT concluded from this:** nothing about `run-pluginval.sh`. The script's own
 `classify_pass_exit` never saw an exit code, because the failure happened in the fetch that precedes
 it. There is no gap in the classifier to fix here, and inventing one would be the wrong lesson.
+
+**Outcome, 2026-09-09.** The allowance was not spent on a re-run: pushing `031c7f4` (documentation
+only — no source, test or workflow file differs from `6356cc6`) superseded the queued re-run and
+sent the full matrix at the head that would actually be merged. Run `34352056376` on `031c7f4`
+returned **14/14 with nothing red** — 13 jobs `success`, `merge-check` `skipped` because a push
+event runs the matrix directly. `macos-intel` passed, including the step that had died in the fetch,
+with its four pluginval gates (VST3 deterministic ×3, VST3 randomise ×3, AU deterministic ×3, AU
+randomise ×3) and its 2805-check state suite. Same tree, same job, different network: the failure
+was in the fetch, exactly as diagnosed, and this PR owns no part of it.
+
+The same run is also the head-of-branch evidence for the ADR-0046 change itself: `linux` reports all
+four topology probe gates green — ADR-0047 (the split snapshot is one reading), ADR-0048 (the add
+target answers under one topology), ADR-0051 (its edges answer under one reading too) and **ADR-0046
+(a band move's plan is sized by the topology the press proved)** — alongside the Clang warning gate,
+the ABI floor assertion and both Linux pluginval gates.
