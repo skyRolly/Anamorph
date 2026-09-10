@@ -34,6 +34,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 
 ### Fixed
 - **A solo click is no longer applied to a layout your DAW changed underneath it, in the one case
+- **Dragging a band sideways can no longer leave your DAW with a change gesture it was never given.**
+  Starting a sideways band move opens an automation gesture for each of the band's two edges, one
+  after the other. If your host answered the first one by running its own message loop — a modal
+  automation dialog, a control-surface echo, a plug-in window reconciling a drag it thinks is stuck —
+  the plug-in's own drag-cancel could run in that gap and close *both* edges, including the one it
+  had not opened yet. Your host then saw an end-of-gesture with no matching start (a spurious undo
+  boundary, and an open-gesture count that went negative), the second edge never got a gesture at
+  all, and the drag carried on with its identity erased: it auditioned a solo mask no band matched,
+  and it wrote the band's pre-drag split frequencies back over anything your host had just installed
+  — outside any gesture, so your DAW recorded them as untracked changes. A band move now keeps its
+  own record until both gestures are open, so a cancellation arriving in that gap changes nothing
+  and is honoured a moment later instead. What you will notice: nothing, on any normal drag.
+  Decision: ADR-0050. Evidence: PR #143. [Verified]
   where the check for that could be switched off.** The plugin remembers the layout your click was
   aimed at and refuses the click if your DAW replaces it in the instant the edit opens. That memory
   could be dropped early: the plugin's own safety net for a mouse button released outside its window

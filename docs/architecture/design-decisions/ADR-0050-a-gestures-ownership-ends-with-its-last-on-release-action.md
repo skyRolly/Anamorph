@@ -319,3 +319,104 @@ that, because the nested frame's own `ScopedReleaseAction` is a plain set/clear 
 re-entrancy counter. There is no evidence in this repository that a host does this, no test reaches
 it, and closing it speculatively would mean restructuring a handler whose exit ordering is the
 subject of this ADR. It is recorded here as an open, unmeasured route rather than fixed on a guess.
+
+## Applied again 2026-09-10 — the one startup that opens two gestures
+
+**Review finding at `SpectrumImager.cpp:2658`, *"reentrant band start leaks gestures"*. CONFIRMED and
+reproduced deterministically, and it is this ADR's Decision defeated from a third direction: not an
+on-release action this time, but an action that is still *establishing* the gestures it owns.**
+
+### Why this site and no other
+
+`beginBandMove` is the **only** function in the class that brackets more than one parameter, and the
+two opens are two statements:
+
+```cpp
+if (soloMoveLeft  >= 0) beginGesture (freqP[soloMoveLeft]);    // DISPATCHES
+if (soloMoveRight >= 0) beginGesture (freqP[soloMoveRight]);   // not reached yet
+```
+
+Every other opening site in the file — `mouseDown`'s three press branches, `resetParam`,
+`resetCrossover`, `commitFreqEditor`, `setBands`, `setSoloMask` — opens exactly one, so its bracket
+has no interior for a re-entry to land in. That is a structural fact about the file, not a
+disposition: an audit of every `beginChangeGesture` call site found two in one function and one
+everywhere else.
+
+`mouseDrag` publishes `soloMovedBand = true` **before** calling in, which is what makes the interior
+reachable state rather than dead state:
+
+```cpp
+if (! soloMovedBand)  { soloMovedBand = true; beginBandMove (soloPressBand, gestureBands); }
+```
+
+### What a re-entry did
+
+A host that pumps the message loop from the first `beginChangeGesture` lands a reconcile — `tick`'s,
+or the editor's stuck-drag one — in `cancelActiveDrag` with the move's members set and half its
+gestures open. Round 7's guard did not cover it: that flag is set only by `mouseUp`. So the nested
+call ran `endBandMove()`, which closes **both** pins from the members. Three consequences, all
+measured rather than argued:
+
+1. an `endChangeGesture` on a parameter that was **never opened** — the negative open-gesture count
+   and spurious undo boundary this ADR already names, arrived at from the opposite side;
+2. the members cleared, so the outer frame's second statement opened nothing at all;
+3. `soloPressBand` and `gestureBands` cleared, so the handler this returns into auditioned
+   `1 << -1` — undefined behaviour, reaching the processor as a mask the press never named — and
+   then called `moveBand` with every ownership predicate self-disabled and no gesture open,
+   writing the pre-press split positions back over whatever the host had installed. That last one
+   is the ADR-0040 / ADR-0047 failure exactly, reached not by a race but by the record being
+   dropped mid-startup.
+
+### The review's own wording, corrected
+
+The finding says *"the gesture remains open"*. It does not: the leak is in the **other** direction.
+`endBandMove` closes both pins, so the second pin is *closed without ever having been opened*, and
+the outer frame then skips its open. The observable is a gesture count of **−1**, not a stuck-open
+gesture. The rest of the finding — the reachability, the ordering, and `soloPressBand == -1` in the
+resumed handler — is exact.
+
+### The options, and why the guard
+
+| | |
+|---|---|
+| **Extend this ADR's ownership claim to the startup** (chosen) | Two lines. The record simply survives, so all three consequences stop at once. `moveBand`, one statement later, still re-proves the count and every split it writes, so the cancellation is not lost — only deferred past the two opens. |
+| B. Publish `soloMovedBand` only after both opens | Turns an unmatched **close** into an unmatched **open**: a nested cancel would then see `soloMovedBand == false`, close nothing, and leave both pins open forever with the identifiers gone. It also leaves (3) untouched. |
+| C. Track which pins actually opened and close only those | Fixes (1) alone. (2) and (3) survive, because the members are still cleared under the outer frame. |
+| D. Open from locals, assign the members afterwards | Same failure as B — a nested cancel finds `soloMoveLeft/Right` still `-1` and closes nothing. Ordering alone cannot fix this; the record has to survive. |
+
+### A depth, not a flag — and this site is why
+
+Round 7 shipped `bool releaseActionActive` with a note that a nested `mouseUp` would clear it early,
+recorded as an open route. Adding a **second** user makes that hazard newly reachable: `beginBandMove`
+is called from `mouseDrag`, so a host pumping the loop from the first pin's open can deliver a queued
+mouse-up into `mouseUp` while the startup's claim stands, and a `bool` would have had that inner
+scope's exit clear the outer one's. The member is now `int gestureActionDepth` and the scope object
+`ScopedGestureAction`, counting in and out.
+
+**This is unmeasured and is not claimed otherwise.** Degrading the counter back to a set/clear flag
+kills **nothing** in the suite — no test nests the two sites. It is kept because the second site
+creates the hazard and the counter costs the same instruction, on the same footing as `removeBand`'s
+entry proof: correct by this ADR's rule, inert with nothing nesting, and with no reachable test.
+
+**The nested-`mouseUp` route recorded in the previous section stays open.** The counter stops the
+inner scope from clearing the outer claim; it does not stop a nested `mouseUp` from running its tail
+and dropping the record there. No evidence in this repository says a host does this, and no test
+reaches it.
+
+### Evidence
+
+State test 83 legs E, F and G. Leg C — the previous coverage — presses the **last** band, whose move
+has one pin (`soloMoveRight == -1` because `b == N - 1`), so it could never see the interior; legs E
+and G press a **middle** band, which has both.
+
+| Mutation | Killed |
+|---|---|
+| `beginBandMove` no longer claims the record | legs E (×2) and G — **3 checks**, and nothing else |
+| `cancelActiveDrag` no longer declines | those 3 **and** State test 79 leg E — **4 checks** |
+| `mouseUp` no longer claims the record | State test 79 leg E only — **1 check** |
+| the depth degraded to a set/clear flag | **nothing** — see above |
+
+The first three are the orthogonality proof: each claiming site is measured on its own, neither
+subsumes the other, and the shared decline is measured by both. Leg F is the positive control — an
+uninterrupted band move still opens both pins exactly once and closes both exactly once, so a "fix"
+that simply stopped opening the second pin would fail it.

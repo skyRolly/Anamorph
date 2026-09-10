@@ -376,8 +376,17 @@ private:
     // for its OWN exits -- it drops the snapshot after the action on every path. What nothing
     // enforced is that something ELSE must not drop it first, and `cancelActiveDrag` does exactly
     // that on its very first line, before the cheap exit that is meant to make a re-entrant call a
-    // no-op. Set for the duration of `mouseUp`'s release action; read by `cancelActiveDrag`.
-    bool  releaseActionActive = false;
+    // no-op.
+    //
+    // A DEPTH, NOT A FLAG, AND THE SECOND SITE IS WHY. This began as a `bool` with `mouseUp` as its
+    // only user and a note saying a nested `mouseUp` would drop the claim early. `beginBandMove` is
+    // now the second user, and it is reached from `mouseDrag` -- so a host that pumps the message
+    // loop from the first pin's gesture open CAN deliver a queued mouse-up into `mouseUp` while the
+    // startup's claim is still standing, and a `bool` would have had that inner scope's exit clear
+    // the outer one's. Counting costs the same instruction and removes the hazard this second site
+    // would otherwise have created. Held for the duration of an action that has published its
+    // identifiers and is still establishing its gestures; read by `cancelActiveDrag`.
+    int   gestureActionDepth = 0;
     bool  soloMovedBand   = false;   // turned into a sideways band move
     int   soloMoveLeft    = -1;      // crossover index on the band's left edge (or -1)
     int   soloMoveRight   = -1;      // crossover index on the band's right edge (or -1)

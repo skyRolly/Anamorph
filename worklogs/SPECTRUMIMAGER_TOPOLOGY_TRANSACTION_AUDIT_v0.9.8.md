@@ -2610,3 +2610,132 @@ build file to the one that went red, which settles the classification: the `std:
 abort is **non-deterministic, in pluginval's own shutdown**, and is not a property of this change. The
 one re-run this category allows is now spent, and it came back green; a *third* occurrence would be
 new evidence about the harness and belongs to the pluginval crash record above, not to ADR-0050.
+
+---
+
+## §65. Round 8 — the band-move startup, interrupted between its two gesture opens
+
+### 65a. Workflow audit and lifecycle decision
+
+| Artefact | State found | Decision |
+|---|---|---|
+| Round-7 adversarial Workflow (17 agents) | Completed, result consumed in `7c31452` | **Not restarted.** Its subject was `cancelActiveDrag`'s first two lines; this round's is a different window, and nothing it produced bears on the startup path |
+| Monitor on run `34495243892` (`4ccedba`) | Stream ended, 13/13 read | Closed |
+| Monitor on run `34497783641` (`afb128f`) | Stream ended, 13/13 read | Closed |
+| Tasks #1–#118 | All `completed` | No unconsumed results |
+| Scheduled check-ins / PR-activity subscriptions | None | None created — `CLAUDE.md` forbids both |
+| Round-8 Workflow (7 dimensions × 3 skeptics + 5 option evaluators) | Launched this round | Consumed; corrections applied below |
+
+### 65b. The finding: CONFIRMED, reproduced, and its wording corrected
+
+`beginBandMove` is the **only** function in `SpectrumImager` that brackets more than one parameter.
+An audit of every `beginChangeGesture` call site in the file found two in that function
+(`SpectrumImager.cpp` — the two `beginGesture` statements that close it) and exactly one in every
+other: `mouseDown`'s three press branches, `resetParam`, `resetCrossover`, `commitFreqEditor`,
+`setBands` and `setSoloMask`. A single-open bracket has no interior for a re-entry to land in. This
+one does, and `mouseDrag` publishes `soloMovedBand = true` before calling in.
+
+**The review's consequence is wrong in one direction and right in every other.** It says *"the
+gesture remains open"*. It does not. `endBandMove` closes **both** pins from the members, so the
+second pin is closed *having never been opened* — an `endChangeGesture` with no matching
+`beginChangeGesture`, i.e. the gesture count goes to **−1**, and the outer frame then skips its own
+open because the members are already cleared. The leak is an unmatched **close**, not a stuck-open
+gesture. Reachability, ordering and `soloPressBand == -1` in the resumed handler are all exact.
+
+**Three consequences, measured rather than argued** (State test 83, on the pre-fix tree):
+
+```
+[leg E] the second pin was closed 1 time(s) having been opened 0
+[leg E] the resumed handler auditioned mask 0x80000000
+[leg G] the host's split at 6500.0 Hz was written back to 2000.0 Hz, with -1 gesture(s) open
+```
+
+The second is `1 << soloPressBand` with `soloPressBand == -1` — undefined behaviour, and
+`AnamorphAudioProcessor::setSoloPreview` masks it with `& 0x0F`, so what reaches the engine is a
+band set the press never named. The third is the ADR-0040 / ADR-0047 failure exactly, reached not by
+a race but by the record being dropped mid-startup: with `gestureBands == -1` every ownership
+predicate self-disables and `writeCrossovers` skips its count proof, so the burst writes the
+pre-press origins back over the host's install — outside any change gesture, both having just been
+closed.
+
+All three were the **only** failures in the suite (2903 checks, 3 failures), so the reproduction is
+isolated.
+
+### 65c. Which band, and why leg C could not have found this
+
+`soloMoveLeft = (b > 0) ? b - 1 : -1` and `soloMoveRight = (b < N - 1) ? b : -1`. Both pins are live
+only for a **middle** band, `0 < b < N - 1`, which needs `N >= 3`. State test 83 leg C — the existing
+coverage — presses the **last** band deliberately (its comment says so: *"so mbFreqHigh carries the
+whole count"*), where `soloMoveRight == -1` and only one `beginGesture` ever runs. The window is
+structurally invisible from there. Legs E and G press band 1 at four bands, found by walking the solo
+lane and taking the second contiguous run of the "Solo this band" tooltip rather than by hardcoded
+geometry, so the leg does not depend on the split values the fixture happens to install.
+
+### 65d. The fix, and the three it rejects
+
+`beginBandMove` takes the same ownership claim `mouseUp` has taken since round 7, for the duration of
+its startup. Two lines: a `ScopedGestureAction` at the top of the function, and the guard it feeds in
+`cancelActiveDrag` (already present, now reading a depth).
+
+* **B — publish `soloMovedBand` only after both opens.** Turns an unmatched close into an unmatched
+  **open**: the nested cancel would see `soloMovedBand == false`, close nothing, and leave both pins
+  open forever with the identifiers gone. Consequence (3) survives untouched.
+* **C — track which pins actually opened, close only those.** Fixes consequence (1) alone. (2) and
+  (3) survive, because the members are still cleared under the outer frame.
+* **D — open from locals, assign the members afterwards.** Same failure as B: the nested cancel finds
+  `soloMoveLeft/Right` still `-1`. Ordering alone cannot fix this. The record has to survive.
+
+Nothing here needs the cancellation to happen *now*: `moveBand`, one statement later, re-proves the
+count and every split it writes, and `tick`'s next reconcile still fires. Declining costs a few
+instructions of latency.
+
+### 65e. A depth, not a flag — and it is unmeasured
+
+Round 7 shipped `bool releaseActionActive` with the note that a nested `mouseUp` would clear it
+early. Adding a **second** user makes that hazard newly reachable: `beginBandMove` is called from
+`mouseDrag`, so a host pumping the loop from the first pin's open can deliver a queued mouse-up into
+`mouseUp` while the startup's claim stands, and a `bool` would have had the inner scope's exit clear
+the outer one's. `int gestureActionDepth` counts instead.
+
+**Degrading the counter back to a set/clear flag kills nothing** — no test nests the two sites. It is
+kept because this site creates the hazard and the counter costs the same instruction, and it is
+labelled unmeasured at the declaration rather than claimed. The nested-`mouseUp` route recorded in
+§64f **stays open**: the counter stops the inner scope clearing the outer claim, not a nested
+`mouseUp` running its tail and dropping the record there.
+
+### 65f. Evidence
+
+| Mutation | Killed |
+|---|---|
+| `beginBandMove` no longer claims the record | legs E (×2) and G — **3 checks**, and nothing else |
+| `cancelActiveDrag` no longer declines | those 3 **and** State test 79 leg E — **4 checks** |
+| `mouseUp` no longer claims the record | State test 79 leg E only — **1 check** |
+| the depth degraded to a set/clear flag | **nothing** — §65e |
+
+The first three are the orthogonality proof: each claiming site is measured on its own, neither
+subsumes the other, and the shared decline is measured by both. Leg F is the positive control.
+
+No probe is shipped. The window is reentrant and deterministic, so a stress probe would be a gate
+that cannot fail — the rule §62j's withdrawn wheel probe exists to enforce.
+
+### 65g. Gate: NOT triggered
+
+No DSP graph, signal flow, parameter registry, serialization, latency or plugin format. **Thread
+model** — one message-thread `int` replacing one message-thread `bool`; no thread, lock, atomic or
+cross-thread path is added. **Build system** — untouched. This applies ADR-0050's Decision to the one
+startup able to defeat it, and adds no ADR. **No human approval is required, and none is
+manufactured.**
+
+### 65h. Residuals — re-verified only where this change can reach them
+
+| Residual | Disposition |
+|---|---|
+| RISK-010 (audio-side reader) | **Unchanged** — `PluginParameters.cpp` is not in this PR's diff at all |
+| `addBandAt` re-attribution window | **Unchanged** — reached from `mouseDown`; the claim is taken in `mouseUp` and `beginBandMove` |
+| held-audition vblank coverage | **Affected, and intentionally so** — `tick`'s `if (gestureIsStale()) cancelActiveDrag();` is now also suppressed *while a band move is starting up*, two statements' worth. `moveBand` re-proves immediately after, and the next tick still fires. The gap the residual names — `tick` returning at `isShowing()` before the guard — is untouched |
+| wheel gesture closure (ADR-0041/0052) | **Unchanged** — `mouseWheelMove` calls `cancelActiveDrag()` outside both claiming scopes; verified still first and first |
+| U4 wheel width undo | **Unchanged** |
+| ADR-0044 partial-transaction residue | **Unchanged** |
+| cancelled-spread visual ordering | **Unchanged** |
+| TSan suppression scope | **Unchanged** — still exactly one entry, `Matched 1 suppressions` with one breakdown line. Legs E/F/G add no new lock-order shape: they write nothing from inside a gesture open that leg C did not already |
+| historical comment blocks | **One rename propagated** — `releaseActionActive`/`ScopedReleaseAction` are now `gestureActionDepth`/`ScopedGestureAction`, and the declaration comment says why the type changed. No claim in the round-7 text became false |

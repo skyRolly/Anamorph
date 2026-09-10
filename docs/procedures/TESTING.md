@@ -1130,6 +1130,27 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   stands in front of it; reverting **both** fails legs A, B and C (3 checks). A surviving single-line
   mutation at either site is therefore not evidence of a hole — the same shape `removeBand`'s count
   proof already carries.
+  **Legs E, F and G (2026-09-10) take the same re-entry from the OPEN, during startup**, which is a
+  different window and needed a different fixture. `beginBandMove` is the only function in the class
+  that brackets two parameters, and its two `beginGesture` calls are two statements — the first
+  dispatches, `mouseDrag` has already published `soloMovedBand = true`, and the nested
+  `cancelActiveDrag` then ran `endBandMove()` over BOTH pins. Leg C could never see this: it presses
+  the **last** band, whose move has one pin (`soloMoveRight == -1` at `b == N - 1`). Legs E and G
+  press a **middle** band — found by walking the solo lane and taking the second contiguous run of
+  "Solo this band" rather than by hardcoded geometry — so both pins are live. Leg E counts both
+  directions on the second pin and asserts that no close ever arrives while no open is outstanding
+  (pre-fix: closed 1, opened 0), and separately captures the raw argument to `onSoloPreview`, which
+  the resumed handler computes as `1 << soloPressBand` after the nested cancel set that to `-1`
+  (pre-fix: `0x80000000`). Leg G arms the same re-entry to also install a split at 6500 Hz and
+  asserts the resumed `moveBand` writes nothing (pre-fix: written back to 2000.0 Hz with the
+  gesture count at −1). Leg F is the control — an uninterrupted band move still opens both pins
+  exactly once and closes both exactly once, so a "fix" that merely stopped opening the second pin
+  would fail it. **Mutation record:** removing `beginBandMove`'s claim fails legs E (×2) and G and
+  nothing else; removing `cancelActiveDrag`'s decline fails those three **and** State test 79 leg E;
+  removing `mouseUp`'s claim fails State test 79 leg E only. The three together are the
+  orthogonality proof — each claiming site is measured on its own and neither subsumes the other.
+  Degrading `gestureActionDepth` from a counter back to a set/clear flag kills **nothing**, and is
+  recorded as unmeasured at the declaration rather than claimed.
 
 * **State test 82 — the add target and its edges answer under one topology** (ADR-0048). Same honest
   scope as State test 81, stated in its own header: it CANNOT fail on the defect ADR-0048 fixes,

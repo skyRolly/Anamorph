@@ -19102,6 +19102,37 @@ struct ReenterCancelOnClose final : public juce::AudioProcessorParameter::Listen
         imager->cancelActiveDrag();
     }
 };
+// The same re-entry taken from the OPEN instead of the close, for legs E and F. `beginBandMove`
+// opens its two pins in two statements, and the FIRST one dispatches -- so a host that pumps the
+// message loop from there lands the editor's reconcile with the move's members published and only
+// half of its gestures open.
+struct ReenterCancelOnOpen final : public juce::AudioProcessorParameter::Listener
+{
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    bool armed = false, fired = false;
+    void parameterValueChanged (int, float) override {}
+    void parameterGestureChanged (int, bool starting) override
+    {
+        if (! starting || ! armed || imager == nullptr) return;
+        armed = false;
+        fired = true;
+        imager->cancelActiveDrag();
+    }
+};
+// Counts both directions on the parameter it is attached to, so an END WITH NO OPEN is visible as
+// a count rather than inferred. `closes > opens` at any instant is the defect; the two being equal
+// at the end of a settled sequence is the contract.
+struct CountBothWays final : public juce::AudioProcessorParameter::Listener
+{
+    int opens = 0, closes = 0, closesWithNoOpen = 0;
+    void parameterValueChanged (int, float) override {}
+    void parameterGestureChanged (int, bool starting) override
+    {
+        if (starting) { ++opens; return; }
+        ++closes;
+        if (closes > opens) ++closesWithNoOpen;
+    }
+};
 } // namespace
 
 static void testACancellationClosesEachGestureOnce()
@@ -19288,6 +19319,146 @@ static void testACancellationClosesEachGestureOnce()
             loP->removeListener (&probe);
             check (probe.closes == 1,
                    "leg D: an uninterrupted cancellation still closes the gesture exactly once");
+        }
+    }
+
+    // ---- LEGS E/F: the same re-entry taken from the OPEN, during STARTUP -------
+    //  Leg C above presses the LAST band, whose move has ONE pin
+    //  (`soloMoveRight == -1` because `b == N - 1`), so it can never see the
+    //  window between the two opens. A MIDDLE band has both, and
+    //  `beginBandMove`'s last two statements open them one after the other:
+    //
+    //      if (soloMoveLeft  >= 0) beginGesture (freqP[soloMoveLeft]);   // dispatches
+    //      if (soloMoveRight >= 0) beginGesture (freqP[soloMoveRight]);  // not reached yet
+    //
+    //  `mouseDrag` published `soloMovedBand = true` BEFORE calling in, so a
+    //  cancellation re-entered from the first open runs `endBandMove()`, which
+    //  closes BOTH pins from the members -- including the one whose gesture has
+    //  not been opened. That is an `endChangeGesture` with no matching
+    //  `beginChangeGesture`, and it also clears the members, so the outer frame's
+    //  second statement is skipped and the pin never opens at all.
+    //
+    //  The counter watches the RIGHT pin and asserts the direction that cannot
+    //  happen: a close arriving while no open is outstanding.
+    auto soloRunCentre = [&] (int which) -> float
+    {
+        int run = -1; bool in = false; float first = -1.0f, last = -1.0f;
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, soloY, x, soloY, false));
+            const bool on = (imager->getTooltip() == juce::String ("Solo this band"));
+            if (on && ! in) { ++run; in = true; if (run == which) first = x; }
+            if (! on && in) { in = false; if (run == which) { last = x - 1.0f; break; } }
+            if (on && in && run == which) last = x;
+        }
+        return (first >= 0.0f && last >= first) ? 0.5f * (first + last) : -1.0f;
+    };
+
+    // ---- LEG E: the defect ----------------------------------------------------
+    {
+        resetWorld();
+        const float sx = soloRunCentre (1);          // band 1 -- pins 0 and 1, both live
+        check (sx >= 0.0f, "leg E: a MIDDLE band's solo handle is findable at four bands");
+        if (sx >= 0.0f)
+        {
+            ReenterCancelOnOpen poke;  poke.imager = imager; poke.armed = true;
+            CountBothWays      right;
+            // The resumed handler's OWN band identifier, observed rather than inferred: the very
+            // next statement after `beginBandMove` returns is
+            // `if (onSoloPreview) onSoloPreview (1 << soloPressBand)`, and the nested cancel set
+            // `soloPressBand = -1`. A shift by a negative count is undefined behaviour, and the
+            // value that reaches the processor is masked to `0x0F` there, so the audition asks for
+            // a band set the press never named. Capture the RAW argument.
+            auto savedPreview = imager->onSoloPreview;
+            int  seenMask = -1; bool sawPreview = false;
+            imager->onSoloPreview = [&] (int m) { sawPreview = true; seenMask = m; };
+            loP->addListener  (&poke);    // soloMoveLeft  == 0 -- the pin that dispatches first
+            midP->addListener (&right);   // soloMoveRight == 1 -- the pin that has not opened yet
+            imager->mouseDown (mev (sx, soloY, sx, soloY, false));
+            imager->mouseDrag (mev (sx + 8.0f, soloY, sx, soloY, true));   // -> beginBandMove
+            loP->removeListener  (&poke);
+            midP->removeListener (&right);
+            imager->onSoloPreview = savedPreview;
+            check (poke.fired, "leg E: the nested cancellation ran inside the first pin's gesture open");
+            if (right.closesWithNoOpen != 0)
+                std::printf ("  [leg E] the second pin was closed %d time(s) having been opened %d\n",
+                             right.closes, right.opens);
+            check (right.closesWithNoOpen == 0,
+                   "leg E: a cancellation re-entered during band-move startup never closes a gesture it never opened");
+            const bool maskSane = (! sawPreview)
+                               || (seenMask == 1 || seenMask == 2 || seenMask == 4 || seenMask == 8);
+            if (! maskSane)
+                std::printf ("  [leg E] the resumed handler auditioned mask 0x%X\n", (unsigned) seenMask);
+            check (maskSane,
+                   "leg E: ...and the resumed handler never auditions a mask derived from a cleared band");
+            imager->cancelActiveDrag();
+        }
+    }
+
+    // ---- LEG F: the positive control ------------------------------------------
+    //  The identical press and drag with no re-entry must still open BOTH pins
+    //  exactly once and close both exactly once. Without this, a fix that simply
+    //  stopped opening the second pin would pass leg E.
+    {
+        resetWorld();
+        const float sx = soloRunCentre (1);
+        check (sx >= 0.0f, "leg F: the middle band's solo handle is findable");
+        if (sx >= 0.0f)
+        {
+            CountBothWays left, right;
+            loP->addListener  (&left);
+            midP->addListener (&right);
+            imager->mouseDown (mev (sx, soloY, sx, soloY, false));
+            imager->mouseDrag (mev (sx + 8.0f, soloY, sx, soloY, true));
+            const int lo0 = left.opens, ro0 = right.opens;
+            imager->cancelActiveDrag();
+            loP->removeListener  (&left);
+            midP->removeListener (&right);
+            check (lo0 == 1 && ro0 == 1,
+                   "leg F: an uninterrupted band move opens BOTH pins exactly once");
+            check (left.closes == 1 && right.closes == 1,
+                   "leg F: ...and the cancellation closes both exactly once");
+            check (left.closesWithNoOpen == 0 && right.closesWithNoOpen == 0,
+                   "leg F: ...with no close arriving ahead of its open");
+        }
+    }
+
+    // ---- LEG G: the write half -- ownership disarmed, and no gesture to hold it -
+    //  The nested cancel sets `gestureBands = -1`, on which EVERY ownership
+    //  predicate self-disables (`ownsSplit`/`ownsWidth` -> true,
+    //  `soundMovedUnderGesture` -> false). The resumed handler then calls
+    //  `moveBand (x, gestureBands)`, i.e. with `n == -1`, so `writeCrossovers`
+    //  skips its `bandCount() != gestureBands` proof as well. Both pins are now
+    //  -1, so `projectFromOrig` returns the ORIGINS untouched -- and any split a
+    //  host moved inside the dispatch is more than `kSplitMovedPx` away from its
+    //  origin, so the burst writes the pre-interruption position back over it.
+    //  Outside any change gesture, because both were just closed.
+    //
+    //  This is the ADR-0040 / ADR-0047 failure exactly, reached not by a race but
+    //  by the record being dropped mid-startup.
+    {
+        resetWorld();
+        const float sx = soloRunCentre (1);
+        check (sx >= 0.0f, "leg G: the middle band's solo handle is findable");
+        if (sx >= 0.0f)
+        {
+            ReenterCancelThenWriteOnOpen poke;
+            poke.imager = imager; poke.target = midP; poke.to = 6500.0f; poke.armed = true;
+            CountBothWays mid;
+            loP->addListener  (&poke);
+            midP->addListener (&mid);
+            imager->mouseDown (mev (sx, soloY, sx, soloY, false));
+            imager->mouseDrag (mev (sx + 8.0f, soloY, sx, soloY, true));
+            loP->removeListener  (&poke);
+            midP->removeListener (&mid);
+            check (poke.fired, "leg G: the nested cancel and the host write both ran inside the first open");
+            const float midNow = midP->convertFrom0to1 (midP->getValue());
+            if (std::abs (midNow - 6500.0f) > 1.0f)
+                std::printf ("  [leg G] the host's split at 6500.0 Hz was written back to %.1f Hz,"
+                             " with %d gesture(s) open\n", midNow, mid.opens - mid.closes);
+            check (std::abs (midNow - 6500.0f) <= 1.0f,
+                   "leg G: a band move whose record was dropped mid-startup writes no split at all");
+            imager->cancelActiveDrag();
         }
     }
 

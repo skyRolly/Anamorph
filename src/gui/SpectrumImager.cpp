@@ -700,6 +700,22 @@ bool SpectrumImager::bandAddTarget (int b, float x, float& outX, int n, const fl
 // ----------------------------------------------------------------------------
 void SpectrumImager::beginGesture (juce::RangedAudioParameter* p) { if (p) p->beginChangeGesture(); }
 void SpectrumImager::endGesture   (juce::RangedAudioParameter* p) { if (p) p->endChangeGesture(); }
+namespace
+{
+// Holds the ownership claim for a scope and releases it on every exit, including an early return
+// from inside a branch. RE-ENTRANT-AWARE, unlike the `bool` this started as: it has two users now
+// (`mouseUp`'s release action and `beginBandMove`'s startup) and the second dispatches from inside
+// `mouseDrag`, so the two CAN nest through a host that pumps the message loop. A depth releases the
+// claim when the OUTERMOST scope exits, which is the only correct answer once nesting is possible.
+struct ScopedGestureAction
+{
+    explicit ScopedGestureAction (int& d) noexcept : depth (d) { ++depth; }
+    ~ScopedGestureAction() noexcept { --depth; }
+    ScopedGestureAction (const ScopedGestureAction&) = delete;
+    ScopedGestureAction& operator= (const ScopedGestureAction&) = delete;
+    int& depth;
+};
+} // namespace
 // ADR-0046: the same contract `resetParam` has carried since ADR-0045, for the one store that
 // had no proof at all. `expectedBands` is checked with NOTHING between it and the store -- this
 // function opens no gesture, so unlike `resetParam` there is no dispatch to step over, and the
@@ -866,6 +882,29 @@ bool SpectrumImager::toggleSoloBit (int b, int expectedBands)
 // its pins still not.
 void SpectrumImager::beginBandMove (int b, int n)
 {
+    // ADR-0050, APPLIED TO THE ONE STARTUP THAT OPENS TWO GESTURES. This function is the only place
+    // in the class that brackets MORE THAN ONE parameter, and the two opens are two statements:
+    // the first one DISPATCHES, and `mouseDrag` published `soloMovedBand = true` before calling in.
+    // So a host that pumps the message loop from that first `beginChangeGesture` lands a reconcile
+    // -- `tick`'s, or the editor's stuck-drag one -- in `cancelActiveDrag` with the move's members
+    // set and only half its gestures open. That call ran `endBandMove()`, which closes BOTH pins
+    // from the members: an `endChangeGesture` on a parameter that was never opened, i.e. a NEGATIVE
+    // open-gesture count in the processor and a spurious undo boundary. It also cleared the
+    // members, so the statement below never opened the second pin at all, and it cleared
+    // `soloPressBand` and `gestureBands`, so the handler this returns into then auditioned
+    // `1 << -1` -- undefined behaviour, reaching the processor as a mask the press never named --
+    // and called `moveBand` with every ownership predicate self-disabled, writing the pre-press
+    // split positions back over whatever the host had just installed, outside any change gesture.
+    //
+    // Measured, all three: State test 83 leg E (the unopened pin closed once, and mask 0x80000000),
+    // leg G (a host's 6500 Hz split written back to 2000.0 Hz with the gesture count at -1).
+    //
+    // The claim below is the same one `mouseUp` takes, and for the same reason ADR-0050 gives: an
+    // action that has published its identifiers owns the record until it has finished establishing
+    // them. Nothing here needs the cancellation to happen NOW -- `moveBand`, one statement later,
+    // re-proves the count and every split it writes, and `tick`'s next reconcile still fires -- so
+    // declining costs a few instructions of latency and nothing else.
+    const ScopedGestureAction ownStartup (gestureActionDepth);
     const int N = (n >= 0 ? juce::jlimit (1, 4, n) : bandCount());
     const int M = N - 1;
     auto r = plot();
@@ -2717,20 +2756,6 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
     }
     repaint();
 }
-namespace
-{
-// Sets a flag for a scope and clears it on every exit, including an early return from inside a
-// branch. Deliberately NOT re-entrant-aware: `mouseUp` is the only user and a nested `mouseUp` is
-// not a path this class has evidence for -- see the note at the flag's declaration.
-struct ScopedReleaseAction
-{
-    explicit ScopedReleaseAction (bool& f) noexcept : flag (f) { flag = true; }
-    ~ScopedReleaseAction() noexcept { flag = false; }
-    ScopedReleaseAction (const ScopedReleaseAction&) = delete;
-    ScopedReleaseAction& operator= (const ScopedReleaseAction&) = delete;
-    bool& flag;
-};
-} // namespace
 void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 {
     // ADR-0038, and it matters most here: mouseUp is where the ON-RELEASE ACTIONS live --
@@ -2777,7 +2802,7 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     // past. The flag makes the nested call decline outright, so the ownership this handler is still
     // proving against survives until the branch drops it itself, one line before each return.
     // Scoped so every exit path clears it, including the ones that return from inside a branch.
-    const ScopedReleaseAction ownRecord (releaseActionActive);
+    const ScopedGestureAction ownRecord (gestureActionDepth);
     const int pressBands = gestureBands;
     // ADR-0051: the press's split row, derived from the stamp `mouseDown` took rather than read
     // again. `convertFrom0to1` is pure arithmetic on the value `captureGestureSound` already read,
@@ -2959,7 +2984,7 @@ void SpectrumImager::cancelActiveDrag()
     // nested cancel. The handle-drag branch already defended itself with a bespoke
     // `gestureBands == pressBands` compare and named this mechanism in its own comment; this makes
     // the record survive instead, so the other branches need no such compare.
-    if (releaseActionActive) return;
+    if (gestureActionDepth > 0) return;
     // BEFORE the cheap exit (ADR-0039). The four flags below are the only real gestures, but
     // `gestureBands` is latched at the TOP of mouseDown -- including on the branches that latch
     // no identifier at all (an Alt-click reset, an add the count refused). Left set, the next
