@@ -2599,3 +2599,14 @@ macOS (`the retry exists for the Linux X11/XEmbed flake only`).
 rather than a code change. Nothing here is skipped, disabled or quarantined, and no empty commit is
 pushed. If it reproduces identically on the re-run, that is new evidence about the *harness* — not
 about this change — and belongs to the pluginval crash record, not to ADR-0050.
+
+**Outcome of the re-run.** `rerun-failed-jobs` was refused with **HTTP 403 `This workflow is already
+running`** while the sibling `macos` job was still in flight, so the re-run was delivered the only way
+left that changes no code: pushing this diagnosis commit, `4ccedba`, which supersedes the `7c31452`
+run and re-runs every job on the new head. Push run **`34495243892` on `4ccedba` is 13 / 13 success**
+(`merge-check` skipped by design), **`macos-intel` included** — job `102932477492`, step 15 *"pluginval
+AU (randomise x3), native Intel"* **passed**. The tree under it is byte-identical in every source and
+build file to the one that went red, which settles the classification: the `std::bad_function_call`
+abort is **non-deterministic, in pluginval's own shutdown**, and is not a property of this change. The
+one re-run this category allows is now spent, and it came back green; a *third* occurrence would be
+new evidence about the harness and belongs to the pluginval crash record above, not to ADR-0050.
