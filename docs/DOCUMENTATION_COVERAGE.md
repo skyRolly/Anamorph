@@ -11391,8 +11391,13 @@ clears its identifiers before it dispatches — ADR-0050's own instruction — s
 nothing and still disarms the guard the store is about to run.
 
 **Reentrant, not cross-thread.** `setSoloMask` dispatches `beginChangeGesture()` before its guard, so
-a host pumping the message loop from there reaches the editor's stuck-drag reconcile with the store on
-the stack. **State test 79 leg E** — leg C with the cancellation added ahead of the identical install
+a host pumping the message loop from there re-enters `cancelActiveDrag` with the store on the stack.
+An adversarial derivation, run to refute the finding and unable to, corrected two claims in the first
+draft of this round's record: the **primary** re-entry vector is `tick`'s own reconcile, whose gate is
+true *because of* the very install at issue and which needs no mouse state or KI-013 (the editor
+reconcile is the weaker one — JUCE clears the button bit before dispatching `mouseUp`); and the delete
+branch is **not** reentrancy-reachable, where the draft had said its per-store proofs were exposed.
+Both corrections are in the ADR and worklog rather than smoothed over. **State test 79 leg E** — leg C with the cancellation added ahead of the identical install
 — fails on the unfixed tree with *"mask 0x8, split 1 2000.0 → 6500.0 Hz"*, and it was the only
 failure, so the reproduction is isolated.
 

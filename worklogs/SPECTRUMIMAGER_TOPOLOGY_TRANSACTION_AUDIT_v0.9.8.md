@@ -2455,9 +2455,16 @@ takes the cheap exit, and **still drops the record on the way past**. Every owne
 this class self-disables at `gestureBands < 0`.
 
 `setSoloMask` calls `beginChangeGesture()` **before** its guard, so the window is **REENTRANT**: a
-host answering the gesture open by pumping the message loop lands the editor's stuck-drag reconcile
-(`PluginEditor.cpp:1538-1543`, which reads the MOUSE and never consults `gestureBands`; KI-013 keeps
-that gate true on macOS) straight into `cancelActiveDrag` with the store on the stack.
+host answering the gesture open by pumping the message loop re-enters `cancelActiveDrag` with the
+store on the stack. **Two vectors, and the adversarial pass found the stronger one after this section
+was first drafted** — recorded as a correction rather than smoothed over. The primary vector is
+`SpectrumImager::tick`'s OWN reconcile, `if (gestureIsStale()) cancelActiveDrag();` (`:1739`), whose
+gate is true *precisely because of* the same-count install that lands inside the bracket, and which a
+nested pump delivers as a message-thread VBlank callback — no mouse state, no KI-013. The editor's
+stuck-drag reconcile (`PluginEditor.cpp:1538-1543`) is the weaker one: JUCE updates the source's
+button state *before* dispatching `mouseUp` and the native peers clear the button bit, so for a real
+in-window release that gate is normally already false, and it survives only through KI-013's stale
+macOS cache.
 
 **State test 79 leg E** is leg C with that cancellation added ahead of the identical install:
 
@@ -2475,9 +2482,18 @@ The handle-drag branch defends itself with a bespoke `gestureBands == pressBands
 the mechanism in its own comment: *"clearing `dragHandle` above sends a reentrant reconcile down
 `cancelActiveDrag`'s cheap exit, which clears `gestureBands` … and `gestureIsStale()` would answer
 `false` because the latch is gone."* That was **one branch's local defence against a general
-defect**. The solo branch had none. `removeBand`'s per-store proofs, which run after its own stores
-dispatch, had none either. This is the same "applied to one branch of three" shape this ADR already
-had to correct once.
+defect**, and this is the same "applied to one branch of three" shape this ADR already had to correct
+once.
+
+**Per branch, at its real strength — and the first draft of this section overstated the delete
+branch, corrected here.** Solo: the live defect, and the only branch where the disarm becomes a wrong
+write; its count and mask guards survive as locals, so exactly the sound half ADR-0050 added is what
+is lost. Handle drag: fail-safe but **lossy** — the compare turns the nested cancel into a refusal, so
+a legitimate outward-drag removal is silently dropped. Delete: **not reachable by reentrancy at all**
+— no dispatch sits between `pressDeleteBand = -1` and its gate, and `removeBand`'s entry proof is
+preceded only by pure reads; the one residual sub-window is `removeBand`'s later `setSoloMask`, which
+dispatches before its own sound clause but sits *after* the transaction's ownership proof and behind
+its count and mask checks. Width drag: inert.
 
 ### 64d. The fix, and the two it rejects
 

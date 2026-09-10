@@ -230,11 +230,23 @@ nothing still disarms the record — and every ownership predicate in this class
 
 **The window is REENTRANT, not cross-thread.** The release branch clears its identifiers before it
 dispatches — which is this ADR's own instruction — and `setSoloMask` calls `beginChangeGesture()`
-**before** its guard. A host that answers the gesture open by pumping the message loop lands the
-editor's stuck-drag reconcile (`PluginEditor.cpp`, `isMouseButtonDownAnywhere() &&
-! anyPhysicalMouseButtonDown()`, which reads the mouse and never consults `gestureBands`) straight
-into `cancelActiveDrag` while the store is still on the stack. Under KI-013 that gate can still be
-true on the re-entry.
+**before** its guard. A host that answers the gesture open by pumping the message loop re-enters
+`cancelActiveDrag` while the store is still on the stack.
+
+**There are two re-entry vectors, and the stronger one is inside this class.** An independent
+adversarial derivation found it after this ADR was first drafted, and the correction is recorded
+rather than smoothed over:
+
+* **`SpectrumImager::tick`'s own reconcile**, `if (gestureIsStale()) cancelActiveDrag();`. Its gate is
+  true **precisely in the scenario at issue** — the same-count install that lands inside
+  `beginChangeGesture` is what makes `gestureIsStale()` true — and `tick` is a VBlank callback on the
+  message thread, so a nested message-loop pump delivers it. This vector needs no mouse state and no
+  KI-013. **It is the primary one.**
+* **The editor's stuck-drag reconcile** (`PluginEditor.cpp`, `isMouseButtonDownAnywhere() &&
+  ! anyPhysicalMouseButtonDown()`). Weaker than first written here: JUCE updates the source's button
+  state *before* dispatching `mouseUp`, and the native peers clear the button bit when they handle the
+  release, so for a real in-window release that gate is normally already false. It survives as a
+  vector only through KI-013's stale macOS cache. Stated at its real strength.
 
 **Measured, deterministically, on a single thread** (State test 79 leg E, which is leg C with the
 cancellation added ahead of the identical install):
@@ -246,12 +258,28 @@ cancellation added ahead of the identical install):
 
 Leg C refuses that bit. Leg E is the same install reached around the same guard.
 
-**The class already knew.** The handle-drag branch defends itself with a bespoke
-`gestureBands == pressBands` compare and names the mechanism in its own comment — *"clearing
-`dragHandle` above sends a reentrant reconcile down `cancelActiveDrag`'s cheap exit, which clears
-`gestureBands` … and `gestureIsStale()` would answer `false` because the latch is gone."* That was
-one branch's local defence against a general defect; the solo branch had none, and the delete
-branch's later per-store proofs inside `removeBand` had none either.
+**Branch by branch, at the strength each actually has** — corrected after the adversarial pass,
+because the first draft of this section overstated the delete branch:
+
+* **Solo — the live defect.** The only branch where the disarm becomes a wrong write. Its count and
+  mask guards survive (they are the locals `pressBands` and `m`); **exactly the sound half this ADR
+  added is the half that is lost.**
+* **Handle drag — fail-safe but lossy, not merely "defended".** Its bespoke `gestureBands ==
+  pressBands` compare makes the nested cancel produce a **refusal**: a legitimate outward-drag removal
+  is silently dropped. No wrong write, but not free either.
+* **Delete — NOT reachable by reentrancy.** Between `pressDeleteBand = -1` and the
+  `deleteHit(...) == dB && ! gestureIsStale()` gate there is no dispatch, and `removeBand`'s entry
+  ownership proof is preceded only by pure reads. The first draft here claimed its per-store proofs
+  were exposed; that is **too strong**. The one residual sub-window is `removeBand`'s later
+  `setSoloMask`, which does dispatch before its own sound clause — but that sits *after* the
+  transaction's ownership proof and behind its count and mask checks.
+* **Width drag — inert.** It fires no on-release action and nothing after its `endGesture` reads the
+  record.
+
+The handle-drag branch names the mechanism in its own comment — *"clearing `dragHandle` above sends a
+reentrant reconcile down `cancelActiveDrag`'s cheap exit, which clears `gestureBands` … and
+`gestureIsStale()` would answer `false` because the latch is gone."* That was one branch's local
+defence against a general defect.
 
 **The fix, and why it is this one.** A scoped flag: `mouseUp` owns the record for the duration of its
 release action, and `cancelActiveDrag` declines outright — touching nothing — while it is set. Two
