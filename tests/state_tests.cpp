@@ -18385,6 +18385,274 @@ static void testABandMoveDerivesItsOriginsFromTheRecord()
     delete ed;
 }
 
+
+// ---------------------------------------------------------------------------
+//  State test 85 -- a PRESS HIT-TEST answers under the topology the press proved.
+//
+//  THE DEFECT (review finding R2484, ADR-0046 completed). `mouseDown` stamps the
+//  press's topology on its first line -- `gestureBands = bandCount()`, then
+//  `captureGestureSound()` fills `gestureX`, from which `pressF[]` is derived --
+//  and then called `soloHit (p)`, which read `bandCount()` for itself and its
+//  boxes read `crossover()` for themselves. So the index latched as
+//  `soloPressBand` could be derived under a topology the press never proved.
+//
+//  WHY THAT IS THE HALF THAT WAS OPEN. `soloPressBand` is consumed by three
+//  places -- `tick`'s hold audition, `mouseDrag`'s band move and `mouseUp`'s
+//  toggle -- and none of them re-derives it. Each is guarded by
+//  `gestureIsStale()`, which proves the world still MATCHES the press; it cannot
+//  prove the index was DERIVED in that world. An ABA return therefore leaves
+//  every guard satisfied over an index the press's own layout never had.
+//  `deleteHit` is the sibling and was NOT open: `mouseUp` re-runs it and demands
+//  `deleteHit (release) == dB`, so a transient index cannot survive the return.
+//
+//  WHAT THIS TEST CAN AND CANNOT HOLD. The window between the stamp and the
+//  hit-test contains no dispatch -- every statement in it is a pure read -- so
+//  it is CROSS-THREAD ONLY and no single-threaded test can enter it. That is the
+//  same position ADR-0046 recorded for State test 78, and this test takes the
+//  same shape: it holds the CONTRACT the fix rests on -- a hit-test given a
+//  topology answers under it, so a press can never reach a band its own layout
+//  has not got -- rather than pretending to reproduce the race.
+//
+//  The legs are geometry-free in the sense State tests 77 and 78 established:
+//  leg A DISCOVERS which band each headphone position belongs to by pressing it
+//  and reading the mask back, so leg B's pointer position is one the component
+//  itself chose, never one the test computed.
+static void testAPressHitTestAnswersUnderTheTopologyItProved()
+{
+    std::printf ("State test 85: a press hit-test answers under the topology the press proved\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the press hit-test probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (imager != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { imager = si; return; }
+            walk (kid);
+            if (imager != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (imager != nullptr && imager->getWidth() > 300, "the imager is laid out for the press hit-test probe");
+    if (imager == nullptr || imager->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    check (bandsP && soloP && loP && midP && hiP, "the parameters the press hit-test probe drives exist");
+    if (! (bandsP && soloP && loP && midP && hiP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto maskOf   = [&] () { return (int) std::lround (plainOf (soloP)) & 0x0F; };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
+    const float W     = (float) imager->getWidth();
+    const float H     = (float) imager->getHeight();
+    const float soloY = 11.0f;
+
+    // The SPLIT ROW is held identical across every leg. It is what makes leg B a
+    // model of the ABA return rather than of an ordinary layout change: only the
+    // COUNT differs between the layout leg A measured and the one leg B presses
+    // in, so `gestureIsStale()` sees a world identical to the press's and refuses
+    // nothing -- which is exactly the condition under which the defect is live.
+    auto setSplits = [&] ()
+    {
+        setPlain (loP,    200.0f);
+        setPlain (midP,  2000.0f);
+        setPlain (hiP,  10000.0f);
+    };
+
+    // Every headphone position the component is willing to offer, at whatever
+    // count is live. Taken from the component's own tooltip, one x per run.
+    auto headphoneXs = [&] ()
+    {
+        std::vector<float> xs;
+        bool inRun = false; float runStart = 0.0f;
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            imager->mouseMove (mev (x, soloY));
+            const bool on = (imager->getTooltip() == juce::String ("Solo this band"));
+            if (on && ! inRun) { inRun = true; runStart = x; }
+            if (! on && inRun) { inRun = false; xs.push_back (0.5f * (runStart + x - 1.0f)); }
+        }
+        if (inRun) xs.push_back (0.5f * (runStart + W - 3.0f));
+        return xs;
+    };
+    // Press and release over one point, and report which solo bit that click set.
+    // -1 means the click set nothing at all, which is a legitimate answer: a
+    // point that is over no headphone in the live layout must do nothing.
+    auto clickBit = [&] (float x)
+    {
+        imager->cancelActiveDrag();
+        setPlain (soloP, 0.0f);
+        imager->mouseDown (mev (x, soloY));
+        imager->mouseUp   (mev (x, soloY));
+        const int m = maskOf();
+        for (int b = 0; b < 4; ++b) if (m == (1 << b)) return b;
+        return (m == 0) ? -1 : 99;   // 99: more than one bit, which nothing here should produce
+    };
+
+    // ---- LEG A: at four bands, DISCOVER which headphone belongs to which band --
+    //  This is the non-vacuity leg for B. If no headphone position on a four-band
+    //  layout resolves to band 2 or 3, then leg B is holding nothing and says so.
+    float highBandX = -1.0f; int highBandIdx = -1;
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setSplits();
+        const auto xs = headphoneXs();
+        check (xs.size() >= 3, "leg A: a four-band layout offers at least three headphones");
+        for (auto x : xs)
+        {
+            const int b = clickBit (x);
+            if (b >= 2 && b <= 3) { highBandX = x; highBandIdx = b; break; }
+        }
+        if (highBandIdx < 0)
+            std::printf ("  [leg A] no headphone on the four-band layout resolved to band 2 or 3;"
+                         " leg B would hold nothing\n");
+        check (highBandIdx >= 2,
+               "leg A: a four-band layout has a headphone that solos a band a two-band layout has not got");
+    }
+
+    // ---- LEG B: the same point, pressed in a TWO-band layout with the same row -
+    //  The count is the only thing that differs, so the press's own stamp and the
+    //  live world agree at the release and `gestureIsStale()` refuses nothing. If
+    //  the hit-test answers under anything but the press's topology, this click
+    //  reaches a band that does not exist and the mask shows it.
+    if (highBandIdx >= 2 && highBandX >= 0.0f)
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 2.0f);
+        setSplits();
+        const int b = clickBit (highBandX);
+        if (b >= 2)
+            std::printf ("  [leg B] a press in a two-band layout soloed band %d, which only a"
+                         " four-band layout has\n", b);
+        check (b < 2, "leg B: a press cannot solo a band the topology it was made in has not got");
+        const int m = maskOf();
+        check ((m & 0x0C) == 0, "leg B: no solo bit above the live band count is set");
+    }
+
+    // ---- LEG C: an ordinary solo click still works, at the count's LAST band ---
+    //  `bandRightX` is the helper that consumes the threaded count directly
+    //  (`b >= N - 1` -> the plot's right edge), so the last band is the one that
+    //  proves the threading resolves the same layout the live read used to.
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 2.0f);
+        setSplits();
+        const auto xs = headphoneXs();
+        check (! xs.empty(), "leg C: a two-band layout offers a headphone");
+        if (! xs.empty())
+        {
+            const int b = clickBit (xs.back());
+            check (b == 1, "leg C: the last band's headphone still solos the last band");
+        }
+    }
+
+    // ---- LEG D: the delete's RELEASE confirmation still confirms ---------------
+    //  `mouseUp` re-runs `deleteHit` under the press's row and count and requires
+    //  it to name the same band. A wrong row there would make every delete a
+    //  silent no-op, which no other test in the tree would notice.
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setSplits();
+        setPlain (soloP, 0.0f);
+        // Fixed coordinates, as State tests 76 and 83 use for this affordance, and for
+        // the reason the tooltip test at the end of this suite pins: `setContextTooltip`
+        // reports the delete from `getMouseXYRelative()`, the LIVE pointer, not from the
+        // synthetic event, so it cannot be scanned for the way the headphone can.
+        // `deleteBox (0)` spans x 6..20 and y rulerY()-22 .. rulerY()-8, i.e. H-37..H-23.
+        const float delX = 13.0f, delY = H - 30.0f;
+        {
+            const float before = plainOf (bandsP);
+            imager->mouseDown (mev (delX, delY));
+            imager->mouseUp   (mev (delX, delY));
+            const float after = plainOf (bandsP);
+            if (! (after < before))
+                std::printf ("  [leg D] press and release over the delete x left Bands at %.0f\n",
+                             (double) after);
+            check (after < before, "leg D: a delete armed and released over the same x still removes the band");
+        }
+    }
+
+
+    // ---- LEG E: the review's own example, on the row that makes it exact -------
+    //  The three split parameters are INDEPENDENT and UNCONSTRAINED. `kMinGapPx` is
+    //  applied only by `projectGaps`, to plans this component computes; the DSP's
+    //  ordering clamp in `MultibandWidth` is applied to a local copy and never
+    //  written back. So a host, a preset, an A/B apply or an undo can legally
+    //  install `mbFreqLow == mbFreqMid == mbFreqHigh` -- and there, bands 1 and 2
+    //  have ZERO width, fail the 30 px gate that hides a headphone, and are skipped,
+    //  putting band 3's headphone centre EXACTLY on band 1's two-band centre.
+    //
+    //  That is the review's worked example, and it is the sharpest form of the
+    //  contract: one pointer position that names band 1 under the press's topology
+    //  and band 3 under a topology the press never proved. A hit-test given the
+    //  press's count must answer 1. This leg is also the reason the earlier
+    //  conclusion that the example was geometrically unreachable was WRONG, which
+    //  is recorded here rather than quietly dropped.
+    {
+        imager->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP,  1000.0f);
+        setPlain (midP, 1000.0f);
+        setPlain (hiP,  1000.0f);
+        const auto xs = headphoneXs();
+        // Exactly two headphones survive the 30 px gate here: band 0 and band 3.
+        check (xs.size() == 2, "leg E: a collapsed split row shows exactly two headphones at four bands");
+        float aliasX = -1.0f;
+        for (auto x : xs) if (clickBit (x) == 3) { aliasX = x; break; }
+        check (aliasX >= 0.0f, "leg E: one of them solos band 3");
+        if (aliasX >= 0.0f)
+        {
+            setPlain (bandsP, 2.0f);
+            setPlain (loP,  1000.0f);
+            setPlain (midP, 1000.0f);
+            setPlain (hiP,  1000.0f);
+            const int b = clickBit (aliasX);
+            if (b != 1)
+                std::printf ("  [leg E] the point that solos band 3 at four bands soloed band %d at two,"
+                             " where the layout has only bands 0 and 1\n", b);
+            check (b == 1, "leg E: the aliased point solos the band the PRESS's topology puts there");
+            check ((maskOf() & 0x0C) == 0, "leg E: no bit above the live count is set");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
 // ---------------------------------------------------------------------------
 //  --band-move-adopt-probe -- the gesture's OWNERSHIP RECORD, replaced under it.
 //
@@ -18968,6 +19236,206 @@ static void testACancellationClosesEachGestureOnce()
     delete ed;
 }
 
+
+// ---------------------------------------------------------------------------
+//  --solo-alias-probe -- a PRESS whose hit-test answers under a transient layout.
+//
+//  THE WINDOW. `mouseDown` stamps `gestureBands = bandCount()` and
+//  `captureGestureSound()` on its first two lines, and then `soloHit` re-read the
+//  count and the split row for itself. Every statement between the stamp and
+//  `soloPressBand = sh` is a pure read, so nothing on the message thread can
+//  dispatch into the gap: it is CROSS-THREAD ONLY, and only an audio-thread
+//  automation write or a host state write can land in it.
+//
+//  THE GEOMETRY IS THE INSTRUMENT, and it is exact rather than approximate here.
+//  The three split parameters are independent and unconstrained -- `kMinGapPx` is
+//  applied only by `projectGaps` to plans this component computes, and the DSP's
+//  ordering clamp is applied to a local copy that is never written back -- so
+//  `mbFreqLow == mbFreqMid == mbFreqHigh` is a layout a host can legally install.
+//  There, bands 1 and 2 have ZERO width and fail the 30 px gate that hides a
+//  headphone, so `soloHit` skips them, and band 3's headphone centre is
+//  0.5 * (x(f2) + right) -- which is band 1's two-band centre, 0.5 * (x(f0) + right),
+//  to the digit. One pointer position, two answers, chosen by the count alone.
+//
+//  WHY THE LANE STOPS BEFORE THE RELEASE, and it is the difference between a
+//  signature and a coincidence. A press that latches `gestureBands = 4` and
+//  releases at four bands solos band 3 entirely CORRECTLY; a detector that only
+//  looks at the mask would count that as a defect. Forcing two bands before the
+//  release removes the whole class: such a press is then refused by
+//  `topologyMovedUnderGesture()` and writes nothing, while a press that latched
+//  TWO and derived THREE passes every guard and writes a bit the layout has not
+//  got. The lane runs across `mouseDown` because that is where the window is.
+//
+//  THE CONTROL IS MANDATORY. With the lane off the same click must solo band 1,
+//  every time. If it does not, the aliased position is wrong or the press is not
+//  landing on a headphone at all, and every reading below is meaningless.
+//
+//  Usage:  AnamorphStateTests --solo-alias-probe [iterations]
+static int runSoloAliasProbe (int iterations)
+{
+    std::printf ("solo-alias probe: a press hit-test answering under a transient layout\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    if (ed == nullptr) { delete raw; std::printf ("  no editor\n"); return 1; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (im != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { im = si; return; }
+            walk (kid);
+            if (im != nullptr) return;
+        }
+    };
+    walk (ed);
+    if (im == nullptr || im->getWidth() <= 300)
+    { proc.editorBeingDeleted (ed); delete ed; std::printf ("  no imager\n"); return 1; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    if (! (bandsP && loP && midP && hiP && soloP))
+    { proc.editorBeingDeleted (ed); delete ed; std::printf ("  no params\n"); return 1; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p2, float v)
+    { p2->setValueNotifyingHost (p2->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p2)
+    { return p2->convertFrom0to1 (p2->getValue()); };
+    auto maskOf   = [&] { return (int) std::lround (plainOf (soloP)) & 0x0F; };
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y)
+    {
+        return juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                 juce::Time::getCurrentTime(), { x, y },
+                                 juce::Time::getCurrentTime(), 1, false);
+    };
+    constexpr float kAliasHz = 1000.0f;   // the collapsed row that makes the two centres one point
+    const float soloY = 11.0f;
+    auto setRow = [&] { setPlain (loP, kAliasHz); setPlain (midP, kAliasHz); setPlain (hiP, kAliasHz); };
+    auto rest   = [&] (float bands)
+    { im->cancelActiveDrag(); setPlain (bandsP, bands); setRow(); setPlain (soloP, 0.0f); };
+
+    // The headphone runs the component is willing to show, one x per run.
+    auto headphoneXs = [&]
+    {
+        std::vector<float> xs;
+        bool inRun = false; float runStart = 0.0f;
+        for (float x = 2.0f; x < (float) im->getWidth() - 2.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (x, soloY));
+            const bool on = im->getTooltip().containsIgnoreCase ("solo");
+            if (on && ! inRun) { inRun = true; runStart = x; }
+            if (! on && inRun) { inRun = false; xs.push_back (0.5f * (runStart + x - 1.0f)); }
+        }
+        if (inRun) xs.push_back (0.5f * (runStart + (float) im->getWidth() - 3.0f));
+        return xs;
+    };
+    auto clickBit = [&] (float x)
+    {
+        setPlain (soloP, 0.0f);
+        im->mouseDown (mev (x, soloY));
+        im->mouseUp   (mev (x, soloY));
+        const int m = maskOf();
+        for (int b = 0; b < 4; ++b) if (m == (1 << b)) return b;
+        return (m == 0) ? -1 : 99;
+    };
+
+    // DISCOVER the aliased position rather than compute it: at four bands, the
+    // headphone that solos band 3.
+    rest (4.0f);
+    float aliasX = -1.0f;
+    for (auto x : headphoneXs()) if (clickBit (x) == 3) { aliasX = x; break; }
+    if (aliasX < 0.0f)
+    { proc.editorBeingDeleted (ed); delete ed; std::printf ("  no band-3 headphone on the collapsed row\n"); return 1; }
+
+    std::atomic<int>  phase { 0 }, spin { 0 };
+    std::atomic<bool> quit { false }, writing { false };
+    bool flip = false;
+    std::thread automation ([&]
+    {
+        while (! quit.load (std::memory_order_acquire))
+        {
+            while (phase.load (std::memory_order_acquire) == 1)
+            {
+                writing.store (true, std::memory_order_release);
+                const int n = spin.load (std::memory_order_relaxed);
+                for (int i = 0; i < n; ++i) std::atomic_signal_fence (std::memory_order_acq_rel);
+                flip = ! flip;
+                setPlain (bandsP, flip ? 4.0f : 2.0f);   // the ABA generator, count only
+            }
+            writing.store (false, std::memory_order_release);
+        }
+    });
+
+    // One press whose hit-test the lane may cross, released at a topology the test
+    // pins itself. Returns the bit the click set, or -1 for none.
+    auto oneClick = [&] (bool laneOn)
+    {
+        rest (2.0f);
+        if (laneOn) phase.store (1, std::memory_order_release);
+        im->mouseDown (mev (aliasX, soloY));
+        if (laneOn)
+        {
+            phase.store (0, std::memory_order_release);
+            while (writing.load (std::memory_order_acquire)) { }
+            setPlain (bandsP, 2.0f);   // the release happens at the topology the press SAW, or is refused
+        }
+        im->mouseUp (mev (aliasX, soloY));
+        const int m = maskOf();
+        for (int b = 0; b < 4; ++b) if (m == (1 << b)) return b;
+        return (m == 0) ? -1 : 99;
+    };
+
+    {
+        const int b = oneClick (false);
+        std::printf ("  control (no lane): the aliased x %.1f at two bands solos band %d%s\n",
+                     aliasX, b, b == 1 ? "" : "   [!! the instrument is not pressing a headphone]");
+        if (b != 1)
+        {
+            quit.store (true, std::memory_order_release); automation.join();
+            proc.editorBeingDeleted (ed); delete ed;
+            std::printf ("  ABORT: the control did not solo band 1; every reading below would be meaningless\n");
+            return 1;
+        }
+    }
+
+    int aliased = 0;
+    for (const int sp : { 0, 40, 120, 400 })
+    {
+        int m = 0;
+        for (int it = 0; it < iterations; ++it)
+        {
+            spin.store (sp, std::memory_order_relaxed);
+            const int b = oneClick (true);
+            if (b >= 2) ++m;     // a bit only a four-band layout has, set by a two-band press
+        }
+        aliased += m;
+        std::printf ("  spin %3d: presses that soloed a band the press's layout has not got %d / %d\n",
+                     sp, m, iterations);
+    }
+    quit.store (true, std::memory_order_release);
+    automation.join();
+
+    std::printf ("  TOTAL ALIASED PRESSES: %d\n", aliased);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+    return aliased == 0 ? 0 : 1;
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -19038,6 +19506,8 @@ int main (int argc, char* argv[])
 
     if (argc > 1 && std::strcmp (argv[1], "--band-move-probe") == 0)
         return runBandMoveProbe (argc > 2 ? std::atoi (argv[2]) : 300);
+    if (argc > 1 && std::strcmp (argv[1], "--solo-alias-probe") == 0)
+        return runSoloAliasProbe (argc > 2 ? std::atoi (argv[2]) : 300);
 
     if (argc > 1 && std::strcmp (argv[1], "--band-move-adopt-probe") == 0)
         return runBandMoveAdoptProbe (argc > 2 ? std::atoi (argv[2]) : 300);
@@ -19135,6 +19605,7 @@ int main (int argc, char* argv[])
     testTheAddTargetAnswersUnderOneTopology();
     testACancellationClosesEachGestureOnce();
     testABandMoveDerivesItsOriginsFromTheRecord();
+    testAPressHitTestAnswersUnderTheTopologyItProved();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

@@ -919,6 +919,20 @@ jobs:
       # asserting a zero nothing could have disturbed.
       - name: A band move's origins come from the record it proved (ADR-0051)
         run: ./build/AnamorphStateTests_artefacts/Release/AnamorphStateTests --band-move-adopt-probe 3000
+
+      # ADR-0046 reached the two derivations it originally named and skipped. A press
+      # stamped its topology and its split row and then let `soloHit` re-read both, so
+      # the index latched as `soloPressBand` could be derived under a layout that
+      # flickered past -- and NOTHING downstream re-derives it: a solo bit above the
+      # live count is a legitimate PARKED bit by design, so no store-side guard can
+      # catch a wrong one. Cross-thread only (the window between the stamp and the
+      # hit-test holds no dispatch), which is why this is a probe. It is a gate rather
+      # than a formality: the pre-fix tree measured 491 aliased presses in 1200 against
+      # a lane alternating mbBands 2/4, and the probe ABORTS if its control line fails
+      # to solo band 1 on a clean tree -- the instrument proving it can see the defect
+      # before it is allowed to report a zero. 300 x 4 delays runs in a few seconds.
+      - name: A press hit-test answers under the topology the press proved (ADR-0046)
+        run: ./build/AnamorphStateTests_artefacts/Release/AnamorphStateTests --solo-alias-probe 300
       - name: pluginval (deterministic x3 -- release gate)
         # Explicit condition rather than relying on "no `if:`, so it self-skips".
         # Both pluginval steps carry the SAME condition, naming exactly what must

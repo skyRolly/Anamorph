@@ -989,6 +989,41 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   refused; leg D is the control that an undisturbed click still writes the mask. **Mutation record:**
   removing `&& ! soundMovedUnderGesture()` fails leg C.
 
+* **State test 85 and `--solo-alias-probe` — a PRESS HIT-TEST answering under a transient layout**
+  (ADR-0046, completed). `mouseDown` stamps `gestureBands` and the split row on its first two lines
+  and then called `soloHit`, which re-read both. The index it returns is latched as `soloPressBand`
+  and **no consumer re-derives it** — not `tick`'s hold audition, not `mouseDrag`'s band move, not
+  `mouseUp`'s toggle — and no store-side guard can catch a wrong one, because a solo bit above the
+  live count is a legitimate PARKED bit by design (State test 79 leg A). So the index had to be right
+  at derivation or not at all.
+
+  **The geometry is exact.** The three split parameters are independent and unconstrained —
+  `kMinGapPx` is applied only by `projectGaps`, and `MultibandWidth`'s ordering clamp is on a local
+  copy that is never written back — so `mbFreqLow == mbFreqMid == mbFreqHigh` is installable by a
+  host. There bands 1 and 2 have zero width, fail the 30 px gate that hides a headphone, and are
+  skipped, putting band 3's headphone centre exactly on band 1's two-band centre. Measured at x
+  **677.5** on the shipped layout.
+
+  **State test 85** holds the contract, not the race: the window holds no dispatch and is
+  cross-thread only. Leg A discovers, by clicking, which headphone belongs to which band at four
+  bands (the non-vacuity leg); leg B presses that point in a two-band layout with the same row and
+  requires no bit above the live count; leg C is the ordinary-click control at the count's last band,
+  which is the one `bandRightX` resolves from the threaded count; leg D is the delete's release-time
+  confirmation, which would otherwise become a silent no-op if the press row were wrong; **leg E is
+  the review's own worked example** on the collapsed row.
+
+  **`--solo-alias-probe`** measures the window itself, and unlike the withdrawn wheel probe below it
+  **can fail for the right reason**. Its mandatory control soloes band 1 on a clean tree and it
+  aborts if that fails. The lane alternates `mbBands` 2/4 across `mouseDown` only; it is stopped and
+  the count pinned to 2 before every release, so a press that legitimately latched four bands is
+  *refused* rather than counted as a defect — the false-positive class `--band-move-probe`'s header
+  records. **491 / 1200 before the fix, 0 / 1200 after.** **Mutation record:** reverting the call
+  site kills nothing deterministic (the probe is what catches it); making the hit-test answer under
+  an unproved count of 4 fails legs B, C and E; making the release-time delete confirmation answer
+  under an unproved count fails leg D and 27 checks across the delete tests; ignoring the threaded
+  count in `bandRightX`, the threaded row in `soloBox`, or reverting the release confirmation to a
+  live read each kill **nothing**, and are recorded as unkilled rather than hidden.
+
 * **A withdrawn probe, recorded rather than deleted.** `--wheel-adopt-probe` was built for the
   within-tick wheel window and **is not in the tree**. Its detector gated on a `laneLanded` flag the
   lane set *after* its store returned, with no ordering against the message-thread store, so it

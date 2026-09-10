@@ -188,3 +188,90 @@ four bands, and legs B/C hold that none of them reaches a band a two-band topolo
 
 Message thread only. No lock, no allocation, no blocking, no audio path touched, no parameter ID,
 serialization schema, threading model, DSP signal order or reported latency change.
+
+## Amended 2026-09-10 — "What was NOT done" was wrong about `soloHit`, and this ADR said so itself
+
+**Review finding at `SpectrumImager.cpp:R2484`, *"solo presses target replacement layouts"*.
+CONFIRMED, and it falsifies a claim in this document rather than proposing a new rule.** The
+Decision above is unchanged and already authorises the fix; what changes is the scope paragraph.
+
+**The claim that was wrong.** "What was NOT done" says of `soloHit` and `deleteHit`:
+
+> Their window is the fail-safe half only: `gestureBands` is read at the top of `mouseDown`, so it
+> is the *older* reading, and a disagreement makes `gestureIsStale()` refuse on the next event.
+
+`gestureIsStale()` compares the live world against **the stamp**. The reading `soloHit` actually used
+is recorded nowhere, so the "disagreement" the sentence relies on is not observable by any later
+guard — and an ABA return erases it outright. **This document had already made that argument**, in
+the amendment one section above, and reached the opposite conclusion for `beginBandMove`:
+
+> …an ABA return to the stamped count between the two reads would let a plan sized under the wrong
+> topology through.
+
+Same shape, same reasoning, opposite conclusion, in one file.
+
+**Why `soloHit` is the half that was open.** `soloPressBand` is consumed by three places —
+`tick`'s hold audition, `mouseDrag`'s band move, `mouseUp`'s toggle — and **none re-derives it**.
+Nothing downstream can catch a wrongly-derived index either: `toggleSoloBit` range-checks `b` not at
+all, and `setSoloMask` deliberately admits a bit above the live count, because a **parked** solo bit
+is a designed, tested state (State test 79 leg A). The index had to be right at derivation or not at
+all.
+
+**The geometry is exact, not marginal.** The three split parameters are independent and
+unconstrained: `kMinGapPx` is applied only by `projectGaps` to plans this component computes, and
+`MultibandWidth`'s ordering clamp is applied to a local copy that is never written back. A host,
+preset, A/B apply or undo may legally install `mbFreqLow == mbFreqMid == mbFreqHigh`. There bands 1
+and 2 have zero width, fail the 30 px gate that hides a headphone, and are skipped — putting band 3's
+headphone centre exactly on band 1's two-band centre. One pointer position, two answers, selected by
+the count alone. The consequence is the failure ADR-0043 recorded and believed closed: `0x8` stored
+at two bands is masked to nothing by `SoloMonitor`, so **the user clicks a headphone, hears no solo,
+and still pays one automation write and one undo entry**.
+
+**Measured**, at the collapsed row, against a lane alternating `mbBands` 2/4, pooled over 1 200
+presses (`--solo-alias-probe`; the lane is stopped and the count pinned to 2 before every release, so
+a press that legitimately latched four bands is refused rather than counted):
+
+| | presses that soloed a band the press's layout has not got |
+|---|---|
+| before | **491 / 1 200 (41 %)** |
+| after | **0 / 1 200** |
+
+**`deleteHit` was NOT open, and the sentence above never gave the reason it is safe.** Three
+independent mechanisms cover it, none of them `gestureIsStale()`: `deleteBox` depends on `bandLeftX`
+alone, which reads no count, so a count rise can only *append* candidates above the first match;
+`removeBand` rejects `b >= expectedBands` outright; and `mouseUp` re-runs the hit-test and requires
+it to name the same band. It is threaded anyway — one reading per pass is this ADR's rule and it
+*removes* reads — and that half is **not claimed as a defect fixed**, on the same footing as the
+band-move "pins" half in the amendment above.
+
+**`nearWidthLine` is threaded too, on the same terms.** It was the last derivation in `mouseDown`
+still reading a sound parameter for itself. Bounded in consequence — a wrong answer starts, or fails
+to start, a width drag on the band the *proved* row put under the cursor, and every store it then
+makes is refused by `ownsWidth` against that same record — so this half is likewise rule-completion,
+not a defect claimed as fixed. The wheel's Alt branch keeps the live read: it has no stamped row to
+answer under.
+
+**Not a new gate item.** No accepted decision changes: this applies this ADR's own Decision to the
+two derivations it named and skipped. Six private member functions gain defaulted arguments and the
+hit-tests now resolve the count **once** and hand it down — so even callers that pass nothing lose
+`bandRightX`'s internal re-read. No parameter ID, serialization, threading-model, DSP-order or
+reported-latency change; no lock, no atomic, no allocation. The change strictly *removes* parameter
+reads, so the cross-thread surface shrinks.
+
+**Verified (State test 85, and `--solo-alias-probe`):**
+
+| Mutation | What it makes the code do | Killed by |
+|---|---|---|
+| M1 | `mouseDown` takes the live hit-test again (the exact pre-fix shape) | **nothing** deterministic — `--solo-alias-probe` 491/1200 |
+| M2 | the press hit-test answers under an unproved count of 4 | State test 85 legs B, C and E (5 checks) |
+| M3 | `bandRightX` ignores the threaded count | **nothing** |
+| M4 | `soloBox` ignores the threaded split row | **nothing** |
+| M5 | the release-time delete confirmation reads live again | **nothing** |
+| M6 | that confirmation answers under an unproved count | State test 85 leg D, and 27 checks across the delete tests |
+
+**M1, M3, M4 and M5 surviving is the honest result, not a gap.** The window holds no dispatch, so no
+single-threaded test can enter it — the position this ADR already recorded for State test 78. What
+State test 85 holds is the **contract**: a hit-test given a topology answers under it, so a press can
+never reach a band its own layout has not got. The probe is what measures the window itself, and
+unlike the wheel probe withdrawn in ADR-0047 it **can fail for the right reason**: its control
+soloes band 1 on a clean tree, and the pre-fix lane reaches the defect 491 times in 1 200.

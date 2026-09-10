@@ -81,8 +81,12 @@ private:
     int   bandCount()       const noexcept;
     float crossover (int i) const noexcept;
     float bandWidth (int i) const noexcept;
-    float bandLeftX (int b) const noexcept;
-    float bandRightX (int b) const noexcept;
+    // ADR-0046/0051: a band's EDGES answer under the topology and the split row they are given,
+    // on the same terms as `bandAtX`/`handleNearX`. `n < 0` and `fHz == nullptr` read live, which is
+    // what a caller that stamps nothing wants. Hit-test only -- `paint` draws from the eased
+    // `dispLeftX`/`dispRightX` and never calls these.
+    float bandLeftX (int b, int n = -1, const float* fHz = nullptr) const noexcept;
+    float bandRightX (int b, int n = -1, const float* fHz = nullptr) const noexcept;
     bool  enabled() const noexcept;
     int   soloMask() const noexcept;           // 4-bit solo mask
 
@@ -101,12 +105,21 @@ private:
     // ADR-0051: and `fHz` is the split row to answer under, on the same terms.
     int   bandAtX (float x, int n = -1, const float* fHz = nullptr) const noexcept;
     int   handleNearX (float x, int n = -1, const float* fHz = nullptr) const noexcept;
-    bool  nearWidthLine (juce::Point<float> p, int b) const noexcept;
-    juce::Rectangle<float> deleteBox (int b) const noexcept;   // x to remove a band (bottom-left)
-    juce::Rectangle<float> soloBox (int b) const noexcept;     // headphone solo, top-centre
+    // ADR-0051, THE WIDTH ROW ON THE SAME TERMS. This decides whether a press is a WIDTH
+    // interaction by measuring the cursor against `bandWidth (b)` -- a live read, inside a handler
+    // that has already stamped the widths. `wNorm` is the press's own `gestureW`; `nullptr` keeps
+    // the live read for the hover and for the wheel's Alt branch, neither of which has a stamped
+    // row to answer under.
+    bool  nearWidthLine (juce::Point<float> p, int b, const float* wNorm = nullptr) const noexcept;
+    juce::Rectangle<float> deleteBox (int b, int n = -1, const float* fHz = nullptr) const noexcept;
+    juce::Rectangle<float> soloBox (int b, int n = -1, const float* fHz = nullptr) const noexcept;
     juce::Rectangle<float> numberChip (int i) const noexcept;
-    int   deleteHit (juce::Point<float>) const noexcept;       // band whose x is under the cursor
-    int   soloHit (juce::Point<float>) const noexcept;         // band whose headphone is under the cursor
+    // ADR-0046 COMPLETED. These are the two derivations that ADR named and left re-reading, on the
+    // stated grounds that their window "is the fail-safe half only". That is true of `deleteHit`
+    // -- `mouseUp` re-runs it and compares to the press's index -- and it is NOT true of `soloHit`,
+    // whose index has no release-time confirmation of any kind. See the ADR's 2026-09-10 amendment.
+    int   deleteHit (juce::Point<float>, int n = -1, const float* fHz = nullptr) const noexcept;
+    int   soloHit (juce::Point<float>, int n = -1, const float* fHz = nullptr) const noexcept;
 
     float magForColumn (float xa, float xb) const noexcept;
     float magCubic (float bin) const noexcept;

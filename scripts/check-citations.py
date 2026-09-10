@@ -378,9 +378,14 @@ DELIBERATE_REAIMS = {
     # nothing to catch them (a NEW anchor has no origin/main counterpart, so the
     # drift check cannot see it). This one keeps its line because the declaration
     # makes the drift visible; a bare anchor would not.
+    #
+    # 2026-09-10 (ADR-0046 completed, the press hit-test): the target re-derived a
+    # sixth time, :629 -> :657. Six hit-test helpers gain defaulted arguments and
+    # the reasoning above `dragCrossoverTo` grows with them; a pure insertion again,
+    # so still one entry, still by hand, and the document's own anchor moves with it.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:629"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:657"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

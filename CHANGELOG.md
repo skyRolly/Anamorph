@@ -33,6 +33,17 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0041. Evidence: PR #143. [Verified]
 
 ### Fixed
+- **Clicking a band's solo button can no longer solo a band that is not there.** The plugin works out
+  which headphone you clicked by measuring your cursor against the band layout — but it re-read that
+  layout a moment after recording the one your click belongs to. If your DAW changed the number of
+  bands in that instant and changed it back before you let go, the click was worked out against the
+  layout that flickered past and applied to the one you were actually looking at, so it could solo a
+  band that layout does not have: you press a headphone, nothing solos, and your DAW still records
+  the edit and an undo step for it. Both the number of bands and the crossover positions are now
+  taken once, when you press, and the whole hit-test answers under them. Measured before the fix at
+  491 occurrences in 1200 clicks against a band-count automation lane, and none after. Clicking with
+  nothing else happening is unchanged.
+  Decision: ADR-0046. Regression coverage: State test 85. Evidence: PR #143. [Verified]
 - **Soloing a band no longer applies to a different band when your DAW re-arranges the crossovers at
   that exact instant.** Clicking a solo button tells your DAW an edit is starting, and your DAW can
   answer immediately — an automation lane, a preset, a control surface. The plugin already refused

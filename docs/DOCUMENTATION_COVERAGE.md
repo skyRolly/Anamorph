@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3356` and `.github/workflows/build.yml:3441`, this round being
+`.github/workflows/build.yml:3370` and `.github/workflows/build.yml:3455`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -9915,7 +9915,7 @@ the working tree: 0 files missing, 0 lines past EOF, 0 pointing at unrelated cod
 
 **MUST FIX — one, and the scanners did not report it.** PREfast's four `C6001` results are false
 positives, but auditing the second pair's surface found a real one three functions away:
-`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:584) validated its pin arguments
+`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:612) validated its pin arguments
 against `count` when *writing* them and not when computing `leftPin`/`rightPin`, so a stale pin
 survived into the pull loops and `out[k + 1]` read a slot the copy loop never wrote. Reachable:
 `beginBandMove` (:398) latches `soloMoveLeft`/`soloMoveRight` from the band count at the press;
@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:1131 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:1159 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1444`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1472`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10033,7 +10033,7 @@ that the fix covered one direction only. Both are settled here.
 
 **A SECOND defect, and the scanners never saw it either.** `dragOrigX` (src/gui/SpectrumImager.h:249)
 is the drag-start x of every split, seeded once when a gesture begins and read for the whole gesture.
-Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:629)
+Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:657)
 and `moveBand` (:827). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
 splits in USE at the press — so a host write of `mbBands` that **raised** Bands mid-gesture made the
 consumers ask `projectFromOrig` for origins nobody had written. Those slots still held the `{0,0,0}`
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1131 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1159 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10809,7 +10809,7 @@ change, and no Accepted ADR conflict. [Verified]
 topology count commit may still report success"*, and its converse for `setSoloMask`.
 
 **Ruled B — already prevented, invariant documented.** Both halves are true of the code:
-`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:736`) and
+`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:764`) and
 `setSoloMask` returns `stored && soloMask() == mask` (`:662`), so each re-reads only its own
 parameter after its own dispatches even though both prove BOTH on the near side. What covers it is
 the **callers** — every one that acts on the result re-proves the other parameter on its next line,
@@ -10886,7 +10886,7 @@ informational items.
 
 **Correction to the line above, from the audit workflow's full result (worklog §31).** One of those
 three informational items — ownership parameter equality — was NOT unchanged. `ownsSplit` compares
-exactly and is described correctly at `src/gui/SpectrumImager.cpp:425-435` and
+exactly and is described correctly at `src/gui/SpectrumImager.cpp:453-463` and
 `src/gui/SpectrumImager.h:384-390`, but the definition comment of `kSplitMovedPx`
 (`src/gui/SpectrumImager.cpp:14-17`) still said `soundMovedUnderGesture` compares against that
 constant and that "the two must be the same number" — the coupling ADR-0041 removed, unchanged since
@@ -10967,7 +10967,7 @@ reversed. [Verified]
 ## Sixteenth pass — the release-and-add topology round (2026-09-09)
 
 **CI first: `source-lint` failed on `ea82eab`, and the failure was mine.** One drifted documentation
-anchor (`src/gui/SpectrumImager.cpp:413-423 -> :410-420`), moved by the twelve lines ADR-0047's
+anchor (`src/gui/SpectrumImager.cpp:441-451 -> :410-420`), moved by the twelve lines ADR-0047's
 overloads added above `ownsSplit`. **Classified a code issue in the change set, not a tooling or
 formatting one** — the gate did its job. The reason it escaped locally is the durable lesson: CI
 compares against the PREVIOUS COMMIT and I had checked against `origin/main`, which cannot see drift a
@@ -11171,7 +11171,7 @@ It is out of this round's scope and belongs with its own probe measurement. Work
 **Documentation.** `ADR-0050` (amended — no new decision, the same rule at the two sites it had
 escalated); `CHANGELOG.md` `[0.9.8] ### Fixed`; `TESTING.md` (State test 83, its four legs and the
 ensemble mutation record); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §58 and
-§59. One citation re-aim: `dragCrossoverTo` moved from `src/gui/SpectrumImager.cpp:629` to `:619`
+§59. One citation re-aim: `dragCrossoverTo` moved from `src/gui/SpectrumImager.cpp:657` to `:619`
 when `bandSoloed`'s definition was deleted, corrected in both the anchor and the `DELIBERATE_REAIMS`
 declaration.
 
@@ -11339,3 +11339,44 @@ test that enters the reentrant solo half.
 
 **Documentation.** `src/gui/SpectrumImager.cpp` (comments only, object code identical);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §62j. [Verified]
+
+### Twenty-fourth pass — the press hit-test, and an ADR scope claim that was false (2026-09-10)
+
+**The finding.** Review item `R2484`, *"solo presses target replacement layouts"*: **CONFIRMED**.
+`mouseDown` stamps the press's topology and split row and then let `soloHit` re-read both — 9 live
+parameter reads for a two-band hit, 21 for a four-band one, none of them the reading the press
+proved. Cross-thread only: every statement between the stamp and `soloPressBand` is a pure read.
+
+**Why this one was fail-OPEN.** No consumer of `soloPressBand` re-derives it, and no store-side guard
+can catch a wrong one: `toggleSoloBit` range-checks the band not at all, and `setSoloMask`
+deliberately admits a bit above the live count, because a **parked** solo bit is a designed, tested
+state. An ABA return on `mbBands` — a four-valued parameter, so an ordinary automation shape —
+leaves every guard satisfied over an index the press's layout never had.
+
+**The document that was wrong.** ADR-0046's "What was NOT done" called this window "the fail-safe half
+only", while the same ADR's own amendment argues that "an ABA return to the stamped count between the
+two reads would let a plan sized under the wrong topology through" and converted `beginBandMove` on
+exactly that basis. The Decision is unchanged and already authorised the fix; the **scope paragraph is
+amended**, and the in-source comment repeating it is corrected.
+
+**A conclusion of mine that was wrong, kept rather than dropped.** I judged the review's worked
+example geometrically unreachable on the grounds that the splits are kept `kMinGapPx` apart. They are
+not: that clamp is applied only to plans this component computes, and the DSP's ordering clamp is on
+a local copy never written back. At `mbFreqLow == mbFreqMid == mbFreqHigh` the middle bands have zero
+width, fail the headphone gate, and band 3's centre lands exactly on band 1's. The review's example
+is exact.
+
+**Evidence.** State test 85 (legs A–E) holds the contract; `--solo-alias-probe` measures the window
+and **can fail** — control soloes band 1 on a clean tree, **491/1200 before the fix, 0/1200 after**.
+Mutations M2 and M6 kill 5 and 28 checks; M1, M3, M4 and M5 kill nothing and are recorded as unkilled.
+
+**`deleteHit` and `nearWidthLine` are threaded but not claimed as defects fixed**, each with the
+reason it was already safe stated at the site.
+
+**Gate status.** Not triggered. The change removes parameter reads and adds no thread, lock, atomic
+or shared object; the one CI step added is not a build-system item. No human approval required.
+
+**Documentation.** `ADR-0046` (amended — scope, not Decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
+`docs/procedures/TESTING.md` (State test 85 and the probe);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §63;
+`.github/workflows/build.yml` (the sixth probe gate). [Verified]

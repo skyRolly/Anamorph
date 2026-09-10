@@ -219,17 +219,26 @@ float SpectrumImager::dispWidth (int b) const noexcept     { return (b >= 0 && b
 float SpectrumImager::dispLeftX  (int b) const noexcept { return b <= 0 ? plot().getX() : freqToX (dispCrossover (b - 1)); }
 float SpectrumImager::dispRightX (int b) const noexcept { return b >= bandCount() - 1 ? plot().getRight() : freqToX (dispCrossover (b)); }
 
-float SpectrumImager::bandLeftX  (int b) const noexcept { return b <= 0 ? plot().getX() : freqToX (crossover (b - 1)); }
-float SpectrumImager::bandRightX (int b) const noexcept { return b >= bandCount() - 1 ? plot().getRight() : freqToX (crossover (b)); }
+// ADR-0046/0051. THE EDGES ANSWER UNDER THE TOPOLOGY AND THE ROW THEY ARE GIVEN. `bandRightX` read
+// `bandCount()` for itself and both read `crossover()` for themselves, so a hit-test that had already
+// read the count and the row measured its boxes against LATER readings of both -- and `soloHit` calls
+// these four times per band. `n < 0` / `fHz == nullptr` keep the live read for the callers that stamp
+// nothing. `splitAt (i, nullptr)` IS `crossover (i)`, so the live path is unchanged to the digit.
+float SpectrumImager::bandLeftX  (int b, int, const float* fHz) const noexcept { return b <= 0 ? plot().getX() : freqToX (splitAt (b - 1, fHz)); }
+float SpectrumImager::bandRightX (int b, int n, const float* fHz) const noexcept
+{
+    const int N = n >= 0 ? juce::jlimit (1, 4, n) : bandCount();
+    return b >= N - 1 ? plot().getRight() : freqToX (splitAt (b, fHz));
+}
 
-juce::Rectangle<float> SpectrumImager::deleteBox (int b) const noexcept
+juce::Rectangle<float> SpectrumImager::deleteBox (int b, int n, const float* fHz) const noexcept
 {
     // Sized close to the add "+", nudged up so it clears the freq chip below (#4).
-    return { bandLeftX (b) + 5.0f, rulerY() - 22.0f, 14.0f, 14.0f };
+    return { bandLeftX (b, n, fHz) + 5.0f, rulerY() - 22.0f, 14.0f, 14.0f };
 }
-juce::Rectangle<float> SpectrumImager::soloBox (int b) const noexcept
+juce::Rectangle<float> SpectrumImager::soloBox (int b, int n, const float* fHz) const noexcept
 {
-    const float cx = 0.5f * (bandLeftX (b) + bandRightX (b));
+    const float cx = 0.5f * (bandLeftX (b, n, fHz) + bandRightX (b, n, fHz));
     return { cx - 9.0f, plot().getY() + 3.0f, 18.0f, 15.0f }; // balanced headphone proportions (#2)
 }
 juce::Rectangle<float> SpectrumImager::numberChip (int i) const noexcept
@@ -283,23 +292,42 @@ int SpectrumImager::handleNearX (float x, int n, const float* fHz) const noexcep
     }
     return best;
 }
-bool SpectrumImager::nearWidthLine (juce::Point<float> p, int b) const noexcept
+bool SpectrumImager::nearWidthLine (juce::Point<float> p, int b, const float* wNorm) const noexcept
 {
-    return std::abs (p.y - widthToY (bandWidth (b))) < kWidthGrab;
+    const float w = (wNorm != nullptr && b >= 0 && b < (int) std::size (gestureW) && widthP[b] != nullptr)
+                  ? widthP[b]->convertFrom0to1 (wNorm[b]) : bandWidth (b);
+    return std::abs (p.y - widthToY (w)) < kWidthGrab;
 }
-int SpectrumImager::deleteHit (juce::Point<float> p) const noexcept
+// ADR-0046, THE TWO DERIVATIONS IT NAMED AND LEFT OUT. Both took the count for themselves and both
+// let their boxes take it AGAIN, once per `bandRightX` call -- so even a live caller's hit-test was
+// several readings of a value three threads write. `N` is resolved ONCE here and handed down, which
+// closes that half for every caller including the ones that pass nothing.
+//
+// THE HALF THAT WAS OPEN IS `soloHit`. Its index is latched as `soloPressBand` and consumed by three
+// places -- `tick`'s hold audition, `mouseDrag`'s band move, `mouseUp`'s toggle -- none of which
+// re-derives it. Each is guarded by `gestureIsStale()`, which proves the world still MATCHES the
+// press; it cannot prove the index was DERIVED in that world. So an ABA return -- the count (or the
+// row) moves while this runs and is back before the release -- leaves every guard satisfied over an
+// index the press's own layout never had: ADR-0046's amendment made exactly that argument for
+// `beginBandMove` while this ADR's "What was NOT done" called the same shape fail-safe here.
+//
+// `deleteHit` was NOT open, for a reason that ADR does not state: `mouseUp` re-runs it and requires
+// `deleteHit (release) == dB`, so a transient index cannot survive an ABA return, and a persistent
+// change is refused by `gestureIsStale()`. It is threaded anyway because one reading per pass is the
+// rule -- it removes reads rather than adding them -- and that half is NOT claimed as a defect fixed.
+int SpectrumImager::deleteHit (juce::Point<float> p, int n, const float* fHz) const noexcept
 {
-    const int N = bandCount();
+    const int N = n >= 0 ? juce::jlimit (1, 4, n) : bandCount();
     if (N <= 1) return -1;
     for (int b = 0; b < N; ++b)
-        if (deleteBox (b).contains (p)) return b;
+        if (deleteBox (b, N, fHz).contains (p)) return b;
     return -1;
 }
-int SpectrumImager::soloHit (juce::Point<float> p) const noexcept
+int SpectrumImager::soloHit (juce::Point<float> p, int n, const float* fHz) const noexcept
 {
-    const int N = bandCount();
+    const int N = n >= 0 ? juce::jlimit (1, 4, n) : bandCount();
     for (int b = 0; b < N; ++b)
-        if ((bandRightX (b) - bandLeftX (b)) > 30.0f && soloBox (b).contains (p)) return b;
+        if ((bandRightX (b, N, fHz) - bandLeftX (b, N, fHz)) > 30.0f && soloBox (b, N, fHz).contains (p)) return b;
     return -1;
 }
 
@@ -2421,7 +2449,10 @@ void SpectrumImager::updateHover (juce::Point<float> p)
 
     const int h = handleNearX (p.x, N, fx);
     const int b = bandAtX (p.x, N, fx);
-    const int sh = soloHit (p);
+    // ADR-0046/0051: ...and these two, which this pass hoisted its reading for and then did not hand
+    // it to. Display only, so it cannot fail open -- but the cursor could offer a solo affordance
+    // derived under one layout while the delete target beside it named another.
+    const int sh = soloHit (p, N, fx);
 
     if (sh >= 0)                   { hoverSolo = sh; setMouseCursor (juce::MouseCursor::PointingHandCursor); }
     else if (h >= 0)               { hoverHandle = h; setMouseCursor (juce::MouseCursor::LeftRightResizeCursor); }
@@ -2440,7 +2471,7 @@ void SpectrumImager::updateHover (juce::Point<float> p)
     if (N > 1)
     {
         hoverDelete = (h >= 0) ? juce::jmin (h + 1, N - 1) : b;
-        hoverDeleteExact = deleteHit (p);
+        hoverDeleteExact = deleteHit (p, N, fx);
         if (hoverDeleteExact >= 0) setMouseCursor (juce::MouseCursor::PointingHandCursor);
     }
 
@@ -2477,10 +2508,26 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     // for themselves; with three threads writing mbBands that is a second read, and a second read
     // can differ. Here the difference was always safe -- the stamp is the OLDER of the two, so a
     // disagreement makes `gestureIsStale()` refuse -- but a refusal is a user edit dropped for no
-    // reason the user can see. `soloHit` and `deleteHit` still re-read: threading the count into
-    // them means threading it through `deleteBox`/`soloBox`/`bandLeftX`/`bandRightX` as well, six
-    // signatures for a window that already fails safe. That is the deliberate line: fail-OPEN is
-    // fixed, fail-safe-but-lossy is fixed where it costs one argument, and named where it does not.
+    // reason the user can see.
+    //
+    // `soloHit` AND `deleteHit` NOW TAKE IT TOO, and the sentence that used to stand here --
+    // "six signatures for a window that already fails safe" -- was **false for `soloHit`**,
+    // corrected 2026-09-10 with the ADR amended to match. Its premise was that `gestureBands` is
+    // the OLDER reading so a disagreement makes `gestureIsStale()` refuse. But `gestureIsStale()`
+    // compares the live world against the STAMP; the reading `soloHit` actually used is recorded
+    // nowhere, so an ABA return erases the disagreement before any guard runs, and `soloPressBand`
+    // -- consumed by `tick`'s audition, `mouseDrag`'s band move and `mouseUp`'s toggle, none of
+    // which re-derives it -- then names a band the press's own layout has not got. `setSoloMask`
+    // cannot catch it either: a bit above the live count is a legitimate PARKED bit by design.
+    // MEASURED at 491 aliased presses in 1200 against a lane alternating mbBands 2/4, 0 after
+    // (`--solo-alias-probe`). ADR-0046's own `beginBandMove` amendment made this ABA argument
+    // already, one screen up, and reached the opposite conclusion here.
+    //
+    // `deleteHit` was NOT open, for a reason that sentence never gave: `deleteBox` depends on
+    // `bandLeftX` alone, which reads no count, so a count rise can only APPEND candidates above the
+    // first match; `removeBand` rejects `b >= expectedBands` outright; and `mouseUp` re-runs the
+    // hit-test and demands it name the same band. It is threaded because one reading per pass is
+    // the rule and it REMOVES reads -- not as a defect fixed, and it is not claimed as one.
     gestureBands = bandCount();
     captureGestureSound();
     // ADR-0051: the SPLIT ROW this press answers under, derived from the stamp that was just taken
@@ -2494,7 +2541,10 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     const auto p = e.position;
     const bool alt = e.mods.isAltDown();
 
-    if (const int sh = soloHit (p); sh >= 0)
+    // ADR-0046 COMPLETED HERE. This was the one derivation in this handler still reading the count
+    // and the row for itself, three lines after the press stamped both. `soloPressBand` is latched
+    // from it and never re-derived; see `soloHit` for why that is the half that was open.
+    if (const int sh = soloHit (p, gestureBands, pressF); sh >= 0)
     {
         soloPressBand = sh;
         soloDownX = p.x;
@@ -2506,7 +2556,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
 
     // Press the delete x to ARM it; the band is removed on RELEASE (over the same x) -- while
     // held, the add affordance stays hidden (0.6.16 #2).
-    if (! alt) if (const int dB = deleteHit (p); dB >= 0) { pressDeleteBand = dB; hoverAdd = -1; addA = 0.0f; repaint(); return; }
+    if (! alt) if (const int dB = deleteHit (p, gestureBands, pressF); dB >= 0) { pressDeleteBand = dB; hoverAdd = -1; addA = 0.0f; repaint(); return; }
 
     const int h = handleNearX (p.x, gestureBands, pressF);
     if (alt)
@@ -2524,7 +2574,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
         // the same shape one line down in `mouseWheelMove` was not harmless at all. One reading,
         // used by the derivation and by the proof, has neither failure.
         else { const int n = gestureBands; const int b = bandAtX (p.x, n, pressF);
-               if (b >= 0 && b < n && nearWidthLine (p, b)) resetParam (widthP[b], n); }
+               if (b >= 0 && b < n && nearWidthLine (p, b, gestureW)) resetParam (widthP[b], n); }
         return;
     }
     if (h >= 0)
@@ -2540,7 +2590,11 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     }
 
     const int b = bandAtX (p.x, gestureBands, pressF);
-    if (nearWidthLine (p, b))
+    // ADR-0051: the last derivation in this handler that read a sound parameter for itself. Bounded
+    // in consequence -- a wrong answer starts (or fails to start) a width drag on the band the
+    // proved row put under the cursor, and every store it then makes is refused by `ownsWidth`
+    // against this same record -- so this half is rule-completion, NOT a defect claimed as fixed.
+    if (nearWidthLine (p, b, gestureW))
     {
         // Press only BEGINS the width ("Bandwidth") interaction -- the value is written by
         // mouseDrag, never on the press (v0.8.12). The drag is RELATIVE and modelled on the
@@ -2704,6 +2758,21 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     // question is not merely unasked, it is unanswerable, so a later reader cannot add the check
     // without also finding this line.
     const int pressBands = gestureBands;
+    // ADR-0051: the press's split row, derived from the stamp `mouseDown` took rather than read
+    // again. `convertFrom0to1` is pure arithmetic on the value `captureGestureSound` already read,
+    // so this is the SAME measurement -- it costs no parameter reads at all. Used by the delete
+    // branch's release-time hit-test below; every other branch here proves the row through
+    // `gestureIsStale()` and derives no index from it.
+    float relF[3];
+    for (int k = 0; k < 3; ++k)
+        relF[k] = (freqP[k] != nullptr) ? freqP[k]->convertFrom0to1 (gestureX[k]) : kFreqLo;
+    // ...AND THE COUNT AND THE ROW TRAVEL TOGETHER OR NOT AT ALL. With no record in force
+    // `pressBands` is -1, which makes the callee read the count LIVE -- and pairing a live count with
+    // `gestureX`'s leftover row would be a worse split reading than the one this change removes.
+    // `pressDeleteBand >= 0` implies `gestureBands >= 0` today (only `mouseDown` sets it, and
+    // `cancelActiveDrag` clears both), but that is an invariant three handlers away; making the pair
+    // inseparable here costs one pointer and removes the need to re-derive it.
+    const float* const relRow = (pressBands >= 0) ? relF : nullptr;
     if (pressDeleteBand >= 0)
     {
         // The identifier goes first (ADR-0050, the drag branch's reasoning), so a reentrant
@@ -2715,7 +2784,13 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
         // gives `removeBand` the COUNT this press was made in; nothing gave it the VALUES, and a
         // same-count install between the gate above and this line retargets the delete onto a band
         // whose boundaries the user never saw.
-        if (deleteHit (e.position) == dB && ! gestureIsStale())
+        // ADR-0051: the release's confirmation answers under the PRESS's row and count, the same one
+        // `dB` was derived in, so "released over the same x" is one measurement rather than two. With
+        // nothing racing this is the live row to the digit; with something racing, a persistent change
+        // is still refused by `gestureIsStale()` beside it, and an ABA return now agrees rather than
+        // accidentally disagreeing -- the press index is no longer derivable from a transient layout,
+        // so the disagreement this comparison used to rely on has nothing left to catch.
+        if (deleteHit (e.position, pressBands, relRow) == dB && ! gestureIsStale())
             removeBand (dB, pressBands);                 // released over the same x -> delete
         gestureBands = -1;                               // ADR-0050: after the action, not before it
         updateHover (e.position);
