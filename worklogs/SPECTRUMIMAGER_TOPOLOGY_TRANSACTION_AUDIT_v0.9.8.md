@@ -2430,3 +2430,91 @@ parameter reads, so the cross-thread surface strictly shrinks. **Build system** 
 which is none of "CMake structure, JUCE version/pin, dependency set". No accepted ADR is conflicted:
 ADR-0046's Decision authorises this verbatim, and only its scope paragraph is amended. **No human
 approval is required, and none is manufactured.**
+
+## 64. The record a release action owns, dropped by something else (ADR-0050, applied again)
+
+### 64a. Workflow audit and lifecycle decision
+
+Nothing was running: no workflow, no monitor, no background task, no unfinished transcript, no
+process but the session. Every checklist item was complete. One unconsumed artefact, consumed rather
+than re-derived: CI on `169a9a1` — push run `34431318103` **13/13 success**, `merge-check` skipped by
+design, and all four PR-event workflows green on that SHA.
+
+**One workflow was started**, three independent lenses (call chain, disarm surface, skeptic) each
+adversarially refuted by three more, then a four-option design panel and a judge — for independent
+derivation, not to duplicate reading. **Its verdict is not what settled this round**: the finding was
+reproduced deterministically from the code before the panel returned, and the reproduction is the
+evidence of record.
+
+### 64b. The finding: CONFIRMED, and reproduced on one thread
+
+`cancelActiveDrag()` opens with an unconditional `gestureBands = -1;` and only *then* takes the cheap
+exit for "no identifier is latched". A release branch in `mouseUp` clears its identifiers **before**
+it dispatches — which is ADR-0050's own instruction — so a re-entrant call finds nothing to close,
+takes the cheap exit, and **still drops the record on the way past**. Every ownership predicate in
+this class self-disables at `gestureBands < 0`.
+
+`setSoloMask` calls `beginChangeGesture()` **before** its guard, so the window is **REENTRANT**: a
+host answering the gesture open by pumping the message loop lands the editor's stuck-drag reconcile
+(`PluginEditor.cpp:1538-1543`, which reads the MOUSE and never consults `gestureBands`; KI-013 keeps
+that gate true on macOS) straight into `cancelActiveDrag` with the store on the stack.
+
+**State test 79 leg E** is leg C with that cancellation added ahead of the identical install:
+
+```
+[leg E] a re-entrant cancellation disarmed the record and the solo bit was written anyway:
+        mask 0x8, split 1 2000.0 -> 6500.0 Hz
+```
+
+Leg C refuses that bit; leg E is the same defect reached around the same guard. **Only leg E failed**
+on the unfixed tree — 2 896 checks, 1 failure — so the reproduction is isolated.
+
+### 64c. The class already knew, at one branch
+
+The handle-drag branch defends itself with a bespoke `gestureBands == pressBands` compare and states
+the mechanism in its own comment: *"clearing `dragHandle` above sends a reentrant reconcile down
+`cancelActiveDrag`'s cheap exit, which clears `gestureBands` … and `gestureIsStale()` would answer
+`false` because the latch is gone."* That was **one branch's local defence against a general
+defect**. The solo branch had none. `removeBand`'s per-store proofs, which run after its own stores
+dispatch, had none either. This is the same "applied to one branch of three" shape this ADR already
+had to correct once.
+
+### 64d. The fix, and the two it rejects
+
+A scoped flag: `mouseUp` owns the record for the duration of its release action; `cancelActiveDrag`
+declines outright while it is set. Two production lines and an RAII helper.
+
+**Rejected — move the clear after the cheap exit.** It is deliberately in front (ADR-0039):
+`mouseDown` latches `gestureBands` on branches that latch no identifier at all, and nothing else ever
+clears those.
+
+**Rejected — copy the handle-drag compare to the other branches.** Three more sites of the same
+ad-hoc guard, and it still leaves `removeBand`'s mid-transaction per-store proofs disarmed. Making
+the record survive fixes every consumer in one place.
+
+### 64e. Evidence
+
+| Mutation | Killed |
+|---|---|
+| `cancelActiveDrag` no longer declines during a release action | leg E |
+| `mouseUp` no longer claims the record | leg E |
+| the handle-drag branch's bespoke `gestureBands == pressBands` compare removed | **nothing** |
+
+The third is the honest result: that compare was always labelled unmeasured and is now redundant
+defence in depth. Kept — one integer compare per release — and **not** claimed as load-bearing.
+
+### 64f. A route considered and left open, on purpose
+
+A nested `mouseUp` would find every identifier cleared, skip all four branches, and reach the tail,
+which drops the record; the flag does not stop that, because the nested frame's own scope guard is a
+plain set/clear rather than a re-entrancy counter. No evidence in this repository says a host does
+this, no test reaches it, and closing it would mean restructuring the exit ordering this ADR exists to
+fix. **Recorded as open and unmeasured rather than fixed on a guess.**
+
+### 64g. Gate: NOT triggered
+
+No DSP graph, signal flow, parameter registry, serialization, latency or plugin format. **Thread
+model** — one `bool` written and read on the message thread only; no thread, lock, atomic or
+cross-thread path is added, and the change removes a state transition. **Build system** — untouched.
+This applies ADR-0050's Decision to the one function able to defeat it. **No human approval is
+required, and none is manufactured.**

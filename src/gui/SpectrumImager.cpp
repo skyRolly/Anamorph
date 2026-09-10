@@ -2717,6 +2717,20 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
     }
     repaint();
 }
+namespace
+{
+// Sets a flag for a scope and clears it on every exit, including an early return from inside a
+// branch. Deliberately NOT re-entrant-aware: `mouseUp` is the only user and a nested `mouseUp` is
+// not a path this class has evidence for -- see the note at the flag's declaration.
+struct ScopedReleaseAction
+{
+    explicit ScopedReleaseAction (bool& f) noexcept : flag (f) { flag = true; }
+    ~ScopedReleaseAction() noexcept { flag = false; }
+    ScopedReleaseAction (const ScopedReleaseAction&) = delete;
+    ScopedReleaseAction& operator= (const ScopedReleaseAction&) = delete;
+    bool& flag;
+};
+} // namespace
 void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 {
     // ADR-0038, and it matters most here: mouseUp is where the ON-RELEASE ACTIONS live --
@@ -2757,6 +2771,13 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     // all CLOSED rather than accepted, and the reason is the same here: with the latch cleared, the
     // question is not merely unasked, it is unanswerable, so a later reader cannot add the check
     // without also finding this line.
+    // ADR-0050: FROM HERE TO THE END OF THIS HANDLER, THIS FRAME OWNS THE RECORD. Every branch
+    // below clears its identifiers before it dispatches, which is what sends a re-entrant reconcile
+    // down `cancelActiveDrag`'s cheap exit -- and that exit used to drop `gestureBands` on the way
+    // past. The flag makes the nested call decline outright, so the ownership this handler is still
+    // proving against survives until the branch drops it itself, one line before each return.
+    // Scoped so every exit path clears it, including the ones that return from inside a branch.
+    const ScopedReleaseAction ownRecord (releaseActionActive);
     const int pressBands = gestureBands;
     // ADR-0051: the press's split row, derived from the stamp `mouseDown` took rather than read
     // again. `convertFrom0to1` is pure arithmetic on the value `captureGestureSound` already read,
@@ -2917,6 +2938,20 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 // parameter's endChangeGesture can never fire twice.
 void SpectrumImager::cancelActiveDrag()
 {
+    // BEFORE EVERYTHING ELSE (ADR-0050, applied to this function). A release action that has already
+    // taken its identifiers into locals owns the record until it finishes, and re-entering here
+    // while it runs must change NOTHING -- not the identifiers, which are already gone, and not
+    // `gestureBands`, which every ownership predicate self-disables on. The clear below sat in front
+    // of the cheap exit, so a nested call "that closes nothing" still disarmed `ownsSplit`,
+    // `ownsWidth`, `topologyMovedUnderGesture` and `soundMovedUnderGesture` for the remainder of the
+    // action -- and `setSoloMask`'s `! soundMovedUnderGesture()` runs AFTER `beginChangeGesture`
+    // dispatches, which is precisely where a host pumping the message loop lands the editor's
+    // stuck-drag reconcile. Measured: the solo bit written to a layout whose split had moved
+    // 2000 -> 6500 Hz inside the bracket (State test 79 leg E), which leg C refuses without the
+    // nested cancel. The handle-drag branch already defended itself with a bespoke
+    // `gestureBands == pressBands` compare and named this mechanism in its own comment; this makes
+    // the record survive instead, so the other branches need no such compare.
+    if (releaseActionActive) return;
     // BEFORE the cheap exit (ADR-0039). The four flags below are the only real gestures, but
     // `gestureBands` is latched at the TOP of mouseDown -- including on the branches that latch
     // no identifier at all (an Alt-click reset, an add the count refused). Left set, the next

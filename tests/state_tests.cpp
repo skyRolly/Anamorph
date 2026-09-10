@@ -2797,6 +2797,27 @@ struct WriteFromInsideAGestureOpen final : public juce::AudioProcessorParameter:
         target->setValueNotifyingHost (target->convertTo0to1 (to));
     }
 };
+// A host answering the OPEN of a change gesture by pumping the message loop, landing the editor's
+// stuck-drag reconcile inside the dispatch, and THEN installing a same-count sound. The order is the
+// whole point: `cancelActiveDrag` clears `gestureBands` even on its cheap exit, so every ownership
+// predicate self-disables from that instant, and the install that follows is invisible to the guard
+// the store is about to run. Models the review finding at `cancelActiveDrag`'s first two lines.
+struct ReenterCancelThenWriteOnOpen final : public juce::AudioProcessorParameter::Listener
+{
+    anamorph::gui::SpectrumImager* imager = nullptr;
+    juce::RangedAudioParameter* target = nullptr;
+    float to = 0.0f;
+    bool  armed = false, fired = false;
+    void parameterValueChanged (int, float) override {}
+    void parameterGestureChanged (int, bool starting) override
+    {
+        if (! starting || ! armed || imager == nullptr || target == nullptr) return;
+        armed = false;
+        fired = true;
+        imager->cancelActiveDrag();                                  // the record is dropped here
+        target->setValueNotifyingHost (target->convertTo0to1 (to));  // ...and this becomes invisible
+    }
+};
 // The (b) probe: writes the SAME parameter whose store is dispatching.
 struct EchoTheSameParameter final : public juce::AudioProcessorParameter::Listener
 {
@@ -4547,6 +4568,44 @@ static void testTheFarSideOfACoupledCommitIsCoveredByItsCaller()
                    "leg C: a same-count install inside the mask bracket refuses the solo bit");
             check (! poke.fired || bandsNow() == 4,
                    "leg C: ...and the count is untouched, so nothing else was published");
+        }
+    }
+
+    // ---- LEG E: the same install, with a REENTRANT CANCELLATION in front of it ----
+    //      ADR-0050's Decision is that "a gesture's ownership lasts as long as the on-release
+    //      actions that depend on it". `mouseUp` honours that -- it drops the snapshot after the
+    //      action, on every exit path. What ADR did not consider is that something ELSE can drop it
+    //      first: `cancelActiveDrag` clears `gestureBands` on its very first line, BEFORE the cheap
+    //      exit that is supposed to make a re-entrant call a no-op. The solo branch has already
+    //      cleared `soloPressBand`, so the nested call closes nothing -- and still disarms every
+    //      ownership predicate, because they all self-disable at `gestureBands < 0`.
+    //
+    //      This leg is leg C with that cancellation added ahead of the identical install. Leg C
+    //      refuses the bit; if the record survives the nested cancel this leg refuses it too. If it
+    //      does not, `soundMovedUnderGesture()` answers `false` over a moved row and the bit is
+    //      written to a layout the press never saw -- leg C's own defect, reached around its guard.
+    {
+        world4(); setPlain (soloP, 0.0f);
+        const float sy = findY ("Solo this band");
+        const float sx = (sy >= 0.0f) ? findLastX ("Solo this band", sy) : -1.0f;
+        check (sx > 0.0f && sy >= 0.0f, "leg E: the last band's solo box is findable at four bands");
+        if (sx > 0.0f && sy >= 0.0f)
+        {
+            const float splitBefore = plainOf (midP);
+            ReenterCancelThenWriteOnOpen poke;
+            poke.imager = imager; poke.target = midP; poke.to = 6500.0f; poke.armed = true;
+            soloP->addListener (&poke);
+            imager->mouseDown (mev (sx, sy));
+            imager->mouseUp   (mev (sx, sy));
+            soloP->removeListener (&poke);
+
+            check (poke.fired, "leg E: the nested cancellation ran inside the mask store's gesture open");
+            if (poke.fired && maskNow() != 0)
+                std::printf ("  [leg E] a re-entrant cancellation disarmed the record and the solo bit"
+                             " was written anyway: mask 0x%X, split 1 %.1f -> %.1f Hz\n",
+                             maskNow(), (double) splitBefore, (double) plainOf (midP));
+            check (! poke.fired || maskNow() == 0,
+                   "leg E: a re-entrant cancellation does not disarm the release action's ownership");
         }
     }
 

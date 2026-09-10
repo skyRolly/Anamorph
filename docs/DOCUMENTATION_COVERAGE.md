@@ -11380,3 +11380,40 @@ or shared object; the one CI step added is not a build-system item. No human app
 `docs/procedures/TESTING.md` (State test 85 and the probe);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §63;
 `.github/workflows/build.yml` (the sixth probe gate). [Verified]
+
+### Twenty-fifth pass — the release action's record, dropped by the safety net (2026-09-10)
+
+**The finding.** Review item at `cancelActiveDrag`'s first two lines, *"reentrant cancellation
+disarms release ownership"*: **CONFIRMED and reproduced deterministically**. That function clears
+`gestureBands` on its first line, in front of the cheap exit meant to make a re-entrant call a no-op,
+and every ownership predicate in the class self-disables at `gestureBands < 0`. A release branch
+clears its identifiers before it dispatches — ADR-0050's own instruction — so the nested call closes
+nothing and still disarms the guard the store is about to run.
+
+**Reentrant, not cross-thread.** `setSoloMask` dispatches `beginChangeGesture()` before its guard, so
+a host pumping the message loop from there reaches the editor's stuck-drag reconcile with the store on
+the stack. **State test 79 leg E** — leg C with the cancellation added ahead of the identical install
+— fails on the unfixed tree with *"mask 0x8, split 1 2000.0 → 6500.0 Hz"*, and it was the only
+failure, so the reproduction is isolated.
+
+**The class already knew, at one branch.** The handle-drag branch carries a bespoke
+`gestureBands == pressBands` compare and names this exact mechanism in its own comment. That was one
+branch's local defence against a general defect; the solo branch and `removeBand`'s mid-transaction
+per-store proofs had none.
+
+**The fix** is a scoped flag — `mouseUp` owns the record for the duration of its release action and
+`cancelActiveDrag` declines while it is set — chosen over moving the clear (which would reopen
+ADR-0039's orphaned latch) and over copying the bespoke compare to three more sites.
+
+**Evidence.** Removing either half fails leg E. Removing the handle-drag compare now fails
+**nothing**: it was always labelled unmeasured and is now redundant defence in depth — kept, and not
+claimed as load-bearing. One route is recorded as **open and unmeasured**: a nested `mouseUp` would
+reach the tail and drop the record, which the flag does not prevent.
+
+**Gate status.** Not triggered — one message-thread `bool`, no new thread, lock, atomic or
+cross-thread path. Applies ADR-0050's Decision to the one function able to defeat it. No human
+approval required.
+
+**Documentation.** `ADR-0050` (applied again — no new decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
+`docs/procedures/TESTING.md` (State test 79 leg E);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §64. [Verified]

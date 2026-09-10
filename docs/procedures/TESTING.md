@@ -989,6 +989,24 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   refused; leg D is the control that an undisturbed click still writes the mask. **Mutation record:**
   removing `&& ! soundMovedUnderGesture()` fails leg C.
 
+* **State test 79 leg E — a RE-ENTRANT CANCELLATION disarming the release action's ownership**
+  (ADR-0050, applied again). Leg C proves that a same-count install inside `setSoloMask`'s gesture
+  bracket refuses the solo bit. Leg E is **the identical install with `cancelActiveDrag()` called
+  ahead of it**, from the same listener, modelling a host that answers `beginChangeGesture` by
+  pumping the message loop into the editor's stuck-drag reconcile.
+
+  `cancelActiveDrag` clears `gestureBands` on its **first line**, in front of the cheap exit that is
+  meant to make a re-entrant call a no-op — and every ownership predicate in the class self-disables
+  at `gestureBands < 0`. So the nested call closes nothing and still switches off the guard the store
+  is about to run. **Reentrant, single-threaded, no probe:** the pre-fix diagnostic is
+  *"a re-entrant cancellation disarmed the record and the solo bit was written anyway: mask 0x8,
+  split 1 2000.0 → 6500.0 Hz"*.
+
+  **Mutation record:** removing `cancelActiveDrag`'s decline, or removing `mouseUp`'s claim on the
+  record, each fails leg E. Removing the handle-drag branch's bespoke `gestureBands == pressBands`
+  compare now fails **nothing** — that compare was always labelled unmeasured and is now redundant
+  defence in depth; it is kept and is **not** claimed as load-bearing.
+
 * **State test 85 and `--solo-alias-probe` — a PRESS HIT-TEST answering under a transient layout**
   (ADR-0046, completed). `mouseDown` stamps `gestureBands` and the split row on its first two lines
   and then called `soloHit`, which re-read both. The index it returns is latched as `soloPressBand`

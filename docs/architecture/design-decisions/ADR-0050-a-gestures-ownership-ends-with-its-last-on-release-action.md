@@ -211,3 +211,83 @@ the reentrant path — from a double close plus a leaked-open sibling, to a chea
 
 State 2 851 / 0, TSan 0 warnings with `Matched 1 suppressions`, all four topology probes 0.
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §58.
+
+## Applied again 2026-09-10 — the record a release action owns can be dropped by something else
+
+**Review finding at `cancelActiveDrag`'s first two lines, *"reentrant cancellation disarms release
+ownership"*. CONFIRMED, reproduced deterministically, and it is this ADR's own Decision defeated from
+outside the handler the ADR converted.** No new decision: the Decision sentence already says what
+must hold.
+
+> A gesture's ownership lasts as long as the on-release actions that depend on it.
+
+`mouseUp` honours that for its own exits — every branch drops the snapshot *after* its action. What
+nothing enforced is that **something else must not drop it first**. `cancelActiveDrag` begins with an
+unconditional `gestureBands = -1;` and only then takes the cheap exit that is supposed to make a
+re-entrant call a no-op. The clear sits *in front of* that exit, so a nested call which closes
+nothing still disarms the record — and every ownership predicate in this class self-disables at
+`gestureBands < 0`.
+
+**The window is REENTRANT, not cross-thread.** The release branch clears its identifiers before it
+dispatches — which is this ADR's own instruction — and `setSoloMask` calls `beginChangeGesture()`
+**before** its guard. A host that answers the gesture open by pumping the message loop lands the
+editor's stuck-drag reconcile (`PluginEditor.cpp`, `isMouseButtonDownAnywhere() &&
+! anyPhysicalMouseButtonDown()`, which reads the mouse and never consults `gestureBands`) straight
+into `cancelActiveDrag` while the store is still on the stack. Under KI-013 that gate can still be
+true on the re-entry.
+
+**Measured, deterministically, on a single thread** (State test 79 leg E, which is leg C with the
+cancellation added ahead of the identical install):
+
+```
+[leg E] a re-entrant cancellation disarmed the record and the solo bit was written anyway:
+        mask 0x8, split 1 2000.0 -> 6500.0 Hz
+```
+
+Leg C refuses that bit. Leg E is the same install reached around the same guard.
+
+**The class already knew.** The handle-drag branch defends itself with a bespoke
+`gestureBands == pressBands` compare and names the mechanism in its own comment — *"clearing
+`dragHandle` above sends a reentrant reconcile down `cancelActiveDrag`'s cheap exit, which clears
+`gestureBands` … and `gestureIsStale()` would answer `false` because the latch is gone."* That was
+one branch's local defence against a general defect; the solo branch had none, and the delete
+branch's later per-store proofs inside `removeBand` had none either.
+
+**The fix, and why it is this one.** A scoped flag: `mouseUp` owns the record for the duration of its
+release action, and `cancelActiveDrag` declines outright — touching nothing — while it is set. Two
+production lines plus an RAII helper.
+
+Rejected: **moving the clear after the cheap exit**, because the clear is deliberately in front of it
+(ADR-0039) — `mouseDown` latches `gestureBands` on branches that latch *no* identifier (an Alt-click
+reset, a refused add), and nothing else would ever clear those. Rejected: **copying the handle-drag
+branch's `gestureBands == pressBands` compare to the other branches**, because that is the same
+ad-hoc guard at three more sites and still leaves `removeBand`'s mid-transaction per-store proofs
+disarmed; making the record survive fixes all of them in one place.
+
+**Verified:**
+
+| Mutation | Killed |
+|---|---|
+| `cancelActiveDrag` no longer declines during a release action | State test 79 **leg E** |
+| `mouseUp` no longer claims the record | State test 79 **leg E** |
+| the handle-drag branch's bespoke `gestureBands == pressBands` compare removed | **nothing** |
+
+The third is the honest result and is why it is worth stating: that compare was always labelled
+unmeasured, and with the record surviving it is now **redundant defence in depth**. It is kept — one
+integer compare on every release, and a second layer costs nothing — but it is no longer the thing
+holding the line, and it is not claimed as such.
+
+**Not a gate item.** No DSP graph, signal flow, parameter registry, serialization, latency or plugin
+format. **Thread model** — no new thread, no new cross-thread path, no new atomic ordering; this is
+one `bool` written and read on the message thread only, and the change *removes* a state transition
+rather than adding a path. **Build system** — untouched. No accepted ADR is conflicted: this applies
+this ADR's Decision to the one function that could defeat it. **No human approval is required, and
+none is manufactured.**
+
+**A route considered and NOT closed, stated rather than left silent.** A nested `mouseUp` — a host
+delivering a queued mouse-up from inside the same dispatch — would find every identifier already
+cleared, skip all four branches, and reach the tail, which drops the record. The flag does not stop
+that, because the nested frame's own `ScopedReleaseAction` is a plain set/clear rather than a
+re-entrancy counter. There is no evidence in this repository that a host does this, no test reaches
+it, and closing it speculatively would mean restructuring a handler whose exit ordering is the
+subject of this ADR. It is recorded here as an open, unmeasured route rather than fixed on a guess.

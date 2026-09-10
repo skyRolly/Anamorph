@@ -33,6 +33,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0041. Evidence: PR #143. [Verified]
 
 ### Fixed
+- **A solo click is no longer applied to a layout your DAW changed underneath it, in the one case
+  where the check for that could be switched off.** The plugin remembers the layout your click was
+  aimed at and refuses the click if your DAW replaces it in the instant the edit opens. That memory
+  could be dropped early: the plugin's own safety net for a mouse button released outside its window
+  clears it as its first action, even when it has nothing else to do — and if your DAW ran that net
+  from inside the edit the click had just opened, the check went quiet and the click was applied to
+  the new layout anyway. The memory is now held until the click's action finishes. A click with
+  nothing else happening is unchanged.
+  Decision: ADR-0050. Regression coverage: State test 79 leg E. Evidence: PR #143. [Verified]
 - **Clicking a band's solo button can no longer solo a band that is not there.** The plugin works out
   which headphone you clicked by measuring your cursor against the band layout — but it re-read that
   layout a moment after recording the one your click belongs to. If your DAW changed the number of

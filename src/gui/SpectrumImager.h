@@ -371,6 +371,13 @@ private:
     juce::uint32 soloPressMs = 0;
     bool  soloPressAlt    = false;   // Alt/Option held at press -> all-bands action on release
     bool  soloHoldActive  = false;   // momentary audition engaged
+    // ADR-0050, THE PART THE ADR STATED AND NOTHING ENFORCED. Its Decision is that "a gesture's
+    // ownership lasts as long as the on-release actions that depend on it". `mouseUp` honours that
+    // for its OWN exits -- it drops the snapshot after the action on every path. What nothing
+    // enforced is that something ELSE must not drop it first, and `cancelActiveDrag` does exactly
+    // that on its very first line, before the cheap exit that is meant to make a re-entrant call a
+    // no-op. Set for the duration of `mouseUp`'s release action; read by `cancelActiveDrag`.
+    bool  releaseActionActive = false;
     bool  soloMovedBand   = false;   // turned into a sideways band move
     int   soloMoveLeft    = -1;      // crossover index on the band's left edge (or -1)
     int   soloMoveRight   = -1;      // crossover index on the band's right edge (or -1)
