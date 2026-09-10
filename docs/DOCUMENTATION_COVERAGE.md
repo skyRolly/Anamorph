@@ -11317,3 +11317,25 @@ no workflow file changes this round. No human approval is required and none is m
 **Documentation.** `ADR-0045` and `ADR-0047` (both applied again — no new decision); `CHANGELOG.md`
 `[0.9.8] ### Fixed`; `TESTING.md` (State test 79 legs C/D, and the withdrawn probe);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §62. [Verified]
+
+### Twenty-third pass — a comment that claimed a measurement nobody took (2026-09-10)
+
+**One correction, source-only, found by re-reading the round's own production diff against the final
+head rather than by any gate.** The in-source comment at the wheel's within-tick stamp ended
+*"Measured at 38 in 1200 ticks, 0 after (`--wheel-adopt-probe`)"*. It was written before the probe was
+measured and was not revised when the probe was withdrawn. This register, `ADR-0047` and
+`docs/procedures/TESTING.md` all recorded the withdrawal correctly in the twenty-second pass; the
+source did not. The comment now says the guard is UNMEASURED, gives both readings (38/1200 before,
+34/1200 after), names the reason the instrument was withdrawn, and points at `TESTING.md` and the
+worklog.
+
+**Worth stating as a coverage fact:** no lint, no test and no CI job can detect a comment asserting a
+measurement that was never taken. The only instrument that found it was a final adversarial read of
+the diff, which is why it is written down here.
+
+The same pass rewrapped the `mouseUp` comment from §62c and made its referent explicit — the
+cross-thread-only class sentence belongs to the DELETE half, with State test 79 leg C named as the
+test that enters the reentrant solo half.
+
+**Documentation.** `src/gui/SpectrumImager.cpp` (comments only, object code identical);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §62j. [Verified]
