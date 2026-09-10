@@ -2635,12 +2635,12 @@ other: `mouseDown`'s three press branches, `resetParam`, `resetCrossover`, `comm
 `setBands` and `setSoloMask`. A single-open bracket has no interior for a re-entry to land in. This
 one does, and `mouseDrag` publishes `soloMovedBand = true` before calling in.
 
-**The review's consequence is wrong in one direction and right in every other.** It says *"the
-gesture remains open"*. It does not. `endBandMove` closes **both** pins from the members, so the
-second pin is closed *having never been opened* — an `endChangeGesture` with no matching
-`beginChangeGesture`, i.e. the gesture count goes to **−1**, and the outer frame then skips its own
-open because the members are already cleared. The leak is an unmatched **close**, not a stuck-open
-gesture. Reachability, ordering and `soloPressBand == -1` in the resumed handler are all exact.
+**The review's wording is right, and a correction of mine is retracted below (§65b-ii).** Both
+directions are real, on different pins: the **second** pin is closed having never been opened (an
+`endChangeGesture` with no matching `beginChangeGesture`, gesture count −1 for it, and the outer
+frame then skips its own open because the members are already cleared), and the **first** pin *does*
+remain open, permanently. Reachability, ordering and `soloPressBand == -1` in the resumed handler
+were exact throughout.
 
 **Three consequences, measured rather than argued** (State test 83 leg E, on the pre-fix tree — one
 sequence, three observables):
@@ -2649,6 +2649,8 @@ sequence, three observables):
 [leg E] the second pin was closed 1 time(s) having been opened 0
 [leg E] the resumed handler auditioned mask 0x80000000
 [leg E] the host's split at 6500.0 Hz was written back to 2000.0 Hz, with -1 gesture(s) open
+[leg E] a properly bracketed edit after the interrupted startup recorded NO undo step
+        -- the gesture count never came back down
 ```
 
 The second is `1 << soloPressBand` with `soloPressBand == -1` — undefined behaviour, and
@@ -2659,7 +2661,31 @@ predicate self-disables and `writeCrossovers` skips its count proof, so the burs
 pre-press origins back over the host's install — outside any change gesture, both having just been
 closed.
 
-All three were the **only** failures in the suite, so the reproduction is isolated.
+All four were the **only** failures in the suite, so the reproduction is isolated.
+
+### 65b-ii. The fourth consequence, and a correction of my own retracted
+
+The fourth is the worst and the first draft of this section missed it entirely — it was surfaced by
+the adversarial pass and then **measured** rather than accepted. JUCE walks `listeners` in
+**reverse** — `for (int i = listeners.size(); --i >= 0;)`, `juce_AudioProcessorParameter.cpp` — and
+the processor registers itself at construction (`PluginProcessor.cpp`, `p->addListener (this)`), so
+a host listener added later is notified **first**. The whole nested cancellation therefore runs, and
+both of its `endChangeGesture`s reach `AnamorphAudioProcessor::parameterGestureChanged` while
+`openGestures` is still 0 — where its `else if (openGestures > 0 …)` makes them no-ops — **before**
+the outer `beginChangeGesture` reaches the processor and takes the count to 1. Nothing can bring it
+down: every identifier is already cleared, so no later `endBandMove`, `mouseUp` or
+`cancelActiveDrag` closes that pin. `pollUndoCoalesce` refuses to commit while `openGestures > 0`,
+so **undo silently stops recording every subsequent sound edit** until an A/B switch, preset load,
+undo or redo zeroes the count. Measured: a properly bracketed Width edit after one interrupted
+startup records no undo step at all.
+
+**So the review's *"the gesture remains open"* was right, and my correction of it is retracted.** I
+had argued the leak could only be an unmatched close, because `endBandMove` closes both pins. That
+is true of the **second** pin and false of the **first**, and the first is the one with the lasting
+consequence. The claim reached the ADR, the CHANGELOG and the pull request before it was measured,
+which is why the retraction is recorded here rather than quietly dropped. The fix was already
+correct — the assertion passes on the fixed tree without any code change — but the account of what
+it prevents was incomplete and, on this point, wrong.
 
 ### 65b-i. The reconcile that is live here — a claim of my own, corrected
 
@@ -2728,8 +2754,8 @@ labelled unmeasured at the declaration rather than claimed. The nested-`mouseUp`
 
 | Mutation | Killed |
 |---|---|
-| `beginBandMove` no longer claims the record | leg E's three checks, and nothing else |
-| `cancelActiveDrag` no longer declines | those three **and** State test 79 leg E — **4 checks** |
+| `beginBandMove` no longer claims the record | leg E's **four** checks, and nothing else |
+| `cancelActiveDrag` no longer declines | those four **and** State test 79 leg E — **5 checks** |
 | `mouseUp` no longer claims the record | State test 79 leg E only — **1 check** |
 | the depth degraded to a set/clear flag | **nothing** — §65e |
 

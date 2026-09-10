@@ -897,6 +897,20 @@ void SpectrumImager::beginBandMove (int b, int n)
     // and called `moveBand` with every ownership predicate self-disabled, writing the pre-press
     // split positions back over whatever the host had just installed, outside any change gesture.
     //
+    // AND THE FIRST PIN IS LEFT OPEN FOR GOOD, which is the worst of it and the one an early draft
+    // of this comment missed. JUCE walks `listeners` in REVERSE
+    // (`for (int i = listeners.size(); --i >= 0;)`, juce_AudioProcessorParameter.cpp), and the
+    // processor registers itself at construction, so a host listener added later is notified FIRST.
+    // The whole nested cancellation therefore runs -- and both of its `endChangeGesture`s reach
+    // `AnamorphAudioProcessor::parameterGestureChanged` while `openGestures` is still 0, where its
+    // `else if (openGestures > 0 ...)` makes them no-ops -- BEFORE the outer `beginChangeGesture`
+    // reaches the processor and takes the count to 1. Nothing can bring it down: every identifier
+    // is already cleared, so no later `endBandMove`, `mouseUp` or `cancelActiveDrag` closes that
+    // pin. `pollUndoCoalesce` refuses to commit while `openGestures > 0`, so UNDO SILENTLY STOPS
+    // RECORDING every subsequent sound edit until an A/B switch, preset load, undo or redo zeroes
+    // the count. Measured: a properly bracketed Width edit after one interrupted startup records no
+    // undo step at all.
+    //
     // THE RECONCILE THAT IS LIVE HERE IS `tick`'S, AND ONLY `tick`'S, which is the opposite of the
     // release-side windows. During a DRAG the button is genuinely down, so the editor's stuck-drag
     // reconcile (`isMouseButtonDownAnywhere() && ! anyPhysicalMouseButtonDown()`) is inert -- KI-013
@@ -908,8 +922,9 @@ void SpectrumImager::beginBandMove (int b, int n)
     // runs the reconcile. Stated rather than glossed, because it is a precondition and not a
     // free-standing re-entry.
     //
-    // Measured, all three, in that order: State test 83 leg E -- the unopened pin closed once, mask
-    // 0x80000000, and a host's 6500 Hz split written back to 2000.0 Hz with the gesture count at -1.
+    // Measured, all four, in that order: State test 83 leg E -- the unopened pin closed once, mask
+    // 0x80000000, a host's 6500 Hz split written back to 2000.0 Hz with the gesture count at -1, and
+    // a later bracketed edit recording no undo step.
     //
     // The claim below is the same one `mouseUp` takes, and for the same reason ADR-0050 gives: an
     // action that has published its identifiers owns the record until it has finished establishing

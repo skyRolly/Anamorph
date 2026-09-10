@@ -19438,6 +19438,40 @@ static void testACancellationClosesEachGestureOnce()
                              " with %d gesture(s) open\n", midNow, right.opens - right.closes);
             check (std::abs (midNow - 6500.0f) <= 1.0f,
                    "leg E: ...and writes no split at all once its record has been dropped");
+
+            //  THE FOURTH CONSEQUENCE, AND THE ONE THAT OUTLIVES THE DRAG. JUCE walks
+            //  `listeners` in REVERSE -- `for (int i = listeners.size(); --i >= 0;)`,
+            //  juce_AudioProcessorParameter.cpp -- so a listener added after the processor
+            //  is notified BEFORE it. The processor registers itself at construction
+            //  (`p->addListener (this)`), so the whole nested cancellation runs, and both
+            //  of its `endChangeGesture`s reach `parameterGestureChanged` with
+            //  `openGestures == 0` (its `else if (openGestures > 0 ...)` makes them
+            //  no-ops), BEFORE the outer `beginChangeGesture` ever reaches the processor
+            //  and takes the count to 1. Nothing can bring it back down: every identifier
+            //  is cleared, so no later `endBandMove`, `mouseUp` or `cancelActiveDrag` will
+            //  close that pin. And `pollUndoCoalesce` refuses to commit while
+            //  `openGestures > 0`, so UNDO SILENTLY STOPS RECORDING every subsequent sound
+            //  edit until an A/B switch, preset load, undo or redo zeroes the count.
+            //
+            //  This is also where the review's own wording is vindicated and a first draft
+            //  of this leg's record was wrong: the FIRST pin's gesture really does "remain
+            //  open" -- at the processor and at the host -- while the SECOND is closed
+            //  having never been opened. Both halves are real, in opposite directions.
+            {
+                proc.pollUndoCoalesce();
+                const bool undoBefore = proc.canUndo();
+                setPlain (wLoP, 1.4f);                 // an ordinary sound edit, properly bracketed
+                wLoP->beginChangeGesture();
+                setPlain (wLoP, 1.7f);
+                wLoP->endChangeGesture();
+                proc.pollUndoCoalesce();
+                const bool undoAfter = proc.canUndo();
+                if (! undoAfter && ! undoBefore)
+                    std::printf ("  [leg E] a properly bracketed edit after the interrupted startup"
+                                 " recorded NO undo step -- the gesture count never came back down\n");
+                check (undoAfter,
+                       "leg E: ...and a later bracketed edit is still undoable (the gesture count came back down)");
+            }
             imager->cancelActiveDrag();
         }
     }

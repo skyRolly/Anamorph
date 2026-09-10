@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:1210 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:1225 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1523`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1538`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1210 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1225 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -11439,22 +11439,29 @@ writes a parameter from inside the gesture open, and the loop it pumps then find
 An earlier draft of this entry named both reconciles and the fixture had the write and the cancel the
 wrong way round; both are corrected, and the re-measured results are identical.
 
-**Three consequences, each measured.** The nested `endBandMove()` closes **both** pins from the
+**Four consequences, each measured.** The nested `endBandMove()` closes **both** pins from the
 members, so the second is closed having never been opened (gesture count **−1**, spurious undo
 boundary); the members are then clear, so the outer frame opens nothing; and `soloPressBand` and
 `gestureBands` are clear, so the resumed handler auditions `1 << -1` — undefined behaviour, reaching
 the processor as `0x80000000 & 0x0F` — and calls `moveBand` with every ownership predicate
-self-disabled and no gesture open, writing the pre-press splits back over the host's install. All
-three were the only failures in the suite.
+self-disabled and no gesture open, writing the pre-press splits back over the host's install. **And
+the first pin is left open for good**: JUCE walks `listeners` in reverse and the processor registers
+itself at construction, so the whole nested cancellation runs — both its `endChangeGesture`s landing
+while `openGestures` is still 0, where they are no-ops — before the outer `beginChangeGesture`
+reaches the processor and takes the count to 1, which nothing can bring down. `pollUndoCoalesce`
+refuses to commit while that count is up, so **undo silently stops recording every subsequent sound
+edit**. All four were the only failures in the suite.
 
-**The review's wording corrected.** It says *"the gesture remains open"*. It does not — the leak is
-an unmatched **close**, not a stuck-open gesture. Reachability, ordering and `soloPressBand == -1`
-are exact.
+**A correction of mine, retracted.** An earlier draft of this entry said the review's *"the gesture
+remains open"* was wrong and the leak could only be an unmatched close. That holds for the **second**
+pin and not the **first**, and the first is the one with the lasting consequence — so the review's
+word was right. The fourth consequence was surfaced by the adversarial pass and then measured rather
+than accepted. The fix was already correct; the account of what it prevents was not.
 
 **Why the existing leg could not find it.** State test 83 leg C presses the **last** band, whose
 move has one pin (`soloMoveRight == -1` at `b == N - 1`); the window is structurally invisible from
 there. Legs E and F press a middle band, discovered by walking the solo lane rather than by
-hardcoded geometry; leg E is one sequence with three assertions, one per consequence.
+hardcoded geometry; leg E is one sequence with four assertions, one per consequence.
 
 **The fix** is ADR-0050's ownership claim taken for the startup — two lines — chosen over publishing
 `soloMovedBand` late (turns an unmatched close into an unmatched open), tracking which pins opened
@@ -11462,8 +11469,8 @@ hardcoded geometry; leg E is one sequence with three assertions, one per consequ
 became `int gestureActionDepth` because a second user makes nesting reachable; **degrading it back
 to a set/clear flag kills nothing**, and that is recorded at the declaration rather than claimed.
 
-**Evidence.** Removing `beginBandMove`'s claim kills leg E's three checks and nothing else; removing
-`cancelActiveDrag`'s decline kills those three **and** State test 79 leg E; removing `mouseUp`'s
+**Evidence.** Removing `beginBandMove`'s claim kills leg E's four checks and nothing else; removing
+`cancelActiveDrag`'s decline kills those four **and** State test 79 leg E; removing `mouseUp`'s
 claim kills State test 79 leg E only — each claiming site measured on its own, neither subsuming the
 other. Leg F is the positive control. No probe: the window is deterministic, so a stress probe would
 be a gate that cannot fail.

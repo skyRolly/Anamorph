@@ -1147,14 +1147,21 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   The direct `cancelActiveDrag()` stands in for `tick`, which a headless fixture cannot drive: it
   returns at `isShowing()` before the reconcile, the standing residual already recorded for the
   held-audition guard.
-  One sequence, three assertions: no close ever arrives on the second pin while no open is
+  One sequence, **four** assertions: no close ever arrives on the second pin while no open is
   outstanding (pre-fix: closed 1, opened 0); the raw argument to `onSoloPreview` is a single valid
   band bit, where the resumed handler computes `1 << soloPressBand` after the cancel set that to
-  `-1` (pre-fix: `0x80000000`); and the host's 6500 Hz split survives (pre-fix: written back to
-  2000.0 Hz with the gesture count at −1). Leg F is the control — an uninterrupted band move still opens both pins
+  `-1` (pre-fix: `0x80000000`); the host's 6500 Hz split survives (pre-fix: written back to
+  2000.0 Hz with the gesture count at −1); and an ordinary bracketed Width edit performed
+  afterwards is still undoable. That fourth one is the consequence that outlasts the drag and it was
+  missed by the first draft of this leg: JUCE walks `listeners` in **reverse**, and the processor
+  registers itself at construction, so the whole nested cancellation runs — both its
+  `endChangeGesture`s landing while `openGestures` is still 0, where they are no-ops — before the
+  outer `beginChangeGesture` reaches the processor and takes the count to 1, which nothing can bring
+  down. `pollUndoCoalesce` refuses to commit while that count is up, so pre-fix the later edit
+  records no undo step at all. Leg F is the control — an uninterrupted band move still opens both pins
   exactly once and closes both exactly once, so a "fix" that merely stopped opening the second pin
-  would fail it. **Mutation record:** removing `beginBandMove`'s claim fails leg E's three checks and
-  nothing else; removing `cancelActiveDrag`'s decline fails those three **and** State test 79 leg E;
+  would fail it. **Mutation record:** removing `beginBandMove`'s claim fails leg E's four checks and
+  nothing else; removing `cancelActiveDrag`'s decline fails those four **and** State test 79 leg E;
   removing `mouseUp`'s claim fails State test 79 leg E only. The three together are the
   orthogonality proof — each claiming site is measured on its own and neither subsumes the other.
   Degrading `gestureActionDepth` from a counter back to a set/clear flag kills **nothing**, and is

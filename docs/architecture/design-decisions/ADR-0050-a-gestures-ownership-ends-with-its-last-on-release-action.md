@@ -365,7 +365,19 @@ measured rather than argued:
    then called `moveBand` with every ownership predicate self-disabled and no gesture open,
    writing the pre-press split positions back over whatever the host had installed. That last one
    is the ADR-0040 / ADR-0047 failure exactly, reached not by a race but by the record being
-   dropped mid-startup.
+   dropped mid-startup;
+4. **and the first pin is left open for good** — the worst of the four, and the one this section's
+   first draft missed entirely. JUCE walks `listeners` in **reverse**
+   (`for (int i = listeners.size(); --i >= 0;)`, `juce_AudioProcessorParameter.cpp`), and the
+   processor registers itself at construction (`p->addListener (this)`), so a host listener added
+   later is notified **first**. The whole nested cancellation therefore runs — and both of its
+   `endChangeGesture`s reach `AnamorphAudioProcessor::parameterGestureChanged` while
+   `openGestures` is still 0, where its `else if (openGestures > 0 …)` makes them no-ops — **before**
+   the outer `beginChangeGesture` reaches the processor and takes the count to 1. Nothing can bring
+   it down: every identifier is already cleared, so no later `endBandMove`, `mouseUp` or
+   `cancelActiveDrag` closes that pin. `pollUndoCoalesce` refuses to commit while
+   `openGestures > 0`, so **undo silently stops recording every subsequent sound edit** until an
+   A/B switch, preset load, undo or redo zeroes the count.
 
 ### The reconcile that is live here — and a claim of this section's own first draft, corrected
 
@@ -386,13 +398,17 @@ be driven from a headless fixture — it returns at `isShowing()` before reachin
 standing residual already recorded for the held-audition guard — so what the leg exercises is the
 reconcile's **body**, reached with its gate made true one line above.
 
-### The review's own wording, corrected
+### The review's own wording — a correction of mine, retracted
 
-The finding says *"the gesture remains open"*. It does not: the leak is in the **other** direction.
-`endBandMove` closes both pins, so the second pin is *closed without ever having been opened*, and
-the outer frame then skips its open. The observable is a gesture count of **−1**, not a stuck-open
-gesture. The rest of the finding — the reachability, the ordering, and `soloPressBand == -1` in the
-resumed handler — is exact.
+An earlier draft of this section said the finding's *"the gesture remains open"* was wrong, on the
+grounds that `endBandMove` closes both pins so the leak must be an unmatched **close**. That was
+half right and, on the half that matters, wrong. **Both directions are real, on different pins:**
+the **second** pin is closed having never been opened (gesture count −1 for it), and the **first**
+pin *does* remain open — permanently, at the processor and at the host — for the listener-ordering
+reason in consequence 4 above. The review's word was right; the retraction is recorded here rather
+than quietly dropped, because the claim reached the CHANGELOG and the pull request before it was
+measured. The rest of the finding — reachability, ordering, and `soloPressBand == -1` in the
+resumed handler — was exact throughout.
 
 ### The options, and why the guard
 
@@ -427,12 +443,13 @@ reaches it.
 State test 83 legs E and F. Leg C — the previous coverage — presses the **last** band, whose move
 has one pin (`soloMoveRight == -1` because `b == N - 1`), so it could never see the interior; leg E
 presses a **middle** band, which has both, found by walking the solo lane rather than by hardcoded
-geometry. Leg E is one sequence with three assertions, one per consequence above.
+geometry. Leg E is one sequence with **four** assertions, one per consequence above — the fourth
+performs an ordinary bracketed Width edit afterwards and asserts it is still undoable.
 
 | Mutation | Killed |
 |---|---|
-| `beginBandMove` no longer claims the record | leg E's three checks, and nothing else |
-| `cancelActiveDrag` no longer declines | those three **and** State test 79 leg E — **4 checks** |
+| `beginBandMove` no longer claims the record | leg E's **four** checks, and nothing else |
+| `cancelActiveDrag` no longer declines | those four **and** State test 79 leg E — **5 checks** |
 | `mouseUp` no longer claims the record | State test 79 leg E only — **1 check** |
 | the depth degraded to a set/clear flag | **nothing** — see above |
 

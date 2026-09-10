@@ -39,13 +39,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   after the other. If your host answered the first one by running its own message loop — a modal
   automation dialog, a control-surface echo, a plug-in window reconciling a drag it thinks is stuck —
   the plug-in's own drag-cancel could run in that gap and close *both* edges, including the one it
-  had not opened yet. Your host then saw an end-of-gesture with no matching start (a spurious undo
-  boundary, and an open-gesture count that went negative), the second edge never got a gesture at
-  all, and the drag carried on with its identity erased: it auditioned a solo mask no band matched,
-  and it wrote the band's pre-drag split frequencies back over anything your host had just installed
-  — outside any gesture, so your DAW recorded them as untracked changes. A band move now keeps its
-  own record until both gestures are open, so a cancellation arriving in that gap changes nothing
-  and is honoured a moment later instead. What you will notice: nothing, on any normal drag.
+  had not opened yet. Four things followed. Your host saw an end-of-gesture with no matching start
+  (a spurious undo boundary); the second edge never got a gesture at all; the drag carried on with
+  its identity erased, auditioning a solo mask no band matched and writing the band's pre-drag split
+  frequencies back over anything your host had just installed, outside any gesture; and — the one
+  that outlasted the drag — the *first* edge's gesture was left open permanently, after which
+  **Undo silently stopped recording every later change you made to the sound** until you switched
+  A/B, loaded a preset, or used Undo or Redo. A band move now keeps its own record until both
+  gestures are open, so a cancellation arriving in that gap changes nothing and is honoured a
+  moment later instead. What you will notice: nothing, on any normal drag.
   Decision: ADR-0050. Evidence: PR #143. [Verified]
   where the check for that could be switched off.** The plugin remembers the layout your click was
   aimed at and refuses the click if your DAW replaces it in the instant the edit opens. That memory
