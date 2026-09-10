@@ -2518,3 +2518,31 @@ model** — one `bool` written and read on the message thread only; no thread, l
 cross-thread path is added, and the change removes a state transition. **Build system** — untouched.
 This applies ADR-0050's Decision to the one function able to defeat it. **No human approval is
 required, and none is manufactured.**
+
+### 64h. Residuals — re-verified only where this change can reach them
+
+| Residual | Disposition |
+|---|---|
+| RISK-010 (audio-side reader) | **Unchanged** — this change touches `SpectrumImager.{h,cpp}` and the tests only; `PluginParameters.cpp` is not in this PR's diff at all |
+| `addBandAt` re-attribution window | **Unchanged** — reached from `mouseDown`; the flag is set only in `mouseUp` |
+| held-audition vblank coverage | **Affected, and intentionally so** — `tick`'s `if (gestureIsStale()) cancelActiveDrag();` is now suppressed *while a release action runs*. That is the fix, not a side effect: the release action clears every identifier it owns and drops the record itself one line later. The gap the residual names — `tick` returning at `isShowing()` before the guard — is untouched |
+| wheel gesture closure (ADR-0041/0052) | **Unchanged** — `mouseWheelMove`'s delta test and `cancelActiveDrag()` are outside `mouseUp`, so the flag is false there; verified still first and first |
+| U4 wheel width undo | **Unchanged** |
+| ADR-0044 partial-transaction residue | **Unchanged** |
+| cancelled-spread visual ordering | **Unchanged** |
+| TSan suppression scope | **Unchanged** — still exactly one entry. Leg E adds no new lock-order shape: it writes `midP` from inside `soloP`'s gesture dispatch exactly as leg C already does, and the nested `cancelActiveDrag` takes the cheap exit and no parameter lock |
+| historical comment blocks | **One correction, caused by this fix** — see §64i |
+
+### 64i. A comment this fix made false, corrected in the same commit
+
+The handle-drag branch's `gestureBands == pressBands` compare carried a comment saying that *without*
+it "the line below would remove a band under a gesture something else has just cancelled". That was
+true when written and is **no longer true**: the record now survives the nested cancel, and the
+measurement says so — removing the compare fails nothing, while reverting either half of the fix
+fails leg E.
+
+The comment is rewritten to record the **change of status** rather than deleted: the compare is kept
+as redundant defence in depth, still unmeasured, and explicitly not presented as the thing holding
+the line. Fixing a defect can make a neighbouring comment false, and that is exactly the class of
+error this file has had to correct twice in this series — so it is corrected in the same commit that
+causes it, not left for a later reader.

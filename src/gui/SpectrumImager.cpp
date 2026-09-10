@@ -2898,16 +2898,24 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
         // `gestureX[k]`, see `storeOwned`), so an uninterrupted release still removes exactly as
         // before -- the stamp equals the world it just wrote.
         //
-        // `gestureBands == pressBands` IS THE OTHER HALF OF THAT TRADE, and it is unmeasured -- said
-        // plainly, because an unmeasured guard presented as a measured one is the failure this file
-        // keeps correcting. Clearing `dragHandle` above sends a reentrant reconcile down
-        // `cancelActiveDrag`'s cheap exit, which clears `gestureBands` and returns WITHOUT clearing
-        // `dragRemovePending` -- so without this comparison the line below would remove a band under
-        // a gesture something else has just cancelled, and `gestureIsStale()` would answer `false`
-        // because the latch is gone. Comparing the latch against the press's own value refuses
-        // instead. No test reaches it: the path needs a host that pumps the message loop from inside
-        // `endChangeGesture`, so removing this line alone leaves all 2840 checks green, exactly as
-        // `removeBand`'s delete-x call site does. It costs one integer compare on every release.
+        // `gestureBands == pressBands` IS NOW REDUNDANT DEFENCE IN DEPTH, and that is a CHANGE OF
+        // STATUS recorded rather than left to rot. It was this branch's LOCAL defence against a
+        // GENERAL defect: clearing `dragHandle` above sends a reentrant reconcile down
+        // `cancelActiveDrag`, which used to clear `gestureBands` on its first line -- in front of the
+        // cheap exit -- so the line below would have removed a band under a gesture something else
+        // had just cancelled, with `gestureIsStale()` answering `false` because the latch was gone.
+        //
+        // That is fixed at the source as of 2026-09-10: a release action now OWNS the record until it
+        // finishes and `cancelActiveDrag` declines while it does (ADR-0050, applied again; the solo
+        // branch had no equivalent compare and `removeBand`'s per-store proofs had none either, which
+        // is why the fix belongs there and not in three more copies of this line). Measured: removing
+        // this comparison now fails NOTHING, where State test 79 leg E fails the moment either half
+        // of that fix is reverted.
+        //
+        // It stays -- one integer compare on every release, and a second layer costs nothing -- but it
+        // is no longer what holds the line and is not presented as though it were. It was labelled
+        // unmeasured before and it is still unmeasured; what changed is that there is now a measured
+        // guard behind it.
         if (dragRemovePending && gestureBands == pressBands && ! gestureIsStale())
             removeBand (h + 1, pressBands); // drop the dragged split, merge (#18)
     }
