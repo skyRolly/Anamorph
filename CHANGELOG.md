@@ -33,6 +33,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0041. Evidence: PR #143. [Verified]
 
 ### Fixed
+- **Soloing a band no longer applies to a different band when your DAW re-arranges the crossovers at
+  that exact instant.** Clicking a solo button tells your DAW an edit is starting, and your DAW can
+  answer immediately — an automation lane, a preset, a control surface. The plugin already refused
+  the click if the *number* of bands changed in that moment, but not if the crossovers simply moved,
+  so the solo could land on a band whose frequency range you never saw. It now refuses in that case
+  too, the same way it already refuses a count change. An ordinary solo click is unchanged.
+  Decision: ADR-0045. Evidence: PR #143. [Verified]
 - **Scrolling the mouse wheel over the Multiband display no longer keeps adjusting the control it
   started on after your DAW has moved that control out from under the pointer.** A wheel burst
   remembers which split or which band you started on, so that your own scrolling does not make it

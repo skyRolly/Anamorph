@@ -769,8 +769,21 @@ bool SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
     mask &= 0x0F;
     bool stored = false;
     soloP->beginChangeGesture();
+    // ADR-0045, THE SOUND HALF OF ITS OWN SECOND SENTENCE: "a store whose gesture bracket
+    // dispatches before it proves the topology inside the bracket, never outside it." That is what
+    // the two clauses below do for the COUNT -- and ADR-0039 settled that the count is not the whole
+    // topology. `beginChangeGesture()` one line up notifies every listener SYNCHRONOUSLY, so a host
+    // answering it with a same-count sound install lands INSIDE this bracket, after the caller's
+    // gate and before this store; the band index the caller latched then names a band whose
+    // boundaries the user never saw, and the solo bit is written to it anyway.
+    //
+    // Reentrant, therefore deterministic -- no thread and no probe are needed to reach it. The
+    // predicate self-disables when no gesture is in force (`gestureBands < 0`), so `removeBand`'s
+    // own mask remap and every record-less caller are unaffected; and with nothing racing the
+    // caller's gate has just proved these values, so nothing that used to commit stops committing.
     if ((expectedBands < 0 || bandCount() == expectedBands)
-        && (expectedMask < 0 || soloMask() == expectedMask))
+        && (expectedMask < 0 || soloMask() == expectedMask)
+        && ! soundMovedUnderGesture())
     {
         soloP->setValueNotifyingHost (soloP->convertTo0to1 ((float) mask));
         stored = true;
@@ -1157,9 +1170,42 @@ void SpectrumImager::removeBand (int b, int expectedBands)
     if (b < 0 || b >= N) return;
     const int dropX = (b == 0) ? 0 : (b - 1); // delete the split on this band's left (#12)
 
-    float fr[3], wd[4];
-    for (int k = 0; k < 3; ++k) fr[k] = crossover (k);
-    for (int k = 0; k < 4; ++k) wd[k] = bandWidth (k);
+    // ADR-0047, AT THE TRANSACTION BOUNDARY. The count arrives proved -- `expectedBands` makes the
+    // caller's check and this function's own read ONE reading, which is why a stale INDEX cannot
+    // land here. The VALUES had no such treatment: the caller proves them (`gestureIsStale()` reads
+    // the press's `gestureX`/`gestureW`), and then this function read them AGAIN, a few instructions
+    // later, and planned from that second reading. Two readings where the rule says one -- and the
+    // second is the one every later guard compares against, so a same-count install landing between
+    // them is baked into the snapshot and no guard in the transaction can see it. The delete x then
+    // merges a band whose boundaries the press never saw, reported to the host as a real edit.
+    //
+    // Cross-thread only: from the caller's gate to here every statement is a pure read, so nothing
+    // on this thread can dispatch into the gap -- only the audio thread's automation or the host
+    // state thread.
+    //
+    // ONE READING, and the plan AND the proof are derived from it. The row is taken in the
+    // parameter's own normalised units -- which is what `gestureX`/`gestureW` hold and what
+    // `ownsSplit (k, norm)` / `ownsWidth (b, norm)` compare, the overloads ADR-0047 added for
+    // exactly "prove the reading the caller already has" -- and the Hz the plan needs is derived
+    // from it by `convertFrom0to1`, pure arithmetic on the value that read returned.
+    float fr[3], wd[4], nfr[3], nwd[4];
+    for (int k = 0; k < 3; ++k)
+    {
+        nfr[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;
+        fr[k]  = (freqP[k] != nullptr) ? freqP[k]->convertFrom0to1 (nfr[k]) : kFreqLo;
+    }
+    for (int k = 0; k < 4; ++k)
+    {
+        nwd[k] = (widthP[k] != nullptr) ? widthP[k]->getValue() : 0.0f;
+        wd[k]  = (widthP[k] != nullptr) ? widthP[k]->convertFrom0to1 (nwd[k]) : 1.0f;
+    }
+    // ...and the press must still own it. Both predicates answer `true` when no record is in force
+    // (`gestureBands < 0`), so a caller without a gesture is unaffected -- and with nothing racing
+    // the caller's gate has just proved these same values, so this refuses nothing it did not
+    // already refuse. ADR-0039's direction: a removal is REFUSED, never applied to a layout it
+    // cannot vouch for.
+    for (int k = 0; k < 3; ++k) if (! ownsSplit (k, nfr[k])) return;
+    for (int b = 0; b < 4; ++b) if (! ownsWidth (b, nwd[b])) return;
 
     float nf[3], nw[4];
     for (int k = 0, j = 0; k < N;     ++k) if (k != b)     nw[j++] = wd[k];
@@ -2646,9 +2692,12 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     // It moved the clear off the shared line and then put it straight back at the top of the delete
     // and solo branches, which is the same defect in two more places and is exactly what this ADR's
     // own title forbids. The review found it; the argument was already written down here. Those two
-    // windows hold no dispatch -- `deleteHit` is a pure read, and the solo store paths are the
-    // `else` of the branch that calls `endBandMove` -- so they are CROSS-THREAD ONLY and no
-    // deterministic test enters them. That is the class ADR-0046, ADR-0047, ADR-0048 and ADR-0051
+    // windows hold no dispatch IN THIS HANDLER'S BODY -- `deleteHit` is a pure read, and the solo
+    // store paths are the `else` of the branch that calls `endBandMove`. **That was true of the body
+    // and wrong as the whole answer**, corrected 2026-09-10: the delete window really is
+    // cross-thread-only all the way into `removeBand`'s snapshot, but the solo window does not end
+    // in this handler -- it continues into `setSoloMask`, whose `beginChangeGesture()` DISPATCHES
+    // ahead of its guard. So the solo half is REENTRANT and a deterministic test does enter it. That is the class ADR-0046, ADR-0047, ADR-0048 and ADR-0051
     // all CLOSED rather than accepted, and the reason is the same here: with the latch cleared, the
     // question is not merely unasked, it is unanswerable, so a later reader cannot add the check
     // without also finding this line.
@@ -2944,7 +2993,16 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     // re-derivation it causes. It was taken inside the re-derivation branch, which is right as far
     // as it goes, but the test that decides whether to re-derive needs the same row -- and two
     // readings of it would be the defect that ADR its own subject.
-    float fx[3]; captureSplits (fx);
+    // ...IN THE PARAMETER'S OWN UNITS, so this ONE reading serves every consumer in the tick: the
+    // staleness test and the hit-test want Hz, the ownership stamp wants normalised, and
+    // `convertFrom0to1` is pure arithmetic, so deriving one from the other is the same measurement
+    // rather than a second one (ADR-0047).
+    float nx[3], fx[3];
+    for (int k = 0; k < 3; ++k)
+    {
+        nx[k] = (freqP[k] != nullptr) ? freqP[k]->getValue() : 0.0f;
+        fx[k] = (freqP[k] != nullptr) ? freqP[k]->convertFrom0to1 (nx[k]) : kFreqLo;
+    }
     // ...AND THE ROW IS HALF OF THE TOPOLOGY, which is the half this latch did not stamp.
     // ADR-0045's rule is that a positional identifier is void once the topology it was taken in
     // MOVES, and ADR-0039 settled that the count is not the whole topology -- ADR-0051 made the
@@ -2979,7 +3037,30 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
 
     if (scrollHandle >= 0 && scrollHandle < N - 1)
     {
-        captureDragOrigins(); // seed the projection from the live spots
+        // ADR-0047/0051, THE WITHIN-TICK HALF. This was `captureDragOrigins()`, which is
+        // `captureGestureSound(); seedDragOrigins();` -- and the stamping half took a SECOND reading
+        // of the row this tick had already read and already proved. `scrollFx` closes the window
+        // BETWEEN two ticks; this one is inside a single tick, between the reading at the top and
+        // this line. A same-count split write landing there was proved absent by the first reading
+        // and then ADOPTED by the second: `gestureX` became the new row, `dragOrigX` was seeded from
+        // it, and the tick steered the latched handle FROM ITS NEW POSITION -- a handle the pointer
+        // is no longer over -- with `writeCrossovers` proving each store against the row it had just
+        // adopted, so nothing could refuse it. Measured at 38 in 1200 ticks, 0 after
+        // (`--wheel-adopt-probe`).
+        //
+        // The stamp is the row this tick PROVED, and `seedDragOrigins` derives the origins from it,
+        // so the plan, the stamp and the per-store proof are one measurement. A split that moves
+        // after this point is refused by `ownsSplit` inside the store, and the NEXT tick's `scrollFx`
+        // test drops the latch and re-derives at the pointer -- the ADR-0045 half already in place,
+        // and the reason re-hit-testing every tick is still the wrong answer: the wheel's own edits
+        // move the handle it is steering.
+        for (int k = 0; k < 3; ++k) gestureX[k] = nx[k];
+        // The widths are not part of this race -- a wheel tick never writes one, and nothing in the
+        // bracket below reads `gestureW` -- but they are stamped exactly as before, so the record is
+        // whole rather than half-fresh.
+        for (int b = 0; b < (int) std::size (gestureW); ++b)
+            gestureW[b] = (widthP[b] != nullptr) ? widthP[b]->getValue() : 0.0f;
+        seedDragOrigins();
         // ADR-0043. THE WHEEL OWNS THE BURST IT ISSUES. `cancelActiveDrag()` above clears
         // `gestureBands`, which is right -- no press is in flight -- but it also waives `ownsSplit`
         // and the count re-proof inside `writeCrossovers` for the burst that follows, and that burst

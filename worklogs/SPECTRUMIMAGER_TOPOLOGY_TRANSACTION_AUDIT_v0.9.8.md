@@ -2149,3 +2149,108 @@ U4, ADR-0044's partial-transaction residue, cancelled-spread visual ordering, th
 scope and the historical comments at `SpectrumImager.cpp:794` were all out of bounds by instruction.
 None was reopened, and no new evidence about any of them appeared. The `:794` block was read while
 tracing the latch and contains no correctness or documentation error.
+
+## 62. Release actions and wheel ticks — the proof-to-action boundary
+
+### 62a. Workflow audit and lifecycle decisions
+
+Nothing was running. Three workflow transcripts exist and all three are COMPLETE — 15, 34 and 9
+agents, no unfinished agent, no empty result — and all three had their findings consumed and shipped
+in earlier rounds. **Decision: close all three.** Resuming would replay cached answers to questions
+that are no longer open. CI on `f9a5266` (20 successful check runs, 14 skipped, none red) was
+consumed as the baseline rather than re-derived.
+
+**One new workflow WAS started** — five agents, for independent invariant derivation only, not to
+duplicate reading I did directly: two reachability derivations for the release finding (one of them a
+deliberate skeptic), one for the wheel, and a judge/refuter pair on "one invariant or two" plus the
+gate. It earned its cost twice over: the skeptic could not refute the release finding, and one agent
+found something neither the review nor I had — see §62c.
+
+### 62b. Finding — the wheel's WITHIN-TICK window: CONFIRMED (ADR-0047)
+
+A tick reads the row once at the top and everything deciding *which* control it steers derives from
+that reading; the split branch then called `captureDragOrigins()`, a **second** reading. A same-count
+write between the two is proved absent by the first and adopted by the second, so the tick steers the
+latched handle from its new position with every store proved against the row it just adopted.
+Distinct from `scrollFx`, which closes the window *between* ticks. Window bounded by pure reads —
+cross-thread only.
+
+### 62c. Finding — the release actions: CONFIRMED, and it is TWO windows, not one
+
+The review described one window. It is two, with different reachability classes, and the panel's
+skeptic could not refute either.
+
+* **Delete leg — cross-thread only.** `removeBand` takes its OWN second reading of the row and the
+  widths at entry and plans from it; every later guard compares against that reading, so an install
+  landing between the caller's gate and it is baked in and invisible. The COUNT never had this
+  problem because `expectedBands` makes the two reads one. Fixed by taking the snapshot in normalised
+  units, deriving the plan's Hz from it, and proving the press's ownership from it through
+  `ownsSplit (k, norm)` / `ownsWidth (b, norm)` — the overloads ADR-0047 added for exactly this.
+* **Solo leg — REENTRANT, and the file said the opposite.** `mouseUp`'s ADR-0050 comment asserted the
+  solo store paths "are CROSS-THREAD ONLY and no deterministic test enters them". True of the
+  handler's body; false of the window that matters, which continues into `setSoloMask`, whose
+  `beginChangeGesture()` dispatches **ahead of its guard** — and that guard proves count and mask
+  only. This is ADR-0045's own second sentence ("a store whose gesture bracket dispatches before it
+  proves the topology inside the bracket") with the sound half missing. Fixed by one clause,
+  `&& ! soundMovedUnderGesture()`, inside the bracket. The comment is corrected in place.
+
+### 62d. One invariant or two — the panel split, and the honest answer is "neither extreme"
+
+The judge said one rule (ADR-0047 generalised); the refuter said two and that a new ADR was needed.
+Resolved from the ADR texts: **three sites, two already-accepted rules, no new ADR.** The wheel and
+`removeBand` are both ADR-0047 ("one read, derive the plan and the proof from it"). The solo store is
+ADR-0045's bracket sentence. Forcing all three into one story would have required widening ADR-0047's
+scope — which is exactly the kind of move ADR-0052 needed human approval for, and it is not needed
+here because each site falls inside a rule as written.
+
+### 62e. Evidence, stated at its real strength
+
+| Guard | Class | Mutation |
+|---|---|---|
+| `setSoloMask`'s `! soundMovedUnderGesture()` | reentrant | **kills State test 79 leg C** |
+| `removeBand`'s entry ownership proof | cross-thread only | kills nothing |
+| the wheel's proved-row stamp | cross-thread only | kills nothing |
+
+The last two are defence in depth with no reachable test, on the same footing as `mouseUp`'s
+`gestureBands == pressBands` and `removeBand`'s delete-x call site. Both are correct by ADR-0047's
+own rule and inert with nothing racing (the caller's gate has just proved the same values), and the
+whole 2 879-check suite is unchanged by either.
+
+### 62f. A probe was built for the wheel window and WITHDRAWN
+
+`--wheel-adopt-probe` reached the tree, measured, and was removed rather than shipped. Recorded
+because the failure is instructive:
+
+1. **A control-only bug first.** `oneBurst` reset the `laneLanded` flag at its top, which cleared the
+   flag the control had just set — so the control reported "tick 2 does not steer split 1" on a tree
+   where `mbFreqMid` plainly moved 2000 → 2172.7 across the two ticks. The instrument was broken, not
+   the code, and the mandatory control is what caught it.
+2. **Then the real defect in the instrument.** With the control passing it read 38/1200 pre-fix — and
+   **34/1200 post-fix**, which is not a signal. A diagnostic on the counted iterations showed
+   `mbFreqMid` ending at 2172.7, the ordinary two-tick value, not the lane's 8000: the detector gated
+   on a flag the lane set *after* its store returned, with no ordering against the message-thread
+   store, so it was counting benign ticks.
+
+A gate that cannot fail is worse than no gate, so it is not in the tree. The wheel guard therefore
+ships unmeasured and is labelled as such above.
+
+### 62g. Architecture-review gate: NOT triggered
+
+Walked against `docs/policies/ARCHITECTURE_REVIEW_GATE.md`, and both panel agents — including the
+refuter, who was arguing for a new ADR — reached the same conclusion independently. No DSP graph, no
+signal-flow, no parameter registry, no serialization, no latency, no plugin format. **Thread model:**
+the policy defines it as "new thread, new cross-thread path, new atomic ordering"; all three changes
+*remove* parameter reads and add no lock, atomic, allocation or shared object, so the cross-thread
+surface strictly shrinks. **Build system:** defined as "CMake structure, JUCE version/pin, dependency
+set" — this round changes no workflow file at all, and adding CI *steps* in earlier rounds was none of
+those three. No accepted ADR is conflicted: each site falls inside ADR-0045 or ADR-0047 as written.
+**No human approval is required, and none is manufactured.**
+
+### 62h. Residuals — re-verified, none reopened
+
+RISK-010 (audio-side reader, untouched), the `addBandAt` re-attribution window, the held-audition
+vblank gap, wheel gesture closure under ADR-0041/0052 (the delta test and `cancelActiveDrag()` still
+run first and first — unchanged by any edit here), U4, ADR-0044's partial-transaction residue,
+cancelled-spread ordering, and the TSan suppression scope (still exactly one entry, still
+harness-scoped, count assertion untouched). The historical comment block was read while tracing both
+windows; the only error found in it is the solo reachability sentence, which is §62c and is corrected.

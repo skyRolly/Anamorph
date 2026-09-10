@@ -135,3 +135,42 @@ Applied at every paired site:
   the same argument ADR-0046 made against ordering the count reads instead of passing the count in.
 * **Accept it as a tradeoff and record a risk row.** Defensible on rarity alone until the rate was
   measured at 7.7 % against a moving lane. A defect this cheap to close is not a tradeoff.
+
+## Applied again 2026-09-10 — across the proof-to-action boundary, and within a wheel tick
+
+Two more sites where this ADR's Decision — *"wherever this class takes a value to plan from and a
+value to prove ownership against, it takes ONE read of the parameter and derives both from it"* — was
+not honoured. **Neither is a new decision**, and neither trips the architecture-review gate: no DSP
+graph, signal flow, thread model, parameter, serialization, latency, plugin format or build-system
+item is touched, and both changes *remove* parameter reads rather than adding a path.
+
+**`removeBand`.** The caller proves the values (`gestureIsStale()` reads the press's
+`gestureX`/`gestureW`) and `removeBand` then read the row and the widths **again** at entry and
+planned from that second reading — which is the reading every later guard compares against, so a
+same-count install landing between the two is baked into the snapshot and no guard in the transaction
+can see it. The count never had this problem, because `expectedBands` makes the caller's check and
+the callee's read one reading; the values now get the same treatment. The snapshot is taken in
+normalised units, the Hz the plan needs is derived from it, and the press's ownership is proved from
+it through the `ownsSplit (k, norm)` / `ownsWidth (b, norm)` overloads this ADR added for exactly
+that purpose.
+
+**`mouseWheelMove`.** A tick reads the row once at the top and everything that decides *which*
+control it steers derives from that reading — then the split branch called `captureDragOrigins()`,
+which read the row again. A same-count write between the two was proved absent by the first reading
+and **adopted** by the second, so the tick steered the latched handle from its new position with
+every store proved against the row it had just adopted. The tick now stamps `gestureX` from the
+reading it already proved and derives the origins from it. This is the *within-tick* companion to
+ADR-0045's `scrollFx`, which closes the window *between* two ticks; neither covers the other.
+
+**Both windows are cross-thread only** — bounded by pure reads, so nothing on the message thread can
+dispatch into them — and **both guards are therefore unmeasured**, which is stated here rather than
+implied. Removing either leaves all 2 879 checks green. A probe was built for the wheel window and
+**withdrawn**: its detector had no ordering between the lane's write and the message-thread store, so
+it counted benign ticks (38/1200 before a fix that could not have changed them, 34/1200 after, with
+the counted iterations ending at the ordinary two-tick value). Shipping it would have been a gate
+that cannot fail. The attempt and its diagnosis are recorded in
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §62 rather than deleted.
+
+Both guards are kept as defence in depth on the same footing as `mouseUp`'s
+`gestureBands == pressBands` and `removeBand`'s delete-x call site: correct by this ADR's own rule,
+inert with nothing racing, and honestly labelled as carrying no mutation proof.

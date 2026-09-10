@@ -4513,6 +4513,57 @@ static void testTheFarSideOfACoupledCommitIsCoveredByItsCaller()
         }
     }
 
+    // ---- LEG C: the solo click, with a SAME-COUNT SPLIT installed from inside the mask
+    //      store's own gesture open. ADR-0045's second sentence: "a store whose gesture bracket
+    //      dispatches before it proves the topology inside the bracket, never outside it." The two
+    //      clauses in `setSoloMask` did that for the COUNT, and ADR-0039 settled that the count is
+    //      not the whole topology. `beginChangeGesture()` notifies SYNCHRONOUSLY before the guard,
+    //      so this window is REENTRANT -- no thread and no probe -- and the in-source comment in
+    //      `mouseUp` that called the solo store paths cross-thread-only was wrong about it.
+    //
+    //      The click aims at a band whose boundaries the press saw; the install moves them; the bit
+    //      must NOT be written to the band the user never saw. ADR-0039's direction: refuse.
+    {
+        world4(); setPlain (soloP, 0.0f);
+        const float sy = findY ("Solo this band");
+        const float sx = (sy >= 0.0f) ? findLastX ("Solo this band", sy) : -1.0f;
+        check (sx > 0.0f && sy >= 0.0f, "leg C: the last band's solo box is findable at four bands");
+        if (sx > 0.0f && sy >= 0.0f)
+        {
+            const float splitBefore = plainOf (midP);
+            WriteFromInsideAGestureOpen poke;      // fires on beginChangeGesture, before the guard
+            poke.target = midP; poke.to = 6500.0f; poke.armed = true;   // SAME count, new boundaries
+            soloP->addListener (&poke);
+            imager->mouseDown (mev (sx, sy));
+            imager->mouseUp   (mev (sx, sy));
+            soloP->removeListener (&poke);
+
+            check (poke.fired, "leg C: the probe write landed inside the mask store's gesture open");
+            if (poke.fired && maskNow() != 0)
+                std::printf ("  [leg C] the solo bit was written to a layout the press never saw:"
+                             " mask 0x%X, split 1 %.1f -> %.1f Hz inside the bracket\n",
+                             maskNow(), (double) splitBefore, (double) plainOf (midP));
+            check (! poke.fired || maskNow() == 0,
+                   "leg C: a same-count install inside the mask bracket refuses the solo bit");
+            check (! poke.fired || bandsNow() == 4,
+                   "leg C: ...and the count is untouched, so nothing else was published");
+        }
+    }
+
+    // ---- LEG D: the control -- an undisturbed solo click still solos --------
+    //      A refusal test whose positive case never fires proves nothing.
+    {
+        world4(); setPlain (soloP, 0.0f);
+        const float sy = findY ("Solo this band");
+        const float sx = (sy >= 0.0f) ? findLastX ("Solo this band", sy) : -1.0f;
+        if (sx > 0.0f && sy >= 0.0f)
+        {
+            imager->mouseDown (mev (sx, sy));
+            imager->mouseUp   (mev (sx, sy));
+            check (maskNow() != 0, "leg D: an undisturbed solo click still writes the mask");
+        }
+    }
+
     // ---- LEG B: the removal, with the mask re-asserted from inside the COUNT store's
     //      own dispatch. The count is the transaction's; the mask is the newer
     //      authority's; the pair is the same parked-bit class as leg A.

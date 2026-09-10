@@ -981,6 +981,23 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   Mutation-tested — writing the restore's Settings as decoded fails **16** checks. Its legs are
   separate functions taking their processors from the HEAP: see the 1 MB-stack note below.
 
+* **State test 79 legs C and D — the solo bracket's SOUND proof** (ADR-0045, applied again).
+  `setSoloMask` calls `beginChangeGesture()` **before** its guard, so this window is REENTRANT and
+  needs no thread and no probe — which also makes it the counter-example to `mouseUp`'s old comment
+  claiming the solo store paths were cross-thread-only. Leg C installs a same-count split from inside
+  that gesture open with a real `AudioProcessorParameter::Listener` and asserts the solo bit is
+  refused; leg D is the control that an undisturbed click still writes the mask. **Mutation record:**
+  removing `&& ! soundMovedUnderGesture()` fails leg C.
+
+* **A withdrawn probe, recorded rather than deleted.** `--wheel-adopt-probe` was built for the
+  within-tick wheel window and **is not in the tree**. Its detector gated on a `laneLanded` flag the
+  lane set *after* its store returned, with no ordering against the message-thread store, so it
+  counted benign ticks: 38/1200 before a fix that could not have changed them and 34/1200 after, with
+  the counted iterations ending at the ordinary two-tick value of `mbFreqMid` rather than the lane's.
+  A control-only bug was found and fixed on the way (the burst reset the flag it had just set), which
+  is what made the first reading look like signal. Shipping it would have been a gate that cannot
+  fail. Worklog §62 carries the full diagnosis.
+
 * **State test 77 legs E and F — the wheel latch's ROW half** (ADR-0045, applied again). Leg A covers
   the count; leg E covers the split row, which the latch did not stamp. Unlike State tests 81, 82 and
   84 this one **can** fail on its own defect, and did: the window is between two wheel ticks, i.e.

@@ -167,3 +167,35 @@ line is kept as the correct expression of "the row it was derived in" rather tha
 
 State 2 874 / 0, DSP 396 / 0, TSan 0 warnings, valgrind 0 errors, all five probes 0.
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §61.
+
+## Applied again 2026-09-10 — the SOUND half inside the solo bracket
+
+This ADR's Decision has two sentences. The second — *"a store whose gesture bracket dispatches before
+it proves the topology inside the bracket, never outside it"* — was implemented in `setSoloMask` for
+the **count**: `beginChangeGesture()` fires, then the guard checks `bandCount() == expectedBands` and
+`soloMask() == expectedMask`. ADR-0039 settled that the count is not the whole topology, and the
+sound half of that guard was never written. A review filed it as *"release actions target replacement
+layouts"* (`SpectrumImager.cpp:2667`) and it is confirmed. **No new decision:** this is the same
+sentence applied to the half it did not cover, so ADR-0045's Status stands and no
+`ARCHITECTURE_REVIEW_GATE.md` item is triggered.
+
+**REENTRANT, and the file said otherwise.** `mouseUp`'s ADR-0050 comment asserted that the solo store
+paths "are CROSS-THREAD ONLY and no deterministic test enters them". That is true of `mouseUp`'s own
+body and false of the window that matters: it continues into `setSoloMask`, whose
+`beginChangeGesture()` notifies every listener **synchronously** ahead of the guard. A host answering
+that open with a same-count sound install lands after the caller's gate and before the store, and the
+band index the click latched then names a band whose boundaries the user never saw. The comment is
+corrected in place; the delete half of the same sentence stands (that window really is bounded by
+pure reads).
+
+**The fix is one clause** — `&& ! soundMovedUnderGesture()` — inside the bracket, where the ADR says
+it belongs. It self-disables when no gesture is in force (`gestureBands < 0`), so `removeBand`'s own
+mask remap and every record-less caller are untouched; and with nothing racing, the caller's gate has
+just proved these values, so nothing that used to commit stops committing.
+
+**Measured.** State test 79 **leg C** reaches it with a real `AudioProcessorParameter::Listener` and
+no thread; **leg D** is the control that an undisturbed solo click still writes the mask. Removing the
+clause fails leg C.
+
+State 2 879 / 0, DSP 396 / 0, TSan 0 warnings, valgrind 0 errors, all five probes 0.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §62.

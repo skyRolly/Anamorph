@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:1118 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:1131 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1398`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1444`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1118 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1131 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -11282,3 +11282,38 @@ identifier is stamped with the topology it was taken in and is void once that to
 ADR-0039/ADR-0051 already settled that the count is not the whole topology. One private member array
 is added and one handler gains a comparison; no parameter ID, serialization, threading-model,
 DSP-order or reported-latency change, no lock and no allocation. [Verified]
+
+## Twenty-second pass — the proof-to-action boundary (2026-09-10)
+
+**Lifecycle decisions, recorded.** Three completed workflow transcripts (15, 34 and 9 agents, no
+unfinished agent, no empty result) whose findings shipped in earlier rounds: all three closed. CI on
+`f9a5266` consumed as the baseline. One NEW five-agent workflow started, for independent invariant
+derivation only — and it earned its cost: the skeptic could not refute the release finding, and one
+agent found a defect neither the review nor the maintainer had.
+
+**Three sites, two accepted rules, no new ADR.** The wheel's within-tick window and `removeBand`'s
+entry snapshot are both ADR-0047 ("one read, derive the plan and the proof from it"). The solo store
+is ADR-0045's second sentence ("a store whose gesture bracket dispatches before it proves the topology
+inside the bracket") with the sound half missing. A panel judge argued one rule and a refuter argued
+two-plus-a-new-ADR; resolved from the ADR texts against both extremes.
+
+**The new finding.** `setSoloMask`'s `beginChangeGesture()` dispatches ahead of its guard, so the solo
+release window is REENTRANT — and `mouseUp`'s ADR-0050 comment asserted the opposite. The comment is
+corrected; the delete half of the same sentence stands.
+
+**Evidence at its real strength.** Only the solo guard is measured (State test 79 leg C kills its
+mutation). The `removeBand` and wheel guards are cross-thread-only and kill nothing; they are labelled
+defence in depth on the same footing as `mouseUp`'s `gestureBands == pressBands`.
+
+**A probe was built and withdrawn**, with both mistakes recorded: a control that cleared the flag it
+had just set, and then a detector with no ordering between the lane's write and the message-thread
+store, which counted benign ticks (38/1200 before a fix that could not have changed them, 34/1200
+after). A gate that cannot fail is worse than no gate.
+
+**Gate status.** Not triggered, and both panel agents concurred independently. All three changes
+REMOVE parameter reads and add no lock, atomic or shared object, so the cross-thread surface shrinks;
+no workflow file changes this round. No human approval is required and none is manufactured.
+
+**Documentation.** `ADR-0045` and `ADR-0047` (both applied again — no new decision); `CHANGELOG.md`
+`[0.9.8] ### Fixed`; `TESTING.md` (State test 79 legs C/D, and the withdrawn probe);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §62. [Verified]
