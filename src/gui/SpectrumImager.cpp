@@ -2697,7 +2697,9 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
     // and wrong as the whole answer**, corrected 2026-09-10: the delete window really is
     // cross-thread-only all the way into `removeBand`'s snapshot, but the solo window does not end
     // in this handler -- it continues into `setSoloMask`, whose `beginChangeGesture()` DISPATCHES
-    // ahead of its guard. So the solo half is REENTRANT and a deterministic test does enter it. That is the class ADR-0046, ADR-0047, ADR-0048 and ADR-0051
+    // ahead of its guard. So the solo half is REENTRANT and a deterministic test does enter it --
+    // State test 79 leg C, which the ADR-0045 clause inside that bracket now kills. The DELETE half
+    // is the cross-thread-only class ADR-0046, ADR-0047, ADR-0048 and ADR-0051
     // all CLOSED rather than accepted, and the reason is the same here: with the latch cleared, the
     // question is not merely unasked, it is unanswerable, so a later reader cannot add the check
     // without also finding this line.
@@ -3045,8 +3047,14 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
         // and then ADOPTED by the second: `gestureX` became the new row, `dragOrigX` was seeded from
         // it, and the tick steered the latched handle FROM ITS NEW POSITION -- a handle the pointer
         // is no longer over -- with `writeCrossovers` proving each store against the row it had just
-        // adopted, so nothing could refuse it. Measured at 38 in 1200 ticks, 0 after
-        // (`--wheel-adopt-probe`).
+        // adopted, so nothing could refuse it. UNMEASURED, and deliberately so: `--wheel-adopt-probe`
+        // was built for this window, read 38 in 1200 ticks before and 34 after -- not a signal --
+        // and a diagnostic showed it counting benign ticks, because its detector gated on a flag the
+        // lane set AFTER its store returned with no ordering against the message-thread store. The
+        // probe was WITHDRAWN rather than shipped as a gate that cannot fail; the attempt is in
+        // `docs/procedures/TESTING.md` and in the worklog. This guard is defence in depth on the
+        // same footing as `removeBand`'s entry proof: correct by ADR-0047's rule, inert with nothing
+        // racing, and with no reachable test.
         //
         // The stamp is the row this tick PROVED, and `seedDragOrigins` derives the origins from it,
         // so the plan, the stamp and the per-store proof are one measurement. A split that moves

@@ -2269,3 +2269,25 @@ tree the gate rejects. `-Wshadow` is now in the sweep, verified to run clean aft
 the second time this sweep has been widened by a warning that reached CI first (the first was
 `-Wunused-variable`, which it did catch once added), and the pattern is the same: the advisory sweep
 is only as good as the flags it is given.
+
+### 62j. A false measurement in the shipped source, found on the final re-read and corrected
+
+The in-source comment at the wheel's within-tick stamp ended *"Measured at 38 in 1200 ticks, 0 after
+(`--wheel-adopt-probe`)."* **That claim is false**, and it is the exact failure this round spent §62f
+documenting: the probe read 38/1200 before and **34/1200 after**, the diagnostic showed it counting
+benign ticks, and it was withdrawn. ADR-0047's own "Applied again" section, `TESTING.md` and the
+coverage pass all say so correctly; only the source comment — written before the probe was
+measured and not revised when it was withdrawn — carried the number as if the probe had confirmed
+the fix.
+
+Found by re-reading the round's own production diff against the final head rather than by any gate,
+which is worth stating: no lint, no test and no CI job can see a comment that claims a measurement
+nobody took. The comment now says the guard is UNMEASURED, gives the two readings and the reason the
+instrument was withdrawn, and points at `TESTING.md` and this worklog.
+
+The same re-read corrected the wrapping of the `mouseUp` comment edit from §62c and made its referent
+explicit: the sentence about the cross-thread-only class ADR-0046/0047/0048/0051 closed belongs to the
+DELETE half, since the solo half is now the reentrant one, with State test 79 leg C named as the test
+that enters it.
+
+Comment-only in both cases: object code identical, and the suite re-ran at 2 879 / 0.
