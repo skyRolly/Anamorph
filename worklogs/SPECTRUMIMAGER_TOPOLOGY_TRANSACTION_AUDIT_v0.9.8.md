@@ -2750,6 +2750,40 @@ labelled unmeasured at the declaration rather than claimed. The nested-`mouseUp`
 §64f **stays open**: the counter stops the inner scope clearing the outer claim, not a nested
 `mouseUp` running its tail and dropping the record there.
 
+### 65e-ii. The adversarial pass — what it settled, and a process error of mine
+
+A 33-agent workflow ran seven independent readings of the path, three skeptics per reading, and five
+option evaluators. What it settled:
+
+* **The mechanism and the uniqueness claim held** across all seven readings: `beginBandMove` is the
+  only site in the file that opens more than one gesture, and the interior is reachable.
+* **It found the fourth consequence** (§65b-ii), which I had missed, and which I then measured rather
+  than accepted. One skeptic named my error exactly: my "correction" of the review was *"an artefact
+  of a per-parameter call-counter probe that is blind to the fact that the interrupted begin's
+  dispatch is a LISTENER LOOP"*. That is right, and the retraction is §65b-ii.
+* **It narrowed reachability the same way I had**: a reading that claimed several live re-entry
+  vectors was refuted for *"a re-entry vector that the code proves inert, an omitted precondition
+  that turns 'reachable' into a much narrower conjunction"* — the editor's reconcile and the missing
+  staleness precondition, i.e. §65b-i independently.
+* **The option evaluators, measuring rather than arguing:** A **rejected** — one of its two readings
+  is *"measurably WORSE than the unfixed code"*; B **rejected** — it *"converts a transient unmatched
+  CLOSE into two permanently leaked OPEN change gestures"*; C **rejected** — it *"closes one of four
+  harms and replaces it with a strictly worse, ordering-independent one"*; D **viable, closes all
+  four, four lines** — and *"it converges on the shipped fix and is a distinct option in name only"*.
+  A sixth option the evaluators invented themselves — make the pin members mean "gesture OPEN"
+  rather than "gesture WANTED" — is viable but does not close all four, and they judged it *"a policy
+  change (abandon, not decline)"* that *"collides with an ADR section the repo already Accepted"*.
+  Recorded rather than dropped.
+
+**The process error is mine.** I launched the workflow and then implemented and committed the fix
+while it ran, so the tree moved three times under the agents. Almost every skeptic spent its pass
+refuting the *tree* rather than the finding — *"the reading refutes the finding using, as its
+evidence, the commit that FIXES the finding"* — and one reading even declared the finding refuted
+because it had read my own fix. The pass still produced its most valuable result, but most of its
+adversarial budget was spent on an artefact I created. **The rule this round adds: pin the audited
+revision for the agents (a `git show <sha>:path` extract, which one skeptic did unprompted) or do not
+touch the tree until the pass returns.**
+
 ### 65f. Evidence
 
 | Mutation | Killed |
