@@ -2562,3 +2562,40 @@ as redundant defence in depth, still unmeasured, and explicitly not presented as
 the line. Fixing a defect can make a neighbouring comment false, and that is exactly the class of
 error this file has had to correct twice in this series — so it is corrected in the same commit that
 causes it, not left for a later reader.
+
+### 64j. `macos-intel` red on `7c31452` — pluginval's own teardown, and it is NOT this PR's
+
+The documentation-only commit `7c31452` failed `macos-intel` step 15, *"pluginval AU (randomise x3),
+native Intel"*. Diagnosed rather than assumed, and it is **not this PR's** by three independent
+arguments:
+
+**1. The diff cannot cause it.** `8a520fd` → `7c31452` is **three Markdown files** — no source, no
+build file, no workflow. The binaries are byte-identical, and the same job at the same step passed on
+`8a520fd` minutes earlier. As a check on that reasoning rather than an assumption, the two runs'
+self-test counts were compared: both report **394** DSP and **2 861** state checks on this job, so the
+red run built the same tree the green one did (those figures differ from the Linux tree's 396 / 2 896
+because this job's platform gating differs — established from the green log, not supposed).
+
+**2. Every test passed.** The log ends `Completed tests in pluginval / Audio processing` → `SUCCESS`,
+and only *then*:
+
+```
+libc++abi: terminating due to uncaught exception of type std::__1::bad_function_call
+pluginval received Abort trap: 6, exiting immediately
+pluginval: CRASHED (au randomise pass 3/3, ... exit 9)
+```
+
+The crash is in **pluginval's own teardown**, after the plug-in has already been validated.
+
+**3. This exact signature is the case this repository's pluginval work exists for.** It is quoted
+verbatim in `scripts/run-pluginval.sh` (both the header reasoning and the classifier's self-test
+fixture) and in `CI_CD.md`, `TESTING.md` and this register — first observed on **PR #141, run
+34019453055, job `macos`, AU randomise pass 2/3**, with the same "SUCCESS first, then the teardown
+crash" shape. The PV round's fix was to stop calling it *"a plug-in that failed validation"* and start
+calling it `CRASHED`; it deliberately did **not** move the gate, and deliberately does **not** retry on
+macOS (`the retry exists for the Linux X11/XEmbed flake only`).
+
+**Disposition.** Established as not this PR's, so the one re-run this category allows is spent on it
+rather than a code change. Nothing here is skipped, disabled or quarantined, and no empty commit is
+pushed. If it reproduces identically on the re-run, that is new evidence about the *harness* — not
+about this change — and belongs to the pluginval crash record, not to ADR-0050.
