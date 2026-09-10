@@ -2254,3 +2254,18 @@ run first and first — unchanged by any edit here), U4, ADR-0044's partial-tran
 cancelled-spread ordering, and the TSan suppression scope (still exactly one entry, still
 harness-scoped, count assertion untouched). The historical comment block was read while tracing both
 windows; the only error found in it is the solo reachability sentence, which is §62c and is corrected.
+
+### 62i. CI failure on `22a5e1d` — a `-Wshadow` in the change set, and why preflight missed it
+
+`linux` step 25 and `linux-lto-tests` step 9 both failed on
+`src/gui/SpectrumImager.cpp:1208: warning: declaration of 'int b' shadows a parameter [-Wshadow]`.
+The new width-ownership loop used `b`, which is `removeBand (int b, int expectedBands)`'s own
+parameter. A **code issue in the change set**; the gate did its job. Renamed to `w`.
+
+**Why it escaped the local sweep, which is the part worth keeping.** `scripts/preflight.sh`'s advisory
+first-party sweep runs `-Wall -Wextra`, and `-Wshadow` is in NEITHER of those — it has to be asked for
+by name. The pinned CI gates carry it and the local smoke alarm did not, so the sweep was green on a
+tree the gate rejects. `-Wshadow` is now in the sweep, verified to run clean after the rename. This is
+the second time this sweep has been widened by a warning that reached CI first (the first was
+`-Wunused-variable`, which it did catch once added), and the pattern is the same: the advisory sweep
+is only as good as the flags it is given.

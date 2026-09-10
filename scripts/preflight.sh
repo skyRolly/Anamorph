@@ -88,7 +88,10 @@ if [ -n "$LOCAL_CXX" ] && [ -d build/_deps/juce-src/modules ]; then
     echo "== preflight: local first-party warning sweep ($(basename "$LOCAL_CXX")) =="
     SWEEP_LOG="$(mktemp)"
     for TU in src/gui/SpectrumImager.cpp tests/state_tests.cpp; do
-        "$LOCAL_CXX" -std=c++23 -fsyntax-only -Wall -Wextra \
+        # -Wshadow is NOT in -Wall -Wextra, and its absence is why a `-Wshadow` on a loop
+        # variable shadowing a function parameter reached CI on 2026-09-10 with this sweep green.
+        # The pinned gates carry it; this advisory one now does too.
+        "$LOCAL_CXX" -std=c++23 -fsyntax-only -Wall -Wextra -Wshadow \
             -I src -I src/dsp -I src/gui -I build/_deps/juce-src/modules \
             -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_STANDALONE_APPLICATION=1 \
             -DJUCE_WEB_BROWSER=0 -DJUCE_USE_CURL=0 \

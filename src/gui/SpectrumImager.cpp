@@ -1205,7 +1205,7 @@ void SpectrumImager::removeBand (int b, int expectedBands)
     // already refuse. ADR-0039's direction: a removal is REFUSED, never applied to a layout it
     // cannot vouch for.
     for (int k = 0; k < 3; ++k) if (! ownsSplit (k, nfr[k])) return;
-    for (int b = 0; b < 4; ++b) if (! ownsWidth (b, nwd[b])) return;
+    for (int w = 0; w < 4; ++w) if (! ownsWidth (w, nwd[w])) return;   // `w`, not `b`: `b` is the parameter
 
     float nf[3], nw[4];
     for (int k = 0, j = 0; k < N;     ++k) if (k != b)     nw[j++] = wd[k];
