@@ -2642,12 +2642,13 @@ second pin is closed *having never been opened* — an `endChangeGesture` with n
 open because the members are already cleared. The leak is an unmatched **close**, not a stuck-open
 gesture. Reachability, ordering and `soloPressBand == -1` in the resumed handler are all exact.
 
-**Three consequences, measured rather than argued** (State test 83, on the pre-fix tree):
+**Three consequences, measured rather than argued** (State test 83 leg E, on the pre-fix tree — one
+sequence, three observables):
 
 ```
 [leg E] the second pin was closed 1 time(s) having been opened 0
 [leg E] the resumed handler auditioned mask 0x80000000
-[leg G] the host's split at 6500.0 Hz was written back to 2000.0 Hz, with -1 gesture(s) open
+[leg E] the host's split at 6500.0 Hz was written back to 2000.0 Hz, with -1 gesture(s) open
 ```
 
 The second is `1 << soloPressBand` with `soloPressBand == -1` — undefined behaviour, and
@@ -2658,8 +2659,28 @@ predicate self-disables and `writeCrossovers` skips its count proof, so the burs
 pre-press origins back over the host's install — outside any change gesture, both having just been
 closed.
 
-All three were the **only** failures in the suite (2903 checks, 3 failures), so the reproduction is
-isolated.
+All three were the **only** failures in the suite, so the reproduction is isolated.
+
+### 65b-i. The reconcile that is live here — a claim of my own, corrected
+
+The first draft of this section and of the in-source comment said the re-entry arrives from *"`tick`'s
+reconcile, or the editor's stuck-drag one"*. **The editor's is inert here**, and the reason is a fix
+this repository already shipped: during a DRAG the button is genuinely down, and round 4 gave
+`anyPhysicalMouseButtonDown()` the OS's real button state (KI-013, resolved), so
+`isMouseButtonDownAnywhere() && ! anyPhysicalMouseButtonDown()` is false throughout. On the RELEASE
+side, where the button is up, it is the live one — the ranking is inverted between the two windows,
+and round 7's record has it the other way round for its own window, correctly.
+
+**`tick`'s gate is also false on entry**, which makes this a precondition rather than a free-standing
+re-entry: `mouseDrag`'s first statement has just proved the record, and everything between that proof
+and the dispatch is a pure computation. The only sequence production can produce is *host writes a
+parameter from inside the gesture open → the gate becomes true → the loop it pumps runs the
+reconcile*. Leg E performs exactly that order; an earlier draft of the fixture had the write and the
+cancel the wrong way round, which modelled a call production would not make. The direct
+`cancelActiveDrag()` in the leg stands in for `tick`, which a headless fixture cannot drive — it
+returns at `isShowing()` before the reconcile, the standing residual already recorded for the
+held-audition guard — so the leg exercises the reconcile's **body** with its gate made true one line
+above. Re-measured after the correction: identical results, all three.
 
 ### 65c. Which band, and why leg C could not have found this
 
@@ -2667,7 +2688,7 @@ isolated.
 only for a **middle** band, `0 < b < N - 1`, which needs `N >= 3`. State test 83 leg C — the existing
 coverage — presses the **last** band deliberately (its comment says so: *"so mbFreqHigh carries the
 whole count"*), where `soloMoveRight == -1` and only one `beginGesture` ever runs. The window is
-structurally invisible from there. Legs E and G press band 1 at four bands, found by walking the solo
+structurally invisible from there. Leg E presses band 1 at four bands, found by walking the solo
 lane and taking the second contiguous run of the "Solo this band" tooltip rather than by hardcoded
 geometry, so the leg does not depend on the split values the fixture happens to install.
 
@@ -2707,8 +2728,8 @@ labelled unmeasured at the declaration rather than claimed. The nested-`mouseUp`
 
 | Mutation | Killed |
 |---|---|
-| `beginBandMove` no longer claims the record | legs E (×2) and G — **3 checks**, and nothing else |
-| `cancelActiveDrag` no longer declines | those 3 **and** State test 79 leg E — **4 checks** |
+| `beginBandMove` no longer claims the record | leg E's three checks, and nothing else |
+| `cancelActiveDrag` no longer declines | those three **and** State test 79 leg E — **4 checks** |
 | `mouseUp` no longer claims the record | State test 79 leg E only — **1 check** |
 | the depth degraded to a set/clear flag | **nothing** — §65e |
 
@@ -2737,5 +2758,5 @@ manufactured.**
 | U4 wheel width undo | **Unchanged** |
 | ADR-0044 partial-transaction residue | **Unchanged** |
 | cancelled-spread visual ordering | **Unchanged** |
-| TSan suppression scope | **Unchanged** — still exactly one entry, `Matched 1 suppressions` with one breakdown line. Legs E/F/G add no new lock-order shape: they write nothing from inside a gesture open that leg C did not already |
+| TSan suppression scope | **Unchanged** — still exactly one entry, `Matched 1 suppressions` with one breakdown line. Legs E and F add no new lock-order shape: they write nothing from inside a gesture open that State test 79 leg E did not already |
 | historical comment blocks | **One rename propagated** — `releaseActionActive`/`ScopedReleaseAction` are now `gestureActionDepth`/`ScopedGestureAction`, and the declaration comment says why the type changed. No claim in the round-7 text became false |

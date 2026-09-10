@@ -885,9 +885,10 @@ void SpectrumImager::beginBandMove (int b, int n)
     // ADR-0050, APPLIED TO THE ONE STARTUP THAT OPENS TWO GESTURES. This function is the only place
     // in the class that brackets MORE THAN ONE parameter, and the two opens are two statements:
     // the first one DISPATCHES, and `mouseDrag` published `soloMovedBand = true` before calling in.
-    // So a host that pumps the message loop from that first `beginChangeGesture` lands a reconcile
-    // -- `tick`'s, or the editor's stuck-drag one -- in `cancelActiveDrag` with the move's members
-    // set and only half its gestures open. That call ran `endBandMove()`, which closes BOTH pins
+    // So a host that pumps the message loop from that first `beginChangeGesture` lands `tick`'s
+    // reconcile -- `if (gestureIsStale()) cancelActiveDrag();` -- in `cancelActiveDrag` with the
+    // move's members set and only half its gestures open. That call ran `endBandMove()`, which
+    // closes BOTH pins
     // from the members: an `endChangeGesture` on a parameter that was never opened, i.e. a NEGATIVE
     // open-gesture count in the processor and a spurious undo boundary. It also cleared the
     // members, so the statement below never opened the second pin at all, and it cleared
@@ -896,8 +897,19 @@ void SpectrumImager::beginBandMove (int b, int n)
     // and called `moveBand` with every ownership predicate self-disabled, writing the pre-press
     // split positions back over whatever the host had just installed, outside any change gesture.
     //
-    // Measured, all three: State test 83 leg E (the unopened pin closed once, and mask 0x80000000),
-    // leg G (a host's 6500 Hz split written back to 2000.0 Hz with the gesture count at -1).
+    // THE RECONCILE THAT IS LIVE HERE IS `tick`'S, AND ONLY `tick`'S, which is the opposite of the
+    // release-side windows. During a DRAG the button is genuinely down, so the editor's stuck-drag
+    // reconcile (`isMouseButtonDownAnywhere() && ! anyPhysicalMouseButtonDown()`) is inert -- KI-013
+    // was resolved in round 4 by giving that predicate the OS's real button state, which is exactly
+    // what makes it inert here. And `tick`'s gate is FALSE on entry: `mouseDrag`'s first statement
+    // has just proved the record, and everything between that proof and this dispatch is a pure
+    // computation. So the sequence is not "a reconcile can arrive", it is: the host writes a
+    // parameter from inside the gesture open, which makes the gate true, and the loop it pumps then
+    // runs the reconcile. Stated rather than glossed, because it is a precondition and not a
+    // free-standing re-entry.
+    //
+    // Measured, all three, in that order: State test 83 leg E -- the unopened pin closed once, mask
+    // 0x80000000, and a host's 6500 Hz split written back to 2000.0 Hz with the gesture count at -1.
     //
     // The claim below is the same one `mouseUp` takes, and for the same reason ADR-0050 gives: an
     // action that has published its identifiers owns the record until it has finished establishing

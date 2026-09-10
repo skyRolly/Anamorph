@@ -1130,22 +1130,30 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   stands in front of it; reverting **both** fails legs A, B and C (3 checks). A surviving single-line
   mutation at either site is therefore not evidence of a hole — the same shape `removeBand`'s count
   proof already carries.
-  **Legs E, F and G (2026-09-10) take the same re-entry from the OPEN, during startup**, which is a
+  **Legs E and F (2026-09-10) take the same re-entry from the OPEN, during startup**, which is a
   different window and needed a different fixture. `beginBandMove` is the only function in the class
   that brackets two parameters, and its two `beginGesture` calls are two statements — the first
   dispatches, `mouseDrag` has already published `soloMovedBand = true`, and the nested
   `cancelActiveDrag` then ran `endBandMove()` over BOTH pins. Leg C could never see this: it presses
-  the **last** band, whose move has one pin (`soloMoveRight == -1` at `b == N - 1`). Legs E and G
-  press a **middle** band — found by walking the solo lane and taking the second contiguous run of
-  "Solo this band" rather than by hardcoded geometry — so both pins are live. Leg E counts both
-  directions on the second pin and asserts that no close ever arrives while no open is outstanding
-  (pre-fix: closed 1, opened 0), and separately captures the raw argument to `onSoloPreview`, which
-  the resumed handler computes as `1 << soloPressBand` after the nested cancel set that to `-1`
-  (pre-fix: `0x80000000`). Leg G arms the same re-entry to also install a split at 6500 Hz and
-  asserts the resumed `moveBand` writes nothing (pre-fix: written back to 2000.0 Hz with the
-  gesture count at −1). Leg F is the control — an uninterrupted band move still opens both pins
+  the **last** band, whose move has one pin (`soloMoveRight == -1` at `b == N - 1`). Leg E presses a
+  **middle** band — found by walking the solo lane and taking the second contiguous run of
+  "Solo this band" rather than by hardcoded geometry — so both pins are live.
+  **The fixture's ORDER is the production order, and an earlier draft had it backwards.** During a
+  drag the button is genuinely down, so the editor's stuck-drag reconcile is inert (KI-013's round-4
+  resolution gave that predicate the OS's real button state, which is what makes it so); the live one
+  is `tick`'s `if (gestureIsStale()) cancelActiveDrag();`, whose gate is **false** on entry because
+  `mouseDrag`'s first statement has just proved the record. So the leg's listener writes `mbFreqMid`
+  to 6500 Hz **first** — that is what makes the gate true — and only then runs the reconcile's body.
+  The direct `cancelActiveDrag()` stands in for `tick`, which a headless fixture cannot drive: it
+  returns at `isShowing()` before the reconcile, the standing residual already recorded for the
+  held-audition guard.
+  One sequence, three assertions: no close ever arrives on the second pin while no open is
+  outstanding (pre-fix: closed 1, opened 0); the raw argument to `onSoloPreview` is a single valid
+  band bit, where the resumed handler computes `1 << soloPressBand` after the cancel set that to
+  `-1` (pre-fix: `0x80000000`); and the host's 6500 Hz split survives (pre-fix: written back to
+  2000.0 Hz with the gesture count at −1). Leg F is the control — an uninterrupted band move still opens both pins
   exactly once and closes both exactly once, so a "fix" that merely stopped opening the second pin
-  would fail it. **Mutation record:** removing `beginBandMove`'s claim fails legs E (×2) and G and
+  would fail it. **Mutation record:** removing `beginBandMove`'s claim fails leg E's three checks and
   nothing else; removing `cancelActiveDrag`'s decline fails those three **and** State test 79 leg E;
   removing `mouseUp`'s claim fails State test 79 leg E only. The three together are the
   orthogonality proof — each claiming site is measured on its own and neither subsumes the other.

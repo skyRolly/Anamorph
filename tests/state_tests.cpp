@@ -19104,19 +19104,38 @@ struct ReenterCancelOnClose final : public juce::AudioProcessorParameter::Listen
 };
 // The same re-entry taken from the OPEN instead of the close, for legs E and F. `beginBandMove`
 // opens its two pins in two statements, and the FIRST one dispatches -- so a host that pumps the
-// message loop from there lands the editor's reconcile with the move's members published and only
-// half of its gestures open.
-struct ReenterCancelOnOpen final : public juce::AudioProcessorParameter::Listener
+// message loop from there re-enters the editor with the move's members published and only half of
+// its gestures open.
+//
+// THE ORDER IS THE PRODUCTION ORDER, AND AN EARLIER DRAFT OF THIS FIXTURE HAD IT WRONG. During a
+// real DRAG the button is genuinely down, so the editor's stuck-drag reconcile
+// (`isMouseButtonDownAnywhere() && ! anyPhysicalMouseButtonDown()`, PluginEditor.cpp) is inert --
+// KI-013 was resolved in round 4 by giving that predicate the OS's real button state, which is the
+// whole point of it. The reconcile that IS live here is `tick`'s,
+// `if (gestureIsStale()) cancelActiveDrag();`, and its gate is FALSE on entry: `mouseDrag`'s first
+// statement has just proved the record, and everything between that proof and the dispatch is a
+// pure computation. So the only sequence production can actually produce is: the host writes a
+// parameter from inside the gesture open, and THEN the reconcile it pumps finds the gesture stale.
+// The write comes first here for that reason.
+//
+// The direct `cancelActiveDrag()` call stands in for `tick`, which cannot be driven from a headless
+// fixture: it returns at `isShowing()` before reaching the reconcile, which is the standing residual
+// recorded for the held-audition guard. What the fixture models is the reconcile's BODY, reached
+// with its gate made true by the write one line above.
+struct WriteThenReenterCancelOnOpen final : public juce::AudioProcessorParameter::Listener
 {
     anamorph::gui::SpectrumImager* imager = nullptr;
-    bool armed = false, fired = false;
+    juce::RangedAudioParameter* target = nullptr;
+    float to = 0.0f;
+    bool  armed = false, fired = false;
     void parameterValueChanged (int, float) override {}
     void parameterGestureChanged (int, bool starting) override
     {
-        if (! starting || ! armed || imager == nullptr) return;
+        if (! starting || ! armed || imager == nullptr || target == nullptr) return;
         armed = false;
         fired = true;
-        imager->cancelActiveDrag();
+        target->setValueNotifyingHost (target->convertTo0to1 (to));  // the host's write...
+        imager->cancelActiveDrag();                                  // ...then the reconcile it pumps
     }
 };
 // Counts both directions on the parameter it is attached to, so an END WITH NO OPEN is visible as
@@ -19354,21 +19373,40 @@ static void testACancellationClosesEachGestureOnce()
         return (first >= 0.0f && last >= first) ? 0.5f * (first + last) : -1.0f;
     };
 
-    // ---- LEG E: the defect ----------------------------------------------------
+    // ---- LEG E: the defect, in the order production can produce it ------------
+    //  A host writes `mbFreqMid` from inside the FIRST pin's gesture open, which
+    //  is what makes `tick`'s reconcile gate (`gestureIsStale()`) true -- it is
+    //  false on entry, because `mouseDrag`'s first statement has just proved the
+    //  record and nothing between that proof and this dispatch writes anything.
+    //  The reconcile's body then runs `cancelActiveDrag()` with the move's
+    //  members set and only half its gestures open, and `endBandMove()` closes
+    //  BOTH pins from those members.
+    //
+    //  Three observables, one sequence:
+    //    1. the second pin is CLOSED having never been OPENED -- an
+    //       `endChangeGesture` with no matching `beginChangeGesture`, i.e. the
+    //       host's open-gesture count goes to -1 and it records a spurious undo
+    //       boundary;
+    //    2. the outer frame's second statement is skipped (the members are
+    //       already -1), and the handler it returns into computes
+    //       `1 << soloPressBand` with `soloPressBand` cleared to -1 -- undefined
+    //       behaviour, and a solo audition for a band set the press never named;
+    //    3. `moveBand` is called with `gestureBands == -1`, on which every
+    //       ownership predicate self-disables and `writeCrossovers` skips its
+    //       count proof, so the burst writes the pre-press origins back over the
+    //       host's install -- outside any change gesture, both having just been
+    //       closed. That is the ADR-0040 / ADR-0047 failure reached by the record
+    //       being dropped rather than by a race.
     {
         resetWorld();
         const float sx = soloRunCentre (1);          // band 1 -- pins 0 and 1, both live
         check (sx >= 0.0f, "leg E: a MIDDLE band's solo handle is findable at four bands");
         if (sx >= 0.0f)
         {
-            ReenterCancelOnOpen poke;  poke.imager = imager; poke.armed = true;
-            CountBothWays      right;
-            // The resumed handler's OWN band identifier, observed rather than inferred: the very
-            // next statement after `beginBandMove` returns is
-            // `if (onSoloPreview) onSoloPreview (1 << soloPressBand)`, and the nested cancel set
-            // `soloPressBand = -1`. A shift by a negative count is undefined behaviour, and the
-            // value that reaches the processor is masked to `0x0F` there, so the audition asks for
-            // a band set the press never named. Capture the RAW argument.
+            WriteThenReenterCancelOnOpen poke;
+            poke.imager = imager; poke.target = midP; poke.to = 6500.0f; poke.armed = true;
+            CountBothWays right;
+            // The resumed handler's own band identifier, observed rather than inferred.
             auto savedPreview = imager->onSoloPreview;
             int  seenMask = -1; bool sawPreview = false;
             imager->onSoloPreview = [&] (int m) { sawPreview = true; seenMask = m; };
@@ -19379,18 +19417,27 @@ static void testACancellationClosesEachGestureOnce()
             loP->removeListener  (&poke);
             midP->removeListener (&right);
             imager->onSoloPreview = savedPreview;
-            check (poke.fired, "leg E: the nested cancellation ran inside the first pin's gesture open");
+            check (poke.fired, "leg E: the host write and the reconcile both ran inside the first pin's open");
+
             if (right.closesWithNoOpen != 0)
                 std::printf ("  [leg E] the second pin was closed %d time(s) having been opened %d\n",
                              right.closes, right.opens);
             check (right.closesWithNoOpen == 0,
                    "leg E: a cancellation re-entered during band-move startup never closes a gesture it never opened");
+
             const bool maskSane = (! sawPreview)
                                || (seenMask == 1 || seenMask == 2 || seenMask == 4 || seenMask == 8);
             if (! maskSane)
                 std::printf ("  [leg E] the resumed handler auditioned mask 0x%X\n", (unsigned) seenMask);
             check (maskSane,
                    "leg E: ...and the resumed handler never auditions a mask derived from a cleared band");
+
+            const float midNow = midP->convertFrom0to1 (midP->getValue());
+            if (std::abs (midNow - 6500.0f) > 1.0f)
+                std::printf ("  [leg E] the host's split at 6500.0 Hz was written back to %.1f Hz,"
+                             " with %d gesture(s) open\n", midNow, right.opens - right.closes);
+            check (std::abs (midNow - 6500.0f) <= 1.0f,
+                   "leg E: ...and writes no split at all once its record has been dropped");
             imager->cancelActiveDrag();
         }
     }
@@ -19420,45 +19467,6 @@ static void testACancellationClosesEachGestureOnce()
                    "leg F: ...and the cancellation closes both exactly once");
             check (left.closesWithNoOpen == 0 && right.closesWithNoOpen == 0,
                    "leg F: ...with no close arriving ahead of its open");
-        }
-    }
-
-    // ---- LEG G: the write half -- ownership disarmed, and no gesture to hold it -
-    //  The nested cancel sets `gestureBands = -1`, on which EVERY ownership
-    //  predicate self-disables (`ownsSplit`/`ownsWidth` -> true,
-    //  `soundMovedUnderGesture` -> false). The resumed handler then calls
-    //  `moveBand (x, gestureBands)`, i.e. with `n == -1`, so `writeCrossovers`
-    //  skips its `bandCount() != gestureBands` proof as well. Both pins are now
-    //  -1, so `projectFromOrig` returns the ORIGINS untouched -- and any split a
-    //  host moved inside the dispatch is more than `kSplitMovedPx` away from its
-    //  origin, so the burst writes the pre-interruption position back over it.
-    //  Outside any change gesture, because both were just closed.
-    //
-    //  This is the ADR-0040 / ADR-0047 failure exactly, reached not by a race but
-    //  by the record being dropped mid-startup.
-    {
-        resetWorld();
-        const float sx = soloRunCentre (1);
-        check (sx >= 0.0f, "leg G: the middle band's solo handle is findable");
-        if (sx >= 0.0f)
-        {
-            ReenterCancelThenWriteOnOpen poke;
-            poke.imager = imager; poke.target = midP; poke.to = 6500.0f; poke.armed = true;
-            CountBothWays mid;
-            loP->addListener  (&poke);
-            midP->addListener (&mid);
-            imager->mouseDown (mev (sx, soloY, sx, soloY, false));
-            imager->mouseDrag (mev (sx + 8.0f, soloY, sx, soloY, true));
-            loP->removeListener  (&poke);
-            midP->removeListener (&mid);
-            check (poke.fired, "leg G: the nested cancel and the host write both ran inside the first open");
-            const float midNow = midP->convertFrom0to1 (midP->getValue());
-            if (std::abs (midNow - 6500.0f) > 1.0f)
-                std::printf ("  [leg G] the host's split at 6500.0 Hz was written back to %.1f Hz,"
-                             " with %d gesture(s) open\n", midNow, mid.opens - mid.closes);
-            check (std::abs (midNow - 6500.0f) <= 1.0f,
-                   "leg G: a band move whose record was dropped mid-startup writes no split at all");
-            imager->cancelActiveDrag();
         }
     }
 

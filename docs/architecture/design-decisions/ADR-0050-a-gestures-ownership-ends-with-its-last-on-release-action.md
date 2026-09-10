@@ -351,10 +351,10 @@ if (! soloMovedBand)  { soloMovedBand = true; beginBandMove (soloPressBand, gest
 
 ### What a re-entry did
 
-A host that pumps the message loop from the first `beginChangeGesture` lands a reconcile — `tick`'s,
-or the editor's stuck-drag one — in `cancelActiveDrag` with the move's members set and half its
-gestures open. Round 7's guard did not cover it: that flag is set only by `mouseUp`. So the nested
-call ran `endBandMove()`, which closes **both** pins from the members. Three consequences, all
+A host that pumps the message loop from the first `beginChangeGesture` lands `tick`'s reconcile —
+`if (gestureIsStale()) cancelActiveDrag();` — in `cancelActiveDrag` with the move's members set and
+half its gestures open. Round 7's guard did not cover it: that flag is set only by `mouseUp`. So the
+nested call ran `endBandMove()`, which closes **both** pins from the members. Three consequences, all
 measured rather than argued:
 
 1. an `endChangeGesture` on a parameter that was **never opened** — the negative open-gesture count
@@ -366,6 +366,25 @@ measured rather than argued:
    writing the pre-press split positions back over whatever the host had installed. That last one
    is the ADR-0040 / ADR-0047 failure exactly, reached not by a race but by the record being
    dropped mid-startup.
+
+### The reconcile that is live here — and a claim of this section's own first draft, corrected
+
+**Only `tick`'s reconcile reaches this window, which is the opposite of the release-side ones**, and
+the first draft of this section named both. During a **drag** the button is genuinely down, so the
+editor's stuck-drag reconcile — `isMouseButtonDownAnywhere() && ! anyPhysicalMouseButtonDown()`,
+`PluginEditor.cpp` — is **inert**. KI-013 was resolved in round 4 by giving that predicate the OS's
+real button state (`+[NSEvent pressedMouseButtons]` on macOS), and that resolution is precisely what
+makes it inert here; on the release side, where the button is up, it is the live one.
+
+And `tick`'s gate is **false on entry**: `mouseDrag`'s first statement has just proved the record,
+and everything between that proof and the dispatch is a pure computation. So this is not a
+free-standing re-entry — it has a **precondition**: the host writes a parameter from inside the
+gesture open, which makes `gestureIsStale()` true, and the loop it pumps then runs the reconcile.
+That is the order State test 83 leg E performs, and an earlier draft of the fixture had the two the
+wrong way round. The direct `cancelActiveDrag()` call in the leg stands in for `tick`, which cannot
+be driven from a headless fixture — it returns at `isShowing()` before reaching the reconcile, the
+standing residual already recorded for the held-audition guard — so what the leg exercises is the
+reconcile's **body**, reached with its gate made true one line above.
 
 ### The review's own wording, corrected
 
@@ -405,14 +424,15 @@ reaches it.
 
 ### Evidence
 
-State test 83 legs E, F and G. Leg C — the previous coverage — presses the **last** band, whose move
-has one pin (`soloMoveRight == -1` because `b == N - 1`), so it could never see the interior; legs E
-and G press a **middle** band, which has both.
+State test 83 legs E and F. Leg C — the previous coverage — presses the **last** band, whose move
+has one pin (`soloMoveRight == -1` because `b == N - 1`), so it could never see the interior; leg E
+presses a **middle** band, which has both, found by walking the solo lane rather than by hardcoded
+geometry. Leg E is one sequence with three assertions, one per consequence above.
 
 | Mutation | Killed |
 |---|---|
-| `beginBandMove` no longer claims the record | legs E (×2) and G — **3 checks**, and nothing else |
-| `cancelActiveDrag` no longer declines | those 3 **and** State test 79 leg E — **4 checks** |
+| `beginBandMove` no longer claims the record | leg E's three checks, and nothing else |
+| `cancelActiveDrag` no longer declines | those three **and** State test 79 leg E — **4 checks** |
 | `mouseUp` no longer claims the record | State test 79 leg E only — **1 check** |
 | the depth degraded to a set/clear flag | **nothing** — see above |
 

@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:1198 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:1210 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1511`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1523`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1198 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1210 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -11432,7 +11432,12 @@ only this one has an interior a re-entry can land in — and its two `beginGestu
 statements. `mouseDrag` publishes `soloMovedBand = true` before calling in, so a host that pumps the
 message loop from the first `beginChangeGesture` lands a reconcile in `cancelActiveDrag` with the
 move's members set and half its gestures open. Round 7's guard did not cover it: that claim is taken
-only by `mouseUp`.
+only by `mouseUp`. **The reconcile that reaches this window is `tick`'s alone** — during a drag the
+button is genuinely down, so the editor's stuck-drag one is inert (KI-013's round-4 resolution is
+what makes it so) — and its gate is false on entry, so the sequence has a precondition: the host
+writes a parameter from inside the gesture open, and the loop it pumps then finds the gesture stale.
+An earlier draft of this entry named both reconciles and the fixture had the write and the cancel the
+wrong way round; both are corrected, and the re-measured results are identical.
 
 **Three consequences, each measured.** The nested `endBandMove()` closes **both** pins from the
 members, so the second is closed having never been opened (gesture count **−1**, spurious undo
@@ -11448,8 +11453,8 @@ are exact.
 
 **Why the existing leg could not find it.** State test 83 leg C presses the **last** band, whose
 move has one pin (`soloMoveRight == -1` at `b == N - 1`); the window is structurally invisible from
-there. Legs E, F and G press a middle band, discovered by walking the solo lane rather than by
-hardcoded geometry.
+there. Legs E and F press a middle band, discovered by walking the solo lane rather than by
+hardcoded geometry; leg E is one sequence with three assertions, one per consequence.
 
 **The fix** is ADR-0050's ownership claim taken for the startup — two lines — chosen over publishing
 `soloMovedBand` late (turns an unmatched close into an unmatched open), tracking which pins opened
@@ -11457,7 +11462,7 @@ hardcoded geometry.
 became `int gestureActionDepth` because a second user makes nesting reachable; **degrading it back
 to a set/clear flag kills nothing**, and that is recorded at the declaration rather than claimed.
 
-**Evidence.** Removing `beginBandMove`'s claim kills legs E (×2) and G and nothing else; removing
+**Evidence.** Removing `beginBandMove`'s claim kills leg E's three checks and nothing else; removing
 `cancelActiveDrag`'s decline kills those three **and** State test 79 leg E; removing `mouseUp`'s
 claim kills State test 79 leg E only — each claiming site measured on its own, neither subsuming the
 other. Leg F is the positive control. No probe: the window is deterministic, so a stress probe would
@@ -11468,5 +11473,5 @@ thread, lock, atomic or cross-thread path added. Applies ADR-0050's Decision to 
 to defeat it. No new ADR. No human approval required.
 
 **Documentation.** `ADR-0050` (applied again — no new decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
-`docs/procedures/TESTING.md` (State test 83 legs E/F/G);
+`docs/procedures/TESTING.md` (State test 83 legs E and F);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §65. [Verified]
