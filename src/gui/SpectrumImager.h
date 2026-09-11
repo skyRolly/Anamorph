@@ -81,20 +81,45 @@ private:
     int   bandCount()       const noexcept;
     float crossover (int i) const noexcept;
     float bandWidth (int i) const noexcept;
-    float bandLeftX (int b) const noexcept;
-    float bandRightX (int b) const noexcept;
+    // ADR-0046/0051: a band's EDGES answer under the topology and the split row they are given,
+    // on the same terms as `bandAtX`/`handleNearX`. `n < 0` and `fHz == nullptr` read live, which is
+    // what a caller that stamps nothing wants. Hit-test only -- `paint` draws from the eased
+    // `dispLeftX`/`dispRightX` and never calls these.
+    float bandLeftX (int b, int n = -1, const float* fHz = nullptr) const noexcept;
+    float bandRightX (int b, int n = -1, const float* fHz = nullptr) const noexcept;
     bool  enabled() const noexcept;
     int   soloMask() const noexcept;           // 4-bit solo mask
-    bool  bandSoloed (int b) const noexcept;
 
-    int   bandAtX (float x) const noexcept;
-    int   handleNearX (float x) const noexcept;
-    bool  nearWidthLine (juce::Point<float> p, int b) const noexcept;
-    juce::Rectangle<float> deleteBox (int b) const noexcept;   // x to remove a band (bottom-left)
-    juce::Rectangle<float> soloBox (int b) const noexcept;     // headphone solo, top-centre
+    // ADR-0051. THE COUNT IS ONLY HALF OF A TOPOLOGY: the SPLIT ROW is the other half, and it needs
+    // the same treatment. `captureSplits` takes all three at once; `splitAt` answers from that
+    // capture, or reads live when the caller has none (`fHz == nullptr`), so a caller that passes
+    // nothing behaves exactly as it did. A pass that derives an index from the splits and then
+    // derives a BOUNDARY from them again was taking two readings of a row three threads write.
+    void  captureSplits (float* fHz) const noexcept;
+    float splitAt (int i, const float* fHz) const noexcept;
+
+    // ADR-0046: `n` is the topology to answer under. A caller that has already read the count,
+    // and is going to stamp an index with it, MUST pass it -- otherwise these re-read the live
+    // count and can answer under a topology the caller never proved. -1 means "read it yourself",
+    // which is right for the hover/paint callers that prove nothing and stamp nothing.
+    // ADR-0051: and `fHz` is the split row to answer under, on the same terms.
+    int   bandAtX (float x, int n = -1, const float* fHz = nullptr) const noexcept;
+    int   handleNearX (float x, int n = -1, const float* fHz = nullptr) const noexcept;
+    // ADR-0051, THE WIDTH ROW ON THE SAME TERMS. This decides whether a press is a WIDTH
+    // interaction by measuring the cursor against `bandWidth (b)` -- a live read, inside a handler
+    // that has already stamped the widths. `wNorm` is the press's own `gestureW`; `nullptr` keeps
+    // the live read for the hover and for the wheel's Alt branch, neither of which has a stamped
+    // row to answer under.
+    bool  nearWidthLine (juce::Point<float> p, int b, const float* wNorm = nullptr) const noexcept;
+    juce::Rectangle<float> deleteBox (int b, int n = -1, const float* fHz = nullptr) const noexcept;
+    juce::Rectangle<float> soloBox (int b, int n = -1, const float* fHz = nullptr) const noexcept;
     juce::Rectangle<float> numberChip (int i) const noexcept;
-    int   deleteHit (juce::Point<float>) const noexcept;       // band whose x is under the cursor
-    int   soloHit (juce::Point<float>) const noexcept;         // band whose headphone is under the cursor
+    // ADR-0046 COMPLETED. These are the two derivations that ADR named and left re-reading, on the
+    // stated grounds that their window "is the fail-safe half only". That is true of `deleteHit`
+    // -- `mouseUp` re-runs it and compares to the press's index -- and it is NOT true of `soloHit`,
+    // whose index has no release-time confirmation of any kind. See the ADR's 2026-09-10 amendment.
+    int   deleteHit (juce::Point<float>, int n = -1, const float* fHz = nullptr) const noexcept;
+    int   soloHit (juce::Point<float>, int n = -1, const float* fHz = nullptr) const noexcept;
 
     float magForColumn (float xa, float xb) const noexcept;
     float magCubic (float bin) const noexcept;
@@ -110,17 +135,63 @@ private:
     // split may otherwise be dragged anywhere, pushing its neighbours aside, and a
     // crowded insert spreads the neighbours apart (0.6.10 #1/#25/#26).
     void  projectGaps (float* xs, int count, int pin) const noexcept;
+    // Seeds `dragOrigX` for a gesture that is about to START, and stamps the ownership record for
+    // it. EVERY slot, never just the splits in use: the consumers re-read a LIVE `bandCount()`, so a
+    // host raising Bands mid-drag makes them read entries a "0 .. splits-in-use" capture never
+    // wrote. Call this only where no record is in force, or where this class has just changed the
+    // row itself before any identifier existed -- MID-GESTURE it launders a foreign write into the
+    // gesture's own claim, which is what `beginBandMove` did until 2026-09-09.
+    void  captureDragOrigins() noexcept;
+    // ADR-0051: the origin half of `captureDragOrigins`, on its own, for the callers that have
+    // ALREADY stamped and had that stamp proved -- `mouseDown`'s handle branch (`mouseDown` stamps
+    // at the top, for every branch) and `beginBandMove` (reached with `mouseDrag`'s gate one step
+    // behind it). Stamping twice in one press is two readings of the same row, which is the defect
+    // this ADR is about; stamping twice with a PROVED record in force also destroys it.
+    void  seedDragOrigins() noexcept;
+    void  captureGestureSound() noexcept;
+    // ADR-0041. Store, then confirm IN PARAMETER SPACE that this store is what the parameter now
+    // holds, and hand back the value to own. False means somebody wrote from inside the store.
+    bool  storeOwned (juce::RangedAudioParameter* p, float plain, float& ownedNorm) noexcept;
     // Reversible projection: pin one or two splits at target x, keep every OTHER split
     // as close to its drag-start position (orig) as the min gap allows, so a pushed
     // neighbour springs back when the pin moves away again (0.6.13 #8/#9/#10/#11).
     void  projectFromOrig (float* out, const float* orig, int count,
                            int pinA, float xA, int pinB, float xB) const noexcept;
-    void  writeCrossovers (const float* xs, int count);
-    void  dragCrossoverTo (int handle, float x);
-    bool  bandAddTarget (int b, float x, float& outX) const noexcept;
+    // ADR-0040: these return FALSE when the gesture lost ownership part-way through the burst, so
+    // the caller abandons the rest of the event and voids the gesture. `true` means every store this
+    // pass made was one the gesture still owned.
+    bool  writeCrossovers (const float* xs, int count);
+    // ADR-0042: the neighbour spread of a reset or a text commit, applied only to the world the plan
+    // was computed from. `was` holds each split's normalised value at plan time; a slot that no
+    // longer holds it belongs to somebody else and the spread stops there. Returns false then.
+    // `pinNorm` is the normalised value the PIN was just confirmed to hold: every position in `xs`
+    // was computed to make room for it, so a spread that carries on after the pin has moved applies
+    // its plan around a split that is no longer there (ADR-0043).
+    bool  spreadSplits (const float* xs, const float* was, int count, int except, float pinNorm);
+    // ADR-0046: `n` is the topology the caller proved; it sizes the plan so the burst's extent
+    // and the per-store proof inside `writeCrossovers` come from ONE reading. -1 = read it here.
+    bool  dragCrossoverTo (int handle, float x, int n = -1);
+    // ADR-0048: `n` is the topology the CALLER derived `b` under, exactly as `bandAtX` and
+    // `handleNearX` take one. -1 keeps the live read for callers that have no latch. Without it the
+    // target index and the band edges came from two readings of `mbBands`, and a count raised
+    // between them clamped the click into a band it was never aimed at.
+    // ADR-0051: `fHz` closes the residual that one left open -- `lo` and `hi` still read the splits
+    // live, so the band index could be answered under one split row and clamped against another.
+    bool  bandAddTarget (int b, float x, float& outX, int n = -1,
+                         const float* fHz = nullptr) const noexcept;
 
-    int   addBandAt (float hz);
-    void  removeBand (int b);
+    // `resultingBands` reports the count this add ESTABLISHED, taken from the same read of
+    // `bandCount()` the insertion was computed against -- so the caller's gesture snapshot
+    // cannot pick up a different count from a second, later read (ADR-0039).
+    // Takes a FREQUENCY, deliberately, which is why it carries no `expectedBands` the way
+    // `removeBand` does: a frequency means the same thing under every topology, a band index does
+    // not. ADR-0048 records the measurement behind that asymmetry.
+    int   addBandAt (float hz, int& resultingBands);
+    // `expectedBands` is the topology the caller validated its index against. removeBand reads
+    // the live count ONCE and refuses unless it is still that one: the check and the operation
+    // then share a single read, which is the only way to stop a stale index being applied to a
+    // topology the user never saw (ADR-0039).
+    void  removeBand (int b, int expectedBands);
     void  resetCrossover (int i);
 
     // Display-eased positions (#1): split frequencies and band widths the PAINT uses,
@@ -131,18 +202,39 @@ private:
     float dispRightX (int b) const noexcept;
 
     // Solo (mask) ---------------------------------------------------------
-    void  setSoloMask (int mask);
-    void  toggleSoloBit (int b);
+    // ADR-0041: these RETURN whether they committed. A conditional store that refuses silently is
+    // indistinguishable from one that succeeded, and both topology transactions used to carry on
+    // after the mask store had been refused -- changing the band count with the mask still in the
+    // old numbering. A caller that derived state from a precondition must hear the refusal.
+    bool  setSoloMask (int mask, int expectedBands = -1, int expectedMask = -1);
+    bool  toggleSoloBit (int b, int expectedBands = -1);
     int   effectiveSoloMask() const noexcept; // includes the momentary hold preview
-    void  beginBandMove (int b);            // drag a solo handle sideways to move the band (0.6.9 #9)
-    void  moveBand (float mouseX);
+    // ADR-0046, completed: `n` is the topology the CALLER proved, exactly as `dragCrossoverTo` takes
+    // one. `beginBandMove` derives the two pins and the T range from it, and `moveBand` sizes the
+    // plan's EXTENT with it -- so the extent and the per-store proof inside `writeCrossovers` are one
+    // reading rather than two that usually agree. -1 keeps the live read for a caller with no latch.
+    // NO DEFAULT for `n`, deliberately, and that is load-bearing since ADR-0051 reached this
+    // function: it now derives its origins from the ownership record instead of re-reading the
+    // parameters, so it depends on its caller having PROVED that record a moment earlier. A
+    // defaulted `n` would let a future second caller reach that dependency with nothing proved and
+    // no diagnostic. One caller exists (`mouseDrag`), and it passes `gestureBands`.
+    void  beginBandMove (int b, int n); // drag a solo handle sideways to move the band (0.6.9 #9)
+    bool  moveBand (float mouseX, int n = -1);
     void  endBandMove();
 
     void beginGesture (juce::RangedAudioParameter*);
-    void setParam (juce::RangedAudioParameter*, float plain);
+    // ADR-0046: `expectedBands` refuses a store whose topology has moved since the caller
+    // proved it -- the same contract `resetParam` carries. -1 for the callers that have
+    // just proved the count with nothing in between.
+    void setParam (juce::RangedAudioParameter*, float plain, int expectedBands = -1);
     void endGesture (juce::RangedAudioParameter*);
-    void resetParam (juce::RangedAudioParameter*);
-    void setBands (int n);
+    // ADR-0045: `expectedBands` proves the topology between this reset's own gesture open and
+    // its store; -1 for callers with no band index to prove.
+    void resetParam (juce::RangedAudioParameter*, int expectedBands = -1);
+    // ADR-0044: `expectedMask` proves the solo word INSIDE the count store's own gesture bracket.
+    // -1 means "do not prove it". The count is what reinterprets the mask, and
+    // `beginChangeGesture` dispatches before the guard, so no caller-side check can cover it.
+    bool setBands (int n, int expectedBands = -1, int expectedMask = -1);
 
     void updateHover (juce::Point<float>);
     void setContextTooltip();               // per-control tooltip (0.6.9 #18)
@@ -168,6 +260,15 @@ private:
 
     std::unique_ptr<juce::TextEditor> freqEditor;
     int editingHandle = -1;
+    // ADR-0043: did the user actually change the text? `openFreqEditor` seeds the box from the live
+    // split, so a commit with neither of these true is a store of a value nobody asked for -- and,
+    // if a host moved that split while the box was open, a store of a value from before it did.
+    // TWO signals, because one of them is asynchronous: `onTextChange` is delivered through
+    // `postCommandMessage` (juce_TextEditor.cpp:594-599), which is reliable in a running message
+    // loop and catches even a retyped identical string, but never arrives without one. The text
+    // comparison is synchronous and needs no message loop. Either is sufficient.
+    bool editTextEdited = false;
+    juce::String editOpenText;
 
     static constexpr int fftOrder = 13;
     static constexpr int fftSize  = 1 << fftOrder; // 8192
@@ -248,6 +349,16 @@ private:
 
     int   scrollHandle = -1;
     int   scrollBand   = -1;
+    // ADR-0045: the band count the two latches above were taken in. A latch is a positional
+    // identifier and is only meaningful in its own topology; -1 means nothing is latched.
+    int   scrollBands  = -1;
+    // ADR-0045's other half: the SPLIT ROW the latch was derived in, beside the count. A latch is
+    // void once the topology it was taken in moves, and the count is not the whole topology
+    // (ADR-0039, ADR-0051) -- a same-count split move re-lays the display out under a stationary
+    // hand exactly as a count change does, and `scrollAnchor` cannot see it because that tests the
+    // POINTER. Refreshed from the record the burst's own confirmed stores maintain, so a split
+    // burst does not invalidate itself; see `mouseWheelMove`.
+    float scrollFx[3] { 0.0f, 0.0f, 0.0f };
     juce::Point<float> scrollAnchor;
 
     // Solo press machine (0.6.9 #8/#9): a quick click latches the band's solo
@@ -260,6 +371,22 @@ private:
     juce::uint32 soloPressMs = 0;
     bool  soloPressAlt    = false;   // Alt/Option held at press -> all-bands action on release
     bool  soloHoldActive  = false;   // momentary audition engaged
+    // ADR-0050, THE PART THE ADR STATED AND NOTHING ENFORCED. Its Decision is that "a gesture's
+    // ownership lasts as long as the on-release actions that depend on it". `mouseUp` honours that
+    // for its OWN exits -- it drops the snapshot after the action on every path. What nothing
+    // enforced is that something ELSE must not drop it first, and `cancelActiveDrag` does exactly
+    // that on its very first line, before the cheap exit that is meant to make a re-entrant call a
+    // no-op.
+    //
+    // A DEPTH, NOT A FLAG, AND THE SECOND SITE IS WHY. This began as a `bool` with `mouseUp` as its
+    // only user and a note saying a nested `mouseUp` would drop the claim early. `beginBandMove` is
+    // now the second user, and it is reached from `mouseDrag` -- so a host that pumps the message
+    // loop from the first pin's gesture open CAN deliver a queued mouse-up into `mouseUp` while the
+    // startup's claim is still standing, and a `bool` would have had that inner scope's exit clear
+    // the outer one's. Counting costs the same instruction and removes the hazard this second site
+    // would otherwise have created. Held for the duration of an action that has published its
+    // identifiers and is still establishing its gestures; read by `cancelActiveDrag`.
+    int   gestureActionDepth = 0;
     bool  soloMovedBand   = false;   // turned into a sideways band move
     int   soloMoveLeft    = -1;      // crossover index on the band's left edge (or -1)
     int   soloMoveRight   = -1;      // crossover index on the band's right edge (or -1)
@@ -270,6 +397,88 @@ private:
     float bandTmin = 0.0f, bandTmax = 0.0f; // clamped translation range
 
     bool  dragRemovePending = false; // dragged a split far outside -> drop it on release (#18)
+
+    // ADR-0038. THE TOPOLOGY A GESTURE WAS DEFINED AGAINST. Every identifier above --
+    // dragHandle, dragBand, soloPressBand, soloMoveLeft/Right, pressDeleteBand -- names a
+    // split or a band by POSITION, and every one of them is latched when a press begins.
+    // `bandCount()` is a LIVE read of mbBands, which a host can move at any instant, so
+    // each of those names can stop meaning what it meant. Snapshotting the count once per
+    // press, and voiding the whole gesture the moment the live one differs, is what makes
+    // the identifiers safe as a set; validating them one consumer at a time provably is
+    // not (the band move validated its pins and still wrote the unpinned splits from
+    // drag-start origins). -1 = no gesture in progress.
+    // ADR-0039 sharpens WHEN this is taken: with the identifiers, not at handler entry. The
+    // add-area press CREATES a split and hands itself to it (`addBandAt` raises Bands, then
+    // `dragHandle = idx`), so a snapshot taken at the top of mouseDown named a topology the
+    // press itself had already left and the first mouseDrag cancelled the brand-new drag.
+    // Taking it where the identifiers are latched separates the two classes BY CONSTRUCTION
+    // rather than by asking who moved the count: a change the press performs is synchronous,
+    // on this thread, and complete before the identifiers exist; anything later is external.
+    int   gestureBands = -1;
+    // ADR-0039. WHERE THIS GESTURE LAST LEFT EACH SPLIT, in pixels. `gestureBands` catches an
+    // authoritative change that moves the COUNT; a whole-sound install at the same count moves
+    // nothing it watches, and the drag then keeps projecting from `dragOrigX` -- the positions
+    // of the sound that was just replaced -- and writes the unpinned splits back over it. The
+    // drag's own writes refresh these (`writeCrossovers` stores THROUGH `gestureX[k]`), so a
+    // difference means someone else wrote. TWO OF THE CLASS'S OWN STORES DO NOT REFRESH THEM:
+    // `resetCrossover` and `spreadSplits` take the read-back into a local, so a gesture that
+    // Alt-click-resets a split then reads its own store as foreign and cancels itself. That is the
+    // safe direction and it costs one int store, not a frame of repaints (see the timer's comment);
+    // it is recorded here because this paragraph used to say "every write", which is not true.
+    // ADR-0041: the NORMALISED parameter value, not a pixel. A pixel was a GUI quantisation
+    // tolerance doing an ownership job: half a display pixel is 0.30-0.65 % of the frequency
+    // (0.19 Hz at 30 Hz, 32 Hz at 10 kHz, 61 Hz at 20 kHz on the harness's 902 px plot), while the
+    // parameter has no interval at all and resolves about 0.00055 Hz at 1 kHz -- so an external,
+    // fully automatable change of up to 61 Hz read as the gesture's own. Compared EXACTLY, which is
+    // sound because `AudioParameterFloat::setValue` is `value = convertFrom0to1 (newValue)` and
+    // `getValue()` is `convertTo0to1 (value)` (juce_AudioParameterFloat.cpp:97-98), so
+    // `convertTo0to1 (convertFrom0to1 (norm))` is bit-identical to what a clean store leaves.
+    float gestureX[3] { 0.0f, 0.0f, 0.0f };
+    // ADR-0040. THE SAME, FOR WIDTHS. `gestureX` records splits only, so a width-only authoritative
+    // change moved nothing the gesture watched: a width drag anchors `dragGrabDY` at the 3 px engage
+    // and thereafter computes from the CURSOR alone -- the live width is never read again -- so an
+    // outside write was overwritten by the next mouse move from an anchor taken before it. Measured:
+    // `the installed width 1.700 was overwritten with 0.650`.
+    float gestureW[4] { 0.0f, 0.0f, 0.0f, 0.0f }; // normalised too (ADR-0041)
+    // ADR-0040. THE ONE QUESTION EVERY GESTURE STORE ASKS, adjacent to the store it guards. Exact
+    // equality, not an epsilon: the gesture records the READ-BACK after each of its own stores, so
+    // its own write can never read as somebody else's, and there is no epsilon to invent for a path
+    // (the width drag) that has no write-suppression threshold of its own. `gestureBands < 0` means
+    // nothing is in flight, and then nothing is owned and nothing is refused. ADR-0043: that is no
+    // longer the wheel's state while it writes. `mouseWheelMove` ends any drag first, which clears
+    // `gestureBands`, but its own burst is up to three stores with a host dispatch between each, so
+    // it latches the count around `dragCrossoverTo` and clears it again immediately. The waiver is
+    // for having no gesture, not for being the wheel.
+    bool  ownsSplit (int k) const noexcept;
+    bool  ownsWidth (int b) const noexcept;
+    // ADR-0047. THE PROOF AND THE PLAN ARE ONE READING. The predicates above read the parameter
+    // for themselves, which is right where the caller has nothing else to compare -- but every
+    // caller that goes on to USE the value was reading it a SECOND time, and a foreign write
+    // between the two reads passes the proof while the plan carries the older world. These
+    // overloads take the reading the caller already has, so the value proved and the value used
+    // are the same measurement by construction. Measured before the fix, against a continuously
+    // moving automation lane: 92 laundered splits in 1200 drags (7.7%) on a 4-core box, 0 after --
+    // and 200/200 against 0/200 with the window widened to 200 us. `--split-snapshot-probe`.
+    bool  ownsSplit (int k, float norm) const noexcept;
+    bool  ownsWidth (int b, float norm) const noexcept;
+    // True once the count has moved under an active gesture. Message thread only; a plain
+    // comparison of two ints, no lock and no allocation -- the audio thread is not involved
+    // in any of this and must never be.
+    bool  topologyMovedUnderGesture() const noexcept
+    { return gestureBands >= 0 && bandCount() != gestureBands; }
+    // True once any split OR any width has moved under an active gesture. BOTH are compared in the
+    // parameter's own normalised units, EXACTLY (ADR-0041) -- this comment used to describe the
+    // splits as owned "by more than the amount `writeCrossovers` itself treats as a change", the
+    // pixel tolerance that round removed, and a reader arriving here was told the opposite of what
+    // `ownsSplit` does. `kSplitMovedPx` keeps its one real job, deciding whether a write is worth
+    // making. The drag's own writes, read back through the same conversion and recorded at the
+    // store, can never register as somebody else's (ADR-0039 for the splits, ADR-0040 for the
+    // widths).
+    bool  soundMovedUnderGesture() const noexcept;
+    // The one question mouseDrag and mouseUp ask: is this gesture still defined against the
+    // world it was latched in?
+    bool  gestureIsStale() const noexcept
+    { return topologyMovedUnderGesture() || soundMovedUnderGesture(); }
 
     // Crossover band-pass preview gate (0.8.1): the blue/green band-pass curve is a
     // PRESS-AND-HOLD affordance, exactly like the solo audition. A bare click, double-

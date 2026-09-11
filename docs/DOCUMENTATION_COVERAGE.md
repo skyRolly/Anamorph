@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3253` and `.github/workflows/build.yml:3338`, this round being
+`.github/workflows/build.yml:3370` and `.github/workflows/build.yml:3455`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -9896,3 +9896,1589 @@ number instead of being re-aimed: `--fix` would have rewritten the quoted observ
 falsehood, and the checker cannot tell an illustration from a citation — the same hazard
 `build.yml`'s own comment names. Eleven further anchors were plain moves, re-anchored by `--fix`.
 [Verified]
+
+## GitHub Code Scanning audit — a stale pin, and two documents that described a filter that is not there (2026-09-07)
+
+**Scope.** Every current first-party Code Scanning finding on `main` @ `2ed512c6`, from the raw
+SARIF each scanner publishes as an Actions artifact (`docs/procedures/CI_CD.md` §Raw scanner SARIF
+artifacts): CodeQL `c-cpp` and `actions` from run 34066947393, MSVC `/analyze` from run 34023043647
+at `b7b1c57`. That PREfast run is one commit behind, and `git diff b7b1c57 2ed512c6 -- src tests
+CMakeLists.txt` is empty — PR #142 touched only scripts, docs and workflows — so its anchors are
+current. 200 results: **CodeQL c-cpp 50** (every one under `build/_deps/juce-src`, zero first-party,
+in `locations`, `relatedLocations` and every `threadFlow` step), **CodeQL actions 0**, **PREfast
+150** (149 first-party). Rules: `C6262` 130, `C26495` 8, `C6001` 4, `C26498` 4, `C28252` 4.
+
+**No finding is stale or mis-anchored.** All 144 distinct `(file, line)` anchors were re-read against
+the working tree: 0 files missing, 0 lines past EOF, 0 pointing at unrelated code, and all 152
+`codeFlow` step locations inside their files' line ranges. The 28 `C6262` anchors that sit on a bare
+`{` are lambda bodies and each carries a `<lambda_N>::()` logical location.
+
+**MUST FIX — one, and the scanners did not report it.** PREfast's four `C6001` results are false
+positives, but auditing the second pair's surface found a real one three functions away:
+`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:612) validated its pin arguments
+against `count` when *writing* them and not when computing `leftPin`/`rightPin`, so a stale pin
+survived into the pull loops and `out[k + 1]` read a slot the copy loop never wrote. Reachable:
+`beginBandMove` (:398) latches `soloMoveLeft`/`soloMoveRight` from the band count at the press;
+`moveBand` (:430) re-reads a **live** `bandCount()` (:183, `bandsP->getValue()`), which a host write
+of `mbBands` — an automation lane, or the sound half of a state restore — can lower mid-gesture, and
+`moveBand` guards only `M <= 0`. Concretely: 4 bands, press-hold band 3 (`soloMoveLeft = 2`,
+`soloMoveRight = -1`), host drops Bands to 2, next drag calls `projectFromOrig(..., count = 1,
+pinA = 2, ...)`; the copy loop writes `out[0]` alone, `leftPin` is 2, and `out[1] = jmin (orig[1],
+out[2] - kMinGapPx)` reads indeterminate memory. **Not memory-unsafe** — `soloMove* <= N - 2 <= 2`,
+so every index stays inside `float out[3]` — and the value stays a legal frequency, because the
+safety pass clamps `out[0]` into `[lo, hi]`. It is still UB, and the garbage steers a
+`setValueNotifyingHost` on a crossover, inside the change gesture the move opened: an audible split
+jump the user never made, recorded into the host's automation lane and the undo stack.
+
+**Fix and proof.** Both pins are now validated once, and the same values drive the pin writes and the
+loop bounds, so the two can never disagree again. Proved with a standalone harness carrying the
+before and after bodies verbatim (`plot()`'s `lo`/`hi` as parameters), the stack slots dirtied by a
+prior call: **before** `out[0]` came back 20.000 (the `lo` clamp, driven entirely by the junk),
+**after** 100.000 = `orig[0]`, the correct "nothing is pinned" answer. Under `valgrind memcheck` the
+before body reports *Conditional jump or move depends on uninitialised value(s)* twice — in the
+leftward pull loop and in the safety pass — and the after body reports nothing. Equivalence for
+every live pin: 29 `(count, pinA, pinB)` combinations with both pins in range, **0 differ**.
+
+**No committed regression test in this change — and the reason given was wrong.** CORRECTED
+2026-09-07 by the round below, which shipped State test 66. The claim here was that
+`projectFromOrig`, `beginBandMove` and `moveBand` are private (true) and that "the suite has no
+GUI-instantiating harness" (FALSE): `tests/state_tests.cpp` already builds the real editor with
+`proc.createEditor()`, walks its child tree and injects `juce::MouseEvent`s — the value-box gesture
+probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers are public
+overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
+proof for the hour it took to write, and the wrong thing to leave standing.
+
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:526`: `pid::viewParams`
+(src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
+`float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
+`0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
+`/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
+anchored it, src/gui/SpectrumImager.cpp:1225 today: `dropX`
+(:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
+written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
+own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
+(the build's `-Wno-maybe-uninitialized` removed) under g++ 13.3.0 at `-O3` and under clang++ 18.1.3
+with `-Wconditional-uninitialized`: **no diagnostic on either line**, in either compiler. The only
+first-party warnings raised are `-Wshadow` at PluginProcessor.cpp:1493 and `-Wsign-conversion` at
+ScopeBuffer.h:76, both already recorded debt (`scripts/gcc-warning-baseline.txt:36`,
+`scripts/clang-warning-baseline.txt:36,38`). No code was changed for these four.
+
+**TEST-ONLY — 146, none changed.** The 130 `C6262` are accurate about the shape and wrong about the
+size: `/analyze` sums a function's locals across disjoint sibling scopes without lifetime overlap, so
+its largest claim (1,280,508 bytes at state_tests.cpp:2659) is 4.5× the 283,968 GCC allocates there.
+Measured with `g++ -fstack-usage` on ninja's own compile lines, the true maxima are **707,824** in
+the state suite (state_tests.cpp:8967) and **289,440** in the DSP suite (dsp_tests.cpp:1388) — 68%
+and 28% of the Windows 1 MB reserve, nothing above 1 MiB anywhere. The 8 `C26495` and 4 `C26498` are
+aggregate-initialised at every construction site, and the 4 `C28252` are a missing SAL annotation on
+the nothrow `operator new` replacements; the replacement set itself is complete and every
+allocator/deallocator pair closed. Tests are not edited for a dashboard.
+
+**One CI control was widened, because its exclusion rested on a false premise.** The Windows-parity
+stack guard (`.github/workflows/build.yml`) ran the state suite alone, justified by "the DSP suite
+holds no processors". True of `AnamorphAudioProcessor` — `AnamorphTests` compiles
+`tests/dsp_tests.cpp` alone (CMakeLists.txt:523-525) — and the wrong test: `dsp_tests.cpp` declares
+`anamorph::AnamorphEngine engine;` as an automatic in dozens of tests (:119, :189, :268, :304 …), at
+28% of the reserve. The step now runs both binaries; both were verified green under
+`ulimit -s 1024` first, so this arms a tripwire rather than introducing a failure.
+
+**Two scanning claims in the documents were false, and both are corrected.** (1) `paths-ignore:
+build` does **not** filter the C/C++ alerts. GitHub documents `paths`/`paths-ignore` as applying when
+a codebase is analysed *without building it*; this entry is `build-mode: manual`, and the run's own
+SARIF proves it — all 50 results are under `build/_deps`, and the `Analyze (c-cpp)` job log shows one
+file written, fingerprinted and uploaded (`Exported results to SARIF` → `Post-processing sarif files:
+["…/results/cpp.sarif"]` → `Successfully uploaded results`), so the artifact cannot be "strictly
+richer than the dashboard" either. (2) `msvc.yml`'s `ignoredIncludePaths`/`ignoredTargetPaths` do not
+make the SARIF wholly first-party: `juce_audio_plugin_client_VST3.cpp` is compiled **into**
+`Anamorph_VST3` (`Anamorph_VST3.dir/_deps/…/juce_audio_plugin_client_VST3.cpp.o`), so it is neither
+an ignored target nor a header. Corrected in `codeql.yml`, `msvc.yml`, `CI_CD.md` (the two job-matrix
+rows, the artifact paragraph, and a new §Reading the Code Scanning surface carrying the coverage
+table and the third-party triage rule) and `REPOSITORY_MAP.md`.
+
+**The two scanners disagree about scope, and neither is wrong.** CodeQL c-cpp analyses what the
+build compiles; PREfast analyses every target in the CMake File API codemodel and re-configures the
+tree itself, so `--target Anamorph_VST3 AnamorphTests` does not bound it. `ANAMORPH_BUILD_TESTS`
+defaults ON (CMakeLists.txt:27) and `msvc.yml` overrides only `ANAMORPH_BUILD_STANDALONE`, so
+`AnamorphStateTests` is analysed but never built — 85 of the 150 results carry `analysisTarget`
+`tests/state_tests.cpp`, a file CodeQL never extracts. `tests/AllocationGuard.h` is **not** in that
+gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the header through the
+`#include` at dsp_tests.cpp:16, so both scanners cover it.
+
+**A drift anchor went stale silently, and the gate now covers it.** The fix moved
+`src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
+`check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
+citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1538`), and
+`src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
+the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
+it is checkable from the next change on.
+
+**What this audit could not establish.** The Code Scanning **alert state** — which alerts stand open,
+which are dismissed and by whom — needs the Code Scanning alerts API, which is not reachable from
+this environment (the repository is public but `/security/code-scanning` returns 404 unauthenticated,
+and no MCP tool exposes it). Everything above is derived from what the scanners *produced*. The
+specific consequence left open: whether the 50 JUCE CodeQL results and the 1 JUCE PREfast result
+render as standing alerts. The analysis says they should; only the dashboard can confirm it.
+
+**Not a gate item.** No parameter ID, serialization schema, threading-model, DSP-order or
+reported-latency change, and no Accepted ADR conflict. The fix is message-thread only and touches no
+audio-thread path. CHANGELOG entry under `[0.9.7]` Fixed: the crossover jump is user-visible
+(`CHANGELOG_POLICY.md` rule 3); the CI guard and the documentation corrections are not. [Verified]
+
+
+## SpectrumImager band-count drag — the review finding closed, with the regression it was missing (2026-09-07)
+
+**Why a second round.** The Code Scanning audit above fixed a stale-PIN read and shipped it with no
+in-repository regression test, on a stated reason that turned out to be false. Review then found
+that the fix covered one direction only. Both are settled here.
+
+**A SECOND defect, and the scanners never saw it either.** `dragOrigX` (src/gui/SpectrumImager.h:249)
+is the drag-start x of every split, seeded once when a gesture begins and read for the whole gesture.
+Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:657)
+and `moveBand` (:827). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
+splits in USE at the press — so a host write of `mbBands` that **raised** Bands mid-gesture made the
+consumers ask `projectFromOrig` for origins nobody had written. Those slots still held the `{0,0,0}`
+initialiser, so unlike the falling case this half was **stale, not indeterminate — never UB**; the
+review's "uninitialised" is imprecise and the consequence is not. x = 0 is left of the plot, so the
+min-gap pass packed the new splits hard against the dragged one and `writeCrossovers` pushed that to
+the host inside the drag's own change gesture: a split jumping to a frequency the user never chose,
+into the automation lane and the undo stack. Measured, from the mutation run below: with one split
+at 100 Hz and two parked at 1 kHz and 8 kHz, raising Bands 2→4 mid-drag drove **mid to 122.2 Hz and
+high to 169.4 Hz**.
+
+**Fix.** One private helper, `SpectrumImager::captureDragOrigins()` (:447), seeds EVERY slot and is
+called at all four drag starts. `freqP[0..2]` all exist whatever Bands says — only some are in *use*
+— so every slot is a real split's live position, and the class becomes impossible rather than
+guarded against. Two extra reads once per gesture, on the message thread; nothing changes for a drag
+at a steady band count, and no automation semantics, parameter mapping or real-time constraint is
+touched. One home for the rule was chosen over four in-place edits precisely because the review's
+complaint was that a future change could restore the failure silently.
+
+**Regression coverage: State test 66**, five legs, each asserting the automation-visible crossover
+frequency rather than that the call returned — (a) 2→4, (b) 2→3 (increase by one, where only the
+first new split is exposed), (c) 2→3→4 inside one drag, (d) the band drag, where `beginBandMove`
+seeds on the first drag event so the rise must land after it, (e) the falling direction through the
+**last** band's solo handle, the only press whose latched pins a falling Bands can make stale,
+asserting that such a drag writes **no parameter at all**.
+
+**Mutation proof, two mutants, both killed.** (1) The pre-fix capture bound
+(`(int) std::size (dragOrigX)` → `bandCount() - 1`) fails **7 checks** across legs a–d. (2) The
+pre-PR-#143 stale-pin behaviour (`leftPin`/`rightPin` from the raw arguments) fails leg e, printing
+`low 8000.0 -> 35.8 Hz`, identical over five runs. Mutant 2 SURVIVED two earlier drafts of leg e and
+both misses are recorded rather than quietly fixed: the first asserted only that the crossover stayed
+legal, which the clamps guarantee under the defect; the second pressed the *first* band's solo
+handle, which latches `soloMoveRight = 0` and stays in range however far Bands falls. Leg e also
+parks the split HIGH on purpose — near the left edge the clamp puts the corrupted value back where it
+started and the defect hides.
+
+**No new production seam, and the out-of-tree harness is retired.** `SpectrumImager` is a
+`juce::Component` whose mouse handlers are public overrides, and this suite already builds the real
+editor, walks its child tree and injects `juce::MouseEvent`s. The one thing a test cannot compute is
+where a handle *is* — `freqToX` (:161) runs a 30-iteration bisection over a private axis table — so
+the probe finds it the way a user does: it sweeps `mouseMove` and reads the public
+`SettableTooltipClient` tooltip, which `setContextTooltip` sets to *Drag to change the split
+frequency* or *Solo this band* exactly when that hotspot is under the cursor. `mouseMove` has no
+destructive side effect, and a sweep that finds nothing fails the test rather than passing vacuously.
+The editor is built with `advancedMode` already on, because `PluginEditor::resized` lays the imager
+out only under `if (advanced && ...)` — an editor built in Simple mode leaves it 0×0 and every hit
+test would answer about nothing; the test prints the measured 904×144 as its liveness proof.
+
+**Adjacent cases checked, none needing a further change.** Increase by one and by several, repeated
+increases inside one drag, and the falling direction are all legs above. `mouseWheelMove` re-seeds
+immediately before its `dragCrossoverTo`, so it was never exposed; `addBandAt`'s press seeds *after*
+the add, so it was consistent already. One residue is recorded and deliberately not fixed: a rise
+also leaves `soloMoveRight` stale at −1 for a band that is no longer the last, so a band move started
+before the rise drags only its left edge. That is a drag-semantics question, not a corruption — the
+positions are now all real — and changing it would alter behaviour the review did not ask about.
+
+**Docs.** `TESTING.md` (State test 66), `CHANGELOG.md` `[0.9.7]` Fixed (the existing bullet broadened
+to both directions rather than a second bullet for one gesture), and the correction above to the
+audit round's own claim. Not a gate item: no parameter ID, serialization, threading-model, DSP-order
+or reported-latency change, and no Accepted ADR conflict; message-thread only. [Verified]
+
+## SpectrumImager stale-drag review — a stale handle was deleting a live band (2026-09-07, second pass)
+
+**A third defect in the same family, and the one that actually reached a wrong target.** Dragging a
+split outside the plot arms `dragRemovePending`, and the release deletes the band that split opens:
+`removeBand (dragHandle + 1)` — one argument then, at line 1804 as this entry anchored it; the
+call takes the press's topology as a second argument since ADR-0039, so the citation is left
+de-numbered rather than re-aimed at a line that no longer says what this paragraph describes.
+`dragHandle` is latched at `mouseDown` and names a split by **position**. A host write of `mbBands` that LOWERS Bands mid-drag
+makes it stale — `dragCrossoverTo` stops steering it, correctly (:550) — but the drag stays **armed**,
+and `removeBand` **clamps** its argument into the live range (`b = juce::jlimit (0, N - 1, b)`,
+line 521 as this pass anchored it — the clamp is GONE today, ADR-0038 having replaced it with a
+refusal, so this citation too is left de-numbered rather than re-aimed at the comment that
+records its removal). Four bands, drag split 2 out, host drops Bands to 2, release:
+`removeBand (3)` clamped to band 1 and Bands fell to 1. Measured under the mutation run:
+`Bands 2 -> 1 on release of a drag whose split had gone`.
+
+**Fix, at the call site.** `if (dragRemovePending && dragHandle < bandCount() - 1)`. Splits are
+`0 .. bandCount() - 2`, so that is exactly "the dragged split still exists", and the same condition
+`removeBand` would need for `dragHandle + 1` to name a real band. `removeBand`'s clamp is left alone:
+its only other caller (:2287) already proves its argument live through `deleteHit`, so with this call
+site guarded the clamp has no reachable stale input and is defence rather than behaviour. Tightening
+it into a reject would have changed a shared helper for one caller's bug.
+
+**Regression: State test 67**, asserting an **exact band count** rather than legality — one band
+fewer is perfectly legal and is the bug. Legs: (a) Bands falls while armed; (b) re-armed after the
+fall, since `dragRemovePending` is recomputed on every drag event; (c) the **positive control**, an
+unchanged band count where the same gesture must still delete 4 → 3, which is what stops a fix that
+simply never removes; (d) the boundary at Bands 1, where `removeBand` returns early anyway.
+**Mutation:** restoring the unguarded forwarding fails legs a and b. Leg c passes under both versions,
+which is the point of it.
+
+**The adjacent stale-drag audit, field by field.** Every cached identifier was classified by what it
+is defined relative to and whether its consumer revalidates:
+
+| Cached state | Defined relative to | Revalidated by its consumer? | Consequence if stale |
+|---|---|---|---|
+| `dragHandle` → `dragCrossoverTo` | split position at press | **yes** — `handle >= M` returns (:550) | none |
+| `dragHandle` → `removeBand` | split position at press | **no** → **FIXED this round** | a different live band deleted |
+| `dragOrigX[]` | split positions at press | n/a — every slot now seeded | none (fixed in the previous pass) |
+| `soloMoveLeft` / `soloMoveRight` | split positions at `beginBandMove` | **yes** — `projectFromOrig` validates both pins | the move does less, never something else |
+| `pressDeleteBand` | band index at press | **yes** — `deleteHit (e.position) == dB` (:2287) | none |
+| `scrollHandle` / `scrollBand` | index at hover | **yes** — `< N - 1` / `< N` in `mouseWheelMove` | none |
+| `dragBand` → width write | band index at press | no | writes a vanished band's own Width parameter |
+| `soloPressBand` → `toggleSoloBit` | band index at press | no | sets a mask bit for a vanished band |
+
+**The line this round draws, and it is what settles the `soloMoveRight` question.** A stale
+positional identifier is a *defect* when it is silently retargeted onto a **different live** object,
+and an *accepted residual* when it merely makes the gesture do **less**, or acts on the vanished
+object's own parameter. `removeBand` was the only case on the wrong side of that line, and it is
+fixed. `soloMoveRight` stale at −1 after a rise, and `soloMoveLeft` stale after a fall, are both on
+the acceptable side: the band move drags only its live edge, or writes nothing at all — never another
+band's split. **Decision: option B, accepted residual**, with the invariant now named rather than
+asserted. The last two rows are also accepted, for a different reason: both are reachable with no
+drag at all (a host lowering Bands while a solo is latched leaves the same phantom mask bit), so they
+are a Bands/parameter coherence question that belongs to whoever takes that on, not to a stale-drag
+round. Neither can index out of range — `widthP[0..3]` and the 4-bit mask cover every value
+`bandAtX`/`soloHit` can produce.
+
+**Post-fix sweep, against the five things the fix must not leave behind.** No other stale handle
+reaches `mouseUp`: its three branches are `pressDeleteBand` (self-validating), `soloPressBand` (mask
+bit only) and `dragHandle` (now guarded); `endGesture` on `freqP[dragHandle]` / `widthP[dragBand]`
+closes the gesture that same index opened, so it is correct by construction. No remaining silent
+clamp into a live target — `removeBand`'s is now unreachable with a stale argument. No drag stays
+armed after its target disappears in a way that acts: it stays armed and does nothing, which is the
+fix. No automation-visible mutation reaches a wrong target. And no topology change produces an
+out-of-range access: every index is bounded by the array it addresses.
+
+**`source-lint` CI failure — this branch's own, and the local run could not see it.** Job
+101614618525 on run 34080455906 failed with three `DRIFTED` citations in
+`docs/DOCUMENTATION_COVERAGE.md`. CI runs `check-citations.py --check --base <push predecessor>`;
+every local run this session used the default base `origin/main`. The previous commit added 18 lines
+to `src/gui/SpectrumImager.cpp` above three anchors that were correct when written. Two were plain
+moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
+move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
+into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1225 today", which keeps the fact and
+leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
+`check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
+run in this round checks both.
+
+**Docs.** `TESTING.md` (State test 67), `CHANGELOG.md` `[0.9.7]` Fixed (a second bullet — a band being
+deleted is a different user-facing symptom from a crossover moving, unlike the two the previous
+bullet merges). Not a gate item: no parameter ID, serialization, threading-model, DSP-order or
+reported-latency change, and no Accepted ADR conflict; message-thread only. [Verified]
+
+## SpectrumImager gesture lifetime — ADR-0038, and the round that stopped patching consumers (2026-09-07, third pass)
+
+**The question this round answered.** Three rounds had fixed three stale-topology consequences one
+consumer at a time. Review then named two more and asked whether local validation was the right
+architecture at all. It is not, and the audit says so with a measurement rather than an opinion:
+State test 68 leg (b) — the same restore-under-a-drag scenario driven through a **crossover drag** —
+passed *before* any fix, because `dragCrossoverTo` validates and returns; leg (a), the identical
+scenario through a **band move**, failed, because `moveBand` validates its pins and then writes the
+unpinned splits from drag-start origins. One consumer had been made safe and its sibling had not.
+That asymmetry is the case against per-consumer validation.
+
+**Four findings, two named by review and two the audit added.** (1) the `:1775` TOCTOU — the count
+can move between the call-site check and `removeBand`'s own read, and the clamp retargets;
+(2) the `:349` write-through — measured as `the restored split 900.0 Hz was overwritten with
+200.0 Hz`; (3) a topology **rise** also lets a gesture keep writing; (4) a void gesture can write
+splits it never named. All four reproduce against `aa55f20`; legs A, C and E of State test 68 fail
+there.
+
+**Decision: ADR-0038**, centralized invalidation **plus** one primitive made safe. `mouseDown`
+snapshots `bandCount()` once; `mouseDrag`/`mouseUp` void the whole gesture through the existing
+`cancelActiveDrag()` when the live count differs; `removeBand` **refuses** a non-live index instead
+of clamping it into a live one. Neither half suffices: the guard is exact for the message-thread
+topology paths (click-to-add, delete-x, preset, A/B, undo — a mutator would have to run on the same
+thread) and **not** for the two that race (host automation on `mbBands`, and the sound half of
+`setStateInformation`), while the refusal alone does nothing about findings 2-4, which are
+write-through rather than retargeting. Message thread only; no lock, no allocation, no blocking, and
+no audio path touched — `REALTIME_AUDIO_POLICY` is not engaged, and a lock was rejected explicitly
+because `mbBands` is written from the audio thread.
+
+**This changes behaviour, and it supersedes a test written three days ago.** A gesture now *stops*
+when the topology moves, where it used to continue. State test 66 legs (a)-(d) were written to prove
+the gesture continued *correctly* across a rise; they now prove it stops, and leg (a)'s liveness
+check inverted. `captureDragOrigins()` from that round becomes defence in depth: a voided gesture
+never reads the slots beyond its snapshot.
+
+**What could not be proven, stated rather than dressed up.** The refusal in `removeBand` has **no
+reachable test**: the guard returns from `mouseUp` before `removeBand` is called on every path a
+single-threaded suite can build. Measured — restoring the clamp *and* deleting the call-site guard
+leaves all 2 544 checks green. An earlier draft of State test 68 leg (d) claimed to prove it; the
+claim was wrong and the test was corrected rather than the claim left standing. Its justification is
+the code path and the race it closes, not a mutation proof.
+
+**Left open, with the mechanism recorded.** A restore that changes the crossover *values* while
+leaving Bands unchanged does not move the snapshot, so the gesture continues and its writes win.
+Closing it needs a value-level signal — the drag comparing the live crossovers against what it last
+wrote, or the imager observing the processor's `soundSetGen`. No finding in this round claims it and
+no test exercises it. Separately, a vanished band's own Width and its solo mask bit remain writable
+with no gesture in flight; that is Bands/parameter coherence, not gesture lifetime.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` (the investigation),
+`ADR-0038` + `ADR_INDEX` (the decision), `TESTING.md` (State test 68, and State test 66's
+supersession), `CHANGELOG.md` `[0.9.7]` Fixed. Neither `REPOSITORY_MAP.md` nor `SOURCE_OF_TRUTH.md`
+enumerates individual ADRs or worklogs, so neither needed a row. Not a gate item: no parameter ID,
+serialization, threading-model, DSP-order or reported-latency change, and no Accepted ADR conflict.
+[Verified]
+
+## SpectrumImager gesture invalidation — ADR-0039, and the two residuals ruled on (2026-09-07, fourth pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: the gesture snapshot moves from the top of
+`mouseDown` to the point the identifiers are latched (the add-area branch retakes it from the count
+`addBandAt` itself established); `removeBand (int b, int expectedBands)` reads the live count **once**
+and refuses unless it is the topology the caller validated against; `addBandAt (float, int&)` reports
+that count; `gestureX[3]` plus `soundMovedUnderGesture()` extend the invariant to the **sound**;
+`kSplitMovedPx` names the 0.5 px threshold so the write path and the detector cannot drift;
+`cancelActiveDrag()` clears the snapshot before its cheap exit. `tests/state_tests.cpp`: State tests
+69 and 70.
+
+**Why.** Review found one defect from **each** direction of the ADR-0038 guard. Too broad: the
+add-area press raises Bands *after* the old snapshot was taken, so click-to-add-and-drag cancelled
+itself (`the new split stayed at 1392.1 Hz (from 1392.1 Hz)`). Too narrow: a range check is not an
+identity check, and a stale index that lands inside a *new* range is applied to a topology the user
+never saw (`Bands 4 -> 3: the release read a count the check never saw`). The round also ruled on
+both residuals ADR-0038 recorded.
+
+**The measurement that decided the design.** Mutation M7 restores the round-3 caller-side liveness
+check `dragHandle < bandCount() - 1` *and* removes the new contract — State test 69 leg (c) still
+fails. A check in the caller cannot close a window that opens after it; only the operation validating
+the topology it was aimed at can. Mutation M6 restores the whole pre-ADR-0038 `removeBand`, clamp and
+all, and is killed by the same leg — a mutation the previous round explicitly could **not** catch.
+
+**The value-only residual was a real defect and is fixed.** `the restored split 15000.0 Hz was pulled
+back to 10000.0 Hz by a drag that never named it`, through both consumers. Detected by
+self-comparison rather than by injecting `soundSetGen`: that counter is not reachable from the imager
+and counts wholesale replacements only, so it would miss a single automated crossover and an undo
+step. The engine only reads these three parameters (`AnamorphEngine.cpp:609`), so "it moved and I did
+not move it" is exact.
+
+**The coherence residual is preserved, deliberately.** A vanished band's Width and solo bit are inert
+while hidden — `SoloMonitor.cpp:85` masks the solo word to `(1 << bands) - 1` and `MultibandWidth.h:53`
+uses only `bandCount` widths — exact when the count returns, and load-bearing for the imager's own
+add/remove remapping. Clearing them would lose the user's settings on an automation dip and would
+change what `mbWidth*` and `mbSolo` mean across a count change, which is a gated Parameter/
+Serialization semantics decision rather than a bug-fix-round one.
+
+**No CHANGELOG bullet for the add-and-drag regression.** It was introduced by `b65ce4e` and fixed
+here, both inside the unreleased `[0.9.7]` cycle, so no user upgrading from `[0.9.6]` can observe it;
+writing it up would be putting the git log in the changelog, which `CHANGELOG_POLICY` forbids. The
+two defects that predate the cycle are written up: the concurrent release is folded into the existing
+"Releasing a split you dragged out of the display" bullet whose promise it completes, and the
+value-only restore gets its own.
+
+**What could not be proven, stated rather than dressed up.** Mutation M5 — `cancelActiveDrag` clearing
+the snapshot before its early return — leaves all 2 574 checks green, because the leaked snapshot is
+always retaken by the next `mouseDown` before anything can consume it. `addBandAt` reporting its own
+`N + 1` rather than a second read is untestable here for the same reason. And `removeBand`'s contract
+leaves a residual by construction: a change landing between its single read and its writes is a plain
+concurrent write, not a stale-identifier retarget, and no lock-free design can exclude it.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§8-14 (reproduction, the
+caller-check measurement, the value-level trace, the coherence table, the full field sweep, and what
+could not be proven), `ADR-0039` + `ADR_INDEX` (the decision, amending ADR-0038 and superseding
+nothing), `TESTING.md` (State tests 69 and 70, and the partial supersession of State test 68's
+"what this test does NOT prove" note), `CHANGELOG.md` `[0.9.7]` Fixed. Neither `REPOSITORY_MAP.md`
+nor `SOURCE_OF_TRUTH.md` enumerates individual ADRs or worklogs, so neither needed a row. Not a gate
+item: no parameter ID, serialization, threading-model, DSP-order or reported-latency change, and no
+Accepted ADR conflict — ADR-0038 is amended through a new ADR, which is `ADR_POLICY` rule 4's own
+mechanism. [Verified]
+
+## SpectrumImager write ownership — ADR-0040, and the round that moved the check to the store (2026-09-07, fifth pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: `gestureW[4]` plus `ownsSplit`/`ownsWidth` — the
+two halves of one question, asked **adjacent to each store** instead of once at handler entry;
+`writeCrossovers` compares before each store, records the read-back of that slot immediately, and
+returns `false` so the caller abandons the event; `dragCrossoverTo` and `moveBand` propagate it; the
+`mouseDrag` width branch checks ownership before the anchor as well as before the store;
+`removeBand` and `addBandAt` re-read the count and re-prove each target before every store of their
+`2N ± 1`-store bursts; `resetCrossover` and `commitFreqEditor` stop carrying their own copy of `0.5f`.
+`tests/state_tests.cpp`: State test 71.
+
+**Why.** Three review findings, one invariant. `gestureIsStale()` was evaluated once and then up to
+seven stores followed it, which is safe only if nothing can run in between. Something can: JUCE's
+`setValueNotifyingHost` stores and then dispatches listeners **synchronously**
+(`juce_AudioProcessorParameter.cpp:59-63`, `:111-121`), and `AudioProcessor::ParameterChangeForwarder`
+(`juce_AudioProcessor.cpp:1467`) hands every one to the host through the format wrapper. So a host
+write-back lands *between two stores of the same burst* — a place no entry check can see.
+
+**Measured against `6e37e6e`:** `the installed width 1.700 was overwritten with 0.650 by a drag
+anchored before it`; `the split written from inside the burst (15000.0 Hz) was reclaimed as
+10000.0 Hz`; `Bands was moved to 2 from inside the burst and the rest of it wrote 3 back`.
+
+**Reading the mechanism changed the design.** It reclassified two of the three findings from
+"unclosable cross-thread race" to "synchronous reentrancy", which a check adjacent to its store closes
+**by construction** — between a comparison and the store that follows it there is no call, so no
+listener can run. That is why the fix is a placement change rather than a new signal.
+
+**Two rejections worth keeping.** A generation counter loses to a **silent writer**:
+`reassertParameters (…, notifyHost = false)` writes `rp->setValue (norm)` plus a direct atomic store
+and fires no listener at all, yet moves exactly what the imager reads — only a value comparison sees
+it. And the repository's existing coordinated-write abstraction, `juce::CriticalSection
+soundReplacement` (`PluginProcessor.h:558`, ADR-0036 §24), was evaluated rather than dismissed and
+rejected on four grounds, the decisive one being that it does not close the reentrancy class at all:
+a host re-entering is on *this* thread and the section is recursive.
+
+**One first draft was wrong and is recorded.** `addBandAt`'s CAS compared `xs[i]` for every `i < N`
+and broke State test 69 leg (a): `xs` holds only the `M = N − 1` splits that exist, and slot `M` is
+the one the add creates, so there is nothing there to own.
+
+**What is not claimed.** The cross-thread window — a host thread writing between our comparison and
+our store — is narrowed from a burst to a single store and is **not** claimed closed; no lock-free
+design can close it, and the one lock that exists is scoped to whole-sound replacements and never
+taken by the audio thread. A partially applied topology transaction is the accepted cost of
+abandoning: the alternative puts the old count back over the newer one.
+
+**Scope held.** The vanished-band Width and solo-mask residuals keep their ADR-0039 disposition —
+re-checked because this round touches the same stores, and nothing found makes them user-visible
+incorrect behaviour. Undo attribution during a bare width click, and the wheel path's gesture-less
+writes, are recorded as out of scope with the reason.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§15-24 (findings, reproduction,
+the JUCE dispatch, the invariant, seven candidate architectures with their rejections, why the window
+closes and what it leaves, width semantics, the implementation chronology, the full stale-write audit
+table and the residuals), `ADR-0040` + `ADR_INDEX`, `TESTING.md` (State test 71), `CHANGELOG.md`
+`[0.9.7]` Fixed — one new bullet for the Width defect and two existing bullets extended, since the
+burst cases complete promises those bullets already make. Not a gate item: no parameter ID,
+serialization, threading-model, DSP-order or reported-latency change, and no Accepted ADR conflict —
+ADR-0038 and ADR-0039 are completed, not contradicted. [Verified]
+
+## SpectrumImager write ownership — the correction the adversarial pass forced (2026-09-07, sixth pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: `setBands (n, expectedBands)` and
+`setSoloMask (mask, expectedBands, expectedMask)` re-prove between the gesture open and the store;
+`writeCrossovers` and the width store confirm that their own store landed before recording ownership,
+and record only the slots the pass actually wrote; `writeCrossovers` re-proves the count per store;
+`kWidthQuantum` names the width parameters' 0.001 interval. `tests/state_tests.cpp`: State test 72.
+
+**Why, and this is a correction to a claim this round had already made.** ADR-0040 shipped asserting
+that the comparison and the store are adjacent "with no call between them". The round's own
+adversarial pass — five candidate designs, four judges each, run over the **shipped** shape — found
+that false at three stores, and two of them were real defects reproduced against `3bdc488`:
+
+1. `setBands` and `setSoloMask` are not bare stores. `beginChangeGesture` dispatches
+   `parameterGestureChanged (idx, true)` to every listener **synchronously, before the value goes
+   out** (`juce_AudioProcessorParameter.cpp:65-86`), so at the commit point of both topology
+   transactions there *was* a call between the check and the store. Measured: `Bands was moved to 2
+   from inside the gesture that opens the commit, and the commit wrote 3 over it`.
+2. The ownership record was a bare read-back, so a listener writing **the same parameter** the
+   gesture had just stored was adopted as the gesture's own. Measured: `the echoed value 500.0 Hz was
+   adopted as the gesture's own and then overwritten with 131.3 Hz`. State test 71 could not have
+   found it: every one of its legs hooks one parameter and aims the probe at a different one.
+
+**One flag investigated and rejected**, so the record shows what was checked rather than only what
+was changed: `mouseWheelMove` was called a laundering hole for re-seeding ownership mid-drag. It
+re-seeds `dragOrigX` and `gestureX` together, so the projection targets move with the record and
+nothing stale is written. State test 72 leg (c) passes before and after and guards that pairing.
+
+**No new CHANGELOG bullet.** Both defects are the same user-facing symptoms the `[0.9.7]` bullets for
+the removal burst and the crossover burst already describe; what changed is that those promises now
+actually hold at every store rather than at most of them.
+
+**Not caught, recorded rather than dressed up.** Mutation N7 — removing `writeCrossovers`' per-store
+count re-proof — leaves all 2 611 checks green. Its consequence is inert: writes to splits above the
+live count, which the DSP does not read.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §25, `ADR-0040`'s new
+"Correction, same day" section and its amended confidence statement, `TESTING.md` (State test 72).
+[Verified]
+
+## SpectrumImager — a coupled update is all of it or none of it (2026-09-07, seventh pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: `setBands`, `setSoloMask` and `toggleSoloBit`
+return whether they committed, and `addBandAt`/`removeBand` abandon the transaction on a refused mask
+store; `mouseUp`'s two solo paths pass the `pressBands` they were aimed at; `mouseWheelMove` ends an
+in-flight press before acting; `gestureX`/`gestureW` hold **normalised parameter values** compared
+exactly, `storeOwned` confirms a store in parameter space, and `kWidthQuantum` is deleted.
+`tests/state_tests.cpp`: State test 73.
+
+**Why.** Three review findings of one shape — part of a coupled change applied and the rest not, with
+nothing downstream able to tell. Measured against `799113f`: `a wheel tick adopted the installed
+width 1.700, and the drag then wrote 0.650 from an anchor taken before it`; `the click soloed band 3
+of a four-band layout, Bands became 2 inside the store, and the mask was written as 0x8 anyway`; `the
+mask store was refused and the transaction carried on: Bands 3 with the mask left in the old
+numbering (0x5)`.
+
+**A correction this round makes to the last.** Round 3 recorded that `captureDragOrigins()` re-seeds
+the origins and the ownership record together, "so nothing stale is written". True for splits; false
+for widths, whose store computes from `dragGrabDY` — a third piece of state the refresh cannot touch.
+State test 72 leg (c) is unchanged and still passes; what was too broad was the generalisation drawn
+from it, and State test 73 leg (a) now holds the other half.
+
+**The threshold was measured, not argued.** Half a display pixel on the real axis is 0.30–0.65 % of
+the frequency — 0.19 Hz at 30 Hz, 3.53 Hz at 1 kHz, 32.31 Hz at 10 kHz, 61.24 Hz at the top — against
+crossover parameters with **no interval** resolving about 0.00055 Hz at 1 kHz. A 32 Hz change at
+10 kHz is roughly 59 000 times the parameter's resolution and fully automatable, and was being read
+as the gesture's own. Ownership therefore moves to the normalised value compared exactly, which is
+sound because `AudioParameterFloat::setValue`/`getValue` are `convertFrom0to1`/`convertTo0to1` with
+no snapping (`juce_AudioParameterFloat.cpp:97-98`).
+
+**The cross-thread transaction is ruled a bounded trade, with the options priced.** Option B is
+unreachable — the layout lives in eight separate automatable parameters, so there is no single commit
+point to make conditional; option C loses to the silent writer; option D is forbidden because
+`mbBands` is written from the audio thread. What *was* a defect is the transaction continuing after
+its own precondition was refused, and that is fixed.
+
+**One product decision, stated.** A wheel tick during a drag now **ends the drag**. The wheel keeps
+working; two gestures cannot own the same state at once, and the wheel's refresh cannot re-anchor
+`dragGrabDY`/`dragGrabDX`.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§26-35 (findings, reproduction,
+the common invariant, the threshold measurement, the transaction ruling, solo semantics, refresh
+semantics, chronology, the full audit table with the invariant stated once, residuals), `ADR-0041` +
+`ADR_INDEX`, `TESTING.md` (State test 73), `CHANGELOG.md` `[0.9.7]` Fixed (two new bullets — the solo
+and half-applied-transaction symptoms, and the wheel behaviour change). Not a gate item: `mbSolo` and
+`mbBands` keep their meaning; no parameter ID, serialization, threading-model, DSP-order or
+reported-latency change, and no Accepted ADR conflict. [Verified]
+
+## SpectrumImager — a store is committed only when the parameter says so (2026-09-07, eighth pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: `setBands` and `setSoloMask` re-read their own
+target after `endChangeGesture` and return `stored && bandCount() == want` / `stored && soloMask() ==
+mask`; `spreadSplits` is added and `resetCrossover`/`commitFreqEditor` use it, so a neighbour is
+written only while it still holds the value the plan was computed from and the primary store is
+confirmed before anything moves to make room for it. `tests/state_tests.cpp`: State test 74.
+
+**Why.** ADR-0041's rule — *a conditional store reports whether it **committed*** — was implemented
+as far as the **precondition**. `setValueNotifyingHost` dispatches every listener synchronously from
+inside itself, so a listener writing the same parameter from inside that store's own dispatch (or
+from inside the `endChangeGesture` that follows) took the value away and both functions still
+answered `true`. The same round converted `writeCrossovers` to ownership and left the two other
+neighbour spreads on the predicate it had just condemned at `SpectrumImager.cpp:314-316`. Measured
+against `e247c11`: `the mask store was overwritten from inside its dispatch and the transaction
+carried on: Bands 3 with mask 0x9`; `5000.0 Hz was installed and 2000.0 Hz was written over it` (on
+both the reset and the text-commit paths); `the count store did not stand (Bands 2) and the press
+still latched the add and opened 1 gesture(s) on the new split`.
+
+**A correction this round makes to the last.** ADR-0041's Decision was right and is unchanged; what
+was incomplete was its implementation, in the two primitives named above, and its application, in the
+two spread loops it did not convert. Recorded in ADR-0041 under *Correction, next round* rather than
+quietly amended.
+
+**`setParam` deliberately stays `void`, and that is a measured decision.** Every caller is either a
+leaf of a topology burst — the plan for slot `k+1` comes from the entry snapshot, never from slot
+`k`'s committed value — or a single store with nothing after it. A listener echoing a width slot from
+inside its own store in the middle of `removeBand` was measured to leave `Bands 3 mask 0x5 wLo 1.750`:
+the intended layout with the newer authority's width standing. Aborting there is **worse**, because
+the mask is stored first and is only correct once the count changes.
+
+**The cross-thread transaction is re-ruled, and the reason is stronger than last round's.** Option B
+was rejected before as *unreachable* (eight separate automatable parameters, no single commit point).
+The decisive fact this round is that a commit point would not help: `PluginParameters::toEngine`
+reads the ten multiband atomics with **ten separate `load()` calls** once per block with no coherence
+guard (`PluginParameters.cpp:365-374`), so the **reader tears** and any write-side atomicity would be
+re-torn. Making the topology atomic means replacing the read — a threading-model change and an
+Architecture Review Gate item. Option E (compensating rollback) is newly evaluated and rejected: it
+writes a stale value over a newer authority (ADR-0036 §25) and cannot terminate deterministically.
+Safety is re-derived from the DSP rather than asserted — every split clamped to `[20 Hz, 0.45·sr]`
+and force-ordered `1.1×`, the count clamped, the mask masked to the live count, every continuous
+quantity smoothed, and `mbBands` (the one discontinuous quantity) written **last**, which is why the
+store order is kept.
+
+**And then the shipped fix was audited too.** A read-only fan-out re-derived every store site from
+the code as shipped, not from the design, and found two more — both the same rule applied
+inconsistently, both closed in this change. `spreadSplits` re-proved the values but not the **count**,
+which `was[k]` cannot stand in for because `mbBands` is a different parameter; and `addBandAt` still
+owned its splits in **pixels**, the one guard ADR-0041 did not convert, so a 32 Hz move at 10 kHz read
+as unchanged and the burst wrote its own plan over it. State test 74 legs K and L, mutations M8 and
+M9. Examined and deliberately not changed, each with its reason in the worklog: `projectGaps` is a
+coupled chain so an abort part-way can leave the splits out of order **on screen** (the DSP
+force-orders whatever it reads); `resetCrossover`'s pixel round trip of the default (~1e-6 Hz); and
+`resetCrossover` not refreshing `gestureX`, which is pre-existing and harmless only because the
+alt-click branch latches no identifier.
+
+**And the transaction half of the audit corrected the record.** Option C's stated reason — in this
+round's worklog *and* in ADR-0041's own option table — was that the silent writer "advances no
+version". It does: `reassertParameters (…, notifyHost = false)` bumps `soundParamGen`
+(`PluginProcessor.cpp:779-780`), under a comment saying why, added a month before ADR-0041. The
+verdict stands on three real obstacles (self/foreign confound, once-per-pass granularity, relaxed
+ordering) and ADR-0041 is annotated rather than rewritten. Two more: the burst comments claiming
+"at most one already-issued store behind" understated the residue, which is **eight** for an add at
+N = 3 and **six** for a removal at N = 4; and both bursts wrote the slots their plan leaves alone,
+which for the **splits** was a value change, because the plan is carried in pixels and
+`xToFreq (freqToX (f))` is not the identity — measured at
+`split0 200.000015259 -> 199.999847412` for a split the user never touched. Both bursts now elide
+those stores. State test 74 leg M, mutation M10.
+
+**And one defect no earlier round had reached.** `commitFreqEditor` proved its handle live when the
+editor **opened** and never again, and nothing closes the editor when the band count moves — not the
+24 Hz reconcile, not `cancelActiveDrag`. A host lane dropping Bands while the user types left the
+commit storing into a split the topology no longer uses (an automation and undo entry the user never
+made, live again when the count returns) and handing the spread a pin outside the live range. Closed
+the way ADR-0039 closed the same class in `removeBand` — refuse, never clamp — with the same one-line
+guard added to `resetCrossover`. State test 74 leg N, mutation M11.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_GESTURE_TOPOLOGY_AUDIT_v0.9.8.md` §§36-47 (findings, reproduction,
+the invariant split into its three halves, the reporting contract, the two spreads, the cross-thread
+re-ruling, chronology, the final audit table, validation), `ADR-0042` + the `ADR-0041` correction +
+`ADR_INDEX`, `TESTING.md` (State test 74), `CHANGELOG.md` `[0.9.7]` Fixed. Not a gate item: no
+parameter ID, serialization, threading-model, DSP-order or reported-latency change, and no Accepted
+ADR conflict. [Verified]
+
+## SpectrumImager — positional latches, and an audit that refuted two of its own proposals (2026-09-08, eleventh pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: the wheel's `scrollHandle`/`scrollBand` latch is
+stamped with `scrollBands` and dropped when the count moves; `resetParam` takes `expectedBands` and
+proves it between its own gesture open and its store. `tests/state_tests.cpp`: State test 77, plus
+State test 76 legs H and F's width assertion.
+
+**Why.** Two paths the ADR-0038/0039 chain never covered, both found by the round's own audit rather
+than by the review. The wheel latch survived a band-count change arriving while the hand was still,
+so the next tick steered a band the pointer was no longer over (`band 1 moved 1.060 -> 1.120`).
+`resetParam` had a gesture bracket with no topology proof inside it while its callers derive the band
+index outside the call (`1.600 / 1.000 / 1.600`). Both are ADR-0045.
+
+**Two of the audit's own proposals were refuted, and that is the point of having one.** Narrowing
+`soundMovedUnderGesture` to the slots the latched count uses was implemented and **broke State test
+71 leg G**, which deliberately requires a foreign write to an unread slot to stop the drag; reverted,
+with the rejection recorded beside the predicate. And the review's Finding A — that
+`commitFreqEditor` needs a topology stamp — is **not a defect**: `mbFreqLow` is split 0 under every
+topology, so a surviving index names the same parameter, unlike `removeBand`'s band index which
+ADR-0039 had to refuse because a surviving index there retargeted the operation. The reasoning now
+sits at that line in the source.
+
+**Two coverage gaps in the previous pass's own fix.** `addBandAt`'s ADR-0044 mask re-proof had zero
+coverage — every leg drove `removeBand` — and leg F did not enforce its own claim, since removing the
+mask check from the width loop alone left both its assertions true. Legs H and F's width assertion
+close them; mutations R3 and R4 kill exactly one leg each.
+
+**The store census was wrong in six places** and is corrected: an add at N = 3 issues **eight** value
+stores, not nine, so the standing residue is **seven**. Both halves are now counted the same way,
+which is the discrepancy that let the figure drift twice. Recorded with it: an **abandoned**
+transaction gets no duck, so its residue arrives on the continuous path and stands, where a completed
+mixed layout would at least have been ducked into.
+
+**The cross-thread reader is escalated rather than only accepted.** `FUTURE_RISKS.md` **RISK-010**
+names the ten-load multiband snapshot as an `ARCHITECTURE_REVIEW_GATE` item, because the only real
+fix replaces the reader. The held-audition guard stays an accepted GUI-only gap: the only seam that
+would work is a production method existing solely for a test.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§10-12 (the agent
+inventory, every consumed result classified and acted on, and a correction to this round's own
+reporting — a stale test binary was read as green twice in this PR), `ADR-0045` + `ADR_INDEX`,
+`ADR-0042`/`ADR-0044` census corrections, `FUTURE_RISKS.md` RISK-010, `TESTING.md` (State test 77 and
+the extended 76 entry), `CHANGELOG.md` `[0.9.8]`. Not a gate item. [Verified]
+
+## SpectrumImager — a transaction owns what it has written, and the changelog moves to 0.9.8 (2026-09-08, tenth pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: the solo word is re-proved before every store of
+both topology bursts, and `setBands` takes an `expectedMask` it proves **inside** its own gesture
+bracket. `tests/state_tests.cpp`: State test 76. `CHANGELOG.md`: this PR's thirteen entries move
+from `[0.9.7]` to a new `[0.9.8]`, with `CMakeLists.txt` and the three current-version documents
+following.
+
+**Why.** ADR-0040 re-validates before every store and ADR-0042 confirms every store on its far side,
+and read together they sound complete. Both look **forward**. Nothing re-proved a value the
+transaction had already committed, and the band count — written last — is the one store that
+*reinterprets* another: `SoloMonitor::process` masks the solo word with `((1 << bands) - 1)`.
+Measured on `91e20d9`: `Bands 3 with mask 0x8`, a word written for four bands that three bands then
+mask to nothing while the button stays lit. Two further measurements separated the two mechanisms
+the fix needs — `split0 2000.0` for a transaction that ran on past the divergence, and the same
+`Bands 3 with mask 0x8` again from inside `setBands`'s **own** `beginChangeGesture`, the window no
+caller-side check can reach.
+
+**The round's audit refuted the round's first fix, and that is recorded rather than dropped.** The
+first implementation proved the whole written prefix — mask, widths *and* splits — and converted the
+burst leaves from `setParam` to `storeOwned`. It passed its own tests. It also (1) contradicted
+ADR-0042 on a **measured** point: that ADR keeps `setParam` `void` because aborting at a width leaf
+was measured worse (`Bands 3 mask 0x5 wLo 1.750`), and aborting on a width leaves the old count with
+an already-remapped mask — the very incoherence being fixed; and (2) left the gesture-open window
+open, because the prefix proof sat outside `setBands`'s bracket. `mbWidthLow` means band 0's width
+under either topology; `mbSolo` does not mean the same thing under both. Legs B and C were rewritten
+from assertions into **controls** that keep that asymmetry.
+
+**Two in-source claims corrected.** *"The transaction cannot go on to change the band count with the
+mask still in the old numbering"* was false — the guard it sat under tests a change landing
+**before** the mask store. And the store census, itself an ADR-0042 correction of an earlier "at
+most one", is one too high: an add at N = 3 issues **eight** value stores, not nine, because the
+first `ins + 1` width slots are always elided, so the largest residue is **seven**.
+
+**The ADR-0025 disclosure understated its own gap.** `tick` opens with `if (! isShowing()) return;`
+and the harness never shows the editor, so even a public `tick (dt)` would return before reaching
+the held-solo guard. The vblank was never the only obstacle. Disposition unchanged, disclosure
+corrected, and the concrete closing change now named.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` (the running-work inventory,
+the reproduction, what the audit did to the first fix, the F2 residue table, the F3 determination,
+the F4 re-evaluation and the A–E option verdicts), `ADR-0044` + `ADR_INDEX`, `TESTING.md` (State
+test 76 and the corrected `FrameClock` gap entry), `CHANGELOG.md` `[0.9.8]`. Not a gate item: no
+parameter ID, serialization, threading-model, DSP-order or reported-latency change, and ADR-0042 is
+completed and narrowed with the measurement that narrows it. [Verified]
+
+## SpectrumImager — a commit carries intent, and a plan is computed where it is used (2026-09-08, ninth pass)
+
+**What changed.** `src/gui/SpectrumImager.{h,cpp}`: `openFreqEditor` records the seeded text and
+clears an edited flag, `TextEditor::onTextChange` sets it, and `commitFreqEditor` returns without
+storing when neither says the user changed anything; `resetCrossover` and `commitFreqEditor` compute
+their snapshot, projection and store **inside** the change-gesture bracket; `tick()` asks
+`gestureIsStale()` before promoting a press to a held audition. `tests/state_tests.cpp`: State
+test 75.
+
+**Why.** The round's brief was to audit every write path before patching anything, and the audit
+(worklog §2) found the ADR-0038..0042 invariant fully applied everywhere except two rows — the two
+the review named. Measured against `ae86963`: `5000.0 Hz was installed and 200.0 Hz was written over
+it` for an editor dismissed without typing; `1 store(s)` issued for the same dismissal with nothing
+moved; and `8440.1 / 3000.0 / 19500.0` — the first split above the second — for a typed commit whose
+projection had slid the pin by an amount derived from neighbours that then moved.
+
+**What the audit found NOT to be a defect, and why the round says so instead of patching it.** An
+ownership check on the primary store's own target would be a **false refusal**: a reset targets the
+parameter's default and a typed commit the user's typed value, neither computed from the split's
+current value, and the user's action is the newer authority at the moment of the commit (ADR-0036
+§25). State test 75 leg B is the guard that keeps such a check out. Three of the review's four cited
+line numbers also do not name what the finding describes on this head; the drift is reported in the
+worklog §1 and the audit follows the substance.
+
+**The informational item, ruled.** A cancelled spread can leave the splits out of order **on
+screen**. The DSP force-orders whatever it reads and `handleNearX` is order-independent, so every
+handle stays grabbable and one drag restores the order — but `bandAtX` and `soloHit` both assume
+ordering and degrade to *unreachable affordances* for the band between an inverted pair. Accepted
+behaviour, not a defect: fixing it directly would mean drawing a layout the plug-in does not have,
+or refusing to abandon a spread and writing a stale value over a newer authority. The round removes
+its only single-threaded trigger.
+
+**The systematic half found two more.** Auditing *every* write path rather than only the two the
+review named turned up the same family twice more, both closed here without a new mechanism:
+`spreadSplits` re-proved the neighbours but never the **pin** every position in the plan was computed
+to make room for (`300.0 / 11407.5 / 15122.0` before); and the **wheel** burst had no per-store
+ownership at all, because `cancelActiveDrag()` clears `gestureBands` and that waives both `ownsSplit`
+and the count re-proof — so the one path ADR-0040 did not cover still carried the defect ADR-0040 was
+written for (`5000.0 Hz was installed and 1476.4 Hz was written over it`). Legs G and H, mutations N5
+and N6. Also recorded and deliberately not changed: `freqText` and `parseFreq` are not inverses at
+exactly 20 Hz, because values at or below 20 are read as kilohertz — a deliberate text-entry
+shorthand whose only harmful route, the untouched dismissal, this round removes.
+
+**One thing has no test, and says so.** F2's fix is one call to an existing predicate, and its
+trigger lives in `tick()`, driven only by `juce::VBlankAttachment`. It ships under ADR-0025's
+documented exception with the four disclosures recorded in `TESTING.md` §Gaps and the worklog §12,
+including the concrete harness change that would close it.
+
+**A correction the first attempt forced.** The intent gate was written against `onTextChange` alone
+and broke four existing legs, because that callback is delivered through `postCommandMessage` and
+never arrives without a running message loop. Recorded in the worklog §10 rather than quietly
+amended.
+
+**ThreadSanitizer, re-run on this head rather than trusted from the last one, found a lock-order
+inversion.** `sendValueChangedMessageToListeners` holds the parameter's own `listenerLock` for the
+whole listener loop and `beginChangeGesture` does the same, so a listener writing a *different*
+parameter nests two of them — and this round's legs D and G nest them in opposite orders
+(`M0 => M1 => M0`), which CI's `tsan` job would have failed on. **Both orders are the main thread's**,
+so the suite cannot deadlock, and no production listener creates the nesting at all: the three of
+them do one relaxed `fetch_add`, one relaxed `fetch_add`, and two int updates. A host writing
+cross-parameter from inside a dispatch on two threads *could* form the cycle for real, on locks JUCE
+takes around its own dispatch; that is **RISK-009**, and closing it is a threading-model change.
+`tests/tsan-suppressions.txt` carries one `deadlock:` entry naming the harness double so the report
+stays visible for any stack made of production frames, wired into the workflow with
+`print_suppressions=1`; the canary, run under the same file, still fails with a data race. Worklog
+§18. **Corrected 2026-09-08 (split-snapshot round, §36):** "for any stack made of production frames"
+is stronger than the measurement supports. A TSan suppression is REPORT-scoped, so it is accurate
+only for a report whose stacks are ALL production frames — that case was measured and still exits 66;
+a MIXED cycle pairing a production edge with the harness edge IS absorbed. The residual is bounded
+(the harness double is not compiled into a shipped build) and is now recorded in the suppression file
+rather than claimed away here.
+
+**A wrong-typed argument in the code this round rewrote.** `juce::TextEditor::setText` takes
+`(const String&, bool sendTextChangeMessage)`; `juce::Label::setText` takes
+`(const String&, NotificationType)`. `openFreqEditor` seeded the chip with the *Label* spelling,
+which compiled only because `juce::dontSendNotification` is 0. No behaviour change — `false` is what
+the intent gate needs — but it is the same confusion that made the round's first attempt assume
+`setText` dispatched `onTextChange` synchronously. Nine call sites corrected, one in `src/` and eight
+in `tests/`. No gate saw it: `-Wint-in-bool-context` is in `-Wall` and GCC emitted it, but
+`check-gcc-warnings.py:207-213` gates five other flags. Adding it is one line and is **not** done
+here, because `gcc-warning-baseline.txt` is pinned to gcc-16 and a new flag's first-party count can
+only be measured on the runner — the script's own rule is to re-baseline and read the diff in the
+same change. Worklog §16.
+
+**A class of anchor the citation gate cannot see.** Re-deriving this change set's tracked
+`dragCrossoverTo` anchor for the third time (`:471 → :493 → :509 → :518`, target and declaration
+both) exposed **eight** rotted **continuation** anchors — the bare `(:588)` form the second-pass
+entry above uses after a full path, six distinct citations of which that entry makes two twice —
+left behind as these rounds moved the file beneath them.
+`check-citations.py:34-44` leaves them alone on purpose: a citation is the gate's only when it names
+its path from the repository root, and inferring the owning file from an earlier sentence would put
+a rewriting tool onto anchors it guessed the file for, which is how it corrupted one already. Seven
+are re-aimed here; the eighth named `removeBand`'s clamp, which ADR-0038 deleted, so it is
+de-numbered in the wording this entry's predecessor already uses rather than re-aimed at the comment
+recording its removal. Worklog §15; the convention that costs nothing is to spell the full path
+whenever a citation is worth checking, as this entry does.
+
+**Docs.** `worklogs/SPECTRUMIMAGER_REMAINING_OWNERSHIP_AUDIT_v0.9.8.md` (findings, the full
+write-path table, the reproduction, the rulings, rejected approaches, the decision, chronology,
+mutations, the ADR-0025 disclosures, the anchor audit), `ADR-0043` + `ADR_INDEX`, `TESTING.md`
+(State test 75, the new `FrameClock` gap entry and the `tsan` recipe), `FUTURE_RISKS.md` RISK-009,
+`tests/tsan-suppressions.txt`, `.github/workflows/build.yml` (`TSAN_OPTIONS`),
+`CHANGELOG.md` `[0.9.7]` Fixed. Two comments that contradicted the
+shipped code corrected: the pixel-tolerance description above `soundMovedUnderGesture`, and a
+mangled sentence in `spreadSplits`. Not a gate item: no parameter ID, serialization, threading-model,
+DSP-order or reported-latency change, and no Accepted ADR conflict. [Verified]
+
+## Twelfth pass — topology identity: one topology reading per handler (ADR-0046, 2026-09-08)
+
+**Scope.** The final review round's Finding A: *"if automation changes the band count between
+deriving a target using `bandAtX`, reading or validating `bandCount`, and recording the topology
+stamp, the operation may apply to a band index under a topology different from the one the user
+targeted."*
+
+**Ruled A — a confirmed defect.** `mouseWheelMove` took **three** readings of the count per tick
+(the write bound, the staleness test, the stamp) and let `handleNearX`/`bandAtX` take a fourth of
+their own, and it stamped with the **last** of them. There is no dispatch anywhere in that span —
+`bandAtX`, `handleNearX`, `crossover` and `bandCount` are plain `getValue()` reads — so reentrancy
+cannot cross it and only another thread can, which is exactly the window the finding names. Stamping
+last is the one arrangement that cannot work: an index derived at three bands and stamped with the
+four that arrived a few instructions later claims a topology it was never derived in, and because
+`scrollBands` is not re-derived for the rest of the burst, every later tick compares against that
+claim and passes. `mouseDown` never had this half — it reads the count at the very top, which is
+what `mouseWheelMove`'s own ADR-0046 paragraph in `src/gui/SpectrumImager.cpp` relies on. (Cited by
+FUNCTION rather than by line from 2026-09-09: the line number had drifted twice more, once past a
+hunk boundary the mapper cannot cross, and the exact line adds nothing here -- which is the rule
+the `cancelActiveDrag()` citations above already follow.)
+
+**Fix (ADR-0046).** `bandAtX (x, n)` and `handleNearX (x, n)` answer under the topology they are
+given (`-1` keeps the live read for the hover and paint callers, which stamp nothing);
+`mouseWheelMove`, `mouseDown` and `mouseDoubleClick` each take one reading and use it for the
+staleness test, the derivations, the stamp, both write bounds, the `gestureBands` handed to
+`writeCrossovers`, and the plan extent inside `dragCrossoverTo (handle, x, n)`; and
+`setParam (p, plain, expectedBands)` gives the wheel's width store — the one store in the class with
+no topology proof at all — the contract `resetParam` has carried since ADR-0045. No lock, no
+seqlock, no marshalling: making the two reads **the same read** needs none of them.
+
+**Deliberately not done, and said so in the source.** `soloHit` and `deleteHit` still re-read the
+count; threading a topology into them means threading it through `deleteBox`, `soloBox`,
+`bandLeftX` and `bandRightX` as well, and their window is the fail-safe half only (the stamp is the
+older reading, so a disagreement makes `gestureIsStale()` refuse). Fail-open is fixed; fail-safe-
+but-lossy is fixed where it costs one argument, and named where it does not.
+
+**Coverage, including the part that is untestable.** State test 78, four legs. Mutation Q1 (derive
+under an unproved topology) is killed by State test 77 leg A and State test 78 leg B; Q2b (derive
+*and* bound under one) by leg C. **Q2, Q3 and Q4 survive, and were run to measure that rather than
+assert it** — the window holds no dispatch, so no deterministic test can enter it, and a stress
+probe was rejected because it can assert no sound invariant across it without observing the store
+and the live count together. Recorded in `TESTING.md` beside the test rather than left implicit.
+
+**A correction this round made to its own work.** The comment first written at the wheel's width
+store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
+no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
+to zero into the undo entry (`src/PluginProcessor.cpp:812-825`), so a bare `setParam` makes **no**
+undo step: the value reaches the host and is folded into the committed baseline with nothing to
+reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
+audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
+stands.
+
+**Two records tightened rather than left as they were.** `FUTURE_RISKS.md` RISK-010's impact
+sentence claimed the store-order argument covers every writer; it covers `addBandAt` and
+`removeBand`, and the narrowing now names the two writers it does not cover (a host automation write
+has no transaction to be incoherent with; a whole-state restore stores in the APVTS's order, not
+this rule's). And residuals **U1–U3** — undo re-entrancy splitting a topology transaction into two
+undo steps — had been carried in a worklog with a no-fix decision and no record of their own; they
+are now **RISK-011**, because a decision carried only in a worklog is a decision that gets lost.
+
+**Anchors.** The tracked `dragCrossoverTo` declaration was re-derived twice inside this one round
+(`:530 → :541 → :547`) — the first re-derivation of a round is not always the last, which is the
+running cost of the single entry in `DELIBERATE_REAIMS` and the argument against adding more. Four
+continuation anchors that this PR's own earlier passes had aimed correctly moved with the file and
+were re-aimed here (`captureDragOrigins`, `dragCrossoverTo`'s liveness return, `moveBand`, the
+`deleteHit (e.position) == dB` release test). Six others in the coverage log point at unrelated
+lines **both at `origin/main` and here**, so they are pre-existing drift rather than this change
+set's, and are reported rather than silently rewritten: `:398`, `:430`, `:504`, `:1775`, `:349` (the
+last two used as shorthand labels for findings, not as live citations) and `:512`, which
+`check-citations.py` already documents as a deliberate historical PREfast anchor.
+
+**Docs.** `ADR-0046` + `ADR_INDEX`, `TESTING.md` (State test 78 and its measured coverage limit),
+`FUTURE_RISKS.md` (RISK-010 narrowed, RISK-011 added), `CHANGELOG.md` `[0.9.8]` Fixed,
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§16-19, `check-citations.py`.
+Not a gate item: no parameter ID, serialization, threading-model, DSP-order or reported-latency
+change, and no Accepted ADR conflict. [Verified]
+
+## Thirteenth pass — coupled-commit consistency (ADR-0044 amendment, 2026-09-08)
+
+**Scope.** The review's finding that *"when listeners modify solo selection during `setBands`, the
+topology count commit may still report success"*, and its converse for `setSoloMask`.
+
+**Ruled B — already prevented, invariant documented.** Both halves are true of the code:
+`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:780`) and
+`setSoloMask` returns `stored && soloMask() == mask` (`:662`), so each re-reads only its own
+parameter after its own dispatches even though both prove BOTH on the near side. What covers it is
+the **callers** — every one that acts on the result re-proves the other parameter on its next line,
+and the rest discard it — and **ADR-0039's parked solo bit**.
+
+**The measurement is what settled it, and it corrected the round's own first reading.** A probe on
+the real component produced `Bands 2, mask 0x8, live-solo 0x0`, which reads like the
+`Bands 3 with mask 0x8` incoherence ADR-0044 named. The round trip showed otherwise: the far-side
+window and a plain count drop with **no reentrancy anywhere** produce byte-identical states, before
+(`mask 0x8, live 0x0`) and after the count returns (`mask 0x8, live 0x8`). The window publishes
+nothing the plug-in does not already publish by design.
+
+**Cross-reading the other parameter on the far side was evaluated and rejected** — it would return
+`false` when the count *did* commit, abandoning a successful add over a foreign mask write, which is
+ADR-0042's measured "aborting at a leaf is worse than completing".
+
+**Coverage.** State test 79, four legs, 16 checks; leg C is the guard on the caller-side re-proof.
+Mutation record reported as **defence in depth**: M1 (the single re-proof leg C names) **survives**
+because `setBands`' near-side guard is a second layer; M2 (every layer removed) kills leg C and
+State test 76 leg H together. No single-line proof exists and none is claimed.
+
+**Re-evaluations.** ADR-0046 confirmed correct and unrelated (a handler's topology reading, not a
+store's far side). RISK-010 confirmed correct and unchanged (cross-thread reader, not message-thread
+reentrancy). The held-audition gap re-verified — `tick()` still returns at `isShowing()`
+(`:1286-1289`) before the guard at `:1352`. **U4 measured for the first time**: wheel 1.000 → 1.180
+with `canUndo()` false, drag 1.000 → 1.750 with `canUndo()` true; kept deferred because it is
+pre-existing at the merge base, is a missing undo entry rather than a wrong value, and already has a
+complete `KNOWN_ISSUES` record — which gained the measurement and nothing else.
+
+**Docs.** `ADR-0044` (amendment section), `TESTING.md` (State test 79 and its mutation record),
+`KNOWN_ISSUES.md` (the U4 corroboration),
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§20-23. **No CHANGELOG entry**: the
+round changes no user-visible behaviour, and `CHANGELOG_POLICY` scopes that file to changes that do.
+Not a gate item: no parameter ID, serialization, threading-model, DSP-order or reported-latency
+change, and no Accepted ADR conflict. [Verified]
+
+## Fourteenth pass — wheel gesture semantics and the suppression match assertion (2026-09-08)
+
+**Finding 1 — "wheel input closes active gestures" (the `cancelActiveDrag()` at the top of
+`SpectrumImager::mouseWheelMove`; cited by FUNCTION rather than by line because that line moved three
+times inside this PR as the comment above it grew, and the citation gate cannot see a new anchor
+drift): ruled B,
+intentional.** `cancelActiveDrag()` is not in the merge base; it was introduced by **ADR-0041**, an
+early round of this PR, **not** by the recent ADR-0045/0046 wheel and topology work the review
+suspected, and ADR-0041 already states it as a product decision. What was missing is what ending the
+press *costs*, which is what the review actually asked. Measured on the real component: the host's
+change gesture closes **at the tick** rather than at mouseUp; `openGestures` reaches zero so the drag
+so far is committed as its **own undo step** (`canUndo()` 0 → 1 at the tick); and the held press is
+**dead** (1.375 → 1.495 at the tick, still 1.495 after a further 35 px, against 2.000 uninterrupted).
+All three intended, none previously written down. Now stated at the call site, in an ADR-0041
+amendment, in a **CHANGELOG `### Changed`** entry — this is a user-visible interaction change against
+the merge base and `[0.9.8]` carried none — and pinned by **State test 80**.
+
+**Finding 2 — "TSan suppression lacks a match assertion" (`tests/tsan-suppressions.txt:49`): ruled A,
+assertion added — but the review's mechanism was refuted first.** A renamed or drifted entry does
+**not** fail silently: measured `exit=66` with the lock-order report back, because `halt_on_error=1`
+stops the job. The genuinely silent mode is the other one — a **dead** entry that matches nothing,
+measured as `exit=0` with `Matched 1 suppressions` while the file carried 2 — and it is exactly the
+mode the file's own header calls dangerous. The `tsan` job now asserts **match-count == entry-count**
+(not "at least one", which would miss precisely that mode), self-tested against all three measured
+logs before shipping: passes 1/1 live, fails 1/0 loud and 2/1 silent.
+
+**Two self-corrections recorded rather than quietly fixed.** State test 80 leg B first shared leg A's
+processor and failed, because `canUndo()` is cumulative and leg B was measuring leg A's history; it
+now runs on its own processor. And the mutation record for State test 80 is reported with its real
+sensitivity: M1 kills three checks, but leg A's *"the press is dead"* assertion **survives** it,
+because ADR-0040's `ownsWidth` pins the value by a different mechanism.
+
+**Verify-only items unchanged.** RISK-010 (no reader or threading touched), the held-audition gap
+(`tick()` still returns at `isShowing()` before the guard), U4 (reinforced — the undo entry at the
+tick belongs to the drag the wheel finished, not to the wheel's own store, and `KNOWN_ISSUES.md`
+KI-010 now says so where State test 80's measurement could read as contradicting it), and the three
+informational items.
+
+**Correction to the line above, from the audit workflow's full result (worklog §31).** One of those
+three informational items — ownership parameter equality — was NOT unchanged. `ownsSplit` compares
+exactly and is described correctly at `src/gui/SpectrumImager.cpp:453-463` and
+`src/gui/SpectrumImager.h:384-390`, but the definition comment of `kSplitMovedPx`
+(`src/gui/SpectrumImager.cpp:14-17`) still said `soundMovedUnderGesture` compares against that
+constant and that "the two must be the same number" — the coupling ADR-0041 removed, unchanged since
+the ADR-0039 round, and the third copy of a defect this PR had already corrected by name twice.
+Corrected line-count-neutral. Two more, from the same result: `src/gui/SpectrumImager.h:351` said
+"Every write this gesture makes refreshes these" of `gestureX`, which `resetCrossover` and
+`spreadSplits` do not (fail-safe — the gesture cancels itself — so a comment correction, not a code
+change); and `docs/FUTURE_RISKS.md`'s RISK-010 bound said `mbBands` is "read **first** by
+`toEngine`" where `e.mbEnable` precedes it, corrected to "read before every parameter the count
+reinterprets", which is what the argument actually needs. The accept-and-escalate decision is
+untouched. Also re-aimed: two anchors in this file and in §27 that cited the wheel's
+`cancelActiveDrag()` at `:2433`, which the comment added above it in the same commit moved to
+`:2455` — new anchors, so the citation gate could not see them. [Verified]
+
+**Docs.** `ADR-0041` (amendment), `CHANGELOG.md` `[0.9.8] ### Changed`, `TESTING.md` (State test 80
+and the tsan recipe row), `tests/tsan-suppressions.txt` (the rule marked enforced),
+`.github/workflows/build.yml` (the assertion step),
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§26-29. Not a gate item: no parameter
+ID, serialization, threading-model, DSP-order or reported-latency change, and no Accepted ADR
+conflict — ADR-0041 is amended with its own measured consequences, not contradicted. [Verified]
+
+---
+
+## Fifteenth pass — the split-snapshot round (2026-09-08)
+
+**Finding — "split snapshots can launder automation" (`SpectrumImager::captureDragOrigins`): ruled A,
+confirmed defect, fixed, and MEASURED before it was ruled.** The plan basis (`dragOrigX`) and the
+ownership stamp (`gestureX`) were two separate reads of the same parameter. Neither read dispatches,
+so the window is reachable only from another thread — which is why no deterministic test in the suite
+could see it, and why this round added `AnamorphStateTests --split-snapshot-probe` rather than
+arguing. An automation write landing between the reads leaves the plan holding the old position and
+the stamp holding the new value: `ownsSplit` agrees, the drag proceeds, and `writeCrossovers` writes
+the moved split back to where it was — inside the change gesture the drag opened, so into the
+automation lane and the undo stack. **92 laundered splits in 1200 drags (7.7 %) before the change,
+0 after; 200/200 against 0/200 with the window widened to 200 µs as a diagnostic.**
+
+**The class was wider than the finding.** The review named four sites; the audit found eight. Two of
+them (`writeCrossovers` and `spreadSplits`) had the same shape between the ownership proof and the
+write-worth test, and two more (the wheel tick target, the add-branch anchor) were failing SAFE but
+lossily — a refused user edit for no visible reason. All eight now take ONE reading and derive both
+values from it, which removes reads rather than adding them.
+
+**Decision: ADR-0047**, which is ADR-0046's own rule — *"One reading, used by the derivation and by the
+proof, has neither failure"* — applied to the split and width VALUES instead of the band count.
+`ownsSplit (int, float)` and `ownsWidth (int, float)` carry the caller's reading.
+
+**Two self-corrections in the measurement, both recorded because both changed the answer.** The first
+probe reset only one parameter between iterations, so after the first drag the handle had walked away
+from the swept x and 3000 iterations measured nothing at all. And the first writer fired one write per
+drag, which reaches the window about once in 4000 drags — enough to prove the class, useless as a
+detector, because a lane is only straddled at a transition. A third correction came from the mutation
+run: State test 81's comment credited the wrong guard for leg B (the per-slot `ownsSplit` proof rather
+than the `mouseDrag` staleness gate), and disabling each in turn settled it.
+
+**Coverage with its limit stated.** State test 81 pins the corners either side of the window; reverting
+ADR-0047 leaves all 2804 checks green, which is recorded in the test's own header, in `TESTING.md` and
+in the ADR. The probe is the coverage.
+
+**Verify-only items.** RISK-010 unchanged and explicitly NOT this finding (audio-side reader, not
+GUI-side snapshot); held-audition guard unchanged (`tick()` still returns at `isShowing()`, no
+production seam added); wheel gesture closure unchanged (ADR-0041, State test 80); U4 unchanged; the
+TSan suppression verified harness-scoped by grep — `WriteFromInsideAGestureOpen` exists only at
+`tests/state_tests.cpp:2786` — with the match-count assertion green in CI on `03a6e39`; both
+informational items unchanged.
+
+**Documentation.** `ADR-0047` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
+`TESTING.md` (the probe, its numbers, the widened-window recipe, State test 81 and its mutation
+record), `THREADING_POLICY.md` (one row added for the audio/host-thread WRITES to automatable
+parameters the GUI reads — the direction the table described in only one direction; the model is
+unchanged and none was proposed), `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md`
+§§32-35. Two anchors that had drifted for the third time inside this PR now cite the FUNCTION rather
+than a line. Not a gate item: no parameter ID, serialization, threading-model, DSP-order or
+reported-latency change, and no Accepted ADR contradicted — ADR-0046's rule is extended, not
+reversed. [Verified]
+
+---
+
+## Sixteenth pass — the release-and-add topology round (2026-09-09)
+
+**CI first: `source-lint` failed on `ea82eab`, and the failure was mine.** One drifted documentation
+anchor (`src/gui/SpectrumImager.cpp:441-451 -> :410-420`), moved by the twelve lines ADR-0047's
+overloads added above `ownsSplit`. **Classified a code issue in the change set, not a tooling or
+formatting one** — the gate did its job. The reason it escaped locally is the durable lesson: CI
+compares against the PREVIOUS COMMIT and I had checked against `origin/main`, which cannot see drift a
+commit introduces and re-anchors within itself.
+
+**Finding 1 — "release-time automation loses a band": ALREADY PREVENTED, and the answer is a mutation
+ladder rather than a comment.** The mechanism is real and REENTRANT — `endGesture` dispatches before
+`removeBand` is reached, so a host recording automation can move `mbBands` from inside it — which makes
+it more reachable than anything else this series has examined. Three guards were removed together and
+State test 69 leg C stayed green, because three more stand behind them: six independent refusals in
+all. **My first reading of that was wrong** and is recorded as such: seeing the entry guard kill no
+test, I wrote it down as a coverage hole, when it is a guard that cannot be reached past its siblings.
+The two conclusions call for opposite actions. The invariant and the ladder are now documented at the
+guard so nobody deletes it as dead.
+
+**Finding 2 — "concurrent topology changes misplace additions": CONFIRMED, fixed (ADR-0048).** The add's
+target index came from the latched count and its band EDGES from a fresh one, so a count raised between
+them clamps the click into a band it was never aimed at. Cross-thread only, hence a probe rather than a
+test: **55 misplacements in 4800 clicks before, 0 after**, with the abandoned-add rate unchanged so no
+add that previously succeeded is suppressed.
+
+**A fix implemented, measured and then REMOVED, which is the more useful half of the record.** Giving
+`addBandAt` the `expectedBands` contract `removeBand` carries looked obviously right. It closed nothing
+(0 either way across 4800 clicks), it costs the user a click under a moving lane, and it is wrong in
+principle: a band INDEX is retargeted by a count change and a FREQUENCY is not — ADR-0045's own
+asymmetry, ruled there for `commitFreqEditor`. The asymmetry is now recorded at both sites as a
+decision.
+
+**The Finding 1 conclusion was corrected by the audit, and the correction is the useful part.** Peeling
+`removeBand`'s comparisons one at a time never fires a test, so I first recorded the entry guard as a
+coverage hole. The audit found the mutation that does fire: changing the CALL SITE to pass a live
+`bandCount()` instead of `pressBands` kills State test 69 leg C twice, with the round's own `Bands 4 ->
+3` diagnostic. What is load-bearing is the argument, not any one comparison inside the callee — and the
+two readings call for opposite actions.
+
+**A NEW finding, escalated rather than patched:** `removeBand` proves the slot each loop iteration
+WRITES but never the slot the value was TAKEN FROM, so a same-count foreign write to the top live split
+or width is discarded while the transaction completes. Fixing it changes when a topology transaction
+abandons, which is ADR-0042's and ADR-0044's measured disposition; it belongs in its own round with
+those legs re-run. Worklog §40b.
+
+**One coverage hole and one unreachable window, and the audit's per-site measurement told them apart.**
+`mouseUp`'s staleness gate can be disabled with a green build — a real hole, since what it protects is
+gesture hygiene, which the state suite does not observe. The delete-x call site's `pressBands` is NOT
+one: replacing it with a live read kills nothing because only pure reads precede it, so its window is
+cross-thread-only, where the outward-drag site alone has a dispatch (`endGesture`) in front of it and
+is covered. Two readings, opposite actions, a third time. The kill also belongs to State test **69**
+leg C, not 71, as first recorded.
+
+**Five further findings from the audit's tracks 3 and 5, escalated rather than patched** (worklog §44):
+every per-store re-proof in both `removeBand` loops is uncovered; `moveBand` and `beginBandMove` size
+their plans and pins from their own readings rather than the caller's latch — the same class this round
+fixed, in the sibling function; three sites clear their latched identifiers after the `endGesture`
+dispatch rather than before; and `bandSoloed` is dead code. **Closed since:** the plan/pin item by the
+eighteenth pass (ADR-0046 amended); the three clear-after-dispatch sites by the sixteenth pass
+(`mouseUp`, ADR-0050) and the nineteenth (`cancelActiveDrag` and `endBandMove`); `bandSoloed` deleted
+in the nineteenth. The `removeBand` per-store re-proof coverage item remains open.
+
+**Two probe-construction mistakes are recorded in the probe's own source**, because both changed the
+answer before they were caught: a parked constant that made the pre-fix count fall from 5 to 0, and a
+breakdown test that could not be wrong.
+
+**Verify-only.** RISK-010 unchanged (both findings are GUI-side; RISK-010 is the audio-side reader);
+held-audition guard unchanged; U4 unchanged; TSan suppression unchanged with its corrected assertion
+green in CI and verified right in the no-summary case too. **Wheel gesture closure: no behaviour
+decision is required**, and the three options are laid out in worklog §41 because the brief asked. The
+recommendation to keep ADR-0041's rule now rests on a MEASUREMENT rather than on taste: the audit
+showed that making the wheel a no-op during a press fires State test 73 leg A, because
+`captureDragOrigins` cannot re-seed `dragGrabDX`/`dragGrabDY` — so option (B) reintroduces the
+ADR-0041 defect unless those anchors are re-seeded too.
+
+**One actionable gap from that audit, closed here.** ADR-0041's rule has four consequences and State
+test 80 pinned three; the fourth — a tick swallowing a pending solo or delete-x click — had been
+measured and then only written down, and stopping `cancelActiveDrag` clearing `soloPressBand` left all
+2814 checks green. **Leg C** pins it; mutation M-W2 kills exactly one check and nothing else.
+Documenting a measurement is not the same as pinning it. Worklog §43.
+
+**Documentation.** `ADR-0048` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
+`TESTING.md` (the probe, its numbers, its two construction mistakes, State test 82 and the CI recipe
+row), `.github/workflows/build.yml` (the new gate), `removeBand`'s invariant comment,
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§38-41. Not a gate item: no parameter
+ID, serialization, threading-model, DSP-order or reported-latency change, and no Accepted ADR
+contradicted — ADR-0046's rule is extended and ADR-0045's asymmetry is applied, not reversed. [Verified]
+
+## Seventeenth pass — the final topology and gesture round (2026-09-09)
+
+**Scope.** Three MUST-RESOLVE review findings, one two-part wheel finding, and a verify-only sweep
+over `RISK-010`, the held-audition guard, `U4`, three informational items, the TSan suppression and
+release consistency. Four ADRs, four regression legs, one new CI probe gate, one CI failure, and one
+process fix for the class that produced it.
+
+**Production changes.** `removeBand` proves the SOURCE slot of every value it moves, in the same
+window as the store (ADR-0049); `mouseUp` drops the gesture snapshot AFTER its on-release actions and
+re-proves ownership across the `endGesture` dispatch (ADR-0050); `captureSplits`/`splitAt` give
+`bandAtX`, `handleNearX` and `bandAddTarget` one reading of the split row per pass, and
+`seedDragOrigins` removes `mouseDown`'s second stamp of that row (ADR-0051); `mouseWheelMove` tests
+its delta before `cancelActiveDrag()`, so an event that makes no edit has no side effects (ADR-0052).
+
+**Coverage added.** State test 76 legs I and J (a width source and a split source replaced from
+inside an earlier store of the same removal); State test 69 leg G (a same-count sound install inside
+`endGesture`, the sibling of leg C's count move); State test 80 leg D (a wheel event with no vertical
+delta, in two halves mirroring legs A and C); and `--add-edge-probe`, wired into the `linux` job.
+Every fix has a mutation that kills its own leg and nothing else — five mutations, five disjoint kill
+sets.
+
+**One coverage hole closed and one honest negative recorded.** `mouseUp`'s staleness gate was the
+genuine hole carried into this round from §44; leg G closes it, and mutation M-B2 (restoring the
+early clear) is what proves the gate is now observed. Against that, `--add-edge-probe` had to be
+aimed three times: the first two aims measured 0 misplacements BEFORE and AFTER, which is what an
+instrument pointed at the wrong place looks like and is indistinguishable from a defect that does not
+exist. Both failed aims are recorded in the probe's own header rather than deleted.
+
+**Documentation.** `ADR-0049`, `ADR-0050`, `ADR-0051` and `ADR-0052` (all new) with their
+`ADR_INDEX.md` rows; a `Scoped by` cross-link added to `ADR-0041`; `CHANGELOG.md` `[0.9.8] ### Fixed`
+(four entries); `TESTING.md` (the new probe, its numbers, its three aims, and the CI recipe row);
+`FUTURE_RISKS.md` (`RISK-010` gains the reopen condition its record lacked and its neighbour
+`RISK-009` already had, plus an explicit statement that this round's three GUI-side writer fixes are
+not evidence about an audio-side reader risk); `.github/workflows/build.yml` (the new gate);
+`scripts/preflight.sh` (the local first-party warning sweep);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §§45-49.
+
+**Gate status.** Not a gate item on the code: no parameter ID, serialization, threading-model,
+DSP-order or reported-latency change. ADR-0052 narrows the SCOPE of Accepted ADR-0041 and the
+question was put explicitly rather than assumed — the reasoning for calling it a clarification, and
+not a conflict, is written into ADR-0052's own *Architecture Review Gate* section, and the in-source
+ADR-0041 comment block was reconciled rather than left stranded. [Verified]
+
+## Eighteenth pass — the band-move extent (2026-09-09)
+
+**Scope.** One confirmed review defect: *"band drags adopt replacement layouts"* at
+`SpectrumImager.cpp:807`. No new ADR — it completes ADR-0046 at the one site that ADR's own comment
+named and skipped — and a re-verification sweep over the seven standing residuals, none of which
+moved.
+
+**Production change.** `beginBandMove (int b, int n = -1)` and `moveBand (float mouseX, int n = -1)`
+take the topology the caller proved, exactly as `dragCrossoverTo` has since ADR-0046. `mouseDrag`'s
+solo path passes `gestureBands` to both.
+
+**Coverage added.** `--band-move-probe`, wired into the `linux` job. Pooled 40 out-of-range writes in
+3600 band moves before, 0 after.
+
+**What is measured and what is not, kept apart.** The plan's EXTENT is load-bearing (7/1200 when
+reverted alone); the PINS and T range are not (0/1200 when reverted alone). The pins are threaded on
+ADR-0046's rule rather than on evidence, and the ADR, the probe header and worklog §55 all say so.
+Worklog §44 item C claimed the two were "one change, not two" — that claim is corrected in place by
+the measurement rather than left standing.
+
+**Instrument corrections, both recorded rather than tidied away.** Parking `mbFreqHigh` beyond the
+min-gap packing made the probe report 0 before AND after, even with the ABA window widened 300 000
+iterations. Running the lane across `mouseDown` let some presses latch four bands, making a
+legitimate four-band move look like a defect — the false positive that left one post-fix run at
+1/1200.
+
+**Documentation.** `ADR-0046` (amended) and its index row; `CHANGELOG.md` `[0.9.8] ### Fixed`;
+`TESTING.md` (the probe, its numbers, its two corrections, the CI recipe row);
+`.github/workflows/build.yml`; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §55 and
+the correction to §44.
+
+**Gate status.** Not a gate item and no new ADR: no accepted decision changes, two private member
+functions gain a defaulted argument, no parameter ID, serialization, threading-model, DSP-order or
+reported-latency change, no lock and no allocation. [Verified]
+
+## Nineteenth pass — the cancellation double close, and one dead helper (2026-09-09)
+
+**Scope, given rather than chosen.** Audit `cancelActiveDrag` and `endBandMove`'s latch-clear
+ordering and fix it only if it is safe; delete `bandSoloed` if nothing calls it. RISK-010, U4 and the
+accepted ADR trade-offs were out of bounds and were not touched.
+
+**The finding, and the half the review did not name.** `cancelActiveDrag` clears `gestureBands`
+first, which protects `tick`'s reconcile (whose predicate reads that latch) and NOTHING else. The
+editor's stuck-drag reconcile calls straight in on `isMouseButtonDownAnywhere() &&
+! anyPhysicalMouseButtonDown()` — the MOUSE, not the latch — and under KI-013 that gate does not go
+quiet by itself on macOS. Reached from inside `endChangeGesture` with the identifiers still live, the
+nested call closed the same parameter's gesture twice AND cleared the identifiers, so the outer call
+then skipped the sibling gesture it had not reached and left it **open**. The second half was found
+by walking the function, not by reading the finding.
+
+**Reproduced before it was patched**, because the class is reentrant rather than cross-thread: a real
+`AudioProcessorParameter::Listener` re-entering the cancel from the close it is watching. State test
+83 legs A/B/C each counted **2** closes pre-fix and 1 post-fix; leg D is the control that an
+uninterrupted cancellation still closes exactly once.
+
+**The two sites are one ensemble, which corrects what the first draft of both source comments said.**
+Reverting `cancelActiveDrag`'s clear alone fails legs A and B; reverting `endBandMove`'s alone fails
+**nothing**; reverting both fails A, B and C. Calling the second "defence in depth with no reachable
+test" read the middle row alone. Both comments are corrected in place.
+
+**`bandSoloed`** had no production or test caller. Declaration and definition deleted; the ADR-0041
+comment that named it — the one explaining why `mouseUp`'s Alt-click branch reads `soloMask()` once
+instead of asking a helper — is kept, reworded to be about the double read rather than about a
+symbol, and now records that the helper was removed rather than left as a pattern to reach for.
+
+**One review Bug is confirmed and deliberately left OPEN.** `SpectrumImager.cpp:829`:
+`beginBandMove` calls `captureDragOrigins()`, which re-stamps all seven ownership slots, so a
+same-count write between `mouseDrag`'s gate and that line is adopted into the record the gesture
+proves against. Cross-thread only; the count half still refuses. The fix is one word
+(`seedDragOrigins()`, the helper ADR-0051 split off for callers that already hold a stamp) and is
+provably inert when nothing races, because `soundMovedUnderGesture` compares all seven slots exactly.
+It is out of this round's scope and belongs with its own probe measurement. Worklog §59.
+
+**Documentation.** `ADR-0050` (amended — no new decision, the same rule at the two sites it had
+escalated); `CHANGELOG.md` `[0.9.8] ### Fixed`; `TESTING.md` (State test 83, its four legs and the
+ensemble mutation record); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §58 and
+§59. One citation re-aim: `dragCrossoverTo` moved from `src/gui/SpectrumImager.cpp:657` to `:619`
+when `bandSoloed`'s definition was deleted, corrected in both the anchor and the `DELIBERATE_REAIMS`
+declaration.
+
+**Gate status.** Not a gate item and no new ADR: no accepted decision changes, no parameter ID,
+serialization, threading-model, DSP-order or reported-latency change, no lock and no allocation. Both
+functions make the same calls on the same parameters in the same order; only the point at which the
+members are cleared moves. [Verified]
+
+## Twentieth pass — the ownership record, replaced under the gesture (2026-09-09)
+
+**The finding, and why it is not the ADR-0046 one at the same function.** ADR-0046 fixed the band
+move's plan EXTENT being sized by an unproved reading. This is the ownership RECORD itself:
+`beginBandMove` called `captureDragOrigins()`, whose stamping half is a blanket, provenance-free copy
+of the live row into `gestureX`/`gestureW`. Called mid-gesture — with a record that `mouseDrag`'s
+gate had just proved — a same-count foreign write landing in the window was ADOPTED into the record
+every later check proves against. The width half is the worse one: a band move never writes a width,
+so `writeCrossovers` has no per-store check that could catch a laundered one, and the per-event gate
+is all that guards `gestureW`.
+
+**The invariant, established before the fix rather than after.** The record is stamped at a gesture
+START and is thereafter immutable except through the gesture's own confirmed stores (`storeOwned`).
+That is what makes "it moved and I did not move it" exact. Nine agents were run on the question —
+three independent derivations, two adversarial writer audits, four refuters each attacking a
+different claim — and returned **0 of 4 refuted**, converging derivations, and
+`SpectrumImager.cpp:828` as the ONLY mid-gesture blanket write in the file.
+
+**No new ADR and no human gate, checked rather than assumed.** ADR-0051's Decision is general — "a
+pass that has already stamped the row derives from the stamp rather than stamping again" — with one
+named exception, the add branch. `beginBandMove` is inside the rule, so this is its second
+application, not an amendment; that is the distinction from ADR-0052, which genuinely narrowed
+ADR-0041 and was correctly gated.
+
+**Evidence.** `--band-move-adopt-probe`, built for this because the existing `--band-move-probe`
+drives `mbBands` and cannot see a value-half defect: **148 / 18000 before, 0 / 18000 after**, one
+second either way, control green in both. Three instrument corrections are recorded in the probe's
+header (a detector aimed at a split the pressed band never moves; a lane released after `mouseDown`,
+whose wakeup latency alone carried the write past the window; a spin handshake that starved the
+message thread and then deadlocked on a missed flag edge), plus the fact that the reading is
+load-sensitive — 4 / 1200 on a busy box.
+
+**Regression, and its honest scope.** State test 84 cannot fail on the defect (the window holds no
+dispatch) and says so; it pins reversibility, both void-on-foreign-write halves, and a positive
+control. **Mutation:** the one-word revert re-fires the probe and leaves the suite at 2860/0 with leg
+A's frequencies identical to the digit — the inertness claim measured rather than argued. A first
+draft of leg A asserted a wrong contract (ratio invariance under a rigid pixel translation) and is
+recorded rather than replaced silently.
+
+**Corrections to existing text, all in the same edit.** `captureGestureSound`'s "called at every
+gesture start" now says *and nowhere else*; `captureDragOrigins`' and `seedDragOrigins`' header
+comments (the latter said "the ONE caller", now two); and `--band-move-probe`'s own comment, which
+claimed it presses band 1's solo button when its run-skipping loop makes it press band 0's — verified
+by measurement, with the instrument deliberately left alone since only the label was wrong.
+
+**Documentation.** `ADR-0051` (applied again — no new decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
+`TESTING.md` (State test 84 and the new probe, with both aiming mistakes and the load sensitivity);
+`.github/workflows/build.yml` (the gate, sized for power at 18 000 moves);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §60, and §59 marked closed.
+
+**Gate status.** Not a gate item and no new ADR: no accepted decision changes, one call site changes
+in one private function, `beginBandMove`'s `n` loses its default so the newly load-bearing
+precondition cannot be reached silently, and there is no parameter ID, serialization, threading-model,
+DSP-order or reported-latency change, no lock and no allocation. [Verified]
+
+## Twenty-first pass — the wheel latch's row half, and a coverage gap closed (2026-09-09)
+
+**Lifecycle decision, recorded.** No workflow was started this round: ultracode is off, so the
+Workflow tool's standing opt-in does not apply, and both questions — one latch's lifecycle in one
+handler, and whether the suite covers one guard — are answered exactly by reading the code and
+running mutations. CI on `20647a9` (20 successful check runs, 14 skipped, none red) was consumed as
+the baseline rather than re-derived.
+
+**The finding, confirmed from the code.** `scrollBands` stores `bandCount()` and nothing else, while
+`scrollHandle`/`scrollBand` are INDICES and `scrollAnchor` tracks the POINTER. The three
+invalidations — a >3 px `mouseMove`, `mouseExit`, and a count change — all miss a same-count split
+move, which re-lays the display out under a stationary hand exactly as a count change does.
+ADR-0045's own bullet argues that case in those words for the count half only.
+
+**Deterministic, unlike the three windows before it.** This one lies between two wheel TICKS, i.e.
+user time, so State test 77 leg E enters it with no thread and no probe, and failed pre-fix with
+*"band 1 moved 1.060 → 1.120 after a same-count split move under a hand that never moved"*.
+
+**The fix** stamps the row beside the count from the same single `captureSplits` reading the
+derivation uses, and refreshes it after a split store by DERIVING from `gestureX` — the record
+`storeOwned` maintains — rather than re-reading the parameters. Re-hit-testing every tick and
+invalidating the burst were both rejected, with reasons, because the wheel's own edits move the split
+it steers. ADR-0041/0052 are untouched: the delta test and `cancelActiveDrag()` still run first.
+
+**Mutations, one surviving and reported as such.** Row comparison removed → leg E; stamp refresh
+removed → leg F; the seed at latch creation removed → **nothing**, because re-deriving a width
+burst's latch over an unchanged row is idempotent. Leg F itself had to be re-aimed from a 0.20 delta
+to 1.0: below `handleNearX`'s 7 px grab radius a wrongly dropped latch re-derives onto the same
+handle and the leg passes on broken code.
+
+**The `removeBand` per-store destination re-proof gap is closed.** Re-measured open first (deleting it
+from both loops left 2866 checks green), then covered by State test 76 legs K and L — width loop 3
+checks, split loop 2, both 5. No production line changed. Two test-construction mistakes are recorded
+because each changed the answer: leg K's middle check was vacuously true under its own mutation until
+band 2's width was set explicitly, and leg L gave ThreadSanitizer a real lock-order cycle by poking
+leg C's parameter pair in the opposite direction — resolved by a non-notifying probe rather than a
+second suppression, so the suppression file stays at one entry.
+
+**Documentation.** `ADR-0045` (applied again — no new decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
+`TESTING.md` (State test 77 legs E/F and State test 76 legs K/L, with both aiming corrections);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §61.
+
+**Gate status.** Not a gate item and no new ADR: ADR-0045's Decision already reads "a positional
+identifier is stamped with the topology it was taken in and is void once that topology moves", and
+ADR-0039/ADR-0051 already settled that the count is not the whole topology. One private member array
+is added and one handler gains a comparison; no parameter ID, serialization, threading-model,
+DSP-order or reported-latency change, no lock and no allocation. [Verified]
+
+## Twenty-second pass — the proof-to-action boundary (2026-09-10)
+
+**Lifecycle decisions, recorded.** Three completed workflow transcripts (15, 34 and 9 agents, no
+unfinished agent, no empty result) whose findings shipped in earlier rounds: all three closed. CI on
+`f9a5266` consumed as the baseline. One NEW five-agent workflow started, for independent invariant
+derivation only — and it earned its cost: the skeptic could not refute the release finding, and one
+agent found a defect neither the review nor the maintainer had.
+
+**Three sites, two accepted rules, no new ADR.** The wheel's within-tick window and `removeBand`'s
+entry snapshot are both ADR-0047 ("one read, derive the plan and the proof from it"). The solo store
+is ADR-0045's second sentence ("a store whose gesture bracket dispatches before it proves the topology
+inside the bracket") with the sound half missing. A panel judge argued one rule and a refuter argued
+two-plus-a-new-ADR; resolved from the ADR texts against both extremes.
+
+**The new finding.** `setSoloMask`'s `beginChangeGesture()` dispatches ahead of its guard, so the solo
+release window is REENTRANT — and `mouseUp`'s ADR-0050 comment asserted the opposite. The comment is
+corrected; the delete half of the same sentence stands.
+
+**Evidence at its real strength.** Only the solo guard is measured (State test 79 leg C kills its
+mutation). The `removeBand` and wheel guards are cross-thread-only and kill nothing; they are labelled
+defence in depth on the same footing as `mouseUp`'s `gestureBands == pressBands`.
+
+**A probe was built and withdrawn**, with both mistakes recorded: a control that cleared the flag it
+had just set, and then a detector with no ordering between the lane's write and the message-thread
+store, which counted benign ticks (38/1200 before a fix that could not have changed them, 34/1200
+after). A gate that cannot fail is worse than no gate.
+
+**Gate status.** Not triggered, and both panel agents concurred independently. All three changes
+REMOVE parameter reads and add no lock, atomic or shared object, so the cross-thread surface shrinks;
+no workflow file changes this round. No human approval is required and none is manufactured.
+
+**Documentation.** `ADR-0045` and `ADR-0047` (both applied again — no new decision); `CHANGELOG.md`
+`[0.9.8] ### Fixed`; `TESTING.md` (State test 79 legs C/D, and the withdrawn probe);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §62. [Verified]
+
+### Twenty-third pass — a comment that claimed a measurement nobody took (2026-09-10)
+
+**One correction, source-only, found by re-reading the round's own production diff against the final
+head rather than by any gate.** The in-source comment at the wheel's within-tick stamp ended
+*"Measured at 38 in 1200 ticks, 0 after (`--wheel-adopt-probe`)"*. It was written before the probe was
+measured and was not revised when the probe was withdrawn. This register, `ADR-0047` and
+`docs/procedures/TESTING.md` all recorded the withdrawal correctly in the twenty-second pass; the
+source did not. The comment now says the guard is UNMEASURED, gives both readings (38/1200 before,
+34/1200 after), names the reason the instrument was withdrawn, and points at `TESTING.md` and the
+worklog.
+
+**Worth stating as a coverage fact:** no lint, no test and no CI job can detect a comment asserting a
+measurement that was never taken. The only instrument that found it was a final adversarial read of
+the diff, which is why it is written down here.
+
+The same pass rewrapped the `mouseUp` comment from §62c and made its referent explicit — the
+cross-thread-only class sentence belongs to the DELETE half, with State test 79 leg C named as the
+test that enters the reentrant solo half.
+
+**Documentation.** `src/gui/SpectrumImager.cpp` (comments only, object code identical);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §62j. [Verified]
+
+### Twenty-fourth pass — the press hit-test, and an ADR scope claim that was false (2026-09-10)
+
+**The finding.** Review item `R2484`, *"solo presses target replacement layouts"*: **CONFIRMED**.
+`mouseDown` stamps the press's topology and split row and then let `soloHit` re-read both — 9 live
+parameter reads for a two-band hit, 21 for a four-band one, none of them the reading the press
+proved. Cross-thread only: every statement between the stamp and `soloPressBand` is a pure read.
+
+**Why this one was fail-OPEN.** No consumer of `soloPressBand` re-derives it, and no store-side guard
+can catch a wrong one: `toggleSoloBit` range-checks the band not at all, and `setSoloMask`
+deliberately admits a bit above the live count, because a **parked** solo bit is a designed, tested
+state. An ABA return on `mbBands` — a four-valued parameter, so an ordinary automation shape —
+leaves every guard satisfied over an index the press's layout never had.
+
+**The document that was wrong.** ADR-0046's "What was NOT done" called this window "the fail-safe half
+only", while the same ADR's own amendment argues that "an ABA return to the stamped count between the
+two reads would let a plan sized under the wrong topology through" and converted `beginBandMove` on
+exactly that basis. The Decision is unchanged and already authorised the fix; the **scope paragraph is
+amended**, and the in-source comment repeating it is corrected.
+
+**A conclusion of mine that was wrong, kept rather than dropped.** I judged the review's worked
+example geometrically unreachable on the grounds that the splits are kept `kMinGapPx` apart. They are
+not: that clamp is applied only to plans this component computes, and the DSP's ordering clamp is on
+a local copy never written back. At `mbFreqLow == mbFreqMid == mbFreqHigh` the middle bands have zero
+width, fail the headphone gate, and band 3's centre lands exactly on band 1's. The review's example
+is exact.
+
+**Evidence.** State test 85 (legs A–E) holds the contract; `--solo-alias-probe` measures the window
+and **can fail** — control soloes band 1 on a clean tree, **491/1200 before the fix, 0/1200 after**.
+Mutations M2 and M6 kill 5 and 28 checks; M1, M3, M4 and M5 kill nothing and are recorded as unkilled.
+
+**`deleteHit` and `nearWidthLine` are threaded but not claimed as defects fixed**, each with the
+reason it was already safe stated at the site.
+
+**Gate status.** Not triggered. The change removes parameter reads and adds no thread, lock, atomic
+or shared object; the one CI step added is not a build-system item. No human approval required.
+
+**Documentation.** `ADR-0046` (amended — scope, not Decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
+`docs/procedures/TESTING.md` (State test 85 and the probe);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §63;
+`.github/workflows/build.yml` (the sixth probe gate). [Verified]
+
+### Twenty-fifth pass — the release action's record, dropped by the safety net (2026-09-10)
+
+**The finding.** Review item at `cancelActiveDrag`'s first two lines, *"reentrant cancellation
+disarms release ownership"*: **CONFIRMED and reproduced deterministically**. That function clears
+`gestureBands` on its first line, in front of the cheap exit meant to make a re-entrant call a no-op,
+and every ownership predicate in the class self-disables at `gestureBands < 0`. A release branch
+clears its identifiers before it dispatches — ADR-0050's own instruction — so the nested call closes
+nothing and still disarms the guard the store is about to run.
+
+**Reentrant, not cross-thread.** `setSoloMask` dispatches `beginChangeGesture()` before its guard, so
+a host pumping the message loop from there re-enters `cancelActiveDrag` with the store on the stack.
+An adversarial derivation, run to refute the finding and unable to, corrected two claims in the first
+draft of this round's record: the **primary** re-entry vector is `tick`'s own reconcile, whose gate is
+true *because of* the very install at issue and which needs no mouse state or KI-013 (the editor
+reconcile is the weaker one — JUCE clears the button bit before dispatching `mouseUp`); and the delete
+branch is **not** reentrancy-reachable, where the draft had said its per-store proofs were exposed.
+Both corrections are in the ADR and worklog rather than smoothed over. **State test 79 leg E** — leg C with the cancellation added ahead of the identical install
+— fails on the unfixed tree with *"mask 0x8, split 1 2000.0 → 6500.0 Hz"*, and it was the only
+failure, so the reproduction is isolated.
+
+**The class already knew, at one branch.** The handle-drag branch carries a bespoke
+`gestureBands == pressBands` compare and names this exact mechanism in its own comment. That was one
+branch's local defence against a general defect; the solo branch and `removeBand`'s mid-transaction
+per-store proofs had none.
+
+**The fix** is a scoped flag — `mouseUp` owns the record for the duration of its release action and
+`cancelActiveDrag` declines while it is set — chosen over moving the clear (which would reopen
+ADR-0039's orphaned latch) and over copying the bespoke compare to three more sites.
+
+**Evidence.** Removing either half fails leg E. Removing the handle-drag compare now fails
+**nothing**: it was always labelled unmeasured and is now redundant defence in depth — kept, and not
+claimed as load-bearing. One route is recorded as **open and unmeasured**: a nested `mouseUp` would
+reach the tail and drop the record, which the flag does not prevent.
+
+**Gate status.** Not triggered — one message-thread `bool`, no new thread, lock, atomic or
+cross-thread path. Applies ADR-0050's Decision to the one function able to defeat it. No human
+approval required.
+
+**Documentation.** `ADR-0050` (applied again — no new decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
+`docs/procedures/TESTING.md` (State test 79 leg E);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §64. [Verified]
+
+### Twenty-sixth pass — the one startup that opens two gestures (2026-09-10)
+
+**The finding.** Review item at `mouseDrag`'s band-move branch, *"reentrant band start leaks
+gestures"*: **CONFIRMED and reproduced deterministically**. `beginBandMove` is the only function in
+the class that brackets more than one parameter — every other opening site opens exactly one, so
+only this one has an interior a re-entry can land in — and its two `beginGesture` calls are two
+statements. `mouseDrag` publishes `soloMovedBand = true` before calling in, so a host that pumps the
+message loop from the first `beginChangeGesture` lands a reconcile in `cancelActiveDrag` with the
+move's members set and half its gestures open. Round 7's guard did not cover it: that claim is taken
+only by `mouseUp`. **The reconcile that reaches this window is `tick`'s alone** — during a drag the
+button is genuinely down, so the editor's stuck-drag one is inert (KI-013's round-4 resolution is
+what makes it so) — and its gate is false on entry, so the sequence has a precondition: the host
+writes a parameter from inside the gesture open, and the loop it pumps then finds the gesture stale.
+An earlier draft of this entry named both reconciles and the fixture had the write and the cancel the
+wrong way round; both are corrected, and the re-measured results are identical.
+
+**Four consequences, each measured.** The nested `endBandMove()` closes **both** pins from the
+members, so the second is closed having never been opened (gesture count **−1**, spurious undo
+boundary); the members are then clear, so the outer frame opens nothing; and `soloPressBand` and
+`gestureBands` are clear, so the resumed handler auditions `1 << -1` — undefined behaviour, reaching
+the processor as `0x80000000 & 0x0F` — and calls `moveBand` with every ownership predicate
+self-disabled and no gesture open, writing the pre-press splits back over the host's install. **And
+the first pin is left open for good**: JUCE walks `listeners` in reverse and the processor registers
+itself at construction, so the whole nested cancellation runs — both its `endChangeGesture`s landing
+while `openGestures` is still 0, where they are no-ops — before the outer `beginChangeGesture`
+reaches the processor and takes the count to 1, which nothing can bring down. `pollUndoCoalesce`
+refuses to commit while that count is up, so **undo silently stops recording every subsequent sound
+edit**. All four were the only failures in the suite.
+
+**A correction of mine, retracted.** An earlier draft of this entry said the review's *"the gesture
+remains open"* was wrong and the leak could only be an unmatched close. That holds for the **second**
+pin and not the **first**, and the first is the one with the lasting consequence — so the review's
+word was right. The fourth consequence was surfaced by the adversarial pass and then measured rather
+than accepted. The fix was already correct; the account of what it prevents was not.
+
+**Why the existing leg could not find it.** State test 83 leg C presses the **last** band, whose
+move has one pin (`soloMoveRight == -1` at `b == N - 1`); the window is structurally invisible from
+there. Legs E and F press a middle band, discovered by walking the solo lane rather than by
+hardcoded geometry; leg E is one sequence with four assertions, one per consequence.
+
+**The fix** is ADR-0050's ownership claim taken for the startup — two lines — chosen over publishing
+`soloMovedBand` late (turns an unmatched close into an unmatched open), tracking which pins opened
+(fixes one consequence of three), and opening from locals (same failure as the first). The `bool`
+became `int gestureActionDepth` because a second user makes nesting reachable; **degrading it back
+to a set/clear flag kills nothing**, and that is recorded at the declaration rather than claimed.
+
+**Evidence.** Removing `beginBandMove`'s claim kills leg E's four checks and nothing else; removing
+`cancelActiveDrag`'s decline kills those four **and** State test 79 leg E; removing `mouseUp`'s
+claim kills State test 79 leg E only — each claiming site measured on its own, neither subsuming the
+other. Leg F is the positive control. No probe: the window is deterministic, so a stress probe would
+be a gate that cannot fail.
+
+**Gate status.** Not triggered — one message-thread `int` replacing one message-thread `bool`; no
+thread, lock, atomic or cross-thread path added. Applies ADR-0050's Decision to the one startup able
+to defeat it. No new ADR. No human approval required.
+
+**Documentation.** `ADR-0050` (applied again — no new decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
+`docs/procedures/TESTING.md` (State test 83 legs E and F);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §65. [Verified]

@@ -73,6 +73,43 @@ python3 scripts/check-gcc-warnings.py --self-test
 echo "note: the FULL warning gates need a build log from the pinned compiler"
 echo "      (CI: linux, linux-lto-tests); only their self-tests ran here."
 
+# ...WHICH IS HOW A -Wunused-variable IN tests/state_tests.cpp REACHED CI TWICE.
+# The two gates above compare against a baseline stamped with a compiler major and
+# REFUSE to run against a different one -- correctly, because diagnostic counts move
+# between majors. Locally that means they never run at all (gcc-13 / clang-18 against
+# a pinned gcc-16 / clang-22), so a brand-new warning in first-party code is invisible
+# until the push builds. A whole class of those is version-INDEPENDENT, though, and
+# this is the cheap half: syntax-only the first-party translation units with whatever
+# compiler is installed and report anything it says about a file under src/ or tests/.
+# Advisory, never fatal -- the authoritative gate is still CI's pinned major, and this
+# must not become a second baseline to argue with. It is a smoke alarm, not a gate.
+LOCAL_CXX="$(command -v clang++ || command -v g++ || true)"
+if [ -n "$LOCAL_CXX" ] && [ -d build/_deps/juce-src/modules ]; then
+    echo "== preflight: local first-party warning sweep ($(basename "$LOCAL_CXX")) =="
+    SWEEP_LOG="$(mktemp)"
+    for TU in src/gui/SpectrumImager.cpp tests/state_tests.cpp; do
+        # -Wshadow is NOT in -Wall -Wextra, and its absence is why a `-Wshadow` on a loop
+        # variable shadowing a function parameter reached CI on 2026-09-10 with this sweep green.
+        # The pinned gates carry it; this advisory one now does too.
+        "$LOCAL_CXX" -std=c++23 -fsyntax-only -Wall -Wextra -Wshadow \
+            -I src -I src/dsp -I src/gui -I build/_deps/juce-src/modules \
+            -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_STANDALONE_APPLICATION=1 \
+            -DJUCE_WEB_BROWSER=0 -DJUCE_USE_CURL=0 \
+            "$TU" 2>>"$SWEEP_LOG" || true
+    done
+    if grep -E '^(src|tests)/[^:]+:[0-9]+:[0-9]+: warning:' "$SWEEP_LOG" > /dev/null 2>&1; then
+        echo "warning: the local compiler reports first-party warnings. CI gates on the"
+        echo "         PINNED major and may disagree, but these are worth reading before"
+        echo "         pushing -- a new one here is usually a new one there:"
+        grep -E '^(src|tests)/[^:]+:[0-9]+:[0-9]+: warning:' "$SWEEP_LOG" | sort -u | head -40
+    else
+        echo "local sweep: no first-party warnings from $(basename "$LOCAL_CXX")."
+    fi
+    rm -f "$SWEEP_LOG"
+else
+    echo "note: no local compiler or no fetched JUCE -- the local warning sweep was skipped."
+fi
+
 python3 scripts/check-linux-abi.py --self-test
 # The ONE of the three that can also run for real locally: an ordinary Release
 # build produces the artifact it reads. Skipped WITH A NOTE when absent, never
@@ -108,9 +145,25 @@ fi
 # from a commit earlier in the same branch, and both `origin/main` bases already
 # carried the re-aimed spelling, so preflight was green and `source-lint` was
 # not. That is a false green in the one script whose purpose is to prevent one.
-PREV="$(git rev-parse HEAD~1 2>/dev/null || true)"
+# WHICH COMMIT IS THE PUSH PREDECESSOR DEPENDS ON WHETHER THE CHANGE SET IS
+# COMMITTED YET, and getting that wrong is the same false green from the other
+# side. Run after committing, CI will compare the new HEAD against HEAD~1. Run on
+# a DIRTY tree -- which is when preflight is most useful, before the commit -- the
+# work in hand becomes the next commit and CI will compare it against HEAD. Using
+# HEAD~1 there checks one commit too far back: it reports drift the last commit
+# already re-anchored, and can pass a tree whose anchors drifted only within it.
+# Measured 2026-09-09: on the dirty tree of the ADR-0048 round, HEAD~1 reported 9
+# stale anchors that HEAD reported as clean, and CI (comparing against HEAD) was
+# the one that was right.
+if git diff --quiet HEAD 2>/dev/null; then
+    PREV="$(git rev-parse HEAD~1 2>/dev/null || true)"
+    PREV_WHY="the push predecessor"
+else
+    PREV="$(git rev-parse HEAD 2>/dev/null || true)"
+    PREV_WHY="the push predecessor of this UNCOMMITTED change set"
+fi
 if [ -n "$PREV" ] && [ "$PREV" != "$MERGE_BASE" ]; then
-    echo "-- against the push predecessor ($PREV), which is what CI compares"
+    echo "-- against $PREV_WHY ($PREV), which is what CI compares"
     python3 scripts/check-citations.py --check --base "$PREV"
 fi
 

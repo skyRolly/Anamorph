@@ -13,7 +13,7 @@ only — it configures and builds entirely from the command line on a headless L
 - Diamond **vectorscope**, correlation + L/R Peak/RMS meters; click-free transitions throughout.
 
 ## Project status
-- **Version 0.9.7** (pre-1.0), in the **internal-testing phase** — builds go to testers for
+- **Version 0.9.8** (pre-1.0), in the **internal-testing phase** — builds go to testers for
   evaluation, not to customers (see [Licensing](#licensing); internal record:
   [`docs/COMMERCIAL_STATUS.md`](docs/COMMERCIAL_STATUS.md)).
 - **0.9.5 is a performance release, and it changes nothing you can hear.** With Velvet Noise

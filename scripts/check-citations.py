@@ -161,6 +161,7 @@ TRACKED = (
     "src/dsp/SoloMonitor.h",
     "src/dsp/VelvetNoise.cpp",
     "src/gui/LookAndFeel.cpp",
+    "src/gui/SpectrumImager.cpp",
     "src/gui/Vectorscope.h",
     "tests/state_tests.cpp",
     "tests/dsp_tests.cpp",
@@ -316,44 +317,75 @@ GLOSS = re.compile(r"""\A[`]?\s*\((?:`([^`]+)`|"([^"]+)")\)""")
 # `""` means "no stable token to name"; the run reports those as unverified
 # rather than accepting them silently, so they stay countable.
 DELIBERATE_REAIMS = {
-    # 2026-09-06 (pluginval crash classification): THE TABLE WAS EMPTIED AND
-    # REFILLED, for the third time and for the reason the 2026-09-03 note below
-    # this one gives. Every entry it held -- the D-2 / ADR-0036 rounds and the
-    # ADR-0037 round -- was reported by this tool as "not needed against
-    # origin/main, which already carries the re-aimed spelling", against a base
-    # that IS this branch's merge base (PRs #135 and #141 merged them). Under the
-    # transition key a completed transition can never match again, and leaving it
-    # would silence a later undeclared movement of the same anchor -- which is
-    # exactly the failure the lifecycle note above records.
+    # 2026-09-07 (Code Scanning audit): THE TABLE IS EMPTY AGAIN, for the fourth
+    # time and for the reason the lifecycle note above gives. All six entries it
+    # held -- the pluginval crash-classification round -- were reported by this
+    # tool as "not needed against origin/main, which already carries the re-aimed
+    # spelling", against a base that IS this branch's merge base (PR #142 merged
+    # them as 2ed512c6). Under the transition key a completed transition can
+    # never match again, and leaving it would silence a later undeclared movement
+    # of the same anchor.
     #
-    # What refills it is `run-pluginval.sh` gaining `classify_pass_exit` and its
-    # `--self-test` ahead of the pass loop: `run_one_pass` moved above the setup
-    # AND was edited (it now tees pluginval's output, reads `${PIPESTATUS[0]}`
-    # and asks the classifier for the verdict), so every citation into the
-    # retry/loop block reports UNMAPPABLE rather than a plain move. Each was
-    # re-derived by reading the span for the symbol its document names: a
-    # document that speaks only of the RETRY is aimed at the policy block plus
-    # `run_one_pass`; one that speaks of what a crash IS starts at
-    # `classify_pass_exit`. Keyed on origin/main's spelling, which is this
-    # branch's merge base and its push predecessor alike. All retire on merge.
-    ("docs/FUTURE_RISKS.md",
-     "scripts/run-pluginval.sh:147-198",
-     "scripts/run-pluginval.sh:140-228"): "classify_pass_exit",
-    ("docs/KNOWN_ISSUES.md",
-     "scripts/run-pluginval.sh:147-198",
-     "scripts/run-pluginval.sh:140-228"): "classify_pass_exit",
-    ("docs/architecture/design-decisions/ADR-0011-linux-x11-cpu-render.md",
-     "scripts/run-pluginval.sh:147-198",
-     "scripts/run-pluginval.sh:140-228"): "classify_pass_exit",
-    ("docs/procedures/TESTING.md",
-     "scripts/run-pluginval.sh:172-198",
-     "scripts/run-pluginval.sh:140-228"): "classify_pass_exit",
-    ("docs/POSTMORTEMS.md",
-     "scripts/run-pluginval.sh:147-198",
-     "scripts/run-pluginval.sh:155-228"): "CRASH_RETRY_ATTEMPTS",
-    ("docs/procedures/TROUBLESHOOTING.md",
-     "scripts/run-pluginval.sh:147-198",
-     "scripts/run-pluginval.sh:155-228"): "CRASH_RETRY_ATTEMPTS",
+    # Nothing refills it. This change's only source movement is
+    # src/gui/SpectrumImager.cpp gaining 13 comment lines above
+    # `projectFromOrig`'s pin validation; the one document that cites into that
+    # file below the edit (`docs/architecture/THREAD_MODEL.md`, the imager's ring
+    # read) was re-aimed by hand from :626 to :639, and it is a PLAIN MOVE with
+    # the cited statement unchanged, not an edited span -- so it needs no
+    # declaration. It needed the hand, not `--fix`, because that cell used to
+    # cite BARE filenames, which this parser declines: both paths are now written
+    # in full and `src/gui/SpectrumImager.cpp` joins `TRACKED`, so the next such
+    # move is the gate's to catch rather than a reader's.
+    #
+    # 2026-09-07 (ADR-0040, write ownership): ONE entry, and it needs the table
+    # rather than `--fix` for the reason the table exists. `dragCrossoverTo`'s
+    # SIGNATURE changed -- `void` -> `bool`, so the burst can tell its caller the
+    # gesture stopped owning what it was writing -- and the line the coverage
+    # entry anchored is inside that edited span, which maps to `None` and is
+    # reported UNMAPPABLE rather than being given an invented number. The
+    # sentence's claim ("both consumers re-read a live bandCount()") is unchanged
+    # and still true, so the anchor is re-aimed at the function's new line and the
+    # transition declared here; the token is checked at the new spelling, so a
+    # later undeclared movement of the same anchor is still the gate's to catch.
+    #
+    # 2026-09-07 (ADR-0042, committed stores): the TARGET is re-derived, not a new
+    # entry. `spreadSplits` is inserted above `dragCrossoverTo`, which moves the
+    # function :471 -> :493. That move is a pure insertion, so the ordinary mapping
+    # handles it and NO second declaration is warranted -- but this entry's target
+    # must follow, because `verify_reaim_targets()` checks the token at the spelling
+    # named here and a target left at :471 would silently switch the check off.
+    #
+    # 2026-09-08 (ADR-0043, W1/W2): the same target re-derived again, :509 -> :518.
+    # `writeCrossovers` gains one line and `spreadSplits` eight (the pin re-proof),
+    # both above the function: a pure insertion again, so still one entry and still
+    # no second declaration -- only the spelling `verify_reaim_targets()` reads.
+    # This is the third re-derivation of this one target, which is the cost of a
+    # declaration and the reason not to write one for a plain move.
+    #
+    # 2026-09-08 (ADR-0046, one topology reading per handler): the same target
+    # re-derived a FOURTH time, :530 -> :541. `bandAtX`/`handleNearX` gain their
+    # eleven-line header and `setParam` its six, all above the function -- a pure
+    # insertion again, so still one entry and still no second declaration. The
+    # count of re-derivations is left visible on purpose: it is the running cost
+    # of the one declaration in this table, and the argument against adding more.
+    # Re-derived once more inside the SAME round (:541 -> :547) when the audit's own
+    # W4 finding put a six-line header on this function: the first re-derivation of
+    # a round is not always the last, which is exactly why the check exists.
+    # And twice more in the split-snapshot round (:547 -> :587 -> :591), both times
+    # caught HERE rather than by a reader. Four re-derivations in one PR is the
+    # argument for citing a FUNCTION where the line adds nothing -- which is what
+    # the two `cancelActiveDrag()` citations now do, after drifting three times with
+    # nothing to catch them (a NEW anchor has no origin/main counterpart, so the
+    # drift check cannot see it). This one keeps its line because the declaration
+    # makes the drift visible; a bare anchor would not.
+    #
+    # 2026-09-10 (ADR-0046 completed, the press hit-test): the target re-derived a
+    # sixth time, :629 -> :657. Six hit-test helpers gain defaulted arguments and
+    # the reasoning above `dragCrossoverTo` grows with them; a pure insertion again,
+    # so still one entry, still by hand, and the document's own anchor moves with it.
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/SpectrumImager.cpp:399",
+     "src/gui/SpectrumImager.cpp:657"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

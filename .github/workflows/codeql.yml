@@ -17,10 +17,21 @@
 # units and would double extraction time for zero extra alert coverage
 # (ANAMORPH_BUILD_STANDALONE is an existing CMake option, default ON).
 #
-# Alerts are limited to the repository's own code (config paths-ignore:
-# build) -- the FetchContent'd JUCE tree lands in build/_deps inside the
-# workspace and must not raise alerts we cannot act on; JUCE is pin-locked
-# and review-gated per docs/policies/DEPENDENCY_POLICY.md.
+# ALERTS ARE NOT LIMITED TO THE REPOSITORY'S OWN CODE, and this comment used
+# to claim they were (corrected 2026-09-07). `paths-ignore` was read as an
+# alert filter over the FetchContent'd JUCE tree at build/_deps. GitHub
+# documents `paths`/`paths-ignore` as applying when a codebase is analyzed
+# WITHOUT building it -- interpreted languages, or a compiled language under
+# `build-mode: none`. This entry is `build-mode: manual`, so the keyword does
+# not filter it, and the run's own output says so: every one of the 50 results
+# in the `cpp.sarif` this job exported and uploaded on 2ed512c6 is under
+# build/_deps, and none is first-party. The JUCE alerts are therefore REAL
+# entries on the dashboard, to be triaged as third-party: JUCE is pin-locked
+# and review-gated per docs/policies/DEPENDENCY_POLICY.md, so they are
+# accepted, not fixed here. Genuinely excluding them would mean relocating the
+# FetchContent tree outside the workspace or post-filtering the SARIF before
+# upload -- Build-System scope decisions, not a comment fix, so neither is
+# folded in here.
 #
 # Query suite: the default code-scanning suite (precision-tuned). The
 # security-extended suite was considered and rejected for its higher
@@ -81,10 +92,13 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          # Alert filter only (extraction still traces the full build):
-          # keeps the FetchContent'd JUCE sources under build/_deps out of
-          # the results. Harmless for the actions matrix entry -- nothing
-          # under .github/ lives in build/.
+          # Effective for the `actions` entry only, which is build-mode
+          # `none`; and inert even there, because nothing under .github/
+          # lives in build/. It does NOT filter the `c-cpp` entry -- see the
+          # header: `paths-ignore` is not applied to a compiled language that
+          # is analyzed by building it. Kept rather than deleted so the two
+          # matrix entries share one config block, but it must not be read as
+          # a filter on the C/C++ alerts.
           config: |
             paths-ignore:
               - build

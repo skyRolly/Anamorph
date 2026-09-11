@@ -105,6 +105,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the commercial JUCE licence required by the closed-source model is not yet obtained | High | High (already true) |
 | RISK-007 | **RESOLVED 2026-09-03 (D-2, ADR-0036)** — State calls on a non-main host thread raced message-thread state (AU autosave; out-of-spec VST3 hosts); program metadata is now message-thread-owned and exchanged through two lock-free cells | — | — |
 | RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Low — real-host validated in REAPER; other Linux hosts unverified |
+| RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once |
+| RISK-010 | The DSP snapshot of the ten multiband parameters is ten independent `load()` calls, so the audio thread can read a layout that never existed as a whole | Medium | **Certain** — it is the shipped reader model; what is bounded is the harm, not the occurrence |
+| RISK-011 | A gesture count that returns to zero mid-transaction lets a poll record an undo step for a layout the user never had (the v0.9.8 rounds' residuals U1-U3) | Medium | Low as observed, **structural** as a mechanism — nothing in the current code prevents it |
 
 ---
 
@@ -205,6 +208,122 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   `docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md` (host-matrix item).
 - **Mitigation:** Enforce the manual audition + host-matrix line items at release; expand the
   documented host coverage as it is performed.
+
+## RISK-009 — Two parameters' `listenerLock`s nested in opposite orders by a host's re-entrant write
+- **Risk:** `juce::AudioProcessorParameter::sendValueChangedMessageToListeners` holds the
+  parameter's **own** `listenerLock` for the whole listener loop
+  (`juce_audio_processors_headless/processors/juce_AudioProcessorParameter.cpp:111-121`), and
+  `beginChangeGesture` does the same for the gesture dispatch (`:82`). A listener that writes a
+  **different** parameter from inside that dispatch therefore holds one parameter's lock while
+  taking another's. If a host does that for A-then-B on one thread and B-then-A on another — a
+  control surface writing back on the message thread while automation writes back on the audio
+  thread — the two acquisitions form a cycle and can deadlock. The locks are JUCE's and are taken
+  by JUCE around its own dispatch; the plug-in is not a party to the ordering.
+- **Impact:** a hang, not a wrong value — and in the worst place, since one of the two threads
+  would be the audio thread. Nothing partial is written; the process stops.
+- **Likelihood (evidence-based):** **Low.** It requires the HOST to write cross-parameter from
+  inside a dispatch, on two threads, in opposite orders, overlapping. **No listener in this
+  plug-in creates the nesting at all:** `AnamorphAudioProcessor::parameterValueChanged`
+  (`src/PluginProcessor.h:171-174`) is a single relaxed `fetch_add`,
+  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:315`) the same, and
+  `parameterGestureChanged` (`src/PluginProcessor.cpp:812-826`) touches two ints — the last
+  deliberately, its comment recording that `--d2-stress-probe` once reported this same detector
+  for an APVTS/`listenerLock` inversion, closed by **removing** the nesting.
+- **How it surfaced:** ThreadSanitizer's deadlock detector, on `AnamorphStateTests` at
+  `1c14b9b` — `lock-order-inversion (potential deadlock)`, cycle `M0 => M1 => M0`, both orders
+  taken by the **main thread** at different times, so the suite itself cannot deadlock. State
+  test 75 leg D supplies one order (hold the edited split, write a neighbour from inside the
+  gesture open) and leg G the other (hold a neighbour being spread, write the pin from inside its
+  store). The harness's re-entrancy doubles are what create the nesting; they exist precisely to
+  stand in for a host that does this.
+- **Mitigation:** none available inside this plug-in. Removing the nesting is not ours to do —
+  it is the host's write and JUCE's lock. Serialising all parameter writes onto one thread, or
+  taking the locks in a fixed global order, is a **threading-model change** and so an
+  `ARCHITECTURE_REVIEW_GATE` item, not a fix to slip into a review round. What is done instead:
+  the report is kept visible rather than absorbed — `tests/tsan-suppressions.txt` carries ONE
+  deadlock entry naming the harness double (`WriteFromInsideAGestureOpen`) and nothing else, so
+  an inversion whose stacks contain only production frames still fails the `tsan` job, and the
+  canary step proves on every run that data-race detection is untouched. Reopen this risk if a
+  host is ever observed writing cross-parameter from inside a dispatch on two threads.
+
+## RISK-010 — The DSP's multiband snapshot is not a snapshot (ESCALATED as an architecture-review item)
+- **Risk:** `PluginParameters::toEngine` builds the per-block DSP view of the multiband layout from
+  **ten separate `std::atomic<float>::load()` calls** (`src/PluginParameters.cpp:365-374`), with no
+  seqlock, generation counter or coherence guard. The audio thread can therefore observe a band
+  count from one instant and a solo word, width or split from another. The GUI is not the only
+  writer: host automation writes these parameters from the audio thread through the format wrapper.
+- **Impact:** bounded, and the bound is the reason this has been an accepted trade through
+  ADR-0041, ADR-0042 and ADR-0044 rather than a defect. `mbBands` is written **last** by every GUI
+  topology transaction and read by `toEngine` **before every parameter the count reinterprets**, and
+  the loads are `seq_cst` in source order, so a snapshot carrying the NEW count necessarily carries
+  the whole of **that** transaction — for a GUI transaction, only the reverse direction, an old
+  count under newer values, is reachable. **Narrowed 2026-09-08 (ADR-0046 round), because the
+  sentence used to claim more than is proved (and, 2026-09-08 wheel-gesture round, "read
+  **first**" corrected to what is actually true — `e.mbEnable` is loaded at
+  `src/PluginParameters.cpp:365`, one line ahead of the count, and no topology transaction writes
+  `mbEnable`; the solo word, the splits and the widths, which ARE the parameters the count
+  reinterprets, are all loaded after it):** the store-order argument covers
+  `addBandAt` and `removeBand`, the only writers that order their stores deliberately. It does
+  **not** cover a host automation write (which moves one parameter with no transaction around it,
+  so there is nothing for it to be incoherent WITH) and it does **not** cover a whole-state
+  restore, whose store order is the APVTS's and not this rule's — there a new count CAN be
+  published ahead of the values it reinterprets. That third case is why
+  the DSP's own repair below is load bearing rather than merely belt-and-braces, and it is part of
+  what the escalation is asking to be reviewed. The DSP then repairs what it is given:
+  splits clamped to `[20 Hz, 0.45·sr]` and force-ordered `1.1×`, the solo word masked with
+  `((1 << bands) - 1)`, the count clamped to `[1, 4]`, every continuous quantity smoothed. The
+  result is a legal layout that is briefly not the one the user has — never NaN, never unbounded.
+- **Likelihood:** **certain** as a mechanism; it is the shipped reader model, not an edge case.
+- **Why it is escalated rather than fixed:** a write-side atomic commit does not help, because the
+  READER is what tears — this was measured and is why ADR-0042 rejected that option. Closing it
+  means replacing the read: one immutable published layout object, or a seqlock, consumed by the
+  DSP. That is a **DSP-parameter-model and threading-model change**, which
+  `docs/policies/ARCHITECTURE_REVIEW_GATE.md` makes a hard-stop item requiring human review. It is
+  therefore recorded here as the architecture-review item rather than accepted silently inside a
+  review round, which is the decision the 2026-09-08 round was asked to make: **accept the trade for
+  now AND escalate**, not one or the other.
+- **Mitigation until then:** the store order (`mbBands` last) and the DSP's own clamping are load
+  bearing and must not be changed casually; ADR-0041 §"why the store order is kept" and ADR-0044
+  both depend on them.
+- **What should reopen this (added 2026-09-09, because the record had no reopen condition where its
+  neighbour RISK-009 does — the gap was found by this round's verify-only audit, not by the
+  review):** any change to the **store order** that stops `mbBands` being written last by
+  `addBandAt` and `removeBand`; any **new writer** of the multiband set that is not one of those two
+  transactions; any weakening or removal of the DSP's own repairs
+  (`MultibandWidth.cpp:102-112`, `SoloMonitor.cpp:68-77` and `:85`, and the two
+  `setBandCount` clamps at `MultibandWidth.h:56` / `SoloMonitor.h:53`); or a **measured audible
+  artefact** from the whole-state-restore case this record already flags as uncovered by the
+  store-order argument. Absent one of those, a new round should re-verify this record and move on.
+- **Not changed by the 2026-09-09 round, and the reason is worth stating rather than implying.**
+  That round fixed three ownership defects in `SpectrumImager` (ADR-0049, ADR-0050, ADR-0051). All
+  three are **message-thread writers**; RISK-010 is the **audio-thread reader** in
+  `src/PluginParameters.cpp`, which the PR does not touch at all. Fixing a writer cannot narrow a
+  tearing window on the reader side, so none of them is evidence about this risk in either
+  direction.
+
+## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps
+- **Risk:** `AnamorphAudioProcessor::parameterGestureChanged` counts open gestures and sets
+  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:812-825`), and
+  `pollUndoCoalesce` turns that into an undo entry. A `SpectrumImager` topology transaction is a
+  burst of stores, several of which open and close their own gesture (`setBands`, `setSoloMask`,
+  `resetParam`), so the open count returns to zero **inside** the burst. A poll that runs there —
+  a re-entrant one reached through a listener, or a preset/undo path that polls — records an undo
+  step whose state is a layout that existed only mid-transaction and that the user never had.
+- **Impact:** an undo history containing a step the user cannot recognise; undoing to it installs a
+  half-applied layout (a count without its widths, or a solo word the count no longer reinterprets
+  the same way). Not an audio-safety problem — every such layout is still clamped and masked by the
+  DSP, as RISK-010 describes — but it is a state-correctness one.
+- **Likelihood:** Low as observed (no reported occurrence, and no test in the suite reaches it),
+  **structural** as a mechanism: nothing in the current code prevents it.
+- **Evidence [Verified]:** `src/PluginProcessor.cpp:812-825` (the counter), `:827-834`
+  (`pollUndoCoalesce`), `src/gui/SpectrumImager.cpp` `addBandAt` / `removeBand` (the multi-gesture
+  bursts). Carried through the v0.9.8 review rounds as residuals **U1–U3** with a deliberate
+  no-fix decision; recorded here on 2026-09-08 because a decision carried only in a worklog is a
+  decision that gets lost.
+- **Mitigation until then:** none in code. A fix means either suppressing the poll for the duration
+  of a burst or giving a transaction one outer gesture, both of which change the undo model and so
+  are `ARCHITECTURE_REVIEW_GATE` items in their own right. Deliberately **not** attempted inside a
+  GUI review round.
 
 ---
 

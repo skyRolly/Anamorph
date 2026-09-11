@@ -801,21 +801,138 @@ jobs:
       # `ulimit -s 1024` is a PROXY, not an equivalence: MSVC's frame layout is its
       # own. It is a good proxy -- it reproduces the failure this exists for -- and
       # it is the only way to keep the constraint visible where the suite is
-      # actually developed. Runs the state suite only (the DSP suite holds no
-      # processors) and re-uses the binary the step above just built.
-      - name: State suite under a 1 MB stack (Windows parity)
+      # actually developed. Both binaries the step above just built are re-used.
+      #
+      # BOTH SUITES, since 2026-09-07. This used to run the state suite alone, on the
+      # premise that "the DSP suite holds no processors". That is true only of
+      # `AnamorphAudioProcessor` -- which `AnamorphTests` genuinely cannot construct,
+      # since it compiles `tests/dsp_tests.cpp` alone and never the plugin sources
+      # (CMakeLists.txt:523-525) -- and it is the wrong test. What overflows a frame is
+      # a large object, not that particular one, and `dsp_tests.cpp` declares
+      # `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests
+      # (:119, :189, :268, :304 ...). Measured with `g++ -fstack-usage` on the exact
+      # compile line ninja uses: the DSP suite's largest frame is 289,440 bytes
+      # (`testPendingDuckDoesNotSurviveActivation`, dsp_tests.cpp:1388) against the
+      # state suite's 707,824 (state_tests.cpp:8967) -- 28% of the 1 MB reserve, not
+      # 0%. This arms a tripwire rather than introducing a failure: both suites were
+      # verified green under `ulimit -s 1024` before the step was widened.
+      - name: Self-test suites under a 1 MB stack (Windows parity)
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
+        run: |
+          for name in AnamorphStateTests AnamorphTests; do
+            BIN="$(find build -maxdepth 8 -name "$name" -type f)"
+            test "$(printf '%s' "$BIN" | grep -c .)" -eq 1
+            ( ulimit -s 1024 && "$BIN" > /dev/null ) || {
+              echo "::error::${name} does not survive a 1 MB stack -- the Windows main-thread"\
+                   " default. A test is holding too many large objects (a ~138 kB"\
+                   " AnamorphAudioProcessor, or an AnamorphEngine) in one frame; put them on the"\
+                   " heap (see State test 59) rather than raising this limit."
+              exit 1
+            }
+            echo "${name} green under a 1 MB stack"
+          done
+
+      # ADR-0047. THE ONE GATE IN THIS WORKFLOW THAT MEASURES A RACE RATHER THAN
+      # ASKING A SANITIZER. What it drives is not a data race -- every read and
+      # write involved is on a `std::atomic<float>`, and TSan is silent over this
+      # probe, verified -- but a LOGICAL one: the drag's plan basis and its
+      # ownership stamp used to come from two separate reads of the same
+      # parameter, so an automation write landing between them was proved absent
+      # and then written over, inside the user's own change gesture.
+      #
+      # It asserts rather than reports, and it can: after ADR-0047 the pair is one
+      # reading by construction, so the expected count is not "low" but ZERO. The
+      # discriminating power is measured, not hoped for -- 92 laundered splits in
+      # 1200 drags before the fix, 0 after, and the exit code was self-tested in
+      # both directions (1 on the pre-fix tree, 0 on this one).
+      - name: The split snapshot is still one reading (ADR-0047)
         if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
         run: |
           BIN="$(find build -maxdepth 8 -name AnamorphStateTests -type f)"
           test "$(printf '%s' "$BIN" | grep -c .)" -eq 1
-          ( ulimit -s 1024 && "$BIN" > /dev/null ) || {
-            echo "::error::the state suite does not survive a 1 MB stack -- the Windows main-thread"\
-                 " default. A test is holding too many ~138 kB AnamorphAudioProcessor objects in one"\
-                 " frame; put them on the heap (see State test 59) rather than raising this limit."
+          "$BIN" --split-snapshot-probe 300 || {
+            echo "::error::A gesture's plan basis and its ownership stamp are no longer the same"\
+                 " reading (ADR-0047). A parameter is being read twice where one reading has to"\
+                 " serve both, so a host automation write landing between the two reads is proved"\
+                 " absent and then written over. Find the second read and derive it from the first;"\
+                 " do not add a lock or a re-check. docs/procedures/TESTING.md carries the probe's"\
+                 " numbers and the 200 us widened-window recipe."
             exit 1
           }
-          echo "state suite green under a 1 MB stack"
 
+      # ADR-0048, the sibling of the step above and the same kind of gate: a LOGICAL
+      # race no sanitizer can see, asserted by measurement. The add's target index
+      # comes from the latched count and its band edges used to come from a fresh
+      # one, so a count raised between the two clamped the click into a band it was
+      # never aimed at. Measured 55 misplacements in 4800 clicks before the fix and
+      # 0 after, and the exit code was self-tested in both directions.
+      - name: The add target still answers under one topology (ADR-0048)
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
+        run: |
+          BIN="$(find build -maxdepth 8 -name AnamorphStateTests -type f)"
+          test "$(printf '%s' "$BIN" | grep -c .)" -eq 1
+          "$BIN" --add-target-probe 300 || {
+            echo "::error::A click's add target and its band edges no longer come from the same"\
+                 " reading of mbBands (ADR-0048). Thread the caller's count into bandAddTarget"\
+                 " rather than letting it read for itself; docs/procedures/TESTING.md carries the"\
+                 " probe's numbers and what its verdict actually measures."
+            exit 1
+          }
+
+      - name: The add target's EDGES answer under one reading too (ADR-0051)
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
+        run: |
+          BIN="$(find build -maxdepth 8 -name AnamorphStateTests -type f)"
+          test "$(printf '%s' "$BIN" | grep -c .)" -eq 1
+          "$BIN" --add-edge-probe 300 || {
+            echo "::error::A click's band index and the band's EDGES no longer come from the same"\
+                 " reading of the split row (ADR-0051) -- the residual ADR-0048 left open. Capture"\
+                 " the splits once per pass and pass them to bandAtX and bandAddTarget together;"\
+                 " docs/procedures/TESTING.md carries the probe's numbers and both clamp directions."
+            exit 1
+          }
+
+      - name: A band move's plan is sized by the topology the press proved (ADR-0046)
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
+        run: |
+          BIN="$(find build -maxdepth 8 -name AnamorphStateTests -type f)"
+          test "$(printf '%s' "$BIN" | grep -c .)" -eq 1
+          "$BIN" --band-move-probe 300 || {
+            echo "::error::A band move sized its plan from a reading nothing proves (ADR-0046), so a"\
+                 " split outside the pressed layout was written inside the user's own gesture. Pass"\
+                 " the caller's proved topology into beginBandMove AND moveBand rather than"\
+                 " re-reading mbBands; docs/procedures/TESTING.md carries the probe's numbers."
+            exit 1
+          }
+
+      # ADR-0051 reached its second caller: `beginBandMove` derived its origins by
+      # RE-STAMPING the ownership record from the live parameters, so a same-count
+      # host write landing between `mouseDrag`'s gate and that line was adopted INTO
+      # the record every later check proves against. Cross-thread only -- the window
+      # holds no store and so no dispatch -- which is why this is a probe and not a
+      # state test. The probe's own control line must read "late crossover stores
+      # SEEN": a silent control means the instrument measured nothing, which is the
+      # failure this repository has recorded twice, and the probe aborts rather than
+      # print a total it cannot support. 3000 x 6 delays is 18 000 band moves and runs
+      # in about a second; the same count measured 148 adoptions before the fix, so
+      # this gate has the power to catch the defect coming back rather than merely
+      # asserting a zero nothing could have disturbed.
+      - name: A band move's origins come from the record it proved (ADR-0051)
+        run: ./build/AnamorphStateTests_artefacts/Release/AnamorphStateTests --band-move-adopt-probe 3000
+
+      # ADR-0046 reached the two derivations it originally named and skipped. A press
+      # stamped its topology and its split row and then let `soloHit` re-read both, so
+      # the index latched as `soloPressBand` could be derived under a layout that
+      # flickered past -- and NOTHING downstream re-derives it: a solo bit above the
+      # live count is a legitimate PARKED bit by design, so no store-side guard can
+      # catch a wrong one. Cross-thread only (the window between the stamp and the
+      # hit-test holds no dispatch), which is why this is a probe. It is a gate rather
+      # than a formality: the pre-fix tree measured 491 aliased presses in 1200 against
+      # a lane alternating mbBands 2/4, and the probe ABORTS if its control line fails
+      # to solo band 1 on a clean tree -- the instrument proving it can see the defect
+      # before it is allowed to report a zero. 300 x 4 delays runs in a few seconds.
+      - name: A press hit-test answers under the topology the press proved (ADR-0046)
+        run: ./build/AnamorphStateTests_artefacts/Release/AnamorphStateTests --solo-alias-probe 300
       - name: pluginval (deterministic x3 -- release gate)
         # Explicit condition rather than relying on "no `if:`, so it self-skips".
         # Both pluginval steps carry the SAME condition, naming exactly what must
@@ -3464,7 +3581,10 @@ jobs:
       CCACHE_COMPILERCHECK: content
       # The probes run with these; the canary runs with the same so the two
       # cannot disagree about what a report looks like.
-      TSAN_OPTIONS: halt_on_error=1:exitcode=66:report_bugs=1
+      # `suppressions` carries ONE deadlock entry naming a harness re-entrancy
+      # double; data races are not suppressed and the canary step below proves
+      # it on every run. `tests/tsan-suppressions.txt` carries the reasoning.
+      TSAN_OPTIONS: halt_on_error=1:exitcode=66:report_bugs=1:suppressions=${{ github.workspace }}/tests/tsan-suppressions.txt:print_suppressions=1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -3543,7 +3663,53 @@ jobs:
       # real processor, so a torn read in one of them fails here even where the
       # value-level assertion happened to pass.
       - name: The state suite under ThreadSanitizer
-        run: ./build-tsan/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests
+        run: |
+          set -o pipefail
+          ./build-tsan/AnamorphStateTests_artefacts/RelWithDebInfo/AnamorphStateTests 2>&1 | tee tsan-suite.log
+
+      # EVERY SUPPRESSION MUST STILL EARN ITS PLACE. `tests/tsan-suppressions.txt`
+      # states the rule in its own header -- "an entry that matches nothing is not
+      # free -- it silently widens what a future report can be absorbed by" -- and
+      # until now nothing enforced it. The two failure modes are NOT symmetric, and
+      # this step exists for the second:
+      #
+      #   * an entry that stops matching because the helper it names was renamed, or
+      #     because the pattern drifted, is already LOUD: the inversion it was
+      #     absorbing is reported again and `halt_on_error=1` exits 66. Measured:
+      #     renaming the entry gives `exit=66` with the lock-order report back.
+      #   * an entry that matches NOTHING because the test legs that produced the
+      #     report were removed or restructured is SILENT: the suite exits 0 and the
+      #     dead entry sits in the file widening what a future report can be absorbed
+      #     by. Measured: adding a bogus second entry gives `exit=0` and
+      #     `Matched 1 suppressions` while the file carries 2.
+      #
+      # So the assertion is match-count == entry-count, not "at least one". It runs
+      # only against the FULL SUITE: the D-2 probes above do not drive the legs that
+      # produce the report and legitimately match nothing.
+      # COUNT THE BREAKDOWN LINES, NOT THE SUMMARY NUMBER. The first version of this
+      # step parsed `ThreadSanitizer: Matched N suppressions`, which is the SUM OF
+      # HIT COUNTS, not the number of entries that matched. Measured with a
+      # purpose-built two-inversion binary under the same clang:
+      #   one entry, two distinct reports  -> `Matched 2` and ONE breakdown line
+      #   two entries, one report each     -> `Matched 2` and TWO breakdown lines
+      # so the summary is wrong in BOTH directions: it fails a correct file whose
+      # single entry absorbed two reports, and it PASSES a file with a dead entry
+      # beside one that was hit twice -- which is precisely the silent mode this
+      # step exists to catch. The per-entry breakdown `print_suppressions` emits
+      # after the summary has exactly one line per entry that matched at least
+      # once, so counting those lines is the question actually being asked.
+      - name: Every TSan suppression still matches something
+        run: |
+          expected=$(grep -cE '^[a-z_]+:' tests/tsan-suppressions.txt)
+          got=$(sed -n '/^ThreadSanitizer: Matched [0-9][0-9]* suppressions/,$p' tsan-suite.log \
+                | grep -cE '^[0-9]+ [a-z_]+:' || true)
+          got=${got:-0}
+          echo "suppression entries: $expected ; entries that matched this run: $got"
+          if [ "$got" != "$expected" ]; then
+            echo "::error::tests/tsan-suppressions.txt has $expected entr(ies) but ThreadSanitizer matched $got. A suppression that matches nothing is dead: either the harness double it names is gone (delete the entry) or the legs that produced the report were restructured (delete the entry, or restore the coverage). Do NOT resolve this by broadening the pattern -- the file's own header explains why a wider entry is worse than none."
+            grep -nE '^[a-z_]+:' tests/tsan-suppressions.txt
+            exit 1
+          fi
 
   # -------------------------------------------------------------------------
   # State fuzzing (Linux). libFuzzer over `setStateInformation`, the one entry

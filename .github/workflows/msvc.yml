@@ -7,10 +7,31 @@
 # test targets are built -- Standalone (existing CMake option, default ON)
 # recompiles the identical translation units for zero extra coverage.
 #
-# The FetchContent'd JUCE tree (build/_deps) is treated as external/system
-# code (ignoredIncludePaths + ignoredTargetPaths) so the uploaded SARIF only
-# carries findings in the repository's own sources; JUCE is pin-locked and
-# review-gated per docs/policies/DEPENDENCY_POLICY.md.
+# The FetchContent'd JUCE tree (build/_deps) is treated as external/system code
+# (ignoredIncludePaths + ignoredTargetPaths), which suppresses ALMOST all of it.
+# Not all: this used to claim the uploaded SARIF "only carries findings in the
+# repository's own sources", and the 2ed512c6 report has 149 first-party results
+# and one in JUCE -- C26495 at juce_audio_plugin_client_VST3.cpp:1826 (corrected
+# 2026-09-07). Neither knob can reach it. `ignoredIncludePaths` suppresses
+# diagnostics raised in HEADERS below that path, and this is a .cpp;
+# `ignoredTargetPaths` skips whole targets, and this translation unit is not a
+# target of its own -- `juce_add_plugin` compiles it INTO Anamorph_VST3
+# (build/.../Anamorph_VST3.dir/_deps/juce-src/modules/juce_audio_plugin_client/
+# juce_audio_plugin_client_VST3.cpp.o), a first-party target that must be
+# analyzed. So one JUCE alert is expected and is accepted, not fixed: JUCE is
+# pin-locked and review-gated per docs/policies/DEPENDENCY_POLICY.md.
+#
+# WHAT IS ANALYZED IS NOT WHAT IS BUILT. The Build step below compiles only
+# Anamorph_VST3 and AnamorphTests, but the action drives its own /analyze pass
+# over every target in the CMake File API codemodel, and ANAMORPH_BUILD_TESTS
+# defaults ON (CMakeLists.txt:27) while the Configure step overrides only
+# ANAMORPH_BUILD_STANDALONE. AnamorphStateTests is therefore analyzed too --
+# 85 of the 150 results on 2ed512c6 carry analysisTarget tests/state_tests.cpp,
+# a file this job never compiles. That is wider coverage than CodeQL, whose
+# c-cpp extraction sees only what the build actually compiles. state_tests.cpp
+# is the ONLY such file: the four AllocationGuard.h results carry analysisTarget
+# tests/dsp_tests.cpp, reaching the header through its #include at :16, so that
+# header is covered by both scanners.
 #
 # Triggers are path-filtered to C++/CMake changes: this workflow performs a
 # full MSVC build plus a second /analyze compile pass, which is pure cost on

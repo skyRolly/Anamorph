@@ -18,6 +18,354 @@ not accept and which those entries predate. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
+## [0.9.8] — 2026-09-08
+
+### Changed
+- **Scrolling the mouse wheel while you are dragging in the Multiband display now finishes the
+  drag.** Previously the drag kept running underneath the scroll, and the two fought over the same
+  band: the scroll would adopt whatever value was current, then the next movement of the still-held
+  drag would write a value computed from where your mouse was *before* the scroll, undoing it. The
+  wheel now ends the press first and then applies its own adjustment, exactly as it does when no
+  button is held. What you will notice: after scrolling mid-drag, moving the mouse does nothing
+  until you release the button and press again, and your DAW records the drag up to that point as a
+  finished edit — so Undo steps back to the scroll rather than to the start of the drag. Scrolling
+  when you are *not* dragging is unchanged.
+  Decision: ADR-0041. Evidence: PR #143. [Verified]
+
+### Fixed
+- **A solo click is no longer applied to a layout your DAW changed underneath it, in the one case
+- **Dragging a band sideways can no longer leave your DAW with a change gesture it was never given.**
+  Starting a sideways band move opens an automation gesture for each of the band's two edges, one
+  after the other. If your host answered the first one by running its own message loop — a modal
+  automation dialog, a control-surface echo, a plug-in window reconciling a drag it thinks is stuck —
+  the plug-in's own drag-cancel could run in that gap and close *both* edges, including the one it
+  had not opened yet. Four things followed. Your host saw an end-of-gesture with no matching start
+  (a spurious undo boundary); the second edge never got a gesture at all; the drag carried on with
+  its identity erased, auditioning a solo mask no band matched and writing the band's pre-drag split
+  frequencies back over anything your host had just installed, outside any gesture; and — the one
+  that outlasted the drag — the *first* edge's gesture was left open permanently, after which
+  **Undo silently stopped recording every later change you made to the sound** until you switched
+  A/B, loaded a preset, or used Undo or Redo. A band move now keeps its own record until both
+  gestures are open, so a cancellation arriving in that gap changes nothing and is honoured a
+  moment later instead. What you will notice: nothing, on any normal drag.
+  Decision: ADR-0050. Evidence: PR #143. [Verified]
+  where the check for that could be switched off.** The plugin remembers the layout your click was
+  aimed at and refuses the click if your DAW replaces it in the instant the edit opens. That memory
+  could be dropped early: the plugin's own safety net for a mouse button released outside its window
+  clears it as its first action, even when it has nothing else to do — and if your DAW ran that net
+  from inside the edit the click had just opened, the check went quiet and the click was applied to
+  the new layout anyway. The memory is now held until the click's action finishes. A click with
+  nothing else happening is unchanged.
+  Decision: ADR-0050. Regression coverage: State test 79 leg E. Evidence: PR #143. [Verified]
+- **Clicking a band's solo button can no longer solo a band that is not there.** The plugin works out
+  which headphone you clicked by measuring your cursor against the band layout — but it re-read that
+  layout a moment after recording the one your click belongs to. If your DAW changed the number of
+  bands in that instant and changed it back before you let go, the click was worked out against the
+  layout that flickered past and applied to the one you were actually looking at, so it could solo a
+  band that layout does not have: you press a headphone, nothing solos, and your DAW still records
+  the edit and an undo step for it. Both the number of bands and the crossover positions are now
+  taken once, when you press, and the whole hit-test answers under them. Measured before the fix at
+  491 occurrences in 1200 clicks against a band-count automation lane, and none after. Clicking with
+  nothing else happening is unchanged.
+  Decision: ADR-0046. Regression coverage: State test 85. Evidence: PR #143. [Verified]
+- **Soloing a band no longer applies to a different band when your DAW re-arranges the crossovers at
+  that exact instant.** Clicking a solo button tells your DAW an edit is starting, and your DAW can
+  answer immediately — an automation lane, a preset, a control surface. The plugin already refused
+  the click if the *number* of bands changed in that moment, but not if the crossovers simply moved,
+  so the solo could land on a band whose frequency range you never saw. It now refuses in that case
+  too, the same way it already refuses a count change. An ordinary solo click is unchanged.
+  Decision: ADR-0045. Evidence: PR #143. [Verified]
+- **Scrolling the mouse wheel over the Multiband display no longer keeps adjusting the control it
+  started on after your DAW has moved that control out from under the pointer.** A wheel burst
+  remembers which split or which band you started on, so that your own scrolling does not make it
+  jump to a neighbour halfway through. It gave that memory up if the *number* of bands changed, but
+  not if a crossover simply moved — and a crossover moving re-arranges the display just as much. So
+  if an automation lane, a preset or an undo slid a crossover across your pointer while you scrolled,
+  the next notch went on adjusting the band or split that used to be there, not the one now under
+  your cursor. The burst now also gives up its memory when the crossovers move, and re-aims at
+  whatever the pointer is actually over — the same notch still edits, it just edits the right thing.
+  Scrolling with nothing else happening is completely unchanged, including the way your own scrolling
+  moves a split without the burst losing its grip on it.
+  Decision: ADR-0045. Evidence: PR #143. [Verified]
+- **Sliding a band sideways can no longer take a change your DAW made mid-gesture and treat it as
+  your own.** The plugin keeps a record of the sound your edit started from, and every check that
+  refuses to overwrite somebody else's change compares against that record. Starting a band slide
+  re-took the record from whatever the parameters held at that instant. A change arriving from your
+  DAW — an automation lane, a preset, a control surface, an undo — in the moment between the check
+  and that line was therefore copied *into* the record: the slide then treated the new value as its
+  own for the rest of the gesture, and neither that gesture nor the release could ever notice it had
+  arrived. Band widths were affected worst, because a band slide never writes a width, so nothing
+  else was watching them. The slide now takes its starting positions from the record it has already
+  checked instead of re-reading, so a change arriving in that moment stops the slide as any other
+  change during a drag does. A slide with nothing else happening behaves exactly as before, to the
+  digit. Measured before the fix at 148 occurrences in 18 000 slides against such a change, and none
+  after.
+  Decision: ADR-0051. Evidence: PR #143. [Verified]
+- **A drag that is abandoned rather than released is now reported to your DAW exactly once.** When a
+  drag in the Multiband display has to be cancelled — most often because you released the mouse
+  button outside the plugin window, so the plugin never sees the release — the plugin tells your DAW
+  that the edit is finished. Your DAW can answer that immediately, and if it does, the cancellation
+  could run a second time on top of the first: the same edit was reported finished twice, and a
+  second edit that was about to be closed was skipped and left open instead. Either one can leave a
+  stray step in your DAW's undo history or an edit that never appears to end. The cancellation now
+  drops everything it is holding before it reports anything, so a repeat is a no-op. A drag you
+  release normally, inside the window, was never affected and is unchanged.
+  Decision: ADR-0050. Evidence: PR #143. [Verified]
+- **Dragging a band sideways no longer moves a crossover that band layout does not have.** Sliding a
+  band by its solo button worked out how many crossovers to move by re-reading the band count, rather
+  than using the count the press was made in. If your DAW changed the count and changed it back
+  while you were dragging — an automation lane, a preset arriving — the drag could plan for one more
+  crossover than the layout has and write it, so a frequency you were not editing moved inside your
+  own edit and landed in your DAW's automation and undo history. Measured before the fix at 40
+  occurrences in 3600 drags against such a lane, and none after. An ordinary band drag is unchanged.
+  Decision: ADR-0046. Evidence: PR #143. [Verified]
+- **Removing a band no longer discards a change your DAW made to the band above it.** Removing a band
+  moves every band above it down one place, and the plugin was checking only the place each value was
+  moved TO, never the place it was taken FROM. If an automation lane, a control surface or a preset
+  changed the topmost band's Width or the topmost split at the instant of the removal, the removal
+  carried on with the values it had read a moment earlier: the surviving band came out holding the
+  old Width, and your change was left parked on a band that no longer exists. The removal now checks
+  both ends of every value it moves and stops if either has changed under it, leaving your DAW's
+  newer value standing. Removing a band with nothing else happening is completely unchanged.
+  Decision: ADR-0049. Evidence: PR #143. [Verified]
+- **Releasing a click on the Multiband display no longer acts on a layout your DAW replaced in the
+  same instant.** Letting go of a drag, a delete x or a solo button tells your DAW the edit is
+  finished, and your DAW can answer that immediately — an automation lane, a returning preset, a
+  control surface. The plugin already refused if the *number* of bands changed there, but a
+  different layout with the SAME number of bands slipped through, so the release could merge, delete
+  or solo a band whose frequencies you had never seen. All three release actions now re-check that
+  the sound is still the one you were working on. An ordinary release still does exactly what it
+  did.
+  Decision: ADR-0050. Evidence: PR #143. [Verified]
+- **A band you add now appears where you clicked even when your DAW moves a *split* at that instant,
+  not just when it changes the band count.** The previous release fixed the band-count half of this.
+  The other half was the split positions themselves: working out which band the pointer was in and
+  working out where that band's edges are were two separate readings of the crossover frequencies, so
+  a split moving across your click between them clamped the new band up or down to that split
+  instead. Measured before the fix at 75 occurrences in 1600 clicks against a lane moving a split at
+  a fixed band count, and none after, with the number of clicks that place correctly unchanged.
+  Decision: ADR-0051. Evidence: PR #143. [Verified]
+- **A sideways or too-small scroll on the Multiband display no longer ends what you were doing.** A
+  horizontal scroll on a trackpad, or a scroll too small to register, was ending a held drag, closing
+  that edit in your DAW's automation and undo history, and throwing away a solo or delete button you
+  were holding down — and then doing nothing else, because there was no adjustment to make. Only a
+  scroll that actually adjusts something now finishes a held press, which is what the behaviour above
+  under **Changed** was always meant to say.
+  Decision: ADR-0052. Evidence: PR #143. [Verified]
+- **A band you add now appears where you clicked, even if your DAW changes the band count at that
+  instant.** Working out which band the pointer is in and working out where that band ENDS were two
+  separate readings of the band count. If an automation lane raised the count between them, the click
+  was clamped into a band it was never aimed at: clicking at 15 kHz in the top half of a two-band
+  layout could add the band down at 8 kHz instead. Measured before the fix at 55 occurrences in 4800
+  clicks against a lane moving the count, and none after; the number of clicks that add nothing at all
+  under such a lane is unchanged, so nothing you could previously do has become a no-op.
+  Decision: ADR-0048. Evidence: PR #143. [Verified]
+- **A split you are dragging can no longer drag a *different* split back to where it used to be.**
+  If your DAW moved one of the other crossover frequencies — an automation lane playing back, a
+  control surface, a linked macro — at the exact moment you pressed the mouse, the drag could take
+  its starting positions from just before that change and its ownership record from just after it.
+  Everything downstream then agreed the drag owned the display, and the first mouse movement wrote
+  the moved split back to its old frequency, inside your own edit, so it landed in the automation
+  lane and the undo history as if you had done it. Measured before the fix at 92 occurrences in
+  1200 drags against a continuously moving lane, and none after. Nothing changes when no automation
+  is running.
+  Decision: ADR-0047. Evidence: PR #143. [Verified]
+- **A scroll or a click on the Multiband display can no longer act on a band that belongs to a
+  different layout than the one you were looking at.** Working out which band is under the pointer
+  and recording how many bands there were at that moment used to be two separate readings, and the
+  scroll took them in the wrong order: it worked out the band first and read the band count
+  afterwards. If your DAW changed the number of bands in between — an automation lane moving, a
+  preset arriving — the scroll recorded the NEW count against a band it had picked out of the OLD
+  layout, and every later scroll of that burst then checked itself against that wrong record and
+  passed. The count is now read once per scroll or click, and the same reading decides which band is
+  under the pointer, what gets remembered, what range is allowed and what the edit checks before it
+  is written. Scrolling and clicking with the layout still are untouched, and a scroll that is
+  refused because the layout moved now picks again from where the pointer actually is instead of
+  being dropped.
+  Decision: ADR-0046. Regression coverage: State test 78. Evidence: PR #143. [Verified]
+- **Scrolling over the Multiband display no longer keeps adjusting the band it started on after the
+  layout changes underneath it.** A wheel scroll picks whatever is under the pointer on its first
+  click and keeps adjusting that until you move the mouse — so a burst of scrolls stays on one band
+  even if your hand drifts a little. If the number of bands changed while you were scrolling and
+  your hand was still — an automation lane, an undo, a preset load — the display was re-drawn
+  underneath the pointer but the scroll carried on adjusting whatever it picked before, which was no
+  longer what you were pointing at: measured as a band's width continuing to move while the pointer
+  sat over a different band. A scroll now notices that the layout changed and picks again from where
+  the pointer actually is, which is exactly what it already did when you moved the mouse. Scrolling
+  with the layout unchanged is untouched.
+- **Alt-clicking a band's width to reset it can no longer reset a band that has just gone.** The
+  reset works out which band you clicked, then tells your DAW the edit is starting, then writes the
+  default. A DAW that answered by reducing the number of bands left the reset writing a default for
+  a band that no longer existed — an automation touch and an undo step for something not on screen,
+  and a value that reappeared if the band count went back up. The reset now checks the layout has
+  not moved between those two steps. Ordinary alt-click resets are untouched.
+  Decision: ADR-0045. Regression coverage: State test 77. Evidence: PR #143. [Verified]
+- **Adding or removing a band can no longer end with a band count that does not match which bands
+  are soloed.** Adding or removing a band is not one change but several: which bands are soloed is
+  remapped first, then the widths, then the split frequencies, and the number of bands **last**. Each
+  of those tells your DAW about itself as it happens, and a DAW that answers by writing the solo
+  buttons back — an automation lane, a control surface, an undo — was doing it into a window nothing
+  looked at again. The band count then landed on top, and because the number of bands decides which
+  solo buttons *mean* anything, a band you had soloed could simply stop being heard while its button
+  stayed lit: measured as three bands left holding a solo word written for four. The count is now
+  refused if the solo buttons have moved since the operation remapped them, right up to and inside
+  the moment it is written. Widths and split frequencies are deliberately left alone: those mean the
+  same thing whichever number of bands you end up with, so a change arriving from your DAW during
+  the operation still stands, exactly as before.
+  Decision: ADR-0044. Regression coverage: State test 76. Evidence: PR #143. [Verified]
+- **Opening a split's frequency box and clicking away no longer re-writes the value it had when you
+  opened it.** Double-clicking the number under a split opens a small box seeded with the frequency
+  that split currently has. Clicking somewhere else commits the box — and with nothing typed, that
+  commit wrote the seeded value straight back. Most of the time you could not tell, because it was
+  the value already there; but if your DAW had moved that split in the meantime — an automation lane,
+  a control surface, an undo — the older value was written over the newer one. Even when nothing had
+  moved, the dismissal still counted as an edit: an automation touch and an undo step for a change
+  you never made. Opening the box and leaving it alone now does nothing at all. Typing a frequency is
+  unchanged and still replaces whatever is there, including something that arrived while the box was
+  open.
+- **A typed frequency, or a reset, in a crowded layout is now worked out from where the other splits
+  actually are.** When the splits are packed close together, setting one of them has to push the
+  others aside, and when they run out of room the whole group slides to fit — which moves the one you
+  set as well. That arithmetic was done before the plug-in told your DAW the edit was starting, so a
+  DAW that answered by moving one of the other splits left your split parked where it would have gone
+  had nothing changed: measured as the first split ending up *above* the second. The arithmetic now
+  happens after, from the live positions, so what you get is the layout the plug-in actually
+  computed. Ordinary typing and resetting are untouched, including the sliding itself.
+- **Holding a band's solo button no longer keeps auditioning a band that has gone.** Press and hold a
+  band's headphone and the plug-in auditions that band while you hold. The band is identified by its
+  position, and nothing checked that position was still valid — so if the number of Bands changed
+  while you were holding, you could be auditioning a different band than the one you pressed, or
+  none at all (the plug-in ignores a solo above the current band count, so you would hold the button
+  and hear no solo whatever). Releasing already handled it; now the audition ends the moment the
+  layout moves under it, exactly as a drag does.
+- **Moving the other splits aside now stops if the split they are making room for moves.** Typing a
+  frequency or resetting one in a crowded layout writes the split you set and then walks the others
+  outward to keep the minimum spacing. Every one of those positions was worked out to make room for
+  *your* split, and each write tells your DAW about it — so a DAW answering by moving your split left
+  the plug-in walking the rest of the row outward for a split that had gone somewhere else entirely:
+  measured as splits landing at 300 Hz, 11.4 kHz and 15.1 kHz for a layout planned around 8.4 kHz.
+  The walk now stops the moment your split is no longer where the plan put it, leaving the DAW's
+  change standing and the row part-way rather than rearranged around a split that is not there.
+  Ordinary typing and resetting are unchanged.
+- **Scrolling the mouse wheel over a split no longer undoes a change that arrives while it is
+  writing.** A wheel tick over a split can move that split and push its neighbour, and those are two
+  separate writes. The plug-in checks, before each write of a drag, that the value it is about to
+  replace is still the one it planned against — but that check was switched off for the wheel,
+  because the wheel deliberately ends any drag first. So a change arriving from your DAW between the
+  two writes was overwritten by the second: measured as 5 kHz installed and 1.48 kHz written over it.
+  The wheel now makes the same check a drag does. Ordinary scrolling is unchanged.
+  Decision: ADR-0043. Regression coverage: State test 75. Evidence: PR #143. [Verified]
+- **A change arriving from your DAW while the Multiband display is writing is no longer overwritten,
+  and an edit that was overwritten no longer carries on as though it had worked.** Adding or removing
+  a band writes the solo buttons, the band widths, the split frequencies and the band count in turn,
+  and each of those writes is handed straight to the host — so a DAW that answers one of them by
+  changing the same control (an automation lane, a control surface, a linked-parameter macro) does so
+  in the middle of the operation. The plug-in used to take its own writes on trust: the solo buttons
+  could be written, replaced by the DAW a moment later, and the band count changed anyway, leaving
+  bands soloed that you never soloed and a soloed band silently dropped. It now checks that each
+  write actually took, and stops the operation instead of finishing it against something that is no
+  longer there. The same trust showed up the other way round when you double-click a split to reset
+  it or type a frequency into it: the neighbouring splits are moved aside to make room, and the test
+  for moving one was "it is not where I want it" — which is *more* true of a frequency that arrived
+  from elsewhere, so the DAW's change was replaced by the plug-in's plan. A neighbour is now moved
+  only while it still holds the value the plan was worked out from, and the change that arrived
+  stands. **What changes for you:** an add, a remove, a reset or a typed frequency interrupted this
+  way stops part-way rather than completing against a layout that has moved, so you repeat it.
+  Ordinary adding, removing, resetting and typing are untouched.
+  Decision: ADR-0042. Regression coverage: State test 74. Evidence: PR #143. [Verified]
+- **Soloing a band can no longer land on a different band's layout, and adding or removing a band no
+  longer half-applies.** Clicking a band's solo button, and adding or removing a band, are each
+  several changes written in turn — the solo buttons, the band widths, the split frequencies and the
+  band count. If the number of Bands changed at the exact moment one of those was being written, the
+  rest carried on regardless: a solo could be applied to a band number that no longer existed, and a
+  band could be added or removed while the solo buttons stayed mapped to the old layout, leaving
+  bands soloed that you never soloed. Each of those changes now carries the layout it was aimed at,
+  and the whole operation stops the moment one of them cannot be applied to it. Ordinary soloing,
+  adding and removing are untouched.
+- **Scrolling the mouse wheel while dragging in the Multiband display now ends the drag instead of
+  fighting it.** The wheel is a separate edit, and using it mid-drag left the drag holding a grab
+  point from before the wheel moved things — so the next twitch of the mouse undid what the wheel had
+  just done, or undid a change that had arrived from elsewhere. The wheel still does exactly what it
+  did; the drag you were holding simply finishes, and you re-grab.
+  Decision: ADR-0041. Regression coverage: State test 73. Evidence: PR #143. [Verified]
+- **A change to a band's Width that arrives while you are dragging that Width is no longer undone.**
+  Dragging a band's width line remembers where you grabbed it and then follows your mouse from that
+  grab point. If the same band's Width was changed by something else while you were still holding —
+  a project or preset loading, an A/B switch, an undo, or an automation lane on that Width — the drag
+  carried straight on from the grab it took before, and the next twitch of the mouse wrote the old
+  value back over the new one. Which of the two won even depended on exactly when the change landed:
+  arriving before you had moved far enough to engage the drag, it was silently adopted as your grab
+  point and re-sent as if you had made it. The drag now simply ends at that instant, exactly as it
+  does when a project changes the split frequencies underneath it, and the value that arrived stands.
+  **What changes for you:** a width drag interrupted this way stops rather than continuing, so you
+  re-grab the line. Ordinary width dragging is untouched.
+  Decision: ADR-0040. Regression coverage: State test 71. Evidence: PR #143. [Verified]
+- **Loading a project, preset or A/B side while you are holding a split in the Multiband display no
+  longer has part of it quietly undone.** A drag remembers where every split was when you pressed,
+  because that is what lets a split you shove past its neighbour push it aside and lets the neighbour
+  spring back when you move away again. If a whole new set of frequencies arrived while you were
+  still holding — a project or preset loading, an A/B switch, an undo, or an automation lane on one
+  of the other splits — the drag carried on from the old memory and wrote the splits you were *not*
+  dragging back to where they had been before, inside the same automation move: the frequencies you
+  had just loaded were replaced by ones from before you loaded them. Previously this was caught only
+  when the new sound also changed the **number** of bands; it is now caught whenever any split moves
+  under your hand, whatever the band count does. The drag ends at that instant, exactly as it does
+  when you release the mouse outside the plug-in window. This now holds even when the change arrives
+  at the precise moment the plug-in is writing the splits out — a plug-in writes them one at a time,
+  and a DAW that answers one of those writes by changing another split used to have its change
+  overwritten by the rest of the same pass, and then quietly counted as the drag's own so that
+  nothing noticed afterwards. **What changes for you:** a drag interrupted this way stops rather than
+  continuing, so you re-grab the handle. Ordinary dragging is untouched — splits still push their
+  neighbours aside and the neighbours still spring back.
+  Decision: ADR-0039, extended by ADR-0040. Regression coverage: State tests 70 and 71.
+  Evidence: PR #143. [Verified]
+- **A drag in the Multiband display now ends when the number of Bands changes underneath it,
+  instead of writing over whatever replaced it.** Dragging a split, or moving a band by its solo
+  handle, is set up against the bands that were there when you pressed. If the Bands control moved
+  while you were still holding — by an automation lane, or by a project or preset loading at that
+  moment — the drag used to carry on regardless, and could write the split positions it started from
+  over the ones that had just arrived: a project you had just opened could have one of its crossover
+  frequencies replaced by a value from before you opened it. The drag now simply ends at that
+  instant, exactly as it does when you release the mouse outside the plug-in window: nothing further
+  is written, and nothing is deleted or soloed on release. **What changes for you:** a drag
+  interrupted this way stops rather than continuing, so you re-grab the handle — the same handful of
+  gestures behave identically whenever the band count stays put, which is every ordinary edit.
+  Decision: ADR-0038. Regression coverage: State test 68. Evidence: PR #143. [Verified]
+- **Releasing a split you dragged out of the display can no longer delete a different band.**
+  Dragging a split outside the Multiband display and letting go removes the band that split opens —
+  the quick way to merge two bands. The plug-in remembered *which* split you had grabbed by its
+  position in the row, so if the number of Bands fell while you were still holding it — by an
+  automation lane on Bands, or by opening or restoring a project at that moment — the split you
+  grabbed could be gone by the time you let go. The release then deleted whichever band that
+  position now landed on: a band you never touched, with Bands dropping a second time. A drag whose
+  own split has disappeared now removes nothing. Dragging a split out and releasing it at a steady
+  band count still merges exactly as before. This also holds when the number of Bands moves at the
+  very instant you let go — the release is checked against the band layout you were actually looking
+  at when you pressed, not against whatever the count happens to say a moment later, so a merge is
+  simply refused rather than applied to a layout you never saw. Adding or removing a band is not one
+  change but several — the band widths, the split frequencies, the solo buttons and the band count are
+  all written in turn — and if the number of Bands changed while that was still in progress, the
+  remaining writes used to carry on regardless and put the old count back at the end, leaving a layout
+  that was neither the one you saw nor the one that arrived. The operation now stops as soon as it
+  notices, and what arrived stands.
+  Decision: ADR-0039, extended by ADR-0040. Regression coverage: State tests 67, 69 and 71.
+  Evidence: PR #143. [Verified]
+- **Dragging in the Multiband display can no longer throw a crossover frequency to a value you
+  never chose, if the number of Bands changes underneath the drag.** Dragging a split, or holding a
+  band's solo handle and moving it sideways, remembers where every split was when the drag began and
+  which splits sit on the dragged band's edges. If the Bands control moved while you were still
+  dragging — by an automation lane on Bands, or by opening or restoring a project at that moment —
+  both memories went wrong, in opposite directions. **Bands going up** revealed splits the drag had
+  never measured, and their positions were computed from leftover memory instead: the new splits
+  jumped down and packed themselves against the one you were dragging. **Bands going down** left the
+  drag pinning a split that no longer existed, and the move then read leftover memory for that one
+  too. Either way a crossover landed on an arbitrary (if legal) frequency, written into your DAW's
+  automation lane and onto the undo stack as though you had dragged it there, with the multiband
+  split audibly moving. A drag now measures every split when it starts, and a split that no longer
+  exists is simply treated as unpinned. Nothing changes for a drag that runs to its end at a steady
+  band count — every such case computes exactly as before.
+  Regression coverage: State test 66. Evidence: PR #143. [Verified]
+
 ## [0.9.7] — 2026-09-05
 
 ### Changed
@@ -1995,6 +2343,7 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
+[0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8
 [0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/
