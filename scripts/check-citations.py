@@ -383,9 +383,18 @@ DELIBERATE_REAIMS = {
     # sixth time, :629 -> :657. Six hit-test helpers gain defaulted arguments and
     # the reasoning above `dragCrossoverTo` grows with them; a pure insertion again,
     # so still one entry, still by hand, and the document's own anchor moves with it.
+    #
+    # 2026-09-12 (ADR-0053, the wheel): a SEVENTH re-derivation, :657 -> :665. Three
+    # wheel-step constants join the file header above every function in it. A pure
+    # insertion once more -- and the seventh consecutive one, which is the running
+    # cost this entry was kept visible to show. The entry is still one line by hand
+    # and the aim check is still what caught the drift: the declaration's target is
+    # resolved against the current file on every run, so leaving it at :657 would
+    # have silenced the drift of everything else in this document rather than only
+    # its own.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:657"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:665"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

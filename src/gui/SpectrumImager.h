@@ -58,6 +58,13 @@ public:
     std::function<void()>    onClearSoloPreview;
     std::function<void()>    onSweep;
     std::function<bool()>    isSweeping;
+    // ADR-0053: a standalone scroll NAMES the control it edits while its change gesture is open, so
+    // the processor can keep the whole scroll as ONE undo step instead of one per notch. The
+    // PARAMETER is passed rather than a key, so the formula that turns a parameter into a name lives
+    // in exactly one place (`AnamorphAudioProcessor::wheelStepKeyFor`); `nullptr` un-names. A
+    // callback rather than a processor pointer for the same reason the four above are: this class
+    // knows the APVTS and nothing else about the plug-in.
+    std::function<void(const juce::AudioProcessorParameter*)> onWheelStep;
 
     // UI-animation flag now lives in InternalState (host-hidden), injected by the editor.
     void setAnimationSource (const std::atomic<float>* p) noexcept { animOnP = p; }

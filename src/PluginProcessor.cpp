@@ -448,6 +448,7 @@ void AnamorphAudioProcessor::syncCommitted()
     lastPolledSig = committedSig;
     openGestures = 0;             // A/B switch / preset / session load is not a user gesture
     pendingGestureCommit = false;
+    pendingStepWheelKey = lastStepWheelKey = 0; // ADR-0053: ...and it is not this scroll either
 }
 
 // A full snapshot: parameters PLUS the live preset name + clean baseline (#6). The params carry the
@@ -821,7 +822,25 @@ void AnamorphAudioProcessor::parameterGestureChanged (int, bool gestureIsStartin
     // is adopted by the next poll instead, where its syncCommitted() zeroes the
     // gesture count exactly as an inline restore mid-gesture always has.
     if (gestureIsStarting)                       ++openGestures;
-    else if (openGestures > 0 && --openGestures == 0) pendingGestureCommit = true;
+    else if (openGestures > 0 && --openGestures == 0)
+    {
+        // ADR-0053: the NAME travels with the commit request, not with the poll. The poll runs up to
+        // a timer period later, and by then the wheel edit that asked for this commit has un-named
+        // itself -- a later edit of some other kind may even be in flight. Latched here, the commit
+        // is attributed to the gesture that actually asked for it.
+        //
+        // AND A BATCH IS ONLY A SCROLL'S IF EVERY GESTURE IN IT NAMED THE SAME CONTROL. The poll
+        // runs on the editor's 24 Hz tick, so two gestures can finish inside ONE of its periods and
+        // collapse into a single step -- which they always have. What is new is the NAME: with a
+        // bare assignment the collapsed step would carry the LAST gesture's, so a knob drag released
+        // and a notch taken within the same 42 ms would extend the scroll that notch belongs to and
+        // fold the drag into it, leaving the drag with no undo point of its own. An already-pending
+        // commit means this batch holds more than one gesture; a disagreeing name makes it nobody's
+        // scroll. Found by this round's own adversarial pass.
+        pendingStepWheelKey = (pendingGestureCommit && pendingStepWheelKey != wheelStepKey)
+                            ? 0 : wheelStepKey;
+        pendingGestureCommit = true;
+    }
 }
 
 void AnamorphAudioProcessor::pollUndoCoalesce()
@@ -876,19 +895,36 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
     if (pendingGestureCommit)      // exactly ONE undo step per finished gesture (knob or band move)
     {
         pendingGestureCommit = false;
+        const int stepKey = pendingStepWheelKey;   // ADR-0053: what the finished gesture named
+        pendingStepWheelKey = 0;
         if (sig != committedSig)
         {
-            abUndo[abActive].undo.push_back (committed);   // the PREVIOUS state set (name + baseline, #6)
-            if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
+            // ADR-0053. A CONTINUING SCROLL EXTENDS ITS STEP INSTEAD OF PUSHING ANOTHER. The entry
+            // already on the stack holds the state from before the FIRST notch of this scroll, so
+            // not pushing -- and letting the lines below move the baseline on -- is precisely "keep
+            // the original starting value, replace only the ending value". `undo.empty()` cannot
+            // hold here with a matching name (every path that empties the stack clears the name
+            // too), and is tested anyway so the invariant is enforced rather than assumed.
+            const bool extend = stepKey != 0 && stepKey == lastStepWheelKey
+                                && ! abUndo[abActive].undo.empty();
+            if (! extend)
+            {
+                abUndo[abActive].undo.push_back (committed);   // the PREVIOUS state set (name + baseline, #6)
+                if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
+            }
             abUndo[abActive].redo.clear();
             committed = currentStateSet();
             committedSig = sig;
+            // Recorded only where a step was actually recorded: a gesture that changed nothing has
+            // not interrupted the scroll, so it must not end the chain either.
+            lastStepWheelKey = stepKey;
         }
     }
     else if (sig != committedSig)  // NON-gesture change (host automation / programmatic): fold into
     {                              // the baseline WITHOUT creating an undo step (automation is not undoable)
         committed = currentStateSet();
         committedSig = sig;
+        lastStepWheelKey = 0;      // ADR-0053: a change that is not this scroll's ends the chain
     }
 
     lastPolledSig = sig;
@@ -931,6 +967,7 @@ void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
     lastPolledSig = sig;
     openGestures = 0;             // a preset load is a program state jump, not a user gesture -- drop any
     pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
+    pendingStepWheelKey = lastStepWheelKey = 0; // ADR-0053: a program state jump ends a scroll chain
 }
 
 void AnamorphAudioProcessor::undo()
@@ -952,6 +989,7 @@ void AnamorphAudioProcessor::undo()
     lastPolledSig = committedSig;
     openGestures = 0;             // undo is a program state jump, not a user gesture -- drop any
     pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
+    pendingStepWheelKey = lastStepWheelKey = 0; // ADR-0053: ...and the step it just popped is gone
 }
 
 void AnamorphAudioProcessor::redo()
@@ -967,6 +1005,7 @@ void AnamorphAudioProcessor::redo()
     lastPolledSig = committedSig;
     openGestures = 0;             // redo is a program state jump, not a user gesture -- drop any
     pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
+    pendingStepWheelKey = lastStepWheelKey = 0; // ADR-0053: the re-pushed step is not a scroll's
 }
 
 // ----------------------------------------------------------------------------

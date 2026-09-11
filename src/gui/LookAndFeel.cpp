@@ -843,6 +843,36 @@ namespace
             else
                 juce::Label::mouseDrag (e);
         }
+        // ADR-0053. A NOTCH INSIDE THIS BOX'S OWN DRAG BELONGS TO THAT DRAG. Without this override
+        // the event walks up to the parent Slider -- juce::Component::mouseWheelMove forwards to the
+        // nearest enabled ancestor -- and JUCE discards it there, because its wheel handler refuses
+        // to act while any mouse button is down. The drag maps `downProp + (-dragY) / 180.0` afresh
+        // on every mouse move and never reads the live value back, so writing the value alone would
+        // be erased by the next move: the notch has to move `downProp`, which is this box's anchor.
+        //
+        // Measured from the LIVE proportion and clamped, so a notch past a rail moves `downProp` by
+        // nothing and banks no dead travel. The write lands inside the ScopedDragNotification this
+        // press already holds, so the whole drag-plus-notch interaction stays ONE undo step.
+        //
+        // With no drag in flight the event is forwarded exactly as before, and the parent knob's own
+        // override gives it the standalone scroll's undo grouping -- so the knob and the number
+        // under it are ONE control for Undo, which is what they are for the user.
+        void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
+            if (auto* s = rotaryParent (getParentComponent());
+                dragGesture != nullptr && s != nullptr && ! isBeingEdited())
+            {
+                const double amount = (std::abs (w.deltaX) > std::abs (w.deltaY) ? -w.deltaX : w.deltaY)
+                                    * (w.isReversed ? -1.0 : 1.0);
+                const double base = s->valueToProportionOfLength (s->getValue());
+                const double want = juce::jlimit (0.0, 1.0, base + amount * 0.15);
+                if (juce::exactlyEqual (want, base)) return;   // ADR-0052: no edit, no side effects
+                downProp += want - base;                       // ...and the drag carries on from here
+                s->setValue (s->proportionOfLengthToValue (want), juce::sendNotificationSync);
+                return;
+            }
+            juce::Label::mouseWheelMove (e, w);
+        }
         void editorShown (juce::TextEditor* ed) override
         {
             if (auto* s = dynamic_cast<juce::Slider*> (getParentComponent()))

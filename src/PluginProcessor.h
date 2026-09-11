@@ -69,6 +69,46 @@ public:
     bool canRedo() const noexcept { return ! abUndo[abActive].redo.empty(); }
     void pollUndoCoalesce();
 
+    // ------------------------------------------------------------------------
+    //  A SCROLL IS ONE UNDO STEP (ADR-0053).
+    //
+    //  An undo entry holds the state from BEFORE the step it undoes, so "keep the value the whole
+    //  scroll started from and replace only where it ended" is exactly "do not push another entry,
+    //  and move the committed baseline on". That is the whole mechanism: a wheel edit NAMES the
+    //  control it belongs to for as long as its change gesture is open, the name travels with the
+    //  commit that gesture requests, and a commit whose name matches the one the most recently
+    //  recorded step carries EXTENDS that step instead of pushing a second one.
+    //
+    //  0 means "not a wheel edit", and that is what ends a chain: a drag, a typed value, an
+    //  Alt-click reset -- every other edit closes its gesture unnamed, so the next scroll starts a
+    //  fresh step, which is what "switching to another modification method creates a new step"
+    //  means here. A change that arrives with no gesture at all (host automation) ends it too.
+    //
+    //  WHY THERE IS NO INACTIVITY TIMER. The step exists from the first notch and is extended by
+    //  every notch after it, so "one Undo returns the parameter to the value it had before the
+    //  scroll" is true at EVERY instant rather than only after a dwell -- and nothing has to be
+    //  polled, timed or held open to make it so. A held-open gesture would also be the one failure
+    //  this class already knows to fear: `pollUndoCoalesceAdopted` records nothing while
+    //  `openGestures > 0`, so a gesture that is never closed stops undo recording silently.
+    //
+    //  Message-thread state, like every other member of this section.
+    void setWheelStepKey (int key) noexcept { wheelStepKey = key; }
+    // The name a parameter-backed control answers to. A parameter's index is stable for the life of
+    // the processor and unique to it, so two controls driving the SAME parameter -- a knob and the
+    // numeric box under it -- are correctly one control for this purpose. +1 keeps 0 meaning "none".
+    static int wheelStepKeyFor (const juce::AudioProcessorParameter* p) noexcept
+    { return p != nullptr ? p->getParameterIndex() + 1 : 0; }
+
+    // Names a wheel edit for the duration of its change gesture and un-names it on every exit path.
+    struct ScopedWheelStep
+    {
+        ScopedWheelStep (AnamorphAudioProcessor& p, int key) noexcept : proc (p) { proc.setWheelStepKey (key); }
+        ~ScopedWheelStep() noexcept { proc.setWheelStepKey (0); }
+        ScopedWheelStep (const ScopedWheelStep&) = delete;
+        ScopedWheelStep& operator= (const ScopedWheelStep&) = delete;
+        AnamorphAudioProcessor& proc;
+    };
+
     // D-2 (RISK-007), 2026-09-03. Every piece of PROGRAM state this class owns -- the
     // preset name / identity / dirty baseline, the two A/B slots and the active index,
     // the per-slot Level-Match memory, the undo history, the committed baseline and
@@ -323,6 +363,15 @@ private:
     // never opens a gesture, so it is never recorded.
     int  openGestures = 0;
     bool pendingGestureCommit = false;
+    // ADR-0053, the three halves of "a scroll is one undo step". `wheelStepKey` is the control a
+    // wheel edit currently in flight names; `pendingStepWheelKey` is that name LATCHED at the
+    // instant the gesture closed, because the poll that acts on it runs up to a timer period later,
+    // by which time the edit has long un-named itself and another may be in flight;
+    // `lastStepWheelKey` is the name the most recently RECORDED undo step carries, and comparing the
+    // two is the whole extend-or-push decision. 0 everywhere means "not a wheel edit".
+    int  wheelStepKey = 0;
+    int  pendingStepWheelKey = 0;
+    int  lastStepWheelKey = 0;
 
     StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;

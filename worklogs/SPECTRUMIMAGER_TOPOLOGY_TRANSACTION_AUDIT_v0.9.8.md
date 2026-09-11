@@ -2820,3 +2820,162 @@ manufactured.**
 | cancelled-spread visual ordering | **Unchanged** |
 | TSan suppression scope | **Unchanged** — still exactly one entry, `Matched 1 suppressions` with one breakdown line. Legs E and F add no new lock-order shape: they write nothing from inside a gesture open that State test 79 leg E did not already |
 | historical comment blocks | **One rename propagated** — `releaseActionActive`/`ScopedReleaseAction` are now `gestureActionDepth`/`ScopedGestureAction`, and the declaration comment says why the type changed. No claim in the round-7 text became false |
+
+---
+
+## §66. Round 9 — the mouse wheel, and what an interaction is
+
+**The brief (maintainer, 2026-09-12).** Change the mouse-drag, mouse-wheel and Undo/Redo behaviour
+for every knob and slider, the numeric value below each knob, the Multiband split, the Multiband
+bandwidth, the Band Solo interaction and the Settings slider. Wheel input during a drag must ADD to
+the drag rather than cancel it, the drag must continue from the combined value, and the whole
+interaction must be one undo step. A standalone scroll must be one undo step that a later scroll of
+the same control EXTENDS, preserving the value the first scroll started from; another editing method
+must start a new step. Holding a Band Solo button and scrolling must move the band, not its width.
+The Settings slider must gain the interaction and keep its exclusion from Undo. And, explicitly:
+*"if previous behavior in the code or existing documentation conflicts with this request, the
+behavior specified in this task is the latest behavior and takes precedence."*
+
+### 66a. What was actually there — three behaviours, none of them the one asked for
+
+| While the mouse is held | Before |
+|---|---|
+| knob / slider / value box | **nothing.** `juce::Slider::Pimpl::mouseWheelMove` is wrapped in `! e.mods.isAnyMouseButtonDown()`; the event is consumed and discarded |
+| Multiband split or width drag | **the press ended** (ADR-0041): gesture closed at the notch, the drag so far committed as its own undo step, further movement dead |
+| a held Band Solo button | the press ended, the click was swallowed, and the wheel edited whatever band the pointer was over |
+
+| With no button held | Before |
+|---|---|
+| knob / slider / value box | **one undo step per notch** — JUCE wraps each in its own `ScopedDragNotification` |
+| Multiband split or width | **no undo step at all** — every store was a bare `setValueNotifyingHost` outside any gesture (KI-010's second path) |
+
+### 66b. The one thing that makes this hard, and it is ADR-0041's own measurement
+
+Not one of these drags reads the live parameter again after it starts. A split drag stores
+`cursor.x - dragGrabDX`; a width drag stores `yToWidth (cursor.y - dragGrabDY)`; a band move stores
+two pins at `bandStart{Left,Right}X + clamp (cursor.x - bandAnchorX)`; the value box stores
+`downProp + (-dragY) / 180`; and `juce::Slider::handleAbsoluteDrag` recomputes
+`valueOnMouseDown + mouseDiff / 250` on **every** mouse move. So a notch that writes the value and
+stops is erased by the next mouse event — which is exactly what ADR-0041 measured
+(*"a wheel tick adopted the installed width 1.700, and the drag then wrote 0.650 from an anchor taken
+before it"*) and answered, with the tools it had, by ending the press.
+
+The answer this round takes is to move the **anchor**, not to refresh anything:
+
+| Interaction | The single variable | Set to |
+|---|---|---|
+| split press | `dragGrabDX` | `cursor.x - clamp (target)` |
+| width press | `dragGrabDY` | `cursor.y - widthToY (target)` — the exact form the 3 px engage uses |
+| band move | `bandAnchorX` | `cursor.x - clamp (T + notch)` |
+| value box | `downProp` | `+=` the proportion that actually fitted |
+| `juce::Slider` | `Knob::wheelDragProp` | `+=` the proportion that fitted, re-applied after every `Slider::mouseDrag` |
+
+ADR-0041's DECISION is therefore untouched and relied on: these branches perform no refresh, so its
+rule has nothing to refuse. Only its Consequences line is superseded, and ADR-0053 says so in its
+header, with a reciprocal note in ADR-0041 and in ADR-0052.
+
+**`juce::Slider`'s drag baseline is unreachable** — `valueOnMouseDown`, `mouseDragStartPos`,
+`valueWhenLastDragged` and `lastAngle` are private `Pimpl` members with no public setter, and
+`getThumbBeingDragged()` is the only part of that state a subclass can read. The recon pass concluded
+from that that no public API can re-anchor a drag; the conclusion is wrong and the premise is right.
+The question is not *"can I write `valueOnMouseDown`?"* but *"can I correct the value after JUCE has
+computed it?"*, and the answer is yes, every drag event, for the price of one `double`.
+
+### 66c. Why there is no inactivity timer, which is what the brief describes
+
+An undo entry holds the state from BEFORE its step. So *"preserve the value the scroll started from
+and replace only the ending value"* is precisely *do not push another entry, and move the committed
+baseline on*. The step therefore exists from the FIRST notch and is extended by every notch after it,
+which makes *"one Undo returns the control to the value it had before the scroll"* true at **every
+instant** rather than only after a dwell — a strictly stronger guarantee than the mechanism the brief
+describes, obtained with no timer, no poll and nothing held open.
+
+And the alternative is the worst option available to this code base. A single gesture held open
+across the scroll and closed on a timeout is the shape of the defect measured in this very release:
+`pollUndoCoalesceAdopted` records nothing while `openGestures > 0`, so a gesture that fails to close
+stops undo recording SILENTLY (ADR-0050, §65). Recorded here as a deviation in MECHANISM, not in
+behaviour, so a later reader can see it was a decision rather than an omission.
+
+### 66d. Two defects this round's own adversarial pass found, before any review did
+
+The round ran an eight-reader read-only reconnaissance with three critics over the result. Most of
+the map was stale by the time it returned — see §66f — but two of the critics' findings were real,
+against code that had already landed, and both are fixed here with their own regression legs.
+
+1. **A notch with no band to move still swallowed the solo click.** At one band `beginBandMove`
+   leaves both pins at `-1` and `moveBand` returns at `M <= 0` having written nothing and opened
+   nothing — so the notch performs NO EDIT — yet the press was converted into a "move" anyway, and
+   the release then took the move's branch instead of the toggle's. That is ADR-0052's own rule
+   broken in a branch written three hours earlier. `if (gestureBands < 2) return;` and State test 87
+   leg E.
+2. **Two gestures finishing inside one poll period took the LAST gesture's name.** The poll runs on
+   the editor's 24 Hz tick, so a drag released and a notch taken within the same ~42 ms have always
+   collapsed into one step; what was new was the name on it. Taking the notch's name made that step
+   EXTEND the scroll the notch belonged to, folding the drag into it and leaving the drag with no
+   undo point of its own. A disagreeing name inside an already-pending batch now clears the name.
+   State test 86 leg G is the one leg in the suite that deliberately does not poll between two edits.
+
+### 66e. What is stated rather than implied
+
+* **ONE gesture, up to three parameters, on the split path.** `dragCrossoverTo` pushes neighbouring
+  splits aside and those stores are outside any bracket of their own, so a host recording touch/latch
+  sees them as automation. Undo is unaffected (`openGestures` is one global count) and this is
+  exactly what the DRAG path has done since 0.6.x. Matching it is deliberate.
+* **A typed value force-committed by a notch is attributed to the scroll.** JUCE's wheel handler
+  calls `valueBox->hideEditor (false)` before its own gesture and that commit opens a gesture inside
+  the naming scope. Both belong to one user action.
+* **A notch delivered to a component other than the one being dragged still edits that component.**
+  JUCE routes by POINTER, not by capture. Unchanged, and left unchanged deliberately: a mouse-button
+  gate on the multiband display would also silence a notch during one of its own presses that latched
+  no identifier (an Alt-click reset, an add the count refused). Measured as a real consequence of
+  this: with a knob drag open, such a notch's multiband edit lands in the knob's undo step.
+* **`monoFreqK` and the Settings bar snap to the cursor** (`LinearHorizontal`, `snapsToMousePos`
+  default `true`), so for those two a wheel offset means the thumb deliberately stops sitting exactly
+  under the pointer. That is what "additive" means for a snap-to-cursor control; State test 88 leg C
+  drives that path.
+* **The velocity-drag path (Ctrl/Alt/Cmd held) is NOT measured.** `applyWheelDragOffset` runs after
+  `Slider::mouseDrag` whatever branch it took, so it composes with `handleVelocityDrag` by
+  construction — but nothing in the suite holds a modifier, and that is said here rather than left to
+  be assumed.
+* **`monoFreqK`'s and the Settings bar's value boxes are not draggable**, and were not before this
+  round: `ValueBox::mouseDown` requires a ROTARY parent. Their wheel still reaches the slider. Not a
+  regression and not fixed here.
+
+### 66g. Mutation — sixteen applied one at a time, fifteen killed
+
+The full table is in `docs/procedures/TESTING.md`. Three entries are worth repeating here.
+
+**M5 SURVIVED, and finding out why is the most useful thing this round's mutation pass did.** The
+split leg's deciding check compared the final split frequency against the frequency the press
+started from, and a split drag cannot reproduce that bit-for-bit through `freqToX`/`xToFreq` — so
+`! exactlyEqual` passed whether or not the notch had survived. The leg was green, it looked like
+coverage, and deleting the line it exists to protect changed nothing. Rewritten to take its baseline
+with a drag event at the SAME cursor position the deciding check uses, it kills M5 with the measured
+message `the very next drag event at the same cursor position put the split back to 199.9998 Hz`.
+That figure is also the proof the first version could not work: `199.9998` is not `200.0`.
+
+**M8 reaches outside this round's own legs**, which is the useful half of it: extending the undo step
+on every commit rather than only on a matching NAME breaks five preset-identity and undo/redo checks
+that predate this change entirely. The name is load-bearing for behaviour this round did not write.
+
+**M15 survives and is kept.** The `ownsWidth` proof it removes sits behind the press branches'
+`gestureIsStale()` gate, two lines above, which compares every split and width exactly — so a
+persistent foreign write is caught before the proof is reached, and what the proof covers is a write
+landing between the gate and the store, with no dispatch in that stretch for a single-threaded
+harness to enter. Same class as the surviving mutations recorded for ADR-0046, ADR-0047, ADR-0048 and
+ADR-0051, kept for the same reason and said to be unmeasured rather than presented as covered.
+
+### 66f. A process note, and a correction to §65e-ii's rule
+
+§65 recorded the rule *"pin the audited revision, or do not touch the tree until the pass returns"*
+after a round in which agents spent their passes refuting a moving tree. This round obeyed it for as
+long as the pass was auditing, and then broke it deliberately: the recon was still running four
+agents deep when implementation started, on a 4-core box where the remaining agents would have cost
+another half hour. The cost was exactly what §65 predicts — four of the eight readers describe code
+that no longer existed, and one critic opened by saying so.
+
+What was NOT lost is the part that mattered, and that is the correction: the three critics read the
+DIGEST, not the tree, and both of the real findings above came from them. A reconnaissance pass ages
+badly against a tree that moves; an adversarial pass over a written claim does not. The rule is
+therefore narrower than §65 stated: **pin the tree for a pass that must cite it, and let a pass that
+argues from a written claim run beside the work.**

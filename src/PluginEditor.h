@@ -405,6 +405,25 @@ private:
         // would nest begin/endChangeGesture on the same parameter.
         juce::RangedAudioParameter* resetParam = nullptr;
         std::function<void()> onSweep;
+        // ADR-0053. THE WHEEL IS PART OF THE INTERACTION IT LANDS IN, and this member is what lets a
+        // drag carry ON from a notch instead of erasing it. JUCE discards the wheel outright while a
+        // button is held -- `! e.mods.isAnyMouseButtonDown()` guards its whole handler
+        // (juce_Slider.cpp) -- so a notch mid-drag used to do nothing at all; and merely writing the
+        // value would not survive either, because `handleAbsoluteDrag` recomputes it from
+        // `valueOnMouseDown` plus the cursor delta on EVERY mouse move and never reads the live value
+        // back. Both of those are private Pimpl members with no public setter, and
+        // `getThumbBeingDragged()` is the only part of that state a subclass can see -- so the notch
+        // is remembered OUT HERE and re-applied on top of whatever the drag computed. In PROPORTION
+        // space, so one notch means the same travel on a skewed range as on a linear one.
+        //
+        // Zero for a press with no notch in it, and every line that reads it returns immediately on
+        // zero, so an ordinary drag makes exactly the parameter writes it always did.
+        double wheelDragProp = 0.0;
+        // The processor, for the wheel's undo grouping (ADR-0053). Null for a knob with no APVTS
+        // parameter behind it -- which is the Settings Persistence bar, and exactly the control whose
+        // undo participation must not change: with no parameter there is no change gesture and no
+        // sound signature, so it cannot record a step whatever this does.
+        AnamorphAudioProcessor* owner = nullptr;
 
         void doReset()
         {
@@ -421,6 +440,7 @@ private:
         }
         void mouseDown (const juce::MouseEvent& e) override
         {
+            wheelDragProp = 0.0;    // a new press starts with no notch in it (ADR-0053)
             if (e.mods.isAltDown()) // Option/Alt-click reset, as ONE undoable user gesture
             {
                 if (resetParam != nullptr) resetParam->beginChangeGesture();
@@ -433,6 +453,64 @@ private:
         void mouseDoubleClick (const juce::MouseEvent& e) override
         {
             if (e.getNumberOfClicks() == 2) doReset();
+        }
+        // ADR-0053: the notch total this press has accumulated, applied on top of the value JUCE's
+        // drag has just computed. Called after every drag event, so the offset survives the drag's
+        // habit of recomputing from its own press-time anchor.
+        void applyWheelDragOffset()
+        {
+            if (juce::exactlyEqual (wheelDragProp, 0.0)) return;
+            const double base = valueToProportionOfLength (getValue());        // the pure drag value
+            const double want = juce::jlimit (0.0, 1.0, base + wheelDragProp);
+            // NO DEAD TRAVEL: keep only what actually fitted, so a press that has been scrolled past
+            // a rail leaves that rail the instant the drag moves away from it instead of first
+            // unwinding travel nobody can see. Only ever reached once a notch has been made, so an
+            // ordinary drag's clamping behaviour is untouched.
+            wheelDragProp = want - base;
+            setValue (proportionOfLengthToValue (want), juce::sendNotificationSync);
+        }
+        void mouseDrag (const juce::MouseEvent& e) override
+        {
+            juce::Slider::mouseDrag (e);
+            applyWheelDragOffset();
+        }
+        void mouseUp (const juce::MouseEvent& e) override
+        {
+            juce::Slider::mouseUp (e);
+            wheelDragProp = 0.0;
+        }
+        void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
+            // A NOTCH INSIDE THIS KNOB'S OWN DRAG (ADR-0053). `getThumbBeingDragged()` is >= 0 only
+            // between the mouseDown that actually STARTED a drag and the drag-end notification, so a
+            // press that started none -- a pop-up-menu click, a single-click reset -- does not
+            // qualify and a notch can never write outside a change gesture.
+            if (isScrollWheelEnabled() && e.mods.isAnyMouseButtonDown() && getThumbBeingDragged() >= 0)
+            {
+                // The amount JUCE's own handler moves a slider by (`getMouseWheelDelta`: the
+                // proportion moves by `wheelAmount * 0.15`), so one notch means the same travel
+                // whether or not a button is held.
+                const double amount = (std::abs (w.deltaX) > std::abs (w.deltaY) ? -w.deltaX : w.deltaY)
+                                    * (w.isReversed ? -1.0 : 1.0);
+                const double base = valueToProportionOfLength (getValue());
+                const double want = juce::jlimit (0.0, 1.0, base + amount * 0.15);
+                if (juce::exactlyEqual (want, base)) return;  // ADR-0052: no edit, no side effects
+                wheelDragProp += want - base;                 // ...and the drag carries on from here
+                setValue (proportionOfLengthToValue (want), juce::sendNotificationSync);
+                return;
+            }
+            // A STANDALONE SCROLL NAMES THE CONTROL IT EDITS, so the processor can keep the whole
+            // scroll -- however many notches, and however many pauses between them -- as ONE undo
+            // step (ADR-0053). The value box below the knob forwards its own wheel events here, so
+            // the knob and the number under it name the same control, which is what they are.
+            if (owner != nullptr && resetParam != nullptr)
+            {
+                const AnamorphAudioProcessor::ScopedWheelStep step
+                    (*owner, AnamorphAudioProcessor::wheelStepKeyFor (resetParam));
+                juce::Slider::mouseWheelMove (e, w);
+                return;
+            }
+            juce::Slider::mouseWheelMove (e, w);
         }
     };
 

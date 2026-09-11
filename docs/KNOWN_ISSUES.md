@@ -129,7 +129,7 @@ JUCE 8.0.14; before that 0.8.8 for PR #54).
 | KI-007 | Windows: pluginval "Editor Automation" abnormally terminates (was hidden by a run-pluginval.ps1 false green) | Medium | False green closed; GL-drop cleared the crash (CI-confirmed); advancedMode-automation fix in place — no recurrence observed (green release gates recorded in HANDOVER Build Status, v0.8.9–v0.8.12) |
 | KI-008 | Advanced-toggle one-frame tear in async-resize hosts (JUCE VST3 wrapper window-grant gap) | Low | Confirmed, external (JUCE wrapper + host); not fixable plugin-side without a JUCE change |
 | KI-009 | REAPER: Save Preset text editor loses keyboard focus (Space hits transport; a click does not re-focus until the dialog is reopened) | Low | Reported, host-specific (REAPER); pending manual investigation |
-| KI-010 | Typing a value into a knob/slider text box creates no Undo step (gesture-less edit path) | Low | Confirmed (code path); reported during the 0.8.10 Option-reset fix, not yet fixed |
+| KI-010 | Typing a value into a knob/slider text box creates no Undo step (gesture-less edit path) | Low | Confirmed (code path); reported during the 0.8.10 Option-reset fix. **The second path in this entry -- the Multiband mouse wheel -- was closed 2026-09-12 by ADR-0053**; the typed path remains open |
 | KI-011 | macOS Apple-Silicon-native: tooltip corners rendered an opaque white frame (TooltipWindow opacity contract) | Low | Fix applied (editor marks the TooltipWindow non-opaque on macOS); Apple Silicon visual re-test pending |
 | KI-012 | Fast Multiband split drags carry a small controlled FM (~14 cents at a 150 Hz crossing, ~7 cents above 300 Hz, under the R(f) = 4·max(1, f/300) oct/s cap; normal drags track 1:1; a violent flick catches up in ~0.5 s of continuous motion; fast artifact-free tracking needs linear-phase splits = latency change) | Low | Documented limitation (ADR-0015 final + slow-drag fix); revisit only via Architecture Review |
 | KI-013 | ~~macOS: release outside the window can still leave a control stuck pressed~~ | — | **RESOLVED 2026-09-01 (round 4), as a direct consequence of KI-028's macOS fix.** The mechanism recorded here was exact and is confirmed in the pinned JUCE 9.0.1: macOS `getNativeRealtimeModifiers` (`juce_NSViewComponentPeer_mac.mm:302-307`) refreshes only the KEYBOARD flags and returns `ModifierKeys::currentModifiers`, whose mouse-button bits are cached from events this process received. What was missing was not a workaround but the right API — `+[NSEvent pressedMouseButtons]`, which JUCE itself uses at `:1867` for tracking areas. Both editor predicates (the abandoned-gesture sweep gate and the press glow) now read it through `anamorph::gui::anyPhysicalMouseButtonDown()`, so the glow and the gesture cannot disagree. State test 23 |
@@ -324,13 +324,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2160-2168; declared src/PluginEditor.h:258). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2165-2173; declared src/PluginEditor.h:258). This shipped in
   the v0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are src/PluginEditor.cpp:2129 (the on-open call) / src/PluginEditor.cpp:2160-2168 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
+  the only focus calls are src/PluginEditor.cpp:2134 (the on-open call) / src/PluginEditor.cpp:2165-2173 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -360,8 +360,14 @@ with the focus-driven `knobSweepTime` easing).
 
 - **Repro:** adjust any knob by typing into its value box and pressing Enter → press Undo: the
   previous action is reverted instead of the typed edit; Redo (if it was available) survives.
-- **Also affected (same class):** the Multiband display's **mouse-wheel** nudges of a split
-  frequency or band width (`SpectrumImager::mouseWheelMove` → gesture-less `setParam`). A wheel
+- **Also affected (same class) -- RESOLVED 2026-09-12 (ADR-0053):** the Multiband display's
+  **mouse-wheel** nudges of a split frequency or band width (`SpectrumImager::mouseWheelMove`
+  → gesture-less `setParam`). That path now opens and closes a change gesture per notch, and the
+  notches group into ONE undo step; State test 86 legs D and E assert both halves -- that a
+  multiband wheel edit is undoable at all, and that a whole scroll is a single step. The
+  **typed-entry path is the only member of this entry still open**, and everything below about it
+  stands. Nothing else in this entry is retracted: it described the imager path accurately, and the
+  measurements it records were true of the code at the time. A wheel
   scroll on a regular knob IS undoable (JUCE's `Slider::mouseWheelMove` wraps the change in a drag
   notification, which the attachment turns into a gesture); every click/drag/reset edit inside the
   imager is undoable too (verified: they run through `beginGesture`/`endGesture` or ride a
@@ -618,7 +624,7 @@ keys fine":
   (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
-  src/PluginEditor.cpp:381-391 (the field), src/PluginEditor.cpp:2118-2168 (show + focus);
+  src/PluginEditor.cpp:381-391 (the field), src/PluginEditor.cpp:2123-2173 (show + focus);
   `juce_NSViewComponentPeer_mac.mm:1655-1668, 2396-2435`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,

@@ -8,6 +8,15 @@ hard-stop item under `docs/policies/ARCHITECTURE_REVIEW_GATE.md`, put to human r
 request rather than decided by a green build, and approved. The reasoning it was approved on is the
 *Architecture Review Gate* section below, unchanged.
 
+**Extended by [ADR-0053](ADR-0053-a-wheel-belongs-to-the-interaction-it-lands-in.md) (2026-09-12),
+which applies this rule to a branch that did not exist when this was written: a notch while a Band
+Solo button is held now MOVES the band, and at one band there is no band to move -- `beginBandMove`
+leaves both pins at -1 and `moveBand` returns having written and opened nothing. Converting the press
+into a "move" regardless would swallow the solo click on release for no gain whatsoever, which is
+this ADR's own defect shape in a new place. Note that ADR-0053 supersedes the ADR-0041 Consequences
+line this ADR re-affirms ("a wheel tick FINISHES a held press"); the ADR-0041 DECISION that both
+depend on is unchanged.**
+
 **Clarifies [ADR-0041](ADR-0041-a-coupled-update-is-all-of-it-or-none-of-it.md) and
 [ADR-0043](ADR-0043-a-commit-carries-intent-and-a-plan-is-computed-where-it-is-used.md); supersedes
 nothing.** ADR-0041 decided that a wheel tick **finishes** a held press, because two gestures cannot

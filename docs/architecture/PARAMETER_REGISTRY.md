@@ -113,12 +113,12 @@ way to hide a parameter). Serialized in `ANAMORPH_INTERNAL`; never in A/B/Undo/p
   may change"). Two so far:
   - `Window Size` → `UI Scale` in 0.9.2. `int_uiScale` is unchanged, as is the pre-0.8.4 legacy
     APVTS id `uiScale` its migration reads. Evidence [Verified]:
-    src/PluginEditor.cpp:609 (`uiScaleLabel`); src/InternalState.h:37 (`uiScale`);
+    src/PluginEditor.cpp:613 (`uiScaleLabel`); src/InternalState.h:37 (`uiScale`);
     src/InternalState.h:302 (`uiScale`).
   - `Vectorscope Persist` → `Vectorscope Persistence` in 0.9.7. `int_scopePersist` is unchanged, as
     is the pre-0.8.4 legacy APVTS id `scopePersist` its migration reads, so no session, preset or
     A/B byte moves and the Settings row is the only thing that reads differently. Evidence
-    [Verified]: src/PluginEditor.cpp:615 (`persistLabel`); src/InternalState.h:38 (`scopePersist`);
+    [Verified]: src/PluginEditor.cpp:619 (`persistLabel`); src/InternalState.h:38 (`scopePersist`);
     src/InternalState.h:303 (`scopePersist`).
 
 Evidence [Verified]: src/InternalState.h:34-160.
@@ -131,7 +131,7 @@ Evidence [Verified]: src/InternalState.h:34-160.
 
 This is the one precedent for a parameter-surface change. It was done **with a migration path**
 (the model the compatibility policy requires). Evidence [Partially Verified]: CHANGELOG.md [0.8.4];
-src/InternalState.h:255-309; src/PluginProcessor.cpp:1531-1534.
+src/InternalState.h:255-309; src/PluginProcessor.cpp:1570-1573.
 
 ## Introduced / Deprecated columns
 

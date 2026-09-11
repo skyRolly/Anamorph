@@ -366,11 +366,13 @@ Turning it on or off crossfades, so it is click-free either way.
 | Press the **×** box of a band | Removes that band. |
 | Drag a width line up/down | Sets that band's Width (0–200 %). A 3-pixel threshold means a bare click never changes the value. |
 | Double-click | On a number chip: type the frequency (accepts `2k`). On a split handle: reset that crossover. On a width line: reset that band's width. |
-| Mouse wheel | Over a handle: nudge the split. Over a band: nudge its width. *(Wheel edits don't create undo steps.)* |
+| Mouse wheel | Over a handle: nudge the split. Over a band: nudge its width. A whole scroll is **one** Undo step, and carrying on scrolling the same control extends it. |
+| Mouse wheel **while dragging** | Adds to what the drag has produced; the drag carries on from the new value, and the whole interaction is one Undo step. |
 | **Solo (headphone) — quick click** | Latches that band's solo on/off. Multiple bands can be soloed together (it's a mask). |
 | **Solo — press and hold (>0.2 s)** | Momentary audition of just that band; releasing restores exactly what was soloed before. |
 | **Solo — Alt/Option-click** | On an unsoloed band: solo it **exclusively**. On a soloed band: **clear all solos**. |
 | **Hold solo + drag sideways** | Moves the whole band rigidly (both its crossovers together). |
+| **Hold solo + mouse wheel** | The same thing — it moves the whole band. (Scrolling *without* holding solo still changes the band's width.) |
 
 Band solo is a **monitoring** function at the end of the chain — it never changes what
 the processing itself does, and a momentary audition doesn't even touch the solo
@@ -606,9 +608,9 @@ sorts alphabetically.
 
 ### Known quirks
 
-**Undo doesn't undo a typed value or a mouse-wheel band nudge.**
-Known limitation: values typed into a value box and Multiband mouse-wheel nudges don't
-create undo steps yet. Knob drags, resets and preset loads all do.
+**Undo doesn't undo a typed value.**
+Known limitation: values typed into a value box don't create undo steps yet. Knob drags,
+resets, mouse-wheel scrolls (Multiband ones included, as of 0.9.8) and preset loads all do.
 
 **A control looks stuck "pressed" (macOS).**
 If the mouse button was released outside the plug-in window, the pressed look can linger

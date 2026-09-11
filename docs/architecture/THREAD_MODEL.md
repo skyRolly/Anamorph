@@ -16,7 +16,7 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 
 Evidence [Verified]:
 - Source: src/PluginProcessor.cpp:319-387 (`processBlock`), :240 `ScopedNoDenormals`
-- Source: src/PluginEditor.cpp:690 (24 Hz timer), :686-692 (VBlank), :306-320 (OpenGL gate)
+- Source: src/PluginEditor.cpp:694 (24 Hz timer), :686-692 (VBlank), :306-320 (OpenGL gate)
 - Source: src/gui/Vectorscope.h:22 ("Nothing is ever drawn on the audio thread")
 
 ## OpenGL platform gate (0.8.5)
@@ -37,7 +37,7 @@ path — visually identical. macOS/Windows keep GPU compositing.
 
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:307-321 (gate + rationale comment)
-- Source: src/PluginEditor.cpp:1858-1859 (`triggerRepaint` guarded by `isAttached()`)
+- Source: src/PluginEditor.cpp:1863-1864 (`triggerRepaint` guarded by `isAttached()`)
 - Partially Verified (history): CHANGELOG.md [0.8.5]; commit c924ff8
 - See `design-decisions/ADR-0011-linux-x11-cpu-render.md` for the decision record.
 
@@ -45,8 +45,8 @@ Evidence [Verified]:
 
 | Mechanism | Rate | Work | Source |
 |---|---|---|---|
-| `VBlankAttachment meterVBlank` | per display frame (dt clamped ≤ 0.05 s) | meter-reveal + micro-anims easing | src/PluginEditor.cpp:693-699 |
-| Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | src/PluginEditor.cpp:690, 1391-1554 |
+| `VBlankAttachment meterVBlank` | per display frame (dt clamped ≤ 0.05 s) | meter-reveal + micro-anims easing | src/PluginEditor.cpp:697-703 |
+| Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | src/PluginEditor.cpp:694, 1396-1559 |
 | `Vectorscope` `FrameClock` | display-rate, capped ~120 Hz | `repaint()` | Vectorscope.cpp; FrameClock.h |
 | `LevelMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | `repaint()` | LevelMeter.cpp; FrameClock.h |
 | `StereoMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | dt-corrected smooth + `repaint()` | CorrelationMeter.cpp; FrameClock.h |
@@ -62,7 +62,7 @@ re-expressed in `dt` form so its time constant is display-independent. The idle
 gates (S1/S2/S3, H15) and the once-per-block audio-side ballistics are unchanged.
 
 Editor destructor order (matters): release VBlank → `stopTimer()` → `openGLContext.detach()`
-(the VBlank lambda captures `this`). Source: src/PluginEditor.cpp:707-709.
+(the VBlank lambda captures `this`). Source: src/PluginEditor.cpp:711-713.
 
 ## Legal cross-thread data paths (lock-free)
 
@@ -99,7 +99,7 @@ freed while another thread can reach it, because a pointer is reachable from exa
 | Host-hidden params (Oversampling, view) | `InternalState` `juce::ValueTree` + `int`/`float` atomics | GUI `juce::Value` binding | audio (oversample only) | InternalState.h:60-138 |
 | Momentary solo audition | `std::atomic<int> soloPreviewMask` (relaxed, −1 = use param) | GUI `setSoloPreview` | audio processBlock | PluginProcessor.h:72-73,130; .cpp:128 |
 | Meter hold reset | `std::atomic<int> resetReq` (exchange) | GUI `resetHold()` | audio `process()` | LevelMeters.h:58,62 |
-| UI-animation flag → imager | `const std::atomic<float>*` (relaxed) | InternalState | GUI imager timer | src/InternalState.h:72; src/gui/SpectrumImager.cpp:1550 |
+| UI-animation flag → imager | `const std::atomic<float>*` (relaxed) | InternalState | GUI imager timer | src/InternalState.h:72; src/gui/SpectrumImager.cpp:1570 |
 
 ## Forbidden
 

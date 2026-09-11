@@ -5,6 +5,16 @@ input reviving stale width drags, solo clicks targeting replaced layouts, failed
 changing bands — plus a ruling on the half-pixel ownership threshold and on the cross-thread topology
 transaction, with the instruction to find the common invariant before patching any of them).
 
+**ONE Consequences line of this ADR is SUPERSEDED by
+[ADR-0053](ADR-0053-a-wheel-belongs-to-the-interaction-it-lands-in.md) (2026-09-12): *"A wheel tick
+during a drag ends the drag."* THE DECISION BELOW IS NOT SUPERSEDED and this ADR remains Accepted --
+ADR-0053 depends on it. A notch now moves the held press's own ANCHOR and writes through the press's
+own owned-store path, so it performs no REFRESH at all; the rule that a refresh unable to bring every
+piece of state the next write depends on to the same authoritative sound refreshes none of it is
+untouched, and is still the reason the obvious implementation of that change is wrong. What replaced
+the line is a maintainer instruction that ruled on the conflict, exactly as this ADR's own Status
+line records the instruction that entered it.**
+
 **Scoped by [ADR-0052](ADR-0052-an-input-that-performs-no-edit-has-no-side-effects.md)
 (2026-09-09): not superseded — every sentence of this decision is about a wheel event that makes an
 EDIT, and ADR-0052 records that an event which writes nothing is not one and must not pay any of the
