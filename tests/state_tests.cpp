@@ -7868,12 +7868,59 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
         }
     }
 
-    // ---- LEG C: the Settings Persistence bar -- the interaction changes with the rest --
+    // ---- LEG D: the value box and its knob are ONE control for Undo -------------------
+    //      Task section 3 asks for the numeric readout to follow the same rules as the knob, and
+    //      section 5 treats "scrolling over the numeric value" as a scroll of that same control.
+    //      A standalone notch over the box is not handled by the box at all: it forwards to the
+    //      parent Slider, which names the control by its PARAMETER -- so the two must extend one
+    //      undo step rather than record two. This leg is what would notice if the forward stopped
+    //      reaching the knob's naming path.
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        juce::Component* boxC = nullptr;
+        for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+            if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) { boxC = l; break; }
+        check (boxC != nullptr, "leg D: the knob's value box is findable");
+        if (boxC != nullptr)
+        {
+            int seq = 0;
+            auto scrollOver = [&] (juce::Component* c)
+            {
+                // Distinct event times: JUCE's slider wheel handler dedupes on `e.eventTime`.
+                const auto t = juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 13);
+                const juce::MouseEvent we (src, { (float) c->getWidth() * 0.5f, (float) c->getHeight() * 0.5f },
+                                           juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, c, c,
+                                           t, { 0.0f, 0.0f }, t, 1, false);
+                c->mouseWheelMove (we, wheel);
+            };
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollOver (driveK); proc.pollUndoCoalesce();
+            const float v1 = plainOf (driveP);
+            scrollOver (boxC);   proc.pollUndoCoalesce();
+            const float v2 = plainOf (driveP);
+            check (! juce::exactlyEqual (v1, v0), "leg D: a notch over the knob moves Drive");
+            if (juce::exactlyEqual (v2, v1))
+                std::printf ("  [leg D] a notch over the value box moved nothing -- the forward to the"
+                             " parent slider did not reach it\n");
+            check (! juce::exactlyEqual (v2, v1), "leg D: ...and a notch over the value box moves it too");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), v1))
+                std::printf ("  [leg D] the box's notch was its own step: one Undo stopped at %.4f\n",
+                             (double) v1);
+            check (juce::exactlyEqual (plainOf (driveP), v0),
+                   "leg D: one Undo returns to before BOTH -- the box and its knob are one control");
+            check (! proc.canUndo(), "leg D: ...one step, not two");
+        }
+    }
+
+    // ---- LEG E: the Settings Persistence bar -- the interaction changes with the rest --
     {
         juce::Slider* persist = nullptr;
         for (auto* s : sliders)
             if (s->getTooltip().containsIgnoreCase ("afterglow")) { persist = s; break; }
-        check (persist != nullptr, "leg C: the Settings Persistence slider is findable");
+        check (persist != nullptr, "leg E: the Settings Persistence slider is findable");
         if (persist != nullptr && persist->getWidth() > 40)
         {
             while (proc.canUndo()) proc.undo();
@@ -7900,15 +7947,15 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
             persist->mouseUp (ev (x0, true, true));
             proc.pollUndoCoalesce();
 
-            check (! juce::exactlyEqual (atX1, start), "leg C: the drag moves Persistence");
+            check (! juce::exactlyEqual (atX1, start), "leg E: the drag moves Persistence");
             check (! juce::exactlyEqual (afterNotch, atX1),
-                   "leg C: a notch inside the drag adds to it here too");
+                   "leg E: a notch inside the drag adds to it here too");
             check (! juce::exactlyEqual (backAtPress, afterNotch),
-                   "leg C: ...the drag is not finished by it");
+                   "leg E: ...the drag is not finished by it");
             check (! juce::exactlyEqual (backAtPress, start),
-                   "leg C: ...and it continues FROM the notched value");
+                   "leg E: ...and it continues FROM the notched value");
             check (proc.canUndo() == undoBefore,
-                   "leg C: ...while the Settings slider still records no undo step at all");
+                   "leg E: ...while the Settings slider still records no undo step at all");
         }
     }
 

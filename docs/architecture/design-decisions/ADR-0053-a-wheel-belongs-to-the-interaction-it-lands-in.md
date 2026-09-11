@@ -209,7 +209,7 @@ it: that is what makes a drag, an Alt-click reset or a typed value start a fresh
 ## Evidence + confidence
 
 **Verified.** State test 80 (inverted, and its header says so), State tests 86, 87 and 88;
-3 012 checks / 0 failures, DSP 396 / 0; sixteen mutations applied one at a time, fifteen killed and
+3 017 checks / 0 failures, DSP 396 / 0; sixteen mutations applied one at a time, fifteen killed and
 M15 recorded as surviving behind the press branches' own staleness gate. The mutation record is in
 `docs/procedures/TESTING.md` and in
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §66.

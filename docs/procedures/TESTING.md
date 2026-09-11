@@ -1291,11 +1291,17 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
 * **State test 88 — a wheel notch inside a KNOB press belongs to that press** (ADR-0053, task
   sections 2, 3 and 4). **A** is a rotary knob, **B** the numeric value box under it — a different
   drag model entirely, mapping `downProp + (-dragY)/180` and never consulting JUCE's drag state — and
-  **C** the Settings Persistence bar, which is `LinearHorizontal` with `snapsToMousePos`, so its
-  drag does not anchor at all and every event recomputes from the absolute cursor x. Each leg's last
-  check is the same one: the cursor is returned to where it was before the notch, and the value must
+  **E** the Settings Persistence bar, which is `LinearHorizontal` with `snapsToMousePos`, so its drag
+  does not anchor at all and every event recomputes from the absolute cursor x. Each of those three
+  ends on the same check: the cursor is returned to where it was before the notch, and the value must
   not return with it. An implementation that writes the value and forgets fails exactly there and
   passes everything else.
+
+  **Leg D is the standalone half of the value box**, and it is about the FORWARD rather than the box:
+  a notch over the box is not handled by the box at all — `juce::Component::mouseWheelMove` hands it
+  to the parent Slider, which names the control by its parameter. So a notch over the knob and a
+  notch over the number beneath it must extend ONE undo step rather than record two, which is what
+  sections 3 and 5 mean by treating them as the same control.
 
   **Leg B goes through the base-class pointer**, because `juce::Label` narrows
   `Component::mouseUp` to protected and the override that matters lives one level further down, in
