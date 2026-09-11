@@ -11532,8 +11532,11 @@ because JUCE routes by pointer and not by capture; and the velocity-drag path (C
 **not measured**, though `applyWheelDragOffset` composes with it by construction.
 
 **Evidence.** State test 80 inverted, with its header recording what it used to assert and why; State
-tests 86, 87 and 88 new. 3 002 checks / 0 failures. Sixteen mutations run, fourteen killed and two
-recorded as surviving with the reason; the table is in `docs/procedures/TESTING.md`.
+tests 86, 87 and 88 new. 3 012 checks / 0 failures. Sixteen mutations run, fifteen killed and one
+recorded as surviving with the reason; the table is in `docs/procedures/TESTING.md`. One of the
+fifteen, M5, survived until its leg was rewritten -- the first version compared a split frequency
+against the value the press started from, which a split drag cannot reproduce bit-for-bit, so the
+check passed whether or not the mechanism worked.
 
 **Documentation.** `ADR-0053` (new), with reciprocal notes in `ADR-0041` and `ADR-0052` and a row in
 `ADR_INDEX.md`; `CHANGELOG.md` `[0.9.8]` re-dated **2026-09-12**, its wheel `### Changed` entry
