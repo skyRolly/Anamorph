@@ -449,6 +449,7 @@ void AnamorphAudioProcessor::syncCommitted()
     openGestures = 0;             // A/B switch / preset / session load is not a user gesture
     pendingGestureCommit = false;
     pendingStepWheelKey = lastStepWheelKey = 0; // ADR-0053: ...and it is not this scroll either
+    pendingStepNamed = false;
 }
 
 // A full snapshot: parameters PLUS the live preset name + clean baseline (#6). The params carry the
@@ -821,7 +822,12 @@ void AnamorphAudioProcessor::parameterGestureChanged (int, bool gestureIsStartin
     // lock-order inversion when a drain sat here. A restore that lands mid-gesture
     // is adopted by the next poll instead, where its syncCommitted() zeroes the
     // gesture count exactly as an inline restore mid-gesture always has.
-    if (gestureIsStarting)                       ++openGestures;
+    if (gestureIsStarting)
+    {
+        // The batch's starting point for "did anything actually change in here" below.
+        if (openGestures++ == 0)
+            gestureOpenGen = soundParamGen.load (std::memory_order_relaxed);
+    }
     else if (openGestures > 0 && --openGestures == 0)
     {
         // ADR-0053: the NAME travels with the commit request, not with the poll. The poll runs up to
@@ -837,8 +843,22 @@ void AnamorphAudioProcessor::parameterGestureChanged (int, bool gestureIsStartin
         // fold the drag into it, leaving the drag with no undo point of its own. An already-pending
         // commit means this batch holds more than one gesture; a disagreeing name makes it nobody's
         // scroll. Found by this round's own adversarial pass.
-        pendingStepWheelKey = (pendingGestureCommit && pendingStepWheelKey != wheelStepKey)
-                            ? 0 : wheelStepKey;
+        //
+        // AND AN EMPTY GESTURE NAMES NOTHING. A press that opens and closes without moving a value
+        // -- a click that starts no drag, the first half of a double-click -- is not one of the
+        // "other editing methods" that must break a scroll's chain, because it edits nothing; the
+        // poll already says so where it records the name ("a gesture that changed nothing has not
+        // interrupted the scroll"). Batched with a real notch in one 24 Hz period, though, its
+        // nameless close used to be a DISAGREEMENT, and the notch after it started a second undo
+        // step. A gesture that changed no sound parameter now contributes no name and does not
+        // count as one of the batch's -- `pendingStepNamed`, not `pendingGestureCommit`, is what
+        // says the batch already holds one. State test 86 leg L measures it.
+        if (soundParamGen.load (std::memory_order_relaxed) != gestureOpenGen)
+        {
+            pendingStepWheelKey = (pendingStepNamed && pendingStepWheelKey != wheelStepKey)
+                                ? 0 : wheelStepKey;
+            pendingStepNamed = true;
+        }
         pendingGestureCommit = true;
     }
 }
@@ -897,6 +917,7 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
         pendingGestureCommit = false;
         const int stepKey = pendingStepWheelKey;   // ADR-0053: what the finished gesture named
         pendingStepWheelKey = 0;
+        pendingStepNamed = false;
         if (sig != committedSig)
         {
             // ADR-0053. A CONTINUING SCROLL EXTENDS ITS STEP INSTEAD OF PUSHING ANOTHER. The entry
@@ -968,6 +989,7 @@ void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
     openGestures = 0;             // a preset load is a program state jump, not a user gesture -- drop any
     pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
     pendingStepWheelKey = lastStepWheelKey = 0; // ADR-0053: a program state jump ends a scroll chain
+    pendingStepNamed = false;
 }
 
 void AnamorphAudioProcessor::undo()
@@ -990,6 +1012,7 @@ void AnamorphAudioProcessor::undo()
     openGestures = 0;             // undo is a program state jump, not a user gesture -- drop any
     pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
     pendingStepWheelKey = lastStepWheelKey = 0; // ADR-0053: ...and the step it just popped is gone
+    pendingStepNamed = false;
 }
 
 void AnamorphAudioProcessor::redo()
@@ -1006,6 +1029,7 @@ void AnamorphAudioProcessor::redo()
     openGestures = 0;             // redo is a program state jump, not a user gesture -- drop any
     pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
     pendingStepWheelKey = lastStepWheelKey = 0; // ADR-0053: the re-pushed step is not a scroll's
+    pendingStepNamed = false;
 }
 
 // ----------------------------------------------------------------------------

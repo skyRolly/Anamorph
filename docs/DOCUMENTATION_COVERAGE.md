@@ -952,7 +952,7 @@ such.** What is established is that the rewrite happens at a position that is no
 What is not established is the exact macOS event sequence that makes that position land one row up;
 that would need a trace on macOS, which was not available here. What supports it is arithmetic that
 accounts for all four observed controls. The box is placed `h + 8` above the cursor
-(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:915-924`), so its top edge is a
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:922-931`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
 `animToggle` 455–481 (`src/PluginEditor.cpp:2271-2296`). Taking each control's centre and
@@ -1486,7 +1486,7 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 declared, and `--fix` moved all three from `src/PluginEditor.h:293` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:553`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:601`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1496,7 +1496,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:553`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:601`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1506,7 +1506,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:553"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:601"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1062`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1086`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:1510`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:1534`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1325`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1349`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -9948,7 +9948,7 @@ probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers
 overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
 proof for the hour it took to write, and the wrong thing to leave standing.
 
-**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:527`: `pid::viewParams`
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:528`: `pid::viewParams`
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
@@ -10772,7 +10772,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:813-844`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:814-864`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -11530,6 +11530,10 @@ any bracket of their own, exactly as the drag path has been since 0.6.x — undo
 scroll; a notch delivered to a component other than the one being dragged still edits that component,
 because JUCE routes by pointer and not by capture; and the velocity-drag path (Ctrl/Alt/Cmd) is
 **not measured**, though `applyWheelDragOffset` composes with it by construction.
+**Both of those last two were corrected by the twenty-eighth pass** and the sentences are left
+standing so the correction is visible: the pointed-component claim held only for the multiband
+display — a knob, a slider and a value box DROPPED such a notch — and the velocity-drag path is now
+measured by State test 88 leg H.
 
 **Evidence.** State test 80 inverted, with its header recording what it used to assert and why; State
 tests 86, 87 and 88 new. 3 017 checks / 0 failures. Sixteen mutations run, fifteen killed and one
@@ -11545,3 +11549,73 @@ Fixed` entry for the multiband wheel's missing undo step; `docs/KNOWN_ISSUES.md`
 closed, typed path still open); `docs/user/USER_MANUAL.md` §6 gesture table and §Troubleshooting;
 `docs/procedures/TESTING.md`; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §66.
 [Verified]
+
+### Twenty-eighth pass — the review of the mouse wheel (2026-09-12)
+
+**Scope.** A review of the twenty-seventh pass's own change (`6d12c2c..e38ab37`) returned three
+defects and one investigate item. All four are closed here, under the same ADR-0053; nothing else in
+the interaction model moved.
+
+**What the three defects were, each reproduced as a failing check before the code was touched.**
+(1) A notch delivered to a control that ANOTHER control's press owned was discarded — JUCE routes
+wheel events by pointer rather than by capture, and its own handler refuses to act while a button is
+down, so the notch reached the pointed knob and died there while the same gesture over the multiband
+display edited it (*"the notch was dropped: Width stayed at 1.0000"*). (2) An EMPTY press — a click
+that starts no drag — closing in the same 24 Hz poll period as the next notch read as a name
+disagreement and split a scroll into two undo steps (*"one Undo stopped at 1.8000"*). (3) A
+standalone multiband burst whose owned store was REFUSED still named its step, so a host write made
+from inside its own gesture-open extended the previous scroll's step (*"one Undo stopped at 1.0000,
+not at the 1.1200 the previous scroll ended on"*).
+
+**The corrections.** (1) The pointed control acts: the event is handed to JUCE with the mouse
+buttons cleared and nothing else changed, which keeps JUCE's wheel amount, interval floor, snapping,
+duplicate-event filter and gesture bracketing rather than restating five behaviours locally. (2) and
+(3) are one rule said twice: **a gesture names the step it requests only if its own edit landed** —
+tested by the `soundParamGen` counter the S10 poll skip already maintains (one relaxed load per
+batch open and close, no signature rebuild) and by the store's own result.
+
+**What measuring it changed about the answer.** Fixing (2) also fixes the case (3) was reported
+from, and filing (3) as redundant would have been easy. Instrumenting the generation counter said
+why and said what remains: `juce::ListenerList` calls listeners in reverse registration order and
+this processor registers in its constructor, so a host write made from a parameter listener during a
+gesture-open always lands before the coalescer samples the generation (open `gen=63`, close
+`gen=63`). The store result covers the other ordering — a change arriving after the sample — which
+is cross-thread on the width branch (unreachable single-threaded, mutation M18 recorded as
+surviving) and reachable on the split branch, because `writeCrossovers` proves every split in the
+row and not only the ones it moves (State test 86 leg M, which kills M19).
+
+**A fourth correction, found by this round's own re-read rather than by the review.** The first
+version of (1) was wrong for the value box: the box drags by steering an anchor of its own and its
+18 px height means the cursor leaves it within a few pixels of a 180 px mapping, so the knob
+received the notch, wrote the value, and the box's next drag event erased it — "nothing happens"
+replaced by something worse. The knob now asks any child holding a drag gesture to take the notch
+first, through the existing `DragGestureOwner` interface; the child never forwards the event, so the
+ask cannot recurse, and the loop is behind `isAnyMouseButtonDown()`.
+
+**Stated rather than claimed fixed.** A burst that wrote nothing of its own still leaves an undo
+step for what the host wrote inside its gesture. Unnaming it stops the misattribution; the step
+itself is the generic property of gesture coalescing, and removing it would need a gesture able to
+withdraw its own commit request.
+
+**The investigate item.** The velocity-drag branch (Ctrl/Alt/Cmd), listed by the twenty-seventh pass
+as composing by construction and untested, is now State test 88 leg H — with a positive control that
+the modifier really does select the other branch, so the leg cannot degrade into a copy of leg A.
+
+**No gate item is touched.** No parameter ID, range, default or serialization field; no DSP node,
+order or latency; no thread, cross-thread path or atomic ordering. ADR-0053 is extended by its own
+author rather than conflicted with, so the review gate is not re-triggered.
+
+**Evidence.** State tests 86 (legs L and M, and the attribution halves added to I and J), 88 (legs
+F, G, H and I). 3 056 checks / 0 failures, DSP 396 / 0. Nine further mutations, eight killed and M18
+recorded as surviving with the measurement behind it. TSan 0 warnings with its one known
+suppression; valgrind memcheck 0 errors from 0 contexts on both suites.
+
+**Documentation.** `ADR-0053` (decision, a new subsection on what the review round changed,
+consequences, related code and evidence); `CHANGELOG.md` `[0.9.8]` — the wheel entries amended for
+the pointed-control rule and the empty press, the Settings entry's stale leg citation corrected
+(State test 88 leg **C** did not exist; it is leg E, now also leg G) and the five ADR-0053 entries
+re-cited from PR #143 to **PR #144**, which is where this work actually lands after #143 merged;
+`docs/user/USER_MANUAL.md` §3 universal gestures and the §6 gesture table;
+`docs/procedures/TESTING.md`; `src/gui/LookAndFeel.h` gains `DragGestureOwner::takeWheelNotch`;
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §67;
+and the two corrected sentences in the twenty-seventh pass above. [Verified]

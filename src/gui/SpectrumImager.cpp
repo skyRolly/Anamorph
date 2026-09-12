@@ -3390,14 +3390,27 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
         // split alone and the same projection moves its neighbours. Matching it is deliberate; a
         // gesture per pushed neighbour would be a change to how this plug-in reports automation,
         // which is not what this round was asked for.
-        const ScopedWheelName wheelName (onWheelStep, freqP[scrollHandle]);
         beginGesture (freqP[scrollHandle]);
         // ADR-0047: the tick's target starts from the position `captureDragOrigins` just stamped,
         // not from a fresh read of the same split. A fresh read failed SAFE -- `ownsSplit` refuses a
         // value the stamp does not know -- but a refusal is a wheel tick the user loses for no
         // reason they can see, which is the same trade ADR-0046 closed one branch up for the count.
-        dragCrossoverTo (scrollHandle, dragOrigX[scrollHandle] + dy * kWheelSplitPx, N);
-        endGesture (freqP[scrollHandle]);
+        const bool stored = dragCrossoverTo (scrollHandle, dragOrigX[scrollHandle] + dy * kWheelSplitPx, N);
+        {
+            // NAMED ONLY IF THIS BURST'S OWN STORE STOOD (ADR-0053). The name is what tells the undo
+            // coalescer that the step this gesture is about to request is a SCROLL's, and a scroll's
+            // step is extended by the next notch of the same control instead of pushing another. A
+            // burst that wrote nothing has no step of its own to extend: the gesture still closes,
+            // and the poll still finds a moved signature if the host wrote this very parameter from
+            // inside the gesture-open above (ADR-0047 is why the store then refuses), so naming it
+            // unconditionally would attribute the HOST's write to the wheel and let it replace the
+            // end of the previous scroll's step. Unnamed, that write becomes a step of its own and
+            // the previous scroll keeps the value it ended on. State test 86 legs J and M measure
+            // this branch -- M is the one that can tell the store result apart from the
+            // empty-gesture test, because it aborts the burst AFTER its own first store.
+            const ScopedWheelName wheelName (onWheelStep, stored ? freqP[scrollHandle] : nullptr);
+            endGesture (freqP[scrollHandle]);
+        }
         gestureBands = -1;
         // THE STAMP FOLLOWS THE BURST'S OWN EDITS, and without this the row half above would drop
         // the latch on the second tick of every ordinary split burst -- because a split burst
@@ -3449,11 +3462,13 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
         gestureW[scrollBand] = wNorm;
         gestureBands = N;
         {
-            const ScopedWheelName wheelName (onWheelStep, widthP[scrollBand]);
             beginGesture (widthP[scrollBand]);
-            if (ownsWidth (scrollBand) && bandCount() == N)
-                (void) storeOwned (widthP[scrollBand], juce::jlimit (0.0f, 2.0f, base + step),
-                                   gestureW[scrollBand]);
+            const bool stored = ownsWidth (scrollBand) && bandCount() == N
+                             && storeOwned (widthP[scrollBand], juce::jlimit (0.0f, 2.0f, base + step),
+                                            gestureW[scrollBand]);
+            // Named only if the store stood -- see the split branch above for why. `storeOwned`'s
+            // result is no longer discarded: this is what acts on the refusal.
+            const ScopedWheelName wheelName (onWheelStep, stored ? widthP[scrollBand] : nullptr);
             endGesture (widthP[scrollBand]);
         }
         gestureBands = -1;

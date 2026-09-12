@@ -499,6 +499,22 @@ private:
                 setValue (proportionOfLengthToValue (want), juce::sendNotificationSync);
                 return;
             }
+            // A NOTCH DELIVERED HERE DURING A CHILD'S OWN DRAG BELONGS TO THAT CHILD (ADR-0053).
+            // The value box under this knob drags by steering `downProp`, an anchor of its own, and
+            // it maps 180 px of travel across a box under 20 px tall -- so the cursor leaves the box
+            // almost at once and JUCE, which routes by pointer, delivers the rest of that drag's
+            // notches HERE. Writing the value on the slider would be erased by the box's very next
+            // drag event, so the box takes the notch and moves its anchor instead. It never forwards
+            // the event back, so this cannot recurse.
+            if (e.mods.isAnyMouseButtonDown() && getThumbBeingDragged() < 0)
+                for (int i = 0; i < getNumChildComponents(); ++i)
+                {
+                    auto* child = getChildComponent (i);
+                    if (auto* holder = dynamic_cast<anamorph::gui::DragGestureOwner*> (child);
+                        holder != nullptr && holder->takeWheelNotch (e, w))
+                        return;
+                }
+
             // A STANDALONE SCROLL NAMES THE CONTROL IT EDITS, so the processor can keep the whole
             // scroll -- however many notches, and however many pauses between them -- as ONE undo
             // step (ADR-0053). The value box below the knob forwards its own wheel events here, so
@@ -507,7 +523,39 @@ private:
             {
                 const AnamorphAudioProcessor::ScopedWheelStep step
                     (*owner, AnamorphAudioProcessor::wheelStepKeyFor (resetParam));
-                juce::Slider::mouseWheelMove (e, w);
+                sendWheelToJuce (e, w);
+                return;
+            }
+            sendWheelToJuce (e, w);
+        }
+
+        // A NOTCH THAT LANDED HERE WHILE SOME OTHER CONTROL HOLDS THE PRESS (ADR-0053). JUCE routes
+        // a wheel event by POINTER and not by capture -- `getTargetForGesture` hit-tests the peer at
+        // the event position whether or not a drag is in flight -- so a press held on one knob and a
+        // pointer that has travelled onto another delivers the notch HERE, with the button still
+        // down. The branch above does not claim it (no drag of this slider's own is open) and JUCE
+        // then discards it, because its whole wheel body sits behind `! e.mods.isAnyMouseButtonDown()`:
+        // a notch the user makes and never sees, while the same gesture over the multiband display
+        // edits what it points at. So the pointed control acts, exactly as it does with no button
+        // down -- the event is handed to JUCE with the MOUSE BUTTONS CLEARED and nothing else
+        // changed, which keeps JUCE's own wheel amount, interval, snapping, duplicate-event filter
+        // and `ScopedDragNotification` bracketing rather than restating any of them here. The edit
+        // therefore lands inside the other control's open gesture and the two share one undo step,
+        // which is what the multiband display has done since the top of this round.
+        //
+        // Gated on what JUCE itself would need to act, so a disabled slider or one with the wheel
+        // turned off still reaches `Component::mouseWheelMove` with the UNTOUCHED event and its
+        // ancestors see what they always saw.
+        void sendWheelToJuce (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+        {
+            if (isEnabled() && isScrollWheelEnabled() && e.mods.isAnyMouseButtonDown())
+            {
+                juce::Slider::mouseWheelMove ({ e.source, e.position, e.mods.withoutMouseButtons(),
+                                                e.pressure, e.orientation, e.rotation, e.tiltX, e.tiltY,
+                                                e.eventComponent, e.originalComponent, e.eventTime,
+                                                e.mouseDownPosition, e.mouseDownTime,
+                                                e.getNumberOfClicks(), e.mouseWasDraggedSinceMouseDown() },
+                                              w);
                 return;
             }
             juce::Slider::mouseWheelMove (e, w);

@@ -110,6 +110,15 @@ entries are whole state snapshots.
 >
 > **And while a Band Solo button is held, a notch moves the BAND — the same thing a sideways drag of
 > that button does — provided there is a band to move.**
+>
+> **A notch is delivered to the control under the POINTER, and that control acts on it whether or not
+> some other control holds the press.** JUCE routes wheel events by pointer, not by capture, so a
+> press on one control and a pointer that has travelled onto another lands the notch on the second
+> one; it edits itself exactly as it would with no button down, inside whatever gesture is open.
+>
+> **A gesture NAMES the step it is about to request only if that gesture's own edit landed.** A press
+> that changed nothing names nothing, and a burst whose owned store was refused names nothing — so
+> neither can extend a scroll's step with a value the scroll did not produce.
 
 ### Why moving the anchor is the whole mechanism, and why it preserves ADR-0041
 
@@ -146,6 +155,61 @@ The name is `parameterIndex + 1`, so a knob and the numeric box beneath it are o
 what they are to the user. `0` means "not a wheel edit", and every other edit closes its gesture with
 it: that is what makes a drag, an Alt-click reset or a typed value start a fresh step.
 
+### What a second review round changed, and what it measured
+
+Three corrections, each reproduced against the implementation before it was touched.
+
+**1. The pointed control was silent where the multiband display was not.** `Slider::Pimpl::mouseWheelMove`
+wraps its whole body in `! e.mods.isAnyMouseButtonDown()`, and the in-press branch above only claims a
+notch when THIS slider owns the drag (`getThumbBeingDragged() >= 0`). A notch delivered to a knob while
+another control held the press therefore reached JUCE and was dropped: measured as *"the notch was
+dropped: Width stayed at 1.0000 while another control held the press"*. The fix hands JUCE the same
+event with the MOUSE BUTTONS CLEARED and nothing else changed, which keeps JUCE's own wheel amount,
+interval, snapping, duplicate-event filter and `ScopedDragNotification` bracketing instead of restating
+any of them; it is gated on exactly what JUCE needs to act, so a disabled slider still forwards the
+untouched event to its ancestors. This makes the rule uniform — the pointed control acts, everywhere —
+rather than leaving the multiband display as the only surface that answered.
+
+**1b. And the fix's own first version was wrong for the value box**, which is why it has a leg of its
+own. The box drags by steering `downProp`, an anchor of its own, and it maps 180 px of travel across
+a box under 20 px tall — so the cursor leaves the box within a few pixels and JUCE delivers the rest
+of that drag's notches to the KNOB. Letting the knob write the value there turned "nothing happens"
+into something worse: the value jumped and the box's very next drag event recomputed from `downProp`
+and erased it (measured: *"the box's next drag event erased it: back to 2.6700"*). A notch has to
+reach the anchor the press is steering, so the knob first asks any child holding a drag gesture to
+take it — `DragGestureOwner::takeWheelNotch`, the same named interface the editor's release-outside
+reconcile already uses to reach a control living in an anonymous namespace. The child never forwards
+the event onward, so the ask cannot come back through `Component::mouseWheelMove` and recurse. The
+loop is behind `e.mods.isAnyMouseButtonDown()`, so an ordinary scroll pays nothing for it.
+
+**2. An empty press must be transparent to a scroll.** Gesture closes are batched until the 24 Hz poll,
+so a click that opens and closes a gesture without moving a value can share a batch with the next
+notch. Its nameless close read as a DISAGREEMENT and cleared the batch's name, and the scroll after it
+started a second undo step: measured as *"one Undo stopped at 1.8000"*. The poll already held the
+principle — it records `lastStepWheelKey` only where it records a step, because "a gesture that changed
+nothing has not interrupted the scroll" — and the close now applies the same test, using the
+`soundParamGen` counter the S10 poll skip already maintains: one relaxed load at the batch's first open
+and one at its close, no signature rebuild. `pendingStepNamed`, not `pendingGestureCommit`, is now what
+says the batch already carries a name.
+
+**3. A refused burst must not attribute someone else's write to the wheel.** The standalone multiband
+branches open their gesture BEFORE their store (the store has to be inside it to be undoable), and the
+open dispatches; a host answering it by writing the same parameter makes the store refuse (ADR-0047),
+but the gesture still closes and the poll still sees a moved signature. Named, that write extended the
+previous scroll's step — measured as *"one Undo stopped at 1.0000, not at the 1.1200 the previous
+scroll ended on"*. Both branches now name the step only when their own store committed.
+
+**The two halves of rule 3 cover different orderings, and the difference is measured, not assumed.**
+`juce::ListenerList` calls listeners in REVERSE order of registration and this processor registers in
+its constructor, so a host write made from a parameter listener during the gesture-open always lands
+BEFORE the coalescer samples the generation — instrumented directly: open `gen=63`, close `gen=63`, so
+the generation test alone already declines to name that burst. What the store result adds is the other
+ordering, where the change arrives after the sample: a cross-thread write (ADR-0047's own case), or a
+burst that part-wrote and then aborted, which `writeCrossovers` can do single-threaded because it
+proves EVERY split in the row and not only the ones it moves. State test 86 leg M drives exactly that
+and kills the split half of the rule; the width half has one store and no dispatch of its own before
+it, so no single-threaded harness can enter its window (mutation M18, recorded as surviving).
+
 ## Consequences
 
 - **A notch during any drag now adds to it**, and the drag continues from the combined value. What a
@@ -173,43 +237,59 @@ it: that is what makes a drag, an Alt-click reset or a typed value start a fresh
   editor's 24 Hz tick, so two gestures can finish inside one period and collapse into one step — as
   they always have. Taking the last gesture's name would attribute the pair to the scroll and fold a
   released drag into it, leaving the drag no undo point of its own. A disagreeing name inside one
-  pending batch therefore clears the name. Also found by this round's adversarial pass.
+  pending batch therefore clears the name. Also found by this round's adversarial pass. **An EMPTY
+  gesture is not one of the batch's**: it changed no sound parameter, so it contributes no name and
+  cannot disagree with one, and a click that starts no drag therefore leaves a scroll's chain intact.
 - **A typed value force-committed by a notch is attributed to the scroll.** JUCE's wheel handler calls
   `valueBox->hideEditor (false)` before its own gesture, and that commit opens a gesture of its own
   inside the naming scope. Both belong to one user action (type, then scroll), so merging them is the
   answer this ADR intends; it is recorded here rather than discovered later.
 - **The Settings Persistence bar gains the interaction and keeps its exclusion from Undo.** It is
   bound to host-hidden `InternalState` by `juce::Value`, not to an APVTS parameter, so it opens no
-  change gesture, contributes nothing to the sound signature and names nothing. The exclusion is
-  structural, and State test 86 leg F and State test 88 leg C are what would notice if it stopped
-  being.
-- **A notch delivered to a component other than the one being dragged still edits that component.**
-  JUCE routes a wheel event to whatever is under the POINTER, not to whatever captured the press, so a
-  knob drag whose cursor has travelled over the multiband display delivers its notches there. That is
-  unchanged behaviour and is left unchanged deliberately; gating the multiband display on the mouse
-  button would also silence a notch during one of its own presses that latched no identifier.
+  change gesture, contributes nothing to the sound signature and names nothing — a pointed notch that
+  lands on it during another control's press included. The exclusion is structural, and State test 86
+  leg F and State test 88 legs E and G are what would notice if it stopped being.
+- **A notch delivered to a control other than the one being dragged edits THAT control.** JUCE routes a
+  wheel event to whatever is under the POINTER, not to whatever captured the press. The multiband
+  display always behaved this way; knobs, sliders and value boxes dropped such a notch silently, and now
+  do not. The edit lands inside the open gesture, so the press and the foreign notch share one undo
+  step. **A control whose own child holds the press is the exception, and it is not a special case
+  so much as the same rule one level down**: the knob asks its children first, and the value box
+  takes the notch into the anchor its drag is steering rather than letting it be written behind that
+  anchor's back and erased by the next drag event. Gating on the mouse button instead — making a notch reach only the control being dragged —
+  was rejected: it would need a cross-component registry JUCE does not provide, and it would also
+  silence a notch during one of the multiband display's own presses that latched no identifier.
+- **A burst that wrote nothing of its own still leaves an undo step for what the host wrote inside
+  it.** Unnaming it stops the misattribution — the previous scroll keeps the value it ended on — but the
+  gesture did close over a changed signature, so the poll records that change as a step of its own. This
+  is the generic property of gesture coalescing (any host write bracketed by any gesture joins that
+  gesture's step), not something this decision introduces, and closing it would mean a gesture able to
+  withdraw its own commit request. Recorded rather than claimed fixed.
 - **Two lines of extra work per drag event, and only after a notch.** `applyWheelDragOffset` returns
   on a zero offset, so a press with no notch in it makes exactly the parameter writes it always did.
 
 ## Related code
 
 * `src/PluginEditor.h` — `Knob::wheelDragProp`, `Knob::owner`, `applyWheelDragOffset`,
-  `mouseDrag`, `mouseUp`, `mouseWheelMove`.
+  `mouseDrag`, `mouseUp`, `mouseWheelMove`, `sendWheelToJuce` (the pointed-control delivery).
 * `src/PluginEditor.cpp` — `attachSlider` seeds `Knob::owner`; the editor wires
   `SpectrumImager::onWheelStep`.
-* `src/gui/LookAndFeel.cpp` — `ValueBox::mouseWheelMove`.
+* `src/gui/LookAndFeel.cpp` — `ValueBox::mouseWheelMove`, `ValueBox::takeWheelNotch`.
+* `src/gui/LookAndFeel.h` — `DragGestureOwner::takeWheelNotch`.
 * `src/gui/SpectrumImager.cpp` — `mouseWheelMove` (the press branches and the named, bracketed
   standalone burst), `kWheelSplitPx` / `kWheelWidthMin` / `kWheelWidthPer`, `ScopedWheelName`.
 * `src/gui/SpectrumImager.h` — `onWheelStep`.
 * `src/PluginProcessor.h` — `setWheelStepKey`, `wheelStepKeyFor`, `ScopedWheelStep`,
-  `wheelStepKey` / `pendingStepWheelKey` / `lastStepWheelKey`.
+  `wheelStepKey` / `pendingStepWheelKey` / `lastStepWheelKey`, `pendingStepNamed` / `gestureOpenGen`.
 * `src/PluginProcessor.cpp` — `parameterGestureChanged` (the name travels with the commit request),
   `pollUndoCoalesceAdopted` (the extend rule), and the four places that end a chain.
 
 ## Evidence + confidence
 
 **Verified.** State test 80 (inverted, and its header says so), State tests 86, 87 and 88;
-3 017 checks / 0 failures, DSP 396 / 0; sixteen mutations applied one at a time, fifteen killed and
-M15 recorded as surviving behind the press branches' own staleness gate. The mutation record is in
-`docs/procedures/TESTING.md` and in
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §66.
+3 056 checks / 0 failures, DSP 396 / 0; twenty-five mutations applied one at a time across the two
+rounds, twenty-three killed, with M15 and M18 recorded as surviving — each behind a proof no
+single-threaded harness can enter, and each stated as unmeasured rather than as covered. The three
+corrections in the second round were each reproduced as failing checks before the code was touched.
+The mutation record is in `docs/procedures/TESTING.md` and in
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §66 and §67.

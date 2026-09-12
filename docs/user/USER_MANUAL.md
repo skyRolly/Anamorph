@@ -188,6 +188,12 @@ Controls respond to some universal gestures:
 - **Value boxes** (the number under a knob): **drag vertically** to change, double-click
   to type. Typed entry is forgiving: `%` is optional, `2k` or `2kHz` means 2000 Hz, and
   balance fields accept `C`, `L30`, `R30` (or `M`/`S` letters in M/S mode).
+- **Mouse wheel**: scroll over any knob, slider or value box to nudge it. A whole scroll is
+  **one** Undo step, and scrolling the same control again continues that step (anything else you
+  do to it starts a new one). You can scroll **during a drag** too: the notch adds to what the
+  drag has produced and the drag carries on from the new value, all as one Undo step. The notch
+  always goes to whatever is **under the pointer** — if the drag has taken the cursor off the
+  control you grabbed, the wheel adjusts what you are pointing at instead.
 - **Tooltips**: every control has one, but they are **off by default** — enable them in
   Settings if you want in-place help (600 ms hover delay).
 
@@ -367,7 +373,7 @@ Turning it on or off crossfades, so it is click-free either way.
 | Drag a width line up/down | Sets that band's Width (0–200 %). A 3-pixel threshold means a bare click never changes the value. |
 | Double-click | On a number chip: type the frequency (accepts `2k`). On a split handle: reset that crossover. On a width line: reset that band's width. |
 | Mouse wheel | Over a handle: nudge the split. Over a band: nudge its width. A whole scroll is **one** Undo step, and carrying on scrolling the same control extends it. |
-| Mouse wheel **while dragging** | Adds to what the drag has produced; the drag carries on from the new value, and the whole interaction is one Undo step. |
+| Mouse wheel **while dragging** | Adds to what the drag has produced; the drag carries on from the new value, and the whole interaction is one Undo step. The notch goes to whatever is under the **pointer**, so if the drag has carried the cursor onto another control, that is what it adjusts. |
 | **Solo (headphone) — quick click** | Latches that band's solo on/off. Multiple bands can be soloed together (it's a mask). |
 | **Solo — press and hold (>0.2 s)** | Momentary audition of just that band; releasing restores exactly what was soloed before. |
 | **Solo — Alt/Option-click** | On an unsoloed band: solo it **exclusively**. On a soloed band: **clear all solos**. |

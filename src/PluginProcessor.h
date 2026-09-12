@@ -372,6 +372,13 @@ private:
     int  wheelStepKey = 0;
     int  pendingStepWheelKey = 0;
     int  lastStepWheelKey = 0;
+    // Whether any gesture in the batch now pending has CONTRIBUTED that name -- only a gesture that
+    // actually changed a sound parameter does, which is what makes an empty press transparent to a
+    // scroll instead of ending it (ADR-0053). With `gestureOpenGen`, the sound generation sampled
+    // when the batch's first gesture opened, it is a two-word comparison per gesture rather than a
+    // signature rebuild: `soundParamGen` is already bumped by every value change.
+    bool pendingStepNamed = false;
+    juce::uint32 gestureOpenGen = 0;
 
     StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;

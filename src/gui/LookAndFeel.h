@@ -232,6 +232,18 @@ struct DragGestureOwner
     // Close any gesture this control is holding, as if the release had arrived.
     // Must be idempotent: the reconcile calls it on every candidate, every tick.
     virtual void abortDragGesture() = 0;
+
+    // ADR-0053. Take one wheel notch on behalf of a drag this control is HOLDING, and say whether
+    // it was taken. The parent asks before handling a notch itself, because JUCE routes a wheel
+    // event to the component under the POINTER and a value-box drag maps 180 px of travel across a
+    // box under 20 px tall -- so the cursor leaves the box almost immediately and the rest of that
+    // drag's notches are delivered to the parent. Writing the value there is not enough: a control
+    // that steers an anchor of its own recomputes from it on the next drag event and erases
+    // anything written behind its back, so the notch has to reach the anchor. Returning false means
+    // "not mine" and the caller handles the event as it otherwise would; an implementation must
+    // never forward the event onward from here, or the parent's ask would come straight back.
+    virtual bool takeWheelNotch (const juce::MouseEvent&, const juce::MouseWheelDetails&)
+    { return false; }
 };
 
 } // namespace anamorph::gui

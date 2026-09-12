@@ -2979,3 +2979,101 @@ DIGEST, not the tree, and both of the real findings above came from them. A reco
 badly against a tree that moves; an adversarial pass over a written claim does not. The rule is
 therefore narrower than §65 stated: **pin the tree for a pass that must cite it, and let a pass that
 argues from a written claim run beside the work.**
+
+## §67. Round 10 — the review of round 9: three corrections to the wheel
+
+A review of `6d12c2c..e38ab37` returned three defects and one investigate item. Each was reproduced
+as a failing check against the tree before any of it was touched, and the numbers below are the ones
+the failing runs printed.
+
+### 67a. The pointed control was silent where the multiband display was not
+
+`Slider::Pimpl::mouseWheelMove` wraps its entire body in `! e.mods.isAnyMouseButtonDown()`. Round 9's
+in-press branch claims a notch only when the slider it lands on owns the drag
+(`getThumbBeingDragged() >= 0`), so a notch delivered to a knob while ANOTHER control held the press
+fell through to JUCE and was discarded. That is not an edge case: JUCE routes wheel events by
+pointer, not by capture — `getTargetForGesture` hit-tests the peer at the event position whether or
+not a drag is in flight — and a rotary drag travels up to 250 px, which leaves the knob. The same
+gesture over the multiband display edited it, because that class answers its own wheel events.
+
+Measured: *"the notch was dropped: Width stayed at 1.0000 while another control held the press"*
+(State test 88 leg F), and the Settings bar the same (leg G).
+
+The fix hands JUCE the same event with `mods.withoutMouseButtons()` and every other field copied
+verbatim. Restating JUCE's wheel arithmetic locally was rejected: the delegation keeps its amount,
+its `jmax(interval, |delta|)` floor, `snapValue`, the duplicate-event filter on `e.eventTime`, the
+value-box editor hide and the `ScopedDragNotification` that opens the host gesture — five behaviours
+that would each have to be re-derived and kept in step. It is gated on exactly what JUCE needs to
+act (`isEnabled() && isScrollWheelEnabled()`), so a disabled slider still forwards the UNTOUCHED
+event to its ancestors rather than a synthetic one.
+
+**And the fix's own first version was wrong for the value box.** Worth recording because the review
+did not ask for it and the round's own re-read of the diff found it: the box drags by steering
+`downProp`, and it maps 180 px of travel across a box under 20 px tall, so the cursor leaves the box
+within a few pixels and JUCE delivers the rest of that drag's notches to the KNOB. Letting the knob
+write the value there turned "nothing happens" into something worse — the value jumped and the box's
+next drag event recomputed from `downProp` and erased it (*"the box's next drag event erased it:
+back to 2.6700"*, State test 88 leg I). A notch must reach the anchor the press is steering, so the
+knob asks any child holding a drag gesture to take it first, through `DragGestureOwner` — the same
+named interface the editor's release-outside reconcile already uses to reach a control that lives in
+an anonymous namespace. The child never forwards the event, so the ask cannot recurse, and the loop
+is behind `isAnyMouseButtonDown()` so an ordinary scroll pays nothing.
+
+### 67b. An empty press split a scroll in two
+
+Gesture closes are batched until the 24 Hz poll, so a click that opens and closes a gesture without
+moving a value can share a batch with the next notch. Round 9's mixed-batch guard then read that
+nameless close as a disagreement and cleared the batch's name, and the notch after it started a
+second undo step. Measured: *"one Undo stopped at 1.8000: the empty click between the two scrolls
+made the second one its own step"* (State test 86 leg L).
+
+The poll already held the principle — it writes `lastStepWheelKey` only where it records a step,
+because a gesture that changed nothing has not interrupted the scroll — so the close now applies the
+same test rather than a new one. The cheap instrument was already there: `soundParamGen`, the counter
+the S10 poll skip maintains, is bumped by every parameter value change. One relaxed load when the
+batch's first gesture opens, one when it closes. No signature rebuild, no timer, no allocation.
+
+### 67c. A refused burst attributed the host's write to the wheel
+
+The standalone multiband branches must open their gesture before their store, and the open
+dispatches. A host that answers it by writing the same parameter makes the store refuse (ADR-0047) —
+but the gesture still closes, the poll still sees a moved signature, and a NAMED close extended the
+previous scroll's step with a value the scroll never produced. Measured: *"one Undo stopped at
+1.0000, not at the 1.1200 the previous scroll ended on: the refused burst extended it"* (State test
+86 leg I). Both branches now name the step only when their own store committed.
+
+**The correction that came out of measuring it.** Fixing 67b turned out to fix leg I as well, and it
+would have been easy to file 67c as redundant. Instrumenting the generation counter said why, and
+said what is left: `juce::ListenerList` calls listeners in REVERSE order of registration, and this
+processor registers in its constructor, so a host write made from a parameter listener during the
+gesture-open is delivered BEFORE the coalescer samples the generation — open `gen=63`, close
+`gen=63`, no name, whatever the store did. What the store result covers is the other ordering: a
+change arriving AFTER the sample. Cross-thread, that is ADR-0047's own case and unreachable here;
+single-threaded, it is reachable on the split branch, because `writeCrossovers` proves EVERY split in
+the row and not only the ones it moves, so a probe writing the next split from inside the first
+split's store aborts the transaction after part of it has landed. That is State test 86 leg M, and it
+kills the split half (mutation M19). The width branch has one store and nothing dispatching before
+it: M18 survives, recorded as unmeasured defence for the cross-thread ordering, the same class and
+the same disposition as M15.
+
+**What was NOT fixed, and is written down instead.** A burst that wrote nothing of its own still
+leaves an undo step for whatever the host wrote inside its gesture. Unnaming it stops the
+misattribution — the previous scroll keeps the value it ended on — but the gesture did close over a
+changed signature. That is the generic property of gesture coalescing, not something ADR-0053
+introduced, and closing it would need a gesture able to withdraw its own commit request.
+
+### 67d. The investigate item: the velocity drag branch
+
+Round 9's own part 12 listed the Ctrl/Alt/Cmd velocity drag as composing with `applyWheelDragOffset`
+*by construction* and untested. State test 88 leg H now measures it, and opens with a positive
+control — the same 20 px with no modifier moves the knob by a different amount — so the leg cannot
+quietly degrade into a second copy of leg A if the modifier ever stopped selecting the branch.
+Mutation M23 (`applyWheelDragOffset` returns unconditionally) kills legs A and H together.
+
+### 67e. Validation
+
+State 3 056 / 0, DSP 396 / 0. Nine new mutations: M17, M19-M25 killed, M18 surviving as above.
+TSan over the whole suite: 0 warnings, one matched suppression
+(`deadlock:WriteFromInsideAGestureOpen`). valgrind memcheck: 0 errors from 0 contexts on both suites
+under `ANAMORPH_TESTS_NO_FTZ=1`. Docs 141 clean, citations 450 anchors clean against `origin/main`,
+the merge base and `HEAD~1`, realtime 47 / 0, portability 57 / 0.

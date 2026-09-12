@@ -1239,7 +1239,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   nudge on every sideways trackpad scroll.
 
 * **State test 86 — a scroll is ONE undo step, and the next scroll of the same control extends it**
-  (ADR-0053). Eleven legs across the knob family, the multiband display and the Settings bar. **A**:
+  (ADR-0053). Thirteen legs across the knob family, the multiband display and the Settings bar. **A**:
   three notches on one knob, polled between each, are one step — one Undo returns the knob to the
   value before the whole scroll and there is no second step behind it. **B**: scroll, drag, scroll is
   THREE steps in that order, which is what section 5.3 means by another editing method starting a new
@@ -1252,7 +1252,23 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   scrolls ends the chain. **I**: a host write from inside the notch's own gesture-open is left
   standing — a window that did not exist before this round, because the multiband wheel opened no
   gesture at all. **J**: a reentrant `cancelActiveDrag` from inside that same dispatch changes
-  nothing (ADR-0050's guard, for the burst). **K**: a double-click reset is its own step.
+  nothing (ADR-0050's guard, for the burst). **K**: a double-click reset is its own step. **L**: an
+  EMPTY click between two notches -- a press and a release with no movement and no poll between them,
+  so its close shares a batch with the next notch -- does not split the scroll into two steps. **M**: a
+  burst that part-wrote and then aborted is a step of its own rather than an extension of the scroll
+  before it.
+
+  **Legs I, J and M are three different orderings of the same question**, and only the third can
+  discriminate the store-result half of the naming rule. I and J reach their refusal through a host
+  write made from inside the gesture-OPEN, and `juce::ListenerList` calls listeners in reverse order of
+  registration -- the processor registers in its constructor, the probe with `addListener` -- so that
+  write always lands BEFORE the coalescer samples the sound generation, and the empty-gesture test
+  alone already declines to name the burst. M lands its write inside the burst's own FIRST store
+  instead, which is reachable single-threaded because `writeCrossovers` proves every split in the row
+  and not only the ones it moves: the generation has moved, the transaction has failed, and the burst's
+  own result is the only thing left that can tell the two apart. Legs I and J each also assert the
+  outcome (one Undo stops at the value the previous scroll ended on) so that a regression in EITHER
+  half is visible, not just in the one they can discriminate.
 
   **Leg K is a measurement that contradicted its own premise, kept for that reason.** JUCE delivers
   `mouseDoubleClick` from `internalMouseUp` AFTER `mouseUp`, so the drag gesture the second press
@@ -1307,9 +1323,33 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   `Component::mouseUp` to protected and the override that matters lives one level further down, in
   the `ValueBox` in `LookAndFeel.cpp`'s anonymous namespace.
 
-  **Mutation record for ADR-0053 — sixteen mutations, fifteen killed.** Each was applied alone,
-  built, and the whole suite run; every entry below names the checks that failed and nothing else
-  failed in any run.
+  **Legs F and G are the POINTED control**, which JUCE decides and capture does not:
+  `getTargetForGesture` hit-tests the peer at the event position whether or not a drag is in flight
+  (`juce_MouseInputSourceImpl.h`), so both legs hold a press on Drive and then deliver a
+  button-down wheel event to a different component -- the Width knob in F, the Settings Persistence
+  bar in G. F asserts all four halves of the rule: the pointed control moves, the pressed one does
+  not, the press carries on dragging, and one Undo takes back both because the notch landed inside
+  the open gesture. G asserts the same delivery for the Settings bar together with its exclusion --
+  the knob's press is the ONLY undo step, and undoing it does not move the bar back.
+
+  **Leg I is the value box's notch arriving at the KNOB**, which is what the pointer actually
+  produces: the box drag maps 180 px of travel across a box under 20 px tall, so the cursor leaves
+  the box almost immediately and the rest of that drag's notches are delivered to the parent. Its
+  deciding check is the drag event AFTER the notch, at the same cursor position — writing the value
+  on the slider passes every other check in the leg and fails that one, because the box recomputes
+  from `downProp` and erases anything written behind it.
+
+  **Leg H is the VELOCITY drag branch**, which nothing else in the suite exercises: Ctrl switches
+  `Slider` from `handleAbsoluteDrag` to `handleVelocityDrag`, which accumulates incrementally from
+  its own `valueWhenLastDragged` rather than recomputing from a press-time anchor.
+  `applyWheelDragOffset` composes with both by construction, and this leg is the measurement of it.
+  It opens with a POSITIVE CONTROL -- the same 20 px with no modifier moves the knob by a different
+  amount -- so that it cannot quietly degrade into a second copy of leg A if the modifier ever
+  stopped selecting the branch.
+
+  **Mutation record for ADR-0053 — twenty-five mutations across two rounds, twenty-three killed.**
+  Each was applied alone, built, and the whole suite run; every entry below names the checks that
+  failed and nothing else failed in any run. M1-M16 are the first round, M17-M23 the review round.
 
   | | Mutation | Killed by |
   |---|---|---|
@@ -1329,6 +1369,15 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M14 | the standalone burst drops its ADR-0050 ownership claim | 86 leg J, 1 check |
   | M15 | the in-press width notch drops its `ownsWidth` proof | **SURVIVES** — see below |
   | M16 | the standalone width store drops its `ownsWidth` proof | 86 leg I, 1 check |
+  | M17 | the pointed-control delivery removed (hand JUCE the event with its buttons still down) | 88 legs F and G, 2 checks |
+  | M18 | the standalone WIDTH burst names its step even when its store was refused | **SURVIVES** — see below |
+  | M19 | the standalone SPLIT burst names its step even when its store was refused | 86 leg M, 1 check |
+  | M20 | the empty-gesture test removed (every close contributes its name) | 86 leg L, 2 checks |
+  | M21 | the batch-name guard reads `pendingGestureCommit` again instead of `pendingStepNamed` | 86 leg L, 2 checks |
+  | M22 | the poll no longer clears `pendingStepNamed` with the key it consumed | 86 legs A, B, C, L and five more, 12 in all |
+  | M23 | `applyWheelDragOffset` returns unconditionally (the leg-H liveness control) | 88 legs A and H, 4 checks |
+  | M24 | the knob stops asking a child that holds a drag gesture to take the notch | 88 leg I, 1 check |
+  | M25 | `ValueBox::takeWheelNotch` writes the value but does not move `downProp` | 88 legs B and I, 3 checks |
 
   **M15 survives, and the reason is worth stating rather than hiding.** The proof it removes sits
   behind the press branches' own `gestureIsStale()` gate, which is two lines above it and compares
@@ -1337,6 +1386,16 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   store, and there is no dispatch in that stretch for a single-threaded harness to enter. It is the
   same class ADR-0046, ADR-0047, ADR-0048 and ADR-0051 all record surviving mutations for, and it is
   kept for the same reason: one comparison, correct by ADR-0047's rule, inert with nothing racing.
+
+  **M18 survives for the same structural reason as M15, measured the same way.** The width branch has
+  exactly ONE store and nothing of its own dispatches before it, so the only reentrant write that can
+  refuse that store arrives during the gesture-open — and a write from there is delivered before the
+  coalescer samples the sound generation (reverse `ListenerList` order), which means the empty-gesture
+  test already declines to name the burst and the store result changes nothing observable. The
+  ordering was instrumented rather than inferred: open `gen=63`, close `gen=63`. What M18 removes is
+  the cover for the OTHER ordering — a cross-thread write landing after the sample — which no
+  single-threaded harness can produce against a single-store branch. Its split-branch twin M19 is
+  killed, because `writeCrossovers` gives that branch a second proof after its own first store.
 
   **M8 is the one that reaches outside this round's own legs**, and that is the useful part of it:
   extending on every commit rather than only on a matching name breaks the preset-identity and
