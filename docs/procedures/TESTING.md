@@ -1239,7 +1239,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   nudge on every sideways trackpad scroll.
 
 * **State test 86 — a scroll is ONE undo step, and the next scroll of the same control extends it**
-  (ADR-0053). Nineteen legs across the knob family, the multiband display and the Settings bar. **A**:
+  (ADR-0053). Twenty legs across the knob family, the multiband display and the Settings bar. **A**:
   three notches on one knob, polled between each, are one step — one Undo returns the knob to the
   value before the whole scroll and there is no second step behind it. **B**: scroll, drag, scroll is
   THREE steps in that order, which is what section 5.3 means by another editing method starting a new
