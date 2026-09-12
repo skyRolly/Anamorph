@@ -394,7 +394,7 @@ DELIBERATE_REAIMS = {
     # its own.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:665"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:702"): "dragCrossoverTo",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

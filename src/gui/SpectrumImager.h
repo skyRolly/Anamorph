@@ -155,6 +155,18 @@ private:
     // behind it). Stamping twice in one press is two readings of the same row, which is the defect
     // this ADR is about; stamping twice with a PROVED record in force also destroys it.
     void  seedDragOrigins() noexcept;
+    // ADR-0052, round 11. The SAME derivation into a caller's array instead of into `dragOrigX`:
+    // the pure half of `seedDragOrigins`, for a pass that has to answer "would this move anything
+    // at all?" BEFORE it is allowed to establish any state. It reads the ownership record and
+    // nothing live (ADR-0047: the same reading that proves is the one that plans), writes no
+    // member and opens nothing, so asking costs a caller nothing it has to undo.
+    void  originsFromRecord (float* out) const noexcept;
+    // ...and the pure half of `beginBandMove`: which two splits a move of band `b` would steer,
+    // where they start, and the translation range the move would be clamped to. `beginBandMove`
+    // fills its own members from this, so the travel a caller measures in advance and the travel
+    // the move is actually clamped to cannot drift apart. No member written, no gesture opened.
+    struct BandMovePlan { int left, right; float startLeftX, startRightX, tmin, tmax; };
+    BandMovePlan bandMovePlan (int b, int n, const float* orig) const noexcept;
     void  captureGestureSound() noexcept;
     // ADR-0041. Store, then confirm IN PARAMETER SPACE that this store is what the parameter now
     // holds, and hand back the value to own. False means somebody wrote from inside the store.

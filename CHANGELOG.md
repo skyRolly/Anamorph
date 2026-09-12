@@ -33,7 +33,9 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   drag back through. A notch always goes to whatever is under the **pointer**: if the drag has
   carried the cursor off the control you grabbed, the wheel adjusts what you are pointing at — which
   previously did nothing at all on a knob, a slider or a value box — and that edit joins the same
-  single Undo step.
+  single Undo step. One notch is worth the same travel with a button held as without one, down to
+  the smallest notch a trackpad can send: a fine scroll during a drag moves the control by one step
+  of its range rather than being rounded away to nothing.
   Decision: ADR-0053. Regression coverage: State tests 80 and 88. Evidence: PR #144. [Verified]
 - **A whole scroll is now one Undo step, and carrying on scrolling the same control extends it.**
   Scrolling a knob used to record one Undo step per notch, so walking back a ten-notch adjustment
@@ -41,16 +43,20 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   scroll it again — with nothing else edited in between — that continues the same step rather than
   starting another. Undo therefore returns the control to the value it had before the whole
   sequence began. Anything else you do to it — a drag, a typed value, an Option/Alt-click reset —
-  ends the run, so the next scroll starts a fresh step. This applies to knobs, sliders, the numbers
-  below the knobs, and the Multiband splits and bandwidths. A press that changes **nothing** — a
-  click that starts no drag — is not one of those other methods and leaves the run intact.
+  ends the run, so the next scroll starts a fresh step — including a drag that happens to finish on
+  the value it started from, which is still a drag you made. This applies to knobs, sliders, the
+  numbers below the knobs, and the Multiband splits and bandwidths. A press that changes
+  **nothing** — a click that starts no drag — is not one of those other methods and leaves the run
+  intact. Automation arriving from your DAW between one notch and the next ends the run too: a
+  scroll never merges across it, and it is never added to a step you had already finished.
   Decision: ADR-0053. Regression coverage: State test 86. Evidence: PR #144. [Verified]
 - **Holding a band's solo button and scrolling now moves the band instead of changing its width.**
   It does what dragging that button sideways does: the whole band segment slides, both of its
   crossovers together, and scrolling adds to whatever the drag has already done. Scrolling over the
   Multiband display when you are *not* holding a solo button is unchanged — it still adjusts the
-  band's width, or the split you are over. A notch with no band to move (a single-band layout) does
-  nothing at all, and leaves your solo click intact.
+  band's width, or the split you are over. A notch with no band to move — a single-band layout, or a
+  band already pressed against the end of its travel — does nothing at all: nothing moves, your DAW
+  is told nothing, the band is not auditioned, and your solo click still lands when you let go.
   Decision: ADR-0053. Regression coverage: State test 87. Evidence: PR #144. [Verified]
 - **The Settings slider gains the same scrolling behaviour and keeps its exemption from Undo.**
   *Vectorscope Persistence* now takes wheel input during a drag like every other control. As before,
@@ -59,14 +65,32 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **An Option/Alt-click on a control that is already at its default no longer tells your DAW you
+  touched it.** The reset was bracketed as an edit whether or not there was anything to reset, so a
+  DAW recording in Touch or Latch punched in and wrote an automation point for a control that never
+  moved — and the knob played its reset animation for a reset that did nothing. Clicking a control
+  already sitting on its default now does nothing at all. Resetting a control that is off its
+  default is unchanged.
+  Decision: ADR-0052. Regression coverage: State test 88 leg K. Evidence: PR #144. [Verified]
 - **Scrolling the mouse wheel over the Multiband display now creates an Undo step.** It never had.
   Nudging a split frequency or a band's width with the wheel wrote the value straight out with no
   edit marked around it, so the plug-in's own Undo folded it into the background the way it folds
   your DAW's automation — the change stuck, and nothing could take it back. Those edits are now
   marked as edits, which also means your DAW sees them as an automation touch rather than as a value
-  that moved on its own. Long-standing; it is the second of the two paths recorded as **KI-010**.
-  Decision: ADR-0053. Regression coverage: State test 86 legs D and E. Evidence: PR #144. [Verified]
+  that moved on its own. A notch that cannot move anything is not marked at all, because it is not
+  an edit: at the end of a split's travel, or on a bandwidth already at its limit, scrolling tells
+  your DAW nothing and leaves your Undo history alone.
+  Long-standing; it is the second of the two paths recorded as **KI-010**.
+  Decision: ADR-0053. Regression coverage: State test 86 legs D, E and Q. Evidence: PR #144. [Verified]
 - **A solo click is no longer applied to a layout your DAW changed underneath it, in the one case
+  where the check for that could be switched off.** The plugin remembers the layout your click was
+  aimed at and refuses the click if your DAW replaces it in the instant the edit opens. That memory
+  could be dropped early: the plugin's own safety net for a mouse button released outside its window
+  clears it as its first action, even when it has nothing else to do — and if your DAW ran that net
+  from inside the edit the click had just opened, the check went quiet and the click was applied to
+  the new layout anyway. The memory is now held until the click's action finishes. A click with
+  nothing else happening is unchanged.
+  Decision: ADR-0050. Regression coverage: State test 79 leg E. Evidence: PR #143. [Verified]
 - **Dragging a band sideways can no longer leave your DAW with a change gesture it was never given.**
   Starting a sideways band move opens an automation gesture for each of the band's two edges, one
   after the other. If your host answered the first one by running its own message loop — a modal
@@ -82,14 +106,6 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   gestures are open, so a cancellation arriving in that gap changes nothing and is honoured a
   moment later instead. What you will notice: nothing, on any normal drag.
   Decision: ADR-0050. Evidence: PR #143. [Verified]
-  where the check for that could be switched off.** The plugin remembers the layout your click was
-  aimed at and refuses the click if your DAW replaces it in the instant the edit opens. That memory
-  could be dropped early: the plugin's own safety net for a mouse button released outside its window
-  clears it as its first action, even when it has nothing else to do — and if your DAW ran that net
-  from inside the edit the click had just opened, the check went quiet and the click was applied to
-  the new layout anyway. The memory is now held until the click's action finishes. A click with
-  nothing else happening is unchanged.
-  Decision: ADR-0050. Regression coverage: State test 79 leg E. Evidence: PR #143. [Verified]
 - **Clicking a band's solo button can no longer solo a band that is not there.** The plugin works out
   which headphone you clicked by measuring your cursor against the band layout — but it re-read that
   layout a moment after recording the one your click belongs to. If your DAW changed the number of

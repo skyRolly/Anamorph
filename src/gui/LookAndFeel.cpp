@@ -787,6 +787,9 @@ namespace
     struct ValueBox : public juce::Label, public DragGestureOwner
     {
         double downProp = 0.0;
+        // The knob's twin (ADR-0053, round 11): JUCE dedupes wheel events on their timestamp
+        // because a notch moves by at least one interval, and this path now floors the same way.
+        juce::Time lastNotchTime;
 
         // Host change gesture held for the whole press, exactly as the knob's own
         // drag does (Slider begins its gesture on mouseDown too): without it the
@@ -867,17 +870,24 @@ namespace
         // within a few pixels of travel, so most of a drag's notches are delivered to the knob and
         // it asks its children through this (ADR-0053). It never forwards the event onward -- the
         // knob's ask would come straight back through `Label::mouseWheelMove` if it did.
-        bool takeWheelNotch (const juce::MouseEvent&, const juce::MouseWheelDetails& w) override
+        bool takeWheelNotch (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
         {
             auto* s = rotaryParent (getParentComponent());
             if (dragGesture == nullptr || s == nullptr || isBeingEdited()) return false;
-            const double amount = (std::abs (w.deltaX) > std::abs (w.deltaY) ? -w.deltaX : w.deltaY)
-                                * (w.isReversed ? -1.0 : 1.0);
-            const double base = s->valueToProportionOfLength (s->getValue());
-            const double want = juce::jlimit (0.0, 1.0, base + amount * 0.15);
-            if (juce::exactlyEqual (want, base)) return true;  // ADR-0052: no edit, no side effects
-            downProp += want - base;                           // ...and the drag carries on from here
-            s->setValue (s->proportionOfLengthToValue (want), juce::sendNotificationSync);
+            if (e.eventTime == lastNotchTime) return true;   // JUCE's duplicate filter, see the knob's
+            lastNotchTime = e.eventTime;
+            // The knob's own in-drag branch and this one are the same notch on the same slider,
+            // so they ask the same function what JUCE would do with it -- floor included, which
+            // is what makes a sub-interval notch move the box instead of vanishing (round 11).
+            const double v0     = s->getValue();
+            const double target = anamorph::gui::wheelTargetValue (*s, w, v0);
+            if (juce::exactlyEqual (target, v0)) return true;  // ADR-0052: no edit, no side effects
+            const double base = s->valueToProportionOfLength (v0);
+            s->setValue (target, juce::sendNotificationSync);
+            // What ACTUALLY moved, read back after the snap -- the anchor must not bank travel the
+            // slider refused, or the next drag event applies it as a jump. ...and the drag carries
+            // on from here.
+            downProp += s->valueToProportionOfLength (s->getValue()) - base;
             return true;
         }
         void editorShown (juce::TextEditor* ed) override

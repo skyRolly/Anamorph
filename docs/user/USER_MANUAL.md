@@ -184,7 +184,8 @@ and simply return to neutral processing until you re-enter (see §6).
 Controls respond to some universal gestures:
 
 - **Knobs**: drag to change; **double-click or Alt/Option-click to reset** to default
-  (one undoable step, with a little sweep animation).
+  (one undoable step, with a little sweep animation). A control already sitting on its default
+  does nothing at all — no animation, and nothing your DAW records as a touch.
 - **Value boxes** (the number under a knob): **drag vertically** to change, double-click
   to type. Typed entry is forgiving: `%` is optional, `2k` or `2kHz` means 2000 Hz, and
   balance fields accept `C`, `L30`, `R30` (or `M`/`S` letters in M/S mode).
@@ -193,7 +194,10 @@ Controls respond to some universal gestures:
   do to it starts a new one). You can scroll **during a drag** too: the notch adds to what the
   drag has produced and the drag carries on from the new value, all as one Undo step. The notch
   always goes to whatever is **under the pointer** — if the drag has taken the cursor off the
-  control you grabbed, the wheel adjusts what you are pointing at instead.
+  control you grabbed, the wheel adjusts what you are pointing at instead. A notch is worth the
+  same amount with a button held as without one, down to the finest scroll a trackpad sends; a
+  notch that cannot move the control — because it is already at the end of its travel — does
+  nothing at all, and your DAW is told nothing.
 - **Tooltips**: every control has one, but they are **off by default** — enable them in
   Settings if you want in-place help (600 ms hover delay).
 

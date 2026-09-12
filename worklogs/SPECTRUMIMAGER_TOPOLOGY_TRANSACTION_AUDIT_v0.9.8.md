@@ -3102,3 +3102,160 @@ TSan over the whole suite: 0 warnings, one matched suppression
 (`deadlock:WriteFromInsideAGestureOpen`). valgrind memcheck: 0 errors from 0 contexts on both suites
 under `ANAMORPH_TESTS_NO_FTZ=1`. Docs 141 clean, citations 450 anchors clean against `origin/main`,
 the merge base and `HEAD~1`, realtime 47 / 0, portability 57 / 0.
+
+
+## §68. Round 11 — the review of round 10: five defects, one refusal, two found on the way
+
+Six findings arrived. Five are real and fixed; one -- `ScopedWheelStep`'s destructor -- is refuted
+with its reasoning recorded in the source. Three more were found while reading for them (one of
+them created by this round's own first fix), and two documentation defects were found: one in the
+changelog and one in a comment the previous round made false. Every defect below was reproduced as a
+FAILING check before anything was touched, and every fix has a mutation that brings the failure
+back.
+
+### 68a. The crux of finding 1 was a question about JUCE, and the answer went the review's way
+
+The claim was that a small in-drag notch can be erased by snapping while JUCE's own path floors the
+movement to one interval. The premise is only true if the slider's `normRange.interval` is
+non-zero, and an attachment-driven slider looked like the case where it would be zero. It is not:
+`juce_ParameterAttachments.cpp` copies the parameter's interval onto the slider
+(`newRange.interval = range.interval`), and this plug-in declares a real interval on nearly every
+parameter -- 0.001 for Amount, Width, Mix and the percentages, 0.01 for Drive and the two gains --
+while the Settings Persistence bar sets its own (`setRange (0, 1, 0.001)`). Only the three
+log-frequency splits and the mono-maker frequency have none.
+
+So JUCE moves a slider by at least one interval per notch (`jmax (normRange.interval,
+std::abs (delta))`) and the in-drag paths, which restate JUCE's arithmetic because its whole wheel
+body sits behind `! e.mods.isAnyMouseButtonDown()`, did not. The gap only opens for a notch smaller
+than one interval, which a mouse wheel never sends and a macOS trackpad sends constantly: JUCE
+scales precise scrolling by `0.5/256`, so one unit is `deltaY = 0.00195`, which asks for 0.0003 of
+Amount -- and `Slider::setValue` snapped it straight back to the value already there. Measured, 20
+notches at that size: **0.0000 inside a press against 0.0200 with no button held**. The same
+physical gesture, two answers, which is the asymmetry ADR-0053 exists to remove and which its own
+in-source comment already claimed to deliver.
+
+The fix is one function, `anamorph::gui::wheelTargetValue`, next to the `DragGestureOwner` interface
+the two in-drag callers already share -- direction, scale, rails and JUCE's floor, in one place --
+and both callers bank what the control ACTUALLY moved rather than what they asked for. That last
+part is not cosmetic: a request banked past a rail is dead travel the next mouse move applies as a
+jump. Finding 6A is answered by the same function: the duplication was real and it HAD diverged, so
+the answer is not "record why two copies are fine" but "make it one".
+
+### 68b. Two chain defects, and the guard that keeps the third from being a regression
+
+Finding 2: a drag that returns to where it started leaves the scroll chain standing, because the
+poll records the chain's name only where it records a step -- correct for a gesture that changed
+nothing, wrong for one that changed something and put it back. *"the round-trip drag left the chain
+standing: one Undo jumped past it to 0.0000"*.
+
+Finding 3: a host write landing in the commit window is folded into the step the poll records, and
+with the name matching it EXTENDED a step the user had already finished. *"the batch carrying the
+host write EXTENDED the first scroll: one Undo jumped straight back to 0.0000"*.
+
+Both are the same rule -- a step belongs to a scroll only if the batch that asked for it holds
+nothing else -- and both are decided from the generation counter the S10 poll skip already
+maintains. The one thing that had to be got right is the *guard*: two notches of ONE scroll can land
+in a single poll period and net exactly zero, and a rule phrased as "edited and the signature did
+not move" would split a continuous scroll into two undo steps. The name distinguishes them, and leg
+P is the leg that fails if it stops doing so.
+
+The foreign test is taken at every gesture EDGE rather than at the close alone, and that came from
+the round's own investigation rather than from the review: a write that lands before the NEXT
+batch opens is in exactly the same poll period and just as foreign, and by the time that batch
+closes the counter has moved for its own writes too. Leg S is that side of the window; leg O is the
+close side; M29 removes the open half and kills leg S alone.
+
+**What is NOT fixed, and why it is a decision rather than an omission.** The automation's VALUE is
+still inside the step the poll records, so one Undo takes it back with the scroll. Separating it
+requires the state as it stood when the gesture closed, and the only place to snapshot that is
+inside `parameterGestureChanged`, where D-2/ADR-0036 forbids the APVTS lock -- the lock-order
+inversion `--d2-stress-probe` has already reported against a host-thread `replaceState`. The
+lock-free alternative is to patch the pushed baseline per parameter from a foreign-write set, which
+changes what an undo entry MEANS for every gesture in the plug-in and would want its own ADR and
+its own round. Leg O prints the measurement every run rather than asserting it away.
+
+### 68b-ii. And the fix broke the guarantee it serves, which is why fixes get verified too
+
+The first version of the foreign test re-synced the edge generation only at the poll tail. Every
+program state jump polls FIRST and applies its parameters AFTER -- and `applyStateSet` notifies the
+host, so `soundParamGen` advances once per sound parameter with no poll behind it. The next gesture
+open therefore compared against a generation stale by N and called a batch nothing foreign touched
+somebody else's write; unnamed, and the notch after it started a second step. *"the scroll after the
+Undo was split in two: one Undo stopped at 1.8000, the value between its two notches"* -- a
+two-notch scroll right after an Undo becoming TWO undo steps, which is the exact guarantee ADR-0053
+exists to give. In a host the 24 Hz tick usually lands between the Undo click and the first notch
+and hides it; the leg is deterministic because it does not poll there.
+
+Found by this round's own adversarial verification of its own fix, not by the suite -- every
+existing leg opens with `while (canUndo()) undo(); pollUndoCoalesce();`, and that trailing poll is
+precisely what re-syncs the edge. A suite that tidies up between steps cannot see a defect whose
+whole shape is "the step after an untidy one". Every jump now re-syncs after its own writes (State
+test 86 leg T, mutation M39), and the window that remains -- a write between one gesture's own open
+and its own close -- is stated at the open-side test rather than left to be rediscovered.
+
+### 68c. Findings 4 and 5, and the two the reading found
+
+Finding 4: a notch at the end of a band's travel converted the solo press into a move -- opening one
+or two host gestures and starting the audition -- and the release then took the move branch and
+swallowed the click. *"it swallowed the click: mask 0x0 where the uninterrupted press gives 0x2"*.
+The travel limits were knowable only by SETTING them, which is why the test could not be written
+first; `bandMovePlan` is now the pure half of `beginBandMove` and both derive from it.
+
+Finding 5: both standalone multiband branches opened their change gesture before discovering the
+clamped target was the value already there. Each now asks first, from the reading the tick has
+already taken and proved, against `writeCrossovers`' own half-pixel threshold.
+
+Found while reading for them: the **in-press width branch** engaged the width drag on a notch at a
+rail, so a press that had not crossed the 3 px threshold would then write widths on any one-pixel
+tremor; and the **Alt-click reset** bracketed `doReset` in a change gesture whether or not there was
+anything to reset, punching in a touch/latch write region for a control that never moved. Both are
+ADR-0052, both are three lines, both have a leg.
+
+And one documentation defect, in the changelog rather than the code: the `[0.9.8]` band-move bullet
+had been spliced INTO the middle of the solo-click bullet, leaving a truncated sentence and an
+orphaned fragment. `check-docs.py` passes it -- a continuation line that follows a complete entry is
+indistinguishable from a wrapped one by the grammar it checks -- so it is repaired by hand and
+recorded here.
+
+### 68d. Finding 6 is refuted, and the refusal is the interesting part
+
+`ScopedWheelStep`'s destructor writes 0 rather than restoring what it found, and 0 IS what it found
+at every construction site this code can reach: the imager's two scopes are mutually exclusive
+branches of one handler, `juce::Component::mouseWheelMove` forwards UP only, and no `Knob` is a
+descendant of another. The one non-structural interleaving -- a host pumping the message loop from
+inside `beginChangeGesture` and delivering a queued notch over another control -- leaves the outer
+step unnamed either way, because the disagreement rule already unnames a batch holding two
+differently-named gestures. It would take the host ALSO running the 24 Hz poll inside that pumped
+loop for a restored key to name anything, and the whole cost of the difference is one extra undo
+step. Recorded at the destructor; not hardened, because the hardening is three lines no reachable
+path exercises and no test can fail.
+
+### 68f. Residuals -- re-verified, and one register correction
+
+Rounds 9 and 10 shipped no residual table, breaking the §64h/§65h practice; this round's own
+read-only audit found the omission and the drift it caused. The table is restored here, and the U4
+row is corrected rather than repeated.
+
+| Residual | Where recorded | Disposition against this round |
+|---|---|---|
+| RISK-010 — the DSP's multiband snapshot is ten independent loads | `docs/FUTURE_RISKS.md:109`, `:249-302` | **UNCHANGED.** The reader (`src/PluginParameters.cpp`) is not in this round's diff, store order is untouched, and none of this round's new paths can write `mbBands`: the reopen conditions at `FUTURE_RISKS.md:288-296` are each checked and none fire. |
+| `addBandAt` re-attribution window | in-source, `src/gui/SpectrumImager.cpp` (`nw[i] = (i <= ins) ? wd[i] : wd[i - 1]`) | **UNCHANGED.** `addBandAt` is untouched; ADR-0042's measured disposition stands. |
+| Held-audition vblank coverage | worklog §64h / §65h rows | **UNCHANGED.** This round adds no `ScopedGestureAction` decline and no `tick` change; the audition now simply starts LESS often (a blocked notch no longer promotes it). |
+| Wheel gesture semantics accepted by ADR-0041 / ADR-0052 | `ADR-0041`, `ADR-0052` | **CHANGED, by decision rather than by evidence.** ADR-0052 now also covers an event whose delta is real but whose target clamps to the value already held; four sites were brought under it and a fifth (the pointer latch) was examined and deliberately left. Recorded in that ADR's own new section. |
+| U4 — a mouse-wheel Width edit produces no undo step | worklog `:2546`, `:2818`; `docs/KNOWN_ISSUES.md:132`, `:363` | **CLOSED, and the register was wrong.** The substance ceased to exist in round 9, when the standalone multiband branches gained `beginGesture`/`endGesture`; `KNOWN_ISSUES.md` records the closure with a date and an ADR, while the worklog's last residual table still carried it as "Unchanged". Superseded, not reopened -- and the register over-counted standing residuals by one until this row. |
+| ADR-0044 partial transaction residue | ADR-0044, worklog §64h | **UNCHANGED.** `addBandAt` / `removeBand` / `setBands` / `spreadSplits` are untouched. |
+| Cancelled-spread visual ordering | worklog §64h | **UNCHANGED.** Same reason; no spread path is in this diff. |
+| TSan suppression scope | `tests/tsan-suppressions.txt` | **UNCHANGED in scope, one citation refreshed.** No new lock is taken: the listener callbacks gain relaxed loads and message-thread scalar writes only. The file's own line citations for those callbacks had drifted (they named `PluginProcessor.h:171-174`, which has been `:239-242` for some rounds) and are corrected; the entry itself is not touched, and the `tsan` job's matched-entry assertion still passes. |
+| Historical comment blocks | in-source, `src/gui/SpectrumImager.cpp` | **ONE CORRECTED.** Round 10 made a sentence in the standalone width branch false -- it still said `storeOwned`'s result "is discarded deliberately rather than dropped" while the round had just started consuming it to decide the step's name. Fixed in place, which is the §64i obligation the register itself states. The surrounding blocks are otherwise left alone, for the reason §64i gives: they carry measurements a later round needs. |
+
+### 68e. Validation
+
+State 3 114 / 0, DSP 396 / 0. Fourteen new mutations: M26-M35 and M37-M39 killed, M36 surviving
+with the reason recorded in `TESTING.md`. M34 SURVIVED its first run and that is recorded too: leg
+R pressed where no width drag is latched, so it passed against the mutation it exists to kill --
+the leg now opens with a control that fails if the press latches nothing. TSan over the whole suite: 0 warnings, one matched suppression
+(`deadlock:WriteFromInsideAGestureOpen`). valgrind memcheck: 0 errors from 0 contexts on both suites
+under `ANAMORPH_TESTS_NO_FTZ=1`. UBSan (clang-18, `undefined,float-divide-by-zero`, the CI
+ignorelist): clean. Docs 141 clean, citations clean against all three bases, realtime 47 / 0,
+portability 57 / 0, preflight exit 0.
+

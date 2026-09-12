@@ -419,14 +419,32 @@ private:
         // Zero for a press with no notch in it, and every line that reads it returns immediately on
         // zero, so an ordinary drag makes exactly the parameter writes it always did.
         double wheelDragProp = 0.0;
+        // ADR-0053, round 11. JUCE's DUPLICATE-EVENT FILTER, restated for the in-drag path -- and it
+        // is restated because the floor above made it load-bearing. JUCE's own reason
+        // (`juce_Slider.cpp`) is exactly that: "sometimes duplicate wheel events seem to be sent, so
+        // since we're going to bump the value by a minimum of the interval, avoid doing this twice".
+        // It is about two DISTINCT events carrying one timestamp, not about one event delivered
+        // twice -- so single delivery, which the routing does guarantee, is not an answer to it.
+        // Before the floor, a duplicate asked for the same sub-interval nothing twice; with the
+        // floor it asks for two whole intervals, which would make the in-drag notch move FURTHER
+        // than the standalone one and break the same contract from the other side.
+        juce::Time lastNotchTime;
         // The processor, for the wheel's undo grouping (ADR-0053). Null for a knob with no APVTS
         // parameter behind it -- which is the Settings Persistence bar, and exactly the control whose
         // undo participation must not change: with no parameter there is no change gesture and no
         // sound signature, so it cannot record a step whatever this does.
         AnamorphAudioProcessor* owner = nullptr;
 
+        // ADR-0052 (round 11). A RESET THAT HAS NOTHING TO RESET IS NOT AN EDIT. The knob is
+        // already sitting on `resetValue`, so `setValue` below would write the value the control
+        // already holds and JUCE would drop it -- but the animation, the `vpos` seed and, on the
+        // Alt path, a host change gesture would all have gone out for an interaction that changed
+        // nothing. Asked in VALUE space, which is the space `setValue` compares in.
+        bool resetWouldMove() const { return ! juce::exactlyEqual (getValue(), resetValue); }
+
         void doReset()
         {
+            if (! resetWouldMove()) return;   // no edit, no sweep, no latched "vpos" (ADR-0052)
             // Seed the sweep from the CURRENT position so the eased travel has a real
             // "from" to leave. onSweep (below) then flags the reset sweep -- but only
             // when animations are on -- so the value-travel easing plays even though the
@@ -443,6 +461,12 @@ private:
             wheelDragProp = 0.0;    // a new press starts with no notch in it (ADR-0053)
             if (e.mods.isAltDown()) // Option/Alt-click reset, as ONE undoable user gesture
             {
+                // ...and the gesture is part of what an edit costs, so the same question is asked
+                // before it opens rather than inside `doReset` alone: a begin/end pair on a
+                // parameter that never moved is an automation punch-in a host recording touch or
+                // latch writes a point for (ADR-0052, round 11 -- the same rule the multiband
+                // wheel branches answer for their own rails).
+                if (! resetWouldMove()) return;
                 if (resetParam != nullptr) resetParam->beginChangeGesture();
                 doReset();
                 if (resetParam != nullptr) resetParam->endChangeGesture();
@@ -487,16 +511,24 @@ private:
             // qualify and a notch can never write outside a change gesture.
             if (isScrollWheelEnabled() && e.mods.isAnyMouseButtonDown() && getThumbBeingDragged() >= 0)
             {
-                // The amount JUCE's own handler moves a slider by (`getMouseWheelDelta`: the
-                // proportion moves by `wheelAmount * 0.15`), so one notch means the same travel
-                // whether or not a button is held.
-                const double amount = (std::abs (w.deltaX) > std::abs (w.deltaY) ? -w.deltaX : w.deltaY)
-                                    * (w.isReversed ? -1.0 : 1.0);
-                const double base = valueToProportionOfLength (getValue());
-                const double want = juce::jlimit (0.0, 1.0, base + amount * 0.15);
-                if (juce::exactlyEqual (want, base)) return;  // ADR-0052: no edit, no side effects
-                wheelDragProp += want - base;                 // ...and the drag carries on from here
-                setValue (proportionOfLengthToValue (want), juce::sendNotificationSync);
+                // What JUCE's own handler would move this slider to for this event -- direction,
+                // scale, rails AND its one-interval floor, from the single source in LookAndFeel.h
+                // -- so one notch means the same travel whether or not a button is held. It said
+                // that here before and did not deliver it: without the floor a sub-interval notch
+                // was snapped straight back by `setValue` and the press ate it (round 11).
+                if (e.eventTime == lastNotchTime) return;   // ...the duplicate, before anything (ADR-0052)
+                lastNotchTime = e.eventTime;
+                const double v0     = getValue();
+                const double target = anamorph::gui::wheelTargetValue (*this, w, v0);
+                if (juce::exactlyEqual (target, v0)) return;  // ADR-0052: no edit, no side effects
+                const double base = valueToProportionOfLength (v0);
+                setValue (target, juce::sendNotificationSync);
+                // BANK WHAT ACTUALLY MOVED, read back from the slider rather than from the request:
+                // the write is clamped to the range and snapped to the interval grid, and banking
+                // the request instead would leave the drag carrying travel the control never took
+                // -- dead travel the next mouse move would then apply as a jump (ADR-0052's latch
+                // half). ...and the drag carries on from the value the notch left behind.
+                wheelDragProp += valueToProportionOfLength (getValue()) - base;
                 return;
             }
             // A NOTCH DELIVERED HERE DURING A CHILD'S OWN DRAG BELONGS TO THAT CHILD (ADR-0053).

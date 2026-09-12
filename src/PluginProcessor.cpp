@@ -450,6 +450,17 @@ void AnamorphAudioProcessor::syncCommitted()
     pendingGestureCommit = false;
     pendingStepWheelKey = lastStepWheelKey = 0; // ADR-0053: ...and it is not this scroll either
     pendingStepNamed = false;
+    // ADR-0053, round 11. A PROGRAM STATE JUMP IS AN EDGE TOO, and this line is the difference
+    // between the foreign-write rule working and breaking the rule it serves. Every jump -- this
+    // one, a preset load, Undo, Redo -- polls FIRST and applies its parameters AFTER, and applying
+    // them notifies the host, so `soundParamGen` advances once per sound parameter with no poll
+    // behind it. Left alone, the next gesture's open compares against a generation that is stale
+    // by N, decides a batch nothing foreign touched is carrying somebody else's write, and the
+    // notch after THAT starts a second undo step instead of extending -- a two-notch scroll taken
+    // right after an Undo becoming two steps, which is exactly what ADR-0053 exists to prevent.
+    // Re-synced AFTER the jump's own writes, for that reason. State test 86 leg T.
+    gestureEdgeGen   = soundParamGen.load (std::memory_order_relaxed);
+    foreignSinceEdge = false;
 }
 
 // A full snapshot: parameters PLUS the live preset name + clean baseline (#6). The params carry the
@@ -826,7 +837,25 @@ void AnamorphAudioProcessor::parameterGestureChanged (int, bool gestureIsStartin
     {
         // The batch's starting point for "did anything actually change in here" below.
         if (openGestures++ == 0)
+        {
             gestureOpenGen = soundParamGen.load (std::memory_order_relaxed);
+            // ADR-0053, round 11. AND WHETHER ANYTHING MOVED WHILE NOTHING WAS OPEN. A sound write
+            // between the last gesture edge and this one opened no gesture of its own, so it is
+            // host automation -- and it is about to be folded into the step THIS batch will ask
+            // for, because the poll commits everything since its last run as one step. The window
+            // is real in both directions: the poll can run up to a timer period after a close, and
+            // a whole new batch can open before it ever runs. Only the batch-OPENING gesture tests
+            // it; writes between two gestures of one batch are inside the first one and owned.
+            //
+            // ONE GAP, ACKNOWLEDGED RATHER THAN IMPLIED: a write landing between a gesture's own
+            // open and its own close is inside it by this test and by the close's alike, so host
+            // automation arriving there is attributed to that batch. Closing it needs a generation
+            // latched at the INNERMOST open as well -- a per-gesture field for a window one gesture
+            // wide -- and ADR-0053's store-result rule already declines to NAME a burst whose own
+            // store was refused, which is the reachable half of it.
+            if (gestureOpenGen != gestureEdgeGen) foreignSinceEdge = true;
+            gestureEdgeGen = gestureOpenGen;
+        }
     }
     else if (openGestures > 0 && --openGestures == 0)
     {
@@ -860,6 +889,12 @@ void AnamorphAudioProcessor::parameterGestureChanged (int, bool gestureIsStartin
             pendingStepNamed = true;
         }
         pendingGestureCommit = true;
+        // ...AND WHERE THIS BATCH'S OWN WRITES END. Everything it was going to write has been
+        // written by now -- JUCE's attachments write the value and close the gesture after it, and
+        // every path in this plug-in that closes one by hand stores first -- so the generation
+        // taken HERE is the line between the batch's edits and whatever lands before the poll.
+        // A relaxed load of a counter this thread has just been bumping, not a second measurement.
+        gestureEdgeGen = soundParamGen.load (std::memory_order_relaxed);
     }
 }
 
@@ -916,6 +951,13 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
     {
         pendingGestureCommit = false;
         const int stepKey = pendingStepWheelKey;   // ADR-0053: what the finished gesture named
+        // ...and the two facts the poll needs about the batch that asked for this commit, read
+        // before they are cleared (ADR-0053, round 11). `edited` is whether any gesture in it moved
+        // a sound parameter at all; `foreign` is whether anything moved one AFTER the last of them
+        // closed -- which, since no other writer opens a gesture, is host automation landing in the
+        // up-to-42 ms window before this poll.
+        const bool edited  = pendingStepNamed;
+        const bool foreign = foreignSinceEdge || (gen != gestureEdgeGen);
         pendingStepWheelKey = 0;
         pendingStepNamed = false;
         if (sig != committedSig)
@@ -926,7 +968,13 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
             // the original starting value, replace only the ending value". `undo.empty()` cannot
             // hold here with a matching name (every path that empties the stack clears the name
             // too), and is tested anyway so the invariant is enforced rather than assumed.
-            const bool extend = stepKey != 0 && stepKey == lastStepWheelKey
+            // ...AND A STEP THAT CARRIES A FOREIGN WRITE EXTENDS NOTHING (ADR-0053, round 11).
+            // Extending replaces the ENDING value of a step the user already finished, so a host
+            // write that arrived in the commit window would be spliced into it: one Undo would then
+            // take back both the scroll and the automation, and the automation would have been
+            // attributed to a scroll it had nothing to do with. `foreign` says exactly that
+            // happened, and a batch carrying one is nobody's scroll. State test 86 leg O.
+            const bool extend = stepKey != 0 && stepKey == lastStepWheelKey && ! foreign
                                 && ! abUndo[abActive].undo.empty();
             if (! extend)
             {
@@ -937,9 +985,26 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
             committed = currentStateSet();
             committedSig = sig;
             // Recorded only where a step was actually recorded: a gesture that changed nothing has
-            // not interrupted the scroll, so it must not end the chain either.
-            lastStepWheelKey = stepKey;
+            // not interrupted the scroll, so it must not end the chain either. A step carrying a
+            // foreign write is named by nobody, so the NEXT notch starts its own step rather than
+            // merging across the automation (ADR-0053 round 11, section 5.3's "no intervening
+            // non-wheel sound modification").
+            lastStepWheelKey = foreign ? 0 : stepKey;
         }
+        // ...AND AN EDIT THAT PUT THE SOUND BACK WHERE IT FOUND IT STILL ENDS THE CHAIN (round 11).
+        // The name is recorded only where a step is, which is right for a gesture that changed
+        // NOTHING -- an empty click is transparent (leg L) -- and wrong for one that changed
+        // something and returned it: a drag away and back is a real edit of another kind, and
+        // section 5.3 ends the chain at one. `edited` separates the two exactly, because it is the
+        // generation moving inside the batch rather than the signature moving across the poll.
+        //
+        // ONLY WHEN IT IS SOMEBODY ELSE'S, though. Two notches of the SAME scroll can land in one
+        // poll period -- up then down -- and that batch also "edited and netted zero"; ending the
+        // chain there would split one continuous scroll into two undo steps, which is the opposite
+        // of what this ADR is for. A name that matches the chain's is the chain's own. State test
+        // 86 leg N is the drag; leg P is the round-trip pair that must NOT break it.
+        else if (edited && stepKey != lastStepWheelKey)
+            lastStepWheelKey = 0;
     }
     else if (sig != committedSig)  // NON-gesture change (host automation / programmatic): fold into
     {                              // the baseline WITHOUT creating an undo step (automation is not undoable)
@@ -949,6 +1014,14 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
     }
 
     lastPolledSig = sig;
+    // ADR-0053, round 11. A POLL IS A GESTURE EDGE TOO: everything up to THE LOAD AT THE TOP OF
+    // THIS POLL has been accounted for -- committed as a step, or folded into the baseline -- so
+    // the next batch's foreign test starts from there rather than from a close that may be several
+    // polls old. Not "from this instant", said the narrower way deliberately: a write landing while
+    // the poll body runs is swallowed by the edge rather than marked foreign, which is inherent to
+    // reading the counter once and is the same window every other relaxed read here accepts.
+    gestureEdgeGen   = gen;
+    foreignSinceEdge = false;
 }
 
 // Record ONE undo step for a preset load. Called by the PresetManager::onLoaded hook AFTER the new
@@ -990,6 +1063,8 @@ void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
     pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
     pendingStepWheelKey = lastStepWheelKey = 0; // ADR-0053: a program state jump ends a scroll chain
     pendingStepNamed = false;
+    gestureEdgeGen   = soundParamGen.load (std::memory_order_relaxed); // ...and it is an EDGE: see syncCommitted
+    foreignSinceEdge = false;
 }
 
 void AnamorphAudioProcessor::undo()
@@ -1013,6 +1088,8 @@ void AnamorphAudioProcessor::undo()
     pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
     pendingStepWheelKey = lastStepWheelKey = 0; // ADR-0053: ...and the step it just popped is gone
     pendingStepNamed = false;
+    gestureEdgeGen   = soundParamGen.load (std::memory_order_relaxed); // AFTER applyStateSet: see syncCommitted
+    foreignSinceEdge = false;
 }
 
 void AnamorphAudioProcessor::redo()
@@ -1030,6 +1107,8 @@ void AnamorphAudioProcessor::redo()
     pendingGestureCommit = false; // in-flight gesture bookkeeping so nothing re-commits afterwards
     pendingStepWheelKey = lastStepWheelKey = 0; // ADR-0053: the re-pushed step is not a scroll's
     pendingStepNamed = false;
+    gestureEdgeGen   = soundParamGen.load (std::memory_order_relaxed); // AFTER applyStateSet: see syncCommitted
+    foreignSinceEdge = false;
 }
 
 // ----------------------------------------------------------------------------

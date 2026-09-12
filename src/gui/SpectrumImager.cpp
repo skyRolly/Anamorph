@@ -556,9 +556,46 @@ void SpectrumImager::captureDragOrigins() noexcept
 // describes a layout that no longer exists.
 void SpectrumImager::seedDragOrigins() noexcept
 {
+    originsFromRecord (dragOrigX);
+}
+
+// ADR-0052, round 11. Everything `seedDragOrigins` derives, into somebody else's array. Split out
+// so a pass can measure what a move WOULD do before it converts a press into one: the measurement
+// and the move then start from the same numbers by construction, rather than from two derivations
+// that have to be kept in step by hand.
+void SpectrumImager::originsFromRecord (float* out) const noexcept
+{
     for (int k = 0; k < (int) std::size (dragOrigX); ++k)
-        dragOrigX[k] = (freqP[k] != nullptr) ? freqToX (freqP[k]->convertFrom0to1 (gestureX[k]))
-                                             : freqToX (kFreqLo);
+        out[k] = (freqP[k] != nullptr) ? freqToX (freqP[k]->convertFrom0to1 (gestureX[k]))
+                                       : freqToX (kFreqLo);
+}
+
+// ADR-0052, round 11. The geometry half of `beginBandMove`, with nothing written and nothing
+// opened. `beginBandMove` was the only place that knew the travel limits, and it learned them by
+// SETTING them -- so a caller could not ask "can this band move at all?" without first converting
+// the press into a move, which is exactly the side effect ADR-0052 forbids an event that performs
+// no edit. Now both ask this.
+SpectrumImager::BandMovePlan SpectrumImager::bandMovePlan (int b, int n, const float* orig) const noexcept
+{
+    const int N = (n >= 0 ? juce::jlimit (1, 4, n) : bandCount());
+    const int M = N - 1;
+    const auto r = plot();
+    BandMovePlan p {};
+    p.left  = (b > 0)     ? b - 1 : -1;
+    p.right = (b < N - 1) ? b     : -1;
+    p.startLeftX  = (p.left  >= 0) ? orig[p.left]  : r.getX();
+    p.startRightX = (p.right >= 0) ? orig[p.right] : r.getRight();
+    p.tmin = -1.0e9f; p.tmax = 1.0e9f;
+    if (p.left >= 0)
+        p.tmin = juce::jmax (p.tmin, (r.getX() + (float) (p.left + 1) * kMinGapPx) - p.startLeftX);
+    else
+        p.tmin = juce::jmax (p.tmin, (r.getX() + kMinGapPx) - p.startRightX);
+    if (p.right >= 0)
+        p.tmax = juce::jmin (p.tmax, (r.getRight() - (float) (M - p.right) * kMinGapPx) - p.startRightX);
+    else
+        p.tmax = juce::jmin (p.tmax, (r.getRight() - kMinGapPx) - p.startLeftX);
+    if (p.tmin > p.tmax) p.tmin = p.tmax = 0.0f;
+    return p;
 }
 // The positions this gesture last left behind. Called at every gesture START (through
 // captureDragOrigins) and after every write the gesture makes (through writeCrossovers), so
@@ -953,10 +990,6 @@ void SpectrumImager::beginBandMove (int b, int n)
     // declining costs a few instructions of latency and nothing else.
     const ScopedGestureAction ownStartup (gestureActionDepth);
     const int N = (n >= 0 ? juce::jlimit (1, 4, n) : bandCount());
-    const int M = N - 1;
-    auto r = plot();
-    soloMoveLeft  = (b > 0)     ? b - 1 : -1;
-    soloMoveRight = (b < N - 1) ? b     : -1;
 
     // Anchor the move: the band translates RIGIDLY by T = clamp(cursor - anchor) so each
     // split tracks the cursor 1:1, the band keeps its width while it pushes neighbours
@@ -1004,21 +1037,17 @@ void SpectrumImager::beginBandMove (int b, int n)
     // goes out. That is unchanged in kind from any other foreign write during a drag, and it is
     // what `--band-move-adopt-probe` measures as the post-fix behaviour.
     seedDragOrigins();
-    bandStartLeftX  = (soloMoveLeft  >= 0) ? dragOrigX[soloMoveLeft]  : r.getX();
-    bandStartRightX = (soloMoveRight >= 0) ? dragOrigX[soloMoveRight] : r.getRight();
-
     // T range: the band may slide until its edge split (after packing every neighbour on
-    // that side at the min gap) reaches the frame edge.
-    bandTmin = -1.0e9f; bandTmax = 1.0e9f;
-    if (soloMoveLeft >= 0)
-        bandTmin = juce::jmax (bandTmin, (r.getX() + (float) (soloMoveLeft + 1) * kMinGapPx) - bandStartLeftX);
-    else
-        bandTmin = juce::jmax (bandTmin, (r.getX() + kMinGapPx) - bandStartRightX);
-    if (soloMoveRight >= 0)
-        bandTmax = juce::jmin (bandTmax, (r.getRight() - (float) (M - soloMoveRight) * kMinGapPx) - bandStartRightX);
-    else
-        bandTmax = juce::jmin (bandTmax, (r.getRight() - kMinGapPx) - bandStartLeftX);
-    if (bandTmin > bandTmax) bandTmin = bandTmax = 0.0f;
+    // that side at the min gap) reaches the frame edge. Derived by `bandMovePlan`, which is this
+    // arithmetic and nothing else (ADR-0052, round 11) -- so the wheel branch can ASK what a move
+    // would be clamped to before it decides to start one, and get the same answer this does.
+    const auto plan = bandMovePlan (b, N, dragOrigX);
+    soloMoveLeft    = plan.left;
+    soloMoveRight   = plan.right;
+    bandStartLeftX  = plan.startLeftX;
+    bandStartRightX = plan.startRightX;
+    bandTmin        = plan.tmin;
+    bandTmax        = plan.tmax;
 
     if (soloMoveLeft  >= 0) beginGesture (freqP[soloMoveLeft]);
     if (soloMoveRight >= 0) beginGesture (freqP[soloMoveRight]);
@@ -3178,7 +3207,38 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
             // round's own adversarial pass, against a one-band layout -- which is the configuration
             // State test 80 leg A itself uses.
             if (gestureBands < 2) return;
-            if (! soloMovedBand)  { soloMovedBand = true; beginBandMove (soloPressBand, gestureBands); }
+            // ...AND ONLY IF THE BAND CAN ACTUALLY GO ANYWHERE (ADR-0052, round 11). The count
+            // test above answers the case where there is no split to move; this one answers the
+            // case where there is one and it is already against the end of its travel. The clamp
+            // then gives back the translation the band already has, `moveBand` writes nothing --
+            // `writeCrossovers` skips a store under half a pixel -- and the notch has performed no
+            // edit. Converting the press regardless costs everything the count case cost: the
+            // release takes the MOVE branch instead of the toggle's, so the solo click is
+            // swallowed, and `beginBandMove` has meanwhile opened one or two host change gestures
+            // and the hold audition has started, all for a band that did not move.
+            //
+            // MEASURED FROM THE SAME NUMBERS THE MOVE WOULD USE, and before anything is
+            // established: `originsFromRecord` derives the origins `beginBandMove` will derive,
+            // `bandMovePlan` derives the travel it will clamp to, and `projectFromOrig` is the
+            // projection `moveBand` will project -- against the same half-pixel threshold
+            // `writeCrossovers` applies to each store. So "would this write anything" is answered
+            // by the write path itself rather than by a rule beside it that could drift.
+            if (! soloMovedBand)
+            {
+                float orig[3], out[3];
+                originsFromRecord (orig);
+                const auto plan = bandMovePlan (soloPressBand, gestureBands, orig);
+                const float t0  = juce::jlimit (plan.tmin, plan.tmax,
+                                                ((float) e.position.x - soloDownX) + dy * kWheelSplitPx);
+                projectFromOrig (out, orig, gestureBands - 1, plan.left, plan.startLeftX + t0,
+                                 plan.right, plan.startRightX + t0);
+                bool moves = false;
+                for (int k = 0; ! moves && k < gestureBands - 1; ++k)
+                    moves = std::abs (out[k] - orig[k]) > kSplitMovedPx;
+                if (! moves) return;
+                soloMovedBand = true;
+                beginBandMove (soloPressBand, gestureBands);
+            }
             if (! soloHoldActive) { soloHoldActive = true; if (onSoloPreview) onSoloPreview (1 << soloPressBand); }
             // `moveBand` translates the band by T = clamp (cursor - bandAnchorX, bandTmin, bandTmax),
             // so the anchor IS the accumulator: moving it adds this notch now and keeps it for every
@@ -3215,6 +3275,14 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
             const float want = juce::jlimit (0.0f, 2.0f,
                                              base + sgn * juce::jmax (kWheelWidthMin,
                                                                       std::abs (dy) * kWheelWidthPer));
+            // ...AND A NOTCH AT THE RAIL ENGAGES NOTHING (ADR-0052, round 11). At 0.0 or 2.0 the
+            // clamp gives the width back unchanged, so the store below would write the value the
+            // parameter already holds -- no edit. The two lines after this one are not free,
+            // though: `widthHoldActive` ENGAGES the drag that the 3 px threshold has not engaged
+            // yet, so every later sub-threshold mouse move would start writing widths, and
+            // `dragGrabDY` re-anchors the drag around a value that never moved. Same shape as the
+            // solo branch above, one rail further along.
+            if (juce::exactlyEqual (want, base)) return;
             // The width drag computes `yToWidth (cursorY - dragGrabDY)`, so anchoring from the
             // notch's own target is what makes the drag continue from it -- and this is the exact
             // form the 3 px engage itself uses. It also ENGAGES the drag: a press that has not
@@ -3329,6 +3397,30 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     }
     if (scrollHandle >= 0 && scrollHandle < N - 1)
     {
+        // WOULD THIS NOTCH WRITE A SPLIT AT ALL? (ADR-0052, round 11.) Asked HERE, before the
+        // record is stamped and before the gesture opens, because both are side effects of an
+        // edit and this branch reaches a rail like any other: at the frame edge, or with the
+        // neighbours already packed at `kMinGapPx`, the projection gives every split back
+        // unchanged and `writeCrossovers` skips every store under half a pixel. What went out
+        // anyway was a `beginChangeGesture`/`endChangeGesture` pair on a split the burst never
+        // moved -- a host recording touch or latch automation punches in and writes a point for
+        // an edit that never happened -- plus a commit request to the undo poll and a repaint.
+        //
+        // FROM THE TICK'S OWN READING, not a second one (ADR-0047): `fx` is the split row this
+        // handler read once at the top and has already proved, and `freqToX` is pure arithmetic
+        // on it, so these are the origins `seedDragOrigins` is about to derive below. The
+        // threshold is `writeCrossovers`' own, so the question is answered by the write path's
+        // rule rather than by a second rule beside it.
+        {
+            float orig[3], out[3];
+            for (int k = 0; k < 3; ++k) orig[k] = freqToX (fx[k]);
+            projectFromOrig (out, orig, N - 1, scrollHandle,
+                             orig[scrollHandle] + dy * kWheelSplitPx, -1, 0.0f);
+            bool moves = false;
+            for (int k = 0; ! moves && k < N - 1; ++k)
+                moves = std::abs (out[k] - orig[k]) > kSplitMovedPx;
+            if (! moves) return;
+        }
         // ADR-0047/0051, THE WITHIN-TICK HALF. This was `captureDragOrigins()`, which is
         // `captureGestureSound(); seedDragOrigins();` -- and the stamping half took a SECOND reading
         // of the row this tick had already read and already proved. `scrollFx` closes the window
@@ -3454,18 +3546,26 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
         // reading of the width, taken BEFORE anything dispatches, stamped into the record, and a
         // store that proves the record after the dispatch and refuses if it has moved (ADR-0047).
         // `setParam`'s count check survives inside `bandCount() == N`, adjacent to the store exactly
-        // as it was. `storeOwned` returns whether it committed; nothing follows this store that
-        // could act on a refusal, so the result is discarded deliberately rather than dropped.
+        // as it was. `storeOwned` returns whether it committed, and ADR-0053 CONSUMES that result a
+        // few lines down -- the step is named only if the store stood. (This sentence used to say
+        // the result was "discarded deliberately rather than dropped", which round 10 made false in
+        // the same commit that started consuming it and did not come back to correct here.)
         const float wNorm = (widthP[scrollBand] != nullptr) ? widthP[scrollBand]->getValue() : 0.0f;
         const float base  = (widthP[scrollBand] != nullptr)
                           ? widthP[scrollBand]->convertFrom0to1 (wNorm) : 1.0f;
+        // The same question the split branch asks one line into its own bracket, and the same
+        // answer (ADR-0052, round 11): at 0.0 or 2.0 the clamp hands `base` straight back, the
+        // store would write the value the parameter already holds, and the gesture below would be
+        // an automation touch for an edit that never happened. Computed from the reading this
+        // branch has ALREADY taken -- `base` -- so the test costs nothing and reads nothing twice.
+        const float want = juce::jlimit (0.0f, 2.0f, base + step);
+        if (juce::exactlyEqual (want, base)) return;
         gestureW[scrollBand] = wNorm;
         gestureBands = N;
         {
             beginGesture (widthP[scrollBand]);
             const bool stored = ownsWidth (scrollBand) && bandCount() == N
-                             && storeOwned (widthP[scrollBand], juce::jlimit (0.0f, 2.0f, base + step),
-                                            gestureW[scrollBand]);
+                             && storeOwned (widthP[scrollBand], want, gestureW[scrollBand]);
             // Named only if the store stood -- see the split branch above for why. `storeOwned`'s
             // result is no longer discarded: this is what acts on the refusal.
             const ScopedWheelName wheelName (onWheelStep, stored ? widthP[scrollBand] : nullptr);

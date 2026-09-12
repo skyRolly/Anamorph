@@ -210,6 +210,116 @@ proves EVERY split in the row and not only the ones it moves. State test 86 leg 
 and kills the split half of the rule; the width half has one store and no dispatch of its own before
 it, so no single-threaded harness can enter its window (mutation M18, recorded as surviving).
 
+### What a third review round changed, and what it measured
+
+Five corrections and one refusal. Each defect was reproduced as a failing check against the
+implementation before anything was touched, and each fix is killed by a mutation.
+
+**1. A notch was worth less travel with a button held than without one — the exact asymmetry this
+ADR exists to remove, still standing in the smallest notch.** JUCE floors a notch to at least one
+`normRange.interval` of VALUE movement (`jmax (normRange.interval, std::abs (delta))`,
+`juce_Slider.cpp`), and `SliderParameterAttachment` copies the parameter's interval onto the slider
+(`newRange.interval = range.interval`, `juce_ParameterAttachments.cpp`) — so the grid is real: 0.001
+for Amount, Width and the percentages, 0.01 for Drive and the gains, and 0.001 on the Settings
+Persistence bar, which sets its own range. The in-drag paths restated JUCE's direction, scale and
+rails but not its floor, so a macOS trackpad's smallest precise notch (`deltaY = 0.5/256`) asked for
+0.0003 of Amount, `Slider::setValue` snapped it straight back, and the press ate it — however many
+arrived. Measured: *20 sub-interval notches inside the press moved Amount by nothing at all, while
+the same 20 with no button held moved it 0.0200.* The floor is now applied on the in-drag path too,
+from ONE source (`anamorph::gui::wheelTargetValue`), and the accumulator banks what the control
+ACTUALLY moved rather than what the notch requested — a request banked past a rail is dead travel
+the next mouse move applies as a jump. State test 88 leg J; mutation M30.
+
+**1b. ...and the floor brought JUCE's duplicate-event filter with it, which is the hazard this
+round's own first fix created.** JUCE dedupes wheel events on `e.eventTime` for a reason it states
+in the same breath as the floor -- *"since we're going to bump the value by a minimum of the
+interval, avoid doing this twice"* -- so the two are one mechanism, and it is about two DISTINCT
+events bearing one timestamp rather than one event delivered twice. The first version of the fix
+argued the filter away on the second reading (single delivery, which the routing does guarantee)
+and would have left a held control moving TWICE as far as an unheld one wherever a platform sends a
+notch twice: the same contract broken from the other side. Both in-drag callers now keep their own
+last-notch stamp. State test 88 leg L, which needs no platform -- it sends two events bearing one
+timestamp, which is exactly the input JUCE's filter is written against; mutations M37 and M38.
+
+**2. A drag that returned to where it started left the scroll chain standing.** The poll records the
+chain's name only where it records a step, which is right for a gesture that changed nothing and
+wrong for one that changed something and put it back: scroll, drag away and back, scroll again gave
+ONE undo step and one Undo walked past the drag entirely — measured as *"the round-trip drag left
+the chain standing: one Undo jumped past it to 0.0000"*. A batch that moved a sound parameter
+(`pendingStepNamed`, the generation test rule 2 above already maintains) now ends the chain even
+when the signature did not move — unless the name is the chain's own, because two notches of ONE
+scroll can land in a single poll period and net zero, and ending the chain there would split a
+continuous scroll into two undo steps. State test 86 legs N and P; mutations M27 and M28.
+
+**3. Host automation in the commit window was attributed to the scroll.** A finished notch leaves
+its commit request pending for up to a poll period, and a gesture-less write landing in that window
+is folded into the step the poll is about to record. Named, it EXTENDED the step the user had
+already finished: measured as *"the batch carrying the host write EXTENDED the first scroll: one
+Undo jumped straight back to 0.0000"*. The window has two sides and both are real — the poll runs
+after the close, and a whole new batch can open before the poll runs — so the generation is latched
+at every gesture EDGE (open, close, poll) and a batch that finds the counter moved between two edges
+is carrying somebody else's write. Such a batch extends nothing and is named by nobody, so the next
+notch starts its own step rather than merging across the automation. State test 86 legs O and S;
+mutations M26 and M29.
+
+**What this does NOT do, stated plainly because the review asked for it.** The automation's VALUE is
+still inside the step the poll records, so one Undo takes it back along with the scroll. Separating
+it needs the state as it stood when the gesture closed, and the only place to take that snapshot is
+inside `parameterGestureChanged` — where D-2/ADR-0036 forbids the APVTS lock, a lock-order inversion
+against a host-thread `replaceState` that `--d2-stress-probe` has already reported. The alternative,
+patching the pushed baseline per parameter from a foreign-write set, is a change to what an undo
+entry MEANS for every gesture in the plug-in, not a wheel fix; it is recorded here as the open
+question it is rather than taken on the way past. What is fixed is the attribution: no step of the
+user's is retroactively edited, and no chain merges across automation. Leg O prints the measurement
+each run (`after one Undo the host's Width reads 1.0000 (it wrote 1.4000...)`) so the residual is
+visible rather than asserted away.
+
+**3b. ...and the first version of THAT fix broke the guarantee it serves, which is the round's own
+best evidence for verifying a fix as adversarially as a finding.** Every program state jump -- Undo,
+Redo, a preset load, an A/B switch -- polls FIRST and applies its parameters AFTER, and applying
+them notifies the host, so the sound generation advances once per parameter with no poll behind it.
+The edge generation was re-synced only at the poll tail, so the first notch after an Undo compared
+against a generation stale by N, was read as carrying a foreign write, and went unnamed -- and the
+notch after it started a second undo step. A two-notch scroll immediately after an Undo became TWO
+steps: ADR-0053's primary guarantee, broken by ADR-0053's own fix. Every jump now re-syncs the edge
+after its own writes. Measured as *"the scroll after the Undo was split in two: one Undo stopped at
+1.8000"*; State test 86 leg T; mutation M39.
+
+**One window stays open and is now said so in the source rather than implied:** a host write landing
+between a gesture's own open and its own close is attributed to that batch by both edges. Closing it
+needs a generation latched at the innermost open -- a per-gesture field for a window one gesture wide
+-- and rule 3 above (name only if this burst's own store stood) already declines the reachable half.
+
+**4. A notch that could not move a band still swallowed the solo click.** `beginBandMove` learned the
+travel limits by SETTING them, so the only way to ask "can this band move?" was to convert the press
+into a move first — and at the end of the travel the clamp returns the translation the band already
+has, `moveBand` writes nothing, and the release then takes the move branch instead of the toggle's.
+Measured: *"it swallowed the click: mask 0x0 where the uninterrupted press gives 0x2"*, with two
+host change gestures opened on the band's edges for a band that did not move. The geometry half of
+`beginBandMove` is now a pure `bandMovePlan`, which both the measurement and the move derive from,
+so they cannot drift; the notch projects the move it would make and returns, untouched, when
+`writeCrossovers`' own half-pixel threshold says nothing would be written. State test 87 leg F;
+mutation M31.
+
+**5. A standalone notch at a rail opened a host gesture for an edit that never happened.** Both
+multiband branches opened the gesture before discovering that the clamped target was the value
+already there — a touch/latch punch-in a DAW writes an automation point for. Both now ask first,
+from the reading the tick has already taken and proved (ADR-0047), using the write path's own
+threshold; the split branch also skips the record stamp, and the in-press width branch no longer
+ENGAGES the width drag for a notch at 0.0 or 2.0, which would have left every later one-pixel tremor
+writing widths. State test 86 legs Q and R; mutations M32, M33 and M34.
+
+**The refusal: `ScopedWheelStep`'s destructor still writes 0 rather than restoring what it found,
+and that is the right answer.** 0 is what it found. There are three construction sites and no call
+chain joins any two: the imager's two are mutually exclusive branches of one handler, and
+`juce::Component::mouseWheelMove` forwards UP only, with no `Knob` a descendant of another. The one
+non-structural interleaving — a host pumping the message loop from inside `beginChangeGesture` and
+delivering a queued notch over a different control — leaves the outer step unnamed either way,
+because the disagreement rule already unnames a batch holding two differently-named gestures; it
+would take the host running the 24 Hz poll inside that same pumped loop for the restored key to name
+anything, at a cost of one extra undo step. Recorded in the source at the destructor rather than
+hardened: three lines no reachable path exercises and no test can fail.
+
 ## Consequences
 
 - **A notch during any drag now adds to it**, and the drag continues from the combined value. What a
@@ -297,7 +407,7 @@ it, so no single-threaded harness can enter its window (mutation M18, recorded a
 ## Evidence + confidence
 
 **Verified.** State test 80 (inverted, and its header says so), State tests 86, 87 and 88;
-3 057 checks / 0 failures, DSP 396 / 0; twenty-five mutations applied one at a time across the two
+3 110 checks / 0 failures, DSP 396 / 0; twenty-five mutations applied one at a time across the two
 rounds, twenty-three killed, with M15 and M18 recorded as surviving — each behind a proof no
 single-threaded harness can enter, and each stated as unmeasured rather than as covered. The three
 corrections in the second round were each reproduced as failing checks before the code was touched.

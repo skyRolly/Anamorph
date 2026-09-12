@@ -225,6 +225,68 @@ public:
 //  descendants, so the call needs no lifetime contract beyond ordinary
 //  parent-child ownership.
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+//  ONE SOURCE FOR A NOTCH'S ARITHMETIC (ADR-0053, round 11)
+//
+//  JUCE's own handler IS the definition of what one wheel notch does to a
+//  slider -- `Slider::Pimpl::getMouseWheelDelta` and `Slider::Pimpl::
+//  mouseWheelMove` -- and a scroll with no button held reaches it directly. A
+//  notch delivered DURING a drag cannot: JUCE's whole wheel body sits behind
+//  `! e.mods.isAnyMouseButtonDown()`, so the two in-drag paths (the knob's own,
+//  and the value box taking a notch for the drag it holds) have to restate it.
+//  Restated ONCE, here, rather than once per file:
+//
+//   * direction -- the larger axis wins, X inverted, `isReversed` applied;
+//   * scale     -- 0.15 of the slider's PROPORTION per wheel unit;
+//   * the rails -- clamped to [0, 1]. JUCE's other arm wraps a rotary slider
+//     around instead, but only when `rotaryParams.stopAtEnd` is false, and
+//     nothing in this plug-in ever calls `setRotaryParameters` (JUCE's own
+//     default is true), so that arm is unreachable here;
+//   * THE FLOOR -- at least one `getInterval()` of VALUE movement. This is the
+//     half the in-drag paths did not have, and the whole of round 11's first
+//     finding: `SliderParameterAttachment` copies the parameter's interval onto
+//     the slider (`newRange.interval = range.interval`, juce_ParameterAttachments
+//     .cpp), and almost every parameter here declares one -- 0.001 for Amount,
+//     Width and the rest, 0.01 for Drive and the gains -- so a macOS trackpad's
+//     smallest precise notch (deltaY = 0.5/256) asked for 0.0003 of travel,
+//     `Slider::setValue` snapped it straight back to the value it already held,
+//     and the notch did nothing at all. With no button held the same notch moves
+//     one interval, because JUCE floors it. Same physical input, two answers.
+//
+//  `Slider::snapValue` is NOT restated: JUCE calls it on this path, its base
+//  implementation returns the value unchanged, and nothing in this plug-in
+//  overrides it. The duplicate-event filter (`e.eventTime != lastMouseWheelTime`)
+//  IS restated, but in the two callers rather than here, because it is state and
+//  this is a pure question. It is restated at all because the floor makes it
+//  load-bearing: JUCE's own reason for having it is "since we're going to bump
+//  the value by a minimum of the interval, avoid doing this twice", and it is
+//  about two DISTINCT events sharing a timestamp rather than one event delivered
+//  twice -- so the single delivery this plug-in's routing does guarantee is not
+//  an answer to it. Round 11's first version of this comment said it was.
+//
+//  Returns the slider's CURRENT value when the notch would move nothing, so a
+//  caller has one thing to test before it does anything with side effects
+//  (ADR-0052).
+// ----------------------------------------------------------------------------
+// (`valueToProportionOfLength` and its inverse are non-const in JUCE -- both are virtual hooks a
+// subclass may implement against its own state -- so the slider is taken by mutable reference even
+// though nothing here writes it.)
+// ADR-0047, in the small: the caller has already READ the slider to have something to compare the
+// answer with, so the reading is passed IN rather than taken again here. Message-thread-confined
+// state and nothing dispatching between the two, so a second read could not misbehave today -- but
+// "the reading that plans is the reading that proves" is the rule this repository applies to every
+// other pass, and an idiom that merely cannot misbehave yet is one refactor from being one that can.
+inline double wheelTargetValue (juce::Slider& s, const juce::MouseWheelDetails& w, double v0)
+{
+    const double amount = (std::abs (w.deltaX) > std::abs (w.deltaY) ? -w.deltaX : w.deltaY)
+                        * (w.isReversed ? -1.0 : 1.0);
+    const double base  = s.valueToProportionOfLength (v0);
+    const double want  = juce::jlimit (0.0, 1.0, base + amount * 0.15);
+    const double delta = s.proportionOfLengthToValue (want) - v0;
+    if (juce::approximatelyEqual (delta, 0.0)) return v0;
+    return v0 + juce::jmax (s.getInterval(), std::abs (delta)) * (delta < 0.0 ? -1.0 : 1.0);
+}
+
 struct DragGestureOwner
 {
     virtual ~DragGestureOwner() = default;
