@@ -265,6 +265,16 @@ it, so no single-threaded harness can enter its window (mutation M18, recorded a
   is the generic property of gesture coalescing (any host write bracketed by any gesture joins that
   gesture's step), not something this decision introduces, and closing it would mean a gesture able to
   withdraw its own commit request. Recorded rather than claimed fixed.
+- **A velocity drag of a ROTARY knob divides by zero inside JUCE, and this decision's coverage
+  works around it rather than silencing it.** `Slider::Pimpl` assigns `sliderRegionSize` only for
+  horizontal and vertical styles and the constructor takes that branch once under JUCE's default
+  style against empty bounds, so every rotary slider keeps `sliderRegionSize == 0` -- measured from
+  outside as `getPositionOfValue(max) - getPositionOfValue(min)`: 0.000 for Drive, 246.000 for the
+  mono-maker slider. The selection test `(range) / sliderRegionSize < interval` therefore divides by
+  zero on a knob; `+inf` is not less than the interval, so the velocity branch is taken as intended
+  and nothing behaves wrongly, but UBSan reports it. State test 88 leg H drives the same JUCE branch
+  through a linear slider instead. Nothing is added to `scripts/ubsan-ignorelist.txt`, which states
+  that `float-divide-by-zero` still instruments the vendored tree in full.
 - **Two lines of extra work per drag event, and only after a notch.** `applyWheelDragOffset` returns
   on a zero offset, so a press with no notch in it makes exactly the parameter writes it always did.
 
@@ -287,7 +297,7 @@ it, so no single-threaded harness can enter its window (mutation M18, recorded a
 ## Evidence + confidence
 
 **Verified.** State test 80 (inverted, and its header says so), State tests 86, 87 and 88;
-3 056 checks / 0 failures, DSP 396 / 0; twenty-five mutations applied one at a time across the two
+3 057 checks / 0 failures, DSP 396 / 0; twenty-five mutations applied one at a time across the two
 rounds, twenty-three killed, with M15 and M18 recorded as surviving — each behind a proof no
 single-threaded harness can enter, and each stated as unmeasured rather than as covered. The three
 corrections in the second round were each reproduced as failing checks before the code was touched.

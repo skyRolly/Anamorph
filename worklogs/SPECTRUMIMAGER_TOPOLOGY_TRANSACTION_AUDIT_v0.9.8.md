@@ -3070,9 +3070,34 @@ control — the same 20 px with no modifier moves the knob by a different amount
 quietly degrade into a second copy of leg A if the modifier ever stopped selecting the branch.
 Mutation M23 (`applyWheelDragOffset` returns unconditionally) kills legs A and H together.
 
+**And writing it found something in JUCE, which is why the leg does not use a knob.** The first
+version held Ctrl over Drive and turned the `sanitizers` job red:
+`juce_Slider.cpp:929:86: runtime error: division by zero`. `Slider::Pimpl::resized` assigns
+`sliderRegionSize` only for horizontal and vertical styles, and the slider's own constructor takes
+that branch once with JUCE's DEFAULT `LinearHorizontal` style against empty bounds -- so every
+rotary slider carries `sliderRegionSize == 0` for life. Measured from outside rather than inferred:
+`getPositionOfValue(max) - getPositionOfValue(min)` is `pos * sliderRegionSize`, and it reads
+**0.000 for Drive against 246.000 for the mono-maker slider**. Velocity mode is chosen by
+`(normRange.end - normRange.start) / sliderRegionSize < normRange.interval`, so a velocity drag of a
+knob divides by zero there; `+inf` is not less than the interval, the velocity branch is taken
+exactly as intended, and no behaviour is wrong -- but the division is real and the gate is right to
+report it.
+
+Three ways out were available and two were refused. Adding `float-divide-by-zero: src:*juce-src/*`
+to `scripts/ubsan-ignorelist.txt` is refused by that file's own text, which says the scope is the
+point and that `float-divide-by-zero` still instruments the vendored tree in full -- silencing a
+whole sub-check across all of JUCE to admit one test is precisely the trade it exists to refuse.
+Guarding the leg out under sanitizers is a test that cannot fail where it matters. What shipped
+drives the same JUCE branch through a slider whose region size is real, and records the knob
+finding here and in `TESTING.md` so the next person to try it does not rediscover it as a red CI
+run. **Verified in both directions** on a local clang-18 `-fsanitize=undefined,float-divide-by-zero`
+build with the CI ignorelist: the rotary drag reproduces the report at the same line, and the leg as
+it stands runs the whole suite clean.
+
 ### 67e. Validation
 
-State 3 056 / 0, DSP 396 / 0. Nine new mutations: M17, M19-M25 killed, M18 surviving as above.
+State 3 057 / 0, DSP 396 / 0. Nine new mutations: M17, M19-M25 killed, M18 surviving as above.
+UBSan (local clang-18, `undefined,float-divide-by-zero`, the CI ignorelist): the state suite clean.
 TSan over the whole suite: 0 warnings, one matched suppression
 (`deadlock:WriteFromInsideAGestureOpen`). valgrind memcheck: 0 errors from 0 contexts on both suites
 under `ANAMORPH_TESTS_NO_FTZ=1`. Docs 141 clean, citations 450 anchors clean against `origin/main`,

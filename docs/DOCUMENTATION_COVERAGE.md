@@ -11597,18 +11597,28 @@ step for what the host wrote inside its gesture. Unnaming it stops the misattrib
 itself is the generic property of gesture coalescing, and removing it would need a gesture able to
 withdraw its own commit request.
 
-**The investigate item.** The velocity-drag branch (Ctrl/Alt/Cmd), listed by the twenty-seventh pass
-as composing by construction and untested, is now State test 88 leg H — with a positive control that
-the modifier really does select the other branch, so the leg cannot degrade into a copy of leg A.
+**The investigate item, and what writing it found.** The velocity-drag branch (Ctrl/Alt/Cmd),
+listed by the twenty-seventh pass as composing by construction and untested, is now State test 88
+leg H — with a positive control that the modifier really does select the other branch, so the leg
+cannot degrade into a copy of leg A. Its first version held Ctrl over a rotary knob and turned the
+`sanitizers` job red: every rotary `juce::Slider` carries `sliderRegionSize == 0` (only the
+horizontal and vertical branches of `Pimpl::resized` assign it, and the constructor takes one of
+them under JUCE's default style against empty bounds), so JUCE's velocity-mode selection test
+divides by zero — `+inf`, compared as intended, no wrong behaviour, but a real division reported by
+a gate that is right to report it. The leg drives the same JUCE branch through a linear slider
+instead; nothing was added to `scripts/ubsan-ignorelist.txt`, whose own text says
+`float-divide-by-zero` still instruments the vendored tree in full.
 
 **No gate item is touched.** No parameter ID, range, default or serialization field; no DSP node,
 order or latency; no thread, cross-thread path or atomic ordering. ADR-0053 is extended by its own
 author rather than conflicted with, so the review gate is not re-triggered.
 
 **Evidence.** State tests 86 (legs L and M, and the attribution halves added to I and J), 88 (legs
-F, G, H and I). 3 056 checks / 0 failures, DSP 396 / 0. Nine further mutations, eight killed and M18
-recorded as surviving with the measurement behind it. TSan 0 warnings with its one known
-suppression; valgrind memcheck 0 errors from 0 contexts on both suites.
+F, G, H and I). 3 057 checks / 0 failures, DSP 396 / 0. Nine further mutations, eight killed and
+M18 recorded as surviving with the measurement behind it. TSan 0 warnings with its one known
+suppression; valgrind memcheck 0 errors from 0 contexts on both suites; a local clang-18
+`undefined,float-divide-by-zero` build clean over the whole state suite, and reproducing the rotary
+report in the other direction.
 
 **Documentation.** `ADR-0053` (decision, a new subsection on what the review round changed,
 consequences, related code and evidence); `CHANGELOG.md` `[0.9.8]` — the wheel entries amended for

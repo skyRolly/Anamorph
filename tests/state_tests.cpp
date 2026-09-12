@@ -7913,7 +7913,6 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
     auto* driveP = apvts.getParameter (pid::drive);
     auto* driveK = findSliderFor (driveP);
     check (driveP != nullptr && driveK != nullptr, "the Drive knob is findable from its parameter");
-
     // ---- LEG A: the rotary knob ------------------------------------------------------
     if (driveP != nullptr && driveK != nullptr)
     {
@@ -8207,72 +8206,94 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
 
     // ---- LEG H: the VELOCITY drag branch, which no leg above exercises -----------------
     //      An unmodified drag runs JUCE's `handleAbsoluteDrag`; Ctrl/Alt/Cmd switches it to
-    //      `handleVelocityDrag`, which accumulates INCREMENTALLY from its own `valueWhenLastDragged`
-    //      instead of recomputing from a press-time anchor. `applyWheelDragOffset` runs after
-    //      `Slider::mouseDrag` whichever branch it took, so it composes with both by construction --
-    //      but by construction is not by measurement, which is what this leg is.
-    if (driveP != nullptr && driveK != nullptr)
+    //      `handleVelocityDrag`, which accumulates INCREMENTALLY from its own
+    //      `valueWhenLastDragged` instead of recomputing from a press-time anchor.
+    //      `applyWheelDragOffset` runs after `Slider::mouseDrag` whichever branch it took, so it
+    //      composes with both by construction -- but by construction is not by measurement.
+    //
+    //      IT IS THE MONO-MAKER SLIDER AND NOT A ROTARY KNOB, and that is not a convenience.
+    //      `Slider::Pimpl` only assigns `sliderRegionSize` for horizontal and vertical styles
+    //      (`juce_Slider.cpp` `Pimpl::resized`), and the slider's own constructor takes that
+    //      branch once with the DEFAULT `LinearHorizontal` style against empty bounds -- so every
+    //      rotary slider carries `sliderRegionSize == 0` for life. Measured here rather than
+    //      assumed: `getPositionOfValue(max) - getPositionOfValue(min)` is `pos * sliderRegionSize`,
+    //      and it is 0.000 for Drive against 246.000 for this one. Velocity mode is selected by
+    //      `(normRange.end - normRange.start) / sliderRegionSize < normRange.interval`, so a
+    //      velocity drag of a KNOB divides by zero there. The IEEE result is +inf, the comparison
+    //      is false, and the velocity branch is taken exactly as intended -- but it is still a
+    //      division by zero inside JUCE, and the `sanitizers` job is right to say so. This leg
+    //      therefore drives the same JUCE branch through a slider whose region size is real.
     {
-        while (proc.canUndo()) proc.undo();
-        proc.pollUndoCoalesce();
-        const float start = plainOf (driveP);
-        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
-        const auto t = juce::Time::getCurrentTime();
-        // Ctrl is `Slider`'s default modifierToSwapModes, and the knobs leave
-        // `userKeyOverridesVelocity` at its default true, so holding it makes this a velocity drag.
-        const juce::ModifierKeys held (juce::ModifierKeys::leftButtonModifier | juce::ModifierKeys::ctrlModifier);
-        float driveHeldDelta = 0.0f;
-        auto ev = [&] (float y, bool dragged)
+        auto* monoP = apvts.getParameter (pid::monoMakerFreq);
+        auto* monoK = findSliderFor (monoP);
+        check (monoP != nullptr && monoK != nullptr && monoK->getWidth() > 40,
+               "leg H: the mono-maker frequency slider is findable and laid out");
+        if (monoP != nullptr && monoK != nullptr && monoK->getWidth() > 40)
         {
-            return juce::MouseEvent (src, { cx, y }, held, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                     driveK, driveK, t, { cx, cy }, t, 1, dragged);
-        };
-        // A POSITIVE CONTROL THAT THIS IS THE OTHER BRANCH. The same 20 px with no modifier is an
-        // absolute drag -- 20/250 of the range from the press-time anchor -- while the velocity
-        // branch accumulates a speed-scaled increment, so the two move the knob by different
-        // amounts. If the modifier ever stopped selecting the branch, this leg would be a second
-        // copy of leg A and say nothing; here it says so instead.
-        {
-            auto plain = [&] (float y, bool dragged)
-            {
-                return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
-                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
-                                         t, { cx, cy }, t, 1, dragged);
-            };
-            driveK->mouseDown (plain (cy, false));
-            driveK->mouseDrag (plain (cy - 20.0f, true));
-            driveK->mouseUp   (plain (cy - 20.0f, true));
-            const float absolute = plainOf (driveP);
+            while (proc.canUndo()) proc.undo();
             proc.pollUndoCoalesce();
-            proc.undo();                                   // back to `start` for the real body
-            check (juce::exactlyEqual (plainOf (driveP), start), "leg H: the control drag is undone");
-            check (! juce::exactlyEqual (absolute, start), "leg H: ...having moved the knob at all");
-            driveHeldDelta = absolute - start;
-        }
-        driveK->mouseDown (ev (cy, false));
-        driveK->mouseDrag (ev (cy - 20.0f, true));
-        const float atY1 = plainOf (driveP);
-        check (! juce::exactlyEqual (atY1 - start, driveHeldDelta),
-               "leg H: ...and the modified drag is a DIFFERENT branch, not the same one again");
-        driveK->mouseWheelMove (ev (cy - 20.0f, false), wheel);
-        const float afterNotch = plainOf (driveP);
-        driveK->mouseDrag (ev (cy, true));          // the cursor goes back where it started
-        const float backAtPress = plainOf (driveP);
-        driveK->mouseUp (ev (cy, true));
-        proc.pollUndoCoalesce();
+            const float start = plainOf (monoP);
+            const float cy = (float) monoK->getHeight() * 0.5f;
+            const float x0 = 0.45f * (float) monoK->getWidth();
+            const auto t = juce::Time::getCurrentTime();
+            // Ctrl is `Slider`'s default modifierToSwapModes and the knobs leave
+            // `userKeyOverridesVelocity` at its default true, so holding it makes this a velocity
+            // drag. Alt would have meant something else here -- `Knob::mouseDown` treats it as the
+            // reset gesture -- which is why the leg holds Ctrl specifically.
+            const juce::ModifierKeys held (juce::ModifierKeys::leftButtonModifier
+                                           | juce::ModifierKeys::ctrlModifier);
+            auto ev = [&] (float x, bool dragged)
+            {
+                return juce::MouseEvent (src, { x, cy }, held, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                         monoK, monoK, t, { x0, cy }, t, 1, dragged);
+            };
+            // A POSITIVE CONTROL THAT THIS IS THE OTHER BRANCH: the same 20 px with no modifier is
+            // an absolute drag, which on this style also snaps to the cursor, while the velocity
+            // branch accumulates a speed-scaled increment. If the modifier ever stopped selecting
+            // the branch this leg would be a second copy of leg A and say nothing; here it says so.
+            float absoluteDelta = 0.0f;
+            {
+                auto plain = [&] (float x, bool dragged)
+                {
+                    return juce::MouseEvent (src, { x, cy }, juce::ModifierKeys::leftButtonModifier,
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, monoK, monoK,
+                                             t, { x0, cy }, t, 1, dragged);
+                };
+                monoK->mouseDown (plain (x0, false));
+                monoK->mouseDrag (plain (x0 + 20.0f, true));
+                monoK->mouseUp   (plain (x0 + 20.0f, true));
+                const float absolute = plainOf (monoP);
+                proc.pollUndoCoalesce();
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (monoP), start), "leg H: the control drag is undone");
+                check (! juce::exactlyEqual (absolute, start), "leg H: ...having moved the slider at all");
+                absoluteDelta = absolute - start;
+            }
+            monoK->mouseDown (ev (x0, false));
+            monoK->mouseDrag (ev (x0 + 20.0f, true));
+            const float atX1 = plainOf (monoP);
+            check (! juce::exactlyEqual (atX1 - start, absoluteDelta),
+                   "leg H: ...and the modified drag is a DIFFERENT branch, not the same one again");
+            monoK->mouseWheelMove (ev (x0 + 20.0f, false), wheel);
+            const float afterNotch = plainOf (monoP);
+            monoK->mouseDrag (ev (x0, true));          // the cursor goes back where it started
+            const float backAtPress = plainOf (monoP);
+            monoK->mouseUp (ev (x0, true));
+            proc.pollUndoCoalesce();
 
-        check (! juce::exactlyEqual (atY1, start), "leg H: the velocity drag moves the knob");
-        check (! juce::exactlyEqual (afterNotch, atY1),
-               "leg H: a notch inside a velocity drag adds to what the drag has produced");
-        if (juce::exactlyEqual (backAtPress, start))
-            std::printf ("  [leg H] the notch was erased by the next velocity drag event: the value"
-                         " returned to %.4f\n", (double) start);
-        check (! juce::exactlyEqual (backAtPress, start),
-               "leg H: ...and survives the drag events after it, exactly as in the absolute branch");
-        check (proc.canUndo(), "leg H: the whole interaction is undoable");
-        proc.undo();
-        check (juce::exactlyEqual (plainOf (driveP), start),
-               "leg H: one Undo returns to where the press started -- ONE step");
+            check (! juce::exactlyEqual (atX1, start), "leg H: the velocity drag moves the slider");
+            check (! juce::exactlyEqual (afterNotch, atX1),
+                   "leg H: a notch inside a velocity drag adds to what the drag has produced");
+            if (juce::exactlyEqual (backAtPress, start))
+                std::printf ("  [leg H] the notch was erased by the next velocity drag event: the"
+                             " value returned to %.4f\n", (double) start);
+            check (! juce::exactlyEqual (backAtPress, start),
+                   "leg H: ...and survives the drag events after it, exactly as in the absolute branch");
+            check (proc.canUndo(), "leg H: the whole interaction is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (monoP), start),
+                   "leg H: one Undo returns to where the press started -- ONE step");
+        }
     }
 
     // ---- LEG I: a value-box drag's notch, delivered to the KNOB -----------------------

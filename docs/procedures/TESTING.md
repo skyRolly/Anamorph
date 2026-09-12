@@ -1343,9 +1343,27 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   `Slider` from `handleAbsoluteDrag` to `handleVelocityDrag`, which accumulates incrementally from
   its own `valueWhenLastDragged` rather than recomputing from a press-time anchor.
   `applyWheelDragOffset` composes with both by construction, and this leg is the measurement of it.
-  It opens with a POSITIVE CONTROL -- the same 20 px with no modifier moves the knob by a different
-  amount -- so that it cannot quietly degrade into a second copy of leg A if the modifier ever
-  stopped selecting the branch.
+  It opens with a POSITIVE CONTROL -- the same 20 px with no modifier moves the control by a
+  different amount -- so that it cannot quietly degrade into a second copy of leg A if the modifier
+  ever stopped selecting the branch. Ctrl specifically, because Alt is `Knob::mouseDown`'s reset.
+
+  **It drives the mono-maker slider and not a rotary knob, and that is a measurement rather than a
+  convenience.** `Slider::Pimpl::resized` assigns `sliderRegionSize` only for horizontal and
+  vertical styles, and the slider's own constructor takes that branch once with JUCE's DEFAULT
+  `LinearHorizontal` style against empty bounds -- so **every rotary slider carries
+  `sliderRegionSize == 0` for its whole life**. `getPositionOfValue(max) - getPositionOfValue(min)`
+  is `pos * sliderRegionSize` and measures it from outside: **0.000 for Drive, 246.000 for the
+  mono-maker slider**. Velocity mode is selected by
+  `(normRange.end - normRange.start) / sliderRegionSize < normRange.interval`, so a velocity drag of
+  a KNOB divides by zero there. The IEEE result is `+inf`, the comparison is false, and the velocity
+  branch is taken exactly as intended -- the behaviour is correct -- but it is still a division by
+  zero inside JUCE, it is what the `sanitizers` job reported when the first version of this leg
+  used Drive, and the gate is right to report it. Verified in both directions on a local
+  clang-18 `-fsanitize=undefined,float-divide-by-zero` build: the rotary drag reproduces
+  `juce_Slider.cpp:929:86: runtime error: division by zero`, the leg as it stands runs clean. No
+  ignorelist entry was added: `scripts/ubsan-ignorelist.txt` says in as many words that
+  `float-divide-by-zero` still instruments the vendored tree in full, and silencing it to admit one
+  test would be exactly the trade that file exists to refuse.
 
   **Mutation record for ADR-0053 — twenty-five mutations across two rounds, twenty-three killed.**
   Each was applied alone, built, and the whole suite run; every entry below names the checks that
