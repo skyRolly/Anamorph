@@ -3259,3 +3259,42 @@ under `ANAMORPH_TESTS_NO_FTZ=1`. UBSan (clang-18, `undefined,float-divide-by-zer
 ignorelist): clean. Docs 141 clean, citations clean against all three bases, realtime 47 / 0,
 portability 57 / 0, preflight exit 0.
 
+### 68g. One more defect, found by CI, and it was in the leg rather than in the plug-in
+
+The first push carrying leg L failed the `macos` self-test -- on the **arm64** host only, while the
+same binary under Rosetta reported `3079 checks, 0 failure(s)`. The failing check was
+`leg L: the box takes the first notch`, which is the leg's own premise rather than its assertion.
+
+The cause is the leg's input. Leg L measures what a pair of events **sharing one timestamp** does,
+so it cannot stamp its events with the `++seq * 7 ms` step every other leg uses -- but `juce::Time`
+is millisecond-resolution, and on the faster host the leg's `getCurrentTime()` landed in the same
+millisecond as leg I's. Leg I delivers its notch to the KNOB, which forwards it to whichever child
+holds the drag; that child is the very value box leg L then scrolls, and the forward stamps the
+box's `lastNotchTime`. So the duplicate filter this round added did exactly what it is written to
+do and discarded leg L's FIRST notch, and the leg failed against working code.
+
+The fix is in the fixture, and it closes the class rather than the instance. Every leg of test 88
+now stamps its events from ITS OWN instant, five seconds past the leg before (`legStamp`, declared
+once above leg A), so a stamp that must be shared inside a leg is still unique to that leg. The
+pair within each of leg L's stanzas still shares one instant, which is the whole input the leg
+exists to send.
+
+**The hazard was never leg L's alone, and the probe says so.** Collapsing `legStamp` to a single
+instant -- `return suiteBase;`, the limit case of a host fast enough to run every leg inside one
+millisecond -- fails THREE checks, not one:
+
+    [FAIL] leg I: a notch delivered to the knob during its value box's drag still lands
+    [FAIL] leg I: ...and the drag's own next event does not erase it
+    [FAIL] leg L: the box takes the first notch
+    3114 checks, 3 failure(s)
+
+The middle line is the one CI reported; the two above it are leg I failing for the same reason one
+leg earlier, which no host has been fast enough to reach yet. That collapse is the standing probe
+for this rule. M30, M35, M37 and M38 still kill legs J, K and L with the offsets in place.
+
+Nothing under test compares an event time to the wall clock or to another event's -- JUCE's
+`Slider` (`juce_Slider.cpp:1147`) and both in-drag handlers only ever ask whether two stamps are
+EQUAL -- so a base in the future is indistinguishable from "now" to everything the legs exercise.
+The general rule, now recorded in `TESTING.md`: a stamp that must be shared has to be unique to the
+leg sharing it, or running the legs faster changes what they measure.
+

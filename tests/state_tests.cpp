@@ -8295,6 +8295,19 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
     wheel.deltaX = 0.0f; wheel.deltaY = 0.5f;
     wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
 
+    // Every leg below stamps its events from ITS OWN instant, five seconds past the leg before.
+    // `juce::Time` is millisecond-resolution and two legs can read the clock inside one
+    // millisecond on a fast host -- arm64 CI measured exactly that, and the wheel handlers'
+    // duplicate-event filter (JUCE's own, and the in-drag one beside it) then correctly discarded
+    // the second leg's FIRST notch, failing a leg against working code. A leg whose events must
+    // SHARE one stamp, as leg L's do, cannot step within itself, so the separation has to come
+    // from the leg base. Nothing in the plug-in or in JUCE's Slider compares an event time to the
+    // wall clock or to another event's -- both only ever ask whether two stamps are EQUAL -- so a
+    // base in the future is indistinguishable from "now" to everything under test.
+    int  legNo = 0;
+    const auto suiteBase = juce::Time::getCurrentTime();
+    auto legStamp = [&] { return suiteBase + juce::RelativeTime::seconds (5.0 * ++legNo); };
+
     auto* driveP = apvts.getParameter (pid::drive);
     auto* driveK = findSliderFor (driveP);
     check (driveP != nullptr && driveK != nullptr, "the Drive knob is findable from its parameter");
@@ -8304,7 +8317,7 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
         proc.pollUndoCoalesce();
         const bool undoBefore = proc.canUndo();
         const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
-        const auto t = juce::Time::getCurrentTime();
+        const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
         auto ev = [&] (float y, bool dragged, bool button)
         {
             return juce::MouseEvent (src, { cx, y },
@@ -8358,7 +8371,7 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
             while (proc.canUndo()) proc.undo();
             proc.pollUndoCoalesce();
             const float cx = (float) box->getWidth() * 0.5f, cy = (float) box->getHeight() * 0.5f;
-            const auto t = juce::Time::getCurrentTime();
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
             auto ev = [&] (float y, bool dragged, bool button)
             {
                 return juce::MouseEvent (src, { cx, y },
@@ -8415,10 +8428,11 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
         if (boxC != nullptr)
         {
             int seq = 0;
+            const auto legBase = legStamp();
             auto scrollOver = [&] (juce::Component* c)
             {
                 // Distinct event times: JUCE's slider wheel handler dedupes on `e.eventTime`.
-                const auto t = juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 13);
+                const auto t = legBase + juce::RelativeTime::milliseconds (++seq * 13);
                 const juce::MouseEvent we (src, { (float) c->getWidth() * 0.5f, (float) c->getHeight() * 0.5f },
                                            juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, c, c,
                                            t, { 0.0f, 0.0f }, t, 1, false);
@@ -8459,7 +8473,7 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
             const bool undoBefore = proc.canUndo();
             const float cy = (float) persist->getHeight() * 0.5f;
             const float x0 = 0.35f * (float) persist->getWidth();
-            const auto t = juce::Time::getCurrentTime();
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
             auto ev = [&] (float x, bool dragged, bool button)
             {
                 return juce::MouseEvent (src, { x, cy },
@@ -8508,7 +8522,7 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
             proc.pollUndoCoalesce();
             const float drive0 = plainOf (driveP), wid0 = plainOf (widP);
             const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
-            const auto t = juce::Time::getCurrentTime();
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
             auto onDrive = [&] (float y, bool dragged)
             {
                 return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
@@ -8560,7 +8574,7 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
             proc.pollUndoCoalesce();
             const double persist0 = persist->getValue();
             const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
-            const auto t = juce::Time::getCurrentTime();
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
             auto onDrive = [&] (float y, bool dragged)
             {
                 return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
@@ -8620,7 +8634,7 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
             const float start = plainOf (monoP);
             const float cy = (float) monoK->getHeight() * 0.5f;
             const float x0 = 0.45f * (float) monoK->getWidth();
-            const auto t = juce::Time::getCurrentTime();
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
             // Ctrl is `Slider`'s default modifierToSwapModes and the knobs leave
             // `userKeyOverridesVelocity` at its default true, so holding it makes this a velocity
             // drag. Alt would have meant something else here -- `Knob::mouseDown` treats it as the
@@ -8701,7 +8715,7 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
             proc.pollUndoCoalesce();
             const float start = plainOf (driveP);
             const float bx = (float) boxC->getWidth() * 0.5f, by = (float) boxC->getHeight() * 0.5f;
-            const auto t = juce::Time::getCurrentTime();
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
             auto onBox = [&] (float y, bool dragged)
             {
                 return juce::MouseEvent (src, { bx, y }, juce::ModifierKeys::leftButtonModifier,
@@ -8768,9 +8782,10 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
             tiny.isReversed = false; tiny.isSmooth = true; tiny.isInertial = false;
             const float cx = (float) amtK->getWidth() * 0.5f, cy = (float) amtK->getHeight() * 0.5f;
             int seq = 0;
+            const auto legBase = legStamp();
             auto at = [&] (float y, bool dragged, bool button)
             {
-                const auto t = juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 7);
+                const auto t = legBase + juce::RelativeTime::milliseconds (++seq * 7);
                 return juce::MouseEvent (src, { cx, y },
                                          button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
                                          1.0f, 0.0f, 0.0f, 0.0f, 0.0f, amtK, amtK,
@@ -8830,7 +8845,7 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
         auto altClick = [&] (juce::Slider* k)
         {
             const float cx = (float) k->getWidth() * 0.5f, cy = (float) k->getHeight() * 0.5f;
-            const auto t = juce::Time::getCurrentTime();
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
             const juce::MouseEvent e (src, { cx, cy },
                                       juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
                                                           | juce::ModifierKeys::altModifier),
@@ -8889,7 +8904,13 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
             notch.deltaX = 0.0f; notch.deltaY = 0.5f;
             notch.isReversed = false; notch.isSmooth = false; notch.isInertial = false;
             const float cx = (float) amtK->getWidth() * 0.5f, cy = (float) amtK->getHeight() * 0.5f;
-            const auto t = juce::Time::getCurrentTime();   // ONE instant for every event below
+            // ONE instant for every event below -- that shared stamp is what the leg measures,
+            // and `legStamp` is what keeps it from colliding with an earlier leg's. This is the
+            // leg the collision was measured on: leg I delivers its notch to the KNOB, which
+            // forwards it to the child holding the drag -- the very value box the second stanza
+            // below then scrolls -- so leg I stamps that box's `lastNotchTime`, and one shared
+            // millisecond was enough to make the filter discard this leg's FIRST notch.
+            const auto t = legStamp();
             auto at = [&] (float y, bool dragged, bool button)
             {
                 return juce::MouseEvent (src, { cx, y },
@@ -8945,7 +8966,7 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
             notch.deltaX = 0.0f; notch.deltaY = 0.5f;
             notch.isReversed = false; notch.isSmooth = false; notch.isInertial = false;
             const float bx = (float) boxC->getWidth() * 0.5f, by = (float) boxC->getHeight() * 0.5f;
-            const auto t = juce::Time::getCurrentTime();
+            const auto t = legStamp();   // its own instant, past the knob stanza's and leg I's
             auto onBox = [&] (float y, bool dragged)
             {
                 return juce::MouseEvent (src, { bx, y }, juce::ModifierKeys::leftButtonModifier,

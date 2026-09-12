@@ -11689,6 +11689,16 @@ where no width drag is latched and therefore could not fail. TSan
 0 warnings with its one known suppression; valgrind memcheck 0 errors from 0 contexts on both
 suites; a local clang-18 `undefined,float-divide-by-zero` build clean.
 
+**CI found one more, and it was in a leg rather than in the plug-in.** The first push of leg L
+failed the `macos` self-test on the **arm64** host only — the same binary under Rosetta passed.
+Leg L's input is a pair of events sharing one timestamp, so it cannot use the millisecond step the
+other legs use; on the faster host its stamp collided with leg I's, whose notch the knob forwards
+into that same value box, and the duplicate filter this round added correctly discarded leg L's
+FIRST notch. Every leg of test 88 now stamps from its own instant five seconds past the leg before
+(`legStamp`), which closes the class rather than the instance — collapsing that helper to a single
+shared instant fails three checks, leg I's two as well as leg L's, so the hazard was never leg L's
+alone. M30, M35, M37 and M38 still kill legs J, K and L.
+
 **No gate item is touched.** No parameter ID, range, default or serialization field; no DSP node,
 signal order or reported latency; no threading-model change — the new state is two message-thread
 members beside the ones ADR-0053 already added, and the one new listener-side statement is a
@@ -11698,7 +11708,8 @@ relaxed load and a bool store on the thread that already owns both.
 the residual it does not fix); `ADR-0052` (where the rule was applied next, and the one site
 deliberately left alone); `CHANGELOG.md` `[0.9.8]` — three Changed entries amended, the KI-010 Fixed
 entry amended, one new Fixed entry for the Alt-click reset, and the spliced bullet repaired;
-`docs/procedures/TESTING.md` (legs 86 N–S, 87 F, 88 J–K, mutations M26–M36);
+`docs/procedures/TESTING.md` (legs 86 N–T, 87 F, 88 J–L, mutations M26–M39, and the note on why
+leg L bases its shared timestamp past `getCurrentTime()`);
 `src/gui/LookAndFeel.h` gains `wheelTargetValue`; `src/gui/SpectrumImager.h` gains
 `originsFromRecord` and `bandMovePlan`; `src/PluginProcessor.h` records the `ScopedWheelStep`
 disposition at the destructor;

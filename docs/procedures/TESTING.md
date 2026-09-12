@@ -1388,6 +1388,27 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   once to the value box during its (each keeps its own stamp), each with the standalone path as the
   control.
 
+  **Every leg of test 88 stamps its events from its own instant, five seconds past the leg
+  before** (`legStamp`, declared once above leg A), and that separation is load-bearing rather
+  than cosmetic. `juce::Time` is millisecond-resolution, and the first CI run carrying leg L
+  failed on the macOS **arm64** host — and only there; the same binary under Rosetta reported
+  `3079 checks, 0 failure(s)`. The failing check was `leg L: the box takes the first notch`, the
+  leg's own premise: leg I delivers its notch to the KNOB, which forwards it to the child holding
+  the drag — the very value box leg L then scrolls — so leg I stamps that box's `lastNotchTime`,
+  and one shared millisecond was enough for the duplicate filter to discard leg L's FIRST notch.
+  Leg L cannot dodge this with the `++seq * 7 ms` step the other legs use, because a pair of
+  events sharing ONE stamp is its entire input.
+
+  The separation is per leg rather than per stanza because the hazard is not leg L's alone.
+  Collapsing `legStamp` to a single instant (`return suiteBase;`) — the limit case of a host fast
+  enough to run every leg inside one millisecond — fails **three** checks, not one: leg L's box
+  premise and both of leg I's assertions. That collapse is the standing probe for this rule; it
+  is what proves the offsets are doing work. Nothing under test compares an event time to the
+  wall clock or to another event's — JUCE's `Slider` and both in-drag handlers only ever ask
+  whether two stamps are EQUAL — so a base in the future is indistinguishable from "now" to
+  everything the legs exercise. **The rule: a stamp that must be shared has to be unique to the
+  leg sharing it, or running the legs faster changes what they measure.**
+
   **Leg D is the standalone half of the value box**, and it is about the FORWARD rather than the box:
   a notch over the box is not handled by the box at all — `juce::Component::mouseWheelMove` hands it
   to the parent Slider, which names the control by its parameter. So a notch over the knob and a
