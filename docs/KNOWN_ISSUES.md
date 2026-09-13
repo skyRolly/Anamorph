@@ -347,6 +347,18 @@ the JUCE focus/peer path REAPER takes).
 
 ## KI-010 — Typed value-box entry creates no Undo step (gesture-less edit path)
 
+**STATUS, 2026-09-13: RESOLVED — and this entry was reported closed a day before it was.** Round 14
+of the PR #144 review re-tested the typed path rather than re-reading it and measured the opposite
+of what everything below says: the value box IS `juce::Slider`'s own, JUCE wires `onTextChange` to
+`Slider::Pimpl::textChanged`, and that wraps its `setValue` in a `ScopedDragNotification` — so a
+typed commit is one gesture open, one gesture close, and one Undo returns the previous value. State
+test 88 leg N is the guard (`CountGestures` 1 / 1, and the Undo). Round 14 corrected the user manual
+and its own report said this entry was closed; **it never edited this file**, so the text below stood
+for a day describing behaviour the suite was already asserting against. Recorded that way rather
+than quietly rewritten, because the claim is what went wrong, not the finding. Nothing below is
+retracted: it described the 0.8.10 code accurately and its measurements were true of the code at the
+time.
+
 Found while fixing the 0.8.10 Option/Alt-click reset undo bug (CHANGELOG [0.8.10]). Typing a
 value into a knob/slider's text box commits via `juce::Slider::setValue`, which reaches the
 parameter through the `SliderAttachment` **without** a host change gesture — the same mechanism
@@ -367,7 +379,9 @@ with the focus-driven `knobSweepTime` easing).
   multiband wheel edit is undoable at all, and that a whole scroll is a single step. The
   **typed-entry path is the only member of this entry still open**, and everything below about it
   stands. Nothing else in this entry is retracted: it described the imager path accurately, and the
-  measurements it records were true of the code at the time. A wheel
+  measurements it records were true of the code at the time. (**Superseded 2026-09-13**: the
+  typed-entry path is resolved too — see the status line at the head of this entry — so no member of
+  this entry is open.) A wheel
   scroll on a regular knob IS undoable (JUCE's `Slider::mouseWheelMove` wraps the change in a drag
   notification, which the attachment turns into a gesture); every click/drag/reset edit inside the
   imager is undoable too (verified: they run through `beginGesture`/`endGesture` or ride a

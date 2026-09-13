@@ -3727,3 +3727,13 @@ declaration is load-bearing: an add shifts every split above the insertion throu
 those writes sit inside the batch `setSoloMask` opens but outside every bracket. The code was right
 and nothing was watching it. State test 86 leg Z4 drives the add and kills M57. It is a coverage gap
 round 14 left, not a defect round 14 shipped — leg Z4 passes against `ef6d4f0`.
+
+### And one more, in a document rather than in code
+
+Round 14's report and `DOCUMENTATION_COVERAGE.md`'s thirty-second pass both state that
+`docs/KNOWN_ISSUES.md` KI-010 was closed. **It never was** — round 14 edited the user manual and
+added State test 88 leg N, and did not touch `KNOWN_ISSUES.md` at all, so the entry stood for a day
+saying the typed value-box path creates no Undo step while the suite asserted that it does. Closed
+here with a dated status line, and the thirty-second pass's claim corrected in place. The failure
+mode is worth naming: a round can validate its code against measurement and still ship a false
+statement about its own documentation, because nothing in the gate set reads a report.

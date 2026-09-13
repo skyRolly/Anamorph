@@ -11867,7 +11867,9 @@ reset now reports one automation touch span to the host where it previously repo
 **Documentation.** `ADR-0008` (the amendment section, Consequences and Related code);
 `ADR-0053` (a round-14 section, two falsified Consequences corrected, Related code);
 `docs/FUTURE_RISKS.md` RISK-012 **RESOLVED** and RISK-013 rewritten as a formally accepted residual;
-`docs/KNOWN_ISSUES.md` KI-010 closed; `docs/user/USER_MANUAL.md` (the "Known quirks" entry replaced
+`docs/KNOWN_ISSUES.md` KI-010 closed — **this line was wrong when written and is corrected here
+rather than deleted: round 14 did not edit `KNOWN_ISSUES.md` at all. The entry was closed in the
+thirty-third pass;** `docs/user/USER_MANUAL.md` (the "Known quirks" entry replaced
 with the real Undo/automation rule); `docs/procedures/TESTING.md` (legs Y, D2, M, N, the three
 re-based legs, mutations M48–M54); `CHANGELOG.md` `[0.9.8]` (three Fixed entries);
 `src/gui/LookAndFeel.h` (the `snapValue` prose, now that `Knob` does override it);
@@ -11904,7 +11906,14 @@ Parameter Registry, DSP Graph, Signal Flow, Latency, Plugin Format, Build System
 automation touch span is unchanged, and that was checked rather than assumed — a coupled neighbour
 has never had a gesture of its own on any path.
 
+**And one found on the way, in a document rather than in code.** Round 14's report and the
+thirty-second pass above both say `KNOWN_ISSUES.md` KI-010 was closed. It was not — round 14 never
+edited that file, so the entry still said the typed value-box path creates no Undo step while State
+test 88 leg N was already asserting that it does. The entry now carries a dated RESOLVED status and
+the thirty-second pass's claim is corrected in place rather than deleted.
+
 **Documentation.** `ADR-0008` (a round-15 correction section and Related code);
+`docs/KNOWN_ISSUES.md` KI-010 (RESOLVED, with the misreport recorded);
 `docs/FUTURE_RISKS.md` RISK-012 (the correction recorded inside the resolved entry);
 `docs/user/USER_MANUAL.md` (one Undo covers everything that edit moved);
 `docs/procedures/TESTING.md` (legs Z, Z2, Z3, Z4, the rendered-grid comparison, mutations M55–M57);
