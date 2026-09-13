@@ -224,8 +224,8 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood (evidence-based):** **Low.** It requires the HOST to write cross-parameter from
   inside a dispatch, on two threads, in opposite orders, overlapping. **No listener in this
   plug-in creates the nesting at all:** `AnamorphAudioProcessor::parameterValueChanged`
-  (`src/PluginProcessor.h:246-249`) is a single relaxed `fetch_add`,
-  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:390`) the same, and
+  (`src/PluginProcessor.h:265-268`) is a single relaxed `fetch_add`,
+  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:409`) the same, and
   `parameterGestureChanged` (`src/PluginProcessor.cpp:825-900`) touches two ints — the last
   deliberately, its comment recording that `--d2-stress-probe` once reported this same detector
   for an APVTS/`listenerLock` inversion, closed by **removing** the nesting.
@@ -440,7 +440,7 @@ mitigation. Do not invent risks to fill the template.
   inside that window is ordered after the restore.
 - **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:1869-1968 read
+  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:1914-2013 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -518,7 +518,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:1869`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:1914`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -527,8 +527,8 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:1405`, against `canUndo()`; the `abUndo` vector's internals twice, via
-  `UndoStacks::operator=` (`src/PluginProcessor.h:325`) against the reader's iteration; and the
+  `src/PluginProcessor.cpp:1450`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `UndoStacks::operator=` (`src/PluginProcessor.h:344`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture
   change.
