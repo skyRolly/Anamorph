@@ -65,6 +65,15 @@ public:
     // callback rather than a processor pointer for the same reason the four above are: this class
     // knows the APVTS and nothing else about the plug-in.
     std::function<void(const juce::AudioProcessorParameter*)> onWheelStep;
+    // ADR-0008 as amended (round 14): an undo entry records only the parameters the user's own
+    // batch moved, and a parameter declares itself by having a change gesture opened on it. Three
+    // of this class's five stores do exactly that (`resetParam`, `setBands`, `setSoloMask` each
+    // bracket the parameter they write); the other two -- `storeOwned` and `setParam` -- write
+    // splits and widths COUPLED to a gesture held on some other parameter, so they say so through
+    // this instead. Without it a neighbour that `dragCrossoverTo` pushed aside would sit outside
+    // the very step that moved it and one Undo would leave the split row half restored. A callback
+    // rather than a processor pointer, for the reason given above `onWheelStep`.
+    std::function<void(const juce::AudioProcessorParameter*)> onOwnedWrite;
 
     // UI-animation flag now lives in InternalState (host-hidden), injected by the editor.
     void setAnimationSource (const std::atomic<float>* p) noexcept { animOnP = p; }

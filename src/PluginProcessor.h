@@ -93,6 +93,16 @@ public:
     //
     //  Message-thread state, like every other member of this section.
     void setWheelStepKey (int key) noexcept { wheelStepKey = key; }
+
+    // ADR-0008 as amended (round 14). A STORE THE PLUG-IN'S OWN UI MAKES OUTSIDE A GESTURE OF ITS
+    // OWN IS STILL THE USER'S EDIT. Nearly every write here is bracketed by a change gesture on the
+    // parameter it writes, which is the declaration an undo entry needs; the exceptions are the
+    // multiband display's coupled stores -- `SpectrumImager::storeOwned` and `setParam`, which push
+    // neighbouring splits and shifted widths inside a gesture held on ONE parameter -- and they say
+    // so by calling this instead. Without it a pushed neighbour would fall outside the very step
+    // that moved it and one Undo would leave the split row half restored. Message thread only, like
+    // every other member of this section; a no-op when no batch is pending.
+    void noteOwnedParamWrite (const juce::AudioProcessorParameter* p) noexcept;
     // The name a parameter-backed control answers to. A parameter's index is stable for the life of
     // the processor and unique to it, so two controls driving the SAME parameter -- a knob and the
     // numeric box under it -- are correctly one control for this purpose. +1 keeps 0 meaning "none".
@@ -142,8 +152,9 @@ public:
     //
     // Restore the key and that same latch names the batch after the OUTER control -- a batch that
     // also contains the INNER control's edit, because the inner gesture closed inside it. The next
-    // notch of the outer control would then extend a step holding somebody else's value, and an
-    // undo entry here is a whole-state snapshot, so the other control's edit travels with it. The
+    // notch of the outer control would then extend a step holding somebody else's value: since
+    // round 14 an entry owns the parameters the BATCH moved, and the inner control's is one of
+    // them, so the other control's edit still travels with it. The
     // cleared key is not a shortcut that happens to be safe; it is the answer that keeps a batch
     // this scope cannot account for from being claimed. Recorded rather than hardened, and the
     // reasoning written out because the first version of this paragraph got it wrong -- it argued
@@ -323,6 +334,8 @@ private:
     };
     StateSet currentStateSet();                  // current params + live preset meta
     void applyStateSet (const StateSet&);        // restore params (keeping view) + meta
+    void snapshotSoundValues (std::vector<float>& into) const;
+    void resetBatchOwnership();
 
     // Undo helpers
     static bool isViewParam (const juce::String& id) noexcept;
@@ -341,8 +354,47 @@ private:
     juce::ValueTree copyStateWithRawValues();
     void syncCommitted();
 
-    struct UndoStacks { std::vector<StateSet> undo, redo; };
+    // ------------------------------------------------------------------------
+    //  ADR-0008 AS AMENDED (round 14, approved). WHAT AN UNDO ENTRY IS.
+    //
+    //  An entry used to be a whole `StateSet` snapshot, and that is what made a host automation
+    //  value part of a user's step: the snapshot behind the user's edit predates every write that
+    //  landed in the commit window, so one Undo took the automation back with the edit -- and the
+    //  REDO destination was worse, because it was manufactured from the LIVE parameters at the
+    //  moment Undo was pressed, so any automation between the step and the Undo silently became
+    //  the value the user's Redo restored (RISK-012, R983).
+    //
+    //  An entry now records WHAT THE USER'S OWN BATCH MOVED, and both ends of it. `owned` carries
+    //  one `ParamEdit` per parameter the batch declared as its own -- a parameter with a change
+    //  gesture of its own, or one the imager's coupled stores declared through
+    //  `noteOwnedParamWrite` -- with the value it held when the batch opened and the value it held
+    //  when the batch's last gesture closed. Undo writes the `before` ends, Redo writes the
+    //  `after` ends, and the SAME entry moves between the two stacks, so the two directions cannot
+    //  disagree. Everything else the live sound holds is left exactly where it is, which is what
+    //  makes a later host write survive both.
+    //
+    //  `before.params` VALID MEANS A WHOLE-STATE ENTRY, and two push sites still make them: a
+    //  preset load (`commitPresetSwitchUndoStep`) and an A/B Copy (`abCopyToOther`). Neither opens
+    //  a gesture, both wholesale-replace a sound, and there is no per-parameter attribution to be
+    //  had for either; they keep exactly the semantics they have always had. Undo history is never
+    //  serialized, so none of this reaches the Serialization Registry.
+    struct ParamEdit { int index = 0; float before = 0.0f, after = 0.0f; };  // normalised (raw) values
+    struct UndoEntry
+    {
+        std::vector<ParamEdit> owned;   // what the user's batch moved; empty on a whole-state entry
+        StateSet before, after;         // `params` valid ONLY when whole; the preset metadata always
+        bool isWhole() const noexcept { return before.isValid(); }
+    };
+    struct UndoStacks { std::vector<UndoEntry> undo, redo; };
     UndoStacks abUndo[anamorph::kNumAbSlots];
+    // ADR-0008 as amended (round 14). Install one end of an undo entry. A whole-state entry is
+    // applied exactly as it always was. A scoped one is applied by handing `applyStateSet` the LIVE
+    // state with only the entry's own parameters overwritten -- deliberately, rather than by writing
+    // those parameters directly, so the §24 replacement lock, the view-param preservation,
+    // `reassertParameters`' exact-value assert, `seams.beforeSoundReplacementWrites` and
+    // `noteWholeSoundReplaced()` all still happen on the undo path (State test 49's `undoStep` leg
+    // is the one that would stop measuring its interleaving if they did not).
+    void applyUndoEntry (const UndoEntry& e, bool toAfter);
     StateSet committed;
     juce::String committedSig, lastPolledSig;
     std::atomic<juce::uint32> soundParamGen { 1 }; // bumped by parameterValueChanged (S10)
@@ -444,6 +496,20 @@ private:
     // ...latched at the OPEN side, because by the time the poll reads the counter the batch's own
     // writes have moved it past the evidence. Message thread only, like everything else here.
     bool foreignSinceEdge = false;
+
+    // ADR-0008 as amended (round 14). THE PARAMETERS THE PENDING BATCH OWNS, and the values they
+    // held at its two edges. `batchOwnedParam[i]` is set where the batch declared parameter i its
+    // own -- a change gesture opened on it, or `noteOwnedParamWrite` said so -- and the two value
+    // arrays are whole-parameter-list snapshots taken when the batch OPENS and when its last
+    // gesture CLOSES, so a step's two ends are the values the user's own interaction produced
+    // rather than whatever is live when the poll or an Undo happens to run.
+    //
+    // Sized ONCE in the constructor and never resized, so a gesture callback allocates nothing.
+    // Written and read only in `parameterGestureChanged`, `noteOwnedParamWrite` and
+    // `pollUndoCoalesceAdopted` -- all message-thread, which is why this is NOT the
+    // `parameterValueChanged` design RISK-012 flagged as a new cross-thread path.
+    std::vector<float> batchOpenValue, batchCloseValue;
+    std::vector<char>  batchOwnedParam;
 
     StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;

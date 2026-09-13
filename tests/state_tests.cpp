@@ -7181,6 +7181,19 @@ static void testAScrollIsOneUndoStep()
     check (driveP != nullptr && widP != nullptr && driveK != nullptr && widK != nullptr,
            "the Drive and Width knobs are each findable from their parameter");
 
+    // ADR-0008 as amended (round 14). THE HOST'S WRITES HAVE TO BE ORDER-INDEPENDENT NOW. Every
+    // leg below used to move Width by +0.20 from wherever it stood, and that worked only because an
+    // Undo in one leg pulled Width back for the next -- which is precisely the behaviour the
+    // amendment removes: a step owns the parameters the user's batch moved, and Width is not one of
+    // them. Left alone the increments walked into the rail and the third leg's "the host write moved
+    // Width" precondition failed against correct code. This always moves it and never saturates.
+    // A SEQUENCE rather than a toggle, because leg U writes twice and a toggle would put Width
+    // back where it started -- "the host write moved Width" would then fail on working code for the
+    // opposite reason. Seven distinct values, well inside both rails, so consecutive calls always
+    // move and nothing saturates.
+    int  hostWidthStep  = 0;
+    auto hostMovesWidth = [&] { widP->setValueNotifyingHost (0.15f + 0.10f * (float) (hostWidthStep++ % 7)); };
+
     if (driveP != nullptr && widP != nullptr && driveK != nullptr && widK != nullptr)
     {
         // ---- LEG A: three notches on one knob are ONE undo step ------------------------
@@ -7459,7 +7472,7 @@ static void testAScrollIsOneUndoStep()
             const float d1 = plainOf (driveP);
             check (! juce::exactlyEqual (d1, d0), "leg O: the first scroll moved Drive");
             scrollKnob (driveK, 0.5f);                       // the second notch -- NOT yet polled
-            widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.20f));
+            hostMovesWidth();
             const float w1 = plainOf (widP);                 // ...and a gesture-less host write in the window
             check (! juce::exactlyEqual (w1, w0), "leg O: the host write moved Width");
             proc.pollUndoCoalesce();
@@ -7471,8 +7484,18 @@ static void testAScrollIsOneUndoStep()
                              " one Undo jumped straight back to %.4f\n", (double) d0);
             check (juce::exactlyEqual (plainOf (driveP), d1),
                    "leg O: the batch that carries a host write does not extend the scroll before it");
-            std::printf ("  [leg O] after one Undo the host's Width reads %.4f (it wrote %.4f, the"
-                         " step began at %.4f)\n", (double) plainOf (widP), (double) w1, (double) w0);
+            // ADR-0008 AS AMENDED (round 14). This was a printed measurement for three review
+            // rounds, because the implementation and the intended product rule disagreed here: the
+            // step behind the user's edit was a whole state predating the host's write, so one Undo
+            // took the automation back with the scroll. It is an ASSERTION now. The step owns Drive,
+            // because Drive is what the user's batch moved; Width is nobody's step and stands.
+            if (! juce::exactlyEqual (plainOf (widP), w1))
+                std::printf ("  [leg O] one Undo took the host's Width write back with the user's"
+                             " step: Width reads %.4f where the host wrote %.4f\n",
+                             (double) plainOf (widP), (double) w1);
+            check (juce::exactlyEqual (plainOf (widP), w1),
+                   "leg O: ...and the host's write in the commit window survives the Undo -- it is"
+                   " in no user step");
             proc.undo();
             check (juce::exactlyEqual (plainOf (driveP), d0), "leg O: ...and the first scroll is the step behind it");
         }
@@ -7491,7 +7514,7 @@ static void testAScrollIsOneUndoStep()
             scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
             const float d1 = plainOf (driveP);
             check (! juce::exactlyEqual (d1, d0), "leg S: the first scroll moved Drive");
-            widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.20f));
+            hostMovesWidth();
             check (! juce::exactlyEqual (plainOf (widP), w0), "leg S: the host write moved Width");
             scrollKnob (driveK, 0.5f);                       // ...and only NOW the second notch
             proc.pollUndoCoalesce();
@@ -7597,13 +7620,13 @@ static void testAScrollIsOneUndoStep()
 
             // A first gesture-less host write, so the poll below has work to do and reaches the
             // fold branch (an unchanged generation returns at the top and never captures at all).
-            widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.10f));
+            hostMovesWidth();
             bool armed = true;
             proc.seams.insidePollBody = [&]
             {
                 if (! armed) return;
                 armed = false;                      // ...and a SECOND one from inside the poll body
-                widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.10f));
+                hostMovesWidth();
             };
             proc.pollUndoCoalesce();                // absorbs both into `committed`
             proc.seams.insidePollBody = nullptr;
@@ -7651,7 +7674,7 @@ static void testAScrollIsOneUndoStep()
             {
                 if (! armed) return;
                 armed = false;
-                widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.10f));
+                hostMovesWidth();
             };
             proc.pollUndoCoalesce();                // the GESTURE branch captures, absorbing it
             proc.seams.insidePollBody = nullptr;
@@ -7703,7 +7726,7 @@ static void testAScrollIsOneUndoStep()
             const float d1 = plainOf (driveP);
             check (! juce::exactlyEqual (d1, d0), "leg V: the scroll moved Drive");
 
-            widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.20f));
+            hostMovesWidth();
             const float w1 = plainOf (widP);
             check (! juce::exactlyEqual (w1, w0), "leg V: the host write moved Width");
             {
@@ -7719,15 +7742,21 @@ static void testAScrollIsOneUndoStep()
             check (juce::exactlyEqual (plainOf (driveP), d1), "leg V: ...and the press changes no value");
             proc.pollUndoCoalesce();
             proc.undo();
-            std::printf ("  [leg V] the empty press recorded the write beside it: after one Undo"
-                         " Drive reads %.4f (the scroll ended at %.4f) and Width %.4f (the host"
-                         " wrote %.4f)\n",
-                         (double) plainOf (driveP), (double) d1, (double) plainOf (widP), (double) w1);
-            // What IS asserted: the scroll before it is untouched by the press. That is the half
-            // legs I and J depend on, and it is the half that survives the trade above.
-            check (juce::exactlyEqual (plainOf (driveP), d1),
-                   "leg V: the step the empty press recorded stands between the automation and the"
-                   " scroll before it -- one Undo does not reach past into the user's own edit");
+            if (! juce::exactlyEqual (plainOf (widP), w1))
+                std::printf ("  [leg V] the empty press still recorded the write beside it: after"
+                             " one Undo Width reads %.4f where the host wrote %.4f\n",
+                             (double) plainOf (widP), (double) w1);
+            // RE-BASED FOR ADR-0008 AS AMENDED (round 14), and the old expectation is worth keeping
+            // in view: this leg used to assert that the empty press's step STOOD BETWEEN the
+            // automation and the scroll, because the press recorded a whole state containing the
+            // host's write and one Undo therefore took that write back. Both halves of that are
+            // gone. The press owns Drive, Drive did not move, so nothing is recorded at all -- the
+            // automation is undoable by nobody, and one Undo correctly reaches the user's own
+            // scroll, which is the only step there is.
+            check (juce::exactlyEqual (plainOf (widP), w1),
+                   "leg V: an empty press records nothing of the host write beside it");
+            check (juce::exactlyEqual (plainOf (driveP), d0),
+                   "leg V: ...and one Undo reaches the user's own scroll, the only step there is");
         }
 
         // ---- LEG X: automation during ANOTHER user gesture, and Redo -----------------------
@@ -7752,7 +7781,7 @@ static void testAScrollIsOneUndoStep()
             const float d1 = plainOf (driveP);
             proc.pollUndoCoalesce();                 // ...twice, with the gesture still open
             proc.pollUndoCoalesce();
-            widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.20f));
+            hostMovesWidth();
             const float w1 = plainOf (widP);
             driveP->endChangeGesture();
             proc.pollUndoCoalesce();
@@ -7761,15 +7790,63 @@ static void testAScrollIsOneUndoStep()
             proc.undo();
             const float dU = plainOf (driveP), wU = plainOf (widP);
             std::printf ("  [leg X] automation INSIDE a held gesture: one Undo puts Drive back to"
-                         " %.4f (it was %.4f) and Width to %.4f (the host wrote %.4f)\n",
+                         " %.4f (it was %.4f) and leaves Width at %.4f (the host wrote %.4f)\n",
                          (double) dU, (double) d0, (double) wU, (double) w1);
             check (juce::exactlyEqual (dU, d0),
                    "leg X: one Undo takes back the user's own edit exactly");
+            // ASSERTED SINCE ROUND 14, and this is the fifth of the five R983 timings -- the one no
+            // leg reached until round 13 and none asserted until the amendment. The user's gesture
+            // is open across two polls, so `committed` is frozen and the host's write is inside the
+            // window the step is committed from; what keeps it out of the step is that the batch
+            // never declared Width its own.
+            check (juce::exactlyEqual (wU, w1),
+                   "leg X: ...and the host's write inside the held gesture survives it");
             proc.redo();
-            std::printf ("  [leg X] ...and Redo restores Drive %.4f and Width %.4f\n",
+            std::printf ("  [leg X] ...and Redo restores Drive %.4f, leaving Width %.4f\n",
                          (double) plainOf (driveP), (double) plainOf (widP));
             check (juce::exactlyEqual (plainOf (driveP), d1),
                    "leg X: ...and Redo puts the user's edit back exactly");
+            check (juce::exactlyEqual (plainOf (widP), w1),
+                   "leg X: ...and Redo restores the user's value, never the automated one beside it");
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+        }
+
+        // ---- LEG Y: A -> B (user) -> C (automation) -> Undo -> Redo, on ONE parameter -----
+        //      THE CANONICAL SEQUENCE, and what ADR-0008's amendment is for. Undo must produce A,
+        //      the value from immediately before the user's action; Redo must produce B, the value
+        //      the user's action produced -- never the automated C. Until round 14 the redo entry
+        //      was manufactured from the LIVE parameters at the moment Undo was pressed
+        //      (`st.redo.push_back (currentStateSet())`), so C was what Redo restored: any
+        //      automation between the step and the Undo silently redefined the step's far endpoint,
+        //      and nothing in the suite asked. The entry now carries both ends and MOVES between the
+        //      stacks, so the two directions are one object read twice and cannot disagree.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float valueA = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();     // the user's own edit
+            const float valueB = plainOf (driveP);
+            check (! juce::exactlyEqual (valueB, valueA), "leg Y: the user edit moved Drive from A to B");
+            // ...and a gesture-less HOST write after it, on the SAME parameter.
+            driveP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, driveP->getValue() + 0.25f));
+            proc.pollUndoCoalesce();
+            const float valueC = plainOf (driveP);
+            check (! juce::exactlyEqual (valueC, valueB),
+                   "leg Y: ...and the host automation then moved it from B to C");
+            check (! proc.canRedo(), "leg Y: the automation created no step of its own to redo");
+            proc.undo();
+            const float afterUndo = plainOf (driveP);
+            proc.redo();
+            const float afterRedo = plainOf (driveP);
+            std::printf ("  [leg Y] A %.4f -> B %.4f (user) -> C %.4f (automation):"
+                         " Undo gives %.4f, Redo gives %.4f\n",
+                         (double) valueA, (double) valueB, (double) valueC,
+                         (double) afterUndo, (double) afterRedo);
+            check (juce::exactlyEqual (afterUndo, valueA),
+                   "leg Y: Undo restores the value from immediately before the user's action");
+            check (juce::exactlyEqual (afterRedo, valueB),
+                   "leg Y: Redo restores the value the user's action produced, never the automated one");
             while (proc.canUndo()) proc.undo();
             proc.pollUndoCoalesce();
         }
@@ -7887,6 +7964,33 @@ static void testAScrollIsOneUndoStep()
                 check (! proc.canUndo(), "leg E: ...and the three notches were ONE step");
             }
 
+            // ---- LEG D2: ...and a pushed NEIGHBOUR belongs to the step that pushed it ---------
+            //      Leg D above asserts "the whole split row", and on its own fixture nothing is ever
+            //      pushed -- three notches of 0.4 x 28 px against a decade of separation -- so it
+            //      passes whether or not the neighbours are in the step at all. This leg drives the
+            //      split until it packs against its neighbour and MOVES it, which is the case
+            //      ADR-0008's amendment has to get right: `dragCrossoverTo` pushes that neighbour
+            //      through `storeOwned`, outside any change gesture of its own, and the step must
+            //      still own it or one Undo leaves the row in a layout nobody produced. What makes
+            //      it own it is `SpectrumImager::onOwnedWrite`; mutation M50 removes that call and
+            //      this leg is what notices.
+            resetBands();
+            if (sx >= 0.0f)
+            {
+                hover (sx, laneY);
+                const float s0 = plainOf (loP), s1 = plainOf (midP), s2 = plainOf (hiP);
+                for (int i = 0; i < 60; ++i) { scrollAt (im, sx, laneY, 0.4f); proc.pollUndoCoalesce(); }
+                check (! juce::exactlyEqual (plainOf (loP), s0), "leg D2: the scroll moved the split");
+                check (! juce::exactlyEqual (plainOf (midP), s1),
+                       "leg D2: ...far enough to push its neighbour, which is the whole point of this leg");
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (loP), s0)
+                       && juce::exactlyEqual (plainOf (midP), s1)
+                       && juce::exactlyEqual (plainOf (hiP), s2),
+                       "leg D2: one Undo brings the pushed neighbour back with the split that pushed it");
+                check (! proc.canUndo(), "leg D2: ...and the whole scroll was ONE step");
+            }
+
             // ---- LEG I: a host write from inside the notch's OWN gesture-open stands -------
             //      This window did not exist before this round. The multiband wheel opened no
             //      change gesture, so nothing dispatched between the reading and the store;
@@ -7904,9 +8008,9 @@ static void testAScrollIsOneUndoStep()
                 // A REAL notch first, so the refused one below has a scroll step of its own control
                 // sitting on the stack to be mis-attributed to -- which is the whole of the second
                 // half of this leg.
+                const float scrollStart = plainOf (wLoP);   // ...and where that scroll begins
                 scrollAt (im, bandX, laneY, 0.4f);
                 proc.pollUndoCoalesce();
-                const float afterRealNotch = plainOf (wLoP);
                 check (proc.canUndo(), "leg I: the first notch recorded a step of its own");
 
                 WriteOnGestureOpen poke;
@@ -7928,14 +8032,22 @@ static void testAScrollIsOneUndoStep()
                 // poll still sees a moved signature and records the host's write -- but attributing
                 // that to the wheel would EXTEND the step above, and one Undo would then take back
                 // the first notch as well as the automation.
+                // RE-BASED FOR ADR-0008 AS AMENDED (round 14). This used to assert that one Undo
+                // stopped at `afterRealNotch`, because the refused burst recorded a whole-state step
+                // whose only content was the host's write and that step was the boundary. Under the
+                // amendment the burst owns `wLo`, `wLo` did not move (its own store was refused), so
+                // the burst records NOTHING -- the host's write is undoable by nobody -- and one Undo
+                // correctly reaches the previous scroll and returns it to where that scroll started.
+                // The property the old assertion was really protecting is unchanged and is asserted
+                // just above: the burst does not write over the host's value.
                 proc.undo();
-                if (landed && ! juce::exactlyEqual (plainOf (wLoP), afterRealNotch))
-                    std::printf ("  [leg I] one Undo stopped at %.4f, not at the %.4f the previous"
-                                 " scroll ended on: the refused burst extended it\n",
-                                 (double) plainOf (wLoP), (double) afterRealNotch);
-                check (! landed || juce::exactlyEqual (plainOf (wLoP), afterRealNotch),
-                       "leg I: ...and a burst whose own store was refused does not extend the"
-                       " previous scroll's step with the host's write");
+                if (landed && ! juce::exactlyEqual (plainOf (wLoP), scrollStart))
+                    std::printf ("  [leg I] one Undo stopped at %.4f rather than the %.4f the"
+                                 " previous scroll started from\n",
+                                 (double) plainOf (wLoP), (double) scrollStart);
+                check (! landed || juce::exactlyEqual (plainOf (wLoP), scrollStart),
+                       "leg I: ...and a burst whose own store was refused records no step at all,"
+                       " so one Undo reaches the scroll before it");
             }
 
             // ---- LEG J: a reentrant cancellation inside the burst's gesture-open changes nothing
@@ -7979,9 +8091,9 @@ static void testAScrollIsOneUndoStep()
                 hover (sx, laneY);            // ...drop leg I's band latch and re-aim at the split
                 // A real notch first, so the refused burst below has a scroll step of its own
                 // control on the stack to be mis-attributed to (the split half of leg I).
+                const float scrollStart = plainOf (loP);    // ...and where that scroll begins
                 scrollAt (im, sx, laneY, 0.4f);
                 proc.pollUndoCoalesce();
-                const float afterRealNotch = plainOf (loP);
                 check (proc.canUndo(), "leg J: the first notch recorded a step of its own");
 
                 WriteThenCancelOnOpen poke;
@@ -7997,14 +8109,16 @@ static void testAScrollIsOneUndoStep()
                                  (double) installed, (double) plainOf (loP));
                 check (! landed || juce::exactlyEqual (plainOf (loP), installed),
                        "leg J: ...and the burst leaves the host's install standing");
+                // RE-BASED FOR ADR-0008 AS AMENDED (round 14) -- see leg I for the reasoning; this
+                // is the split half of the same shape.
                 proc.undo();
-                if (landed && ! juce::exactlyEqual (plainOf (loP), afterRealNotch))
-                    std::printf ("  [leg J] one Undo stopped at %.4f Hz, not at the %.4f Hz the"
-                                 " previous scroll ended on: the refused burst extended it\n",
-                                 (double) plainOf (loP), (double) afterRealNotch);
-                check (! landed || juce::exactlyEqual (plainOf (loP), afterRealNotch),
-                       "leg J: ...and a split burst whose store was refused does not extend the"
-                       " previous scroll's step with the host's write");
+                if (landed && ! juce::exactlyEqual (plainOf (loP), scrollStart))
+                    std::printf ("  [leg J] one Undo stopped at %.4f Hz rather than the %.4f Hz the"
+                                 " previous scroll started from\n",
+                                 (double) plainOf (loP), (double) scrollStart);
+                check (! landed || juce::exactlyEqual (plainOf (loP), scrollStart),
+                       "leg J: ...and a split burst whose store was refused records no step at all,"
+                       " so one Undo reaches the scroll before it");
             }
 
             // ---- LEG M: a burst that PART-WROTE and then aborted is not a scroll's step -------
@@ -9347,6 +9461,101 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
                    "leg L: ...and not the duplicate behind it");
         }
     }
+
+        // ---- LEG M: a drag inside a scrolled press publishes ONCE, and publishes the COMBINED
+        //      value ---------------------------------------------------------------------------
+        //      THE ONLY OBSERVABLE THAT SEES THIS. Every other leg in this test samples the
+        //      parameter BETWEEN whole events, or counts undo steps, and both are blind here: the
+        //      endpoints, the single gesture and the one-step property were all already correct.
+        //      What was wrong was the WRITE SEQUENCE inside one `mouseDrag` call -- `Slider::mouseDrag`
+        //      published the pure drag value and `applyWheelDragOffset` corrected it afterwards, so
+        //      with a notch banked the host, its automation lane and the DSP atomic each took a value
+        //      a whole notch BACKWARDS before the right one arrived, on every mouse move, inside the
+        //      press's open touch/latch punch-in.
+        //
+        //      `juce::AudioProcessorListener` rather than an `AudioProcessorParameter::Listener`,
+        //      deliberately: JUCE walks the parameter's listener list in reverse registration order,
+        //      so a listener added by a test is called BEFORE the APVTS adapter that stores the DSP
+        //      atomic and would read the PREVIOUS atomic value. The processor-level listener is
+        //      reached after the whole list, which is both the host's own view and the only place
+        //      the atomic can be compared against the value being reported.
+        if (driveP != nullptr && driveK != nullptr)
+        {
+            struct WriteRecorder final : public juce::AudioProcessorListener
+            {
+                AnamorphAudioProcessor* proc = nullptr;
+                int   idx   = -1;
+                bool  armed = false;
+                int   opens = 0, closes = 0;
+                float heldBefore = 0.0f, landed = 0.0f;   // read INSIDE the press, not after it
+                std::vector<float> seen, atom;
+                void audioProcessorParameterChanged (juce::AudioProcessor*, int i, float v) override
+                {
+                    if (! armed || i != idx) return;
+                    seen.push_back (v);
+                    if (proc != nullptr)
+                        if (auto* a = proc->getAPVTS().getRawParameterValue (pid::drive))
+                            atom.push_back (a->load());
+                }
+                void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+                void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int i) override
+                { if (armed && i == idx) ++opens; }
+                void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
+                { if (armed && i == idx) ++closes; }
+            };
+
+            auto oneDragEvent = [&] (bool withNotch, WriteRecorder& rec)
+            {
+                while (proc.canUndo()) proc.undo();
+                proc.pollUndoCoalesce();
+                const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+                const auto t = legStamp();
+                auto ev = [&] (float y, bool dragged, bool button)
+                {
+                    return juce::MouseEvent (src, { cx, y },
+                                             button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                             t, { cx, cy }, t, 1, dragged);
+                };
+                driveK->mouseDown (ev (cy, false, true));
+                driveK->mouseDrag (ev (cy - 20.0f, true, true));
+                if (withNotch) driveK->mouseWheelMove (ev (cy - 20.0f, false, true), wheel);
+                rec.heldBefore = plainOf (driveP);
+                rec.proc = &proc; rec.idx = driveP->getParameterIndex();
+                proc.addListener (&rec);
+                rec.armed = true;
+                driveK->mouseDrag (ev (cy - 22.0f, true, true));   // ONE further drag event
+                rec.armed = false;
+                proc.removeListener (&rec);
+                rec.landed = plainOf (driveP);      // ...read here, because the NEXT run drains undo
+                driveK->mouseUp (ev (cy - 22.0f, true, true));
+                proc.pollUndoCoalesce();
+            };
+
+            WriteRecorder withNotch, control;
+            oneDragEvent (true,  withNotch);
+            oneDragEvent (false, control);
+
+            if (withNotch.seen.size() != 1)
+                std::printf ("  [leg M] one drag event published %d values: the pure drag value went"
+                             " out before the correction\n", (int) withNotch.seen.size());
+            check (withNotch.seen.size() == 1,
+                   "leg M: one drag event inside a scrolled press publishes exactly ONE value");
+            check (control.seen.size() == 1,
+                   "leg M: control -- one drag event with no notch banked publishes one value too");
+            check (! withNotch.seen.empty()
+                   && juce::exactlyEqual (driveP->convertFrom0to1 (withNotch.seen.back()), withNotch.landed),
+                   "leg M: ...and the value it published is the one the control landed on");
+            for (size_t i = 0; i < withNotch.seen.size(); ++i)
+                check (driveP->convertFrom0to1 (withNotch.seen[i]) >= withNotch.heldBefore,
+                       "leg M: no value published during an upward drag is below where the press"
+                       " already stood -- the notch is never briefly unwound");
+            for (size_t i = 0; i < withNotch.atom.size(); ++i)
+                check (juce::exactlyEqual (withNotch.atom[i], driveP->convertFrom0to1 (withNotch.seen[i])),
+                       "leg M: ...and the DSP atomic never holds a value the host was not told");
+            check (withNotch.opens == 0 && withNotch.closes == 0,
+                   "leg M: the event sits INSIDE the press's open gesture -- it is automation-recordable");
+        }
 
     proc.editorBeingDeleted (ed);
     delete ed;

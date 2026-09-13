@@ -572,6 +572,10 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // processor keeps the whole scroll as one undo step instead of one per notch.
     imager->onWheelStep        = [this] (const juce::AudioProcessorParameter* wheelParam)
                                  { processor.setWheelStepKey (AnamorphAudioProcessor::wheelStepKeyFor (wheelParam)); };
+    // ADR-0008 as amended (round 14): the imager's two unbracketed stores declare the parameters
+    // they write as the user's own, so a pushed neighbour belongs to the step that moved it.
+    imager->onOwnedWrite       = [this] (const juce::AudioProcessorParameter* owned)
+                                 { processor.noteOwnedParamWrite (owned); };
     imager->isSweeping         = [this] { return uiAnimOn && knobSweepTime > 0.0; };
     addAndMakeVisible (*imager);
 

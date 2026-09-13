@@ -112,6 +112,12 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     presets.noteReplaced          = [this] { noteWholeSoundReplaced(); };   // published under the §24 lock
     internal.onChanged    = [this] { publishProgram(); };
 
+    // ADR-0008 as amended (round 14): the per-batch ownership record is sized ONCE, here, so no
+    // gesture callback ever allocates. `syncCommitted()` below seeds its two value snapshots.
+    batchOpenValue .assign ((size_t) getParameters().size(), 0.0f);
+    batchCloseValue.assign ((size_t) getParameters().size(), 0.0f);
+    batchOwnedParam.assign ((size_t) getParameters().size(), (char) 0);
+
     syncCommitted(); // establish the undo baseline
 
     // Snapshot BOTH A/B slots to the open (Default) state up front. The slots are otherwise filled
@@ -441,6 +447,36 @@ juce::String AnamorphAudioProcessor::soundSignature() const
     return sig;
 }
 
+// ADR-0008 as amended (round 14). One bounded pass of atomic value loads -- no allocation, no
+// lock, no APVTS tree read -- so it is safe from inside the parameter-listener dispatch that calls
+// `parameterGestureChanged` (which JUCE delivers holding that parameter's listener lock; taking the
+// APVTS lock there would invert the order a host-thread save takes them in, D-2/ADR-0036).
+void AnamorphAudioProcessor::snapshotSoundValues (std::vector<float>& into) const
+{
+    const auto& ps = getParameters();
+    for (int i = 0; i < ps.size() && i < (int) into.size(); ++i)
+        into[(size_t) i] = ps[i]->getValue();
+}
+
+// ADR-0008 as amended (round 14). Declare a parameter the pending batch's own. Called by the
+// multiband display's two unbracketed stores (see the header), and implied for every parameter a
+// change gesture opens on.
+void AnamorphAudioProcessor::noteOwnedParamWrite (const juce::AudioProcessorParameter* p) noexcept
+{
+    if (p == nullptr) return;
+    const int i = p->getParameterIndex();
+    if (i >= 0 && i < (int) batchOwnedParam.size()) batchOwnedParam[(size_t) i] = (char) 1;
+}
+
+// The ownership record starts empty and both edges read the live sound: called wherever the undo
+// bookkeeping is dropped wholesale (a program state jump, an Undo, a Redo, a preset switch).
+void AnamorphAudioProcessor::resetBatchOwnership()
+{
+    for (auto& c : batchOwnedParam) c = (char) 0;
+    snapshotSoundValues (batchOpenValue);
+    batchCloseValue = batchOpenValue;
+}
+
 void AnamorphAudioProcessor::syncCommitted()
 {
     committed = currentStateSet();
@@ -461,6 +497,7 @@ void AnamorphAudioProcessor::syncCommitted()
     // Re-synced AFTER the jump's own writes, for that reason. State test 86 leg T.
     gestureEdgeGen   = soundParamGen.load (std::memory_order_relaxed);
     foreignSinceEdge = false;
+    resetBatchOwnership();        // ADR-0008 round 14: ...and the batch owns nothing across a jump
 }
 
 // A full snapshot: parameters PLUS the live preset name + clean baseline (#6). The params carry the
@@ -822,7 +859,7 @@ juce::uint32 AnamorphAudioProcessor::applySoundTree (const juce::ValueTree& soun
 
 // Message thread. Count nested / overlapping gestures (e.g. the two-parameter Multiband band move
 // opens gestures on both split params); request a single undo commit only after the LAST closes.
-void AnamorphAudioProcessor::parameterGestureChanged (int, bool gestureIsStarting)
+void AnamorphAudioProcessor::parameterGestureChanged (int parameterIndex, bool gestureIsStarting)
 {
     // D-2: deliberately NO adoptPendingHostState() here. This is an
     // AudioProcessorParameter::Listener callback and JUCE delivers it holding the
@@ -855,7 +892,21 @@ void AnamorphAudioProcessor::parameterGestureChanged (int, bool gestureIsStartin
             // store was refused, which is the reachable half of it.
             if (gestureOpenGen != gestureEdgeGen) foreignSinceEdge = true;
             gestureEdgeGen = gestureOpenGen;
+
+            // ADR-0008 as amended (round 14). A FRESH PENDING BATCH RE-BASES THE OWNERSHIP RECORD,
+            // and a batch the poll has not consumed yet does NOT. Two presses can finish inside one
+            // 24 Hz period and collapse into a single step -- they always have -- so re-basing at
+            // the second one's open would drop the first one's edits from the step they share and
+            // move the surviving ends onto values the first press produced. `pendingGestureCommit`
+            // is exactly "a batch is already waiting for the poll".
+            if (! pendingGestureCommit) resetBatchOwnership();
         }
+        // ...AND A GESTURE IS THE DECLARATION. A parameter with a change gesture open on it is one
+        // the USER is editing -- no host calls begin/endChangeGesture on a plug-in's parameters,
+        // and every call site in this plug-in is message-thread GUI code -- so this is where an
+        // undo step learns what it owns, at no cost and with no new cross-thread path.
+        if (parameterIndex >= 0 && parameterIndex < (int) batchOwnedParam.size())
+            batchOwnedParam[(size_t) parameterIndex] = (char) 1;
     }
     else if (openGestures > 0 && --openGestures == 0)
     {
@@ -895,6 +946,12 @@ void AnamorphAudioProcessor::parameterGestureChanged (int, bool gestureIsStartin
         // taken HERE is the line between the batch's edits and whatever lands before the poll.
         // A relaxed load of a counter this thread has just been bumping, not a second measurement.
         gestureEdgeGen = soundParamGen.load (std::memory_order_relaxed);
+        // ADR-0008 as amended (round 14): ...AND WHERE THE STEP'S "AFTER" VALUES ARE READ. The same
+        // sentence above is why this is the right instant -- everything the batch was going to
+        // write has been written -- and it is retaken at every zero-crossing close, so a release
+        // action that opens further gestures of its own (`removeBand`/`addBandAt` end in
+        // `setBands`) is captured after its last store rather than before it.
+        snapshotSoundValues (batchCloseValue);
     }
 }
 
@@ -979,23 +1036,21 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
         pendingStepNamed = false;
         if (sig != committedSig)
         {
-            // WHY THE PUSH ASKS THE SIGNATURE AND NOT `edited` -- round 12 tried the other way and
-            // the suite refused it. A press that opens and closes without moving a value still
-            // requests a commit, so a batch that edited nothing can still record a step whose only
-            // content is a gesture-less write beside it (State test 86 leg V measures exactly
-            // that, and one Undo does take that write back). Gating the push on `edited` removes
-            // it -- and breaks two measured behaviours that depend on the signature rule:
-            //   * a DOUBLE-CLICK reset has no gesture of its own (`Knob::mouseDoubleClick` calls
-            //     `doReset` bare, after JUCE has already closed the press's), so it is undoable
-            //     ONLY because the empty press's pending commit finds the moved signature -- leg K
-            //     pins that, and the gate makes the reset unundoable;
-            //   * a burst whose own store was REFUSED leaves the host's write to be recorded, and
-            //     that step is what stops the next Undo from reaching past it into the previous
-            //     scroll -- leg I and leg J pin that, and the gate takes the boundary away, so one
-            //     Undo walks back through the automation into the user's earlier step.
-            // Both faces are the same ADR-0008 consequence finding 4 records: an undo entry is a
-            // whole-state snapshot, so a foreign write is either inside the user's step or has a
-            // step of its own, and there is no third answer while that is what an entry is.
+            // WHY THE PUSH ASKS WHAT THE BATCH OWNS, and no longer the signature (ADR-0008 as
+            // amended, round 14). Rounds 12 and 13 recorded that there was no third answer here:
+            // gating the push on the signature made a gesture-less host write part of whatever step
+            // was recorded beside it, and gating it on `edited` instead took away a double-click
+            // reset's step (leg K) and the boundary legs I and J rely on -- because an entry was a
+            // whole state, so a foreign write was either inside the user's step or had a step of
+            // its own. The amendment IS the third answer: an entry now carries only the parameters
+            // the user's own batch moved, so a write nobody declared is in no step at all and the
+            // question the push has to ask is simply "did anything this batch owns actually move?".
+            //   * the DOUBLE-CLICK reset brackets its own gesture since round 14
+            //     (`Knob::mouseDoubleClick`), so its parameter is owned and moved: leg K stands on
+            //     a declaration rather than on a side effect of the signature rule;
+            //   * a burst whose own store was REFUSED owns a parameter that did not move, so it
+            //     records nothing -- and the host's write beside it is not undoable, which is the
+            //     rule this amendment exists to enforce. Legs I and J are re-based onto it.
             {
                 // ADR-0053, round 13. THE FOREIGN TEST IS ANCHORED TO THE BASELINE, and the order of
                 // these three lines is the whole of it. `foreign` asks whether anything moved a
@@ -1032,20 +1087,70 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
                 // take back both the scroll and the automation, and the automation would have been
                 // attributed to a scroll it had nothing to do with. `foreign` says exactly that
                 // happened, and a batch carrying one is nobody's scroll. State test 86 leg O.
-                const bool extend = stepKey != 0 && stepKey == lastStepWheelKey && ! foreign
-                                    && ! abUndo[abActive].undo.empty();
-                if (! extend)
+                // ADR-0008 as amended, round 14. WHAT THIS STEP OWNS: every parameter the batch
+                // DECLARED as its own whose RENDERED value moved between the batch's two edges. The
+                // rendered grid is the signature's own (`normalisedAsRendered`), so a sub-step move
+                // on a discrete parameter records nothing here for the same reason it records no
+                // signature change -- undoing it would neither be heard nor shown (ADR-0036 §17).
+                std::vector<ParamEdit> edits;
                 {
-                    abUndo[abActive].undo.push_back (committed);   // the PREVIOUS state set (name + baseline, #6)
-                    if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
+                    const auto& ps = getParameters();
+                    for (int i = 0; i < ps.size() && i < (int) batchOwnedParam.size(); ++i)
+                    {
+                        if (batchOwnedParam[(size_t) i] == 0) continue;
+                        auto* rp = dynamic_cast<juce::RangedAudioParameter*> (ps[i]);
+                        if (rp == nullptr || isViewParam (rp->paramID)) continue;   // #10/#13: never recorded
+                        const float b = batchOpenValue[(size_t) i], a = batchCloseValue[(size_t) i];
+                        if (juce::exactlyEqual (normalisedAsRendered (*rp, b), normalisedAsRendered (*rp, a)))
+                            continue;
+                        edits.push_back ({ i, b, a });
+                    }
                 }
-                abUndo[abActive].redo.clear();
-                // Recorded only where a step was actually recorded: a gesture that changed nothing has
-                // not interrupted the scroll, so it must not end the chain either. A step carrying a
-                // foreign write is named by nobody, so the NEXT notch starts its own step rather than
-                // merging across the automation (ADR-0053 round 11, section 5.3's "no intervening
-                // non-wheel sound modification").
-                lastStepWheelKey = foreign ? 0 : stepKey;
+
+                auto& stacks = abUndo[abActive];
+                const bool extend = stepKey != 0 && stepKey == lastStepWheelKey && ! foreign
+                                    && ! stacks.undo.empty() && ! stacks.undo.back().isWhole();
+                if (! edits.empty())
+                {
+                    if (extend)
+                    {
+                        // "Keep the value the scroll started from and replace only where it ended"
+                        // is now literal: the entry keeps each parameter's original `before` and
+                        // takes the new `after`, and a parameter this batch touched for the first
+                        // time joins it. (It used to be expressed as "do not push another entry",
+                        // which only worked because an entry was the whole preceding state.)
+                        auto& back = stacks.undo.back();
+                        for (const auto& e : edits)
+                        {
+                            bool merged = false;
+                            for (auto& q : back.owned)
+                                if (q.index == e.index) { q.after = e.after; merged = true; break; }
+                            if (! merged) back.owned.push_back (e);
+                        }
+                        back.after = { {}, fresh.name, fresh.baseline, fresh.selection };
+                    }
+                    else
+                    {
+                        UndoEntry entry;
+                        entry.owned  = std::move (edits);
+                        entry.before = { {}, committed.name, committed.baseline, committed.selection };
+                        entry.after  = { {}, fresh.name,     fresh.baseline,     fresh.selection };
+                        stacks.undo.push_back (std::move (entry));
+                        if (stacks.undo.size() > 128) stacks.undo.erase (stacks.undo.begin());
+                    }
+                    stacks.redo.clear();
+                    // Recorded only where a step was actually recorded: a gesture that changed nothing has
+                    // not interrupted the scroll, so it must not end the chain either. A step carrying a
+                    // foreign write is named by nobody, so the NEXT notch starts its own step rather than
+                    // merging across the automation (ADR-0053 round 11, section 5.3's "no intervening
+                    // non-wheel sound modification").
+                    lastStepWheelKey = foreign ? 0 : stepKey;
+                }
+                else if (foreign)
+                    // ...AND A FOREIGN WRITE ENDS THE CHAIN WHETHER OR NOT A STEP WAS RECORDED. Until
+                    // round 14 that followed from the push always happening; now that a batch owning
+                    // nothing records nothing, it has to be said (ADR-0053 §5.3).
+                    lastStepWheelKey = 0;
                 edgeGen   = snapGen;              // ...the same instant the baseline was taken at
                 committed = std::move (fresh);
             }
@@ -1101,10 +1206,19 @@ void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
     const auto sig = soundSignature();
     if (sig != committedSig)
     {
-        abUndo[abActive].undo.push_back (committed);   // the PREVIOUS state set (name + baseline, #6)
-        if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
+        // A WHOLE-STATE STEP, deliberately (ADR-0008 as amended, round 14). A preset load replaces
+        // the whole sound through a gesture-less burst, so there is no per-parameter attribution to
+        // be had and none is invented: `before.params` valid is what marks an entry whole, and this
+        // is one of the two sites that make them. `after` is recorded here rather than rebuilt at
+        // Undo time, so redoing a preset switch restores the preset, not whatever the host has
+        // automated since.
+        UndoEntry entry;
+        entry.before = committed;                      // the PREVIOUS state set (name + baseline, #6)
         abUndo[abActive].redo.clear();                 // a new user action invalidates the redo stack
         committed = currentStateSet();                 // now carries the NEW preset name + clean baseline
+        entry.after = committed;
+        abUndo[abActive].undo.push_back (std::move (entry));
+        if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
         committedSig = sig;
     }
     else
@@ -1132,6 +1246,36 @@ void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
     pendingStepNamed = false;
     gestureEdgeGen   = soundParamGen.load (std::memory_order_relaxed); // ...and it is an EDGE: see syncCommitted
     foreignSinceEdge = false;
+    resetBatchOwnership();                      // ADR-0008 round 14: ...and so is what it owned
+}
+
+// ADR-0008 as amended (round 14). Install one end of an undo entry -- see the header for why a
+// scoped entry is applied by handing `applyStateSet` the LIVE state with this entry's parameters
+// overwritten rather than by writing them directly.
+void AnamorphAudioProcessor::applyUndoEntry (const UndoEntry& e, bool toAfter)
+{
+    const StateSet& end = toAfter ? e.after : e.before;
+    if (e.isWhole()) { applyStateSet (end); return; }   // preset switch / A-B copy: exactly as before
+
+    StateSet target = currentStateSet();                // the live sound...
+    const auto& ps = getParameters();
+    for (const auto& pe : e.owned)                      // ...with only this step's own parameters moved
+    {
+        if (pe.index < 0 || pe.index >= ps.size()) continue;
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*> (ps[pe.index]);
+        if (rp == nullptr) continue;
+        auto node = target.params.getChildWithProperty ("id", rp->paramID);
+        if (! node.isValid()) continue;
+        const float v = toAfter ? pe.after : pe.before;
+        // BOTH attributes, and in this order of authority: `reassertParameters` resolves through
+        // `anamorph::sessionNormalisedValue`, which prefers `raw`, while `replaceState` on the way
+        // in reads `value`. Writing only `raw` would leave the two disagreeing for the length of
+        // one replacement -- the publish-then-correct shape this round removed from the knob drag.
+        node.setProperty ("raw",   v, nullptr);
+        node.setProperty ("value", rp->convertFrom0to1 (v), nullptr);
+    }
+    target.name = end.name; target.baseline = end.baseline; target.selection = end.selection;
+    applyStateSet (target);
 }
 
 void AnamorphAudioProcessor::undo()
@@ -1146,9 +1290,16 @@ void AnamorphAudioProcessor::undo()
     auto& st = abUndo[abActive];
     if (st.undo.empty()) return;
     engine.requestDuck(); // mask the level jump (#1, 0.6.4)
-    st.redo.push_back (currentStateSet());
-    committed = st.undo.back(); st.undo.pop_back();
-    applyStateSet (committed);
+    // ADR-0008 as amended (round 14). THE ENTRY MOVES BETWEEN THE STACKS rather than a new one
+    // being manufactured from the live parameters here -- which is what used to make a host write
+    // landing between the step and this Undo the value Redo restored. Undo installs the entry's
+    // `before` end, Redo its `after` end, and because it is one object read in two directions the
+    // two cannot disagree. `committed` is re-read from the live sound afterwards because a scoped
+    // apply moves only part of it.
+    auto entry = std::move (st.undo.back()); st.undo.pop_back();
+    applyUndoEntry (entry, /*toAfter*/ false);
+    st.redo.push_back (std::move (entry));
+    committed = currentStateSet();
     committedSig = soundSignature();
     lastPolledSig = committedSig;
     openGestures = 0;             // undo is a program state jump, not a user gesture -- drop any
@@ -1157,6 +1308,7 @@ void AnamorphAudioProcessor::undo()
     pendingStepNamed = false;
     gestureEdgeGen   = soundParamGen.load (std::memory_order_relaxed); // AFTER applyStateSet: see syncCommitted
     foreignSinceEdge = false;
+    resetBatchOwnership();                      // ADR-0008 round 14: ...and so is what it owned
 }
 
 void AnamorphAudioProcessor::redo()
@@ -1165,9 +1317,10 @@ void AnamorphAudioProcessor::redo()
     auto& st = abUndo[abActive];
     if (st.redo.empty()) return;
     engine.requestDuck(); // mask the level jump (#1, 0.6.4)
-    st.undo.push_back (currentStateSet());
-    committed = st.redo.back(); st.redo.pop_back();
-    applyStateSet (committed);
+    auto entry = std::move (st.redo.back()); st.redo.pop_back();   // the same entry, read forwards
+    applyUndoEntry (entry, /*toAfter*/ true);
+    st.undo.push_back (std::move (entry));
+    committed = currentStateSet();
     committedSig = soundSignature();
     lastPolledSig = committedSig;
     openGestures = 0;             // redo is a program state jump, not a user gesture -- drop any
@@ -1176,6 +1329,7 @@ void AnamorphAudioProcessor::redo()
     pendingStepNamed = false;
     gestureEdgeGen   = soundParamGen.load (std::memory_order_relaxed); // AFTER applyStateSet: see syncCommitted
     foreignSinceEdge = false;
+    resetBatchOwnership();                      // ADR-0008 round 14: ...and so is what it owned
 }
 
 // ----------------------------------------------------------------------------
@@ -1270,9 +1424,15 @@ void AnamorphAudioProcessor::abCopyToOther()
     const int other = abActive == 1 ? 0 : 1;
     // Record the target slot's pre-copy state so undoing on that slot reverts the
     // Copy without disturbing the active slot's history (#12).
-    abUndo[other].undo.push_back (abSlot[other]);
+    // The second and last WHOLE-state entry (ADR-0008 as amended, round 14): a Copy wholesale
+    // replaces a slot that is not even the live sound, so there is nothing to attribute per
+    // parameter -- and the entry is only ever applied once the user is standing on that slot.
+    UndoEntry entry;
+    entry.before = abSlot[other];
     abUndo[other].redo.clear();
     abSlot[other] = currentStateSet(); // overwrite the other slot with the FULL state set (#6)
+    entry.after = abSlot[other];
+    abUndo[other].undo.push_back (std::move (entry));
     publishProgram();                  // both slots moved and no preset metadata did (D-2)
 }
 

@@ -399,10 +399,18 @@ private:
         // the processor's undo coalescer gesture-less -- which is the automation
         // path, folded into the baseline with NO undo step and NO redo clear.
         // That is why Option/Alt-click reset was un-undoable (and left Redo
-        // alive). The DOUBLE-CLICK reset needs no wrap: its second press runs
-        // Slider::mouseDown first, whose ScopedDragNotification has already
-        // opened the drag gesture that mouseUp will close -- wrapping there
-        // would nest begin/endChangeGesture on the same parameter.
+        // alive). THE DOUBLE-CLICK RESET NEEDS THE SAME WRAP, and this comment used to say the
+        // opposite -- "its second press runs Slider::mouseDown first, whose ScopedDragNotification
+        // has already opened the drag gesture that mouseUp will close, so wrapping there would
+        // nest". The premise is false: JUCE dispatches `mouseDoubleClick` from
+        // `Component::internalMouseUp`, AFTER `mouseUp` has run, so the press's gesture is already
+        // CLOSED by then and there is nothing to nest inside. JUCE's own
+        // `Slider::Pimpl::mouseDoubleClick` wraps its write in a `ScopedDragNotification` for that
+        // reason; this class overrides `mouseDoubleClick` and never reaches it, so until round 14
+        // the reset reached the host as a gesture-less write -- the automation shape KI-010
+        // names, and the reason its undo step existed only as a side effect of the whole-state
+        // push rule. Bracketed now, gated on `resetWouldMove()` exactly as the Alt path is
+        // (ADR-0052: an input that performs no edit has no side effects).
         juce::RangedAudioParameter* resetParam = nullptr;
         std::function<void()> onSweep;
         // ADR-0053. THE WHEEL IS PART OF THE INTERACTION IT LANDS IN, and this member is what lets a
@@ -476,27 +484,52 @@ private:
         }
         void mouseDoubleClick (const juce::MouseEvent& e) override
         {
-            if (e.getNumberOfClicks() == 2) doReset();
+            if (e.getNumberOfClicks() != 2 || ! resetWouldMove()) return;
+            if (resetParam != nullptr) resetParam->beginChangeGesture();
+            doReset();
+            if (resetParam != nullptr) resetParam->endChangeGesture();
         }
-        // ADR-0053: the notch total this press has accumulated, applied on top of the value JUCE's
-        // drag has just computed. Called after every drag event, so the offset survives the drag's
-        // habit of recomputing from its own press-time anchor.
-        void applyWheelDragOffset()
+        // ADR-0053, ROUND 14: THE NOTCH TOTAL IS FOLDED IN BEFORE THE DRAG WRITES, NOT AFTER IT.
+        // JUCE asks this immediately before its own drag store --
+        // `setValue (owner.snapValue (valueWhenLastDragged, dragMode), sendNotificationSync)` -- so
+        // answering with the COMBINED value makes a drag event publish once. Until round 14 the
+        // offset was applied by a second `setValue` in a `mouseDrag` override, which published the
+        // PURE DRAG value first: measured on the Drive knob with one notch banked, the host's
+        // `audioProcessorParameterChanged` and the DSP atomic both took 2.1100 dB while the control
+        // stood at 3.9100 -- a full notch BACKWARDS, on every mouse move, inside the open
+        // touch/latch punch-in the press holds, so a DAW recording automation wrote the spike into
+        // the lane. Both writes landed in one gesture, so nothing downstream of the release could
+        // see it and no existing check did.
+        //
+        // GATED ON THE NOTCH TOTAL, NOT ON `dragMode`: JUCE leaves `dragMode == notDragging` for the
+        // plain `Rotary` style, so a `dragMode` test would silently stop folding for a style this
+        // editor does not happen to use today. `wheelDragProp` is non-zero only between a notch and
+        // the release of THIS slider's own press -- `mouseDown` and `mouseUp` both zero it -- which
+        // is exactly the drag path, and every other `snapValue` caller in JUCE (the wheel, the text
+        // box, the inc/dec buttons) is reached only with it at zero.
+        //
+        // `base` COMES FROM THE SNAPPED VALUE because that is what the old `getValue()` returned:
+        // JUCE runs `constrainedValue` (i.e. `snapToLegalValue`) on whatever this answers, so taking
+        // the raw `attempted` would drop a quantisation step the arithmetic had already applied.
+        // Measured equivalent to the old code on 8640 sequences -- every APVTS parameter x four drag
+        // paths x five start values x four wheel deltas x three notch positions -- with the raw form
+        // differing on 89 of them and the snapped form on none.
+        //
+        // A two- or three-value slider deriving from `Knob` would get the offset folded into its
+        // min/max thumbs as well (`setMinValue`/`setMaxValue` call this with a live `dragMode`).
+        // There is no such slider here -- every one is single-value -- and this is recorded rather
+        // than guarded, because a guard with no caller cannot be tested.
+        double snapValue (double attempted, DragMode mode) override
         {
-            if (juce::exactlyEqual (wheelDragProp, 0.0)) return;
-            const double base = valueToProportionOfLength (getValue());        // the pure drag value
+            if (juce::exactlyEqual (wheelDragProp, 0.0)) return juce::Slider::snapValue (attempted, mode);
+            const double base = valueToProportionOfLength (getNormalisableRange().snapToLegalValue (attempted));
             const double want = juce::jlimit (0.0, 1.0, base + wheelDragProp);
             // NO DEAD TRAVEL: keep only what actually fitted, so a press that has been scrolled past
             // a rail leaves that rail the instant the drag moves away from it instead of first
             // unwinding travel nobody can see. Only ever reached once a notch has been made, so an
             // ordinary drag's clamping behaviour is untouched.
             wheelDragProp = want - base;
-            setValue (proportionOfLengthToValue (want), juce::sendNotificationSync);
-        }
-        void mouseDrag (const juce::MouseEvent& e) override
-        {
-            juce::Slider::mouseDrag (e);
-            applyWheelDragOffset();
+            return proportionOfLengthToValue (want);
         }
         void mouseUp (const juce::MouseEvent& e) override
         {

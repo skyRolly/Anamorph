@@ -512,6 +512,7 @@ bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, flo
     if (p == nullptr) return false;
     const float norm   = p->convertTo0to1 (plain);
     const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
+    if (onOwnedWrite) onOwnedWrite (p);   // ADR-0008 round 14: this store is the user's, say so
     p->setValueNotifyingHost (norm);
     if (! juce::exactlyEqual (p->getValue(), expect)) return false;
     ownedNorm = expect;
@@ -787,6 +788,7 @@ void SpectrumImager::setParam (juce::RangedAudioParameter* p, float plain, int e
 {
     if (p == nullptr) return;
     if (expectedBands >= 0 && bandCount() != expectedBands) return;
+    if (onOwnedWrite) onOwnedWrite (p);   // ADR-0008 round 14: this store is the user's, say so
     p->setValueNotifyingHost (p->convertTo0to1 (plain));
 }
 void SpectrumImager::resetParam (juce::RangedAudioParameter* p, int expectedBands)
@@ -3497,13 +3499,18 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
         // ONE GESTURE, UP TO THREE PARAMETERS -- said plainly, because it would be easy to read the
         // paragraph above as claiming more. `dragCrossoverTo` can push NEIGHBOURING splits aside,
         // and those stores are outside any bracket of their own, so a host recording touch/latch
-        // sees them as automation rather than as part of this edit. UNDO is unaffected and this is
-        // not the KI-010 shape returning: `openGestures` is one global count, so the whole burst --
-        // neighbours included -- lands in the single step this bracket commits. It is also exactly
-        // what the DRAG path has done since 0.6.x, where `mouseDown` opens a gesture on the grabbed
-        // split alone and the same projection moves its neighbours. Matching it is deliberate; a
-        // gesture per pushed neighbour would be a change to how this plug-in reports automation,
-        // which is not what this round was asked for.
+        // sees them as automation rather than as part of this edit. It is exactly what the DRAG
+        // path has done since 0.6.x, where `mouseDown` opens a gesture on the grabbed split alone
+        // and the same projection moves its neighbours. Matching it is deliberate; a gesture per
+        // pushed neighbour would be a change to how this plug-in reports automation.
+        //
+        // UNDO IS UNAFFECTED, and since round 14 that is a DECLARATION rather than a side effect.
+        // It used to follow from `openGestures` being one global count, so the whole burst --
+        // neighbours included -- landed in the single whole-state step this bracket committed. An
+        // entry now records only the parameters the batch declared its own (ADR-0008 as amended),
+        // and `storeOwned` makes that declaration through `onOwnedWrite` for every split it
+        // touches, pushed neighbours included. State test 86 leg D2 is the leg that drives a
+        // neighbour into being pushed and requires one Undo to bring the whole row back.
         beginGesture (freqP[scrollHandle]);
         // ADR-0047: the tick's target starts from the position `captureDragOrigins` just stamped,
         // not from a fresh read of the same split. A fresh read failed SAFE -- `ownsSplit` refuses a
