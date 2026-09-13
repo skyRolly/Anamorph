@@ -78,7 +78,10 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   arriving while that check was running was folded into the plug-in's own record but not counted as
   having been — so the next notch you scrolled looked like it was carrying somebody else's change,
   and the notch after it started a second Undo step. Pressing Undo once then stopped in the middle of
-  your scroll instead of returning to where it began. A whole scroll is one Undo step again.
+  your scroll instead of returning to where it began. A whole scroll is one Undo step again — and,
+  the other half of the same rule, an automation value that really does land between two of your
+  notches still ends the scroll there, so the notch after it starts a fresh Undo step rather than
+  quietly folding your DAW's change into yours.
   Decision: ADR-0053. Regression coverage: State test 86 legs U and U2. Evidence: PR #144. [Verified]
 - **An Option/Alt-click on a control that is already at its default no longer tells your DAW you
   touched it.** The reset was bracketed as an edit whether or not there was anything to reset, so a

@@ -7627,11 +7627,20 @@ static void testAScrollIsOneUndoStep()
                    " is not foreign to the scroll after it");
         }
 
-        // ---- LEG U2: the same, on the poll that COMMITS a step -----------------------------
-        //      The stanza above lands the write in the poll's non-gesture fold. This one lands it
-        //      in the branch that records a step: the capture is the same `currentStateSet()` and
-        //      absorbs the write the same way, so the edge has to be taken there too. Separate
-        //      because the two branches are two lines, and one leg cannot kill both.
+        // ---- LEG U2: a write the COMMITTING poll absorbs still ends the chain --------------
+        //      The stanza above lands the write in the poll's non-gesture FOLD, which sets
+        //      `lastStepWheelKey = 0` itself -- the chain is already ended there and the only
+        //      question is whether the scroll AFTER it is penalised twice. This one lands it in
+        //      the branch that RECORDS A STEP, where nothing else ends the chain: the name
+        //      survives unless `foreign` says otherwise. So the two branches need opposite
+        //      answers from the same edge, and one leg cannot cover both.
+        //
+        //      THE RULE, and it is the product rule rather than an implementation detail: a host
+        //      write that lands after the user's gesture boundary is not part of that user action.
+        //      It must end the merge chain, so the notch after it starts its own step instead of
+        //      extending one the automation is now inside. `foreign` therefore has to be measured
+        //      against the same instant the baseline is captured at -- not against the sample the
+        //      poll opened with, which predates the write and reports nothing foreign at all.
         {
             while (proc.canUndo()) proc.undo();
             proc.pollUndoCoalesce();
@@ -7653,15 +7662,22 @@ static void testAScrollIsOneUndoStep()
             scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
             const float n2 = plainOf (driveP);
             scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
-            check (! juce::exactlyEqual (n2, n1), "leg U2: ...and so did the second");
+            const float n3 = plainOf (driveP);
+            check (! juce::exactlyEqual (n2, n1) && ! juce::exactlyEqual (n3, n2),
+                   "leg U2: ...and so did the two notches after it");
             proc.undo();
-            if (! juce::exactlyEqual (plainOf (driveP), d0))
-                std::printf ("  [leg U2] the scroll was split after the committing poll absorbed the"
-                             " write: one Undo stopped at %.4f rather than %.4f\n",
-                             (double) plainOf (driveP), (double) d0);
+            if (juce::exactlyEqual (plainOf (driveP), d0))
+                std::printf ("  [leg U2] the chain extended straight across the host write: one Undo"
+                             " went all the way back to %.4f, taking the automation with it\n",
+                             (double) d0);
+            check (juce::exactlyEqual (plainOf (driveP), n1),
+                   "leg U2: one Undo stops at the notch the host write landed behind -- automation"
+                   " after a gesture boundary ends the merge chain");
+            check (juce::exactlyEqual (plainOf (driveP), n1) && proc.canUndo(),
+                   "leg U2: ...and the notch before it is a step of its own behind that");
+            proc.undo();
             check (juce::exactlyEqual (plainOf (driveP), d0),
-                   "leg U2: one Undo takes back the whole scroll -- the step's own capture is"
-                   " behind the edge it publishes");
+                   "leg U2: ...which a second Undo reaches");
         }
 
         // ---- LEG V: an EMPTY press records the automation beside it ----------------------
@@ -7712,6 +7728,50 @@ static void testAScrollIsOneUndoStep()
             check (juce::exactlyEqual (plainOf (driveP), d1),
                    "leg V: the step the empty press recorded stands between the automation and the"
                    " scroll before it -- one Undo does not reach past into the user's own edit");
+        }
+
+        // ---- LEG X: automation during ANOTHER user gesture, and Redo -----------------------
+        //      MEASUREMENT. The fifth of the five timings R983 names, and the only one no leg
+        //      reached: a host write that lands while a user gesture is OPEN. The poll refuses to
+        //      fold while `openGestures > 0`, so `committed` is frozen for the gesture's whole
+        //      duration -- seconds, for a knob drag -- and the write is inside the step the close
+        //      records, with no window to hit. This leg holds a gesture open across two polls to
+        //      make that explicit, then prints what one Undo does to the host's parameter and what
+        //      Redo puts back.
+        //
+        //      The assertion is the half that is not in question: the USER's own edit is undone
+        //      and redone exactly. What is printed rather than asserted is the automated
+        //      parameter, because the intended product rule and the implementation disagree there
+        //      -- see RISK-012 and the ADR-0008 escalation.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP), w0 = plainOf (widP);
+            driveP->beginChangeGesture();
+            driveP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, driveP->getValue() + 0.20f));
+            const float d1 = plainOf (driveP);
+            proc.pollUndoCoalesce();                 // ...twice, with the gesture still open
+            proc.pollUndoCoalesce();
+            widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.20f));
+            const float w1 = plainOf (widP);
+            driveP->endChangeGesture();
+            proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (d1, d0) && ! juce::exactlyEqual (w1, w0),
+                   "leg X: the user gesture moved Drive and the host write moved Width");
+            proc.undo();
+            const float dU = plainOf (driveP), wU = plainOf (widP);
+            std::printf ("  [leg X] automation INSIDE a held gesture: one Undo puts Drive back to"
+                         " %.4f (it was %.4f) and Width to %.4f (the host wrote %.4f)\n",
+                         (double) dU, (double) d0, (double) wU, (double) w1);
+            check (juce::exactlyEqual (dU, d0),
+                   "leg X: one Undo takes back the user's own edit exactly");
+            proc.redo();
+            std::printf ("  [leg X] ...and Redo restores Drive %.4f and Width %.4f\n",
+                         (double) plainOf (driveP), (double) plainOf (widP));
+            check (juce::exactlyEqual (plainOf (driveP), d1),
+                   "leg X: ...and Redo puts the user's edit back exactly");
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
         }
 
         // ---- LEG W: a host write that renders to no change still ends the chain -----------
@@ -17773,7 +17833,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1473).
+//  baseline", src/PluginProcessor.cpp:1495).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -18006,7 +18066,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1210).
+//  targets", src/PluginProcessor.cpp:1232).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -18383,7 +18443,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1658).
+//  mixed sound", src/PluginProcessor.cpp:1680).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running

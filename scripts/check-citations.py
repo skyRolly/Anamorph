@@ -426,13 +426,23 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.h:344"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     "src/PluginProcessor.cpp:1914-2013"): "setStateInformation",
+     "src/PluginProcessor.cpp:1936-2035"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     "src/PluginProcessor.cpp:1914"): "setStateInformation",
+     "src/PluginProcessor.cpp:1936"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     "src/PluginProcessor.cpp:1450"): "abActive",
+     "src/PluginProcessor.cpp:1472"): "abActive",
+    #
+    # 2026-09-13 (round 13), and this one is a REAL re-aim rather than a shift. RISK-012 cited the
+    # poll as a span, `:963-1035`, which had drifted to the middle of two comment blocks and named
+    # nothing: the sentence is about the push decision, so the aim moves to the `sig != committedSig`
+    # gate and the `undo.push_back` it guards. Round 13's own hunk is what made the old span
+    # meaningless, which is the case for re-aiming onto the thing a citation is about rather than
+    # following the line map to wherever the old text ended up.
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:963-1035",
+     "src/PluginProcessor.cpp:980-1039"): "sig != committedSig",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

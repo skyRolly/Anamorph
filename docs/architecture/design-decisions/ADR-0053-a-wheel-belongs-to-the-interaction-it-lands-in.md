@@ -401,6 +401,55 @@ non-gesture branch would have left alone. Making the two agree means rendering i
 realtime and cross-thread-counter question rather than a wheel one. State test 86 leg W prints the
 measurement on every run.
 
+### What a fifth review round changed, and the defect the fourth one introduced
+
+**1. Round 12's own fix left the foreign test measuring the wrong instant, and a review caught it
+before CI could.** Round 12 correctly moved the published gesture EDGE to the generation of the
+snapshot the poll commits — but left `foreign` computed from the sample the poll *opened* with. In
+a poll that COMMITS a step those two must be the same instant, and they were not: a host write
+landing while the signature was being built was absorbed into the baseline, reported as nothing
+foreign at all, and the step's name survived. Every later notch then extended a step the automation
+was already inside. Measured before the fix: *"the chain extended straight across the host write:
+one Undo went all the way back to 0.0000, taking the automation with it"*.
+
+The correction is an ordering, not a mechanism: **capture the baseline, THEN read the counter, THEN
+decide**, and use that one value for both `foreign` and the edge. Reading after the capture is what
+makes the residual one-directional — every write that can be inside the baseline is counted, and
+the only writes the test can over-report are ones that landed after the capture and are therefore
+not in it, which costs an extra undo step and never a merge across automation. Reading before the
+capture inverts exactly that, which is the bug it replaces. **The signature is deliberately not
+consulted**: it reads parameters one at a time, so it can miss a write the baseline still holds and
+cannot answer this question; the counter and the snapshot can, because they are taken at the same
+instant and in that order. State test 86 leg U2; mutations M45, M46, M47.
+
+Note that the two branches need OPPOSITE answers from the same edge, which is why each has its own
+leg. In the non-gesture FOLD the chain is already ended by `lastStepWheelKey = 0`, so the only
+question is whether the scroll after it is penalised a second time (leg U: it must not be). In the
+COMMITTING branch nothing else ends the chain, so the edge is the only thing that can (leg U2: it
+must).
+
+**2. The automation-inside-a-user-step residual is re-classified, and escalated.** Round 12 recorded
+it as an accepted consequence. Round 13 was given the product rule explicitly — *host automation is
+not a user Undo/Redo action, and must not become part of a user-action step merely because it
+happened inside a pending snapshot or coalescing window* — and against that rule it is a **defect**.
+It is also nearer to ADR-0008's own Decision than round 12 allowed: that Decision already says host
+automation *"folds into the baseline **without** a step"*, and a value one Undo reverts has been
+given a step's worth of undoability. What ADR-0008 does not decide is the case where the write lands
+inside somebody else's step — which is this one.
+
+**This ADR does not decide it either, and deliberately does not.** Every correct fix needs
+per-parameter attribution, which makes an undo entry a synthesis rather than a state that ever
+existed — contradicting ADR-0008's *"stacks of `StateSet` snapshots"* in terms. That is a hard stop
+under `ARCHITECTURE_REVIEW_GATE.md`, so it is recorded in `docs/FUTURE_RISKS.md` RISK-012 as
+**CONFIRMED, ESCALATED, pending a maintainer decision on ADR-0008**, with the design, the second
+(thread-model) trigger, and the measurements. Round 12's claim that the multiband split drag would
+break under such a classifier is **withdrawn**: `mouseDown` holds `beginGesture (freqP[h])` for the
+whole drag, so the pushed neighbour stores are inside the batch by the classifier that matters.
+
+**3. `ScopedWheelStep` re-checked, still unreachable.** This round's only source change is inside
+`pollUndoCoalesceAdopted`: no wheel dispatch, no component routing, no new construction site. The
+refutation and its correction above stand unchanged.
+
 ## Consequences
 
 - **A notch during any drag now adds to it**, and the drag continues from the combined value. What a

@@ -975,7 +975,6 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
         // closed -- which, since no other writer opens a gesture, is host automation landing in the
         // up-to-42 ms window before this poll.
         const bool edited  = pendingStepNamed;
-        const bool foreign = foreignSinceEdge || (gen != gestureEdgeGen);
         pendingStepWheelKey = 0;
         pendingStepNamed = false;
         if (sig != committedSig)
@@ -998,6 +997,29 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
             // whole-state snapshot, so a foreign write is either inside the user's step or has a
             // step of its own, and there is no third answer while that is what an entry is.
             {
+                // ADR-0053, round 13. THE FOREIGN TEST IS ANCHORED TO THE BASELINE, and the order of
+                // these three lines is the whole of it. `foreign` asks whether anything moved a
+                // sound parameter after this batch's last gesture closed -- and the answer has to
+                // cover everything the baseline below is about to CONTAIN, or a write the snapshot
+                // absorbs is neither foreign nor visible, and the scroll extends straight across it.
+                // Round 12 computed it from the sample the poll opened with, which predates the
+                // whole poll body: a host write landing while the signature was being built was
+                // reported as nothing foreign at all, the name survived, and every later notch kept
+                // extending a step the automation was now inside. State test 86 leg U2.
+                //
+                // So: capture, THEN read the counter, THEN decide. Reading after the capture is what
+                // makes the remaining error one-directional -- every write that can be inside the
+                // baseline is counted, and the only writes the test can over-report are ones that
+                // landed after the capture and are therefore NOT in it, which costs an extra undo
+                // step and never a merge across automation. Reading BEFORE the capture inverts
+                // exactly that, which is the bug this replaces. The signature is not consulted: it
+                // reads parameters one at a time and can miss a write the baseline still holds, so
+                // it cannot answer this question -- the counter and the snapshot can, because they
+                // are taken at the same instant and in that order.
+                auto fresh = currentStateSet();
+                const auto snapGen = soundParamGen.load (std::memory_order_relaxed);
+                const bool foreign = foreignSinceEdge || (snapGen != gestureEdgeGen);
+
                 // ADR-0053. A CONTINUING SCROLL EXTENDS ITS STEP INSTEAD OF PUSHING ANOTHER. The entry
                 // already on the stack holds the state from before the FIRST notch of this scroll, so
                 // not pushing -- and letting the lines below move the baseline on -- is precisely "keep
@@ -1024,9 +1046,9 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
                 // merging across the automation (ADR-0053 round 11, section 5.3's "no intervening
                 // non-wheel sound modification").
                 lastStepWheelKey = foreign ? 0 : stepKey;
+                edgeGen   = snapGen;              // ...the same instant the baseline was taken at
+                committed = std::move (fresh);
             }
-            edgeGen = soundParamGen.load (std::memory_order_relaxed);   // ...the snapshot's own edge
-            committed = currentStateSet();
             committedSig = sig;
         }
         // ...AND AN EDIT THAT PUT THE SOUND BACK WHERE IT FOUND IT STILL ENDS THE CHAIN (round 11).
@@ -1046,8 +1068,8 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
     }
     else if (sig != committedSig)  // NON-gesture change (host automation / programmatic): fold into
     {                              // the baseline WITHOUT creating an undo step (automation is not undoable)
-        edgeGen = soundParamGen.load (std::memory_order_relaxed);   // ...the snapshot's own edge
         committed = currentStateSet();
+        edgeGen = soundParamGen.load (std::memory_order_relaxed);   // ...the snapshot's own edge
         committedSig = sig;
         lastStepWheelKey = 0;      // ADR-0053: a change that is not this scroll's ends the chain
     }

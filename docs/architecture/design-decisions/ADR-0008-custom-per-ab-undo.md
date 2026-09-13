@@ -27,6 +27,23 @@ one step via `commitPresetSwitchUndoStep`) — a preset switch is a discrete, un
 themselves are never recorded. `requestDuck()` masks the level jump on undo/redo. Undo stacks are
 cleared on session restore.
 
+> **OPEN — pending a maintainer decision (raised 2026-09-13, ADR-0053 review round 13).** This
+> Decision says two things that are in tension once a host write lands inside a pending step's
+> window: entries are **`StateSet` snapshots**, and host automation **"folds into the baseline
+> without a step"**. A gesture-less write arriving between a gesture's close and the next 24 Hz
+> poll is folded into the baseline as the second clause requires — but the entry pushed beside it
+> predates the write, so one Undo reverts the automation too, which is a step's worth of
+> undoability the second clause denies it. Measured on every run of the state suite by State test
+> 86 legs O and X.
+>
+> Separating the two needs PER-PARAMETER attribution so an entry can carry the host's new value for
+> the parameters the host moved and the user's old value for the rest — which makes an entry a
+> synthesis rather than a snapshot, i.e. a change to the first clause of this Decision. That is a
+> hard stop under `docs/policies/ARCHITECTURE_REVIEW_GATE.md`, and the obvious implementation
+> (recording attribution in `parameterValueChanged`, which is audio-thread-reachable) trips the
+> *Thread Model change* trigger independently. **Neither is decided here.** The full statement,
+> design, triggers and measurements are in `docs/FUTURE_RISKS.md` RISK-012.
+
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
   not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots

@@ -1424,6 +1424,26 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   step. Two legs because the edge is taken on two lines and one leg cannot kill both — M41 and M42
   each survive the other's leg.
 
+  **THE TWO BRANCHES NEED OPPOSITE ANSWERS FROM THE SAME EDGE, which is why leg U2 was rewritten
+  in round 13 after round 12 asserted the wrong one.** In the non-gesture FOLD the poll ends the
+  chain itself (`lastStepWheelKey = 0`), so the only question is whether the scroll AFTER it is
+  penalised a second time -- leg U says it must not be. In the COMMITTING branch nothing else ends
+  the chain, so the edge is the only thing that can, and a host write the snapshot absorbed must
+  make the step foreign -- leg U2 says it must. Round 12 published the post-snapshot edge but left
+  `foreign` measured from the poll's opening sample, so the committing case reported nothing
+  foreign and every later notch extended a step the automation was inside: *"the chain extended
+  straight across the host write: one Undo went all the way back to 0.0000"*. Leg U2 asserted that
+  as correct. It is not, and the leg now asserts the opposite -- **a test that locks in a
+  regression is worse than no test**, which is the reason this paragraph exists rather than a
+  silent edit. The fix is an ordering: capture the baseline, read the counter, then decide.
+
+  **Leg X is the fifth timing, and it is a MEASUREMENT.** Automation landing while a user gesture is
+  OPEN has no window to hit -- the poll refuses to fold while `openGestures > 0`, so `committed` is
+  frozen for the gesture's whole duration. The leg holds a gesture open across two polls to make
+  that explicit and prints what Undo and Redo do to the host's parameter. It asserts only the half
+  that is not in question (the user's own edit is undone and redone exactly); the automated
+  parameter is printed, because that is RISK-012 and it is escalated rather than settled.
+
   **What legs U and U2 cannot measure, stated rather than implied:** real concurrency. The counter is
   read `std::memory_order_relaxed` throughout, so nothing here proves that a write counted in
   generation G is visible to a signature read taken after G was observed; that guarantee is not in
@@ -1566,6 +1586,9 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M42 | the committing branch stops taking the edge at its own snapshot | 86 leg U2, 1 check |
   | M43 | the split wheel anchors from its REQUEST again instead of the projection's answer | 80 leg G, 2 checks |
   | M44 | `dragCrossoverTo` reports the argument rather than the projected row | 80 leg G, 2 checks |
+  | M45 | the foreign test measures from the poll's OPENING sample again | 86 leg U2, 2 checks |
+  | M46 | the committing branch publishes the opening sample as the edge | 86 leg U2, 3 checks |
+  | M47 | the fold branch stops taking the edge at its own snapshot | 86 leg U, 1 check |
 
   **M34 is the row that proves the sweep is worth running twice.** Against the FIRST version of
   leg R it SURVIVED -- the leg pressed at the lane's middle, where no width drag is latched, so

@@ -334,8 +334,41 @@ supports it. State the likelihood **basis**, cite evidence with a confidence lev
 mitigation. Do not invent risks to fill the template.
 
 ## RISK-012 — An undo entry is a whole state, so a host write inside a user's step is undone with it
+- **STATUS, corrected 2026-09-13: CONFIRMED PRODUCTION DEFECT, ESCALATED — pending a maintainer
+  decision. NOT an accepted residual.** Round 12 classified this as an accepted consequence. Round
+  13 was given the intended product rule explicitly — *host automation is not a user Undo/Redo
+  action, and must not become part of a user-action step merely because it happened inside a
+  pending snapshot or coalescing window* — and against that rule the behaviour is a defect, not a
+  cost. It is also closer to ADR-0008's own Decision than round 12 allowed: that Decision already
+  says host automation *"folds into the baseline **without** a step"*, and an automation value that
+  one Undo reverts has, in effect, been given a step's worth of undoability. What ADR-0008 does NOT
+  decide is the case where it lands inside somebody else's step, which is exactly this entry.
+  **Measured, not argued** (State test 86, printed every run): leg O — *"after one Undo the host's
+  Width reads 1.0000 (it wrote 1.4000, the step began at 1.0000)"*; leg X — *"automation INSIDE a
+  held gesture: one Undo puts Drive back to 0.0000 and Width to 1.4000 (the host wrote 1.8000)"*.
+- **WHY IT IS NOT FIXED IN THIS PR, and the exact gate.** Every correct fix needs PER-PARAMETER
+  attribution — which parameters moved outside the user's batch — so that the pushed entry can
+  carry the host's new value for those and the user's old value for the rest. That makes an undo
+  entry a synthesis rather than a state that ever existed, which contradicts ADR-0008's Decision in
+  terms: *"undo/redo stacks of `StateSet` snapshots"*. Under `docs/policies/ARCHITECTURE_REVIEW_GATE.md`
+  and `CLAUDE.md`, **conflict with an Accepted ADR is a hard stop that a green build cannot clear**,
+  so amending ADR-0008 is a maintainer decision and is marked pending rather than taken. A second,
+  independent trigger applies to the obvious implementation: recording the attribution in
+  `parameterValueChanged` (which the header documents as reachable from the AUDIO THREAD) and
+  reading it on the message thread is a **new cross-thread path**, which the same gate lists under
+  *Thread Model change*.
+- **ONE OF ROUND 12'S THREE OBJECTIONS IS WITHDRAWN, because it was wrong.** It said the fix would
+  break the multiband split drag, since `dragCrossoverTo`'s pushed neighbour splits are stored
+  "outside any bracket of their own" and a classifier would read them as automation. They are not:
+  `SpectrumImager::mouseDown` calls `beginGesture (freqP[h])` (`src/gui/SpectrumImager.cpp:2708`)
+  and holds that gesture for the whole drag, so every pushed neighbour store arrives while
+  `openGestures > 0` and is inside the batch by the only classifier that matters — the one the
+  existing `foreignSinceEdge` machinery already uses. The remaining objections stand: the change to
+  what an entry MEANS, the depth ≥ 2 case (older entries predate the automation and still revert
+  it), and redo symmetry.
 - **Risk:** an undo entry is a whole `StateSet` snapshot (ADR-0008), and `pollUndoCoalesce` pushes
-  the PREVIOUS snapshot whenever the signature moved (`src/PluginProcessor.cpp:963-1035`). A
+  the PREVIOUS snapshot whenever the signature moved (`src/PluginProcessor.cpp:980-1039`, the
+  `sig != committedSig` gate and the push it guards). A
   gesture-less host write that lands inside a pending step's window is therefore inside the step:
   the entry behind it predates the write, so one Undo takes the automation back along with the
   user's edit. ADR-0053's foreign-write rule fixes the ATTRIBUTION — no user step is retroactively
@@ -440,7 +473,7 @@ mitigation. Do not invent risks to fill the template.
   inside that window is ordered after the restore.
 - **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:1914-2013 read
+  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:1936-2035 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -518,7 +551,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:1914`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:1936`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -527,7 +560,7 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:1450`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `src/PluginProcessor.cpp:1472`, against `canUndo()`; the `abUndo` vector's internals twice, via
   `UndoStacks::operator=` (`src/PluginProcessor.h:344`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture

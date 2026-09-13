@@ -3454,3 +3454,93 @@ signal order or reported latency; no threading model — the poll fix adds one r
 thread that already owns every field it touches, and no atomic ordering changed. The imager fix adds
 one defaulted out-parameter and moves one assignment. ADR-0053 is amended with a round-12 section
 and two corrections; its **Decision is unchanged**, because both fixes APPLY it.
+
+## §70. Round 13 — the defect round 12 introduced, and the residual that turned out to be a defect
+
+Two items, and the first one is mine. Round 12's fix for the poll boundary was half-applied, a
+review caught it, and the leg I wrote for it asserted the broken behaviour as correct.
+
+### 70a. R977-978 — the foreign test and the edge measured different instants
+
+Round 12 moved the published gesture EDGE to the generation of the snapshot the poll commits, which
+was right, and left `foreign` computed from the sample the poll OPENED with, which was not. In a
+poll that commits a step those have to be the same instant:
+
+* a host write lands while `soundSignature()` is being built;
+* `foreign = foreignSinceEdge || (gen != gestureEdgeGen)` is computed from the pre-body `gen`, so it
+  is **false**;
+* `extend` therefore holds, `lastStepWheelKey` keeps the scroll's name, and no step is pushed;
+* `committed = currentStateSet()` absorbs the write — the automation is now inside the step;
+* the edge is published as the post-snapshot generation, so the NEXT notch sees nothing foreign
+  either, and the chain extends indefinitely across the automation.
+
+Measured before the fix, by the rewritten leg: *"the chain extended straight across the host write:
+one Undo went all the way back to 0.0000, taking the automation with it"*.
+
+**The fix is an ordering.** Capture the baseline, read the counter, then decide, and use that single
+value for `foreign` and for the edge. Reading AFTER the capture is what makes the residual
+one-directional: every write that can be inside the baseline is counted, and the only writes the
+test can over-report are ones that landed after the capture and are therefore not in it — an extra
+undo step, never a merge across automation. Reading before it inverts exactly that.
+
+**The signature is not consulted, deliberately**, and the review's own brief warned about this: a
+signature reads parameters one at a time, so a generation read taken around it can account for a
+write the signature never observed. That is why the anchor is the SNAPSHOT (`currentStateSet`,
+which is what `committed` actually becomes) and not the signature.
+
+**And the two branches need opposite answers from the same edge**, which is why they have separate
+legs and why one leg could not have caught both. In the non-gesture fold `lastStepWheelKey = 0` ends
+the chain already, so the only question is whether the scroll after it is penalised twice (leg U:
+no). In the committing branch nothing else ends the chain (leg U2: the edge must).
+
+**Leg U2 had to be rewritten, not extended.** As round 12 wrote it, it asserted *"one Undo takes
+back the whole scroll"* for exactly the sequence that is now known to be wrong — a test that locked
+in a regression. Recorded here rather than quietly replaced, because it is the second time in three
+rounds that verifying a FIX as adversarially as a finding was what mattered.
+
+Mutations M45 (foreign from the opening sample), M46 (committing branch publishes the opening
+sample), M47 (fold branch takes no edge of its own) — all killed, each by its own leg.
+
+### 70b. R983 — the residual is a defect, and it is escalated rather than taken
+
+Round 12 classified "the automation's value rides inside the user's step" as an accepted
+consequence of ADR-0008. Round 13 was handed the product rule: *host automation is not a user
+Undo/Redo action, and must not become part of a user-action step merely because it happened inside
+a pending snapshot or coalescing window.* Against that rule it is a defect.
+
+It is also closer to ADR-0008's own Decision than round 12 allowed. That Decision already says host
+automation *"folds into the baseline **without** a step"* — and a value one Undo reverts has been
+given a step's worth of undoability. What ADR-0008 does not decide is the write landing inside
+somebody else's step, which is precisely this.
+
+**Measured on both reachable timings**, printed every run: leg O (after the gesture closed, before
+the poll) *"after one Undo the host's Width reads 1.0000 (it wrote 1.4000)"*; leg X, new this round
+(while a gesture is OPEN — the fifth timing, which no leg reached) *"one Undo puts Drive back to
+0.0000 and Width to 1.4000 (the host wrote 1.8000)"*. Redo restores both, so undo/redo do
+round-trip; the defect is the content of the entry, not its symmetry.
+
+**Not fixed here, and the gate is named rather than worked around.** Every correct fix needs
+per-parameter attribution, which makes an undo entry a synthesis rather than a state that ever
+existed — contradicting ADR-0008's *"stacks of `StateSet` snapshots"* in terms, which
+`ARCHITECTURE_REVIEW_GATE.md` and `CLAUDE.md` make a hard stop a green build cannot clear. The
+obvious implementation trips a second trigger independently: recording attribution in
+`parameterValueChanged`, which the header documents as audio-thread-reachable, and reading it on the
+message thread is a new cross-thread path (*Thread Model change*). Both are recorded in RISK-012 as
+**CONFIRMED, ESCALATED, pending a maintainer decision**, and ADR-0008 carries a pointer at its own
+Decision so the next reader finds it there.
+
+**One of round 12's three objections is withdrawn.** It said a foreign-write classifier would break
+the multiband split drag, because `dragCrossoverTo`'s pushed neighbour splits are stored outside any
+bracket of their own. They are not outside the BATCH: `mouseDown` calls `beginGesture (freqP[h])`
+and holds it for the whole drag, so every pushed neighbour store arrives while `openGestures > 0`.
+The objection was wrong and is retracted; the other two (what an entry means, and depth ≥ 2) stand.
+
+### 70c. Residuals and the rest of the contract
+
+`ScopedWheelStep` re-checked: this round's only source change is inside `pollUndoCoalesceAdopted` —
+no wheel dispatch, no routing, no new construction site — so the refutation stands unchanged.
+RISK-013 is unchanged in substance, with one honest note: anchoring `foreign` to the snapshot makes
+it count writes it previously missed, so it can now end a chain slightly more often. That is the
+safe direction and the same direction RISK-013 already describes.
+
+The other seven residuals are re-checked UNCHANGED against the current code.
