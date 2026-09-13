@@ -21,11 +21,14 @@
 #
 # The nesting exists only because the harness's re-entrancy doubles create it.
 # Anamorph's production listeners do not write parameters at all:
-# `AnamorphAudioProcessor::parameterValueChanged` (src/PluginProcessor.h:265-268)
-# is one relaxed `fetch_add`, `ViewGenWatcher::parameterValueChanged` (:409) the
-# same, and `parameterGestureChanged` (src/PluginProcessor.cpp:825-899) touches
-# four message-thread scalars and takes two relaxed loads of the same counter
-# -- deliberately, and its comment records that `--d2-stress-probe` once
+# `AnamorphAudioProcessor::parameterValueChanged` (src/PluginProcessor.h:276-279)
+# is one relaxed `fetch_add`, `ViewGenWatcher::parameterValueChanged` (:461) the
+# same, and `parameterGestureChanged` (src/PluginProcessor.cpp:862-956) touches
+# message-thread scalars, takes two relaxed loads of the same counter, and -- since
+# ADR-0008's 2026-09-13 amendment -- reads every parameter's `getValue()` into two
+# fixed vectors it owns. Those are atomic loads on the same thread: it still writes
+# no parameter and takes no lock, which is the property this paragraph rests on.
+# Deliberately, and its comment records that `--d2-stress-probe` once
 # reported exactly this detector for an APVTS/listenerLock inversion, which was
 # fixed by REMOVING the nesting rather than by a suppression. No production stack
 # can contain the symbol named below.
