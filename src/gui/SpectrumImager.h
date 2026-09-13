@@ -73,7 +73,17 @@ public:
     // this instead. Without it a neighbour that `dragCrossoverTo` pushed aside would sit outside
     // the very step that moved it and one Undo would leave the split row half restored. A callback
     // rather than a processor pointer, for the reason given above `onWheelStep`.
-    std::function<void(const juce::AudioProcessorParameter*)> onOwnedWrite;
+    //
+    // ROUND 15: AND IT CARRIES THE VALUE THE STORE INSTALLED, because the batch's closing snapshot
+    // cannot always be relied on to read it back. `resetCrossover` and `commitFreqEditor` close the
+    // primary's gesture BEFORE `spreadSplits` runs (ADR-0043 put the plan inside the bracket, not
+    // the spread), so every neighbour the spread pushes is stored while nothing is open and after
+    // the snapshot that was supposed to hold its ending value. Declared without a value, such a
+    // neighbour joined the step with `before == after` and was dropped from it, and one Undo put
+    // the reset back while leaving the pushed neighbours where the reset had shoved them. The
+    // declaration is also made only by a store that STOOD, so a store an authoritative write
+    // refused claims nothing -- see `storeOwned`.
+    std::function<void(const juce::AudioProcessorParameter*, float)> onOwnedWrite;
 
     // UI-animation flag now lives in InternalState (host-hidden), injected by the editor.
     void setAnimationSource (const std::atomic<float>* p) noexcept { animOnP = p; }

@@ -86,6 +86,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Redo always puts back what you did.
   Decision: ADR-0008 (amended 2026-09-13). Regression coverage: State test 86 legs Y, O, X and D2.
   Evidence: PR #144. [Verified]
+- **Undoing a Multiband split reset now puts the splits it pushed back too.** Resetting a split —
+  Option/Alt-clicking its handle, double-clicking it, or typing a frequency into its number — moves
+  the splits around it out of the way when there is not enough room. Those neighbours were left out
+  of the Undo step, so pressing Undo restored the split you reset and left the others where the
+  reset had shoved them: a layout you never made, and one more Undo would not recover it either.
+  One Undo now restores the whole row, and Redo puts the whole row back. If your DAW writes one of
+  those neighbours at the same instant, that write stands and Undo does not take it back with your
+  reset.
+  Decision: ADR-0008 (amended 2026-09-13). Regression coverage: State test 86 legs Z, Z2, Z3 and Z4.
+  Evidence: PR #144. [Verified]
 - **Scrolling during a drag no longer sends your DAW a brief value you never asked for.** A notch
   taken while the mouse button is held is added to the drag, and until now that addition happened
   *after* the drag had already published its own position — so every subsequent mouse movement

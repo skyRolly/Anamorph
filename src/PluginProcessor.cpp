@@ -461,11 +461,25 @@ void AnamorphAudioProcessor::snapshotSoundValues (std::vector<float>& into) cons
 // ADR-0008 as amended (round 14). Declare a parameter the pending batch's own. Called by the
 // multiband display's two unbracketed stores (see the header), and implied for every parameter a
 // change gesture opens on.
-void AnamorphAudioProcessor::noteOwnedParamWrite (const juce::AudioProcessorParameter* p) noexcept
+void AnamorphAudioProcessor::noteOwnedParamWrite (const juce::AudioProcessorParameter* p,
+                                                  float norm) noexcept
 {
     if (p == nullptr) return;
     const int i = p->getParameterIndex();
-    if (i >= 0 && i < (int) batchOwnedParam.size()) batchOwnedParam[(size_t) i] = (char) 1;
+    if (i < 0 || i >= (int) batchOwnedParam.size()) return;
+    batchOwnedParam[(size_t) i] = (char) 1;
+    // ROUND 15: ...AND THE STORE BRINGS ITS OWN ENDING VALUE. `batchCloseValue` is retaken in full
+    // at every zero-crossing gesture close, which covers every coupled store made INSIDE a bracket
+    // -- but not the ones made after it. `SpectrumImager::resetCrossover` and `commitFreqEditor`
+    // close the primary split's gesture and only then call `spreadSplits`, so the neighbours that
+    // spread pushes are stored with nothing open: the snapshot that was meant to hold their ending
+    // values was taken before they moved, they read as `before == after`, and the poll dropped them
+    // from the very step that moved them. One Undo then restored the reset split and left its
+    // neighbours displaced -- a layout no user action ever produced. Writing the slot HERE costs
+    // one float and is exact, because the caller passes what its own store installed rather than a
+    // second reading of a parameter three threads write. A later close simply retakes the whole
+    // snapshot over it, so a store inside a bracket is unaffected.
+    if (i < (int) batchCloseValue.size()) batchCloseValue[(size_t) i] = norm;
 }
 
 // The ownership record starts empty and both edges read the live sound: called wherever the undo

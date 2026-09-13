@@ -6803,7 +6803,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2417),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2419),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -7173,6 +7173,10 @@ static void testAScrollIsOneUndoStep()
     };
     auto plainOf = [] (juce::RangedAudioParameter* p)
     { return p->convertFrom0to1 (p->getValue()); };
+    // The value as the signature and the poll's own move test see it -- `normalisedAsRendered` of
+    // whatever the parameter currently holds. See leg Z for why a Redo is asserted on this grid.
+    auto renderedOf = [] (juce::RangedAudioParameter* p)
+    { return normalisedAsRendered (*p, p->getValue()); };
 
     auto* driveP = apvts.getParameter (pid::drive);
     auto* widP   = apvts.getParameter (pid::width);
@@ -7989,6 +7993,263 @@ static void testAScrollIsOneUndoStep()
                        && juce::exactlyEqual (plainOf (hiP), s2),
                        "leg D2: one Undo brings the pushed neighbour back with the split that pushed it");
                 check (! proc.canUndo(), "leg D2: ...and the whole scroll was ONE step");
+            }
+
+            // ---- LEG Z: a RESET owns the neighbours its own spread pushed --------------------
+            //      Leg D2 covers the WHEEL, whose stores all happen inside one open gesture, so
+            //      the batch's closing snapshot is taken after the last of them. The RESET paths
+            //      are the opposite shape: `resetCrossover` closes the primary's gesture and only
+            //      THEN calls `spreadSplits`, so every neighbour it pushes is stored while nothing
+            //      is open. `onOwnedWrite` still declares those stores the user's, but the value
+            //      the step would record for them was read before they happened.
+            //      The layout is chosen so the reset pushes TWO neighbours and the handle it is
+            //      aimed at is still 100+ px clear of them: split 0 sits far below its 180 Hz
+            //      default with the other two packed just above that default, so resetting it
+            //      walks the whole row.
+            const float chipY = H - 15.0f;   // rulerY() = plot().getBottom() - 14, as State test 80 has it
+            auto altClickAt = [&] (float x, float y)
+            {
+                const auto t = juce::Time::getCurrentTime();
+                im->mouseDown (juce::MouseEvent (src, { x, y },
+                                                 juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                                                     | juce::ModifierKeys::altModifier),
+                                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                                 t, { x, y }, t, 1, false));
+            };
+            // The packed row legs Z, Z2 and Z3 all drive: split 0 far below its 180 Hz default with
+            // the other two parked just above that default, so restoring split 0 walks the row.
+            auto packRow = [&]
+            {
+                setPlain (loP, 50.0f); setPlain (midP, 200.0f); setPlain (hiP, 280.0f);
+                proc.pollUndoCoalesce();
+            };
+            auto firstHandleX = [&] () -> float
+            {
+                for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+                {
+                    hover (x, laneY);
+                    if (im->getTooltip() == juce::String ("Drag to change the split frequency")) return x;
+                }
+                return -1.0f;
+            };
+
+            resetBands();
+            {
+                packRow();
+                check (! proc.canUndo(), "leg Z: the reset leg starts with no undo history");
+                const float zx = firstHandleX();
+                check (zx >= 0.0f, "leg Z: the packed layout's first split handle is findable");
+                if (zx >= 0.0f)
+                {
+                    const float s0 = plainOf (loP), s1 = plainOf (midP), s2 = plainOf (hiP);
+                    altClickAt (zx, laneY);
+                    proc.pollUndoCoalesce();
+                    // THE REDO COMPARISON IS MADE ON THE GRID THE PLUG-IN RENDERS AND SIGNS ON,
+                    // and that is not a tolerance. `storeOwned` leaves a parameter holding the value
+                    // it read back -- one `convertTo0to1 (convertFrom0to1 (.))` from the store's own
+                    // input -- and that map is not idempotent on a log-skewed frequency range, so a
+                    // live split can sit up to one more round trip off the grid. Redo writes the
+                    // recorded normalised value back and the parameter re-renders it, landing on the
+                    // grid instead of beside it: measured 0.421038747 -> 0.421038717 on split 2, a
+                    // difference of 3e-8 normalised, which is exactly what `soundSignature` and the
+                    // poll's own move test call no change (`normalisedAsRendered`). Comparing plain
+                    // Hz exactly would assert a property the parameter itself does not have; this
+                    // compares the rendered values EXACTLY, which is the property that matters.
+                    const float r0 = renderedOf (loP), r1 = renderedOf (midP), r2 = renderedOf (hiP);
+                    check (! juce::exactlyEqual (r0, s0), "leg Z: the alt-click reset moved the split it was aimed at");
+                    check (! juce::exactlyEqual (r1, s1) && ! juce::exactlyEqual (r2, s2),
+                           "leg Z: ...and its spread pushed BOTH neighbours, which is what this leg measures");
+                    check (proc.canUndo(), "leg Z: a reset is undoable at all");
+                    proc.undo();
+                    if (! (juce::exactlyEqual (plainOf (midP), s1) && juce::exactlyEqual (plainOf (hiP), s2)))
+                        std::printf ("  [leg Z] the reset's Undo left displaced splits: %.1f / %.1f / %.1f Hz,"
+                                     " against the %.1f / %.1f / %.1f the user had before the reset\n",
+                                     (double) plainOf (loP), (double) plainOf (midP), (double) plainOf (hiP),
+                                     (double) s0, (double) s1, (double) s2);
+                    check (juce::exactlyEqual (plainOf (loP), s0)
+                           && juce::exactlyEqual (plainOf (midP), s1)
+                           && juce::exactlyEqual (plainOf (hiP), s2),
+                           "leg Z: one Undo restores the whole layout the reset replaced, neighbours included");
+                    check (! proc.canUndo(), "leg Z: ...and the reset was ONE step");
+                    proc.redo();
+                    if (! (juce::exactlyEqual (renderedOf (midP), r1) && juce::exactlyEqual (renderedOf (hiP), r2)))
+                        std::printf ("  [leg Z] the reset's Redo left displaced splits: %.9g / %.9g / %.9g,"
+                                     " against the %.9g / %.9g / %.9g the reset itself produced"
+                                     " (rendered normalised)\n",
+                                     (double) renderedOf (loP), (double) renderedOf (midP),
+                                     (double) renderedOf (hiP),
+                                     (double) r0, (double) r1, (double) r2);
+                    check (juce::exactlyEqual (renderedOf (loP), r0)
+                           && juce::exactlyEqual (renderedOf (midP), r1)
+                           && juce::exactlyEqual (renderedOf (hiP), r2),
+                           "leg Z: Redo restores the whole layout the reset produced, neighbours included");
+                }
+            }
+
+            // ---- LEG Z2: a neighbour store that did NOT stand is not in the step -------------
+            //      The other half of the same rule. `storeOwned` declares the parameter it wrote
+            //      only after proving the parameter still holds what it wrote, so a spread store an
+            //      authoritative write refused claims nothing -- and one Undo therefore takes back
+            //      the reset without taking back somebody else's write beside it. Declared before
+            //      the store instead, the step would carry a neighbour it never moved, and the
+            //      value it would restore is the one the batch opened with: the authoritative
+            //      write, silently undone. Mutation M55 moves the declaration back and this leg is
+            //      what notices.
+            resetBands();
+            {
+                packRow();
+                check (! proc.canUndo(), "leg Z2: the refused-spread leg starts with no undo history");
+                const float zx = firstHandleX();
+                check (zx >= 0.0f, "leg Z2: the packed layout's first split handle is findable");
+                if (zx >= 0.0f)
+                {
+                    const float s0 = plainOf (loP), s2 = plainOf (hiP);
+                    WriteFromInsideAStoreQuietly echo;   // the neighbour answers its own store
+                    echo.target = midP;
+                    echo.to     = 4000.0f;
+                    midP->addListener (&echo);
+                    echo.armed = true;
+                    altClickAt (zx, laneY);
+                    const bool landed = echo.fired;
+                    midP->removeListener (&echo);
+                    proc.pollUndoCoalesce();
+
+                    check (landed, "leg Z2: the echo landed inside the spread's own neighbour store");
+                    check (! landed || std::abs (plainOf (midP) - 4000.0f) <= 1.0f,
+                           "leg Z2: the refused store leaves the authoritative value standing");
+                    check (! landed || juce::exactlyEqual (plainOf (hiP), s2),
+                           "leg Z2: ...and the spread stops there, so the split above is untouched");
+                    check (! landed || ! juce::exactlyEqual (plainOf (loP), s0),
+                           "leg Z2: the reset itself still stood");
+                    check (! landed || proc.canUndo(), "leg Z2: ...and is undoable");
+                    if (landed) proc.undo();
+                    if (landed && ! (std::abs (plainOf (midP) - 4000.0f) <= 1.0f))
+                        std::printf ("  [leg Z2] Undo took back an authoritative write the user's"
+                                     " action never made: the split is at %.1f Hz, not the 4000.0"
+                                     " that was installed\n", (double) plainOf (midP));
+                    check (! landed || juce::exactlyEqual (plainOf (loP), s0),
+                           "leg Z2: one Undo restores the reset split");
+                    check (! landed || std::abs (plainOf (midP) - 4000.0f) <= 1.0f,
+                           "leg Z2: ...and leaves the authoritative write that refused the spread");
+                    check (! landed || ! proc.canUndo(), "leg Z2: ...in ONE step");
+                }
+            }
+
+            // ---- LEG Z3: the TYPED commit owns its spread too --------------------------------
+            //      `commitFreqEditor` has the identical shape -- gesture closed, then spread -- so
+            //      the same rule has to hold for a value typed into the number chip.
+            resetBands();
+            {
+                packRow();
+                check (! proc.canUndo(), "leg Z3: the typed-commit leg starts with no undo history");
+                const float zx = firstHandleX();
+                check (zx >= 0.0f, "leg Z3: the packed layout's first split handle is findable");
+                if (zx >= 0.0f)
+                {
+                    const float s0 = plainOf (loP), s1 = plainOf (midP), s2 = plainOf (hiP);
+                    const auto t = juce::Time::getCurrentTime();
+                    im->mouseDoubleClick (juce::MouseEvent (src, { zx, chipY }, juce::ModifierKeys(),
+                                                            1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                                            t, { zx, chipY }, t, 2, false));
+                    juce::TextEditor* te = nullptr;
+                    for (int i = 0; i < im->getNumChildComponents(); ++i)
+                        if (auto* c = dynamic_cast<juce::TextEditor*> (im->getChildComponent (i)))
+                            if (c->isVisible()) { te = c; break; }
+                    check (te != nullptr, "leg Z3: the frequency text editor opens on the number chip");
+                    if (te != nullptr)
+                    {
+                        te->setText ("180", false);
+                        if (te->onReturnKey) te->onReturnKey();
+                        proc.pollUndoCoalesce();
+                        const float r0 = renderedOf (loP), r1 = renderedOf (midP), r2 = renderedOf (hiP);
+                        check (! juce::exactlyEqual (plainOf (loP), s0),
+                               "leg Z3: the typed value moved the split it was typed into");
+                        check (! juce::exactlyEqual (plainOf (midP), s1)
+                               && ! juce::exactlyEqual (plainOf (hiP), s2),
+                               "leg Z3: ...and its spread pushed both neighbours");
+                        check (proc.canUndo(), "leg Z3: a typed commit is undoable");
+                        proc.undo();
+                        if (! (juce::exactlyEqual (plainOf (midP), s1) && juce::exactlyEqual (plainOf (hiP), s2)))
+                            std::printf ("  [leg Z3] the typed commit's Undo left displaced splits:"
+                                         " %.1f / %.1f / %.1f Hz, against the %.1f / %.1f / %.1f the"
+                                         " user had before typing\n",
+                                         (double) plainOf (loP), (double) plainOf (midP),
+                                         (double) plainOf (hiP), (double) s0, (double) s1, (double) s2);
+                        check (juce::exactlyEqual (plainOf (loP), s0)
+                               && juce::exactlyEqual (plainOf (midP), s1)
+                               && juce::exactlyEqual (plainOf (hiP), s2),
+                               "leg Z3: one Undo restores the whole layout the typed value replaced");
+                        check (! proc.canUndo(), "leg Z3: ...and the typed commit was ONE step");
+                        proc.redo();
+                        check (juce::exactlyEqual (renderedOf (loP), r0)
+                               && juce::exactlyEqual (renderedOf (midP), r1)
+                               && juce::exactlyEqual (renderedOf (hiP), r2),
+                               "leg Z3: Redo restores the whole typed layout, neighbours included");
+                    }
+                }
+            }
+
+            // ---- LEG Z4: an ADD owns every split and width it shifted ------------------------
+            //      `addBandAt` reaches the parameters through `setParam`, the OTHER store that
+            //      brackets no gesture of its own, and inserting a split shifts every split above
+            //      it. Those writes sit between `setSoloMask`'s gesture (which opens the batch)
+            //      and `setBands`'s (which closes it), so they are inside the batch but outside
+            //      every bracket -- exactly the position `spreadSplits` is in, and covered by the
+            //      same declaration. `removeBand` has the identical shape (`setSoloMask`, then the
+            //      `setParam` loops, then `setBands`) and is covered by the same declaration; this
+            //      leg drives the add because the add affordance is findable from the tooltip alone
+            //      while the delete x is not (`getTooltip` asks `deleteHit` about the LIVE mouse
+            //      position, which a synthetic event does not move). Mutation M57 removes the
+            //      declaration and this leg is what notices; at ef6d4f0 it passed, so what it
+            //      closes is a coverage gap round 14 left, not a defect round 14 shipped.
+            resetBands();
+            {
+                while (proc.canUndo()) proc.undo();
+                im->cancelActiveDrag();
+                setPlain (bandsP, 3.0f);
+                setPlain (loP, 200.0f); setPlain (midP, 300.0f); setPlain (hiP, 10000.0f);
+                proc.pollUndoCoalesce();
+                check (! proc.canUndo(), "leg Z4: the add leg starts with no undo history");
+                const float addY = 30.0f;
+                float ax = -1.0f;
+                for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+                {
+                    hover (x, addY);
+                    if (im->getTooltip() == juce::String ("Click to add a band split")) { ax = x; break; }
+                }
+                check (ax >= 0.0f, "leg Z4: the add affordance is findable");
+                if (ax >= 0.0f)
+                {
+                    const float b0 = plainOf (bandsP);
+                    const float s0 = plainOf (loP), s1 = plainOf (midP), s2 = plainOf (hiP);
+                    const auto t = juce::Time::getCurrentTime();
+                    const juce::MouseEvent d (src, { ax, addY }, juce::ModifierKeys::leftButtonModifier,
+                                              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                              t, { ax, addY }, t, 1, false);
+                    im->mouseDown (d); im->mouseUp (d);
+                    proc.pollUndoCoalesce();
+                    check (! juce::exactlyEqual (plainOf (bandsP), b0), "leg Z4: the click added a band");
+                    check (! juce::exactlyEqual (plainOf (loP), s0)
+                           && ! juce::exactlyEqual (plainOf (midP), s1)
+                           && ! juce::exactlyEqual (plainOf (hiP), s2),
+                           "leg Z4: ...and shifted every split that was already there");
+                    check (proc.canUndo(), "leg Z4: an add is undoable");
+                    proc.undo();
+                    if (! (juce::exactlyEqual (plainOf (loP), s0)
+                           && juce::exactlyEqual (plainOf (midP), s1)
+                           && juce::exactlyEqual (plainOf (hiP), s2)))
+                        std::printf ("  [leg Z4] the add's Undo left shifted splits: %.1f / %.1f / %.1f Hz,"
+                                     " against the %.1f / %.1f / %.1f the user had before the click\n",
+                                     (double) plainOf (loP), (double) plainOf (midP), (double) plainOf (hiP),
+                                     (double) s0, (double) s1, (double) s2);
+                    check (juce::exactlyEqual (plainOf (bandsP), b0),
+                           "leg Z4: one Undo takes the band back out");
+                    check (juce::exactlyEqual (plainOf (loP), s0)
+                           && juce::exactlyEqual (plainOf (midP), s1)
+                           && juce::exactlyEqual (plainOf (hiP), s2),
+                           "leg Z4: ...and puts every split it shifted back where it was");
+                    check (! proc.canUndo(), "leg Z4: ...in ONE step");
+                }
             }
 
             // ---- LEG I: a host write from inside the notch's OWN gesture-open stands -------
@@ -18083,7 +18344,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1655).
+//  baseline", src/PluginProcessor.cpp:1669).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -18316,7 +18577,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1386).
+//  targets", src/PluginProcessor.cpp:1400).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -18693,7 +18954,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1840).
+//  mixed sound", src/PluginProcessor.cpp:1854).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running

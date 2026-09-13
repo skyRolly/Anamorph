@@ -108,6 +108,42 @@ Redo                     -> B  the step's after-value, NOT the automated C
   per pushed neighbour was rejected again for the reason ADR-0053 gives: it would change how this
   plug-in reports automation.
 
+## Decision — correction, 2026-09-13 (round 15)
+
+**A declaration carries the value the store installed, and only a store that stood makes one.**
+The round-14 amendment above reads a declared parameter's ending value out of `batchCloseValue`,
+the whole-parameter-list snapshot retaken at every zero-crossing gesture close. That is the right
+instant for a coupled store made *inside* a bracket, and the wrong one for a coupled store made
+after the last of them — which the reset paths are. `SpectrumImager::resetCrossover` and
+`commitFreqEditor` close the primary split's gesture and only then call `spreadSplits`
+(ADR-0043 put the PLAN inside the bracket; the spread has always been outside it, so that the
+pin is proved committed before anything is moved to make room for it). Every neighbour the spread
+pushes is therefore stored while nothing is open and after the snapshot that was supposed to read
+it back: declared owned, but with `before == after`, which the poll's own move test drops. Measured
+on a packed row, an Alt-click reset moving split 0 from 50 Hz back to its 180 Hz default and pushing
+its two neighbours from 200/280 Hz to 249.8/366.6: one Undo restored 50 Hz and left the neighbours
+at 249.8/366.6 — a split row no user action produced. The typed-value commit has the identical
+shape and the identical failure.
+
+So `noteOwnedParamWrite` takes the value with the declaration and writes that one slot of
+`batchCloseValue`; a later gesture close simply retakes the whole snapshot over it, leaving every
+store made inside a bracket exactly as it was. And the declaration moves to *after* `storeOwned`'s
+read-back proof, so a store an authoritative write refused claims nothing — previously such a
+parameter was owned while holding somebody else's value, which was harmless only for as long as
+nothing read the ending value back. It is read back now.
+
+**What was rejected, and why.** Holding the primary's gesture open across `spreadSplits` would also
+put the neighbours inside a bracket, but it changes the touch span this plug-in reports for a
+reset, does nothing for the `setParam` stores in `addBandAt` / `removeBand`, and leaves the refused
+store owned — with the close snapshot then absorbing the foreign value, making the mis-attribution
+worse rather than better. The chosen correction is three lines and fixes both halves.
+
+**The touch span is unchanged, and that was checked rather than assumed.** A coupled neighbour has
+never had a change gesture of its own on any path: `writeCrossovers` writes the drag's neighbours
+with a gesture open on the DRAGGED split only, and a host correlates touch per parameter. The reset
+differs only in that no gesture is open on any split while the spread runs, which is not a
+difference the neighbour's own automation lane can see.
+
 **What this does NOT change.** Host automation still folds into the baseline without a step. A
 preset switch is still one undoable step. `soundSignature()` still drives coalescing and still asks
 the RENDERED value, and the amendment asks the same rendered grid when deciding whether a step's
@@ -146,9 +182,10 @@ not own, which is the case RISK-012 was about, and it cannot make automation und
   `snapshotSoundValues`, `noteOwnedParamWrite`, `resetBatchOwnership`
 - `src/PluginProcessor.h` — `StateSet`, `ParamEdit`, `UndoEntry`, `UndoStacks`, `batchOpenValue` /
   `batchCloseValue` / `batchOwnedParam`, the A/B members
-- `src/gui/SpectrumImager.h` / `.cpp` — `onOwnedWrite`, `storeOwned`, `setParam`
+- `src/gui/SpectrumImager.h` / `.cpp` — `onOwnedWrite`, `storeOwned`, `setParam`, `resetCrossover`,
+  `commitFreqEditor`, `spreadSplits`
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:425-480, :340-520
+- Source: src/PluginProcessor.cpp:425-494, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")

@@ -403,7 +403,7 @@ DELIBERATE_REAIMS = {
     # the ordinary drift check watching it.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:657",
-     "src/gui/SpectrumImager.cpp:705"): "bandCount",
+     "src/gui/SpectrumImager.cpp:712"): "bandCount",
     #
     # 2026-09-13 (ADR-0053 round 12), SIX AT ONCE AND ALL ONE CAUSE, which is why they are listed
     # together rather than argued one by one. The round's own hunks -- one seam, the poll's edge
@@ -438,25 +438,25 @@ DELIBERATE_REAIMS = {
     # check actually sees, and the check runs against `origin/main`.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:862-956"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:876-970"): "parameterGestureChanged",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:862-956"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:876-970"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-826",
-     "src/PluginProcessor.cpp:862-957"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:876-971"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:250",
      "src/PluginProcessor.h:388"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     "src/PluginProcessor.cpp:2096-2195"): "setStateInformation",
+     "src/PluginProcessor.cpp:2110-2209"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     "src/PluginProcessor.cpp:2096"): "setStateInformation",
+     "src/PluginProcessor.cpp:2110"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     "src/PluginProcessor.cpp:1632"): "abActive",
+     "src/PluginProcessor.cpp:1646"): "abActive",
     #
     # 2026-09-13 (round 13) declared a re-aim of RISK-012's poll citation, `:963-1035` ->
     # `:980-1039`, onto the `sig != committedSig` gate. ROUND 14 DELETED IT, because round 14

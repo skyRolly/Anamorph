@@ -102,7 +102,7 @@ public:
     // so by calling this instead. Without it a pushed neighbour would fall outside the very step
     // that moved it and one Undo would leave the split row half restored. Message thread only, like
     // every other member of this section; a no-op when no batch is pending.
-    void noteOwnedParamWrite (const juce::AudioProcessorParameter* p) noexcept;
+    void noteOwnedParamWrite (const juce::AudioProcessorParameter* p, float norm) noexcept;
     // The name a parameter-backed control answers to. A parameter's index is stable for the life of
     // the processor and unique to it, so two controls driving the SAME parameter -- a knob and the
     // numeric box under it -- are correctly one control for this purpose. +1 keeps 0 meaning "none".

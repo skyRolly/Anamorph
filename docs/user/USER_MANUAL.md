@@ -623,6 +623,9 @@ Undo and Redo step through **your own** edits. Undo puts a control back to the v
 immediately before the edit you are undoing; Redo puts back the value that edit produced — not a
 value your DAW has written since. A value your DAW's automation wrote is never an undo step of its
 own, and is not taken back when you undo one of yours: it stays where your DAW put it.
+One Undo covers everything **that** edit moved, not only the control you had hold of: resetting a
+Multiband split that has to push its neighbours out of the way takes the whole row back in one
+press, and Redo puts the whole row back.
 
 **A control looks stuck "pressed" (macOS).**
 If the mouse button was released outside the plug-in window, the pressed look can linger

@@ -1373,6 +1373,33 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   it does (one gesture open, one close, one Undo returns it). The entry was closed and the manual
   corrected.
 
+* **Round 15's legs — the reset's own spread.** **86 leg Z** is the only leg that drives a RESET far
+  enough to push a neighbour, and the only one that asserts a reset's Undo AND Redo over the whole
+  split row. Its fixture is chosen so one Alt-click walks all three splits: split 0 parked at 50 Hz,
+  far below its 180 Hz default, with the other two packed at 200 and 280 Hz just above that default,
+  so restoring split 0 pushes both of them — while split 0's own handle stays 100+ px clear of them,
+  which is what makes it findable by the tooltip scan at all (the grab radius is 7 px). Leg D2 cannot
+  stand in for it: the wheel makes every one of its stores inside one open gesture, which is exactly
+  the case that was already right. **86 leg Z2** holds the other half of the same rule — a spread
+  store an authoritative write REFUSED is not in the step, so one Undo takes back the reset and
+  leaves that write standing. **86 leg Z3** is the typed-value commit, which reaches the same
+  `spreadSplits` by a different door. **86 leg Z4** is the ADD, whose `setParam` writes sit in the
+  same position (inside the batch `setSoloMask` opens, outside every bracket) and whose declaration
+  had NO coverage at all before this round — mutation M57 survived the entire suite at `ef6d4f0`.
+  `removeBand` has the identical shape and is covered by the same declaration; the leg drives the
+  add because the add affordance is findable from the tooltip and the delete x is not (`getTooltip`
+  asks `deleteHit` about the LIVE mouse position, which a synthetic event does not move).
+
+  **Leg Z asserts its Redo on the RENDERED grid, and that is not a tolerance.** `storeOwned` leaves a
+  parameter holding what it read back — one `convertTo0to1 (convertFrom0to1 (.))` from the store's
+  own input — and that map is not idempotent on a log-skewed frequency range, so a live split can sit
+  one more round trip off the grid `soundSignature` and the poll's move test both use. Redo writes
+  the recorded value back and the parameter re-renders it onto the grid: measured
+  `0.421038747 -> 0.421038717` on split 2, 3e-8 normalised. Comparing plain Hz exactly there would
+  assert a property the parameter itself does not have; `renderedOf` compares the rendered values
+  EXACTLY, which is the property that matters. Recording the rendered endpoints in the poll instead
+  was tried and changed nothing measurable, so it was not kept.
+
 * **Three legs were RE-BASED by the amendment rather than extended, and the previous expectation is
   recorded in each.** **86 legs I and J** asserted that a burst whose own store was refused did not
   extend the previous scroll, which was true only because that burst recorded a whole-state step whose
@@ -1618,11 +1645,14 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M47 | the fold branch stops taking the edge at its own snapshot | 86 leg U, 1 check |
   | M48 | `Knob` publishes the pure drag value and corrects it afterwards again (the round-13 shape) | 88 leg M, 2 checks |
   | M49 | the redo destination is taken from the LIVE parameters at Undo time | 86 leg Y, 1 check |
-  | M50 | `storeOwned` stops declaring its store through `onOwnedWrite` | 86 leg D2, 1 check |
+  | M50 | `storeOwned` stops declaring its store through `onOwnedWrite` | 86 legs D2, Z and Z3, 3 checks |
   | M51 | a step owns everything that moved between the batch edges, declared or not | 86 leg X, 1 check |
   | M52 | the double-click reset writes outside a change gesture again | 86 leg K, 1 check |
-  | M53 | the ownership record is re-based at every gesture open, not only a fresh batch's | 86 legs G and K, 2 checks |
+  | M53 | the ownership record is re-based at every gesture open, not only a fresh batch's | 86 legs G and Z4, 4 checks |
   | M54 | the batch's closing values are never snapshotted | 15 checks across State tests 3, 10, 41, 83 and 86 |
+  | M55 | `storeOwned` declares its store BEFORE proving the read-back (the round-14 order) | 86 leg Z2, 1 check |
+  | M56 | a declaration no longer writes its own slot of the closing snapshot | 86 legs Z and Z3, 2 checks |
+  | M57 | `setParam` stops declaring its store through `onOwnedWrite` | 86 leg Z4, 1 check |
 
   **M34 is the row that proves the sweep is worth running twice.** Against the FIRST version of
   leg R it SURVIVED -- the leg pressed at the lane's middle, where no width drag is latched, so

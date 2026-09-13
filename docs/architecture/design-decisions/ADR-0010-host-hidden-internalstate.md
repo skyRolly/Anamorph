@@ -33,8 +33,8 @@ parameters.
 
 ## Related code
 - `src/InternalState.h:13-539` (whole class), `:100-122` (migration)
-- `src/PluginParameters.cpp:183-190` (rationale comment); `src/PluginProcessor.cpp:787, 1002-1005`
+- `src/PluginParameters.cpp:183-190` (rationale comment); `src/PluginProcessor.cpp:801, 1016-1019`
 
 Evidence [Verified]:
-- Source: src/InternalState.h:13-539; src/PluginProcessor.cpp:721-828
+- Source: src/InternalState.h:13-539; src/PluginProcessor.cpp:735-842
 - History [Partially Verified]: CHANGELOG.md [0.8.4]; commit 6bd158b

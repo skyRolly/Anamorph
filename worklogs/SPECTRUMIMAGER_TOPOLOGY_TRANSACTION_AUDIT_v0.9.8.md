@@ -3653,3 +3653,77 @@ than re-read: the box IS `juce::Slider`'s own `valueBox`, JUCE wires `onTextChan
 one open, one close, and one Undo returning the typed value. KI-010's typed half is closed, the
 manual's "Known quirks" entry replaced with a statement of the real Undo/automation rule, and State
 test 88 leg N is the guard.
+
+## §72. Round 15 — the store the closing snapshot could not see
+
+Round 14's report claimed MERGE-READY with a confirmed Bug still standing in its own Review block:
+`src/gui/SpectrumImager.cpp:R515`, *reset undo leaves displaced splits*. It was a real defect and
+the two conclusions could not both be true, so the claim is withdrawn and this is what the item was.
+
+### The ordering, read before anything was changed
+
+`resetCrossover` does, in this order: `p->beginChangeGesture()` — the plan, computed inside the
+bracket because `projectGaps` slides the pin by an amount derived from the neighbours and the open
+dispatches first (ADR-0043) — `storeOwned` on the primary — `p->endChangeGesture()` — and only then
+`spreadSplits`. The spread is outside the bracket deliberately: ADR-0042 confirms the reset before
+anything is moved to make room for it, so the pin has to be *committed* before the neighbours are
+touched. `commitFreqEditor` is the same function with a typed value instead of a default.
+
+The batch's ending values come from `snapshotSoundValues (batchCloseValue)`, taken at every
+zero-crossing gesture close. So the snapshot that was supposed to hold the spread's results was
+taken one statement before the spread ran. Each neighbour `spreadSplits` pushed was declared the
+user's by `onOwnedWrite` and then joined the step with `before == after`, which the poll's own move
+test drops. The step contained the primary and nothing else.
+
+### Measured first
+
+State test 86 leg Z, on a row packed so one Alt-click walks all three splits — split 0 parked at
+50 Hz far below its 180 Hz default, the other two at 200 and 280 Hz just above it:
+
+```
+[leg Z] the reset's Undo left displaced splits: 50.0 / 249.8 / 366.6 Hz,
+        against the 50.0 / 200.0 / 280.0 the user had before the reset
+```
+
+One failure in 3173 checks at `ef6d4f0`. Leg Z3 reproduces the identical failure through the typed
+value commit.
+
+### Two strategies, one taken
+
+*Keep the primary's gesture open across the spread* would put the neighbours inside a bracket and
+the closing snapshot would then read them back. It was rejected on three counts: it lengthens the
+touch span this plug-in reports for a reset; it does nothing for the `setParam` stores in
+`addBandAt` / `removeBand`, which are in the same position; and it leaves a REFUSED store owned,
+with the close snapshot then absorbing the foreign value — so a host write that refused the spread
+would be taken back by the user's Undo. It makes that half worse, not better.
+
+*Let the declaration carry the value its own store installed, and let only a store that stood make
+one* is three lines and fixes both halves. `noteOwnedParamWrite` writes its one slot of
+`batchCloseValue`; a later gesture close retakes the whole snapshot over it, so every store made
+inside a bracket is untouched. `storeOwned`'s call moves below its read-back proof.
+
+### The touch span, checked rather than assumed
+
+A coupled neighbour has never had a change gesture of its own on ANY path — `writeCrossovers` writes
+the drag's neighbours with a gesture open on the dragged split only, and a host correlates touch per
+parameter. The reset differs only in that no gesture is open on any split while the spread runs,
+which is not a difference the neighbour's own automation lane can see. No change, and none needed.
+
+### The residual the correction does not remove
+
+`applyUndoEntry` writes the recorded normalised value back and the parameter re-renders it.
+`storeOwned` leaves a parameter holding what it read back — one `convertTo0to1 (convertFrom0to1 (.))`
+from the store's own input — and that map is not idempotent on a log-skewed frequency range, so a
+live split can sit one more round trip off the grid `soundSignature` signs on. Redo therefore lands
+ON the grid rather than beside it: measured `0.421038747 -> 0.421038717` on split 2, 3e-8
+normalised, which is what the plug-in's own move test calls no change. Recording the rendered
+endpoints in the poll instead was tried and changed that measurement not at all, so it was not kept
+and the leg asserts the rendered values exactly.
+
+### And one found on the way
+
+Mutation M57 — `setParam` stops declaring its store — SURVIVED the entire suite at `ef6d4f0`. The
+declaration is load-bearing: an add shifts every split above the insertion through `setParam`, and
+those writes sit inside the batch `setSoloMask` opens but outside every bracket. The code was right
+and nothing was watching it. State test 86 leg Z4 drives the add and kills M57. It is a coverage gap
+round 14 left, not a defect round 14 shipped — leg Z4 passes against `ef6d4f0`.

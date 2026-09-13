@@ -512,9 +512,16 @@ bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, flo
     if (p == nullptr) return false;
     const float norm   = p->convertTo0to1 (plain);
     const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
-    if (onOwnedWrite) onOwnedWrite (p);   // ADR-0008 round 14: this store is the user's, say so
     p->setValueNotifyingHost (norm);
     if (! juce::exactlyEqual (p->getValue(), expect)) return false;
+    // ADR-0008 round 14, corrected in round 15. THE DECLARATION IS MADE BY A STORE THAT STOOD, AND
+    // IT CARRIES WHAT THE STORE INSTALLED. Made before the store, it claimed a parameter this
+    // function is about to REFUSE -- and the refusal means the slot holds somebody else's value,
+    // so the step would have recorded an authoritative write as the user's own the moment anything
+    // read the ending value back. Made here, with `expect`, the step learns both halves from the
+    // one store that actually committed: `spreadSplits` runs after the primary's gesture has
+    // closed, so this is the only place the pushed neighbour's ending value can come from.
+    if (onOwnedWrite) onOwnedWrite (p, expect);
     ownedNorm = expect;
     return true;
 }
@@ -788,8 +795,14 @@ void SpectrumImager::setParam (juce::RangedAudioParameter* p, float plain, int e
 {
     if (p == nullptr) return;
     if (expectedBands >= 0 && bandCount() != expectedBands) return;
-    if (onOwnedWrite) onOwnedWrite (p);   // ADR-0008 round 14: this store is the user's, say so
-    p->setValueNotifyingHost (p->convertTo0to1 (plain));
+    const float norm = p->convertTo0to1 (plain);
+    p->setValueNotifyingHost (norm);
+    // ADR-0008 round 14, round 15's correction applied here too: the declaration carries the value
+    // THIS store asked for rather than a read-back. Unlike `storeOwned` this function proves no
+    // read-back at all (see the paragraph above it), so a read-back here would hand the step
+    // whatever a reentrant write left behind and call it the user's; `norm` is what the user's
+    // action produced, which is what the step is a record of.
+    if (onOwnedWrite) onOwnedWrite (p, norm);
 }
 void SpectrumImager::resetParam (juce::RangedAudioParameter* p, int expectedBands)
 {
