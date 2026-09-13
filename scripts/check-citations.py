@@ -404,6 +404,35 @@ DELIBERATE_REAIMS = {
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:657",
      "src/gui/SpectrumImager.cpp:704"): "bandCount",
+    #
+    # 2026-09-13 (ADR-0053 round 12), SIX AT ONCE AND ALL ONE CAUSE, which is why they are listed
+    # together rather than argued one by one. The round's own hunks -- one seam, the poll's edge
+    # sample, and a comment block that grew -- shifted `PluginProcessor.h` and `.cpp` under six
+    # `FUTURE_RISKS.md` anchors that were re-derived in the SAME change set. Against `origin/main`
+    # the line map carries them and no declaration is needed; against the PUSH PREDECESSOR it
+    # cannot, because that commit already holds this round's source and only the DOCUMENT moved.
+    # That is the case this table exists for: a re-aim is textually indistinguishable from drift,
+    # and these are re-aims. Each one's target symbol is named below and `verify_reaim_targets`
+    # resolves it against the current file on every run, so a number computed before the file
+    # settled fails here rather than going quiet.
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.h:246-249",
+     "src/PluginProcessor.h:265-268"): "parameterValueChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.h:390",
+     "src/PluginProcessor.h:409"): "parameterValueChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.h:325",
+     "src/PluginProcessor.h:344"): "UndoStacks",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1869-1968",
+     "src/PluginProcessor.cpp:1914-2013"): "setStateInformation",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1869",
+     "src/PluginProcessor.cpp:1914"): "setStateInformation",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1405",
+     "src/PluginProcessor.cpp:1450"): "abActive",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the
