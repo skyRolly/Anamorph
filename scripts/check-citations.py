@@ -458,15 +458,13 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.cpp:1405",
      "src/PluginProcessor.cpp:1632"): "abActive",
     #
-    # 2026-09-13 (round 13), and this one is a REAL re-aim rather than a shift. RISK-012 cited the
-    # poll as a span, `:963-1035`, which had drifted to the middle of two comment blocks and named
-    # nothing: the sentence is about the push decision, so the aim moves to the `sig != committedSig`
-    # gate and the `undo.push_back` it guards. Round 13's own hunk is what made the old span
-    # meaningless, which is the case for re-aiming onto the thing a citation is about rather than
-    # following the line map to wherever the old text ended up.
-    ("docs/FUTURE_RISKS.md",
-     "src/PluginProcessor.cpp:963-1035",
-     "src/PluginProcessor.cpp:980-1039"): "sig != committedSig",
+    # 2026-09-13 (round 13) declared a re-aim of RISK-012's poll citation, `:963-1035` ->
+    # `:980-1039`, onto the `sig != committedSig` gate. ROUND 14 DELETED IT, because round 14
+    # deleted the citation: RISK-012 is RESOLVED and its rewritten entry points at ADR-0008's
+    # amendment rather than at a line of the poll. A declaration whose new spelling the document no
+    # longer contains is dead, and this file's own rule -- an entry that matches nothing silently
+    # widens what a future report can be absorbed by -- says delete it rather than re-aim it at
+    # something the sentence is not about. The self-test caught it, which is what that test is for.
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the
