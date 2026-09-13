@@ -73,6 +73,33 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   counts from where the split actually landed, so one notch back always moves it and the drag after a
   blocked notch carries on normally. Splits that were not blocked behave exactly as before.
   Decision: ADR-0053. Regression coverage: State test 80 leg G. Evidence: PR #144. [Verified]
+- **Your DAW's automation is no longer swept into your own Undo steps, and Redo no longer lands on a
+  value your DAW wrote.** Undo and Redo step through your own edits: Undo puts a control back to the
+  value it had immediately before the edit you are undoing, and Redo puts back the value that edit
+  produced. Until now an undo step was a snapshot of *everything*, so any automation that arrived
+  while the plug-in was still recording your edit was taken back along with it — a parameter you had
+  not touched jumped to an old value when you pressed Undo, including automation that arrived while
+  you were holding a knob, which for a long drag is the whole drag. Worse, Redo restored whatever was
+  live at the moment you pressed Undo, so a value your DAW had written since your edit became the
+  destination of *your* Redo. A step now covers only the controls your own action moved, with the
+  value each had before and after it, so everything else stays exactly where your DAW put it — and
+  Redo always puts back what you did.
+  Decision: ADR-0008 (amended 2026-09-13). Regression coverage: State test 86 legs Y, O, X and D2.
+  Evidence: PR #144. [Verified]
+- **Scrolling during a drag no longer sends your DAW a brief value you never asked for.** A notch
+  taken while the mouse button is held is added to the drag, and until now that addition happened
+  *after* the drag had already published its own position — so every subsequent mouse movement
+  reported the value with the notch missing before immediately reporting the right one. Your DAW saw
+  both, and a DAW recording in Touch or Latch wrote both into the lane; the audio engine could read
+  the wrong one for a single block. The combined value is now worked out before anything is published,
+  so one mouse movement sends one value, exactly as it does with no scrolling involved.
+  Decision: ADR-0053. Regression coverage: State test 88 leg M. Evidence: PR #144. [Verified]
+- **A double-click reset now tells your DAW you touched the control.** Resetting by double-click
+  wrote the default value without the begin/end pair that marks a user edit, so a DAW recording in
+  Touch or Latch saw it as an incoming automation value rather than as something you did. It is now
+  bracketed exactly as the Option/Alt-click reset beside it already was — and, as before, a
+  double-click on a control already sitting at its default still does nothing at all.
+  Decision: ADR-0052, ADR-0053. Regression coverage: State test 86 leg K. Evidence: PR #144. [Verified]
 - **A scroll is no longer split into two Undo steps when your DAW writes a parameter at the wrong
   moment.** The plug-in checks 24 times a second whether anything changed, and an automation value
   arriving while that check was running was folded into the plug-in's own record but not counted as

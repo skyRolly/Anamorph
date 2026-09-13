@@ -6803,7 +6803,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2413),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2417),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -9555,6 +9555,47 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
                        "leg M: ...and the DSP atomic never holds a value the host was not told");
             check (withNotch.opens == 0 && withNotch.closes == 0,
                    "leg M: the event sits INSIDE the press's open gesture -- it is automation-recordable");
+        }
+
+        // ---- LEG N: a TYPED value is undoable, and KI-010 said it was not ----------------
+        //      DRIFT CORRECTED, round 14, measured rather than read. `KNOWN_ISSUES.md` KI-010 and
+        //      the user manual's "Known quirks" both stated that values typed into a value box
+        //      create no undo step, "gesture-less edit path". They do not: the box IS
+        //      `juce::Slider`'s own `valueBox` (this plug-in supplies it from
+        //      `LookAndFeel::createSliderTextBox`), JUCE wires `valueBox->onTextChange` to
+        //      `Slider::Pimpl::textChanged`, and that wraps its `setValue` in a
+        //      `ScopedDragNotification` -- a real begin/end pair on the parameter. Measured here:
+        //      one open, one close, and one Undo returns the typed value to where it was.
+        //
+        //      The leg drives `Label::setText (..., sendNotificationSync)`, which is exactly where
+        //      the user's own path arrives: return key -> `hideEditor (true)` -> `textWasEdited()`
+        //      -> that same call. Nothing in this plug-in overrides it.
+        if (driveP != nullptr && driveK != nullptr)
+        {
+            juce::Component* boxC = nullptr;
+            for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+                if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) { boxC = l; break; }
+            auto* lab = dynamic_cast<juce::Label*> (boxC);
+            check (lab != nullptr, "leg N: the knob's value box is findable");
+            if (lab != nullptr)
+            {
+                while (proc.canUndo()) proc.undo();
+                proc.pollUndoCoalesce();
+                const float before = plainOf (driveP);
+                CountGestures cg; driveP->addListener (&cg);
+                lab->setText (juce::String (before + 4.0f, 2), juce::sendNotificationSync);
+                driveP->removeListener (&cg);
+                proc.pollUndoCoalesce();
+                check (! juce::exactlyEqual (plainOf (driveP), before), "leg N: the typed value moved Drive");
+                check (cg.opens == 1 && cg.closes == 1,
+                       "leg N: ...inside ONE host change gesture, not as a gesture-less write");
+                check (proc.canUndo(), "leg N: ...so it IS undoable -- KI-010's typed path is stale");
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (driveP), before),
+                       "leg N: one Undo returns the typed value to where it was");
+                while (proc.canUndo()) proc.undo();
+                proc.pollUndoCoalesce();
+            }
         }
 
     proc.editorBeingDeleted (ed);
@@ -18042,7 +18083,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1495).
+//  baseline", src/PluginProcessor.cpp:1655).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -18275,7 +18316,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1232).
+//  targets", src/PluginProcessor.cpp:1386).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -18652,7 +18693,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1680).
+//  mixed sound", src/PluginProcessor.cpp:1840).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running

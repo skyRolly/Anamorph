@@ -1355,6 +1355,33 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   splits unchanged, `CountGestures.opens == 0` on the left edge split, and the solo mask equal to
   what an uninterrupted press produces.
 
+* **Round 14's own legs, and what each of them is the only witness to.** **86 leg Y** is the
+  canonical sequence ADR-0008's amendment is written against — *A, then the user's edit to B, then
+  the host's automation to C* — and it asserts BOTH endpoints: Undo gives A, Redo gives B. It is the
+  only leg that can see a Redo destination redefined by automation, because every other undo leg
+  either has no automation after the step or asserts only the near endpoint. **86 leg D2** is the
+  only leg in which a multiband split is scrolled far enough to PUSH its neighbour: leg D's own
+  fixture never packs (three notches of 0.4 x 28 px against a decade of separation), so leg D would
+  pass whether or not the pushed neighbour is in the step, and the guarantee its message names would
+  be gone with nothing to notice. **88 leg M** is the only observable in the suite that can see a
+  value published and overwritten INSIDE one `mouseDrag` call: every other leg samples between whole
+  events or counts undo steps, and both are blind to a write sequence. It uses a processor-level
+  `juce::AudioProcessorListener` rather than a parameter listener, because JUCE walks a parameter's
+  own listener list in reverse registration order — a listener a test adds is called BEFORE the APVTS
+  adapter that stores the DSP atomic, and would read the previous value. **88 leg N** re-tested a
+  documented limitation instead of re-reading it: KI-010 said a typed value creates no undo step, and
+  it does (one gesture open, one close, one Undo returns it). The entry was closed and the manual
+  corrected.
+
+* **Three legs were RE-BASED by the amendment rather than extended, and the previous expectation is
+  recorded in each.** **86 legs I and J** asserted that a burst whose own store was refused did not
+  extend the previous scroll, which was true only because that burst recorded a whole-state step whose
+  only content was the host's write; under the amendment it records nothing and one Undo correctly
+  reaches the scroll before it. **86 leg V** asserted that an empty press's step "stands between the
+  automation and the scroll"; there is no such step now, and what the leg asserts instead is that the
+  host's write is not undoable at all. Legs O and X, which printed measurements for three rounds
+  because the implementation and the intended rule disagreed, became assertions in the same change.
+
 * **State test 88 — a wheel notch inside a KNOB press belongs to that press** (ADR-0053, task
   sections 2, 3 and 4). **A** is a rotary knob, **B** the numeric value box under it — a different
   drag model entirely, mapping `downProp + (-dragY)/180` and never consulting JUCE's drag state — and
@@ -1589,6 +1616,13 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M45 | the foreign test measures from the poll's OPENING sample again | 86 leg U2, 2 checks |
   | M46 | the committing branch publishes the opening sample as the edge | 86 leg U2, 3 checks |
   | M47 | the fold branch stops taking the edge at its own snapshot | 86 leg U, 1 check |
+  | M48 | `Knob` publishes the pure drag value and corrects it afterwards again (the round-13 shape) | 88 leg M, 2 checks |
+  | M49 | the redo destination is taken from the LIVE parameters at Undo time | 86 leg Y, 1 check |
+  | M50 | `storeOwned` stops declaring its store through `onOwnedWrite` | 86 leg D2, 1 check |
+  | M51 | a step owns everything that moved between the batch edges, declared or not | 86 leg X, 1 check |
+  | M52 | the double-click reset writes outside a change gesture again | 86 leg K, 1 check |
+  | M53 | the ownership record is re-based at every gesture open, not only a fresh batch's | 86 legs G and K, 2 checks |
+  | M54 | the batch's closing values are never snapshotted | 15 checks across State tests 3, 10, 41, 83 and 86 |
 
   **M34 is the row that proves the sweep is worth running twice.** Against the FIRST version of
   leg R it SURVIVED -- the leg pressed at the lane's middle, where no width drag is latched, so

@@ -450,6 +450,66 @@ whole drag, so the pushed neighbour stores are inside the batch by the classifie
 `pollUndoCoalesceAdopted`: no wheel dispatch, no component routing, no new construction site. The
 refutation and its correction above stand unchanged.
 
+### What a sixth review round changed, and the defect it found in the write sequence
+
+Three things, and none of them touches this ADR's Decision: a notch still belongs to the interaction
+it lands in, a scroll is still one undo step, and the extend rule still needs no timer.
+
+**1. A drag inside a scrolled press published the PRE-WHEEL value first, and corrected it
+afterwards.** `Knob::mouseDrag` called `juce::Slider::mouseDrag` and then `applyWheelDragOffset`, and
+JUCE's own drag write is a `setValue (..., sendNotificationSync)` that reaches
+`SliderParameterAttachment` -> `setValueAsPartOfGesture` -> `setValueNotifyingHost`. With a notch
+banked, the value it published was the pure drag value — the interaction's position with the notch
+absent. Measured on the Drive knob with one notch banked and one further 2 px drag event, through a
+`juce::AudioProcessorListener` (the host's own view) with the DSP atomic sampled in the callback:
+
+```text
+host: BEGIN gesture
+host sees norm=0.080000  DSP atom=1.920000      <- pure drag
+host sees norm=0.155000  DSP atom=3.720000      <- corrected
+-- one further 2 px drag event --
+host sees norm=0.087917  DSP atom=2.110000      <- pure drag, a whole notch BACKWARDS
+host sees norm=0.162917  DSP atom=3.910000      <- corrected
+host: END gesture
+```
+
+Two writes per drag event instead of one; a control with no notch banked writes once. Both land
+inside the single touch/latch punch-in the press holds, so a host recording automation wrote the
+backwards spike into the lane, and the audio thread could read 2.11 dB while the control stood at
+3.91. Nothing measured *between* events was ever wrong, which is why forty checks in State test 88
+passed over it: the defect is entirely in the write SEQUENCE.
+
+The fix is the rule the value box and the multiband display already obey — compute the combined
+value, then write once. `juce::Slider::snapValue` is a virtual JUCE calls immediately before that
+same drag write, so `Knob` overrides it and folds the notch total in there; `applyWheelDragOffset`
+and the `mouseDrag` override are deleted. It is gated on `wheelDragProp != 0` rather than on
+`dragMode`, because JUCE leaves `dragMode == notDragging` for the plain `Rotary` style, and it takes
+its base from `snapToLegalValue (attempted)` rather than from the raw attempted value, because that
+is what the old `getValue()` returned after `constrainedValue`. Measured equivalent to the previous
+code on 8640 sequences — every APVTS parameter x four drag paths x five start values x four wheel
+deltas x three notch positions — where the un-snapped form differs on 89 of them. State test 88
+leg M is the observable; it needs a processor-level listener, because JUCE walks a parameter's own
+listener list in reverse registration order and a test listener added there is called before the
+APVTS adapter that stores the atomic.
+
+**2. The double-click reset wrote outside any change gesture, and the comment saying it could not be
+wrapped was false.** `PluginEditor.h` recorded that wrapping the double-click reset "would nest
+begin/endChangeGesture on the same parameter", on the premise that the second press's
+`ScopedDragNotification` is still open. JUCE dispatches `mouseDoubleClick` from
+`Component::internalMouseUp`, **after** `mouseUp` — so the press's gesture is already closed, nothing
+nests, and JUCE's own `Slider::Pimpl::mouseDoubleClick` wraps its write for exactly that reason. The
+reset is now bracketed like the Alt-click path beside it and gated on `resetWouldMove()` (ADR-0052).
+A host recording in touch or latch now sees one punch-in span for a double-click reset where it
+previously saw a gesture-less write.
+
+**3. The extend rule is unchanged and is now expressed literally.** Under ADR-0008 as amended
+(2026-09-13) an undo entry carries the parameters the user's batch moved with both of their
+endpoints, so "keep the value the scroll started from and replace only where it ended" is no longer
+achieved by *not pushing an entry* — it is the entry keeping each parameter's original `before` and
+taking the new `after`, with a parameter the chain touches for the first time joining it. The
+observable behaviour of a scroll is the same; what changes is that a host write arriving beside the
+scroll is no longer inside it, which is what the amendment was for.
+
 ## Consequences
 
 - **A notch during any drag now adds to it**, and the drag continues from the combined value. What a
@@ -499,12 +559,13 @@ refutation and its correction above stand unchanged.
   anchor's back and erased by the next drag event. Gating on the mouse button instead — making a notch reach only the control being dragged —
   was rejected: it would need a cross-component registry JUCE does not provide, and it would also
   silence a notch during one of the multiband display's own presses that latched no identifier.
-- **A burst that wrote nothing of its own still leaves an undo step for what the host wrote inside
-  it.** Unnaming it stops the misattribution — the previous scroll keeps the value it ended on — but the
-  gesture did close over a changed signature, so the poll records that change as a step of its own. This
-  is the generic property of gesture coalescing (any host write bracketed by any gesture joins that
-  gesture's step), not something this decision introduces, and closing it would mean a gesture able to
-  withdraw its own commit request. Recorded rather than claimed fixed.
+- **A burst that wrote nothing of its own leaves NO undo step — corrected 2026-09-13.** This bullet
+  used to say the opposite, and it was true of the implementation it described: the gesture closed over
+  a changed signature, so the poll recorded the host's write as a step of its own, and closing that
+  "would mean a gesture able to withdraw its own commit request". Under ADR-0008 as amended the poll
+  asks what the BATCH owns rather than what the signature did, so a burst whose own store was refused
+  records nothing and the host's write beside it is undoable by nobody. State test 86 legs I, J and V
+  are re-based onto that; each of them previously asserted the old behaviour.
 - **A velocity drag of a ROTARY knob divides by zero inside JUCE, and this decision's coverage
   works around it rather than silencing it.** `Slider::Pimpl` assigns `sliderRegionSize` only for
   horizontal and vertical styles and the constructor takes that branch once under JUCE's default
@@ -515,13 +576,16 @@ refutation and its correction above stand unchanged.
   and nothing behaves wrongly, but UBSan reports it. State test 88 leg H drives the same JUCE branch
   through a linear slider instead. Nothing is added to `scripts/ubsan-ignorelist.txt`, which states
   that `float-divide-by-zero` still instruments the vendored tree in full.
-- **Two lines of extra work per drag event, and only after a notch.** `applyWheelDragOffset` returns
-  on a zero offset, so a press with no notch in it makes exactly the parameter writes it always did.
+- **One extra comparison per drag event, and only after a notch — and ONE write, not two
+  (corrected 2026-09-13).** The fold moved into `Knob::snapValue`, which returns immediately on a zero
+  offset, so a press with no notch in it makes exactly the parameter writes it always did; a press with
+  one now makes the same number, instead of publishing the pure drag value and correcting it.
 
 ## Related code
 
-* `src/PluginEditor.h` — `Knob::wheelDragProp`, `Knob::owner`, `applyWheelDragOffset`,
-  `mouseDrag`, `mouseUp`, `mouseWheelMove`, `sendWheelToJuce` (the pointed-control delivery).
+* `src/PluginEditor.h` — `Knob::wheelDragProp`, `Knob::owner`, `snapValue` (the fold, round 14 —
+  it replaced `applyWheelDragOffset` and the `mouseDrag` override), `mouseDoubleClick`, `mouseUp`,
+  `mouseWheelMove`, `sendWheelToJuce` (the pointed-control delivery).
 * `src/PluginEditor.cpp` — `attachSlider` seeds `Knob::owner`; the editor wires
   `SpectrumImager::onWheelStep`.
 * `src/gui/LookAndFeel.cpp` — `ValueBox::mouseWheelMove`, `ValueBox::takeWheelNotch`.

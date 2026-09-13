@@ -403,7 +403,7 @@ DELIBERATE_REAIMS = {
     # the ordinary drift check watching it.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:657",
-     "src/gui/SpectrumImager.cpp:704"): "bandCount",
+     "src/gui/SpectrumImager.cpp:705"): "bandCount",
     #
     # 2026-09-13 (ADR-0053 round 12), SIX AT ONCE AND ALL ONE CAUSE, which is why they are listed
     # together rather than argued one by one. The round's own hunks -- one seam, the poll's edge
@@ -417,22 +417,46 @@ DELIBERATE_REAIMS = {
     # settled fails here rather than going quiet.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:246-249",
-     "src/PluginProcessor.h:265-268"): "parameterValueChanged",
+     "src/PluginProcessor.h:276-279"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:390",
-     "src/PluginProcessor.h:409"): "parameterValueChanged",
+     "src/PluginProcessor.h:461"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:325",
-     "src/PluginProcessor.h:344"): "UndoStacks",
+     "src/PluginProcessor.h:388"): "UndoStacks",
+
+    # 2026-09-13 (round 14, ADR-0008 as amended): THREE ENTRIES, all for spans this change EDITED
+    # rather than moved, which is exactly the case a declaration is for -- the line map returns
+    # `None` for an edited span and reports it UNMAPPABLE instead of inventing a number.
+    #   * `parameterGestureChanged` gains the per-batch ownership record, so its whole body is an
+    #     edited span and the three citations into it (`docs/FUTURE_RISKS.md` twice, the coverage
+    #     record once) are re-aimed by hand. The claims are unchanged -- the counter, the two ints,
+    #     the zero-crossing latch -- and the token is checked at the new spelling.
+    #   * `UndoStacks` itself: the line's TEXT changed (`std::vector<StateSet>` ->
+    #     `std::vector<UndoEntry>`), which is why the entry above could no longer carry it.
+    # The BASE spelling is origin/main's, not this branch's: the key is the transition the drift
+    # check actually sees, and the check runs against `origin/main`.
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:812-825",
+     "src/PluginProcessor.cpp:862-956"): "parameterGestureChanged",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/PluginProcessor.cpp:812-825",
+     "src/PluginProcessor.cpp:862-956"): "parameterGestureChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:812-826",
+     "src/PluginProcessor.cpp:862-957"): "parameterGestureChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.h:250",
+     "src/PluginProcessor.h:388"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     "src/PluginProcessor.cpp:1936-2035"): "setStateInformation",
+     "src/PluginProcessor.cpp:2096-2195"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     "src/PluginProcessor.cpp:1936"): "setStateInformation",
+     "src/PluginProcessor.cpp:2096"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     "src/PluginProcessor.cpp:1472"): "abActive",
+     "src/PluginProcessor.cpp:1632"): "abActive",
     #
     # 2026-09-13 (round 13), and this one is a REAL re-aim rather than a shift. RISK-012 cited the
     # poll as a span, `:963-1035`, which had drifted to the middle of two comment blocks and named

@@ -253,9 +253,12 @@ public:
 //     and the notch did nothing at all. With no button held the same notch moves
 //     one interval, because JUCE floors it. Same physical input, two answers.
 //
-//  `Slider::snapValue` is NOT restated: JUCE calls it on this path, its base
-//  implementation returns the value unchanged, and nothing in this plug-in
-//  overrides it. The duplicate-event filter (`e.eventTime != lastMouseWheelTime`)
+//  `Slider::snapValue` is NOT restated, and since round 14 that needs a sentence rather than a
+//  clause: `Knob` DOES override it, to fold a held press's banked notch total into the value JUCE's
+//  own drag is about to write (ADR-0053). This path never reaches that override -- the two wheel
+//  branches call `Slider::setValue` directly, which does not consult `snapValue`, and the override
+//  returns the base answer whenever no notch is banked. So the base implementation is still what
+//  this question would get, and restating it would still be restating the identity. The duplicate-event filter (`e.eventTime != lastMouseWheelTime`)
 //  IS restated, but in the two callers rather than here, because it is state and
 //  this is a pure question. It is restated at all because the floor makes it
 //  load-bearing: JUCE's own reason for having it is "since we're going to bump

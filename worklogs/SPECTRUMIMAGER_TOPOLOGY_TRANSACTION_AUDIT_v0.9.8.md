@@ -3544,3 +3544,112 @@ it count writes it previously missed, so it can now end a chain slightly more of
 safe direction and the same direction RISK-013 already describes.
 
 The other seven residuals are re-checked UNCHANGED against the current code.
+
+## §71. Round 14 — the approved amendment, and the write sequence nobody was watching
+
+Six items. Two were confirmed defects with fixes; three were classification questions that end in no
+code change; one was found on the way and is a documentation correction with a new guard.
+
+### The maintainer decision, and what it did and did not authorise
+
+Round 13 escalated RISK-012 and stopped: every correct fix needed per-parameter attribution, which
+contradicted ADR-0008's *"undo/redo stacks of `StateSet` snapshots"* in terms, and conflict with an
+Accepted ADR is a hard stop no green build clears. The maintainer approved that amendment on
+2026-09-13, **provided the change is the minimum architecture required**. It is approval for one
+amendment, not for redesigning undo: `StateSet` is byte-identical, the per-slot histories, the
+gesture gating, the preset bracket, the exclusions and the 128-entry cap are all untouched, and two
+push sites (a preset load, an A/B Copy) still make whole-state entries because neither opens a
+gesture anywhere and there is no attribution to be had for either.
+
+### What the defect actually was, in two halves
+
+The near endpoint: an entry was the whole preceding state, so the entry pushed beside a user's edit
+necessarily predated any host write that arrived in the commit window, and one Undo took that write
+back with the edit. The far endpoint was worse and had never been measured: `undo()` built the redo
+entry from the LIVE parameters (`st.redo.push_back (currentStateSet())`), so automation arriving
+between the step and the Undo became the value **Redo** restored. State test 86 leg Y is the
+canonical sequence, and mutation M49 restores exactly that line: `Redo gives 7.8000` where the user's
+own edit produced 1.8000.
+
+### The attribution, and why it is not the design RISK-012 flagged
+
+A change gesture on a parameter is the plug-in saying "the user is editing this", and JUCE already
+passes the index to `parameterGestureChanged` — which this file discarded. That callback is
+message-thread-only by construction: JUCE dispatches it from `begin/endChangeGesture` alone, no host
+calls those on a plug-in's parameters, and every call site in `src/` is GUI code. So the ownership
+record is written and read on one thread and the **Thread Model trigger does not apply**. RISK-012's
+gate was about recording attribution in `parameterValueChanged`, which IS audio-thread-reachable;
+that design was not the one built.
+
+Two edges carry the values: a whole-parameter snapshot when a fresh pending batch opens, and another
+at every zero-crossing close. The close is retaken at each one because a release action can open
+further gestures of its own — `removeBand` and `addBandAt` both END in `setBands`, so the last close
+follows the last store. The open is NOT retaken while `pendingGestureCommit` is true, because two
+presses can finish inside one 24 Hz period and have always collapsed into one step; re-basing there
+would drop the first press's edits. Mutation M53 removes that guard and legs G and K catch it.
+
+### The one hole in gesture attribution, and the two lines that close it
+
+`SpectrumImager` writes splits and widths COUPLED to a gesture held on one parameter — `storeOwned`
+for a pushed neighbour, `setParam` inside a topology transaction. Those have no gesture of their own,
+and a static "coupled group" table was considered and rejected: get the table wrong and a partial
+Undo leaves an illegal split row, which is a wrong SOUND rather than wrong granularity. The two
+functions declare their stores instead, through an `onOwnedWrite` callback wired exactly like
+`onWheelStep`. Every parameter write in that file goes through five functions and the other three
+already bracket a gesture, so the coverage is enumerable rather than assumed. Mutation M50 removes
+the declaration and leg D2 catches it — and leg D2 exists because **leg D could not**: its fixture
+never packs the splits, so it would have passed either way while the guarantee its message names was
+gone.
+
+### The write sequence
+
+`Knob::mouseDrag` called `juce::Slider::mouseDrag` and then `applyWheelDragOffset`. JUCE's drag write
+is `setValue (owner.snapValue (valueWhenLastDragged, dragMode), sendNotificationSync)`, and with a
+notch banked the value it computes is the interaction's position with the notch ABSENT. Measured
+through a `juce::AudioProcessorListener` with the DSP atomic sampled in the callback: on one 2 px
+drag event the host and the atomic each took 2.1100 dB while the control stood at 3.9100 — a full
+notch backwards, on every mouse move, inside the press's open touch/latch punch-in. Two writes per
+event; a press with no notch writes once.
+
+`snapValue` is a virtual JUCE calls immediately before that write, so the fold moved into it and both
+`applyWheelDragOffset` and the `mouseDrag` override are gone. It is gated on `wheelDragProp != 0` and
+not on `dragMode`, because JUCE leaves `dragMode == notDragging` for the plain `Rotary` style; and it
+takes its base from `snapToLegalValue (attempted)` rather than the raw attempted value, because that
+is what the old `getValue()` returned after `constrainedValue`. The un-snapped form differs from the
+previous code on 89 of 8640 swept sequences; the snapped form on none.
+
+### The comment that was false
+
+`PluginEditor.h` recorded that the double-click reset "needs no wrap ... wrapping there would nest
+begin/endChangeGesture on the same parameter". JUCE dispatches `mouseDoubleClick` from
+`Component::internalMouseUp`, AFTER `mouseUp` has closed the press's gesture. Nothing nests; JUCE's
+own `Slider::Pimpl::mouseDoubleClick` wraps its write for that reason. Until round 14 the reset
+reached the host as a gesture-less write, and its undo step existed only as a side effect of the
+whole-state push rule — which is why leg K broke under round 12's withdrawn `edited` gate. It is
+bracketed now, gated on `resetWouldMove()` like the Alt path.
+
+### Three classifications that end in no code change
+
+**R1020 "inaudible writes split scrolls" is RISK-013**, not a separate item. The foreign test asks
+"did somebody else store into the batch I am about to commit?" and an entry stores the RAW value, so
+the store IS the right test; the fold asks "has the rendered sound changed?", which is right for
+whether there is anything to record. They answer different questions, and the risk entry said they
+disagreed. Corrected, with the one-directional bound and the absorbing-poll fact added, and a stale
+citation fixed. **RISK-013 is a formally accepted residual**: granularity only, never a lost edit and
+never automation merged into a user's step, and round 14 closed one face of it — an unfolded
+rendered-preserving write is now in no step at all.
+
+**R1035 "scroll chains never expire" is ADR-0053's own Decision**, which contains the disputed clause
+verbatim: *"however many notches and however many pauses"*. The implementation matches every clause,
+and no locality defect is reachable — any edit that moves the sound ends the chain first. Adding a
+timer would conflict with an Accepted ADR and needs its own maintainer instruction, which has not
+been given, so it is not taken.
+
+### And one found on the way
+
+KI-010 and the user manual both said a typed value-box entry creates no undo step. Re-tested rather
+than re-read: the box IS `juce::Slider`'s own `valueBox`, JUCE wires `onTextChange` to
+`Slider::Pimpl::textChanged`, and that wraps its `setValue` in a `ScopedDragNotification`. Measured
+one open, one close, and one Undo returning the typed value. KI-010's typed half is closed, the
+manual's "Known quirks" entry replaced with a statement of the real Undo/automation rule, and State
+test 88 leg N is the guard.

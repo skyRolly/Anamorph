@@ -618,9 +618,11 @@ sorts alphabetically.
 
 ### Known quirks
 
-**Undo doesn't undo a typed value.**
-Known limitation: values typed into a value box don't create undo steps yet. Knob drags,
-resets, mouse-wheel scrolls (Multiband ones included, as of 0.9.8) and preset loads all do.
+**Undo and your DAW's automation.**
+Undo and Redo step through **your own** edits. Undo puts a control back to the value it had
+immediately before the edit you are undoing; Redo puts back the value that edit produced — not a
+value your DAW has written since. A value your DAW's automation wrote is never an undo step of its
+own, and is not taken back when you undo one of yours: it stays where your DAW put it.
 
 **A control looks stuck "pressed" (macOS).**
 If the mouse button was released outside the plug-in window, the pressed look can linger
