@@ -383,9 +383,56 @@ DELIBERATE_REAIMS = {
     # sixth time, :629 -> :657. Six hit-test helpers gain defaulted arguments and
     # the reasoning above `dragCrossoverTo` grows with them; a pure insertion again,
     # so still one entry, still by hand, and the document's own anchor moves with it.
+    #
+    # 2026-09-12 (ADR-0053, the wheel): a SEVENTH re-derivation, :657 -> :665. Three
+    # wheel-step constants join the file header above every function in it. A pure
+    # insertion once more -- and the seventh consecutive one, which is the running
+    # cost this entry was kept visible to show. The entry is still one line by hand
+    # and the aim check is still what caught the drift: the declaration's target is
+    # resolved against the current file on every run, so leaving it at :657 would
+    # have silenced the drift of everything else in this document rather than only
+    # its own.
+    #
+    # 2026-09-13 (ADR-0053 round 12): an EIGHTH re-derivation, :657 -> :704, and the first that
+    # does not simply follow the declaration. `dragCrossoverTo` gained a defaulted `float* landedX`
+    # out-parameter, so the DECLARATION line is the one this change rewrote -- and the sentence in
+    # the document is not about the declaration, it is about the live `bandCount()` read. The aim
+    # moves to that line (`const int M = (n >= 0 ? ... : bandCount()) - 1;`), which is what the
+    # citation was always claiming and which this change did not touch. Re-aiming onto the thing a
+    # citation is actually about is cheaper than declaring the declaration volatile, and it leaves
+    # the ordinary drift check watching it.
     ("docs/DOCUMENTATION_COVERAGE.md",
-     "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:657"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:657",
+     "src/gui/SpectrumImager.cpp:704"): "bandCount",
+    #
+    # 2026-09-13 (ADR-0053 round 12), SIX AT ONCE AND ALL ONE CAUSE, which is why they are listed
+    # together rather than argued one by one. The round's own hunks -- one seam, the poll's edge
+    # sample, and a comment block that grew -- shifted `PluginProcessor.h` and `.cpp` under six
+    # `FUTURE_RISKS.md` anchors that were re-derived in the SAME change set. Against `origin/main`
+    # the line map carries them and no declaration is needed; against the PUSH PREDECESSOR it
+    # cannot, because that commit already holds this round's source and only the DOCUMENT moved.
+    # That is the case this table exists for: a re-aim is textually indistinguishable from drift,
+    # and these are re-aims. Each one's target symbol is named below and `verify_reaim_targets`
+    # resolves it against the current file on every run, so a number computed before the file
+    # settled fails here rather than going quiet.
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.h:246-249",
+     "src/PluginProcessor.h:265-268"): "parameterValueChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.h:390",
+     "src/PluginProcessor.h:409"): "parameterValueChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.h:325",
+     "src/PluginProcessor.h:344"): "UndoStacks",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1869-1968",
+     "src/PluginProcessor.cpp:1914-2013"): "setStateInformation",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1869",
+     "src/PluginProcessor.cpp:1914"): "setStateInformation",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1405",
+     "src/PluginProcessor.cpp:1450"): "abActive",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

@@ -405,9 +405,46 @@ private:
         // would nest begin/endChangeGesture on the same parameter.
         juce::RangedAudioParameter* resetParam = nullptr;
         std::function<void()> onSweep;
+        // ADR-0053. THE WHEEL IS PART OF THE INTERACTION IT LANDS IN, and this member is what lets a
+        // drag carry ON from a notch instead of erasing it. JUCE discards the wheel outright while a
+        // button is held -- `! e.mods.isAnyMouseButtonDown()` guards its whole handler
+        // (juce_Slider.cpp) -- so a notch mid-drag used to do nothing at all; and merely writing the
+        // value would not survive either, because `handleAbsoluteDrag` recomputes it from
+        // `valueOnMouseDown` plus the cursor delta on EVERY mouse move and never reads the live value
+        // back. Both of those are private Pimpl members with no public setter, and
+        // `getThumbBeingDragged()` is the only part of that state a subclass can see -- so the notch
+        // is remembered OUT HERE and re-applied on top of whatever the drag computed. In PROPORTION
+        // space, so one notch means the same travel on a skewed range as on a linear one.
+        //
+        // Zero for a press with no notch in it, and every line that reads it returns immediately on
+        // zero, so an ordinary drag makes exactly the parameter writes it always did.
+        double wheelDragProp = 0.0;
+        // ADR-0053, round 11. JUCE's DUPLICATE-EVENT FILTER, restated for the in-drag path -- and it
+        // is restated because the floor above made it load-bearing. JUCE's own reason
+        // (`juce_Slider.cpp`) is exactly that: "sometimes duplicate wheel events seem to be sent, so
+        // since we're going to bump the value by a minimum of the interval, avoid doing this twice".
+        // It is about two DISTINCT events carrying one timestamp, not about one event delivered
+        // twice -- so single delivery, which the routing does guarantee, is not an answer to it.
+        // Before the floor, a duplicate asked for the same sub-interval nothing twice; with the
+        // floor it asks for two whole intervals, which would make the in-drag notch move FURTHER
+        // than the standalone one and break the same contract from the other side.
+        juce::Time lastNotchTime;
+        // The processor, for the wheel's undo grouping (ADR-0053). Null for a knob with no APVTS
+        // parameter behind it -- which is the Settings Persistence bar, and exactly the control whose
+        // undo participation must not change: with no parameter there is no change gesture and no
+        // sound signature, so it cannot record a step whatever this does.
+        AnamorphAudioProcessor* owner = nullptr;
+
+        // ADR-0052 (round 11). A RESET THAT HAS NOTHING TO RESET IS NOT AN EDIT. The knob is
+        // already sitting on `resetValue`, so `setValue` below would write the value the control
+        // already holds and JUCE would drop it -- but the animation, the `vpos` seed and, on the
+        // Alt path, a host change gesture would all have gone out for an interaction that changed
+        // nothing. Asked in VALUE space, which is the space `setValue` compares in.
+        bool resetWouldMove() const { return ! juce::exactlyEqual (getValue(), resetValue); }
 
         void doReset()
         {
+            if (! resetWouldMove()) return;   // no edit, no sweep, no latched "vpos" (ADR-0052)
             // Seed the sweep from the CURRENT position so the eased travel has a real
             // "from" to leave. onSweep (below) then flags the reset sweep -- but only
             // when animations are on -- so the value-travel easing plays even though the
@@ -421,8 +458,15 @@ private:
         }
         void mouseDown (const juce::MouseEvent& e) override
         {
+            wheelDragProp = 0.0;    // a new press starts with no notch in it (ADR-0053)
             if (e.mods.isAltDown()) // Option/Alt-click reset, as ONE undoable user gesture
             {
+                // ...and the gesture is part of what an edit costs, so the same question is asked
+                // before it opens rather than inside `doReset` alone: a begin/end pair on a
+                // parameter that never moved is an automation punch-in a host recording touch or
+                // latch writes a point for (ADR-0052, round 11 -- the same rule the multiband
+                // wheel branches answer for their own rails).
+                if (! resetWouldMove()) return;
                 if (resetParam != nullptr) resetParam->beginChangeGesture();
                 doReset();
                 if (resetParam != nullptr) resetParam->endChangeGesture();
@@ -433,6 +477,120 @@ private:
         void mouseDoubleClick (const juce::MouseEvent& e) override
         {
             if (e.getNumberOfClicks() == 2) doReset();
+        }
+        // ADR-0053: the notch total this press has accumulated, applied on top of the value JUCE's
+        // drag has just computed. Called after every drag event, so the offset survives the drag's
+        // habit of recomputing from its own press-time anchor.
+        void applyWheelDragOffset()
+        {
+            if (juce::exactlyEqual (wheelDragProp, 0.0)) return;
+            const double base = valueToProportionOfLength (getValue());        // the pure drag value
+            const double want = juce::jlimit (0.0, 1.0, base + wheelDragProp);
+            // NO DEAD TRAVEL: keep only what actually fitted, so a press that has been scrolled past
+            // a rail leaves that rail the instant the drag moves away from it instead of first
+            // unwinding travel nobody can see. Only ever reached once a notch has been made, so an
+            // ordinary drag's clamping behaviour is untouched.
+            wheelDragProp = want - base;
+            setValue (proportionOfLengthToValue (want), juce::sendNotificationSync);
+        }
+        void mouseDrag (const juce::MouseEvent& e) override
+        {
+            juce::Slider::mouseDrag (e);
+            applyWheelDragOffset();
+        }
+        void mouseUp (const juce::MouseEvent& e) override
+        {
+            juce::Slider::mouseUp (e);
+            wheelDragProp = 0.0;
+        }
+        void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
+            // A NOTCH INSIDE THIS KNOB'S OWN DRAG (ADR-0053). `getThumbBeingDragged()` is >= 0 only
+            // between the mouseDown that actually STARTED a drag and the drag-end notification, so a
+            // press that started none -- a pop-up-menu click, a single-click reset -- does not
+            // qualify and a notch can never write outside a change gesture.
+            if (isScrollWheelEnabled() && e.mods.isAnyMouseButtonDown() && getThumbBeingDragged() >= 0)
+            {
+                // What JUCE's own handler would move this slider to for this event -- direction,
+                // scale, rails AND its one-interval floor, from the single source in LookAndFeel.h
+                // -- so one notch means the same travel whether or not a button is held. It said
+                // that here before and did not deliver it: without the floor a sub-interval notch
+                // was snapped straight back by `setValue` and the press ate it (round 11).
+                if (e.eventTime == lastNotchTime) return;   // ...the duplicate, before anything (ADR-0052)
+                lastNotchTime = e.eventTime;
+                const double v0     = getValue();
+                const double target = anamorph::gui::wheelTargetValue (*this, w, v0);
+                if (juce::exactlyEqual (target, v0)) return;  // ADR-0052: no edit, no side effects
+                const double base = valueToProportionOfLength (v0);
+                setValue (target, juce::sendNotificationSync);
+                // BANK WHAT ACTUALLY MOVED, read back from the slider rather than from the request:
+                // the write is clamped to the range and snapped to the interval grid, and banking
+                // the request instead would leave the drag carrying travel the control never took
+                // -- dead travel the next mouse move would then apply as a jump (ADR-0052's latch
+                // half). ...and the drag carries on from the value the notch left behind.
+                wheelDragProp += valueToProportionOfLength (getValue()) - base;
+                return;
+            }
+            // A NOTCH DELIVERED HERE DURING A CHILD'S OWN DRAG BELONGS TO THAT CHILD (ADR-0053).
+            // The value box under this knob drags by steering `downProp`, an anchor of its own, and
+            // it maps 180 px of travel across a box under 20 px tall -- so the cursor leaves the box
+            // almost at once and JUCE, which routes by pointer, delivers the rest of that drag's
+            // notches HERE. Writing the value on the slider would be erased by the box's very next
+            // drag event, so the box takes the notch and moves its anchor instead. It never forwards
+            // the event back, so this cannot recurse.
+            if (e.mods.isAnyMouseButtonDown() && getThumbBeingDragged() < 0)
+                for (int i = 0; i < getNumChildComponents(); ++i)
+                {
+                    auto* child = getChildComponent (i);
+                    if (auto* holder = dynamic_cast<anamorph::gui::DragGestureOwner*> (child);
+                        holder != nullptr && holder->takeWheelNotch (e, w))
+                        return;
+                }
+
+            // A STANDALONE SCROLL NAMES THE CONTROL IT EDITS, so the processor can keep the whole
+            // scroll -- however many notches, and however many pauses between them -- as ONE undo
+            // step (ADR-0053). The value box below the knob forwards its own wheel events here, so
+            // the knob and the number under it name the same control, which is what they are.
+            if (owner != nullptr && resetParam != nullptr)
+            {
+                const AnamorphAudioProcessor::ScopedWheelStep step
+                    (*owner, AnamorphAudioProcessor::wheelStepKeyFor (resetParam));
+                sendWheelToJuce (e, w);
+                return;
+            }
+            sendWheelToJuce (e, w);
+        }
+
+        // A NOTCH THAT LANDED HERE WHILE SOME OTHER CONTROL HOLDS THE PRESS (ADR-0053). JUCE routes
+        // a wheel event by POINTER and not by capture -- `getTargetForGesture` hit-tests the peer at
+        // the event position whether or not a drag is in flight -- so a press held on one knob and a
+        // pointer that has travelled onto another delivers the notch HERE, with the button still
+        // down. The branch above does not claim it (no drag of this slider's own is open) and JUCE
+        // then discards it, because its whole wheel body sits behind `! e.mods.isAnyMouseButtonDown()`:
+        // a notch the user makes and never sees, while the same gesture over the multiband display
+        // edits what it points at. So the pointed control acts, exactly as it does with no button
+        // down -- the event is handed to JUCE with the MOUSE BUTTONS CLEARED and nothing else
+        // changed, which keeps JUCE's own wheel amount, interval, snapping, duplicate-event filter
+        // and `ScopedDragNotification` bracketing rather than restating any of them here. The edit
+        // therefore lands inside the other control's open gesture and the two share one undo step,
+        // which is what the multiband display has done since the top of this round.
+        //
+        // Gated on what JUCE itself would need to act, so a disabled slider or one with the wheel
+        // turned off still reaches `Component::mouseWheelMove` with the UNTOUCHED event and its
+        // ancestors see what they always saw.
+        void sendWheelToJuce (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+        {
+            if (isEnabled() && isScrollWheelEnabled() && e.mods.isAnyMouseButtonDown())
+            {
+                juce::Slider::mouseWheelMove ({ e.source, e.position, e.mods.withoutMouseButtons(),
+                                                e.pressure, e.orientation, e.rotation, e.tiltX, e.tiltY,
+                                                e.eventComponent, e.originalComponent, e.eventTime,
+                                                e.mouseDownPosition, e.mouseDownTime,
+                                                e.getNumberOfClicks(), e.mouseWasDraggedSinceMouseDown() },
+                                              w);
+                return;
+            }
+            juce::Slider::mouseWheelMove (e, w);
         }
     };
 

@@ -8,6 +8,15 @@ hard-stop item under `docs/policies/ARCHITECTURE_REVIEW_GATE.md`, put to human r
 request rather than decided by a green build, and approved. The reasoning it was approved on is the
 *Architecture Review Gate* section below, unchanged.
 
+**Extended by [ADR-0053](ADR-0053-a-wheel-belongs-to-the-interaction-it-lands-in.md) (2026-09-12),
+which applies this rule to a branch that did not exist when this was written: a notch while a Band
+Solo button is held now MOVES the band, and at one band there is no band to move -- `beginBandMove`
+leaves both pins at -1 and `moveBand` returns having written and opened nothing. Converting the press
+into a "move" regardless would swallow the solo click on release for no gain whatsoever, which is
+this ADR's own defect shape in a new place. Note that ADR-0053 supersedes the ADR-0041 Consequences
+line this ADR re-affirms ("a wheel tick FINISHES a held press"); the ADR-0041 DECISION that both
+depend on is unchanged.**
+
 **Clarifies [ADR-0041](ADR-0041-a-coupled-update-is-all-of-it-or-none-of-it.md) and
 [ADR-0043](ADR-0043-a-commit-carries-intent-and-a-plan-is-computed-where-it-is-used.md); supersedes
 nothing.** ADR-0041 decided that a wheel tick **finishes** a held press, because two gestures cannot
@@ -75,11 +84,45 @@ side effect* — and asked for an evidence-based decision.
 The in-source ADR-0041 comment block was reconciled rather than left stranded: it now opens by saying
 that every sentence in it is about an event that makes an edit.
 
+### Where the rule was applied next (round 11 of the ADR-0053 review)
+
+The rule was written about an event carrying no usable delta. A later review found four sites where
+the delta was real and the EDIT still was not, and each of them paid for an edit it did not make. All
+four are the same shape — the target is clamped to the value the control already holds — and all four
+are now answered by asking the write path's own question before anything is established:
+
+* **A notch at the end of a band's travel** converted the solo press into a move, opened one or two
+  host change gestures and started the hold audition, and the release then took the move branch —
+  swallowing the solo click exactly as the one-band case in this ADR's own Consequences would have.
+  The travel limits used to be knowable only by SETTING them (`beginBandMove`), which is why the
+  test could not be made first; the geometry is now a pure `bandMovePlan` both paths derive from.
+* **A standalone notch at a split's travel limit, or on a bandwidth already at 0.0 or 2.0**, opened
+  a change gesture and closed it again around a store that wrote nothing — a touch/latch punch-in
+  for an edit that never happened. Both branches now predict the no-op from the reading the tick has
+  already taken and proved (ADR-0047), against `writeCrossovers`' own half-pixel threshold, so the
+  prediction cannot drift from the write path.
+* **An in-press notch at a bandwidth rail** additionally ENGAGED the width drag that the 3 px
+  threshold had not, leaving every later one-pixel tremor writing widths.
+* **An Option/Alt-click on a knob already at its default** bracketed the reset in a host change
+  gesture and ran the sweep animation, for a `setValue` JUCE then dropped. The same question
+  (`resetWouldMove()`) is now asked before the gesture opens and again inside `doReset`, which is the
+  double-click path's half of it.
+
+A fifth site was examined and left alone: the wheel latch (`scrollHandle` / `scrollBand` /
+`scrollAnchor` / `scrollBands` / `scrollFx`) is still established before the no-edit test. It is
+pointer memory rather than edit state — a `mouseMove` writes the same fields with no edit in sight —
+and its only consumers are the next tick's staleness test and re-derivation, so latching it for a
+notch that then does nothing changes no later answer.
+
 ## Consequences
 
 * A horizontal or sub-threshold wheel event no longer ends a held drag, no longer closes its host
   gesture early, no longer creates an undo step, and no longer swallows a pending click.
 * No change to any wheel event that carries a real vertical delta.
+* **A wheel event whose delta is real but whose target is clamped to the value already held is
+  treated the same way** (round 11): no gesture, no store, no engage, no audition, no repaint — and,
+  for a solo press, the click still lands on release. Same for an Alt-click reset with nothing to
+  reset. Regression coverage: State test 86 legs Q and R, State test 87 leg F, State test 88 leg K.
 
 ## Related code
 

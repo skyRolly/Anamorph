@@ -224,9 +224,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood (evidence-based):** **Low.** It requires the HOST to write cross-parameter from
   inside a dispatch, on two threads, in opposite orders, overlapping. **No listener in this
   plug-in creates the nesting at all:** `AnamorphAudioProcessor::parameterValueChanged`
-  (`src/PluginProcessor.h:171-174`) is a single relaxed `fetch_add`,
-  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:315`) the same, and
-  `parameterGestureChanged` (`src/PluginProcessor.cpp:812-826`) touches two ints — the last
+  (`src/PluginProcessor.h:265-268`) is a single relaxed `fetch_add`,
+  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:409`) the same, and
+  `parameterGestureChanged` (`src/PluginProcessor.cpp:825-900`) touches two ints — the last
   deliberately, its comment recording that `--d2-stress-probe` once reported this same detector
   for an APVTS/`listenerLock` inversion, closed by **removing** the nesting.
 - **How it surfaced:** ThreadSanitizer's deadlock detector, on `AnamorphStateTests` at
@@ -303,7 +303,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 
 ## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps
 - **Risk:** `AnamorphAudioProcessor::parameterGestureChanged` counts open gestures and sets
-  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:812-825`), and
+  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:825-899`), and
   `pollUndoCoalesce` turns that into an undo entry. A `SpectrumImager` topology transaction is a
   burst of stores, several of which open and close their own gesture (`setBands`, `setSoloMask`,
   `resetParam`), so the open count returns to zero **inside** the burst. A poll that runs there —
@@ -315,7 +315,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   DSP, as RISK-010 describes — but it is a state-correctness one.
 - **Likelihood:** Low as observed (no reported occurrence, and no test in the suite reaches it),
   **structural** as a mechanism: nothing in the current code prevents it.
-- **Evidence [Verified]:** `src/PluginProcessor.cpp:812-825` (the counter), `:827-834`
+- **Evidence [Verified]:** `src/PluginProcessor.cpp:825-899` (the counter), `:827-834`
   (`pollUndoCoalesce`), `src/gui/SpectrumImager.cpp` `addBandAt` / `removeBand` (the multi-gesture
   bursts). Carried through the v0.9.8 review rounds as residuals **U1–U3** with a deliberate
   no-fix decision; recorded here on 2026-09-08 because a decision carried only in a worklog is a
@@ -332,6 +332,62 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 Create the next `RISK-NNN` only when a TODO/FIXME, issue, PR discussion, or concrete code limitation
 supports it. State the likelihood **basis**, cite evidence with a confidence level, and give a
 mitigation. Do not invent risks to fill the template.
+
+## RISK-012 — An undo entry is a whole state, so a host write inside a user's step is undone with it
+- **Risk:** an undo entry is a whole `StateSet` snapshot (ADR-0008), and `pollUndoCoalesce` pushes
+  the PREVIOUS snapshot whenever the signature moved (`src/PluginProcessor.cpp:963-1035`). A
+  gesture-less host write that lands inside a pending step's window is therefore inside the step:
+  the entry behind it predates the write, so one Undo takes the automation back along with the
+  user's edit. ADR-0053's foreign-write rule fixes the ATTRIBUTION — no user step is retroactively
+  edited and no scroll chain merges across automation — but attribution cannot separate a value
+  from a snapshot that contains it.
+- **Reach:** five timings, and they differ. Automation landing while a gesture is OPEN is inside
+  the step unconditionally, because the poll refuses to fold while `openGestures > 0`
+  (`src/PluginProcessor.cpp:944-948`) — for a long knob drag that window is the whole drag. The
+  other timings need the write to fall in the ≤42 ms gap between a gesture edge and the next 24 Hz
+  poll. A second face of the same consequence: a press that edits nothing still records a step when
+  a gesture-less write moved the signature beside it, and that step's only content is the write.
+- **Impact:** a transient wrong value on a parameter the user did not touch. Bounded: no state is
+  corrupted, Redo restores it, the host's automation data is never modified, and a running lane
+  repairs the value on its next block. With the transport stopped, or on a latch-mode or
+  control-surface write, the stale value stands until something writes it again.
+- **Why it is not fixed here.** Three options were weighed in round 12 of the ADR-0053 review and
+  all three cost more than the residual. A whole-state snapshot taken as the gesture closes has to
+  be taken inside `parameterGestureChanged`, where `docs/policies/THREADING_POLICY.md` and ADR-0036
+  forbid the APVTS lock — a lock-order inversion `--d2-stress-probe` has already reported. Patching
+  the pushed baseline per parameter from a foreign-write set is lock-free and therefore NOT blocked
+  by that rule, but it changes what an undo entry means for every gesture in the plug-in, it
+  cannot distinguish `dragCrossoverTo`'s pushed neighbour splits from automation, and `redo()`
+  pushes an unpatched snapshot, so undo and redo stop round-tripping. Gating the push on whether
+  the batch edited anything removes the second face and breaks two measured behaviours: the
+  double-click reset, which has no gesture of its own, and the refused burst whose recorded step is
+  what stops the next Undo reaching past the automation into the previous scroll. All three of
+  those failed in the suite and the gate was withdrawn.
+- **Mitigation:** recorded and measured rather than fixed. State test 86 leg O prints the value on
+  every run, leg V prints the empty-press face, and ADR-0053's "What this does NOT do" section
+  carries the reasoning. Changing it is an **ADR-0008 decision for a maintainer** — what an undo
+  entry IS — and an Architecture-Review-Gate item, not a wheel fix.
+
+## RISK-013 — The foreign-write test counts raw parameter stores where everything else asks the rendered value
+- **Risk:** `foreignSinceEdge` is set when `soundParamGen` moved between two gesture edges
+  (`src/PluginProcessor.cpp:841-858`), and `parameterValueChanged` bumps that counter for every
+  store (`src/PluginProcessor.h:252-255`). Every other "did the sound change" test in the plug-in
+  asks `soundSignature()`, which signs the RENDERED value — `convertTo0to1 (convertFrom0to1 (v))`,
+  which snaps to the parameter's own grid (`src/PluginParameters.h:130-141`). A host write inside
+  one step of a discrete parameter, or inside one interval of a float one, therefore moves the
+  counter and not the signature.
+- **Impact:** a scroll chain is ended by a write that changes nothing audible, so each further notch
+  becomes its own undo step while such a lane is moving. The poll's own non-gesture branch, gated
+  on `sig != committedSig`, would have left the chain alone for that same write — the two halves of
+  the rule disagree. Undo granularity only: no lost edit, no wrong value.
+- **Why it is not fixed here.** Making the two agree means rendering inside
+  `parameterValueChanged`, which the header records as reachable from the AUDIO THREAD, and
+  comparing against a per-parameter cache. That is a realtime question (the skew math for a log
+  range is transcendental) and a change to the meaning of a cross-thread counter that
+  `PresetManager::isDirty` and the poll's own skip both depend on — not a wheel fix, and wider than
+  the review that found it.
+- **Mitigation:** recorded and measured. State test 86 leg W drives a sub-step write on a choice
+  parameter, checks that the rendered value really did not move, and prints the split it causes.
 
 ## RISK-006 — Undeclared licensing (no LICENSE, no approved EULA, JUCE tier unchosen)
 - **Risk:** The repository root has **no `LICENSE` file** and neither installer presents an
@@ -384,7 +440,7 @@ mitigation. Do not invent risks to fill the template.
   inside that window is ordered after the restore.
 - **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:1727-1826 read
+  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:1914-2013 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -462,7 +518,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:1727`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:1914`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -471,8 +527,8 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:1263`, against `canUndo()`; the `abUndo` vector's internals twice, via
-  `UndoStacks::operator=` (`src/PluginProcessor.h:250`) against the reader's iteration; and the
+  `src/PluginProcessor.cpp:1450`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `UndoStacks::operator=` (`src/PluginProcessor.h:344`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture
   change.

@@ -952,10 +952,10 @@ such.** What is established is that the rewrite happens at a position that is no
 What is not established is the exact macOS event sequence that makes that position land one row up;
 that would need a trace on macOS, which was not available here. What supports it is arithmetic that
 accounts for all four observed controls. The box is placed `h + 8` above the cursor
-(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:885-894`), so its top edge is a
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:932-941`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2266-2291`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2271-2296`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1426,7 +1426,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1609-1617`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1614-1622`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -1465,7 +1465,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1566` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1571` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -1475,7 +1475,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2090"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2095"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -1486,7 +1486,7 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 declared, and `--fix` moved all three from `src/PluginEditor.h:293` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:475`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:633`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1496,7 +1496,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:475`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:633`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1506,7 +1506,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:475"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:633"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -1552,7 +1552,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:586`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:590`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1023`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1210`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:1471`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:1658`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1286`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1473`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -8573,13 +8573,13 @@ every identifier are immutable by policy.
 
 **Drift.** Two pre-existing errors in the ※ footnote this change had to extend, both reported
 before being touched, both aimed at UI Scale rather than at the renamed control. (1) The footnote's
-label anchor `src/PluginEditor.cpp:580` pointed at `aboutLink.setFont` in `origin/main` and at
+label anchor `src/PluginEditor.cpp:584` pointed at `aboutLink.setFont` in `origin/main` and at
 `aboutBackdrop.onDismiss` here — an anchor already aimed wrong when the citation gate adopted it,
 which is the blind spot `check-citations.py`'s own header describes: the base-text test cannot see
 an anchor that was wrong at the base. (2) `src/InternalState.h:123` cited
 `return stored; // already a real boolean`, inside `repairedValue`, while the sentence it supports
 says "the pre-0.8.4 legacy APVTS id `uiScale` its migration reads" — so the line it means is the
-migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:609`) and onto the
+migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:613`) and onto the
 legacy write (`src/InternalState.h:302`), which makes the UI Scale bullet the same shape as the
 new one beside it. No `DELIBERATE_REAIMS` declaration was needed: the gate accepts both against
 `origin/main` and against the round-18 head, because restructuring the footnote changed the
@@ -9915,7 +9915,7 @@ the working tree: 0 files missing, 0 lines past EOF, 0 pointing at unrelated cod
 
 **MUST FIX — one, and the scanners did not report it.** PREfast's four `C6001` results are false
 positives, but auditing the second pair's surface found a real one three functions away:
-`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:612) validated its pin arguments
+`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:661) validated its pin arguments
 against `count` when *writing* them and not when computing `leftPin`/`rightPin`, so a stale pin
 survived into the pull loops and `out[k + 1]` read a slot the copy loop never wrote. Reachable:
 `beginBandMove` (:398) latches `soloMoveLeft`/`soloMoveRight` from the band count at the press;
@@ -9948,12 +9948,12 @@ probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers
 overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
 proof for the hour it took to write, and the wrong thing to leave standing.
 
-**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:526`: `pid::viewParams`
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:539`: `pid::viewParams`
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:1225 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:1278 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1538`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1591`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10033,7 +10033,7 @@ that the fix covered one direction only. Both are settled here.
 
 **A SECOND defect, and the scanners never saw it either.** `dragOrigX` (src/gui/SpectrumImager.h:249)
 is the drag-start x of every split, seeded once when a gesture begins and read for the whole gesture.
-Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:657)
+Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:704)
 and `moveBand` (:827). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
 splits in USE at the press — so a host write of `mbBands` that **raised** Bands mid-gesture made the
 consumers ask `projectFromOrig` for origins nobody had written. Those slots still held the `{0,0,0}`
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1225 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1278 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10772,7 +10772,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:812-825`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:825-899`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -10809,7 +10809,7 @@ change, and no Accepted ADR conflict. [Verified]
 topology count commit may still report success"*, and its converse for `setSoloMask`.
 
 **Ruled B — already prevented, invariant documented.** Both halves are true of the code:
-`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:780`) and
+`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:841`) and
 `setSoloMask` returns `stored && soloMask() == mask` (`:662`), so each re-reads only its own
 parameter after its own dispatches even though both prove BOTH on the near side. What covers it is
 the **callers** — every one that acts on the result re-proves the other parameter on its next line,
@@ -10886,7 +10886,7 @@ informational items.
 
 **Correction to the line above, from the audit workflow's full result (worklog §31).** One of those
 three informational items — ownership parameter equality — was NOT unchanged. `ownsSplit` compares
-exactly and is described correctly at `src/gui/SpectrumImager.cpp:453-463` and
+exactly and is described correctly at `src/gui/SpectrumImager.cpp:461-471` and
 `src/gui/SpectrumImager.h:384-390`, but the definition comment of `kSplitMovedPx`
 (`src/gui/SpectrumImager.cpp:14-17`) still said `soundMovedUnderGesture` compares against that
 constant and that "the two must be the same number" — the coupling ADR-0041 removed, unchanged since
@@ -10949,7 +10949,7 @@ in the ADR. The probe is the coverage.
 GUI-side snapshot); held-audition guard unchanged (`tick()` still returns at `isShowing()`, no
 production seam added); wheel gesture closure unchanged (ADR-0041, State test 80); U4 unchanged; the
 TSan suppression verified harness-scoped by grep — `WriteFromInsideAGestureOpen` exists only at
-`tests/state_tests.cpp:2786` — with the match-count assertion green in CI on `03a6e39`; both
+`tests/state_tests.cpp:2796` — with the match-count assertion green in CI on `03a6e39`; both
 informational items unchanged.
 
 **Documentation.** `ADR-0047` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
@@ -10967,7 +10967,7 @@ reversed. [Verified]
 ## Sixteenth pass — the release-and-add topology round (2026-09-09)
 
 **CI first: `source-lint` failed on `ea82eab`, and the failure was mine.** One drifted documentation
-anchor (`src/gui/SpectrumImager.cpp:441-451 -> :410-420`), moved by the twelve lines ADR-0047's
+anchor (`src/gui/SpectrumImager.cpp:449-459 -> :410-420`), moved by the twelve lines ADR-0047's
 overloads added above `ownsSplit`. **Classified a code issue in the change set, not a tooling or
 formatting one** — the gate did its job. The reason it escaped locally is the durable lesson: CI
 compares against the PREVIOUS COMMIT and I had checked against `origin/main`, which cannot see drift a
@@ -11171,9 +11171,12 @@ It is out of this round's scope and belongs with its own probe measurement. Work
 **Documentation.** `ADR-0050` (amended — no new decision, the same rule at the two sites it had
 escalated); `CHANGELOG.md` `[0.9.8] ### Fixed`; `TESTING.md` (State test 83, its four legs and the
 ensemble mutation record); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §58 and
-§59. One citation re-aim: `dragCrossoverTo` moved from `src/gui/SpectrumImager.cpp:657` to `:619`
-when `bandSoloed`'s definition was deleted, corrected in both the anchor and the `DELIBERATE_REAIMS`
-declaration.
+§59. One citation re-aim: `dragCrossoverTo` moved from line 702 to line 619 of
+`src/gui/SpectrumImager.cpp` when `bandSoloed`'s definition was deleted, corrected in both the
+anchor and the `DELIBERATE_REAIMS` declaration. (Written out in words rather than as
+`path:line`, because it is a record of where the anchor USED to point and not an anchor itself --
+the citation gate cannot tell the two apart, and read it as a live aim until round 12 edited the
+line it named.)
 
 **Gate status.** Not a gate item and no new ADR: no accepted decision changes, no parameter ID,
 serialization, threading-model, DSP-order or reported-latency change, no lock and no allocation. Both
@@ -11482,3 +11485,300 @@ to defeat it. No new ADR. No human approval required.
 **Documentation.** `ADR-0050` (applied again — no new decision); `CHANGELOG.md` `[0.9.8] ### Fixed`;
 `docs/procedures/TESTING.md` (State test 83 legs E and F);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §65. [Verified]
+
+### Twenty-seventh pass — the mouse wheel, and what an interaction is (2026-09-12)
+
+**Scope.** A maintainer instruction to change the mouse-drag, mouse-wheel and Undo/Redo behaviour of
+every knob and slider, the numeric value below each knob, the Multiband split, the Multiband
+bandwidth, the Band Solo interaction and the Settings slider — with the explicit ruling that the
+behaviour it specifies takes precedence over anything in the code or the documentation that conflicts
+with it. Recorded as **ADR-0053**.
+
+**What was there.** Three different wheel behaviours and none of them the one asked for. While a
+button was held: a knob, a slider and a value box did **nothing** (JUCE discards the wheel outright
+under `! e.mods.isAnyMouseButtonDown()`); a Multiband drag **ended** (ADR-0041); a held solo button
+lost its click and the wheel edited whatever band the pointer was over. With no button held: a knob
+recorded **one undo step per notch**, and the Multiband display recorded **none at all** — every
+wheel store there was a bare `setValueNotifyingHost` outside any change gesture, which is KI-010's
+second path.
+
+**The decision.** A notch belongs to whatever interaction it lands in. During a press it moves that
+press's own ANCHOR by the notch's amount and writes through that press's own owned-store path, inside
+the gesture the press already opened — so nothing is refreshed, which is what keeps ADR-0041's
+Decision intact while its Consequences line is superseded. With no press in flight a notch opens a
+gesture and NAMES the control; a commit whose name matches the most recently recorded step EXTENDS
+that step. **No inactivity timer**, and that is a deliberate deviation in mechanism: an undo entry
+holds the state from before its step, so the step exists from the first notch and "one Undo returns
+to the value before the scroll" is true at every instant rather than after a dwell — while a gesture
+held open across the scroll would be the exact silent-stop defect the twenty-sixth pass measured.
+
+**The architecture-review gate WAS triggered**, and is recorded as such rather than argued away:
+reversing a Consequences line of an Accepted ADR is a hard stop under `ARCHITECTURE_REVIEW_GATE.md`
+and `AI_AGENT_POLICY.md`. It is cleared by the maintainer instruction that states the new behaviour
+and rules on the conflict — the same way ADR-0041 and ADR-0052 were themselves entered. No other gate
+item is touched: no parameter ID, range, default, automation flag or serialization field; no DSP
+node, stage order or latency; no thread, cross-thread path or atomic ordering; no format, no build.
+
+**Two defects found by this round's OWN adversarial pass**, against code that had already landed, and
+both fixed with their own legs rather than recorded as residuals: a notch with **no band to move**
+(one band, both pins `-1`, `moveBand` returning at `M <= 0`) converted the press into a move anyway
+and swallowed the solo click — ADR-0052's rule broken in a branch written hours earlier; and two
+gestures finishing inside **one poll period** took the last gesture's name, so a released drag was
+folded into the scroll's step and lost its own undo point.
+
+**Stated rather than implied**, because each would otherwise read as a claim this change does not
+support: ONE gesture covers up to three parameters on the split path (pushed neighbours are outside
+any bracket of their own, exactly as the drag path has been since 0.6.x — undo is unaffected because
+`openGestures` is one global count); a typed value force-committed by a notch is attributed to the
+scroll; a notch delivered to a component other than the one being dragged still edits that component,
+because JUCE routes by pointer and not by capture; and the velocity-drag path (Ctrl/Alt/Cmd) is
+**not measured**, though `applyWheelDragOffset` composes with it by construction.
+**Both of those last two were corrected by the twenty-eighth pass** and the sentences are left
+standing so the correction is visible: the pointed-component claim held only for the multiband
+display — a knob, a slider and a value box DROPPED such a notch — and the velocity-drag path is now
+measured by State test 88 leg H.
+
+**Evidence.** State test 80 inverted, with its header recording what it used to assert and why; State
+tests 86, 87 and 88 new. 3 017 checks / 0 failures. Sixteen mutations run, fifteen killed and one
+recorded as surviving with the reason; the table is in `docs/procedures/TESTING.md`. One of the
+fifteen, M5, survived until its leg was rewritten -- the first version compared a split frequency
+against the value the press started from, which a split drag cannot reproduce bit-for-bit, so the
+check passed whether or not the mechanism worked.
+
+**Documentation.** `ADR-0053` (new), with reciprocal notes in `ADR-0041` and `ADR-0052` and a row in
+`ADR_INDEX.md`; `CHANGELOG.md` `[0.9.8]` re-dated **2026-09-12**, its wheel `### Changed` entry
+replaced rather than amended (it described behaviour this release no longer ships) and a new `###
+Fixed` entry for the multiband wheel's missing undo step; `docs/KNOWN_ISSUES.md` KI-010 (second path
+closed, typed path still open); `docs/user/USER_MANUAL.md` §6 gesture table and §Troubleshooting;
+`docs/procedures/TESTING.md`; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §66.
+[Verified]
+
+### Twenty-eighth pass — the review of the mouse wheel (2026-09-12)
+
+**Scope.** A review of the twenty-seventh pass's own change (`6d12c2c..e38ab37`) returned three
+defects and one investigate item. All four are closed here, under the same ADR-0053; nothing else in
+the interaction model moved.
+
+**What the three defects were, each reproduced as a failing check before the code was touched.**
+(1) A notch delivered to a control that ANOTHER control's press owned was discarded — JUCE routes
+wheel events by pointer rather than by capture, and its own handler refuses to act while a button is
+down, so the notch reached the pointed knob and died there while the same gesture over the multiband
+display edited it (*"the notch was dropped: Width stayed at 1.0000"*). (2) An EMPTY press — a click
+that starts no drag — closing in the same 24 Hz poll period as the next notch read as a name
+disagreement and split a scroll into two undo steps (*"one Undo stopped at 1.8000"*). (3) A
+standalone multiband burst whose owned store was REFUSED still named its step, so a host write made
+from inside its own gesture-open extended the previous scroll's step (*"one Undo stopped at 1.0000,
+not at the 1.1200 the previous scroll ended on"*).
+
+**The corrections.** (1) The pointed control acts: the event is handed to JUCE with the mouse
+buttons cleared and nothing else changed, which keeps JUCE's wheel amount, interval floor, snapping,
+duplicate-event filter and gesture bracketing rather than restating five behaviours locally. (2) and
+(3) are one rule said twice: **a gesture names the step it requests only if its own edit landed** —
+tested by the `soundParamGen` counter the S10 poll skip already maintains (one relaxed load per
+batch open and close, no signature rebuild) and by the store's own result.
+
+**What measuring it changed about the answer.** Fixing (2) also fixes the case (3) was reported
+from, and filing (3) as redundant would have been easy. Instrumenting the generation counter said
+why and said what remains: `juce::ListenerList` calls listeners in reverse registration order and
+this processor registers in its constructor, so a host write made from a parameter listener during a
+gesture-open always lands before the coalescer samples the generation (open `gen=63`, close
+`gen=63`). The store result covers the other ordering — a change arriving after the sample — which
+is cross-thread on the width branch (unreachable single-threaded, mutation M18 recorded as
+surviving) and reachable on the split branch, because `writeCrossovers` proves every split in the
+row and not only the ones it moves (State test 86 leg M, which kills M19).
+
+**A fourth correction, found by this round's own re-read rather than by the review.** The first
+version of (1) was wrong for the value box: the box drags by steering an anchor of its own and its
+18 px height means the cursor leaves it within a few pixels of a 180 px mapping, so the knob
+received the notch, wrote the value, and the box's next drag event erased it — "nothing happens"
+replaced by something worse. The knob now asks any child holding a drag gesture to take the notch
+first, through the existing `DragGestureOwner` interface; the child never forwards the event, so the
+ask cannot recurse, and the loop is behind `isAnyMouseButtonDown()`.
+
+**Stated rather than claimed fixed.** A burst that wrote nothing of its own still leaves an undo
+step for what the host wrote inside its gesture. Unnaming it stops the misattribution; the step
+itself is the generic property of gesture coalescing, and removing it would need a gesture able to
+withdraw its own commit request.
+
+**The investigate item, and what writing it found.** The velocity-drag branch (Ctrl/Alt/Cmd),
+listed by the twenty-seventh pass as composing by construction and untested, is now State test 88
+leg H — with a positive control that the modifier really does select the other branch, so the leg
+cannot degrade into a copy of leg A. Its first version held Ctrl over a rotary knob and turned the
+`sanitizers` job red: every rotary `juce::Slider` carries `sliderRegionSize == 0` (only the
+horizontal and vertical branches of `Pimpl::resized` assign it, and the constructor takes one of
+them under JUCE's default style against empty bounds), so JUCE's velocity-mode selection test
+divides by zero — `+inf`, compared as intended, no wrong behaviour, but a real division reported by
+a gate that is right to report it. The leg drives the same JUCE branch through a linear slider
+instead; nothing was added to `scripts/ubsan-ignorelist.txt`, whose own text says
+`float-divide-by-zero` still instruments the vendored tree in full.
+
+**No gate item is touched.** No parameter ID, range, default or serialization field; no DSP node,
+order or latency; no thread, cross-thread path or atomic ordering. ADR-0053 is extended by its own
+author rather than conflicted with, so the review gate is not re-triggered.
+
+**Evidence.** State tests 86 (legs L and M, and the attribution halves added to I and J), 88 (legs
+F, G, H and I). 3 057 checks / 0 failures, DSP 396 / 0. Nine further mutations, eight killed and
+M18 recorded as surviving with the measurement behind it. TSan 0 warnings with its one known
+suppression; valgrind memcheck 0 errors from 0 contexts on both suites; a local clang-18
+`undefined,float-divide-by-zero` build clean over the whole state suite, and reproducing the rotary
+report in the other direction.
+
+**Documentation.** `ADR-0053` (decision, a new subsection on what the review round changed,
+consequences, related code and evidence); `CHANGELOG.md` `[0.9.8]` — the wheel entries amended for
+the pointed-control rule and the empty press, the Settings entry's stale leg citation corrected
+(State test 88 leg **C** did not exist; it is leg E, now also leg G) and the five ADR-0053 entries
+re-cited from PR #143 to **PR #144**, which is where this work actually lands after #143 merged;
+`docs/user/USER_MANUAL.md` §3 universal gestures and the §6 gesture table;
+`docs/procedures/TESTING.md`; `src/gui/LookAndFeel.h` gains `DragGestureOwner::takeWheelNotch`;
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §67;
+and the two corrected sentences in the twenty-seventh pass above. [Verified]
+
+### Twenty-ninth pass — the review of the review of the mouse wheel (2026-09-12)
+
+**Scope.** A review of the twenty-eighth pass's own change (`909c19a..3df0fcb`) returned six
+findings. Five are real and closed here; the sixth is refuted with its reasoning recorded in the
+source. Two further defects and one documentation defect were found while reading for them. Nothing
+outside the wheel/drag/undo interaction model moved, and no gate item is touched.
+
+**The crux was a question about JUCE, and it went the review's way.** Finding 1 said a small
+in-drag notch can be erased by snapping while JUCE's own path floors the movement to one interval —
+true only if the slider's `normRange.interval` is non-zero, which an attachment-driven slider looked
+least likely to have. It has: `juce_ParameterAttachments.cpp` copies the parameter's interval onto
+the slider, and this plug-in declares 0.001 on Amount, Width, Mix and the percentages, 0.01 on Drive
+and the gains, and 0.001 on the Settings Persistence bar, which sets its own range. So JUCE moves a
+slider by at least one interval per notch and the in-drag paths did not: a macOS trackpad's smallest
+precise unit (`deltaY = 0.5/256`) asked for 0.0003 of Amount and was snapped straight back.
+Measured over 20 such notches: **0.0000 inside a press against 0.0200 with no button held**. Finding
+6A (the same arithmetic in two places) is answered by the same fix rather than by a justification:
+one `wheelTargetValue` in `LookAndFeel.h`, which both in-drag callers now ask.
+
+**The other four.** A drag that returned to the value it started from left the scroll chain standing
+(one Undo walked past it); a host write arriving in the commit window — from EITHER side of it — was
+folded into the scroll's step and let it extend a step the user had already finished; a notch at the
+end of a band's travel converted the solo press into a move and swallowed the solo click; and both
+standalone multiband branches opened a host change gesture before discovering the clamped target was
+the value already there. Each was reproduced as a failing check first, and each fix is killed by a
+mutation (M26-M35).
+
+**Found while reading for them, not reported:** the in-press width branch engaged the width drag on
+a notch at a rail, leaving every later one-pixel tremor writing widths; the Option/Alt-click reset
+bracketed a reset that resets nothing in a host change gesture and ran its sweep animation; JUCE's
+duplicate-event filter had to come with the interval floor, because the two are one mechanism and
+the floor alone would have made a held control move twice as far as an unheld one; a comment the
+previous round made false was still standing next to the code that falsified it; and the
+`[0.9.8]` changelog itself had one bullet spliced into the middle of another, leaving a truncated
+sentence and an orphaned fragment that `check-docs.py` cannot see (a continuation line after a
+complete entry is indistinguishable from a wrapped one under the grammar it checks).
+
+**And one defect this round put there itself.** The foreign-write test re-synced its generation only
+at the poll tail, while every program state jump applies its parameters after its own poll -- so the
+first notch after an Undo read as carrying somebody else's write and the notch after it started a
+second undo step, breaking the very guarantee ADR-0053 gives. Found by verifying the FIX
+adversarially, not by the suite: every existing leg drains and polls before it measures, and that
+trailing poll is what hid it. State test 86 leg T; mutation M39.
+
+**What was refused.** `ScopedWheelStep`'s destructor still writes 0 rather than restoring what it
+found, because 0 is what it found at every reachable construction site; the justification is now in
+the source at the destructor. And the automation VALUE that rides along in a step's baseline is
+recorded as an open decision rather than fixed: separating it needs a state snapshot inside
+`parameterGestureChanged`, where D-2/ADR-0036 forbids the APVTS lock, and the lock-free alternative
+changes what an undo entry means for every gesture in the plug-in. State test 86 leg O prints the
+measurement on every run.
+
+**Validation.** State 3 114 / 0 (twenty legs in test 86, six in 87, eleven in 88), DSP 396 / 0.
+Fourteen new mutations, thirteen killed and M36 recorded as surviving with the measurement behind it
+-- and M34 recorded as having survived its FIRST run, because the leg meant to kill it pressed
+where no width drag is latched and therefore could not fail. TSan
+0 warnings with its one known suppression; valgrind memcheck 0 errors from 0 contexts on both
+suites; a local clang-18 `undefined,float-divide-by-zero` build clean.
+
+**CI found one more, and it was in a leg rather than in the plug-in.** The first push of leg L
+failed the `macos` self-test on the **arm64** host only — the same binary under Rosetta passed.
+Leg L's input is a pair of events sharing one timestamp, so it cannot use the millisecond step the
+other legs use; on the faster host its stamp collided with leg I's, whose notch the knob forwards
+into that same value box, and the duplicate filter this round added correctly discarded leg L's
+FIRST notch. Every leg of test 88 now stamps from its own instant five seconds past the leg before
+(`legStamp`), which closes the class rather than the instance — collapsing that helper to a single
+shared instant fails three checks, leg I's two as well as leg L's, so the hazard was never leg L's
+alone. M30, M35, M37 and M38 still kill legs J, K and L.
+
+**No gate item is touched.** No parameter ID, range, default or serialization field; no DSP node,
+signal order or reported latency; no threading-model change — the new state is two message-thread
+members beside the ones ADR-0053 already added, and the one new listener-side statement is a
+relaxed load and a bool store on the thread that already owns both.
+
+**Documentation.** `ADR-0053` (a new subsection on what the third review round changed, including
+the residual it does not fix); `ADR-0052` (where the rule was applied next, and the one site
+deliberately left alone); `CHANGELOG.md` `[0.9.8]` — three Changed entries amended, the KI-010 Fixed
+entry amended, one new Fixed entry for the Alt-click reset, and the spliced bullet repaired;
+`docs/procedures/TESTING.md` (legs 86 N–T, 87 F, 88 J–L, mutations M26–M39, and the note on why
+leg L bases its shared timestamp past `getCurrentTime()`);
+`src/gui/LookAndFeel.h` gains `wheelTargetValue`; `src/gui/SpectrumImager.h` gains
+`originsFromRecord` and `bandMovePlan`; `src/PluginProcessor.h` records the `ScopedWheelStep`
+disposition at the destructor;
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §68. [Verified]
+
+### Thirtieth pass — the review of the review of the review (2026-09-13)
+
+**Scope.** A fourth review round over the wheel/drag/Undo model (`3df0fcb..aa5b67b` plus the four
+items the review named) returned four findings. Two are real and fixed; one is refuted for the
+second time, with the ADR's own justification corrected rather than the code; one is confirmed as
+behaviour but re-classified to the decision it actually comes from. A contract sweep found two more,
+one of which was fixed and then **withdrawn** when the suite showed the fix cost more than the
+defect. Every conclusion was derived read-only at a pinned revision by an investigator and attacked
+by three adversarial verifiers before any file was touched.
+
+**The poll was measuring two different instants and calling them one.** It samples the sound
+generation on its first line, builds the signature, and captures `committed` from the LIVE
+parameters after both — so a host write landing in between is inside the baseline it commits while
+the sample does not name it, and the next scroll was read as carrying somebody else's write and
+split into two undo steps. The edge is now taken at the snapshot. The review's own suggested fix
+(re-read after the signature) was tried on paper and rejected: the signature loop visits parameters
+one at a time, so that sample counts writes the signature missed, and the error flips to the
+direction ADR-0053 §3 exists to prevent.
+
+**And ADR-0053's "no dead travel" promise was false for one of its four branches.** The in-press
+split wheel clamped to the frame edges; the store clamps to what the packed neighbours leave, which
+`projectFromOrig`'s trailing ordering pass enforces by pulling the PIN back. Measured: 92 px banked,
+nine notches back before the split moved, and the mouse drag after it dead for the same distance.
+The anchor now comes from the projection's own answer.
+
+**The withdrawal is the round's best evidence.** An empty press plus a concurrent host write records
+an undo step whose only content is the automation — real, reproduced, and apparently a one-line fix.
+Gating the push on whether the batch edited anything made that leg green and broke three others: the
+double-click reset has no gesture of its own and is undoable only through the rule being removed,
+and a refused burst's recorded step is the boundary that stops the next Undo reaching past the
+automation into the user's previous scroll. All three are the same ADR-0008 consequence — an undo
+entry is a whole state, so a foreign write is either inside the user's step or is a step of its own,
+and there is no third answer. The gate was withdrawn, the leg became a measurement, and the reasoning
+is now in the source at the push decision.
+
+**Two residuals registered rather than fixed:** RISK-012 (the automation value inside a user's step,
+attributed to ADR-0008 where it originates) and RISK-013 (the foreign test counts raw stores where
+everything else asks the rendered value, so an inaudible write ends a chain). Both are printed by a
+leg on every run rather than asserted away.
+
+**Validation.** State 3 136 / 0, DSP 396 / 0, five new mutations all killed. TSan 0 warnings with
+its one known suppression; valgrind memcheck 0 errors from 0 contexts on both suites under
+`ANAMORPH_TESTS_NO_FTZ=1`.
+
+**No gate item is touched.** No parameter ID, range, default or serialization field; no DSP node,
+signal order or reported latency; no threading-model change — one added relaxed load on the thread
+that already owns every field around it, and no atomic ordering altered. ADR-0053's **Decision is
+unchanged**: both fixes apply it.
+
+**Documentation.** `ADR-0053` (a round-12 section, plus two corrections: the retracted
+`ScopedWheelStep` argument it still carried, and the overstated lock blocker on the automation
+residual); `docs/FUTURE_RISKS.md` (RISK-012, RISK-013); `docs/procedures/TESTING.md` (State test 86
+legs U, U2, V and W, State test 80 leg G, mutations M40–M44, and the fixture constraint leg G's
+first version got wrong); `CHANGELOG.md` `[0.9.8]` — two new Fixed entries;
+`tests/tsan-suppressions.txt` (three stale anchors); `src/gui/SpectrumImager.cpp` (four stale
+anchors and two false claims); three citation corrections in this file, one of which the gate could
+never have caught: the sentence about `projectFromOrig` validating its pin arguments was aimed at
+`dragCrossoverTo`'s declaration and had been since the base, because the gate asks whether a cited
+line still says what it said and not whether it says what the sentence claims. The other two are a
+re-aim of the `dragCrossoverTo` anchor onto the live `bandCount()` read it was always about (its
+declaration is the line this round rewrote) and a §59 note that recorded a PAST re-aim in
+`path:line` form, which the gate read as a live anchor; `src/PluginProcessor.h` (the `ScopedWheelStep` cost and its uncovered
+sub-case, and the new `insidePollBody` seam);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §69. [Verified]

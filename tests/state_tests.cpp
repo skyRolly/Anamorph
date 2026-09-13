@@ -2391,6 +2391,16 @@ namespace
 // burst writes puts the write in the exact window between that store and the rest.
 // ADR-0045: fires from inside a parameter's own beginChangeGesture dispatch -- the window
 // between a gesture open and the store it brackets, which no check outside that bracket sees.
+// ADR-0052, round 11. The observable an "opened no gesture" claim needs: a host's own view of the
+// parameter. A change gesture is not visible in any value, in the undo stack or in the signature --
+// an empty begin/end pair is exactly a touch or latch punch-in that writes nothing -- so the only
+// way to assert it is to listen the way a host does.
+struct CountGestures final : public juce::AudioProcessorParameter::Listener
+{
+    int opens = 0, closes = 0, writes = 0;
+    void parameterValueChanged (int, float) override { ++writes; }
+    void parameterGestureChanged (int, bool starting) override { starting ? ++opens : ++closes; }
+};
 struct WriteOnGestureOpen final : public juce::AudioProcessorParameter::Listener
 {
     juce::RangedAudioParameter* target = nullptr;
@@ -4754,30 +4764,43 @@ static void testTheFarSideOfACoupledCommitIsCoveredByItsCaller()
 
 
 // ---------------------------------------------------------------------------
-//  State test 80 -- a wheel tick during a held drag finishes the press, and
-//  finishing it has three consequences that are all intended.
+//  State test 80 -- a wheel notch inside a held press belongs to that press.
 //
-//  ADR-0041 made this a product decision and its Consequences section said so in
-//  one line: "a wheel tick during a drag ends the drag. New, deliberate." What it
-//  did not say -- and what a later review had to ask for -- is what ending it
-//  costs, because `cancelActiveDrag()` calls `endGesture()` on the dragged
-//  parameter. This test pins all three, so a future change that quietly restores
-//  drag continuity, or that stops closing the gesture, fails here rather than in
-//  somebody's session.
+//  INVERTED 2026-09-12 BY ADR-0053, and the assertion it replaces is named here
+//  rather than deleted. This test used to be "a wheel tick during a held drag
+//  finishes the press", and it pinned ADR-0041's Consequences line in three
+//  parts: the press was dead after the tick (`a further drag writes nothing`),
+//  the host change gesture closed AT the tick rather than at mouseUp, and the
+//  drag so far was committed as its OWN undo step. ADR-0053 supersedes that
+//  consequence on maintainer instruction: a notch now ADDS to the value the
+//  press has produced, the press carries on FROM the notched value, and the
+//  whole interaction is ONE undo step at the release.
 //
-//  The behaviour was ALREADY covered indirectly, by State test 73 leg A -- and by
-//  ONE leg, not two. This comment used to name "State test 71 leg C and State test
-//  73 leg A"; re-measured 2026-09-09 by removing `cancelActiveDrag()` from
-//  `mouseWheelMove` altogether, the failures are 73 leg A and this test's own leg A,
-//  three checks in all. State test 71 leg C is about a Bands change inside a REMOVAL
-//  burst and has nothing to say about the wheel. 73 leg A asserts that the drag does
-//  not write over a value installed during the tick, which holds only because the
-//  press is finished -- a real guard but an oblique one, since it would survive a
-//  change that kept the press alive while breaking ownership some other way. This
-//  test asserts the property directly.
-static void testAWheelTickFinishesAHeldPress()
+//  ADR-0041's DECISION is untouched, and is what makes the new answer safe. Its
+//  rule -- a refresh that cannot bring every piece of state the next write
+//  depends on to the same authoritative sound refreshes none of it -- used to be
+//  obeyed by refusing to refresh, i.e. by ending the press. It is obeyed now by
+//  having NOTHING to refresh: a notch moves the press's own anchor (dragGrabDY,
+//  dragGrabDX, bandAnchorX) and writes through the press's own owned-store path,
+//  inside the gesture the press already opened.
+//
+//  WHAT LEG A'S FOUR VALUE CHECKS WOULD EACH CATCH -- they are the mechanism,
+//  one clause at a time. The drag must move the value at all (or the fixture is
+//  not driving a drag). The notch must move it (or the notch did nothing, which
+//  is what JUCE's own handler does while a button is held). The next drag event
+//  must still write (or the press was finished -- the behaviour this test used
+//  to assert). And that write must NOT land back where the same cursor position
+//  put it BEFORE the notch (or the value was written without moving the anchor,
+//  which is ADR-0041's T1 defect arriving from the other direction, and is the
+//  one failure a naive implementation actually produces).
+//
+//  Legs B and C are the same mechanism for the multiband SPLIT press and for a
+//  second notch after further drag; leg D is unchanged in purpose -- an event
+//  that performs no edit has no side effects (ADR-0052) -- with one check added
+//  that is only meaningful under the new rule: it must make no EDIT either.
+static void testAWheelNotchInsideAPressBelongsToIt()
 {
-    std::printf ("State test 80: a wheel tick during a held drag finishes the press\n");
+    std::printf ("State test 80: a wheel notch inside a held press belongs to that press\n");
 
     AnamorphAudioProcessor proc;
     proc.prepareToPlay (48000.0, 512);
@@ -4851,8 +4874,8 @@ static void testAWheelTickFinishesAHeldPress()
     wheel.deltaX = 0.0f; wheel.deltaY = 0.4f;
     wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
 
-    // ---- LEG A: the press is finished, the gesture closes AT the tick, and the
-    //      drag so far becomes its own undo step.
+    // ---- LEG A: a notch inside a held WIDTH press adds to it, the press carries on
+    //      FROM the notched value, and the whole interaction is one undo step at the release.
     {
         reset();
         const float wy = findY ("Band width", bx);
@@ -4861,33 +4884,52 @@ static void testAWheelTickFinishesAHeldPress()
         {
             GestureLog g; wLoP->addListener (&g);
             im->mouseDown (mev (bx, wy, bx, wy, false));
-            im->mouseDrag (mev (bx, wy - 10.0f, bx, wy, true));
-            im->mouseDrag (mev (bx, wy - 25.0f, bx, wy, true));
+            // The first drag event only ENGAGES the width (the 3 px click-vs-drag threshold anchors
+            // dragGrabDY so the value stays put); the second is the one that moves it.
+            im->mouseDrag (mev (bx, wy - 6.0f, bx, wy, true));
+            const float atY1 = plainOf (wLoP);
+            im->mouseDrag (mev (bx, wy - 16.0f, bx, wy, true));
+            const float atY2 = plainOf (wLoP);
             proc.pollUndoCoalesce();
-            const bool undoMidDrag = proc.canUndo();
-            const int  closesMidDrag = g.closes;
+            const bool undoMidPress   = proc.canUndo();
+            const int  closesMidPress = g.closes;
 
-            im->mouseWheelMove (mev (bx, wy - 25.0f, bx, wy, false), wheel);
-            const float atTick = plainOf (wLoP);
+            im->mouseWheelMove (mev (bx, wy - 16.0f, bx, wy, false), wheel);
+            const float afterNotch = plainOf (wLoP);
             proc.pollUndoCoalesce();
-            const bool undoAfterTick  = proc.canUndo();
-            const int  closesAfterTick = g.closes;
+            const bool undoAfterNotch = proc.canUndo();
 
-            im->mouseDrag (mev (bx, wy - 60.0f, bx, wy, true));   // still holding the button
-            const float afterMoreDrag = plainOf (wLoP);
-            im->mouseUp   (mev (bx, wy - 60.0f, bx, wy, true));
+            // ...back to the FIRST cursor position. An uninterrupted press would put the width
+            // exactly back at `atY1`; a press carrying a notch must land somewhere else entirely.
+            im->mouseDrag (mev (bx, wy - 6.0f, bx, wy, true));
+            const float backAtY1 = plainOf (wLoP);
+            im->mouseUp   (mev (bx, wy - 6.0f, bx, wy, true));
+            const int closesAfterRelease = g.closes;
+            proc.pollUndoCoalesce();
+            const bool undoAfterRelease = proc.canUndo();
             wLoP->removeListener (&g);
 
-            if (! juce::exactlyEqual (afterMoreDrag, atTick))
-                std::printf ("  [leg A] the press survived the wheel tick: %.3f -> %.3f on a further"
-                             " drag, where ADR-0041 finishes it\n",
-                             (double) atTick, (double) afterMoreDrag);
-            check (juce::exactlyEqual (afterMoreDrag, atTick),
-                   "leg A: the held press is finished -- a further drag writes nothing");
-            check (closesMidDrag == 0 && closesAfterTick == 1,
-                   "leg A: the host's change gesture closes AT the tick, not at mouseUp");
-            check (! undoMidDrag && undoAfterTick,
-                   "leg A: ...and the drag so far is committed as its own undo step");
+            check (! juce::exactlyEqual (atY2, atY1), "leg A: the drag moves the width");
+            if (juce::exactlyEqual (afterNotch, atY2))
+                std::printf ("  [leg A] the notch changed nothing: the width stayed at %.4f\n",
+                             (double) atY2);
+            check (! juce::exactlyEqual (afterNotch, atY2),
+                   "leg A: a notch inside the press adds to what the press has produced");
+            if (juce::exactlyEqual (backAtY1, afterNotch))
+                std::printf ("  [leg A] the notch finished the press: a further drag left the width"
+                             " at %.4f\n", (double) afterNotch);
+            check (! juce::exactlyEqual (backAtY1, afterNotch),
+                   "leg A: ...the press is NOT finished -- a further drag still writes");
+            if (juce::exactlyEqual (backAtY1, atY1))
+                std::printf ("  [leg A] the notch did not move the anchor: the cursor returned to"
+                             " its first position and the width returned to %.4f, losing the notch\n",
+                             (double) atY1);
+            check (! juce::exactlyEqual (backAtY1, atY1),
+                   "leg A: ...and it continues FROM the notched value, not from the cursor alone");
+            check (closesMidPress == 0 && closesAfterRelease == 1,
+                   "leg A: the host's change gesture closes at the release, not at the notch");
+            check (! undoMidPress && ! undoAfterNotch && undoAfterRelease,
+                   "leg A: the whole drag-plus-notch interaction is ONE undo step, at the release");
         }
     }
 
@@ -4983,19 +5025,22 @@ static void testAWheelTickFinishesAHeldPress()
         else { delete raw2; }
     }
 
-    // ---- LEG C: a PENDING CLICK is a press too, and the tick swallows it ---------
+    // ---- LEG C: a notch during a held SOLO button does not leave a solo toggle behind ----
     //
-    //      ADR-0041's rule has four consequences and this test pinned three. The
-    //      fourth -- `cancelActiveDrag` clears `soloPressBand` and `pressDeleteBand`
-    //      as well, so a tick during a held solo button discards the click -- was
-    //      MEASURED when the round found it (mask `0x0` against `0x1` for the
-    //      uninterrupted press) and then only written down. This round's audit found
-    //      that gap by mutation: stop the wheel clearing `soloPressBand` and all 2814
-    //      checks stay green. Documenting a measurement is not the same as pinning it.
+    //      THE ASSERTION SURVIVED ADR-0053 AND ITS REASON DID NOT, which is why this
+    //      comment is rewritten rather than left standing. Under ADR-0041 the notch
+    //      SWALLOWED the click: `cancelActiveDrag` cleared `soloPressBand`, so `mouseUp`
+    //      found nothing to toggle. Under ADR-0053 the press is never cancelled -- the
+    //      notch turns it into a BAND MOVE (task section 7), exactly as the first 4 px of
+    //      sideways travel would, so the release runs the move's own branch (clear the
+    //      audition, close the two pins) and the toggle is not reached. The mask is `0x0`
+    //      either way, and both readings are the conservative one: a press that became a
+    //      drag was never a click.
     //
-    //      The outcome is the conservative one and it is the rule, not an accident:
-    //      ADR-0041 leg B already establishes that a click whose world moved under it
-    //      writes nothing, and a wheel tick moves the world.
+    //      State test 87 is where the new half is asserted directly -- that the notch
+    //      MOVED the band, and moved it rather than the bandwidth. This leg keeps the
+    //      negative: whatever else a notch does to a held solo, it must not leave a
+    //      latched solo bit behind when the button comes up.
     {
         AnamorphAudioProcessor proc3;
         proc3.prepareToPlay (48000.0, 512);
@@ -5065,7 +5110,7 @@ static void testAWheelTickFinishesAHeldPress()
                     check (uninterrupted != 0,
                            "leg C: control -- an uninterrupted solo press toggles the band");
                     check (afterTick == 0,
-                           "leg C: ...and a wheel tick during the press swallows the click");
+                           "leg C: ...and a press a notch turned into a band move leaves no toggle");
                 }
             }
             proc3.editorBeingDeleted (ed3);
@@ -5165,6 +5210,13 @@ static void testAWheelTickFinishesAHeldPress()
                     im4->mouseDrag (mev4 (bx4, wy4 - 25.0f, bx4, wy4, true));
                     const float beforeTick  = plain4 (w4);
                     im4->mouseWheelMove (mev4 (bx4, wy4 - 25.0f, bx4, wy4, true), sideways);
+                    // ADDED FOR ADR-0053, and only meaningful under it: the press now SURVIVES a
+                    // real notch, so "the press is still alive afterwards" no longer discriminates
+                    // on its own. What still does is that the ignored event made no EDIT. The
+                    // threshold sits above the press branches for exactly this reason -- below them,
+                    // `deltaY == 0` yields `sgn == -1` and the width branch would write
+                    // `base - kWheelWidthMin`, a silent downward nudge on every sideways scroll.
+                    const float atIgnoredEvent = plain4 (w4);
                     const int   closesAtTick = g4.closes;
                     im4->mouseDrag (mev4 (bx4, wy4 - 60.0f, bx4, wy4, true));
                     const float afterTick4  = plain4 (w4);
@@ -5175,8 +5227,10 @@ static void testAWheelTickFinishesAHeldPress()
                         std::printf ("  [leg D] an ignored wheel event ended the press:"
                                      " width %.3f before the event and %.3f after 35 px more drag\n",
                                      (double) beforeTick, (double) afterTick4);
+                    check (juce::exactlyEqual (atIgnoredEvent, beforeTick),
+                           "leg D: an ignored wheel event writes nothing at all");
                     check (! juce::exactlyEqual (afterTick4, beforeTick),
-                           "leg D: an ignored wheel event does not end a held drag");
+                           "leg D: ...and does not end a held drag");
                     check (closesAtTick == 0,
                            "leg D: ...and does not close its host gesture at the event");
                 }
@@ -5222,6 +5276,229 @@ static void testAWheelTickFinishesAHeldPress()
             delete ed4;
         }
         else { delete raw4; }
+    }
+
+    // ---- LEG E: the same mechanism for a held SPLIT press (Multiband Split Frequency).
+    //      The split drag steers `cursor - dragGrabDX`, so the notch has to move THAT offset;
+    //      returning the cursor to where it started must not return the split to where it was.
+    {
+        auto* loP  = apvts.getParameter (pid::mbFreqLow);
+        auto* midP = apvts.getParameter (pid::mbFreqMid);
+        auto* hiP  = apvts.getParameter (pid::mbFreqHigh);
+        check (loP != nullptr && midP != nullptr && hiP != nullptr,
+               "leg E: the crossover parameters exist");
+        if (loP != nullptr && midP != nullptr && hiP != nullptr)
+        {
+            im->cancelActiveDrag();
+            setPlain (bandsP, 4.0f);
+            setPlain (loP, 200.0f); setPlain (midP, 2000.0f); setPlain (hiP, 10000.0f);
+            proc.pollUndoCoalesce();
+
+            const float laneY = 0.5f * H;
+            float sx = -1.0f;
+            for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+            {
+                im->mouseMove (mev (x, laneY, x, laneY, false));
+                if (im->getTooltip() == juce::String ("Drag to change the split frequency")) { sx = x; break; }
+            }
+            check (sx >= 0.0f, "leg E: the first split's handle is findable");
+            if (sx >= 0.0f)
+            {
+                // THE BASELINE IS TAKEN AT THE SAME CURSOR POSITION THE DECIDING CHECK USES, and
+                // that is the whole point of the shape. A first version compared the final split
+                // against the frequency the press STARTED from, which a split drag cannot reproduce
+                // bit-for-bit through `freqToX`/`xToFreq` -- so `! exactlyEqual` passed whether or
+                // not the notch had survived, and the mutation that drops `dragGrabDX` went
+                // UNDETECTED (measured: all 3 012 checks green with that line deleted). Two drag
+                // events to the same x with the notch between them compare exactly: with the grab
+                // offset unmoved the plan, the store and the read-back are identical.
+                GestureLog g; loP->addListener (&g);
+                im->mouseDown (mev (sx, laneY, sx, laneY, false));
+                im->mouseDrag (mev (sx + 30.0f, laneY, sx, laneY, true));
+                const float atX2 = plainOf (loP);
+                im->mouseDrag (mev (sx, laneY, sx, laneY, true));      // the baseline, at the press x
+                const float beforeNotch = plainOf (loP);
+                im->mouseWheelMove (mev (sx, laneY, sx, laneY, false), wheel);
+                const float afterNotch = plainOf (loP);
+                im->mouseDrag (mev (sx, laneY, sx, laneY, true));      // the SAME x as the baseline
+                const float sameXAgain = plainOf (loP);
+                im->mouseDrag (mev (sx + 15.0f, laneY, sx, laneY, true));
+                const float furtherDrag = plainOf (loP);
+                im->mouseUp   (mev (sx + 15.0f, laneY, sx, laneY, true));
+                const int closes = g.closes;
+                loP->removeListener (&g);
+                proc.pollUndoCoalesce();
+
+                check (! juce::exactlyEqual (atX2, beforeNotch), "leg E: the drag moves the split");
+                check (! juce::exactlyEqual (afterNotch, beforeNotch),
+                       "leg E: a notch inside the split press adds to it");
+                if (juce::exactlyEqual (sameXAgain, beforeNotch))
+                    std::printf ("  [leg E] the notch did not move the grab offset: the very next drag"
+                                 " event at the same cursor position put the split back to %.4f Hz\n",
+                                 (double) beforeNotch);
+                check (! juce::exactlyEqual (sameXAgain, beforeNotch),
+                       "leg E: ...and the next drag event does not put it back -- the offset moved with it");
+                check (! juce::exactlyEqual (furtherDrag, sameXAgain),
+                       "leg E: ...the press is not finished -- a further drag still steers the split");
+                check (closes == 1, "leg E: one change gesture for the whole interaction");
+            }
+        }
+    }
+
+    // ---- LEG F: a SECOND notch, after more drag, accumulates on top of the first.
+    //      Task section 2's last clause -- "further wheel adjustments must continue to accumulate
+    //      on the current value" -- is the one an implementation that re-anchors only once would
+    //      fail, so it is asserted separately rather than assumed to follow from leg A.
+    {
+        reset();
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg F: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            GestureLog g; wLoP->addListener (&g);
+            im->mouseDown (mev (bx, wy, bx, wy, false));
+            im->mouseDrag (mev (bx, wy - 6.0f,  bx, wy, true));
+            im->mouseDrag (mev (bx, wy - 16.0f, bx, wy, true));
+            const float beforeNotch1 = plainOf (wLoP);
+            im->mouseWheelMove (mev (bx, wy - 16.0f, bx, wy, false), wheel);
+            const float afterNotch1 = plainOf (wLoP);
+            im->mouseDrag (mev (bx, wy - 26.0f, bx, wy, true));
+            const float afterMoreDrag = plainOf (wLoP);
+            im->mouseWheelMove (mev (bx, wy - 26.0f, bx, wy, false), wheel);
+            const float afterNotch2 = plainOf (wLoP);
+            im->mouseUp   (mev (bx, wy - 26.0f, bx, wy, true));
+            const int closes = g.closes;
+            wLoP->removeListener (&g);
+            proc.pollUndoCoalesce();
+
+            check (afterNotch1 > beforeNotch1, "leg F: the first notch raises the width");
+            check (afterMoreDrag > afterNotch1, "leg F: the drag after it carries on upward from there");
+            if (! (afterNotch2 > afterMoreDrag))
+                std::printf ("  [leg F] the second notch added nothing: %.4f before it and %.4f after\n",
+                             (double) afterMoreDrag, (double) afterNotch2);
+            check (afterNotch2 > afterMoreDrag,
+                   "leg F: ...and a second notch accumulates on the combined result");
+            check (closes == 1, "leg F: still ONE change gesture for the whole interaction");
+        }
+    }
+
+    // ---- LEG G: a PACKED split banks no travel it cannot take ------------------------
+    //      ADR-0053 says every wheel anchor is re-derived from a target "already clamped to the
+    //      limit the store itself clamps to", so a notch past the end of a control's travel banks
+    //      nothing. The split branch clamped to the FRAME edges only, and that is not the store's
+    //      limit: `projectFromOrig` pushes the splits between the pinned one and the edge aside by
+    //      `kMinGapPx` each and then runs its ordering pass BACKWARDS, which pulls the PIN itself
+    //      back to `hi - (M - 1 - handle) * kMinGapPx`. With the first of three splits scrolled
+    //      right that is 92 px the anchor banked and the store refused -- three whole notches of
+    //      travel to unwind before the split moves again, and the same 92 px displacing the rest
+    //      of the press's MOUSE drag, which reads the same offset and never rewrites it.
+    {
+        auto* loP  = apvts.getParameter (pid::mbFreqLow);
+        auto* midP = apvts.getParameter (pid::mbFreqMid);
+        auto* hiP  = apvts.getParameter (pid::mbFreqHigh);
+        check (loP != nullptr && midP != nullptr && hiP != nullptr,
+               "leg G: the crossover parameters exist");
+        if (loP != nullptr && midP != nullptr && hiP != nullptr)
+        {
+            auto packed = [&] ()
+            {
+                im->cancelActiveDrag();
+                setPlain (bandsP, 4.0f);
+                setPlain (loP, 200.0f); setPlain (midP, 2000.0f); setPlain (hiP, 10000.0f);
+                proc.pollUndoCoalesce();
+            };
+            auto firstHandleX = [&] () -> float
+            {
+                for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+                {
+                    im->mouseMove (mev (x, 0.5f * H, x, 0.5f * H, false));
+                    if (im->getTooltip() == juce::String ("Drag to change the split frequency")) return x;
+                }
+                return -1.0f;
+            };
+            const float laneY = 0.5f * H;
+
+            packed();
+            const float sx = firstHandleX();
+            check (sx >= 0.0f, "leg G: the first split's handle is findable");
+            if (sx >= 0.0f)
+            {
+                juce::MouseWheelDetails up = wheel, down = wheel;
+                up.deltaY = 0.4f; down.deltaY = -0.4f;
+                im->mouseDown (mev (sx, laneY, sx, laneY, false));
+                // Scroll it hard against the two splits above it. The cursor never moves, so
+                // every notch asks for 28 px more than the last and the store refuses each one
+                // once the pin has reached `hi - 2 * kMinGapPx`.
+                for (int i = 0; i < 160; ++i) im->mouseWheelMove (mev (sx, laneY, sx, laneY, false), up);
+                im->mouseWheelMove (mev (sx, laneY, sx, laneY, false), up);
+                const float parked = plainOf (loP);   // AFTER the proof notch, so the pair below
+                im->mouseWheelMove (mev (sx, laneY, sx, laneY, false), up);   // cannot cancel out
+                check (juce::exactlyEqual (plainOf (loP), parked),
+                       "leg G: the packed split has stopped moving -- the store refuses the target");
+
+                // THE LEG. One notch BACK must move it. Every pixel the anchor banked while the
+                // store refused is a notch the user has to give back before anything happens.
+                im->mouseWheelMove (mev (sx, laneY, sx, laneY, false), down);
+                const float afterOneBack = plainOf (loP);
+                if (juce::exactlyEqual (afterOneBack, parked))
+                {
+                    int notches = 1;
+                    while (notches < 12 && juce::exactlyEqual (plainOf (loP), parked))
+                    { im->mouseWheelMove (mev (sx, laneY, sx, laneY, false), down); ++notches; }
+                    std::printf ("  [leg G] the blocked notches banked travel the split could not"
+                                 " take: %d notches back before it moved at all\n", notches);
+                }
+                check (! juce::exactlyEqual (afterOneBack, parked),
+                       "leg G: ONE notch back moves the packed split -- the refused travel was"
+                       " never banked");
+                im->mouseUp (mev (sx, laneY, sx, laneY, true));
+                proc.pollUndoCoalesce();
+            }
+
+            // ...AND THE SAME FOR THE MOUSE DRAG THAT FOLLOWS ONE. `dragGrabDX` is the offset the
+            // drag steers by and the notch is the only thing that rewrites it, so travel banked
+            // by a blocked notch displaces the rest of the press as well.
+            packed();
+            const float sx2 = firstHandleX();
+            if (sx2 >= 0.0f)
+            {
+                juce::MouseWheelDetails up = wheel; up.deltaY = 0.4f;
+                im->mouseDown (mev (sx2, laneY, sx2, laneY, false));
+                for (int i = 0; i < 160; ++i) im->mouseWheelMove (mev (sx2, laneY, sx2, laneY, false), up);
+                const float parked = plainOf (loP);
+                im->mouseDrag (mev (sx2 - 20.0f, laneY, sx2, laneY, true));
+                const float afterDrag = plainOf (loP);
+                im->mouseUp (mev (sx2 - 20.0f, laneY, sx2, laneY, true));
+                proc.pollUndoCoalesce();
+                if (juce::exactlyEqual (afterDrag, parked))
+                    std::printf ("  [leg G] ...and the drag after it was dead too: 20 px of cursor"
+                                 " travel left the split at %.1f Hz\n", (double) parked);
+                check (! juce::exactlyEqual (afterDrag, parked),
+                       "leg G: ...and the mouse drag after a blocked notch is not dead either");
+            }
+
+            // ---- the control: where the target was feasible all along, nothing changes -------
+            packed();
+            const float sx3 = firstHandleX();
+            if (sx3 >= 0.0f)
+            {
+                juce::MouseWheelDetails up = wheel, down = wheel;
+                up.deltaY = 0.4f; down.deltaY = -0.4f;
+                im->mouseDown (mev (sx3, laneY, sx3, laneY, false));
+                im->mouseWheelMove (mev (sx3, laneY, sx3, laneY, false), up);
+                const float one = plainOf (loP);
+                im->mouseWheelMove (mev (sx3, laneY, sx3, laneY, false), up);
+                const float two = plainOf (loP);
+                im->mouseWheelMove (mev (sx3, laneY, sx3, laneY, false), down);
+                const float back = plainOf (loP);
+                im->mouseUp (mev (sx3, laneY, sx3, laneY, true));
+                proc.pollUndoCoalesce();
+                check (! juce::exactlyEqual (one, two),
+                       "leg G: control -- an unobstructed split moves on every notch");
+                check (std::abs (back - one) <= std::abs (two - one) * 0.05f,
+                       "leg G: ...and one notch back returns it to where the notch before left it");
+            }
+        }
     }
 
     proc.editorBeingDeleted (ed);
@@ -6526,7 +6803,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2408),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2413),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -6789,6 +7066,2233 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
 //  kept pure so the decision runs here with no display, no editor and no
 //  tooltip window. The geometry below is the measured Settings layout.
 // ============================================================================
+// ---------------------------------------------------------------------------
+//  State test 86 -- a scroll is ONE undo step, and the next scroll of the same
+//  control extends it rather than pushing a second (ADR-0053).
+//
+//  WHAT AN UNDO ENTRY HOLDS is the whole reason this can be implemented without
+//  a timer: the entry on the stack is the state from BEFORE the step it undoes,
+//  so "keep the value the scroll started from and replace only where it ended"
+//  is exactly "do not push another entry, and move the committed baseline on".
+//  The step therefore exists from the FIRST notch and is extended by every notch
+//  after it, which makes "one Undo returns the parameter to the value it had
+//  before the scroll" true at every instant instead of only after a dwell.
+//
+//  WHAT BREAKS EACH LEG. Leg A fails if the extend rule is missing (three
+//  notches, three steps, and one Undo walks back only the last of them). Leg B
+//  fails if the chain is not ENDED by an edit of another kind -- the scroll after
+//  the drag would merge into the scroll before it and one Undo would jump past
+//  the drag entirely. Leg C fails if the name is not per-control. Legs D and E
+//  fail if the multiband wheel edits open no change gesture at all, which is how
+//  they behaved until this round (KI-010's imager half): with no gesture there is
+//  no step to extend and no step to undo. Leg F is the exception the task states
+//  explicitly -- the Settings slider's interaction changes, its undo
+//  participation must not -- and it fails if this round ever gives the
+//  host-hidden Persistence value a gesture or a name.
+// ---------------------------------------------------------------------------
+static void testAScrollIsOneUndoStep()
+{
+    std::printf ("State test 86: a scroll is one undo step, and the next scroll of the same control extends it\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the scroll-undo probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s  = dynamic_cast<juce::Slider*> (k))                  sliders.push_back (s);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    // The slider a given parameter drives, found by MOVING that parameter and seeing which one
+    // follows. No name, no tooltip and no layout assumption -- and it fails loudly (nullptr) if
+    // more than one follows, rather than picking whichever came first.
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    int wheelSeq = 0;
+    // JUCE's slider wheel handler DEDUPES on the event time (`if (e.eventTime != lastMouseWheelTime)`,
+    // juce_Slider.cpp) because some hosts send the same notch twice. A fixture that stamps every
+    // synthetic event with the same instant would therefore land exactly one notch out of three and
+    // prove nothing, so each one is stamped a few milliseconds on.
+    auto scrollAt = [&] (juce::Component* c, float x, float y, float deltaY)
+    {
+        const auto t = juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++wheelSeq * 11);
+        const juce::MouseEvent e (src, { x, y }, juce::ModifierKeys(),
+                                  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, c, c,
+                                  t, { x, y }, t, 1, false);
+        juce::MouseWheelDetails w;
+        w.deltaX = 0.0f; w.deltaY = deltaY;
+        w.isReversed = false; w.isSmooth = false; w.isInertial = false;
+        c->mouseWheelMove (e, w);
+    };
+    auto scrollKnob = [&] (juce::Slider* s, float deltaY)
+    { scrollAt (s, (float) s->getWidth() * 0.5f, (float) s->getHeight() * 0.5f, deltaY); };
+    auto dragKnob = [&] (juce::Slider* s, float upPixels)
+    {
+        const float cx = (float) s->getWidth() * 0.5f, cy = (float) s->getHeight() * 0.5f;
+        const auto t = juce::Time::getCurrentTime();
+        auto ev = [&] (float y, bool dragged)
+        {
+            return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, s, s, t, { cx, cy }, t, 1, dragged);
+        };
+        s->mouseDown (ev (cy, false));
+        s->mouseDrag (ev (cy - upPixels, true));
+        s->mouseUp   (ev (cy - upPixels, true));
+    };
+    auto plainOf = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* widP   = apvts.getParameter (pid::width);
+    auto* driveK = findSliderFor (driveP);
+    auto* widK   = findSliderFor (widP);
+    check (driveP != nullptr && widP != nullptr && driveK != nullptr && widK != nullptr,
+           "the Drive and Width knobs are each findable from their parameter");
+
+    if (driveP != nullptr && widP != nullptr && driveK != nullptr && widK != nullptr)
+    {
+        // ---- LEG A: three notches on one knob are ONE undo step ------------------------
+        {
+            proc.pollUndoCoalesce();
+            check (! proc.canUndo(), "leg A: the probe starts with no undo history");
+            const float start = plainOf (driveP);
+            for (int i = 0; i < 3; ++i) { scrollKnob (driveK, 0.5f); proc.pollUndoCoalesce(); }
+            const float after = plainOf (driveP);
+            check (! juce::exactlyEqual (after, start), "leg A: the scroll moved Drive");
+            check (proc.canUndo(), "leg A: ...and a scroll is undoable at all");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), start))
+                std::printf ("  [leg A] one Undo left Drive at %.4f, where the whole scroll started"
+                             " from %.4f\n", (double) plainOf (driveP), (double) start);
+            check (juce::exactlyEqual (plainOf (driveP), start),
+                   "leg A: one Undo returns Drive to the value before the whole scroll");
+            check (! proc.canUndo(),
+                   "leg A: ...and the three notches were ONE step, not three");
+        }
+
+        // ---- LEG B: another editing method ENDS the chain --------------------------------
+        //      Scroll, drag, scroll. Three steps, in that order -- not one step with the drag
+        //      swallowed into it, which is what a chain that never ends would produce.
+        {
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float v1 = plainOf (driveP);
+            dragKnob (driveK, 25.0f);   proc.pollUndoCoalesce();
+            const float v2 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float v3 = plainOf (driveP);
+            check (! juce::exactlyEqual (v1, v0) && ! juce::exactlyEqual (v2, v1)
+                   && ! juce::exactlyEqual (v3, v2),
+                   "leg B: each of the three edits moved Drive");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), v2))
+                std::printf ("  [leg B] the scroll after the drag merged into the scroll before it:"
+                             " one Undo left Drive at %.4f, past the drag's %.4f\n",
+                             (double) plainOf (driveP), (double) v2);
+            check (juce::exactlyEqual (plainOf (driveP), v2),
+                   "leg B: the scroll after a drag is its OWN step");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), v1), "leg B: ...the drag is the step before it");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), v0), "leg B: ...and the first scroll before that");
+            check (! proc.canUndo(), "leg B: exactly three steps, and no more");
+        }
+
+        // ---- LEG C: a scroll of a DIFFERENT control is a different step -------------------
+        {
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP), w0 = plainOf (widP);
+            scrollKnob (driveK, 0.5f); proc.pollUndoCoalesce();
+            const float d1 = plainOf (driveP);
+            scrollKnob (widK,   0.5f); proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (d1, d0) && ! juce::exactlyEqual (plainOf (widP), w0),
+                   "leg C: both knobs moved");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (widP), w0) && juce::exactlyEqual (plainOf (driveP), d1),
+                   "leg C: one Undo takes back the Width scroll and leaves the Drive scroll standing");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), d0), "leg C: ...and the next takes back Drive's");
+            check (! proc.canUndo(), "leg C: two controls, two steps");
+        }
+
+        // ---- LEG G: two gestures inside ONE poll period are nobody's scroll ---------------
+        //      The poll runs on the editor's 24 Hz tick, so a drag released and a notch taken
+        //      within the same ~42 ms collapse into a single step -- which they always have.
+        //      What this round added is the NAME on that step, and taking the LAST gesture's
+        //      would attribute the pair to the scroll and extend the step the earlier scroll
+        //      created: the drag would lose its own undo point entirely. This leg is the one
+        //      in the suite that deliberately does NOT poll between two edits.
+        //      Found by this round's own adversarial pass.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();   // step one: a scroll, named
+            const float v1 = plainOf (driveP);
+            dragKnob (driveK, 25.0f);                              // ...and now NO poll between
+            scrollKnob (driveK, 0.5f);
+            proc.pollUndoCoalesce();                               // one commit for both gestures
+            const float v2 = plainOf (driveP);
+            check (! juce::exactlyEqual (v1, v0) && ! juce::exactlyEqual (v2, v1),
+                   "leg G: the scroll and the drag-plus-notch both moved Drive");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), v0))
+                std::printf ("  [leg G] the drag was folded into the earlier scroll's step: one Undo"
+                             " jumped straight back to %.4f\n", (double) v0);
+            check (juce::exactlyEqual (plainOf (driveP), v1),
+                   "leg G: a batch holding a drag is not the scroll's -- one Undo stops at the scroll");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), v0),
+                   "leg G: ...and the scroll before it is still its own step");
+        }
+
+        // ---- LEG H: a change that is not the scroll's ends the chain ----------------------
+        //      A host automation write opens no gesture, so the poll folds it into the baseline
+        //      with no undo step -- and it must also END the run, or the scroll after it would
+        //      extend a step whose "before" predates the automation, and one Undo would walk back
+        //      past a change the user never made. This leg is what makes the single line in the
+        //      poll's non-gesture branch load-bearing; without it that line's mutation survives.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f); proc.pollUndoCoalesce();
+            const float v1 = plainOf (driveP);
+            driveP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, driveP->getValue() + 0.10f));
+            proc.pollUndoCoalesce();
+            const float v2 = plainOf (driveP);
+            check (! juce::exactlyEqual (v2, v1), "leg H: the automation write moved Drive");
+            scrollKnob (driveK, 0.5f); proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (plainOf (driveP), v2),
+                   "leg H: ...and the scroll after it moved Drive again");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), v0))
+                std::printf ("  [leg H] the scroll after the automation write extended the scroll"
+                             " before it: one Undo jumped straight back to %.4f\n", (double) v0);
+            check (juce::exactlyEqual (plainOf (driveP), v2),
+                   "leg H: a change that is not the scroll's ends the chain");
+        }
+
+        // ---- LEG K: a double-click reset is an edit of its own, and ends the chain --------
+        //      Task section 5.3 names "another non-wheel editing method" as something that must
+        //      create a NEW step rather than replace the scroll's. A double-click reset is one,
+        //      and it was worth measuring rather than assuming, because the obvious reading says
+        //      it cannot work: JUCE delivers `mouseDoubleClick` from `internalMouseUp` AFTER
+        //      `mouseUp`, so the drag gesture the second press opened is already CLOSED when
+        //      `Knob::doReset` runs, and `doReset`'s `setValue` reaches the parameter with no
+        //      gesture of its own -- the KI-010 shape.
+        //
+        //      IT WORKS, and the mechanism is worth writing down. The second press's gesture
+        //      brackets no VALUE change (`Pimpl::mouseDown` calls `mouseDrag` immediately and the
+        //      cursor has not moved), so its close leaves `pendingGestureCommit` set with the
+        //      signature unchanged; the reset then changes the value BEFORE the next poll, and
+        //      that poll finds a pending commit and a moved signature and records the step. So the
+        //      reset rides the press's own empty gesture. It is reliable because the two are
+        //      consecutive message-thread callbacks and the poll runs on a 24 Hz timer -- but it
+        //      is a coincidence of ordering rather than a bracket, which is exactly why it is
+        //      pinned here instead of left to be rediscovered.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            scrollKnob (driveK, 0.5f); proc.pollUndoCoalesce();
+            const float afterScroll = plainOf (driveP);
+            const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+            const auto t = juce::Time::getCurrentTime();
+            auto clickEv = [&] (int clicks)
+            {
+                return juce::MouseEvent (src, { cx, cy }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                         t, { cx, cy }, t, clicks, false);
+            };
+            driveK->mouseDown (clickEv (1)); driveK->mouseUp (clickEv (1));
+            driveK->mouseDown (clickEv (2)); driveK->mouseUp (clickEv (2));
+            driveK->mouseDoubleClick (clickEv (2));   // JUCE's order: mouseUp first, then this
+            proc.pollUndoCoalesce();
+            const float afterReset = plainOf (driveP);
+            check (! juce::exactlyEqual (afterReset, afterScroll), "leg K: the double-click reset moved Drive");
+            check (proc.canUndo(), "leg K: ...and it is undoable");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), afterScroll))
+                std::printf ("  [leg K] one Undo left Drive at %.4f, where the reset started from %.4f\n",
+                             (double) plainOf (driveP), (double) afterScroll);
+            check (juce::exactlyEqual (plainOf (driveP), afterScroll),
+                   "leg K: one Undo takes back the reset and stops at the scroll before it");
+        }
+
+        // ---- LEG L: an EMPTY click between two notches does not split the scroll ----------
+        //      Gesture closes are batched: the poll runs on the editor's 24 Hz tick, so a press
+        //      that opens and closes a gesture without moving anything can land in the same batch
+        //      as the next notch. It is not one of section 5.3's "other modification methods" --
+        //      it modifies nothing -- so it must not end the chain, which is exactly what the poll
+        //      already says about a gesture that records no step ("a gesture that changed nothing
+        //      has not interrupted the scroll"). Only the batch's NAME did not know it, and a
+        //      disagreement between an empty gesture's name and the notch's turned the second
+        //      scroll into a second undo step.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float start = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);
+            proc.pollUndoCoalesce();
+            const float afterFirst = plainOf (driveP);
+            check (! juce::exactlyEqual (afterFirst, start), "leg L: the first scroll moved Drive");
+            {
+                // A press and a release with nothing between them. NOT polled: the whole point is
+                // that this gesture's close and the next notch's arrive in ONE poll period.
+                const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+                const auto t = juce::Time::getCurrentTime();
+                const juce::MouseEvent click (src, { cx, cy }, juce::ModifierKeys::leftButtonModifier,
+                                              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                              t, { cx, cy }, t, 1, false);
+                driveK->mouseDown (click);
+                driveK->mouseUp   (click);
+            }
+            check (juce::exactlyEqual (plainOf (driveP), afterFirst),
+                   "leg L: ...and the empty click changes no value");
+            scrollKnob (driveK, 0.5f);
+            proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (plainOf (driveP), afterFirst),
+                   "leg L: the second scroll moved it again");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), start))
+                std::printf ("  [leg L] one Undo stopped at %.4f: the empty click between the two"
+                             " scrolls made the second one its own step\n", (double) plainOf (driveP));
+            check (juce::exactlyEqual (plainOf (driveP), start),
+                   "leg L: one Undo returns to before the FIRST scroll -- an empty click does not"
+                   " break the chain");
+            check (! proc.canUndo(), "leg L: ...ONE step across both scrolls");
+        }
+
+        // ---- LEG N: a drag that RETURNS to its starting value still ends the chain --------
+        //      The poll records the name only where it records a step, which is right for a
+        //      gesture that changed nothing -- and wrong for one that changed something and put
+        //      it back. A drag away and back is a real edit of the same control by another
+        //      method: section 5.3 says the chain ends there, and the user who dragged and
+        //      released expects the next notch to be its own undo point rather than a silent
+        //      continuation of the scroll from before the drag.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float v1 = plainOf (driveP);
+            check (! juce::exactlyEqual (v1, v0), "leg N: the first scroll moved Drive");
+            float mid = v1;
+            {   // down, away, back to the press position, up -- absolute drag, so the value
+                // returns EXACTLY to where the press found it (`valueOnMouseDown`).
+                const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+                const auto t = juce::Time::getCurrentTime();
+                auto ev = [&] (float y, bool dragged)
+                {
+                    return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                             t, { cx, cy }, t, 1, dragged);
+                };
+                driveK->mouseDown (ev (cy, false));
+                driveK->mouseDrag (ev (cy - 25.0f, true));
+                mid = plainOf (driveP);
+                driveK->mouseDrag (ev (cy, true));
+                driveK->mouseUp   (ev (cy, true));
+            }
+            proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (mid, v1), "leg N: the drag really did move Drive on the way");
+            check (juce::exactlyEqual (plainOf (driveP), v1),
+                   "leg N: ...and returned it to exactly where it started");
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float v2 = plainOf (driveP);
+            check (! juce::exactlyEqual (v2, v1), "leg N: the scroll after the drag moved Drive again");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), v0))
+                std::printf ("  [leg N] the round-trip drag left the chain standing: one Undo jumped"
+                             " past it to %.4f, where the FIRST scroll started\n", (double) v0);
+            check (juce::exactlyEqual (plainOf (driveP), v1),
+                   "leg N: the scroll after a round-trip drag is its OWN step");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), v0),
+                   "leg N: ...and the scroll before the drag is the step behind it");
+        }
+
+        // ---- LEG O: host automation in the commit window is not the scroll's ---------------
+        //      A finished notch leaves its commit request pending until the next 24 Hz poll. A
+        //      gesture-less host write landing in that window used to be attributed to the
+        //      scroll: the name still matched, so the step was EXTENDED and the automation
+        //      replaced the ending value of a step the user had already finished. The batch that
+        //      carries a foreign write is nobody's scroll.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP), w0 = plainOf (widP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float d1 = plainOf (driveP);
+            check (! juce::exactlyEqual (d1, d0), "leg O: the first scroll moved Drive");
+            scrollKnob (driveK, 0.5f);                       // the second notch -- NOT yet polled
+            widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.20f));
+            const float w1 = plainOf (widP);                 // ...and a gesture-less host write in the window
+            check (! juce::exactlyEqual (w1, w0), "leg O: the host write moved Width");
+            proc.pollUndoCoalesce();
+            const float d2 = plainOf (driveP);
+            check (! juce::exactlyEqual (d2, d1), "leg O: the second notch moved Drive");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), d0))
+                std::printf ("  [leg O] the batch carrying the host write EXTENDED the first scroll:"
+                             " one Undo jumped straight back to %.4f\n", (double) d0);
+            check (juce::exactlyEqual (plainOf (driveP), d1),
+                   "leg O: the batch that carries a host write does not extend the scroll before it");
+            std::printf ("  [leg O] after one Undo the host's Width reads %.4f (it wrote %.4f, the"
+                         " step began at %.4f)\n", (double) plainOf (widP), (double) w1, (double) w0);
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), d0), "leg O: ...and the first scroll is the step behind it");
+        }
+
+        // ---- LEG S: ...and the OTHER side of the same window -----------------------------
+        //      Leg O's host write lands after the notch's gesture closed. This one lands before
+        //      the NEXT notch's gesture opens, inside the same poll period -- a different window
+        //      with the same outcome, because the poll commits everything since its last run as
+        //      one step either way. A close-time measurement cannot see it: by the time the
+        //      gesture closes, the counter has moved for the notch's own write as well. The open
+        //      side is where that evidence still exists.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP), w0 = plainOf (widP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float d1 = plainOf (driveP);
+            check (! juce::exactlyEqual (d1, d0), "leg S: the first scroll moved Drive");
+            widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.20f));
+            check (! juce::exactlyEqual (plainOf (widP), w0), "leg S: the host write moved Width");
+            scrollKnob (driveK, 0.5f);                       // ...and only NOW the second notch
+            proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (plainOf (driveP), d1), "leg S: the second notch moved Drive");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), d0))
+                std::printf ("  [leg S] a host write that arrived BEFORE the notch was still folded"
+                             " into the scroll before it: one Undo jumped back to %.4f\n", (double) d0);
+            check (juce::exactlyEqual (plainOf (driveP), d1),
+                   "leg S: a batch is not the scroll's when a host write arrived before it either");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), d0), "leg S: ...and the first scroll is behind it");
+        }
+
+        // ---- LEG P: the SAME scroll netting zero inside one poll period keeps its chain ----
+        //      The guard on leg N's rule, and the reason that rule tests the NAME rather than
+        //      just "the batch edited and the signature did not move". Two notches of one scroll
+        //      -- up, then down -- can land in a single 24 Hz period and net exactly nothing.
+        //      That batch edited, so a rule that ended the chain on "edited and netted zero"
+        //      alone would split one continuous scroll into two undo steps. The batch's name is
+        //      the scroll's own, so the chain stands.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float v1 = plainOf (driveP);
+            check (! juce::exactlyEqual (v1, v0), "leg P: the first scroll moved Drive");
+            scrollKnob (driveK,  0.5f);                    // ...and now two notches in ONE period
+            scrollKnob (driveK, -0.5f);
+            proc.pollUndoCoalesce();
+            if (! juce::exactlyEqual (plainOf (driveP), v1))
+                std::printf ("  [leg P] the up-down pair did not net exactly zero: %.6f vs %.6f --"
+                             " this leg measures nothing unless it does\n",
+                             (double) plainOf (driveP), (double) v1);
+            check (juce::exactlyEqual (plainOf (driveP), v1),
+                   "leg P: the up-down pair returned Drive to where the pair started");
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (plainOf (driveP), v1), "leg P: the next notch moved it again");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), v0))
+                std::printf ("  [leg P] a pair of the scroll's OWN notches broke its chain: one Undo"
+                             " stopped at %.4f instead of %.4f\n", (double) plainOf (driveP), (double) v0);
+            check (juce::exactlyEqual (plainOf (driveP), v0),
+                   "leg P: one Undo still returns to before the whole scroll -- ONE step");
+            check (! proc.canUndo(), "leg P: ...and there is no second step behind it");
+        }
+
+        // ---- LEG T: a scroll taken right after an Undo is still ONE step -----------------
+        //      The guard on the foreign-write rule, and it exists because this round's own
+        //      adversarial pass found the rule breaking ADR-0053's primary guarantee. A program
+        //      state jump -- Undo, Redo, a preset load, an A/B switch -- polls FIRST and applies
+        //      its parameters AFTER, and applying them notifies the host, which bumps the sound
+        //      generation once per parameter. So the generation the foreign test compares against
+        //      is stale the moment the jump returns, and the first notch after it looks like a
+        //      batch carrying somebody else's write: unnamed, and the notch after that starts a
+        //      second undo step instead of extending the first. Deterministic here because the
+        //      leg deliberately does NOT poll between the Undo and the notch -- in a host the
+        //      24 Hz tick usually lands in that gap and hides it.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (plainOf (driveP), v0), "leg T: the first scroll moved Drive");
+            proc.undo();                                   // ...and now a state jump, with NO poll after it
+            const float base = plainOf (driveP);
+            check (juce::exactlyEqual (base, v0), "leg T: the Undo returned Drive to where it started");
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n1 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n2 = plainOf (driveP);
+            check (! juce::exactlyEqual (n1, base) && ! juce::exactlyEqual (n2, n1),
+                   "leg T: both notches after the Undo moved Drive");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), n1))
+                std::printf ("  [leg T] the scroll after the Undo was split in two: one Undo stopped"
+                             " at %.4f, the value between its two notches\n", (double) n1);
+            check (juce::exactlyEqual (plainOf (driveP), base),
+                   "leg T: one Undo takes back BOTH notches -- the state jump is not a foreign write");
+        }
+
+        // ---- LEG U: a write the poll ABSORBED is not foreign to the next scroll -----------
+        //      The other half of leg T, and the last stale-edge case. The poll samples the sound
+        //      generation at its TOP, builds the signature, and only then captures `committed`
+        //      from the LIVE parameters -- so a host write landing in between is inside the
+        //      baseline the poll commits while the generation the poll ends with does not name
+        //      it. The next gesture then compares against that stale edge, reads a batch nothing
+        //      foreign touched as carrying somebody else's write, goes unnamed, and the notch
+        //      after it starts a second undo step: a two-notch scroll becoming two steps, which
+        //      is the guarantee ADR-0053 exists to give.
+        //
+        //      Cross-thread in a host -- `parameterValueChanged` can arrive on the audio thread
+        //      while the message thread is inside the poll -- so the leg uses the one seam that
+        //      can put a write at that program point. It is faithful because every consumer of
+        //      this window reads only the relaxed counter and live parameter values, so a write
+        //      made on the test thread AT that point is indistinguishable from a host write that
+        //      landed there.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float w0 = plainOf (widP);
+
+            // A first gesture-less host write, so the poll below has work to do and reaches the
+            // fold branch (an unchanged generation returns at the top and never captures at all).
+            widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.10f));
+            bool armed = true;
+            proc.seams.insidePollBody = [&]
+            {
+                if (! armed) return;
+                armed = false;                      // ...and a SECOND one from inside the poll body
+                widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.10f));
+            };
+            proc.pollUndoCoalesce();                // absorbs both into `committed`
+            proc.seams.insidePollBody = nullptr;
+            check (! armed, "leg U: the seam write landed inside the poll body");
+            const float w1 = plainOf (widP);
+            check (! juce::exactlyEqual (w1, w0), "leg U: ...and it moved Width");
+
+            const float d0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n1 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n2 = plainOf (driveP);
+            check (! juce::exactlyEqual (n1, d0) && ! juce::exactlyEqual (n2, n1),
+                   "leg U: both notches after the absorbed write moved Drive");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), n1))
+                std::printf ("  [leg U] the scroll after the absorbed write was split in two: one"
+                             " Undo stopped at %.4f, the value between its two notches\n", (double) n1);
+            check (juce::exactlyEqual (plainOf (driveP), d0),
+                   "leg U: one Undo takes back BOTH notches -- a write the poll already committed"
+                   " is not foreign to the scroll after it");
+        }
+
+        // ---- LEG U2: the same, on the poll that COMMITS a step -----------------------------
+        //      The stanza above lands the write in the poll's non-gesture fold. This one lands it
+        //      in the branch that records a step: the capture is the same `currentStateSet()` and
+        //      absorbs the write the same way, so the edge has to be taken there too. Separate
+        //      because the two branches are two lines, and one leg cannot kill both.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP), w0 = plainOf (widP);
+            scrollKnob (driveK, 0.5f);              // a notch whose commit is still PENDING
+            bool armed = true;
+            proc.seams.insidePollBody = [&]
+            {
+                if (! armed) return;
+                armed = false;
+                widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.10f));
+            };
+            proc.pollUndoCoalesce();                // the GESTURE branch captures, absorbing it
+            proc.seams.insidePollBody = nullptr;
+            check (! armed, "leg U2: the seam write landed inside the committing poll's body");
+            check (! juce::exactlyEqual (plainOf (widP), w0), "leg U2: ...and it moved Width");
+            const float n1 = plainOf (driveP);
+            check (! juce::exactlyEqual (n1, d0), "leg U2: the first notch moved Drive");
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n2 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (n2, n1), "leg U2: ...and so did the second");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), d0))
+                std::printf ("  [leg U2] the scroll was split after the committing poll absorbed the"
+                             " write: one Undo stopped at %.4f rather than %.4f\n",
+                             (double) plainOf (driveP), (double) d0);
+            check (juce::exactlyEqual (plainOf (driveP), d0),
+                   "leg U2: one Undo takes back the whole scroll -- the step's own capture is"
+                   " behind the edge it publishes");
+        }
+
+        // ---- LEG V: an EMPTY press records the automation beside it ----------------------
+        //      MEASUREMENT, not an assertion of correctness -- and the round that added it tried
+        //      to "fix" it first, which is why the measurement is worth having. Leg L proves an
+        //      empty click NAMES nothing; this is what it RECORDS. The poll's push decision asks
+        //      the signature and not who moved it, so a press that changes nothing, batched with
+        //      a gesture-less host write in the same 24 Hz period, pushes a step whose only
+        //      content is the automation, and one Undo takes that write back.
+        //
+        //      GATING THE PUSH ON `edited` REMOVES IT AND COSTS MORE THAN IT SAVES, measured:
+        //      leg K's double-click reset has no gesture of its own and is undoable ONLY through
+        //      this rule, and legs I and J rely on the step a refused burst records to stop the
+        //      next Undo reaching past the automation into the previous scroll. All three failed
+        //      under the gate. It is the ADR-0008 whole-state-snapshot consequence wearing
+        //      another face: a foreign write is either inside the user's step or is a step of its
+        //      own, and while an undo entry is a whole state there is no third answer.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP), w0 = plainOf (widP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float d1 = plainOf (driveP);
+            check (! juce::exactlyEqual (d1, d0), "leg V: the scroll moved Drive");
+
+            widP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, widP->getValue() + 0.20f));
+            const float w1 = plainOf (widP);
+            check (! juce::exactlyEqual (w1, w0), "leg V: the host write moved Width");
+            {
+                // The same empty press leg L uses, in the same unpolled window as the host write.
+                const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+                const auto t = juce::Time::getCurrentTime() + juce::RelativeTime::seconds (30.0);
+                const juce::MouseEvent click (src, { cx, cy }, juce::ModifierKeys::leftButtonModifier,
+                                              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                              t, { cx, cy }, t, 1, false);
+                driveK->mouseDown (click);
+                driveK->mouseUp   (click);
+            }
+            check (juce::exactlyEqual (plainOf (driveP), d1), "leg V: ...and the press changes no value");
+            proc.pollUndoCoalesce();
+            proc.undo();
+            std::printf ("  [leg V] the empty press recorded the write beside it: after one Undo"
+                         " Drive reads %.4f (the scroll ended at %.4f) and Width %.4f (the host"
+                         " wrote %.4f)\n",
+                         (double) plainOf (driveP), (double) d1, (double) plainOf (widP), (double) w1);
+            // What IS asserted: the scroll before it is untouched by the press. That is the half
+            // legs I and J depend on, and it is the half that survives the trade above.
+            check (juce::exactlyEqual (plainOf (driveP), d1),
+                   "leg V: the step the empty press recorded stands between the automation and the"
+                   " scroll before it -- one Undo does not reach past into the user's own edit");
+        }
+
+        // ---- LEG W: a host write that renders to no change still ends the chain -----------
+        //      MEASUREMENT, not an assertion of correctness. `foreignSinceEdge` is derived from
+        //      the raw sound generation, which `parameterValueChanged` bumps for every value
+        //      store; every other "did the sound change" test in this file asks the RENDERED
+        //      signature, which snaps to the parameter's own grid. A host write inside one step
+        //      of a discrete parameter therefore moves the counter and not the signature: the
+        //      poll's own non-gesture branch would NOT have ended the chain for it, and the
+        //      gesture open does. Recorded rather than asserted because the only place to make
+        //      the two agree is inside `parameterValueChanged`, which can run on the audio
+        //      thread -- see the worklog for why that is not a wheel fix.
+        if (auto* algoP = apvts.getParameter (pid::algorithm))
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float a0 = algoP->getValue();
+            const float d0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n1 = plainOf (driveP);
+            // Inside ONE step of a 0..n-1 choice: the rendered index cannot move.
+            const float nudged = juce::jlimit (0.0f, 1.0f, a0 + 0.01f);
+            algoP->setValueNotifyingHost (nudged);
+            const bool rendersSame = juce::exactlyEqual (normalisedAsRendered (*algoP, algoP->getValue()),
+                                                         normalisedAsRendered (*algoP, a0));
+            check (rendersSame, "leg W: the host write lands inside one step of the choice");
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (plainOf (driveP), n1), "leg W: the second notch moved Drive");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), d0))
+                std::printf ("  [leg W] a host write the signature calls no change still split the"
+                             " scroll: one Undo stopped at %.4f rather than %.4f\n",
+                             (double) plainOf (driveP), (double) d0);
+            algoP->setValueNotifyingHost (a0);
+            proc.pollUndoCoalesce();
+        }
+    }
+
+    // ---- the multiband legs, on the same editor -------------------------------------
+    check (im != nullptr && im->getWidth() > 300, "the imager is laid out for the scroll-undo probe");
+    if (im != nullptr && im->getWidth() > 300)
+    {
+        auto* bandsP = apvts.getParameter (pid::mbBands);
+        auto* loP    = apvts.getParameter (pid::mbFreqLow);
+        auto* midP   = apvts.getParameter (pid::mbFreqMid);
+        auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+        auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+        check (bandsP && loP && midP && hiP && wLoP, "the multiband parameters exist");
+        if (bandsP && loP && midP && hiP && wLoP)
+        {
+            auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+            { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+            const float W = (float) im->getWidth(), H = (float) im->getHeight();
+            const float laneY = 0.5f * H;
+            auto hover = [&] (float x, float y)
+            {
+                const auto t = juce::Time::getCurrentTime();
+                im->mouseMove (juce::MouseEvent (src, { x, y }, juce::ModifierKeys(),
+                                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                                 t, { x, y }, t, 1, false));
+            };
+            auto resetBands = [&]
+            {
+                // `canUndo()` is CUMULATIVE and the knob legs above leave real steps behind, so
+                // each multiband leg drains the history before it can measure its own.
+                while (proc.canUndo()) proc.undo();
+                im->cancelActiveDrag();
+                setPlain (bandsP, 4.0f);
+                setPlain (loP, 200.0f); setPlain (midP, 2000.0f); setPlain (hiP, 10000.0f);
+                setPlain (wLoP, 1.0f);
+                proc.pollUndoCoalesce();
+            };
+
+            // ---- LEG D: the multiband SPLIT -- three notches, one step ---------------
+            resetBands();
+            check (! proc.canUndo(), "leg D: the multiband legs start with no undo history");
+            float sx = -1.0f;
+            for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+            {
+                hover (x, laneY);
+                if (im->getTooltip() == juce::String ("Drag to change the split frequency")) { sx = x; break; }
+            }
+            check (sx >= 0.0f, "leg D: a split handle is findable");
+            if (sx >= 0.0f)
+            {
+                const float s0 = plainOf (loP), s1 = plainOf (midP), s2 = plainOf (hiP);
+                for (int i = 0; i < 3; ++i) { scrollAt (im, sx, laneY, 0.4f); proc.pollUndoCoalesce(); }
+                check (! juce::exactlyEqual (plainOf (loP), s0), "leg D: the scroll moved the split");
+                if (! proc.canUndo())
+                    std::printf ("  [leg D] a multiband wheel edit still records no undo step at all\n");
+                check (proc.canUndo(),
+                       "leg D: ...and a multiband wheel edit is undoable at all (KI-010's imager half)");
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (loP), s0)
+                       && juce::exactlyEqual (plainOf (midP), s1)
+                       && juce::exactlyEqual (plainOf (hiP), s2),
+                       "leg D: one Undo returns the whole split row to where the scroll started");
+                check (! proc.canUndo(), "leg D: ...and the three notches were ONE step");
+            }
+
+            // ---- LEG E: the multiband BANDWIDTH -- three notches, one step ------------
+            resetBands();
+            check (! proc.canUndo(), "leg E: the bandwidth leg starts with no undo history");
+            const float bandX = sx >= 0.0f ? 0.5f * (4.0f + sx) : 0.25f * W;
+            {
+                const float w0 = plainOf (wLoP);
+                for (int i = 0; i < 3; ++i) { scrollAt (im, bandX, laneY, 0.4f); proc.pollUndoCoalesce(); }
+                check (! juce::exactlyEqual (plainOf (wLoP), w0), "leg E: the scroll moved the bandwidth");
+                check (proc.canUndo(), "leg E: ...and it is undoable");
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (wLoP), w0),
+                       "leg E: one Undo returns the bandwidth to where the scroll started");
+                check (! proc.canUndo(), "leg E: ...and the three notches were ONE step");
+            }
+
+            // ---- LEG I: a host write from inside the notch's OWN gesture-open stands -------
+            //      This window did not exist before this round. The multiband wheel opened no
+            //      change gesture, so nothing dispatched between the reading and the store;
+            //      opening one to make the scroll undoable creates it. The width branch answers
+            //      it the way the split branch has since ADR-0043: ONE reading taken before the
+            //      dispatch, stamped into the ownership record, and a store that refuses if the
+            //      record has moved (ADR-0047).
+            {
+                resetBands();
+                // The scroll LATCH survives a press, a release and a `cancelActiveDrag`; only a
+                // pointer move of more than 3 px, a `mouseExit`, or a topology change drops it. So
+                // each of these legs moves the pointer to its own target first, or it inherits the
+                // previous leg's latch and edits the previous leg's control.
+                hover (bandX, laneY);
+                // A REAL notch first, so the refused one below has a scroll step of its own control
+                // sitting on the stack to be mis-attributed to -- which is the whole of the second
+                // half of this leg.
+                scrollAt (im, bandX, laneY, 0.4f);
+                proc.pollUndoCoalesce();
+                const float afterRealNotch = plainOf (wLoP);
+                check (proc.canUndo(), "leg I: the first notch recorded a step of its own");
+
+                WriteOnGestureOpen poke;
+                poke.target = wLoP;
+                poke.to     = 1.6f;     // the host moves the very width this notch is about to edit
+                poke.armed  = true;
+                wLoP->addListener (&poke);
+                scrollAt (im, bandX, laneY, 0.4f);
+                const bool landed = poke.fired;
+                wLoP->removeListener (&poke);
+                proc.pollUndoCoalesce();
+                check (landed, "leg I: the probe write landed inside the notch's own gesture-open");
+                if (landed && ! juce::exactlyEqual (plainOf (wLoP), 1.6f))
+                    std::printf ("  [leg I] the notch wrote over the host's 1.600 with %.4f\n",
+                                 (double) plainOf (wLoP));
+                check (! landed || juce::exactlyEqual (plainOf (wLoP), 1.6f),
+                       "leg I: ...and the notch leaves it standing rather than writing over it");
+                // AND A BURST THAT WROTE NOTHING IS NOT A SCROLL. Its gesture still closed, so the
+                // poll still sees a moved signature and records the host's write -- but attributing
+                // that to the wheel would EXTEND the step above, and one Undo would then take back
+                // the first notch as well as the automation.
+                proc.undo();
+                if (landed && ! juce::exactlyEqual (plainOf (wLoP), afterRealNotch))
+                    std::printf ("  [leg I] one Undo stopped at %.4f, not at the %.4f the previous"
+                                 " scroll ended on: the refused burst extended it\n",
+                                 (double) plainOf (wLoP), (double) afterRealNotch);
+                check (! landed || juce::exactlyEqual (plainOf (wLoP), afterRealNotch),
+                       "leg I: ...and a burst whose own store was refused does not extend the"
+                       " previous scroll's step with the host's write");
+            }
+
+            // ---- LEG J: a reentrant cancellation inside the burst's gesture-open changes nothing
+            //      ADR-0050's guard, for the window this round opened. `cancelActiveDrag`'s first
+            //      act is `gestureBands = -1`, and that is the record `writeCrossovers` proves
+            //      every store against -- so a host that pumps the message loop from the burst's
+            //      own gesture open, landing `tick`'s staleness reconcile there, would disarm the
+            //      proof and let the burst write over the host's install. The burst holds the
+            //      ownership claim for its length, so the nested call declines.
+            if (sx >= 0.0f)
+            {
+                resetBands();
+                struct WriteThenCancelOnOpen final : public juce::AudioProcessorParameter::Listener
+                {
+                    anamorph::gui::SpectrumImager* imager = nullptr;
+                    juce::RangedAudioParameter* target = nullptr;
+                    float to = 0.0f;
+                    bool  armed = false, fired = false;
+                    void parameterValueChanged (int, float) override {}
+                    void parameterGestureChanged (int, bool starting) override
+                    {
+                        if (! starting || ! armed || imager == nullptr || target == nullptr) return;
+                        armed = false;
+                        fired = true;
+                        target->setValueNotifyingHost (target->convertTo0to1 (to)); // the host's write...
+                        imager->cancelActiveDrag();                                 // ...and the reconcile it pumps
+                    }
+                };
+                // What the probe's own write actually leaves in the parameter, measured by making
+                // the identical write here first. A literal 650.0f is not it: the value makes two
+                // normalise/denormalise round trips on the way in and out, and this suite compares
+                // ownership EXACTLY (ADR-0041) rather than with an invented tolerance. Measured
+                // BEFORE the real notch below, not between it and the burst: these are gesture-less
+                // writes, and a gesture-less write ends a scroll's chain -- which is the very thing
+                // the second half of this leg has to still be alive to measure.
+                setPlain (loP, 650.0f);
+                const float installed = plainOf (loP);
+                setPlain (loP, 200.0f);
+                proc.pollUndoCoalesce();
+
+                hover (sx, laneY);            // ...drop leg I's band latch and re-aim at the split
+                // A real notch first, so the refused burst below has a scroll step of its own
+                // control on the stack to be mis-attributed to (the split half of leg I).
+                scrollAt (im, sx, laneY, 0.4f);
+                proc.pollUndoCoalesce();
+                const float afterRealNotch = plainOf (loP);
+                check (proc.canUndo(), "leg J: the first notch recorded a step of its own");
+
+                WriteThenCancelOnOpen poke;
+                poke.imager = im; poke.target = loP; poke.to = 650.0f; poke.armed = true;
+                loP->addListener (&poke);
+                scrollAt (im, sx, laneY, 0.4f);
+                const bool landed = poke.fired;
+                loP->removeListener (&poke);
+                proc.pollUndoCoalesce();
+                check (landed, "leg J: the probe write and the reconcile landed inside the gesture-open");
+                if (landed && ! juce::exactlyEqual (plainOf (loP), installed))
+                    std::printf ("  [leg J] the burst wrote over the host's %.4f Hz with %.4f Hz\n",
+                                 (double) installed, (double) plainOf (loP));
+                check (! landed || juce::exactlyEqual (plainOf (loP), installed),
+                       "leg J: ...and the burst leaves the host's install standing");
+                proc.undo();
+                if (landed && ! juce::exactlyEqual (plainOf (loP), afterRealNotch))
+                    std::printf ("  [leg J] one Undo stopped at %.4f Hz, not at the %.4f Hz the"
+                                 " previous scroll ended on: the refused burst extended it\n",
+                                 (double) plainOf (loP), (double) afterRealNotch);
+                check (! landed || juce::exactlyEqual (plainOf (loP), afterRealNotch),
+                       "leg J: ...and a split burst whose store was refused does not extend the"
+                       " previous scroll's step with the host's write");
+            }
+
+            // ---- LEG M: a burst that PART-WROTE and then aborted is not a scroll's step -------
+            //      Legs I and J reach their refusal through a host write that lands in the
+            //      gesture-OPEN, and a write there is delivered before the coalescer's own
+            //      gesture callback -- `ListenerList` calls in reverse order of registration and
+            //      the processor registers in its constructor -- so the batch's "did this gesture
+            //      change anything" test already sees nothing and names nothing. That leaves the
+            //      other order UNMEASURED by them: a write that lands AFTER the gesture opened and
+            //      after this burst's own first store, which is what makes the burst's own result
+            //      the only thing that can tell the two apart.
+            //
+            //      `writeCrossovers` proves EVERY split in the row, not only the ones it moves, so
+            //      a probe that changes the next split from inside the first split's store aborts
+            //      the transaction after part of it has landed -- no push and no crowded layout
+            //      needed. The burst wrote, so the signature moved; the transaction failed, so the
+            //      notch did not produce the state it meant to, and the step is its own rather than
+            //      an extension of the scroll before it.
+            if (sx >= 0.0f)
+            {
+                resetBands();
+                struct WriteNeighbourOnFirstStore final : public juce::AudioProcessorParameter::Listener
+                {
+                    juce::RangedAudioParameter* neighbour = nullptr;
+                    float to = 0.0f;
+                    bool  armed = false, fired = false;
+                    void parameterGestureChanged (int, bool) override {}
+                    void parameterValueChanged (int, float) override
+                    {
+                        if (! armed || neighbour == nullptr) return;
+                        armed = false;
+                        fired = true;
+                        neighbour->setValueNotifyingHost (neighbour->convertTo0to1 (to));
+                    }
+                };
+                // The value the probe's own write leaves behind, measured the same way leg J
+                // measures its own, and BEFORE the scroll that has to stay the chain's head.
+                setPlain (midP, 3000.0f);
+                const float installedMid = plainOf (midP);
+                setPlain (midP, 2000.0f);
+                proc.pollUndoCoalesce();
+
+                hover (sx, laneY);
+                scrollAt (im, sx, laneY, 0.4f);
+                proc.pollUndoCoalesce();
+                const float afterRealNotch = plainOf (loP);
+                check (proc.canUndo(), "leg M: the first notch recorded a step of its own");
+
+                WriteNeighbourOnFirstStore poke;
+                poke.neighbour = midP; poke.to = 3000.0f; poke.armed = true;
+                loP->addListener (&poke);
+                scrollAt (im, sx, laneY, 0.4f);
+                const bool landed = poke.fired;
+                loP->removeListener (&poke);
+                proc.pollUndoCoalesce();
+                check (landed, "leg M: the probe write landed inside the burst's own first store");
+                check (! landed || juce::exactlyEqual (plainOf (midP), installedMid),
+                       "leg M: ...and the aborted burst leaves the neighbour the host wrote alone");
+                proc.undo();
+                if (landed && ! juce::exactlyEqual (plainOf (loP), afterRealNotch))
+                    std::printf ("  [leg M] one Undo stopped at %.4f Hz, not at the %.4f Hz the"
+                                 " previous scroll ended on: the aborted burst extended it\n",
+                                 (double) plainOf (loP), (double) afterRealNotch);
+                check (! landed || juce::exactlyEqual (plainOf (loP), afterRealNotch),
+                       "leg M: ...and its step is its own, not an extension of the scroll before it");
+            }
+
+            // ---- LEG Q: a notch that can write nothing opens no gesture ------------------
+            //      ADR-0052 at the two standalone branches. A scroll at the end of a control's
+            //      travel produces a clamped target that IS the value already there: the split
+            //      branch's projection gives every split back unchanged (and `writeCrossovers`
+            //      skips a store under half a pixel), the width branch's `jlimit` gives `base`
+            //      back. Both used to discover that only AFTER `beginChangeGesture` had gone out
+            //      -- an automation punch-in for an edit that never happened, which a host
+            //      recording touch or latch writes a point for, plus a commit request to the undo
+            //      poll. The counter is the only way to see it: an empty gesture pair moves no
+            //      value, records no undo step and changes no signature.
+            {
+                resetBands();
+                hover (sx, laneY);
+                // Park split 0 against its left limit first -- one notch far larger than the
+                // travel, which the projection clamps. THEN the notch that can do nothing.
+                scrollAt (im, sx, laneY, -40.0f);
+                proc.pollUndoCoalesce();
+                const float parked = plainOf (loP);
+                CountGestures gsplit;
+                loP->addListener (&gsplit);
+                scrollAt (im, sx, laneY, -40.0f);
+                loP->removeListener (&gsplit);
+                proc.pollUndoCoalesce();
+                if (! juce::exactlyEqual (plainOf (loP), parked))
+                    std::printf ("  [leg Q] the split was not parked: %.4f Hz -> %.4f Hz, so this"
+                                 " half measures nothing\n", (double) parked, (double) plainOf (loP));
+                check (juce::exactlyEqual (plainOf (loP), parked),
+                       "leg Q: a notch past the split's travel limit moves nothing");
+                if (gsplit.opens != 0)
+                    std::printf ("  [leg Q] it opened %d change gesture(s) anyway -- a host recording"
+                                 " automation sees a touch for an edit that never happened\n", gsplit.opens);
+                check (gsplit.opens == 0 && gsplit.closes == 0,
+                       "leg Q: ...and opens no host change gesture");
+
+                // The width rail, and the control that a notch which CAN move still brackets.
+                resetBands();
+                hover (bandX, laneY);
+                setPlain (wLoP, 2.0f);
+                proc.pollUndoCoalesce();
+                CountGestures gwide;
+                wLoP->addListener (&gwide);
+                scrollAt (im, bandX, laneY, 0.4f);     // upward, at the top of the range
+                wLoP->removeListener (&gwide);
+                proc.pollUndoCoalesce();
+                check (juce::exactlyEqual (plainOf (wLoP), 2.0f),
+                       "leg Q: a notch past the bandwidth's top moves nothing");
+                if (gwide.opens != 0)
+                    std::printf ("  [leg Q] the blocked bandwidth notch opened %d change gesture(s)\n",
+                                 gwide.opens);
+                check (gwide.opens == 0 && gwide.closes == 0,
+                       "leg Q: ...and opens no host change gesture either");
+
+                CountGestures gcontrol;
+                wLoP->addListener (&gcontrol);
+                scrollAt (im, bandX, laneY, -0.4f);    // ...downward, which CAN move
+                wLoP->removeListener (&gcontrol);
+                proc.pollUndoCoalesce();
+                check (! juce::exactlyEqual (plainOf (wLoP), 2.0f),
+                       "leg Q: control -- a notch that can move the bandwidth still does");
+                check (gcontrol.opens == 1 && gcontrol.closes == 1,
+                       "leg Q: ...inside exactly one host change gesture, as the host needs");
+            }
+
+            // ---- LEG R: a blocked notch does not ENGAGE the width drag -------------------
+            //      The same rule one press deeper. A press inside a band has not edited anything
+            //      until it crosses the 3 px threshold, and a notch is the user asking for the
+            //      edit directly -- so the notch engages the drag. At the rail there is no edit
+            //      to ask for: engaging anyway leaves a press that writes the width on the next
+            //      one-pixel tremor, which is not what a scroll that did nothing should cost.
+            {
+                resetBands();
+                setPlain (wLoP, 2.0f);
+                proc.pollUndoCoalesce();
+                // WHERE THE WIDTH LINE IS, found rather than assumed: a width press is latched only
+                // within `kWidthGrab` of the band's width line (`nearWidthLine`), and at 2.0 that
+                // line sits at the TOP of the lane, nowhere near its middle. The first version of
+                // this leg pressed at `laneY` and latched nothing, so every check below passed on a
+                // press that reached no branch -- which is exactly how it passed against the
+                // mutation it exists to kill. Swept by tooltip, the same way the solo legs find
+                // their buttons.
+                float widthY = -1.0f;
+                for (float y = 2.0f; y < H - 2.0f; y += 1.0f)
+                {
+                    hover (bandX, y);
+                    if (im->getTooltip() == juce::String ("Band width")) { widthY = y; break; }
+                }
+                check (widthY > 0.0f, "leg R: the band's width line is findable");
+                const auto t0 = juce::Time::getCurrentTime();
+                auto press = [&] (float y, bool dragged)
+                {
+                    return juce::MouseEvent (src, { bandX, y }, juce::ModifierKeys::leftButtonModifier,
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                             t0, { bandX, widthY }, t0, 1, dragged);
+                };
+                juce::MouseWheelDetails up;
+                up.deltaX = 0.0f; up.deltaY = 0.4f;
+                up.isReversed = false; up.isSmooth = false; up.isInertial = false;
+                // THE CONTROL FIRST, because this leg is worthless if the press does not latch a
+                // width drag at all: a press here plus a drag PAST the 3 px threshold must move
+                // the width. Without it, every check below passes on a press that reached no
+                // branch -- which is exactly how the first version of this leg passed against the
+                // mutation that removes the guard it is supposed to be measuring.
+                // TWO drag events, because the first one only ENGAGES: the 3 px threshold arms the
+                // drag and anchors `dragGrabDY` to the cursor where it armed, so the engaging event
+                // writes the width it already had and the one after it is the first that moves.
+                im->mouseDown (press (widthY, false));
+                im->mouseDrag (press (widthY + 10.0f, true));
+                im->mouseDrag (press (widthY + 20.0f, true));
+                const float engaged = plainOf (wLoP);
+                im->mouseUp (press (widthY + 20.0f, true));
+                proc.pollUndoCoalesce();
+                check (! juce::exactlyEqual (engaged, 2.0f),
+                       "leg R: control -- a press here plus a 10 px drag does move the width");
+                setPlain (wLoP, 2.0f);
+                proc.pollUndoCoalesce();
+
+                im->mouseDown (press (widthY, false));
+                im->mouseWheelMove (press (widthY, false), up);      // blocked: already at 2.0
+                const float afterNotch = plainOf (wLoP);
+                im->mouseDrag (press (widthY + 1.0f, true));         // one pixel: below the engage
+                const float afterTremor = plainOf (wLoP);
+                im->mouseUp (press (widthY + 1.0f, true));
+                proc.pollUndoCoalesce();
+                check (juce::exactlyEqual (afterNotch, 2.0f),
+                       "leg R: the blocked notch inside the press moves no width");
+                if (! juce::exactlyEqual (afterTremor, 2.0f))
+                    std::printf ("  [leg R] it engaged the drag anyway: a 1 px move then wrote"
+                                 " %.4f\n", (double) afterTremor);
+                check (juce::exactlyEqual (afterTremor, 2.0f),
+                       "leg R: ...and does not engage the drag the 3 px threshold has not");
+            }
+        }
+    }
+
+    // ---- LEG F: the SETTINGS slider keeps its interaction and its exclusion -----------
+    //      Task section 4's stated exception. It is host-hidden (InternalState, not an APVTS
+    //      parameter), so it opens no change gesture and contributes nothing to the sound
+    //      signature -- and this leg is what would notice if this round ever gave it either.
+    {
+        juce::Slider* persist = nullptr;
+        int hits = 0;
+        for (auto* s : sliders)
+            if (s->getTooltip().containsIgnoreCase ("afterglow")) { persist = s; ++hits; }
+        check (persist != nullptr && hits == 1, "leg F: the Settings Persistence slider is findable");
+        if (persist != nullptr && hits == 1)
+        {
+            proc.pollUndoCoalesce();
+            const bool undoBefore = proc.canUndo();
+            const double v0 = persist->getValue();
+            scrollKnob (persist, 0.5f);
+            proc.pollUndoCoalesce();
+            const double v1 = persist->getValue();
+            check (! juce::exactlyEqual (v1, v0), "leg F: a scroll still moves the Persistence slider");
+            check (proc.canUndo() == undoBefore,
+                   "leg F: ...and records no undo step, exactly as before this round");
+
+            if (persist->getWidth() > 20)
+            {
+                const float cy = (float) persist->getHeight() * 0.5f;
+                const auto t = juce::Time::getCurrentTime();
+                auto ev = [&] (float x, bool dragged)
+                {
+                    return juce::MouseEvent (src, { x, cy }, juce::ModifierKeys::leftButtonModifier,
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, persist, persist,
+                                             t, { 4.0f, cy }, t, 1, dragged);
+                };
+                persist->mouseDown (ev (4.0f, false));
+                persist->mouseDrag (ev ((float) persist->getWidth() - 4.0f, true));
+                const double v2 = persist->getValue();
+                persist->mouseUp   (ev ((float) persist->getWidth() - 4.0f, true));
+                proc.pollUndoCoalesce();
+                check (! juce::exactlyEqual (v2, v1), "leg F: a drag still moves it too");
+                check (proc.canUndo() == undoBefore,
+                       "leg F: ...and a drag records no undo step either");
+            }
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+
+// ---------------------------------------------------------------------------
+//  State test 87 -- holding a band's solo button and scrolling MOVES the band
+//  (ADR-0053, task section 7).
+//
+//  THE CHANGE IS ONLY IN THE HELD CASE, and both halves are asserted here
+//  because only the pair says that. While the button is held a notch does what a
+//  sideways drag of that button does -- it translates the whole band segment, so
+//  BOTH of a middle band's edge splits move and its width does not (leg A). With
+//  the button up the wheel is unchanged: over a band it still edits that band's
+//  Bandwidth and moves no split (leg B). Leg B is the control leg A would pass
+//  without: an implementation that simply routed every notch over the solo lane
+//  into a band move would break scrolling for everyone who is not holding a
+//  button.
+//
+//  LEGS C AND D are task section 7.1 -- the notch accumulates with the drag, the
+//  drag carries on from the notched position, and the whole thing is one undo
+//  step at the release. Leg C's last check is the one that fails if the notch
+//  writes the splits without moving `bandAnchorX`: the cursor comes back to the
+//  press point and `moveBand` puts the band back exactly where it started.
+// ---------------------------------------------------------------------------
+static void testHoldingSoloAndScrollingMovesTheBand()
+{
+    std::printf ("State test 87: holding a band's solo and scrolling moves the band\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the solo-scroll probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (im != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) { im = si; return; }
+            walk (k);
+            if (im != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "the imager is laid out for the solo-scroll probe");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* wMidP  = apvts.getParameter (pid::mbWidthMid);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    check (bandsP && loP && midP && hiP && wMidP && soloP,
+           "the parameters the solo-scroll probe drives exist");
+    if (! (bandsP && loP && midP && hiP && wMidP && soloP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    const float W = (float) im->getWidth();
+    const float soloY = 11.0f;
+    auto mev = [&] (float x, float y, float dx, float dy, bool dragged, bool button)
+    {
+        return juce::MouseEvent (src, { x, y },
+                                 button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                 juce::Time::getCurrentTime(), { dx, dy },
+                                 juce::Time::getCurrentTime(), 1, dragged);
+    };
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f; wheel.deltaY = 0.4f;
+    wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+    auto resetBands = [&]
+    {
+        im->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (soloP, 0.0f);
+        setPlain (loP, 200.0f); setPlain (midP, 2000.0f); setPlain (hiP, 10000.0f);
+        setPlain (wMidP, 1.0f);
+        proc.pollUndoCoalesce();
+    };
+    // The centre of the k-th contiguous run of "Solo this band" along the solo lane, so a MIDDLE
+    // band (both of whose edges are real splits) is found without hardcoding any geometry.
+    auto soloRunCentre = [&] (int which) -> float
+    {
+        int run = -1; bool in = false; float first = -1.0f, last = -1.0f;
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (x, soloY, x, soloY, false, false));
+            const bool hit = im->getTooltip() == juce::String ("Solo this band");
+            if (hit && ! in) { ++run; in = true; if (run == which) first = x; }
+            if (hit && run == which) last = x;
+            if (! hit && in) { in = false; if (run == which) break; }
+        }
+        return (first >= 0.0f && last >= first) ? 0.5f * (first + last) : -1.0f;
+    };
+
+    resetBands();
+    const float sx = soloRunCentre (1);   // band 1: soloMoveLeft = 0, soloMoveRight = 1
+    check (sx > 0.0f, "a middle band's solo button is findable");
+    if (sx <= 0.0f) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    // ---- LEG A: held solo + a notch moves the band, not the bandwidth ----------------
+    {
+        resetBands();
+        const float lo0 = plainOf (loP), mid0 = plainOf (midP), w0 = plainOf (wMidP);
+        im->mouseDown (mev (sx, soloY, sx, soloY, false, true));
+        im->mouseWheelMove (mev (sx, soloY, sx, soloY, false, true), wheel);
+        const float lo1 = plainOf (loP), mid1 = plainOf (midP), w1 = plainOf (wMidP);
+        im->mouseUp (mev (sx, soloY, sx, soloY, false, true));
+        proc.pollUndoCoalesce();
+
+        if (juce::exactlyEqual (lo1, lo0) && juce::exactlyEqual (mid1, mid0))
+            std::printf ("  [leg A] the notch moved no split: the band stayed at %.1f-%.1f Hz\n",
+                         (double) lo0, (double) mid0);
+        check (! juce::exactlyEqual (lo1, lo0) && ! juce::exactlyEqual (mid1, mid0),
+               "leg A: a notch while the solo button is held moves BOTH of the band's edges");
+        if (! juce::exactlyEqual (w1, w0))
+            std::printf ("  [leg A] the notch edited the bandwidth instead: %.3f -> %.3f\n",
+                         (double) w0, (double) w1);
+        check (juce::exactlyEqual (w1, w0),
+               "leg A: ...and does not touch the band's Bandwidth");
+    }
+
+    // ---- LEG B: the control -- with NO button held the wheel is unchanged -------------
+    {
+        resetBands();
+        const float lo0 = plainOf (loP), mid0 = plainOf (midP), w0 = plainOf (wMidP);
+        const auto t = juce::Time::getCurrentTime();
+        const juce::MouseEvent we (src, { sx, soloY }, juce::ModifierKeys(),
+                                   1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                   t, { sx, soloY }, t, 1, false);
+        im->mouseWheelMove (we, wheel);
+        check (! juce::exactlyEqual (plainOf (wMidP), w0),
+               "leg B: with no button held the wheel still edits that band's Bandwidth");
+        check (juce::exactlyEqual (plainOf (loP), lo0) && juce::exactlyEqual (plainOf (midP), mid0),
+               "leg B: ...and moves no split");
+    }
+
+    // ---- LEG C: drag + notch accumulate, and the drag carries on from the notch -------
+    {
+        resetBands();
+        const float lo0 = plainOf (loP);
+        im->mouseDown (mev (sx, soloY, sx, soloY, false, true));
+        im->mouseDrag (mev (sx + 20.0f, soloY, sx, soloY, true, true));
+        const float a1 = plainOf (loP);
+        im->mouseWheelMove (mev (sx + 20.0f, soloY, sx, soloY, false, true), wheel);
+        const float a2 = plainOf (loP);
+        im->mouseDrag (mev (sx, soloY, sx, soloY, true, true));   // cursor back to the press point
+        const float a3 = plainOf (loP);
+        im->mouseUp (mev (sx, soloY, sx, soloY, true, true));
+        proc.pollUndoCoalesce();
+
+        check (! juce::exactlyEqual (a1, lo0), "leg C: the sideways drag moves the band");
+        check (! juce::exactlyEqual (a2, a1), "leg C: a notch adds to what the drag has produced");
+        check (! juce::exactlyEqual (a3, a2), "leg C: ...the press is not finished by the notch");
+        if (juce::exactlyEqual (a3, lo0))
+            std::printf ("  [leg C] the notch did not move the move's anchor: the cursor returned to"
+                         " the press point and the band went back to %.1f Hz\n", (double) lo0);
+        check (! juce::exactlyEqual (a3, lo0),
+               "leg C: ...and it continues FROM the notched position, not from the cursor alone");
+    }
+
+    // ---- LEG D: the whole held-solo interaction is ONE undo step ----------------------
+    {
+        // Legs A and C were real interactions and left real steps behind; `canUndo()` is
+        // CUMULATIVE, so this leg drains the history before it can measure its own.
+        while (proc.canUndo()) proc.undo();
+        resetBands();
+        check (! proc.canUndo(), "leg D: the leg starts with no undo history");
+        const float lo0 = plainOf (loP), mid0 = plainOf (midP);
+        struct GestureLog final : public juce::AudioProcessorParameter::Listener
+        {
+            int opens = 0, closes = 0;
+            void parameterValueChanged (int, float) override {}
+            void parameterGestureChanged (int, bool starting) override { if (starting) ++opens; else ++closes; }
+        };
+        GestureLog g; loP->addListener (&g);
+        im->mouseDown (mev (sx, soloY, sx, soloY, false, true));
+        im->mouseDrag (mev (sx + 20.0f, soloY, sx, soloY, true, true));
+        im->mouseWheelMove (mev (sx + 20.0f, soloY, sx, soloY, false, true), wheel);
+        proc.pollUndoCoalesce();
+        const bool undoMidPress = proc.canUndo();
+        im->mouseDrag (mev (sx + 30.0f, soloY, sx, soloY, true, true));
+        im->mouseUp   (mev (sx + 30.0f, soloY, sx, soloY, true, true));
+        loP->removeListener (&g);
+        proc.pollUndoCoalesce();
+
+        check (! undoMidPress, "leg D: nothing is committed while the button is still down");
+        check (g.opens == 1 && g.closes == 1,
+               "leg D: the band's left edge sees exactly one change gesture for the interaction");
+        check (proc.canUndo(), "leg D: ...and the interaction is undoable");
+        proc.undo();
+        check (juce::exactlyEqual (plainOf (loP), lo0) && juce::exactlyEqual (plainOf (midP), mid0),
+               "leg D: one Undo returns the band to where the press started");
+        check (! proc.canUndo(), "leg D: ...and the drag and the notch were ONE step");
+    }
+
+    // ---- LEG E: a notch with NOTHING TO MOVE is not an edit, and does not eat the click ----
+    //      ADR-0052's rule applied to this round's own new branch, and it is the failure this
+    //      round's adversarial pass actually found. At ONE band there is no edge split:
+    //      `beginBandMove` leaves both pins at -1 and `moveBand` returns at `M <= 0` having
+    //      written nothing and opened nothing. Converting the press into a "move" regardless
+    //      would swallow the solo click on release for no gain at all.
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 1.0f);
+        setPlain (soloP, 0.0f);
+        proc.pollUndoCoalesce();
+        float sx1 = -1.0f;
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (x, soloY, x, soloY, false, false));
+            if (im->getTooltip() == juce::String ("Solo this band")) { sx1 = x; break; }
+        }
+        check (sx1 > 0.0f, "leg E: the single band's solo button is findable");
+        if (sx1 > 0.0f)
+        {
+            // The control first: an uninterrupted press toggles.
+            im->mouseDown (mev (sx1, soloY, sx1, soloY, false, true));
+            im->mouseUp   (mev (sx1, soloY, sx1, soloY, false, true));
+            const int uninterrupted = juce::roundToInt (plainOf (soloP));
+
+            setPlain (soloP, 0.0f);
+            im->mouseDown (mev (sx1, soloY, sx1, soloY, false, true));
+            im->mouseWheelMove (mev (sx1, soloY, sx1, soloY, false, true), wheel);
+            im->mouseUp   (mev (sx1, soloY, sx1, soloY, false, true));
+            const int afterNotch = juce::roundToInt (plainOf (soloP));
+
+            check (uninterrupted != 0, "leg E: control -- an uninterrupted press toggles the band");
+            if (uninterrupted != 0 && afterNotch == 0)
+                std::printf ("  [leg E] a notch with no band to move swallowed the click: mask 0x%X"
+                             " where the uninterrupted press gives 0x%X\n", afterNotch, uninterrupted);
+            check (afterNotch == uninterrupted,
+                   "leg E: ...and a notch with no band to move leaves the click intact");
+        }
+    }
+
+    // ---- LEG F: a notch with NOWHERE TO MOVE is the same, and it is the reachable one ----
+    //      Leg E's band has no split at all, which takes a one-band layout to arrange. This is
+    //      the case an ordinary four-band layout reaches every time a user parks a band against
+    //      the end of its travel and keeps scrolling: the translation clamps to the one the band
+    //      already has, `moveBand` writes nothing -- `writeCrossovers` skips a store under half a
+    //      pixel -- and the notch has edited nothing. The press was converted into a move all the
+    //      same, so the release took the MOVE branch and the solo click was swallowed; and
+    //      `beginBandMove` had opened a change gesture on each edge split on the way, which a
+    //      host recording touch or latch automation writes points for.
+    {
+        while (proc.canUndo()) proc.undo();
+        resetBands();
+        juce::MouseWheelDetails hardLeft;
+        hardLeft.deltaX = 0.0f; hardLeft.deltaY = -40.0f;   // far more travel than the band has
+        hardLeft.isReversed = false; hardLeft.isSmooth = false; hardLeft.isInertial = false;
+
+        // Park the band against its left limit with one press, and release it.
+        im->mouseDown (mev (sx, soloY, sx, soloY, false, true));
+        im->mouseWheelMove (mev (sx, soloY, sx, soloY, false, true), hardLeft);
+        im->mouseUp (mev (sx, soloY, sx, soloY, false, true));
+        proc.pollUndoCoalesce();
+        const float parkedLo = plainOf (loP), parkedMid = plainOf (midP);
+        check (! juce::exactlyEqual (parkedLo, 200.0f),
+               "leg F: the first notch moved the band to its left limit");
+        // ...and the button moved with it: the solo lane is laid out from the splits, so the run
+        // this leg presses has to be found again in the layout the parking produced.
+        const float sx2 = soloRunCentre (1);
+        check (sx2 > 0.0f, "leg F: the parked band's solo button is findable");
+        if (sx2 <= 0.0f) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+        // The control: an uninterrupted press on the same button toggles.
+        setPlain (soloP, 0.0f);
+        im->mouseDown (mev (sx2, soloY, sx2, soloY, false, true));
+        im->mouseUp   (mev (sx2, soloY, sx2, soloY, false, true));
+        const int uninterrupted = juce::roundToInt (plainOf (soloP));
+        check (uninterrupted != 0, "leg F: control -- an uninterrupted press toggles the band");
+
+        // ...and the same press with a notch that cannot move the band anywhere.
+        setPlain (soloP, 0.0f);
+        CountGestures gsolo;
+        loP->addListener (&gsolo);
+        im->mouseDown (mev (sx2, soloY, sx2, soloY, false, true));
+        im->mouseWheelMove (mev (sx2, soloY, sx2, soloY, false, true), hardLeft);
+        im->mouseUp   (mev (sx2, soloY, sx2, soloY, false, true));
+        loP->removeListener (&gsolo);
+        proc.pollUndoCoalesce();
+        const int afterBlocked = juce::roundToInt (plainOf (soloP));
+
+        if (! juce::exactlyEqual (plainOf (loP), parkedLo) || ! juce::exactlyEqual (plainOf (midP), parkedMid))
+            std::printf ("  [leg F] the blocked notch moved the band after all: %.4f/%.4f -> %.4f/%.4f\n",
+                         (double) parkedLo, (double) parkedMid,
+                         (double) plainOf (loP), (double) plainOf (midP));
+        check (juce::exactlyEqual (plainOf (loP), parkedLo) && juce::exactlyEqual (plainOf (midP), parkedMid),
+               "leg F: a notch at the end of the travel moves no split");
+        if (afterBlocked != uninterrupted)
+            std::printf ("  [leg F] it swallowed the click: mask 0x%X where the uninterrupted press"
+                         " gives 0x%X\n", afterBlocked, uninterrupted);
+        check (afterBlocked == uninterrupted,
+               "leg F: ...and leaves the solo click intact, exactly as leg E's does");
+        if (gsolo.opens != 0)
+            std::printf ("  [leg F] it opened %d change gesture(s) on the left edge split\n", gsolo.opens);
+        check (gsolo.opens == 0 && gsolo.closes == 0,
+               "leg F: ...and opens no host change gesture on the band's edges");
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+
+// ---------------------------------------------------------------------------
+//  State test 88 -- a wheel notch inside a KNOB press belongs to that press
+//  (ADR-0053, task sections 2, 3 and 4).
+//
+//  JUCE DISCARDS THE WHEEL OUTRIGHT while a mouse button is held -- its slider
+//  handler is wrapped in `! e.mods.isAnyMouseButtonDown()` -- so before this
+//  round a notch during a knob drag did nothing whatsoever. It now moves the
+//  value, and the drag carries on from there, which it can only do because the
+//  notch is remembered outside JUCE's private drag state and re-applied after
+//  every drag event: `handleAbsoluteDrag` recomputes the value from
+//  `valueOnMouseDown` plus the cursor delta on every single move and would
+//  otherwise erase it.
+//
+//  EACH LEG'S LAST CHECK IS THE ONE THAT MATTERS: the cursor is returned to
+//  where it was BEFORE the notch, and the value must not return with it. An
+//  implementation that writes the value and forgets fails exactly there, and
+//  passes everything else.
+//
+//  Leg A is a rotary knob, leg B is the numeric value box under it (a different
+//  drag model entirely -- it maps `downProp + (-dragY)/180` and never consults
+//  JUCE's drag state), and leg C is the Settings Persistence bar, whose
+//  INTERACTION must change with everything else while its exclusion from Undo
+//  must not (that exclusion is asserted in State test 86 leg F).
+// ---------------------------------------------------------------------------
+static void testAWheelNotchInsideAKnobPressBelongsToIt()
+{
+    std::printf ("State test 88: a wheel notch inside a knob press belongs to that press\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the knob-notch probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto plainOf = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f; wheel.deltaY = 0.5f;
+    wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+    // Every leg below stamps its events from ITS OWN instant, five seconds past the leg before.
+    // `juce::Time` is millisecond-resolution and two legs can read the clock inside one
+    // millisecond on a fast host -- arm64 CI measured exactly that, and the wheel handlers'
+    // duplicate-event filter (JUCE's own, and the in-drag one beside it) then correctly discarded
+    // the second leg's FIRST notch, failing a leg against working code. A leg whose events must
+    // SHARE one stamp, as leg L's do, cannot step within itself, so the separation has to come
+    // from the leg base. Nothing in the plug-in or in JUCE's Slider compares an event time to the
+    // wall clock or to another event's -- both only ever ask whether two stamps are EQUAL -- so a
+    // base in the future is indistinguishable from "now" to everything under test.
+    int  legNo = 0;
+    const auto suiteBase = juce::Time::getCurrentTime();
+    auto legStamp = [&] { return suiteBase + juce::RelativeTime::seconds (5.0 * ++legNo); };
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* driveK = findSliderFor (driveP);
+    check (driveP != nullptr && driveK != nullptr, "the Drive knob is findable from its parameter");
+    // ---- LEG A: the rotary knob ------------------------------------------------------
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        proc.pollUndoCoalesce();
+        const bool undoBefore = proc.canUndo();
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+        auto ev = [&] (float y, bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, y },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        const float start = plainOf (driveP);
+        driveK->mouseDown (ev (cy, false, true));
+        driveK->mouseDrag (ev (cy - 20.0f, true, true));
+        const float atY1 = plainOf (driveP);
+        proc.pollUndoCoalesce();
+        const bool undoMidPress = proc.canUndo();
+        driveK->mouseWheelMove (ev (cy - 20.0f, false, true), wheel);
+        const float afterNotch = plainOf (driveP);
+        driveK->mouseDrag (ev (cy, true, true));      // the cursor goes back to the press point
+        const float backAtPress = plainOf (driveP);
+        driveK->mouseUp   (ev (cy, true, true));
+        proc.pollUndoCoalesce();
+
+        check (! juce::exactlyEqual (atY1, start), "leg A: the drag moves the knob");
+        if (juce::exactlyEqual (afterNotch, atY1))
+            std::printf ("  [leg A] the notch changed nothing -- JUCE discards the wheel while a"
+                         " button is held, and nothing overrode that\n");
+        check (! juce::exactlyEqual (afterNotch, atY1),
+               "leg A: a notch inside the press adds to what the press has produced");
+        check (! juce::exactlyEqual (backAtPress, afterNotch),
+               "leg A: ...the press is not finished -- a further drag still writes");
+        if (juce::exactlyEqual (backAtPress, start))
+            std::printf ("  [leg A] the notch was erased by the next drag event: the cursor returned"
+                         " to the press point and the value returned to %.4f\n", (double) start);
+        check (! juce::exactlyEqual (backAtPress, start),
+               "leg A: ...and it continues FROM the notched value, not from the cursor alone");
+        check (undoBefore == undoMidPress,
+               "leg A: nothing is committed while the button is still down");
+        check (proc.canUndo(), "leg A: ...and the whole interaction is undoable");
+        proc.undo();
+        check (juce::exactlyEqual (plainOf (driveP), start),
+               "leg A: one Undo returns the knob to where the press started -- ONE step");
+    }
+
+    // ---- LEG B: the numeric value box under the same knob ----------------------------
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        juce::Label* box = nullptr;
+        for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+            if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) { box = l; break; }
+        check (box != nullptr && box->getHeight() > 0, "leg B: the knob's value box is findable");
+        if (box != nullptr && box->getHeight() > 0)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float cx = (float) box->getWidth() * 0.5f, cy = (float) box->getHeight() * 0.5f;
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            auto ev = [&] (float y, bool dragged, bool button)
+            {
+                return juce::MouseEvent (src, { cx, y },
+                                         button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, box, box,
+                                         t, { cx, cy }, t, 1, dragged);
+            };
+            const float start = plainOf (driveP);
+            // Through the base-class pointer: juce::Label narrows Component::mouseUp to protected,
+            // and the override that matters here lives one level further down (the ValueBox in
+            // LookAndFeel.cpp's anonymous namespace), so the call has to be virtual-dispatched from
+            // where the declaration is still public.
+            juce::Component* boxC = box;
+            boxC->mouseDown (ev (cy, false, true));
+            boxC->mouseDrag (ev (cy - 20.0f, true, true));
+            const float atY1 = plainOf (driveP);
+            boxC->mouseWheelMove (ev (cy - 20.0f, false, true), wheel);
+            const float afterNotch = plainOf (driveP);
+            boxC->mouseDrag (ev (cy, true, true));
+            const float backAtPress = plainOf (driveP);
+            boxC->mouseUp (ev (cy, true, true));
+            proc.pollUndoCoalesce();
+
+            check (! juce::exactlyEqual (atY1, start), "leg B: dragging the value box moves the knob");
+            check (! juce::exactlyEqual (afterNotch, atY1),
+                   "leg B: a notch inside the value-box drag adds to it");
+            check (! juce::exactlyEqual (backAtPress, afterNotch),
+                   "leg B: ...the drag is not finished by it");
+            if (juce::exactlyEqual (backAtPress, start))
+                std::printf ("  [leg B] the value box lost the notch: the cursor returned to the press"
+                             " point and the value returned to %.4f\n", (double) start);
+            check (! juce::exactlyEqual (backAtPress, start),
+                   "leg B: ...and it continues FROM the notched value");
+            check (proc.canUndo(), "leg B: the value-box interaction is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), start),
+                   "leg B: one Undo returns the knob to where the press started -- ONE step");
+        }
+    }
+
+    // ---- LEG D: the value box and its knob are ONE control for Undo -------------------
+    //      Task section 3 asks for the numeric readout to follow the same rules as the knob, and
+    //      section 5 treats "scrolling over the numeric value" as a scroll of that same control.
+    //      A standalone notch over the box is not handled by the box at all: it forwards to the
+    //      parent Slider, which names the control by its PARAMETER -- so the two must extend one
+    //      undo step rather than record two. This leg is what would notice if the forward stopped
+    //      reaching the knob's naming path.
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        juce::Component* boxC = nullptr;
+        for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+            if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) { boxC = l; break; }
+        check (boxC != nullptr, "leg D: the knob's value box is findable");
+        if (boxC != nullptr)
+        {
+            int seq = 0;
+            const auto legBase = legStamp();
+            auto scrollOver = [&] (juce::Component* c)
+            {
+                // Distinct event times: JUCE's slider wheel handler dedupes on `e.eventTime`.
+                const auto t = legBase + juce::RelativeTime::milliseconds (++seq * 13);
+                const juce::MouseEvent we (src, { (float) c->getWidth() * 0.5f, (float) c->getHeight() * 0.5f },
+                                           juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, c, c,
+                                           t, { 0.0f, 0.0f }, t, 1, false);
+                c->mouseWheelMove (we, wheel);
+            };
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollOver (driveK); proc.pollUndoCoalesce();
+            const float v1 = plainOf (driveP);
+            scrollOver (boxC);   proc.pollUndoCoalesce();
+            const float v2 = plainOf (driveP);
+            check (! juce::exactlyEqual (v1, v0), "leg D: a notch over the knob moves Drive");
+            if (juce::exactlyEqual (v2, v1))
+                std::printf ("  [leg D] a notch over the value box moved nothing -- the forward to the"
+                             " parent slider did not reach it\n");
+            check (! juce::exactlyEqual (v2, v1), "leg D: ...and a notch over the value box moves it too");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), v1))
+                std::printf ("  [leg D] the box's notch was its own step: one Undo stopped at %.4f\n",
+                             (double) v1);
+            check (juce::exactlyEqual (plainOf (driveP), v0),
+                   "leg D: one Undo returns to before BOTH -- the box and its knob are one control");
+            check (! proc.canUndo(), "leg D: ...one step, not two");
+        }
+    }
+
+    // ---- LEG E: the Settings Persistence bar -- the interaction changes with the rest --
+    {
+        juce::Slider* persist = nullptr;
+        for (auto* s : sliders)
+            if (s->getTooltip().containsIgnoreCase ("afterglow")) { persist = s; break; }
+        check (persist != nullptr, "leg E: the Settings Persistence slider is findable");
+        if (persist != nullptr && persist->getWidth() > 40)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const bool undoBefore = proc.canUndo();
+            const float cy = (float) persist->getHeight() * 0.5f;
+            const float x0 = 0.35f * (float) persist->getWidth();
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            auto ev = [&] (float x, bool dragged, bool button)
+            {
+                return juce::MouseEvent (src, { x, cy },
+                                         button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, persist, persist,
+                                         t, { x0, cy }, t, 1, dragged);
+            };
+            const double start = persist->getValue();
+            persist->mouseDown (ev (x0, false, true));
+            persist->mouseDrag (ev (x0 + 12.0f, true, true));
+            const double atX1 = persist->getValue();
+            persist->mouseWheelMove (ev (x0 + 12.0f, false, true), wheel);
+            const double afterNotch = persist->getValue();
+            persist->mouseDrag (ev (x0, true, true));
+            const double backAtPress = persist->getValue();
+            persist->mouseUp (ev (x0, true, true));
+            proc.pollUndoCoalesce();
+
+            check (! juce::exactlyEqual (atX1, start), "leg E: the drag moves Persistence");
+            check (! juce::exactlyEqual (afterNotch, atX1),
+                   "leg E: a notch inside the drag adds to it here too");
+            check (! juce::exactlyEqual (backAtPress, afterNotch),
+                   "leg E: ...the drag is not finished by it");
+            check (! juce::exactlyEqual (backAtPress, start),
+                   "leg E: ...and it continues FROM the notched value");
+            check (proc.canUndo() == undoBefore,
+                   "leg E: ...while the Settings slider still records no undo step at all");
+        }
+    }
+
+    // ---- LEG F: a notch lands on the control UNDER THE POINTER, press or no press ------
+    //      JUCE routes a wheel event by POINTER and not by capture: `getTargetForGesture`
+    //      hit-tests the peer at the event position whether or not a drag is in flight
+    //      (`juce_MouseInputSourceImpl.h`). So a press held on one knob and a pointer that has
+    //      travelled onto another delivers the notch to the SECOND one, with the button still
+    //      down -- and JUCE's own handler drops it there, because its whole body sits behind
+    //      `! e.mods.isAnyMouseButtonDown()`. That was a notch the user makes and never sees,
+    //      while the same gesture over the multiband display edited what it pointed at.
+    {
+        auto* widP = apvts.getParameter (pid::width);
+        auto* widK = findSliderFor (widP);
+        check (widP != nullptr && widK != nullptr, "leg F: a second knob is findable");
+        if (driveP != nullptr && driveK != nullptr && widP != nullptr && widK != nullptr)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float drive0 = plainOf (driveP), wid0 = plainOf (widP);
+            const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            auto onDrive = [&] (float y, bool dragged)
+            {
+                return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                         t, { cx, cy }, t, 1, dragged);
+            };
+            const juce::MouseEvent overWidth (src, { (float) widK->getWidth() * 0.5f,
+                                                     (float) widK->getHeight() * 0.5f },
+                                              juce::ModifierKeys::leftButtonModifier,  // still held
+                                              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, widK, widK,
+                                              t, { cx, cy }, t, 1, false);
+            driveK->mouseDown (onDrive (cy, false));
+            driveK->mouseDrag (onDrive (cy - 20.0f, true));
+            const float driveDragged = plainOf (driveP);
+            widK->mouseWheelMove (overWidth, wheel);
+            const float widAfter = plainOf (widP), driveAfter = plainOf (driveP);
+            driveK->mouseDrag (onDrive (cy - 30.0f, true));
+            const float driveMore = plainOf (driveP);
+            driveK->mouseUp (onDrive (cy - 30.0f, true));
+            proc.pollUndoCoalesce();
+
+            if (juce::exactlyEqual (widAfter, wid0))
+                std::printf ("  [leg F] the notch was dropped: Width stayed at %.4f while another"
+                             " control held the press\n", (double) wid0);
+            check (! juce::exactlyEqual (widAfter, wid0),
+                   "leg F: a notch over a control another press owns still edits the pointed control");
+            check (juce::exactlyEqual (driveAfter, driveDragged),
+                   "leg F: ...and does not also move the knob holding the press");
+            check (! juce::exactlyEqual (driveMore, driveAfter),
+                   "leg F: ...which carries on dragging, uncancelled");
+            check (proc.canUndo(), "leg F: the interaction is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), drive0)
+                   && juce::exactlyEqual (plainOf (widP), wid0),
+                   "leg F: one Undo takes back both -- the notch landed inside the open press");
+            check (! proc.canUndo(), "leg F: ...ONE step, not two");
+        }
+    }
+
+    // ---- LEG G: the same for the Settings bar, which still records nothing -------------
+    {
+        juce::Slider* persist = nullptr;
+        for (auto* s : sliders)
+            if (s->getTooltip().containsIgnoreCase ("afterglow")) { persist = s; break; }
+        check (persist != nullptr, "leg G: the Settings Persistence slider is findable");
+        if (persist != nullptr && persist->getWidth() > 40 && driveP != nullptr && driveK != nullptr)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const double persist0 = persist->getValue();
+            const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            auto onDrive = [&] (float y, bool dragged)
+            {
+                return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                         t, { cx, cy }, t, 1, dragged);
+            };
+            const juce::MouseEvent overPersist (src, { 0.5f * (float) persist->getWidth(),
+                                                       0.5f * (float) persist->getHeight() },
+                                                juce::ModifierKeys::leftButtonModifier,
+                                                1.0f, 0.0f, 0.0f, 0.0f, 0.0f, persist, persist,
+                                                t, { cx, cy }, t, 1, false);
+            driveK->mouseDown (onDrive (cy, false));
+            driveK->mouseDrag (onDrive (cy - 20.0f, true));
+            persist->mouseWheelMove (overPersist, wheel);
+            const double persist1 = persist->getValue();
+            driveK->mouseUp (onDrive (cy - 20.0f, true));
+            proc.pollUndoCoalesce();
+
+            check (! juce::exactlyEqual (persist1, persist0),
+                   "leg G: a pointed notch moves the Settings bar too");
+            check (proc.canUndo(), "leg G: the knob's own press is undoable");
+            proc.undo();
+            check (! proc.canUndo(), "leg G: ...and it is the ONLY step -- the Settings bar added none");
+            check (juce::exactlyEqual (persist->getValue(), persist1),
+                   "leg G: ...so Undo does not move the Settings bar back either");
+        }
+    }
+
+    // ---- LEG H: the VELOCITY drag branch, which no leg above exercises -----------------
+    //      An unmodified drag runs JUCE's `handleAbsoluteDrag`; Ctrl/Alt/Cmd switches it to
+    //      `handleVelocityDrag`, which accumulates INCREMENTALLY from its own
+    //      `valueWhenLastDragged` instead of recomputing from a press-time anchor.
+    //      `applyWheelDragOffset` runs after `Slider::mouseDrag` whichever branch it took, so it
+    //      composes with both by construction -- but by construction is not by measurement.
+    //
+    //      IT IS THE MONO-MAKER SLIDER AND NOT A ROTARY KNOB, and that is not a convenience.
+    //      `Slider::Pimpl` only assigns `sliderRegionSize` for horizontal and vertical styles
+    //      (`juce_Slider.cpp` `Pimpl::resized`), and the slider's own constructor takes that
+    //      branch once with the DEFAULT `LinearHorizontal` style against empty bounds -- so every
+    //      rotary slider carries `sliderRegionSize == 0` for life. Measured here rather than
+    //      assumed: `getPositionOfValue(max) - getPositionOfValue(min)` is `pos * sliderRegionSize`,
+    //      and it is 0.000 for Drive against 246.000 for this one. Velocity mode is selected by
+    //      `(normRange.end - normRange.start) / sliderRegionSize < normRange.interval`, so a
+    //      velocity drag of a KNOB divides by zero there. The IEEE result is +inf, the comparison
+    //      is false, and the velocity branch is taken exactly as intended -- but it is still a
+    //      division by zero inside JUCE, and the `sanitizers` job is right to say so. This leg
+    //      therefore drives the same JUCE branch through a slider whose region size is real.
+    {
+        auto* monoP = apvts.getParameter (pid::monoMakerFreq);
+        auto* monoK = findSliderFor (monoP);
+        check (monoP != nullptr && monoK != nullptr && monoK->getWidth() > 40,
+               "leg H: the mono-maker frequency slider is findable and laid out");
+        if (monoP != nullptr && monoK != nullptr && monoK->getWidth() > 40)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float start = plainOf (monoP);
+            const float cy = (float) monoK->getHeight() * 0.5f;
+            const float x0 = 0.45f * (float) monoK->getWidth();
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            // Ctrl is `Slider`'s default modifierToSwapModes and the knobs leave
+            // `userKeyOverridesVelocity` at its default true, so holding it makes this a velocity
+            // drag. Alt would have meant something else here -- `Knob::mouseDown` treats it as the
+            // reset gesture -- which is why the leg holds Ctrl specifically.
+            const juce::ModifierKeys held (juce::ModifierKeys::leftButtonModifier
+                                           | juce::ModifierKeys::ctrlModifier);
+            auto ev = [&] (float x, bool dragged)
+            {
+                return juce::MouseEvent (src, { x, cy }, held, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                         monoK, monoK, t, { x0, cy }, t, 1, dragged);
+            };
+            // A POSITIVE CONTROL THAT THIS IS THE OTHER BRANCH: the same 20 px with no modifier is
+            // an absolute drag, which on this style also snaps to the cursor, while the velocity
+            // branch accumulates a speed-scaled increment. If the modifier ever stopped selecting
+            // the branch this leg would be a second copy of leg A and say nothing; here it says so.
+            float absoluteDelta = 0.0f;
+            {
+                auto plain = [&] (float x, bool dragged)
+                {
+                    return juce::MouseEvent (src, { x, cy }, juce::ModifierKeys::leftButtonModifier,
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, monoK, monoK,
+                                             t, { x0, cy }, t, 1, dragged);
+                };
+                monoK->mouseDown (plain (x0, false));
+                monoK->mouseDrag (plain (x0 + 20.0f, true));
+                monoK->mouseUp   (plain (x0 + 20.0f, true));
+                const float absolute = plainOf (monoP);
+                proc.pollUndoCoalesce();
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (monoP), start), "leg H: the control drag is undone");
+                check (! juce::exactlyEqual (absolute, start), "leg H: ...having moved the slider at all");
+                absoluteDelta = absolute - start;
+            }
+            monoK->mouseDown (ev (x0, false));
+            monoK->mouseDrag (ev (x0 + 20.0f, true));
+            const float atX1 = plainOf (monoP);
+            check (! juce::exactlyEqual (atX1 - start, absoluteDelta),
+                   "leg H: ...and the modified drag is a DIFFERENT branch, not the same one again");
+            monoK->mouseWheelMove (ev (x0 + 20.0f, false), wheel);
+            const float afterNotch = plainOf (monoP);
+            monoK->mouseDrag (ev (x0, true));          // the cursor goes back where it started
+            const float backAtPress = plainOf (monoP);
+            monoK->mouseUp (ev (x0, true));
+            proc.pollUndoCoalesce();
+
+            check (! juce::exactlyEqual (atX1, start), "leg H: the velocity drag moves the slider");
+            check (! juce::exactlyEqual (afterNotch, atX1),
+                   "leg H: a notch inside a velocity drag adds to what the drag has produced");
+            if (juce::exactlyEqual (backAtPress, start))
+                std::printf ("  [leg H] the notch was erased by the next velocity drag event: the"
+                             " value returned to %.4f\n", (double) start);
+            check (! juce::exactlyEqual (backAtPress, start),
+                   "leg H: ...and survives the drag events after it, exactly as in the absolute branch");
+            check (proc.canUndo(), "leg H: the whole interaction is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (monoP), start),
+                   "leg H: one Undo returns to where the press started -- ONE step");
+        }
+    }
+
+    // ---- LEG I: a value-box drag's notch, delivered to the KNOB -----------------------
+    //      Leg B scrolls over the box itself, which is the case the box's own handler answers.
+    //      This is the case the POINTER produces: the box drag maps 180 px of travel over a box
+    //      18 px tall, so the cursor leaves it within a few pixels and every notch after that is
+    //      delivered to the knob underneath. Writing the value on the slider there is not enough
+    //      -- the box's next drag event recomputes from `downProp` and erases it -- so the knob
+    //      hands the event to whichever of its children is holding a drag gesture, and the box's
+    //      own handler moves the anchor the drag is steering.
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        juce::Component* boxC = nullptr;
+        for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+            if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) { boxC = l; break; }
+        check (boxC != nullptr, "leg I: the knob's value box is findable");
+        if (boxC != nullptr)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float start = plainOf (driveP);
+            const float bx = (float) boxC->getWidth() * 0.5f, by = (float) boxC->getHeight() * 0.5f;
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            auto onBox = [&] (float y, bool dragged)
+            {
+                return juce::MouseEvent (src, { bx, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, boxC, boxC,
+                                         t, { bx, by }, t, 1, dragged);
+            };
+            // The pointer is over the KNOB by now, so this is the component JUCE hands it to.
+            const juce::MouseEvent onKnob (src, { (float) driveK->getWidth() * 0.5f,
+                                                  (float) driveK->getHeight() * 0.5f },
+                                           juce::ModifierKeys::leftButtonModifier,
+                                           1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                           t, { bx, by }, t, 1, false);
+            boxC->mouseDown (onBox (by, false));
+            boxC->mouseDrag (onBox (by - 20.0f, true));
+            const float dragged = plainOf (driveP);
+            driveK->mouseWheelMove (onKnob, wheel);
+            const float afterNotch = plainOf (driveP);
+            boxC->mouseDrag (onBox (by - 20.0f, true));   // the same cursor position, one event later
+            const float nextEvent = plainOf (driveP);
+            boxC->mouseUp (onBox (by - 20.0f, true));
+            proc.pollUndoCoalesce();
+
+            check (! juce::exactlyEqual (dragged, start), "leg I: the value-box drag moves the knob");
+            if (juce::exactlyEqual (afterNotch, dragged))
+                std::printf ("  [leg I] the notch was dropped: the knob stayed at %.4f while its own"
+                             " value box held the press\n", (double) dragged);
+            check (! juce::exactlyEqual (afterNotch, dragged),
+                   "leg I: a notch delivered to the knob during its value box's drag still lands");
+            if (juce::exactlyEqual (nextEvent, dragged))
+                std::printf ("  [leg I] the box's next drag event erased it: back to %.4f\n",
+                             (double) dragged);
+            check (! juce::exactlyEqual (nextEvent, dragged),
+                   "leg I: ...and the drag's own next event does not erase it");
+            check (proc.canUndo(), "leg I: the interaction is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), start),
+                   "leg I: one Undo returns to where the press started -- ONE step");
+        }
+    }
+
+    // ---- LEG J: a SUB-INTERVAL notch moves the control the same, press or no press ------
+    //      The asymmetry ADR-0053 exists to remove, in the one size of notch that still had
+    //      it. JUCE floors a notch to at least one INTERVAL of value movement
+    //      (`jmax (normRange.interval, std::abs (delta))`, juce_Slider.cpp) and
+    //      `SliderParameterAttachment` copies the parameter's interval onto the slider, so
+    //      Amount's grid is 0.001 -- while the in-drag path asked for `amount * 0.15` of
+    //      proportion and nothing else. A macOS trackpad's smallest precise notch is
+    //      `deltaY = 0.5/256`, which asks for 0.0003: `Slider::setValue` snapped it back to the
+    //      value already there and the press ate the notch, however many arrived. With no
+    //      button held the identical notch moves one whole interval.
+    //
+    //      The leg deliberately synthesises that delta rather than using a mouse wheel's 1.0:
+    //      a wheel notch is ~250 times the interval and would pass either way. Both halves
+    //      stamp each event a few milliseconds on, because JUCE's own handler DEDUPES on the
+    //      event time and the standalone half would otherwise land exactly one notch.
+    {
+        auto* amtP = apvts.getParameter (pid::amount);
+        auto* amtK = findSliderFor (amtP);
+        check (amtP != nullptr && amtK != nullptr, "leg J: the Amount knob is findable from its parameter");
+        if (amtP != nullptr && amtK != nullptr)
+        {
+            juce::MouseWheelDetails tiny;
+            tiny.deltaX = 0.0f; tiny.deltaY = 0.5f / 256.0f;   // one macOS precise-scroll unit
+            tiny.isReversed = false; tiny.isSmooth = true; tiny.isInertial = false;
+            const float cx = (float) amtK->getWidth() * 0.5f, cy = (float) amtK->getHeight() * 0.5f;
+            int seq = 0;
+            const auto legBase = legStamp();
+            auto at = [&] (float y, bool dragged, bool button)
+            {
+                const auto t = legBase + juce::RelativeTime::milliseconds (++seq * 7);
+                return juce::MouseEvent (src, { cx, y },
+                                         button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, amtK, amtK,
+                                         t, { cx, cy }, t, 1, dragged);
+            };
+            const float start = 0.5f;
+            // ---- inside a press ----
+            amtP->setValueNotifyingHost (amtP->convertTo0to1 (start));
+            amtK->mouseDown (at (cy, false, true));
+            amtK->mouseDrag (at (cy - 20.0f, true, true));
+            const float pressed = plainOf (amtP);
+            for (int i = 0; i < 20; ++i) amtK->mouseWheelMove (at (cy - 20.0f, false, true), tiny);
+            const float inPress = plainOf (amtP) - pressed;
+            amtK->mouseUp (at (cy - 20.0f, true, true));
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            // ---- and with no button held at all ----
+            amtP->setValueNotifyingHost (amtP->convertTo0to1 (start));
+            proc.pollUndoCoalesce();
+            const float before = plainOf (amtP);
+            for (int i = 0; i < 20; ++i) amtK->mouseWheelMove (at (cy, false, false), tiny);
+            const float standalone = plainOf (amtP) - before;
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+
+            if (juce::exactlyEqual (inPress, 0.0f))
+                std::printf ("  [leg J] 20 sub-interval notches inside the press moved Amount by"
+                             " nothing at all, while the same 20 with no button held moved it %.4f\n",
+                             (double) standalone);
+            check (! juce::exactlyEqual (standalone, 0.0f),
+                   "leg J: control -- with no button held JUCE's floor moves Amount");
+            check (! juce::exactlyEqual (inPress, 0.0f),
+                   "leg J: a sub-interval notch inside a press moves Amount too");
+            // WITHIN HALF AN INTERVAL, not bit-identical: both halves snap to Amount's 0.001
+            // grid, and they start from different points on it (the press has dragged first), so
+            // the two sums round differently in the last bits of a float. Half a grid step is the
+            // tightest bound that measures the rule rather than the arithmetic -- the failure this
+            // leg is for is 0.000 against 0.020, twenty whole steps apart.
+            if (std::abs (inPress - standalone) > 0.0005f)
+                std::printf ("  [leg J] the two differ: %.6f inside the press against %.6f outside it\n",
+                             (double) inPress, (double) standalone);
+            check (std::abs (inPress - standalone) <= 0.0005f,
+                   "leg J: ...by the SAME travel -- one notch means one notch, press or no press");
+        }
+    }
+
+    // ---- LEG K: an Alt-click that resets nothing is not an edit either ------------------
+    //      Found by this round's own investigation, one control family away from the notch
+    //      rails: the Option/Alt-click reset bracketed `doReset` in a change gesture and ran the
+    //      sweep animation unconditionally, so clicking a knob ALREADY at its default punched a
+    //      host touch/latch write region for a parameter that never moved. Same rule as the
+    //      multiband rails (ADR-0052), same shape of fix: ask whether the edit would move
+    //      anything before paying for any part of it.
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        const float def = driveP->convertFrom0to1 (driveP->getDefaultValue());
+        auto altClick = [&] (juce::Slider* k)
+        {
+            const float cx = (float) k->getWidth() * 0.5f, cy = (float) k->getHeight() * 0.5f;
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            const juce::MouseEvent e (src, { cx, cy },
+                                      juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                                          | juce::ModifierKeys::altModifier),
+                                      1.0f, 0.0f, 0.0f, 0.0f, 0.0f, k, k, t, { cx, cy }, t, 1, false);
+            k->mouseDown (e);
+            k->mouseUp (e);
+        };
+        while (proc.canUndo()) proc.undo();
+        driveP->setValueNotifyingHost (driveP->getDefaultValue());
+        proc.pollUndoCoalesce();
+        CountGestures gnoop;
+        driveP->addListener (&gnoop);
+        altClick (driveK);
+        driveP->removeListener (&gnoop);
+        proc.pollUndoCoalesce();
+        check (juce::exactlyEqual (plainOf (driveP), def),
+               "leg K: an Alt-click on a knob already at its default leaves the value alone");
+        if (gnoop.opens != 0)
+            std::printf ("  [leg K] it opened %d change gesture(s) for a reset that reset nothing\n",
+                         gnoop.opens);
+        check (gnoop.opens == 0 && gnoop.closes == 0,
+               "leg K: ...and opens no host change gesture");
+
+        // The control: from anywhere else, the reset still resets, inside exactly one gesture.
+        driveP->setValueNotifyingHost (driveP->convertTo0to1 (def + 6.0f));
+        proc.pollUndoCoalesce();
+        CountGestures greal;
+        driveP->addListener (&greal);
+        altClick (driveK);
+        driveP->removeListener (&greal);
+        proc.pollUndoCoalesce();
+        check (juce::exactlyEqual (plainOf (driveP), def),
+               "leg K: control -- an Alt-click from anywhere else still resets to the default");
+        check (greal.opens == 1 && greal.closes == 1,
+               "leg K: ...inside exactly one host change gesture, as the host needs");
+    }
+
+    // ---- LEG L: two events, one timestamp, ONE notch -- press or no press ---------------
+    //      The other half of leg J's rule, and a hazard leg J's own fix created. JUCE dedupes
+    //      wheel events on `e.eventTime` for a stated reason -- "since we're going to bump the
+    //      value by a minimum of the interval, avoid doing this twice" -- so the filter and the
+    //      floor are one mechanism. Round 11 gave the in-drag path the floor; without the filter
+    //      beside it, a platform that sends the same notch twice (which is what JUCE's comment
+    //      describes) would move a held control TWICE as far as an unheld one, breaking the same
+    //      contract leg J fixed, from the other side.
+    //
+    //      Deterministic and platform-free: the leg sends two events bearing one timestamp,
+    //      which is exactly the input JUCE's own filter is written against.
+    {
+        auto* amtP = apvts.getParameter (pid::amount);
+        auto* amtK = findSliderFor (amtP);
+        check (amtP != nullptr && amtK != nullptr, "leg L: the Amount knob is findable");
+        if (amtP != nullptr && amtK != nullptr)
+        {
+            juce::MouseWheelDetails notch;
+            notch.deltaX = 0.0f; notch.deltaY = 0.5f;
+            notch.isReversed = false; notch.isSmooth = false; notch.isInertial = false;
+            const float cx = (float) amtK->getWidth() * 0.5f, cy = (float) amtK->getHeight() * 0.5f;
+            // ONE instant for every event below -- that shared stamp is what the leg measures,
+            // and `legStamp` is what keeps it from colliding with an earlier leg's. This is the
+            // leg the collision was measured on: leg I delivers its notch to the KNOB, which
+            // forwards it to the child holding the drag -- the very value box the second stanza
+            // below then scrolls -- so leg I stamps that box's `lastNotchTime`, and one shared
+            // millisecond was enough to make the filter discard this leg's FIRST notch.
+            const auto t = legStamp();
+            auto at = [&] (float y, bool dragged, bool button)
+            {
+                return juce::MouseEvent (src, { cx, y },
+                                         button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, amtK, amtK,
+                                         t, { cx, cy }, t, 1, dragged);
+            };
+            while (proc.canUndo()) proc.undo();
+            amtP->setValueNotifyingHost (amtP->convertTo0to1 (0.5f));
+            proc.pollUndoCoalesce();
+            amtK->mouseDown (at (cy, false, true));
+            amtK->mouseDrag (at (cy - 20.0f, true, true));
+            const float base = plainOf (amtP);
+            amtK->mouseWheelMove (at (cy - 20.0f, false, true), notch);
+            const float afterOne = plainOf (amtP) - base;
+            amtK->mouseWheelMove (at (cy - 20.0f, false, true), notch);   // the duplicate
+            const float afterTwo = plainOf (amtP) - base;
+            amtK->mouseUp (at (cy - 20.0f, true, true));
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            check (! juce::exactlyEqual (afterOne, 0.0f), "leg L: the first notch moved Amount");
+            if (! juce::exactlyEqual (afterTwo, afterOne))
+                std::printf ("  [leg L] the duplicate moved it again: %.4f after one, %.4f after two\n",
+                             (double) afterOne, (double) afterTwo);
+            check (juce::exactlyEqual (afterTwo, afterOne),
+                   "leg L: ...and a second event bearing the SAME timestamp does not move it again");
+
+            // The control: JUCE's own filter, on the standalone path, answering identically.
+            amtP->setValueNotifyingHost (amtP->convertTo0to1 (0.5f));
+            proc.pollUndoCoalesce();
+            const float base2 = plainOf (amtP);
+            amtK->mouseWheelMove (at (cy, false, false), notch);
+            const float standaloneOne = plainOf (amtP) - base2;
+            amtK->mouseWheelMove (at (cy, false, false), notch);
+            const float standaloneTwo = plainOf (amtP) - base2;
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            check (juce::exactlyEqual (standaloneTwo, standaloneOne),
+                   "leg L: control -- JUCE's own filter answers the same with no button held");
+            check (std::abs (afterOne - standaloneOne) <= 0.0005f,
+                   "leg L: ...and the one notch each of them took is the same size");
+        }
+
+        // ...and the value box, which holds its own drag and its own last-notch stamp.
+        juce::Component* boxC = nullptr;
+        if (driveK != nullptr)
+            for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+                if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) { boxC = l; break; }
+        check (boxC != nullptr, "leg L: the knob's value box is findable");
+        if (boxC != nullptr && driveP != nullptr)
+        {
+            juce::MouseWheelDetails notch;
+            notch.deltaX = 0.0f; notch.deltaY = 0.5f;
+            notch.isReversed = false; notch.isSmooth = false; notch.isInertial = false;
+            const float bx = (float) boxC->getWidth() * 0.5f, by = (float) boxC->getHeight() * 0.5f;
+            const auto t = legStamp();   // its own instant, past the knob stanza's and leg I's
+            auto onBox = [&] (float y, bool dragged)
+            {
+                return juce::MouseEvent (src, { bx, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, boxC, boxC,
+                                         t, { bx, by }, t, 1, dragged);
+            };
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            boxC->mouseDown (onBox (by, false));
+            boxC->mouseDrag (onBox (by - 20.0f, true));
+            const float base = plainOf (driveP);
+            boxC->mouseWheelMove (onBox (by - 20.0f, false), notch);
+            const float boxOne = plainOf (driveP) - base;
+            boxC->mouseWheelMove (onBox (by - 20.0f, false), notch);   // the duplicate
+            const float boxTwo = plainOf (driveP) - base;
+            boxC->mouseUp (onBox (by - 20.0f, true));
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            check (! juce::exactlyEqual (boxOne, 0.0f), "leg L: the box takes the first notch");
+            if (! juce::exactlyEqual (boxTwo, boxOne))
+                std::printf ("  [leg L] the box took the duplicate as a second notch: %.4f then %.4f\n",
+                             (double) boxOne, (double) boxTwo);
+            check (juce::exactlyEqual (boxTwo, boxOne),
+                   "leg L: ...and not the duplicate behind it");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+
 static void testTooltipSourceOfTruth()
 {
     std::printf ("Tooltip source of truth: the cached component vs the live pointer\n");
@@ -15269,7 +17773,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1286).
+//  baseline", src/PluginProcessor.cpp:1473).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -15502,7 +18006,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1023).
+//  targets", src/PluginProcessor.cpp:1210).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -15879,7 +18383,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1471).
+//  mixed sound", src/PluginProcessor.cpp:1658).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -19872,12 +22376,15 @@ int main (int argc, char* argv[])
     testAPositionalLatchIsVoidOnceItsTopologyMoves();
     testADerivationAnswersUnderTheTopologyItWasGiven();
     testTheFarSideOfACoupledCommitIsCoveredByItsCaller();
-    testAWheelTickFinishesAHeldPress();
+    testAWheelNotchInsideAPressBelongsToIt();
     testThePlanAndTheProofAreOneReading();
     testTheAddTargetAnswersUnderOneTopology();
     testACancellationClosesEachGestureOnce();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
+    testAScrollIsOneUndoStep();
+    testHoldingSoloAndScrollingMovesTheBand();
+    testAWheelNotchInsideAKnobPressBelongsToIt();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

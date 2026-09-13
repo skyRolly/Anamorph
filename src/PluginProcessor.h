@@ -69,6 +69,94 @@ public:
     bool canRedo() const noexcept { return ! abUndo[abActive].redo.empty(); }
     void pollUndoCoalesce();
 
+    // ------------------------------------------------------------------------
+    //  A SCROLL IS ONE UNDO STEP (ADR-0053).
+    //
+    //  An undo entry holds the state from BEFORE the step it undoes, so "keep the value the whole
+    //  scroll started from and replace only where it ended" is exactly "do not push another entry,
+    //  and move the committed baseline on". That is the whole mechanism: a wheel edit NAMES the
+    //  control it belongs to for as long as its change gesture is open, the name travels with the
+    //  commit that gesture requests, and a commit whose name matches the one the most recently
+    //  recorded step carries EXTENDS that step instead of pushing a second one.
+    //
+    //  0 means "not a wheel edit", and that is what ends a chain: a drag, a typed value, an
+    //  Alt-click reset -- every other edit closes its gesture unnamed, so the next scroll starts a
+    //  fresh step, which is what "switching to another modification method creates a new step"
+    //  means here. A change that arrives with no gesture at all (host automation) ends it too.
+    //
+    //  WHY THERE IS NO INACTIVITY TIMER. The step exists from the first notch and is extended by
+    //  every notch after it, so "one Undo returns the parameter to the value it had before the
+    //  scroll" is true at EVERY instant rather than only after a dwell -- and nothing has to be
+    //  polled, timed or held open to make it so. A held-open gesture would also be the one failure
+    //  this class already knows to fear: `pollUndoCoalesceAdopted` records nothing while
+    //  `openGestures > 0`, so a gesture that is never closed stops undo recording silently.
+    //
+    //  Message-thread state, like every other member of this section.
+    void setWheelStepKey (int key) noexcept { wheelStepKey = key; }
+    // The name a parameter-backed control answers to. A parameter's index is stable for the life of
+    // the processor and unique to it, so two controls driving the SAME parameter -- a knob and the
+    // numeric box under it -- are correctly one control for this purpose. +1 keeps 0 meaning "none".
+    static int wheelStepKeyFor (const juce::AudioProcessorParameter* p) noexcept
+    { return p != nullptr ? p->getParameterIndex() + 1 : 0; }
+
+    // Names a wheel edit for the duration of its change gesture and un-names it on every exit path.
+    //
+    // WHY THE DESTRUCTOR WRITES 0 RATHER THAN RESTORING WHAT IT FOUND (round 11 asked, and the
+    // answer is that 0 IS what it found). The key is non-zero only inside one of these scopes, and
+    // no call chain in this plug-in enters one from inside another. There are three construction
+    // sites -- the knob's standalone scroll (`PluginEditor.h`), and the imager's split and width
+    // bursts, which name the same key through `SpectrumImager`'s own `ScopedWheelName` -- and no
+    // chain joins any two:
+    //   * the imager's two are mutually exclusive branches of one handler, each wrapping a single
+    //     `endGesture` call and reaching no other component;
+    //   * `juce::Slider::mouseWheelMove` hands the event to its Pimpl, which returns true whether
+    //     or not it acted, so an enabled slider with the wheel on never forwards to an ancestor;
+    //     and `juce::Component::mouseWheelMove` walks UP to the nearest enabled ancestor, never
+    //     down. Every `Knob` is a direct child of the editor or of the Settings backdrop -- never
+    //     of another `Knob`, and never of the imager, whose only children are its own overlays.
+    // So a saved-and-restored key would restore 0 at every exit this code can reach, and a
+    // restoring destructor would be a mechanism with no second caller to justify it.
+    //
+    // THE ONE INTERLEAVING THAT IS NOT STRUCTURAL, and for a notch over a DIFFERENT control
+    // restoring the key would make it WORSE rather than better: a host that pumps the OS message
+    // loop from inside `beginChangeGesture` or `setValueNotifyingHost` -- both of which the knob's
+    // scope spans -- could deliver a queued notch over another control inside this one. Follow it
+    // through. The inner notch opens its own gesture while this one is still open, so
+    // `parameterGestureChanged` counts 1 -> 2, and its close counts 2 -> 1: it latches NOTHING,
+    // because the latch runs only where the count returns to ZERO. The zero-crossing close is
+    // therefore the outer one (or, when a foreign gesture was already open, that gesture's own
+    // release), and it reads the key the inner scope's exit has just cleared -- so the batch is
+    // unnamed and the next notch starts its own step.
+    //
+    // TWO extra undo steps mid-scroll, not one, and the count is worth stating because both
+    // clauses above cost one each: the unnamed batch cannot extend (`stepKey != 0` fails), and the
+    // poll then records `lastStepWheelKey = 0`, so the notch AFTER it cannot extend either. One
+    // extra step if the interruption lands on the scroll's first notch, and one if both batches
+    // fall inside a single 24 Hz poll period and collapse.
+    //
+    // AND THE SUB-CASE THE PARAGRAPH ABOVE DOES NOT COVER: a queued notch over the SAME control.
+    // There, restoring would be strictly better -- the scroll would stay one step -- and clearing
+    // splits it. Neither policy dominates; clearing errs toward extra undo steps and restoring
+    // errs toward swallowing another control's edit, and the rule below picks the former
+    // deliberately.
+    //
+    // Restore the key and that same latch names the batch after the OUTER control -- a batch that
+    // also contains the INNER control's edit, because the inner gesture closed inside it. The next
+    // notch of the outer control would then extend a step holding somebody else's value, and an
+    // undo entry here is a whole-state snapshot, so the other control's edit travels with it. The
+    // cleared key is not a shortcut that happens to be safe; it is the answer that keeps a batch
+    // this scope cannot account for from being claimed. Recorded rather than hardened, and the
+    // reasoning written out because the first version of this paragraph got it wrong -- it argued
+    // from the disagreement rule, which never fires here, since the inner close never latches.
+    struct ScopedWheelStep
+    {
+        ScopedWheelStep (AnamorphAudioProcessor& p, int key) noexcept : proc (p) { proc.setWheelStepKey (key); }
+        ~ScopedWheelStep() noexcept { proc.setWheelStepKey (0); }
+        ScopedWheelStep (const ScopedWheelStep&) = delete;
+        ScopedWheelStep& operator= (const ScopedWheelStep&) = delete;
+        AnamorphAudioProcessor& proc;
+    };
+
     // D-2 (RISK-007), 2026-09-03. Every piece of PROGRAM state this class owns -- the
     // preset name / identity / dirty baseline, the two A/B slots and the active index,
     // the per-slot Level-Match memory, the undo history, the committed baseline and
@@ -121,10 +209,16 @@ public:
     // loop, WITH THE LOCK HELD: a harness may sample state or arm another thread from there, but
     // must never join or wait on a thread that itself performs a whole-sound replacement, because
     // that thread is blocked on this one.
+    //
+    // `insidePollBody` fires inside `pollUndoCoalesceAdopted`, after the signature has been built
+    // and before `committed` is captured -- the window in which a host write is absorbed by the
+    // capture while the generation the poll started from does not name it. It is the only place a
+    // deterministic harness can put a write, because nothing the poll body calls re-enters a
+    // parameter write, so the race is otherwise cross-thread only (State test 86 leg U).
     struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake, beforeRestorePut,
                                         afterRestoreSoundApplied, beforeSoundReplacementWrites,
                                         atRelativeDecision, insideSoundReplacement,
-                                        betweenStateSetApplyAndMeta; };   // ADR-0037: proves no live read
+                                        betweenStateSetApplyAndMeta, insidePollBody; };   // ADR-0037: proves no live read
     Seams seams;
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.
@@ -323,6 +417,33 @@ private:
     // never opens a gesture, so it is never recorded.
     int  openGestures = 0;
     bool pendingGestureCommit = false;
+    // ADR-0053, the three halves of "a scroll is one undo step". `wheelStepKey` is the control a
+    // wheel edit currently in flight names; `pendingStepWheelKey` is that name LATCHED at the
+    // instant the gesture closed, because the poll that acts on it runs up to a timer period later,
+    // by which time the edit has long un-named itself and another may be in flight;
+    // `lastStepWheelKey` is the name the most recently RECORDED undo step carries, and comparing the
+    // two is the whole extend-or-push decision. 0 everywhere means "not a wheel edit".
+    int  wheelStepKey = 0;
+    int  pendingStepWheelKey = 0;
+    int  lastStepWheelKey = 0;
+    // Whether any gesture in the batch now pending has CONTRIBUTED that name -- only a gesture that
+    // actually changed a sound parameter does, which is what makes an empty press transparent to a
+    // scroll instead of ending it (ADR-0053). With `gestureOpenGen`, the sound generation sampled
+    // when the batch's first gesture opened, it is a two-word comparison per gesture rather than a
+    // signature rebuild: `soundParamGen` is already bumped by every value change.
+    bool pendingStepNamed = false;
+    juce::uint32 gestureOpenGen = 0;
+    // ...and the sound generation as of the last GESTURE EDGE -- the open of a batch, the close of
+    // a batch, or a poll. Anything that moves a sound parameter between two edges moved it outside
+    // every gesture, which is host automation by construction: it is the only writer that opens
+    // none. Both windows matter and they are different windows: the poll runs up to a timer period
+    // after the close, and the next batch can open a whole gesture before the poll ever runs. A
+    // step that carries a foreign write is nobody's scroll -- it neither extends the scroll before
+    // it nor lets the next notch extend it (ADR-0053, round 11).
+    juce::uint32 gestureEdgeGen = 0;
+    // ...latched at the OPEN side, because by the time the poll reads the counter the batch's own
+    // writes have moved it past the evidence. Message thread only, like everything else here.
+    bool foreignSinceEdge = false;
 
     StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;

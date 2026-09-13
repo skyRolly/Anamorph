@@ -18,22 +18,94 @@ not accept and which those entries predate. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.8] — 2026-09-08
+## [0.9.8] — 2026-09-12
 
 ### Changed
-- **Scrolling the mouse wheel while you are dragging in the Multiband display now finishes the
-  drag.** Previously the drag kept running underneath the scroll, and the two fought over the same
-  band: the scroll would adopt whatever value was current, then the next movement of the still-held
-  drag would write a value computed from where your mouse was *before* the scroll, undoing it. The
-  wheel now ends the press first and then applies its own adjustment, exactly as it does when no
-  button is held. What you will notice: after scrolling mid-drag, moving the mouse does nothing
-  until you release the button and press again, and your DAW records the drag up to that point as a
-  finished edit — so Undo steps back to the scroll rather than to the start of the drag. Scrolling
-  when you are *not* dragging is unchanged.
-  Decision: ADR-0041. Evidence: PR #143. [Verified]
+- **Scrolling while you drag now adds to the drag instead of interrupting it — on every knob,
+  slider, value box and Multiband control.** Until now the wheel was a separate, competing edit. On
+  a knob or its numeric readout it did nothing at all while you held the button. In the Multiband
+  display it ended your drag: the press went dead, your DAW saw the automation touch released early,
+  and the part of the drag you had already done became its own Undo step. Now a notch moves the
+  value on top of whatever the drag has produced, the drag carries on **from** the new value, more
+  notches keep adding, and the whole thing — drag and scrolling together — is a single Undo step
+  recorded when you let go. Pressing Undo once takes you back to the value from before you pressed
+  the mouse. Scrolling past the end of a control's travel no longer banks movement you then have to
+  drag back through. A notch always goes to whatever is under the **pointer**: if the drag has
+  carried the cursor off the control you grabbed, the wheel adjusts what you are pointing at — which
+  previously did nothing at all on a knob, a slider or a value box — and that edit joins the same
+  single Undo step. One notch is worth the same travel with a button held as without one, down to
+  the smallest notch a trackpad can send: a fine scroll during a drag moves the control by one step
+  of its range rather than being rounded away to nothing.
+  Decision: ADR-0053. Regression coverage: State tests 80 and 88. Evidence: PR #144. [Verified]
+- **A whole scroll is now one Undo step, and carrying on scrolling the same control extends it.**
+  Scrolling a knob used to record one Undo step per notch, so walking back a ten-notch adjustment
+  took ten presses of Undo. One scroll is now one step, and if you come back to the same control and
+  scroll it again — with nothing else edited in between — that continues the same step rather than
+  starting another. Undo therefore returns the control to the value it had before the whole
+  sequence began. Anything else you do to it — a drag, a typed value, an Option/Alt-click reset —
+  ends the run, so the next scroll starts a fresh step — including a drag that happens to finish on
+  the value it started from, which is still a drag you made. This applies to knobs, sliders, the
+  numbers below the knobs, and the Multiband splits and bandwidths. A press that changes
+  **nothing** — a click that starts no drag — is not one of those other methods and leaves the run
+  intact. Automation arriving from your DAW between one notch and the next ends the run too: a
+  scroll never merges across it, and it is never added to a step you had already finished.
+  Decision: ADR-0053. Regression coverage: State test 86. Evidence: PR #144. [Verified]
+- **Holding a band's solo button and scrolling now moves the band instead of changing its width.**
+  It does what dragging that button sideways does: the whole band segment slides, both of its
+  crossovers together, and scrolling adds to whatever the drag has already done. Scrolling over the
+  Multiband display when you are *not* holding a solo button is unchanged — it still adjusts the
+  band's width, or the split you are over. A notch with no band to move — a single-band layout, or a
+  band already pressed against the end of its travel — does nothing at all: nothing moves, your DAW
+  is told nothing, the band is not auditioned, and your solo click still lands when you let go.
+  Decision: ADR-0053. Regression coverage: State test 87. Evidence: PR #144. [Verified]
+- **The Settings slider gains the same scrolling behaviour and keeps its exemption from Undo.**
+  *Vectorscope Persistence* now takes wheel input during a drag like every other control. As before,
+  nothing you do to it is recorded as an Undo step — including a notch that lands on it while some
+  other control holds the press.
+  Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **Scrolling a Multiband split that is packed against its neighbours no longer banks movement you
+  have to scroll back through.** A split can only travel until the splits between it and the edge run
+  out of room, and the wheel was measuring against the edge of the display instead — so once the
+  split stopped moving, the notches kept counting. Nine of them, with three splits, before anything
+  happened again, and the rest of that mouse drag was displaced by the same amount. The wheel now
+  counts from where the split actually landed, so one notch back always moves it and the drag after a
+  blocked notch carries on normally. Splits that were not blocked behave exactly as before.
+  Decision: ADR-0053. Regression coverage: State test 80 leg G. Evidence: PR #144. [Verified]
+- **A scroll is no longer split into two Undo steps when your DAW writes a parameter at the wrong
+  moment.** The plug-in checks 24 times a second whether anything changed, and an automation value
+  arriving while that check was running was folded into the plug-in's own record but not counted as
+  having been — so the next notch you scrolled looked like it was carrying somebody else's change,
+  and the notch after it started a second Undo step. Pressing Undo once then stopped in the middle of
+  your scroll instead of returning to where it began. A whole scroll is one Undo step again.
+  Decision: ADR-0053. Regression coverage: State test 86 legs U and U2. Evidence: PR #144. [Verified]
+- **An Option/Alt-click on a control that is already at its default no longer tells your DAW you
+  touched it.** The reset was bracketed as an edit whether or not there was anything to reset, so a
+  DAW recording in Touch or Latch punched in and wrote an automation point for a control that never
+  moved — and the knob played its reset animation for a reset that did nothing. Clicking a control
+  already sitting on its default now does nothing at all. Resetting a control that is off its
+  default is unchanged.
+  Decision: ADR-0052. Regression coverage: State test 88 leg K. Evidence: PR #144. [Verified]
+- **Scrolling the mouse wheel over the Multiband display now creates an Undo step.** It never had.
+  Nudging a split frequency or a band's width with the wheel wrote the value straight out with no
+  edit marked around it, so the plug-in's own Undo folded it into the background the way it folds
+  your DAW's automation — the change stuck, and nothing could take it back. Those edits are now
+  marked as edits, which also means your DAW sees them as an automation touch rather than as a value
+  that moved on its own. A notch that cannot move anything is not marked at all, because it is not
+  an edit: at the end of a split's travel, or on a bandwidth already at its limit, scrolling tells
+  your DAW nothing and leaves your Undo history alone.
+  Long-standing; it is the second of the two paths recorded as **KI-010**.
+  Decision: ADR-0053. Regression coverage: State test 86 legs D, E and Q. Evidence: PR #144. [Verified]
 - **A solo click is no longer applied to a layout your DAW changed underneath it, in the one case
+  where the check for that could be switched off.** The plugin remembers the layout your click was
+  aimed at and refuses the click if your DAW replaces it in the instant the edit opens. That memory
+  could be dropped early: the plugin's own safety net for a mouse button released outside its window
+  clears it as its first action, even when it has nothing else to do — and if your DAW ran that net
+  from inside the edit the click had just opened, the check went quiet and the click was applied to
+  the new layout anyway. The memory is now held until the click's action finishes. A click with
+  nothing else happening is unchanged.
+  Decision: ADR-0050. Regression coverage: State test 79 leg E. Evidence: PR #143. [Verified]
 - **Dragging a band sideways can no longer leave your DAW with a change gesture it was never given.**
   Starting a sideways band move opens an automation gesture for each of the band's two edges, one
   after the other. If your host answered the first one by running its own message loop — a modal
@@ -49,14 +121,6 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   gestures are open, so a cancellation arriving in that gap changes nothing and is honoured a
   moment later instead. What you will notice: nothing, on any normal drag.
   Decision: ADR-0050. Evidence: PR #143. [Verified]
-  where the check for that could be switched off.** The plugin remembers the layout your click was
-  aimed at and refuses the click if your DAW replaces it in the instant the edit opens. That memory
-  could be dropped early: the plugin's own safety net for a mouse button released outside its window
-  clears it as its first action, even when it has nothing else to do — and if your DAW ran that net
-  from inside the edit the click had just opened, the check went quiet and the click was applied to
-  the new layout anyway. The memory is now held until the click's action finishes. A click with
-  nothing else happening is unchanged.
-  Decision: ADR-0050. Regression coverage: State test 79 leg E. Evidence: PR #143. [Verified]
 - **Clicking a band's solo button can no longer solo a band that is not there.** The plugin works out
   which headphone you clicked by measuring your cursor against the band layout — but it re-read that
   layout a moment after recording the one your click belongs to. If your DAW changed the number of
@@ -148,10 +212,11 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 - **A sideways or too-small scroll on the Multiband display no longer ends what you were doing.** A
   horizontal scroll on a trackpad, or a scroll too small to register, was ending a held drag, closing
   that edit in your DAW's automation and undo history, and throwing away a solo or delete button you
-  were holding down — and then doing nothing else, because there was no adjustment to make. Only a
-  scroll that actually adjusts something now finishes a held press, which is what the behaviour above
-  under **Changed** was always meant to say.
-  Decision: ADR-0052. Evidence: PR #143. [Verified]
+  were holding down — and then doing nothing else, because there was no adjustment to make. An event
+  that adjusts nothing now has no effect at all, which is what the behaviour under **Changed** was
+  always meant to say. (A scroll that *does* adjust something no longer ends a held press either —
+  see **Changed** — but it still has to adjust something first.)
+  Decision: ADR-0052, extended by ADR-0053. Evidence: PR #143. [Verified]
 - **A band you add now appears where you clicked, even if your DAW changes the band count at that
   instant.** Working out which band the pointer is in and working out where that band ENDS were two
   separate readings of the band count. If an automation lane raised the count between them, the click
@@ -282,12 +347,14 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   bands soloed that you never soloed. Each of those changes now carries the layout it was aimed at,
   and the whole operation stops the moment one of them cannot be applied to it. Ordinary soloing,
   adding and removing are untouched.
-- **Scrolling the mouse wheel while dragging in the Multiband display now ends the drag instead of
-  fighting it.** The wheel is a separate edit, and using it mid-drag left the drag holding a grab
-  point from before the wheel moved things — so the next twitch of the mouse undid what the wheel had
-  just done, or undid a change that had arrived from elsewhere. The wheel still does exactly what it
-  did; the drag you were holding simply finishes, and you re-grab.
-  Decision: ADR-0041. Regression coverage: State test 73. Evidence: PR #143. [Verified]
+- **Scrolling the mouse wheel while dragging in the Multiband display no longer fights the drag.**
+  The wheel used to be a separate edit, and using it mid-drag left the drag holding a grab point
+  from before the wheel moved things — so the next twitch of the mouse undid what the wheel had just
+  done, or undid a change that had arrived from elsewhere. The scroll is now part of the drag: it
+  moves the grab point with it, so the drag carries on from the new value instead of writing over
+  it. See the first entry under **Changed** for what that means to use.
+  Decision: ADR-0041, as superseded in part by ADR-0053. Regression coverage: State tests 73 and 80.
+  Evidence: PR #143. [Verified]
 - **A change to a band's Width that arrives while you are dragging that Width is no longer undone.**
   Dragging a band's width line remembers where you grabbed it and then follows your mouse from that
   grab point. If the same band's Width was changed by something else while you were still holding —

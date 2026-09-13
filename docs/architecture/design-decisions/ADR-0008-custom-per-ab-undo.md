@@ -41,7 +41,7 @@ cleared on session restore.
 
 ## Related code
 - `src/PluginProcessor.cpp:419-444, :340-520` (signature, coalesce, undo/redo, A/B)
-- `src/PluginProcessor.h:216-228, :144-171` (StateSet, UndoStacks, A/B members)
+- `src/PluginProcessor.h:310-322, :144-171` (StateSet, UndoStacks, A/B members)
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:

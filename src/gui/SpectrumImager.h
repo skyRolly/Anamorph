@@ -58,6 +58,13 @@ public:
     std::function<void()>    onClearSoloPreview;
     std::function<void()>    onSweep;
     std::function<bool()>    isSweeping;
+    // ADR-0053: a standalone scroll NAMES the control it edits while its change gesture is open, so
+    // the processor can keep the whole scroll as ONE undo step instead of one per notch. The
+    // PARAMETER is passed rather than a key, so the formula that turns a parameter into a name lives
+    // in exactly one place (`AnamorphAudioProcessor::wheelStepKeyFor`); `nullptr` un-names. A
+    // callback rather than a processor pointer for the same reason the four above are: this class
+    // knows the APVTS and nothing else about the plug-in.
+    std::function<void(const juce::AudioProcessorParameter*)> onWheelStep;
 
     // UI-animation flag now lives in InternalState (host-hidden), injected by the editor.
     void setAnimationSource (const std::atomic<float>* p) noexcept { animOnP = p; }
@@ -148,6 +155,18 @@ private:
     // behind it). Stamping twice in one press is two readings of the same row, which is the defect
     // this ADR is about; stamping twice with a PROVED record in force also destroys it.
     void  seedDragOrigins() noexcept;
+    // ADR-0052, round 11. The SAME derivation into a caller's array instead of into `dragOrigX`:
+    // the pure half of `seedDragOrigins`, for a pass that has to answer "would this move anything
+    // at all?" BEFORE it is allowed to establish any state. It reads the ownership record and
+    // nothing live (ADR-0047: the same reading that proves is the one that plans), writes no
+    // member and opens nothing, so asking costs a caller nothing it has to undo.
+    void  originsFromRecord (float* out) const noexcept;
+    // ...and the pure half of `beginBandMove`: which two splits a move of band `b` would steer,
+    // where they start, and the translation range the move would be clamped to. `beginBandMove`
+    // fills its own members from this, so the travel a caller measures in advance and the travel
+    // the move is actually clamped to cannot drift apart. No member written, no gesture opened.
+    struct BandMovePlan { int left, right; float startLeftX, startRightX, tmin, tmax; };
+    BandMovePlan bandMovePlan (int b, int n, const float* orig) const noexcept;
     void  captureGestureSound() noexcept;
     // ADR-0041. Store, then confirm IN PARAMETER SPACE that this store is what the parameter now
     // holds, and hand back the value to own. False means somebody wrote from inside the store.
@@ -170,7 +189,11 @@ private:
     bool  spreadSplits (const float* xs, const float* was, int count, int except, float pinNorm);
     // ADR-0046: `n` is the topology the caller proved; it sizes the plan so the burst's extent
     // and the per-store proof inside `writeCrossovers` come from ONE reading. -1 = read it here.
-    bool  dragCrossoverTo (int handle, float x, int n = -1);
+    // `landedX`, when given, reports where the projection actually PUT the pinned handle -- which
+    // is not `x` whenever the splits between it and the edge cannot fit behind it (ADR-0053,
+    // round 12). The wheel anchors from that rather than from its request; the mouse drag, which
+    // re-derives from the cursor every event and banks nothing, does not need it.
+    bool  dragCrossoverTo (int handle, float x, int n = -1, float* landedX = nullptr);
     // ADR-0048: `n` is the topology the CALLER derived `b` under, exactly as `bandAtX` and
     // `handleNearX` take one. -1 keeps the live read for callers that have no latch. Without it the
     // target index and the band edges came from two readings of `mbBands`, and a count raised
