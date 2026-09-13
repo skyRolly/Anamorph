@@ -262,7 +262,7 @@ juce::Rectangle<float> SpectrumImager::numberChip (int i) const noexcept
 // threads write, so the index could be answered under one topology and stamped with another --
 // and a stamp that names a topology the index was never derived in cannot detect anything.
 // Passing `n` in makes the two the same read by construction, which is the only way to close the
-// window without a lock: `SpectrumImager.cpp:2292` already relies on "handleNearX and addBandAt
+// window without a lock: `SpectrumImager.cpp:2997` already relies on "handleNearX and addBandAt
 // both return an index inside the count they read", and this is what makes that true of the
 // count the CALLER read rather than of some later one.
 // ADR-0051. AND THE SPLIT ROW IS ONE READING TOO. ADR-0046 made the COUNT one reading per pass and
@@ -699,12 +699,16 @@ void SpectrumImager::projectFromOrig (float* out, const float* orig, int count,
 // store's `bandCount() != gestureBands` refuses the whole burst) but does leave the burst's
 // extent and the burst's proof disagreeing, and an ABA return to the stamped count between the
 // two reads would let a plan sized under the wrong topology through. -1 keeps the live read.
-bool SpectrumImager::dragCrossoverTo (int handle, float x, int n)
+bool SpectrumImager::dragCrossoverTo (int handle, float x, int n, float* landedX)
 {
     const int M = (n >= 0 ? juce::jlimit (1, 4, n) : bandCount()) - 1;
     if (handle < 0 || handle >= M) return true; // nothing to steer is not a loss of ownership
     float out[3];
     projectFromOrig (out, dragOrigX, M, handle, x, -1, 0.0f);
+    // THE SAME READING THE STORES ARE MADE FROM (ADR-0047): `out[handle]` is the row this call is
+    // about to write, so reporting it is not a second projection and not a read-back -- there is
+    // nothing here for a foreign write to get between.
+    if (landedX != nullptr) *landedX = out[handle];
     return writeCrossovers (out, M);
 }
 // ADR-0048. THE TARGET AND ITS EDGES ANSWER UNDER ONE TOPOLOGY. `b` is derived by the caller --
@@ -3166,7 +3170,13 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     //
     //  NO DEAD TRAVEL, deliberately: each anchor is re-derived from a target that has ALREADY been
     //  clamped to the limit the store itself clamps to, so scrolling past the end of a control's
-    //  travel banks nothing the drag afterwards has to unwind.
+    //  travel banks nothing the drag afterwards has to unwind. The four branches reach that
+    //  property four different ways, and the difference is the whole of what round 12 found: the
+    //  band move pre-computes `bandTmin`/`bandTmax` from the neighbours (`bandMovePlan`), the
+    //  width clamps to the parameter's own `[0, 2]` and the store writes exactly that, the
+    //  standalone split re-seeds its origins from the proved row every tick -- and the in-press
+    //  split, alone, clamped to the FRAME edges, which is not where a packed neighbour lets the
+    //  pin land. It now anchors from the projection's answer instead; see its own branch.
     //
     //  AND THE UNDO STEP IS THE PRESS'S. Nothing here opens or closes a gesture, so `openGestures`
     //  never returns to zero mid-press and the whole drag-plus-notch interaction commits as ONE
@@ -3254,14 +3264,26 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
         {
             // The split drag steers `cursor - dragGrabDX` and nothing else -- `dragOrigX[handle]` is
             // consumed once, at the press, to compute that offset and never re-enters the pinned
-            // split's target. So `dragGrabDX` is the single variable, and clamping the target to the
-            // same travel `projectFromOrig` clamps a pin to means the anchor cannot bank travel the
-            // store would have refused anyway.
+            // split's target. So `dragGrabDX` is the single variable.
+            //
+            // AND THE FRAME EDGES ARE NOT THE STORE'S LIMIT (ADR-0053, round 12). The previous
+            // version of these lines clamped to `[lo, hi]` and anchored from THAT, on the stated
+            // grounds that it was "the same travel projectFromOrig clamps a pin to". It is not:
+            // the projection pushes every split between the pin and the edge aside by `kMinGapPx`
+            // each and then runs its ordering pass BACKWARDS, which pulls the PIN itself back to
+            // `hi - (M - 1 - handle) * kMinGapPx`. With the first of three splits scrolled right
+            // that is 92 px the anchor banked and the store refused -- nine notches to unwind at
+            // this size before the split moves again, and the same 92 px displacing the rest of
+            // the press's MOUSE drag, which reads this offset and never rewrites it. So the
+            // anchor is derived from where the projection actually put the handle, which is the
+            // ADR's own rule ("clamped to the same limit the store itself clamps to") applied to
+            // the limit that really binds. State test 80 leg G.
             const float lo = r.getX() + kMinGapPx, hi = r.getRight() - kMinGapPx;
             const float want = juce::jlimit (lo, hi,
                                              ((float) e.position.x - dragGrabDX) + dy * kWheelSplitPx);
-            dragGrabDX = (float) e.position.x - want;
-            if (! dragCrossoverTo (dragHandle, want, gestureBands)) { cancelActiveDrag(); return; }
+            float landed = want;
+            if (! dragCrossoverTo (dragHandle, want, gestureBands, &landed)) { cancelActiveDrag(); return; }
+            dragGrabDX = (float) e.position.x - landed;
         }
         else if (dragBand >= 0 && dragBand < (int) std::size (gestureW))
         {
@@ -3333,8 +3355,8 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     // arrived a few instructions later claims a topology it was never derived in, and every
     // later tick of the burst then compares against that claim and passes. `mouseDown` has always
     // read the count FIRST, at the top, before any branch derives anything from it, and
-    // `SpectrumImager.cpp:2292` relies on exactly that: "handleNearX and addBandAt both return an
-    // index inside the count they read" (`SpectrumImager.cpp:2362`). The wheel is now the same
+    // `SpectrumImager.cpp:2997` relies on exactly that: "handleNearX and addBandAt both return an
+    // index inside the count they read" (`SpectrumImager.cpp:2997`). The wheel is now the same
     // shape, and `N` is threaded into
     // the derivation so the count the index is derived under and the count it is stamped with are
     // ONE READ rather than two that usually agree. Bound, stamp, staleness test and the width
@@ -3526,7 +3548,7 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
         // reached from a latch proved at the top of the handler, with the whole tick in between.
         // WHAT A WIDTH STORE FOR A VANISHED BAND ACTUALLY COSTS, which is NOT what ADR-0045 says
         // at `resetParam`: `setParam` opens no gesture, so `parameterGestureChanged` never fires
-        // and `openGestures` never returns to zero (`PluginProcessor.cpp:812-825`) -- there is no
+        // and `openGestures` never returns to zero (`PluginProcessor.cpp:825-899`) -- there is no
         // undo step. That is worse, not better. The value is forwarded to the host as a parameter
         // change all the same, and it is folded into the committed baseline by the next poll with
         // no undo entry to reverse it; and because `MultibandWidth` glides only the widths the

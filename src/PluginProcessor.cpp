@@ -940,12 +940,30 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
     polledGen = gen;
 
     const auto sig = soundSignature();
+    if (seams.insidePollBody) seams.insidePollBody();   // test seam: land a host write HERE
 
     if (openGestures > 0)          // a user gesture is in progress -> never commit mid-gesture
     {
         lastPolledSig = sig;
         return;
     }
+
+    // ADR-0053, round 12. THE EDGE IS THE GENERATION OF THE SNAPSHOT, NOT OF THE POLL'S FIRST
+    // LINE. `gen` above was read before ~36 String formats and a whole-tree copy; `committed` is
+    // captured from the LIVE parameters at the end of them. A host write landing in between is
+    // therefore INSIDE the baseline this poll commits while `gen` does not name it -- and the next
+    // gesture, comparing against `gen`, reads a batch nothing foreign touched as carrying somebody
+    // else's write, goes unnamed, and makes the notch after it a second undo step. Each branch
+    // that refreshes `committed` re-reads the counter immediately before doing so, and the tail
+    // publishes THAT. A branch that refreshes nothing keeps `gen`, which is what it has always
+    // been. State test 86 leg U.
+    //
+    // The residual is one-directional and stays that way: a write landing between this read and
+    // the copy's last parameter is in `committed` but not in the edge, so it is marked foreign --
+    // an extra undo step, never automation merged into a user's. Reading AFTER the copy instead
+    // would swap that for the opposite error, and the opposite error is the one ADR-0053 §3 and
+    // leg O exist to prevent.
+    juce::uint32 edgeGen = gen;
 
     if (pendingGestureCommit)      // exactly ONE undo step per finished gesture (knob or band move)
     {
@@ -962,34 +980,54 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
         pendingStepNamed = false;
         if (sig != committedSig)
         {
-            // ADR-0053. A CONTINUING SCROLL EXTENDS ITS STEP INSTEAD OF PUSHING ANOTHER. The entry
-            // already on the stack holds the state from before the FIRST notch of this scroll, so
-            // not pushing -- and letting the lines below move the baseline on -- is precisely "keep
-            // the original starting value, replace only the ending value". `undo.empty()` cannot
-            // hold here with a matching name (every path that empties the stack clears the name
-            // too), and is tested anyway so the invariant is enforced rather than assumed.
-            // ...AND A STEP THAT CARRIES A FOREIGN WRITE EXTENDS NOTHING (ADR-0053, round 11).
-            // Extending replaces the ENDING value of a step the user already finished, so a host
-            // write that arrived in the commit window would be spliced into it: one Undo would then
-            // take back both the scroll and the automation, and the automation would have been
-            // attributed to a scroll it had nothing to do with. `foreign` says exactly that
-            // happened, and a batch carrying one is nobody's scroll. State test 86 leg O.
-            const bool extend = stepKey != 0 && stepKey == lastStepWheelKey && ! foreign
-                                && ! abUndo[abActive].undo.empty();
-            if (! extend)
+            // WHY THE PUSH ASKS THE SIGNATURE AND NOT `edited` -- round 12 tried the other way and
+            // the suite refused it. A press that opens and closes without moving a value still
+            // requests a commit, so a batch that edited nothing can still record a step whose only
+            // content is a gesture-less write beside it (State test 86 leg V measures exactly
+            // that, and one Undo does take that write back). Gating the push on `edited` removes
+            // it -- and breaks two measured behaviours that depend on the signature rule:
+            //   * a DOUBLE-CLICK reset has no gesture of its own (`Knob::mouseDoubleClick` calls
+            //     `doReset` bare, after JUCE has already closed the press's), so it is undoable
+            //     ONLY because the empty press's pending commit finds the moved signature -- leg K
+            //     pins that, and the gate makes the reset unundoable;
+            //   * a burst whose own store was REFUSED leaves the host's write to be recorded, and
+            //     that step is what stops the next Undo from reaching past it into the previous
+            //     scroll -- leg I and leg J pin that, and the gate takes the boundary away, so one
+            //     Undo walks back through the automation into the user's earlier step.
+            // Both faces are the same ADR-0008 consequence finding 4 records: an undo entry is a
+            // whole-state snapshot, so a foreign write is either inside the user's step or has a
+            // step of its own, and there is no third answer while that is what an entry is.
             {
-                abUndo[abActive].undo.push_back (committed);   // the PREVIOUS state set (name + baseline, #6)
-                if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
+                // ADR-0053. A CONTINUING SCROLL EXTENDS ITS STEP INSTEAD OF PUSHING ANOTHER. The entry
+                // already on the stack holds the state from before the FIRST notch of this scroll, so
+                // not pushing -- and letting the lines below move the baseline on -- is precisely "keep
+                // the original starting value, replace only the ending value". `undo.empty()` cannot
+                // hold here with a matching name (every path that empties the stack clears the name
+                // too), and is tested anyway so the invariant is enforced rather than assumed.
+                // ...AND A STEP THAT CARRIES A FOREIGN WRITE EXTENDS NOTHING (ADR-0053, round 11).
+                // Extending replaces the ENDING value of a step the user already finished, so a host
+                // write that arrived in the commit window would be spliced into it: one Undo would then
+                // take back both the scroll and the automation, and the automation would have been
+                // attributed to a scroll it had nothing to do with. `foreign` says exactly that
+                // happened, and a batch carrying one is nobody's scroll. State test 86 leg O.
+                const bool extend = stepKey != 0 && stepKey == lastStepWheelKey && ! foreign
+                                    && ! abUndo[abActive].undo.empty();
+                if (! extend)
+                {
+                    abUndo[abActive].undo.push_back (committed);   // the PREVIOUS state set (name + baseline, #6)
+                    if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
+                }
+                abUndo[abActive].redo.clear();
+                // Recorded only where a step was actually recorded: a gesture that changed nothing has
+                // not interrupted the scroll, so it must not end the chain either. A step carrying a
+                // foreign write is named by nobody, so the NEXT notch starts its own step rather than
+                // merging across the automation (ADR-0053 round 11, section 5.3's "no intervening
+                // non-wheel sound modification").
+                lastStepWheelKey = foreign ? 0 : stepKey;
             }
-            abUndo[abActive].redo.clear();
+            edgeGen = soundParamGen.load (std::memory_order_relaxed);   // ...the snapshot's own edge
             committed = currentStateSet();
             committedSig = sig;
-            // Recorded only where a step was actually recorded: a gesture that changed nothing has
-            // not interrupted the scroll, so it must not end the chain either. A step carrying a
-            // foreign write is named by nobody, so the NEXT notch starts its own step rather than
-            // merging across the automation (ADR-0053 round 11, section 5.3's "no intervening
-            // non-wheel sound modification").
-            lastStepWheelKey = foreign ? 0 : stepKey;
         }
         // ...AND AN EDIT THAT PUT THE SOUND BACK WHERE IT FOUND IT STILL ENDS THE CHAIN (round 11).
         // The name is recorded only where a step is, which is right for a gesture that changed
@@ -1008,19 +1046,26 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
     }
     else if (sig != committedSig)  // NON-gesture change (host automation / programmatic): fold into
     {                              // the baseline WITHOUT creating an undo step (automation is not undoable)
+        edgeGen = soundParamGen.load (std::memory_order_relaxed);   // ...the snapshot's own edge
         committed = currentStateSet();
         committedSig = sig;
         lastStepWheelKey = 0;      // ADR-0053: a change that is not this scroll's ends the chain
     }
 
     lastPolledSig = sig;
-    // ADR-0053, round 11. A POLL IS A GESTURE EDGE TOO: everything up to THE LOAD AT THE TOP OF
-    // THIS POLL has been accounted for -- committed as a step, or folded into the baseline -- so
-    // the next batch's foreign test starts from there rather than from a close that may be several
-    // polls old. Not "from this instant", said the narrower way deliberately: a write landing while
-    // the poll body runs is swallowed by the edge rather than marked foreign, which is inherent to
-    // reading the counter once and is the same window every other relaxed read here accepts.
-    gestureEdgeGen   = gen;
+    // ADR-0053, round 11. A POLL IS A GESTURE EDGE TOO: everything this poll has accounted for --
+    // committed as a step, or folded into the baseline -- is behind the edge, so the next batch's
+    // foreign test starts from here rather than from a close that may be several polls old.
+    //
+    // ROUND 12 CORRECTED WHERE "HERE" IS, and the sentence that used to stand in this place was
+    // false: it said a write landing while the poll body runs is "swallowed by the edge rather
+    // than marked foreign", which describes a FRESH load at this line -- the option the same
+    // sentence said it had rejected. The line assigned the TOP-of-poll sample, so such a write was
+    // marked foreign, and the scroll after it was split in two. The edge is now the generation
+    // read immediately before the snapshot that absorbed the write, or the top-of-poll sample when
+    // no snapshot was taken; see the block above `pendingGestureCommit` for why the remaining
+    // window can only over-report.
+    gestureEdgeGen   = edgeGen;
     foreignSinceEdge = false;
 }
 

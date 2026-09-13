@@ -117,15 +117,28 @@ public:
     // So a saved-and-restored key would restore 0 at every exit this code can reach, and a
     // restoring destructor would be a mechanism with no second caller to justify it.
     //
-    // THE ONE INTERLEAVING THAT IS NOT STRUCTURAL, and restoring the key would make it WORSE rather
-    // than better: a host that pumps the OS message loop from inside `beginChangeGesture` or
-    // `setValueNotifyingHost` -- both of which the knob's scope spans -- could deliver a queued
-    // notch over a DIFFERENT control inside this one. Follow it through. The inner notch opens its
-    // own gesture while this one is still open, so `parameterGestureChanged` counts 1 -> 2, and its
-    // close counts 2 -> 1: it latches NOTHING, because the latch runs only where the count returns
-    // to ZERO. The single latch is therefore the OUTER close, and it reads the key the inner
-    // scope's exit has just cleared -- so the batch is unnamed and the next notch starts its own
-    // step. One extra undo step, in a scroll, under a host that pumps the loop mid-dispatch.
+    // THE ONE INTERLEAVING THAT IS NOT STRUCTURAL, and for a notch over a DIFFERENT control
+    // restoring the key would make it WORSE rather than better: a host that pumps the OS message
+    // loop from inside `beginChangeGesture` or `setValueNotifyingHost` -- both of which the knob's
+    // scope spans -- could deliver a queued notch over another control inside this one. Follow it
+    // through. The inner notch opens its own gesture while this one is still open, so
+    // `parameterGestureChanged` counts 1 -> 2, and its close counts 2 -> 1: it latches NOTHING,
+    // because the latch runs only where the count returns to ZERO. The zero-crossing close is
+    // therefore the outer one (or, when a foreign gesture was already open, that gesture's own
+    // release), and it reads the key the inner scope's exit has just cleared -- so the batch is
+    // unnamed and the next notch starts its own step.
+    //
+    // TWO extra undo steps mid-scroll, not one, and the count is worth stating because both
+    // clauses above cost one each: the unnamed batch cannot extend (`stepKey != 0` fails), and the
+    // poll then records `lastStepWheelKey = 0`, so the notch AFTER it cannot extend either. One
+    // extra step if the interruption lands on the scroll's first notch, and one if both batches
+    // fall inside a single 24 Hz poll period and collapse.
+    //
+    // AND THE SUB-CASE THE PARAGRAPH ABOVE DOES NOT COVER: a queued notch over the SAME control.
+    // There, restoring would be strictly better -- the scroll would stay one step -- and clearing
+    // splits it. Neither policy dominates; clearing errs toward extra undo steps and restoring
+    // errs toward swallowing another control's edit, and the rule below picks the former
+    // deliberately.
     //
     // Restore the key and that same latch names the batch after the OUTER control -- a batch that
     // also contains the INNER control's edit, because the inner gesture closed inside it. The next
@@ -196,10 +209,16 @@ public:
     // loop, WITH THE LOCK HELD: a harness may sample state or arm another thread from there, but
     // must never join or wait on a thread that itself performs a whole-sound replacement, because
     // that thread is blocked on this one.
+    //
+    // `insidePollBody` fires inside `pollUndoCoalesceAdopted`, after the signature has been built
+    // and before `committed` is captured -- the window in which a host write is absorbed by the
+    // capture while the generation the poll started from does not name it. It is the only place a
+    // deterministic harness can put a write, because nothing the poll body calls re-enters a
+    // parameter write, so the race is otherwise cross-thread only (State test 86 leg U).
     struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake, beforeRestorePut,
                                         afterRestoreSoundApplied, beforeSoundReplacementWrites,
                                         atRelativeDecision, insideSoundReplacement,
-                                        betweenStateSetApplyAndMeta; };   // ADR-0037: proves no live read
+                                        betweenStateSetApplyAndMeta, insidePollBody; };   // ADR-0037: proves no live read
     Seams seams;
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.

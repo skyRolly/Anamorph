@@ -65,6 +65,21 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **Scrolling a Multiband split that is packed against its neighbours no longer banks movement you
+  have to scroll back through.** A split can only travel until the splits between it and the edge run
+  out of room, and the wheel was measuring against the edge of the display instead — so once the
+  split stopped moving, the notches kept counting. Nine of them, with three splits, before anything
+  happened again, and the rest of that mouse drag was displaced by the same amount. The wheel now
+  counts from where the split actually landed, so one notch back always moves it and the drag after a
+  blocked notch carries on normally. Splits that were not blocked behave exactly as before.
+  Decision: ADR-0053. Regression coverage: State test 80 leg G. Evidence: PR #144. [Verified]
+- **A scroll is no longer split into two Undo steps when your DAW writes a parameter at the wrong
+  moment.** The plug-in checks 24 times a second whether anything changed, and an automation value
+  arriving while that check was running was folded into the plug-in's own record but not counted as
+  having been — so the next notch you scrolled looked like it was carrying somebody else's change,
+  and the notch after it started a second Undo step. Pressing Undo once then stopped in the middle of
+  your scroll instead of returning to where it began. A whole scroll is one Undo step again.
+  Decision: ADR-0053. Regression coverage: State test 86 legs U and U2. Evidence: PR #144. [Verified]
 - **An Option/Alt-click on a control that is already at its default no longer tells your DAW you
   touched it.** The reset was bracketed as an edit whether or not there was anything to reset, so a
   DAW recording in Touch or Latch punched in and wrote an automation point for a control that never

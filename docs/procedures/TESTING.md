@@ -1409,6 +1409,61 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   everything the legs exercise. **The rule: a stamp that must be shared has to be unique to the
   leg sharing it, or running the legs faster changes what they measure.**
 
+  **Legs U and U2 are the poll's own boundary, and they need a seam because nothing else can reach
+  it.** The poll samples the sound generation on its first line, builds the signature, and only then
+  captures `committed` from the live parameters — so a host write landing in between is inside the
+  baseline the poll commits while the sampled generation does not name it, and the next gesture reads
+  a clean batch as carrying somebody else's write. Nothing the poll body calls re-enters a parameter
+  write (the signature only reads; `currentStateSet` copies the tree and JUCE suppresses its own
+  write-back callback while flushing), so the race is cross-thread only and no reordering of calls in
+  a leg can produce it. `Seams::insidePollBody` fires once, immediately after the signature is built,
+  and the legs arm a one-shot gesture-less write there. That is faithful rather than a shortcut:
+  every consumer of this window reads only the relaxed counter and live parameter values, so a write
+  made on the test thread at that program point is indistinguishable from a host write that landed
+  there. Leg U lands it in the poll's non-gesture FOLD; leg U2 lands it in the branch that COMMITS a
+  step. Two legs because the edge is taken on two lines and one leg cannot kill both — M41 and M42
+  each survive the other's leg.
+
+  **What legs U and U2 cannot measure, stated rather than implied:** real concurrency. The counter is
+  read `std::memory_order_relaxed` throughout, so nothing here proves that a write counted in
+  generation G is visible to a signature read taken after G was observed; that guarantee is not in
+  the memory model and is not tested. What the legs prove is the ORDERING of the reads inside the
+  poll, which is the half the fix is about.
+
+  **Legs V and W are MEASUREMENTS, and they print rather than assert**, in the shape leg O
+  established. Leg V is an empty press batched with a gesture-less host write: the step it records
+  contains only that write, and one Undo takes the write back. Leg W is a host write that the
+  RENDERED signature calls no change — a sub-step nudge on a choice parameter, which the leg verifies
+  really does render identically before using it — which still ends a scroll's chain because
+  `foreignSinceEdge` counts raw stores. Both are recorded in `docs/FUTURE_RISKS.md` (RISK-012 and
+  RISK-013) rather than asserted as correct, because neither has a fix that costs less than it.
+  **Leg V's own history is why it is a measurement:** the round that added it first shipped a fix —
+  gate the undo push on whether the batch edited anything — and the suite refused it. Leg K's
+  double-click reset has no gesture of its own and is undoable only through the signature rule, and
+  legs I and J depend on the step a refused burst records to stop the next Undo reaching past the
+  automation. All three failed under the gate, and the gate was withdrawn. Leg V asserts the half
+  that survives: the step stands between the automation and the scroll before it.
+
+  **State test 80 leg G is the packed split.** The in-press split wheel clamped its target to the
+  frame edges and anchored from that, which is not the limit the store applies: `projectFromOrig`
+  pushes the splits between the pin and the edge aside by `kMinGapPx` each and then runs its ordering
+  pass backwards, pulling the PIN back to `hi - (M - 1 - handle) * kMinGapPx`. The leg presses the
+  first of three splits, scrolls it hard right until the store refuses (proved by a notch that moves
+  nothing), and then asserts the two things the bank costs: ONE notch back must move it, and the
+  MOUSE drag after it must not be dead either — `dragGrabDX` is the offset the drag steers by, and
+  the notch is the only thing that rewrites it. Measured before the fix: 92 px banked, nine notches
+  back before the split moved at all, and 20 px of cursor travel leaving it parked at 8440.1 Hz. A
+  control stanza scrolls a split whose target was feasible all along and checks that each notch moves
+  it and one notch back returns it, so the fix is shown to change nothing where the old clamp was
+  already right.
+
+  **One fixture constraint the first version of leg G got wrong, recorded rather than deleted:** the
+  saturation notch must not be the one the "ONE notch back" check is measured against. With the
+  parked value read BEFORE a notch that still moved the split, an up/down pair could cancel out and
+  the leg failed against a working fix. Forty notches also did not saturate the travel — 11.2 px each
+  against more than 600 px of room — so the leg now scrolls 160 and takes its baseline after a notch
+  that provably moved nothing.
+
   **Leg D is the standalone half of the value box**, and it is about the FORWARD rather than the box:
   a notch over the box is not handled by the box at all — `juce::Component::mouseWheelMove` hands it
   to the parent Slider, which names the control by its parameter. So a notch over the knob and a
@@ -1506,6 +1561,11 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M37 | the knob's in-drag duplicate-event filter removed | 88 leg L, 1 check |
   | M38 | the value box's removed | 88 leg L, 1 check |
   | M39 | a state jump stops re-syncing the gesture-edge generation | 86 leg T, 1 check |
+  | M40 | the poll publishes its FIRST-LINE sample as the gesture edge again | 86 legs U and U2, 2 checks |
+  | M41 | the non-gesture fold stops taking the edge at its own snapshot | 86 leg U, 1 check |
+  | M42 | the committing branch stops taking the edge at its own snapshot | 86 leg U2, 1 check |
+  | M43 | the split wheel anchors from its REQUEST again instead of the projection's answer | 80 leg G, 2 checks |
+  | M44 | `dragCrossoverTo` reports the argument rather than the projected row | 80 leg G, 2 checks |
 
   **M34 is the row that proves the sweep is worth running twice.** Against the FIRST version of
   leg R it SURVIVED -- the leg pressed at the lane's middle, where no width drag is latched, so

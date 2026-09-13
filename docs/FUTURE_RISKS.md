@@ -333,6 +333,62 @@ Create the next `RISK-NNN` only when a TODO/FIXME, issue, PR discussion, or conc
 supports it. State the likelihood **basis**, cite evidence with a confidence level, and give a
 mitigation. Do not invent risks to fill the template.
 
+## RISK-012 — An undo entry is a whole state, so a host write inside a user's step is undone with it
+- **Risk:** an undo entry is a whole `StateSet` snapshot (ADR-0008), and `pollUndoCoalesce` pushes
+  the PREVIOUS snapshot whenever the signature moved (`src/PluginProcessor.cpp:963-1035`). A
+  gesture-less host write that lands inside a pending step's window is therefore inside the step:
+  the entry behind it predates the write, so one Undo takes the automation back along with the
+  user's edit. ADR-0053's foreign-write rule fixes the ATTRIBUTION — no user step is retroactively
+  edited and no scroll chain merges across automation — but attribution cannot separate a value
+  from a snapshot that contains it.
+- **Reach:** five timings, and they differ. Automation landing while a gesture is OPEN is inside
+  the step unconditionally, because the poll refuses to fold while `openGestures > 0`
+  (`src/PluginProcessor.cpp:944-948`) — for a long knob drag that window is the whole drag. The
+  other timings need the write to fall in the ≤42 ms gap between a gesture edge and the next 24 Hz
+  poll. A second face of the same consequence: a press that edits nothing still records a step when
+  a gesture-less write moved the signature beside it, and that step's only content is the write.
+- **Impact:** a transient wrong value on a parameter the user did not touch. Bounded: no state is
+  corrupted, Redo restores it, the host's automation data is never modified, and a running lane
+  repairs the value on its next block. With the transport stopped, or on a latch-mode or
+  control-surface write, the stale value stands until something writes it again.
+- **Why it is not fixed here.** Three options were weighed in round 12 of the ADR-0053 review and
+  all three cost more than the residual. A whole-state snapshot taken as the gesture closes has to
+  be taken inside `parameterGestureChanged`, where `docs/policies/THREADING_POLICY.md` and ADR-0036
+  forbid the APVTS lock — a lock-order inversion `--d2-stress-probe` has already reported. Patching
+  the pushed baseline per parameter from a foreign-write set is lock-free and therefore NOT blocked
+  by that rule, but it changes what an undo entry means for every gesture in the plug-in, it
+  cannot distinguish `dragCrossoverTo`'s pushed neighbour splits from automation, and `redo()`
+  pushes an unpatched snapshot, so undo and redo stop round-tripping. Gating the push on whether
+  the batch edited anything removes the second face and breaks two measured behaviours: the
+  double-click reset, which has no gesture of its own, and the refused burst whose recorded step is
+  what stops the next Undo reaching past the automation into the previous scroll. All three of
+  those failed in the suite and the gate was withdrawn.
+- **Mitigation:** recorded and measured rather than fixed. State test 86 leg O prints the value on
+  every run, leg V prints the empty-press face, and ADR-0053's "What this does NOT do" section
+  carries the reasoning. Changing it is an **ADR-0008 decision for a maintainer** — what an undo
+  entry IS — and an Architecture-Review-Gate item, not a wheel fix.
+
+## RISK-013 — The foreign-write test counts raw parameter stores where everything else asks the rendered value
+- **Risk:** `foreignSinceEdge` is set when `soundParamGen` moved between two gesture edges
+  (`src/PluginProcessor.cpp:841-858`), and `parameterValueChanged` bumps that counter for every
+  store (`src/PluginProcessor.h:252-255`). Every other "did the sound change" test in the plug-in
+  asks `soundSignature()`, which signs the RENDERED value — `convertTo0to1 (convertFrom0to1 (v))`,
+  which snaps to the parameter's own grid (`src/PluginParameters.h:130-141`). A host write inside
+  one step of a discrete parameter, or inside one interval of a float one, therefore moves the
+  counter and not the signature.
+- **Impact:** a scroll chain is ended by a write that changes nothing audible, so each further notch
+  becomes its own undo step while such a lane is moving. The poll's own non-gesture branch, gated
+  on `sig != committedSig`, would have left the chain alone for that same write — the two halves of
+  the rule disagree. Undo granularity only: no lost edit, no wrong value.
+- **Why it is not fixed here.** Making the two agree means rendering inside
+  `parameterValueChanged`, which the header records as reachable from the AUDIO THREAD, and
+  comparing against a per-parameter cache. That is a realtime question (the skew math for a log
+  range is transcendental) and a change to the meaning of a cross-thread counter that
+  `PresetManager::isDirty` and the poll's own skip both depend on — not a wheel fix, and wider than
+  the review that found it.
+- **Mitigation:** recorded and measured. State test 86 leg W drives a sub-step write on a choice
+  parameter, checks that the rendered value really did not move, and prints the split it causes.
+
 ## RISK-006 — Undeclared licensing (no LICENSE, no approved EULA, JUCE tier unchosen)
 - **Risk:** The repository root has **no `LICENSE` file** and neither installer presents an
   end-user agreement, so the terms under which Anamorph's own source and binaries are offered are

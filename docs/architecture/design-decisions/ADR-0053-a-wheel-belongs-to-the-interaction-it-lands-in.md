@@ -263,13 +263,30 @@ notch starts its own step rather than merging across the automation. State test 
 mutations M26 and M29.
 
 **What this does NOT do, stated plainly because the review asked for it.** The automation's VALUE is
-still inside the step the poll records, so one Undo takes it back along with the scroll. Separating
-it needs the state as it stood when the gesture closed, and the only place to take that snapshot is
-inside `parameterGestureChanged` — where D-2/ADR-0036 forbids the APVTS lock, a lock-order inversion
-against a host-thread `replaceState` that `--d2-stress-probe` has already reported. The alternative,
-patching the pushed baseline per parameter from a foreign-write set, is a change to what an undo
-entry MEANS for every gesture in the plug-in, not a wheel fix; it is recorded here as the open
-question it is rather than taken on the way past. What is fixed is the attribution: no step of the
+still inside the step the poll records, so one Undo takes it back along with the scroll. Two ways out
+were weighed and both are refused. A whole-state snapshot taken as the gesture closed would have to
+be taken inside `parameterGestureChanged` — where D-2/ADR-0036 forbids the APVTS lock, a lock-order
+inversion against a host-thread `replaceState` that `--d2-stress-probe` has already reported.
+Patching the pushed baseline per parameter from a foreign-write set is **not** blocked by that lock
+(round 12 checked: `parameterValueChanged` already receives the index it discards, and a `fetch_or`
+into an atomic mask is lock-free) — it is blocked by what it would MEAN, which is the stronger
+objection: an undo entry would stop being a state that ever existed, `dragCrossoverTo`'s pushed
+neighbour splits are indistinguishable from automation by the only classifier available, and
+`redo()` pushes an unpatched snapshot, so undo and redo would no longer round-trip. It is recorded
+here as the open question it is rather than taken on the way past.
+
+**And the residual is ADR-0008's, not this ADR's.** It exists because an undo entry is a whole
+`StateSet` snapshot; every wheel rule above is about ATTRIBUTION — which step a write belongs to —
+and attribution cannot separate a value from a snapshot that contains it. Round 12 found the same
+consequence wearing a second face: a press that edits nothing still records a step when a
+gesture-less write moved the signature beside it (State test 86 leg V), and that step's only content
+is the write. Gating the push on "did this batch edit anything" removes that face and breaks two
+others — the double-click reset, which has no gesture of its own and is undoable ONLY through the
+signature rule (leg K), and the refused burst whose recorded step is what stops the next Undo
+reaching past the automation into the previous scroll (legs I and J). Measured rather than reasoned:
+all three failed under the gate, and it was withdrawn. While an undo entry is a whole state, a
+foreign write is either inside the user's step or is a step of its own, and there is no third
+answer. Changing that is an ADR-0008 decision for a maintainer, not a wheel fix. What is fixed is the attribution: no step of the
 user's is retroactively edited, and no chain merges across automation. Leg O prints the measurement
 each run (`after one Undo the host's Width reads 1.0000 (it wrote 1.4000...)`) so the residual is
 visible rather than asserted away.
@@ -313,12 +330,76 @@ writing widths. State test 86 legs Q and R; mutations M32, M33 and M34.
 and that is the right answer.** 0 is what it found. There are three construction sites and no call
 chain joins any two: the imager's two are mutually exclusive branches of one handler, and
 `juce::Component::mouseWheelMove` forwards UP only, with no `Knob` a descendant of another. The one
-non-structural interleaving — a host pumping the message loop from inside `beginChangeGesture` and
-delivering a queued notch over a different control — leaves the outer step unnamed either way,
-because the disagreement rule already unnames a batch holding two differently-named gestures; it
-would take the host running the 24 Hz poll inside that same pumped loop for the restored key to name
-anything, at a cost of one extra undo step. Recorded in the source at the destructor rather than
-hardened: three lines no reachable path exercises and no test can fail.
+non-structural interleaving is a host pumping the message loop from inside `beginChangeGesture` and
+delivering a queued notch over a different control. Recorded in the source at the destructor rather
+than hardened: three lines no reachable path exercises and no test can fail.
+
+> **Corrected in round 12, because the two clauses this paragraph used to end with were false and
+> the source comment they came from had already retracted them.** They said the interleaving "leaves
+> the outer step unnamed either way, because the disagreement rule already unnames a batch holding
+> two differently-named gestures", and that "it would take the host running the 24 Hz poll inside
+> that same pumped loop for the restored key to name anything". Neither holds. The disagreement rule
+> lives inside the `--openGestures == 0` branch, and the INNER close counts 2 to 1, so it never
+> reaches that branch and the rule never fires here. And a restored key would be read immediately,
+> by the zero-crossing close's own latch — no poll is involved in naming at all. With a restoring
+> destructor the batch would be NAMED, not unnamed, and the name would claim a batch that also holds
+> the other control's edit; since an undo entry is a whole state, one Undo of the scroll would then
+> revert that edit too. That is the real reason the cleared key is right. The cost of clearing is
+> **two** extra undo steps mid-scroll, not one — the unnamed batch cannot extend, and the poll's
+> `lastStepWheelKey = 0` stops the notch after it extending either — and there is one sub-case the
+> paragraph does not cover: a queued notch over the SAME control, where restoring would keep the
+> scroll whole and clearing splits it. Neither policy dominates; clearing errs toward extra undo
+> steps, restoring errs toward swallowing another control's edit, and this ADR picks the former.
+
+### What a fourth review round changed, and the one fix it withdrew
+
+**1. The poll's edge was the generation of its FIRST LINE, not of the snapshot it commits.**
+`pollUndoCoalesceAdopted` samples `soundParamGen`, builds the ~36-string signature, and only then
+captures `committed` from the LIVE parameters. A host write landing in between is therefore inside
+the baseline the poll commits while the sampled generation does not name it — so the next gesture,
+comparing against that stale edge, read a batch nothing foreign had touched as carrying somebody
+else's write, went unnamed, and made the notch after it a second undo step: the same two-notch
+scroll becoming two steps that round 11's leg T was written for, arriving from a different
+direction. Each branch that refreshes `committed` now re-reads the counter immediately before doing
+so and the tail publishes that; a branch that refreshes nothing keeps the top-of-poll sample. The
+remaining window is one-directional by construction — a write landing between the read and the
+copy's last parameter is marked foreign, an extra undo step, never automation merged into a user's —
+and reading after the copy instead would swap that for the opposite error, which is the one §3
+exists to prevent. Cross-thread only: nothing the poll body calls re-enters a parameter write, so
+State test 86 legs U and U2 place the write through the `insidePollBody` seam. Mutations M40, M41
+and M42.
+
+**2. The in-press split wheel banked travel the store refused, and this ADR's own words say it must
+not.** The table above promises every anchor is re-derived from a target "clamped to the same limit
+the store itself clamps to". The split branch clamped to the FRAME edges, which is not that limit:
+`projectFromOrig` pushes the splits between the pin and the edge aside by `kMinGapPx` each and then
+runs its ordering pass backwards, which pulls the PIN back to `hi - (M - 1 - handle) * kMinGapPx`.
+With the first of three splits scrolled right that is 92 px banked and refused — nine notches to
+unwind before the split moves again, and the same 92 px displacing the rest of the press's MOUSE
+drag, which reads that offset and never rewrites it. `dragCrossoverTo` now reports where the
+projection actually put the handle, and the anchor is derived from that. No second projection: the
+reported value is `out[handle]`, the very row the stores are made from (ADR-0047). This APPLIES the
+Decision rather than changing it. State test 80 leg G; mutations M43 and M44. The other three wheel
+branches already obeyed the rule by three different mechanisms, and the in-source paragraph now says
+which — the blanket claim was true of them and false of this one.
+
+**3. `ScopedWheelStep` was re-examined and REFUTED again**, and this time the ADR's own
+justification was the thing that had to change: see the correction above.
+
+**4. One fix was withdrawn after the suite refused it.** Gating the undo push on whether the batch
+actually edited anything looked right, and broke the double-click reset and the refused-burst
+boundary. Recorded above under "the residual is ADR-0008's", because that is what it turned out to
+be rather than a wheel defect.
+
+**5. One residual is new and is recorded rather than fixed.** `foreignSinceEdge` is derived from the
+raw sound generation, which `parameterValueChanged` bumps for every store; every other "did the
+sound change" test in this plug-in asks the RENDERED signature, which snaps to the parameter's own
+grid. A host write inside one step of a discrete parameter — or inside one interval of a float one —
+therefore moves the counter and not the signature, and ends a scroll's chain that the poll's own
+non-gesture branch would have left alone. Making the two agree means rendering inside
+`parameterValueChanged`, which the header records as reachable from the AUDIO THREAD, so it is a
+realtime and cross-thread-counter question rather than a wheel one. State test 86 leg W prints the
+measurement on every run.
 
 ## Consequences
 

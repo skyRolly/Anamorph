@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1165`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1210`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:1613`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:1658`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1428`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1473`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -9915,7 +9915,7 @@ the working tree: 0 files missing, 0 lines past EOF, 0 pointing at unrelated cod
 
 **MUST FIX — one, and the scanners did not report it.** PREfast's four `C6001` results are false
 positives, but auditing the second pair's surface found a real one three functions away:
-`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:657) validated its pin arguments
+`SpectrumImager::projectFromOrig` (src/gui/SpectrumImager.cpp:661) validated its pin arguments
 against `count` when *writing* them and not when computing `leftPin`/`rightPin`, so a stale pin
 survived into the pull loops and `out[k + 1]` read a slot the copy loop never wrote. Reachable:
 `beginBandMove` (:398) latches `soloMoveLeft`/`soloMoveRight` from the band count at the press;
@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:1274 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:1278 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1587`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1591`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10033,7 +10033,7 @@ that the fix covered one direction only. Both are settled here.
 
 **A SECOND defect, and the scanners never saw it either.** `dragOrigX` (src/gui/SpectrumImager.h:249)
 is the drag-start x of every split, seeded once when a gesture begins and read for the whole gesture.
-Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:702)
+Both consumers re-read a **live** `bandCount()`: `dragCrossoverTo` (src/gui/SpectrumImager.cpp:704)
 and `moveBand` (:827). All four seeding sites wrote only `dragOrigX[0 .. bandCount() - 2]` — the
 splits in USE at the press — so a host write of `mbBands` that **raised** Bands mid-gesture made the
 consumers ask `projectFromOrig` for origins nobody had written. Those slots still held the `{0,0,0}`
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1274 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1278 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10809,7 +10809,7 @@ change, and no Accepted ADR conflict. [Verified]
 topology count commit may still report success"*, and its converse for `setSoloMask`.
 
 **Ruled B — already prevented, invariant documented.** Both halves are true of the code:
-`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:837`) and
+`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:841`) and
 `setSoloMask` returns `stored && soloMask() == mask` (`:662`), so each re-reads only its own
 parameter after its own dispatches even though both prove BOTH on the near side. What covers it is
 the **callers** — every one that acts on the result re-proves the other parameter on its next line,
@@ -11171,9 +11171,12 @@ It is out of this round's scope and belongs with its own probe measurement. Work
 **Documentation.** `ADR-0050` (amended — no new decision, the same rule at the two sites it had
 escalated); `CHANGELOG.md` `[0.9.8] ### Fixed`; `TESTING.md` (State test 83, its four legs and the
 ensemble mutation record); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §58 and
-§59. One citation re-aim: `dragCrossoverTo` moved from `src/gui/SpectrumImager.cpp:702` to `:619`
-when `bandSoloed`'s definition was deleted, corrected in both the anchor and the `DELIBERATE_REAIMS`
-declaration.
+§59. One citation re-aim: `dragCrossoverTo` moved from line 702 to line 619 of
+`src/gui/SpectrumImager.cpp` when `bandSoloed`'s definition was deleted, corrected in both the
+anchor and the `DELIBERATE_REAIMS` declaration. (Written out in words rather than as
+`path:line`, because it is a record of where the anchor USED to point and not an anchor itself --
+the citation gate cannot tell the two apart, and read it as a live aim until round 12 edited the
+line it named.)
 
 **Gate status.** Not a gate item and no new ADR: no accepted decision changes, no parameter ID,
 serialization, threading-model, DSP-order or reported-latency change, no lock and no allocation. Both
@@ -11714,3 +11717,68 @@ leg L bases its shared timestamp past `getCurrentTime()`);
 `originsFromRecord` and `bandMovePlan`; `src/PluginProcessor.h` records the `ScopedWheelStep`
 disposition at the destructor;
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §68. [Verified]
+
+### Thirtieth pass — the review of the review of the review (2026-09-13)
+
+**Scope.** A fourth review round over the wheel/drag/Undo model (`3df0fcb..aa5b67b` plus the four
+items the review named) returned four findings. Two are real and fixed; one is refuted for the
+second time, with the ADR's own justification corrected rather than the code; one is confirmed as
+behaviour but re-classified to the decision it actually comes from. A contract sweep found two more,
+one of which was fixed and then **withdrawn** when the suite showed the fix cost more than the
+defect. Every conclusion was derived read-only at a pinned revision by an investigator and attacked
+by three adversarial verifiers before any file was touched.
+
+**The poll was measuring two different instants and calling them one.** It samples the sound
+generation on its first line, builds the signature, and captures `committed` from the LIVE
+parameters after both — so a host write landing in between is inside the baseline it commits while
+the sample does not name it, and the next scroll was read as carrying somebody else's write and
+split into two undo steps. The edge is now taken at the snapshot. The review's own suggested fix
+(re-read after the signature) was tried on paper and rejected: the signature loop visits parameters
+one at a time, so that sample counts writes the signature missed, and the error flips to the
+direction ADR-0053 §3 exists to prevent.
+
+**And ADR-0053's "no dead travel" promise was false for one of its four branches.** The in-press
+split wheel clamped to the frame edges; the store clamps to what the packed neighbours leave, which
+`projectFromOrig`'s trailing ordering pass enforces by pulling the PIN back. Measured: 92 px banked,
+nine notches back before the split moved, and the mouse drag after it dead for the same distance.
+The anchor now comes from the projection's own answer.
+
+**The withdrawal is the round's best evidence.** An empty press plus a concurrent host write records
+an undo step whose only content is the automation — real, reproduced, and apparently a one-line fix.
+Gating the push on whether the batch edited anything made that leg green and broke three others: the
+double-click reset has no gesture of its own and is undoable only through the rule being removed,
+and a refused burst's recorded step is the boundary that stops the next Undo reaching past the
+automation into the user's previous scroll. All three are the same ADR-0008 consequence — an undo
+entry is a whole state, so a foreign write is either inside the user's step or is a step of its own,
+and there is no third answer. The gate was withdrawn, the leg became a measurement, and the reasoning
+is now in the source at the push decision.
+
+**Two residuals registered rather than fixed:** RISK-012 (the automation value inside a user's step,
+attributed to ADR-0008 where it originates) and RISK-013 (the foreign test counts raw stores where
+everything else asks the rendered value, so an inaudible write ends a chain). Both are printed by a
+leg on every run rather than asserted away.
+
+**Validation.** State 3 136 / 0, DSP 396 / 0, five new mutations all killed. TSan 0 warnings with
+its one known suppression; valgrind memcheck 0 errors from 0 contexts on both suites under
+`ANAMORPH_TESTS_NO_FTZ=1`.
+
+**No gate item is touched.** No parameter ID, range, default or serialization field; no DSP node,
+signal order or reported latency; no threading-model change — one added relaxed load on the thread
+that already owns every field around it, and no atomic ordering altered. ADR-0053's **Decision is
+unchanged**: both fixes apply it.
+
+**Documentation.** `ADR-0053` (a round-12 section, plus two corrections: the retracted
+`ScopedWheelStep` argument it still carried, and the overstated lock blocker on the automation
+residual); `docs/FUTURE_RISKS.md` (RISK-012, RISK-013); `docs/procedures/TESTING.md` (State test 86
+legs U, U2, V and W, State test 80 leg G, mutations M40–M44, and the fixture constraint leg G's
+first version got wrong); `CHANGELOG.md` `[0.9.8]` — two new Fixed entries;
+`tests/tsan-suppressions.txt` (three stale anchors); `src/gui/SpectrumImager.cpp` (four stale
+anchors and two false claims); three citation corrections in this file, one of which the gate could
+never have caught: the sentence about `projectFromOrig` validating its pin arguments was aimed at
+`dragCrossoverTo`'s declaration and had been since the base, because the gate asks whether a cited
+line still says what it said and not whether it says what the sentence claims. The other two are a
+re-aim of the `dragCrossoverTo` anchor onto the live `bandCount()` read it was always about (its
+declaration is the line this round rewrote) and a §59 note that recorded a PAST re-aim in
+`path:line` form, which the gate read as a live anchor; `src/PluginProcessor.h` (the `ScopedWheelStep` cost and its uncovered
+sub-case, and the new `insidePollBody` seam);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §69. [Verified]

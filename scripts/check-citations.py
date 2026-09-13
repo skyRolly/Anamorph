@@ -392,9 +392,18 @@ DELIBERATE_REAIMS = {
     # resolved against the current file on every run, so leaving it at :657 would
     # have silenced the drift of everything else in this document rather than only
     # its own.
+    #
+    # 2026-09-13 (ADR-0053 round 12): an EIGHTH re-derivation, :657 -> :704, and the first that
+    # does not simply follow the declaration. `dragCrossoverTo` gained a defaulted `float* landedX`
+    # out-parameter, so the DECLARATION line is the one this change rewrote -- and the sentence in
+    # the document is not about the declaration, it is about the live `bandCount()` read. The aim
+    # moves to that line (`const int M = (n >= 0 ? ... : bandCount()) - 1;`), which is what the
+    # citation was always claiming and which this change did not touch. Re-aiming onto the thing a
+    # citation is actually about is cheaper than declaring the declaration volatile, and it leaves
+    # the ordinary drift check watching it.
     ("docs/DOCUMENTATION_COVERAGE.md",
-     "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:702"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:657",
+     "src/gui/SpectrumImager.cpp:704"): "bandCount",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

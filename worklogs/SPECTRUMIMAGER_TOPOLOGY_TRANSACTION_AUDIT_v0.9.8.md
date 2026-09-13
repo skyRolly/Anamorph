@@ -3298,3 +3298,159 @@ EQUAL -- so a base in the future is indistinguishable from "now" to everything t
 The general rule, now recorded in `TESTING.md`: a stamp that must be shared has to be unique to the
 leg sharing it, or running the legs faster changes what they measure.
 
+## §69. Round 12 — the review of the review of the review: two fixes, one refutation, one withdrawal
+
+Four review items, a contract sweep and a residual re-check, all derived read-only from `aa5b67b`
+by six independent investigators with three adversarial verifiers each (0–1 of 3 refuted per
+dimension). Two findings produced code changes, one was refuted again, one was classified rather
+than fixed, and two NEW findings came out of the sweep — of which one was fixed, tested, and then
+**withdrawn when the suite proved the fix cost more than the defect**.
+
+### 69a. Finding 1 — the poll's edge named the wrong instant
+
+`pollUndoCoalesceAdopted` samples `soundParamGen` on its first line, builds the ~36-String
+signature, and only then captures `committed` — from the LIVE parameters, via
+`copyStateWithRawValues`, which stamps `raw` from `p->getValue()`. So the two reads are not the same
+instant, and a host write landing between them is inside `committed` while the sampled generation
+does not name it. The tail published that sample as the gesture edge, so the next gesture's open
+(`gestureOpenGen != gestureEdgeGen`) set `foreignSinceEdge`, the batch went unnamed, and the notch
+after it started a second undo step.
+
+**Cross-thread only**, and that was established rather than assumed: `soundSignature` only reads,
+`currentStateSet` calls three trivial getters plus the tree copy, and JUCE suppresses its own
+write-back callback while flushing parameters to the tree — so nothing the poll body calls can
+re-enter a parameter write. The two writers of the counter are `parameterValueChanged` (documented
+in the header as reachable from the audio thread) and the silent-restore bump on the caller's
+thread.
+
+**The fix is one relaxed load per capturing branch**, taken immediately before
+`committed = currentStateSet()`, published at the tail. A branch that captures nothing keeps the
+top-of-poll sample.
+
+**The candidate fix in the review brief was WRONG and the investigation caught it.** Re-reading the
+counter after the signature build and using that everywhere looked equivalent and is not: the
+signature loop visits parameters one at a time, so a write to an already-visited parameter is
+counted by a post-build sample but is absent from `sig`. When `sig == committedSig` no branch runs,
+`committed` is not refreshed either, and the edge would then declare accounted a write that is in
+neither — the next scroll extends across it and one Undo takes the automation back. That is the
+under-report direction, the one ADR-0053 §3 exists to prevent. Anchoring the edge to the SNAPSHOT
+rather than to the signature avoids it, because the snapshot is what `committed` is.
+
+**What remains unmeasured:** the counter is read `std::memory_order_relaxed` throughout, so nothing
+proves that a write counted in generation G is visible to a parameter read taken after G was
+observed. That guarantee is not in the memory model, it is pre-existing, and changing the orderings
+is a threading-model change (a hard-stop gate item), so it is recorded here and not touched.
+
+### 69b. Finding 2 — the packed split banked travel the store refused
+
+Confirmed by arithmetic before it was confirmed by a test. `projectFromOrig` pins the dragged split
+at `jlimit (lo, hi, x)`, pushes the splits between it and the edge aside by `kMinGapPx` each, and
+then runs a trailing ordering pass BACKWARDS — which pulls the pin itself back to
+`hi - (M - 1 - handle) * kMinGapPx`. Worked example with `kMinGapPx = 46` and three splits packed
+right at `[762, 808, 854]`, pin 0 asking for `hi = 854`: the forward pass gives `[854, 900, 946]`,
+`out[2]` clamps to 854, and the backward pass returns `[762, 808, 854]` — the pin 92 px short of
+its request. The wheel anchored `dragGrabDX` from the request.
+
+Measured in the leg before the fix: **nine notches back before the split moved at all** (92 px at
+11.2 px per notch), and the mouse drag afterwards dead for the same 92 px — because `dragGrabDX` is
+written at the press and by the wheel and by nothing else, so the drag inherits the bank.
+
+The fix reports the projected row back through `dragCrossoverTo` and anchors from it. It is
+`out[handle]` — the same array the stores are made from — so there is no second projection and no
+read-back for a foreign write to get between (ADR-0047). The other three wheel branches already
+obeyed the rule, by three different mechanisms; the in-source paragraph that asserted it for all
+four now says which.
+
+### 69c. Finding 3 — `ScopedWheelStep` refuted again, and the ADR corrected
+
+No code change. Structural nesting is impossible (an enabled slider never forwards up, `Component`
+walks up only, no `Knob` is a descendant of another or of the imager, and the pointer-routed path
+returns before its own scope). The one non-structural interleaving needs a host pumping the message
+loop inside `beginChangeGesture`, and there the inner close counts 2 → 1 and latches nothing.
+
+What DID have to change is the justification. The ADR still carried two clauses the source comment
+had already retracted — that the disagreement rule unnames the batch (it sits behind
+`--openGestures == 0` and never fires here) and that naming would need the poll to run inside the
+pumped loop (the latch reads the key immediately). Both are corrected, the cost is restated as TWO
+extra steps rather than one, and the one sub-case the comment never covered — a queued notch over
+the SAME control, where restoring would be better — is now recorded.
+
+### 69d. Finding 4 — the automation value is ADR-0008's consequence, not ADR-0053's
+
+Behaviour confirmed on all five timings; classification **intentional consequence whose cost is
+justified**. ADR-0053's Decision is silent on it; the residual lived only in a review-round
+narrative. It is now attributed where it originates — an undo entry is a whole `StateSet` — and
+registered as RISK-012.
+
+One correction to the ADR's own reasoning: the per-parameter patch alternative is **not** blocked by
+the APVTS lock (the index is already delivered to `parameterValueChanged` and a `fetch_or` is
+lock-free). It is blocked by what it would mean — an undo entry would stop being a state that ever
+existed, `dragCrossoverTo`'s pushed neighbour splits are indistinguishable from automation by the
+only available classifier, and `redo()` pushes an unpatched snapshot so undo/redo stops
+round-tripping. The two sentences used to read as one blocker; the next round would have believed
+the lock forecloses everything.
+
+### 69e. The contract sweep found two more, and one of them was a trap
+
+**NEW-A — an empty press records the automation beside it.** The push is decided by the signature
+alone, and `pendingGestureCommit` is set unconditionally at every gesture close, so a press that
+changes nothing plus a gesture-less host write in the same 24 Hz period pushes a step whose only
+content is the write. Reproduced (leg V): *"the empty press recorded a step of its own: Drive stayed
+at 1.8000 while one Undo took Width back to 1.4000"*.
+
+**The fix was implemented, and then withdrawn, and this is the round's own best evidence for running
+the suite before believing a fix.** Gating the push on `edited` made leg V green and broke three
+other legs:
+
+* **leg K** — a double-click reset has NO gesture of its own (`Knob::mouseDoubleClick` calls
+  `doReset` bare, after JUCE has closed the press's) and is undoable ONLY because the empty press's
+  pending commit finds the moved signature. The gate makes a reset unundoable.
+* **legs I and J** — a burst whose own store was REFUSED leaves the host's write to be recorded, and
+  that step is the boundary that stops the next Undo reaching past the automation into the previous
+  scroll. The gate removes the boundary.
+
+So the gate trades one face of the whole-state-snapshot consequence for two others. Leg V is now a
+MEASUREMENT that prints the residual and asserts only the half that survives, and the reasoning is
+in the source at the push decision so the next round does not re-propose it.
+
+**NEW-B — an inaudible host write ends a scroll chain.** `foreignSinceEdge` counts raw
+`soundParamGen` bumps; every other change test asks the RENDERED signature. A sub-step write on a
+discrete parameter moves the counter and not the signature, and the gesture open ends the chain the
+poll's own non-gesture branch would have left alone. Recorded as RISK-013 and measured by leg W;
+not fixed, because making the two agree means rendering inside `parameterValueChanged`, which is
+audio-thread-reachable, and changing the meaning of a counter that `PresetManager::isDirty` and the
+poll's skip both depend on.
+
+### 69f. Residuals — one register correction, three stale anchors, two false comments
+
+RISK-010, `addBandAt` re-attribution, held-audition vblank coverage, ADR-0041/0052 wheel semantics,
+U4, ADR-0044 residue and cancelled-spread ordering are all **UNCHANGED**, each re-checked against
+the current code rather than against the previous table.
+
+**TSan suppression scope: unchanged, but its citations were NOW WRONG** — all three anchors the
+previous round "refreshed" missed on the current head, and `tests/tsan-suppressions.txt` is neither
+in `check-citations.py`'s TRACKED tuple nor a `.md`, so the gate cannot see them. Corrected by hand
+to `src/PluginProcessor.h:252-255`, `:396` and `src/PluginProcessor.cpp:825-899`.
+
+**Historical comment blocks: NOW WRONG in two more places**, both corrected. The poll tail claimed a
+write landing during the poll body is *"swallowed by the edge rather than marked foreign"* — it
+described a fresh load at that line, which is the option the same sentence said it had rejected; the
+line assigned the top-of-poll sample, so such a write was marked foreign. And the split wheel
+branch claimed its clamp was *"the same travel `projectFromOrig` clamps a pin to"*, with a
+surrounding paragraph asserting "NO DEAD TRAVEL, deliberately" for all four branches. Four further
+bare-filename anchors in `SpectrumImager.cpp` (`:265`, `:3358`, `:3359`, `:3551`) pointed at
+unrelated lines and are refreshed; `check-citations.py` declines bare spellings, so they were green
+by construction.
+
+### 69g. Validation
+
+State 3 136 / 0, DSP 396 / 0. Five new mutations M40-M44, all killed, each by the leg written for
+it. Legs U and U2 need the new `Seams::insidePollBody`, which is the only program point a
+deterministic harness can reach; what it cannot measure — real concurrency and relaxed-order
+visibility — is stated in `TESTING.md` rather than implied.
+
+**No gate item is touched.** No parameter ID, range, default or serialization field; no DSP node,
+signal order or reported latency; no threading model — the poll fix adds one relaxed load on the
+thread that already owns every field it touches, and no atomic ordering changed. The imager fix adds
+one defaulted out-parameter and moves one assignment. ADR-0053 is amended with a round-12 section
+and two corrections; its **Decision is unchanged**, because both fixes APPLY it.
