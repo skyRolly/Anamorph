@@ -11410,7 +11410,6 @@ static void testACompleteGestureEndpointPrecedesThePoll()
     if (nAlgo < 3) { proc.editorBeingDeleted (ed); delete ed; return; }
 
     auto plainOf = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
-    auto normOf  = [] (juce::RangedAudioParameter* p) { return p->getValue(); };
     auto near    = [] (float a, float b) { return std::abs (a - b) <= 1.0e-3f; };
     auto settle  = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
     // The normalised value the combo's own arithmetic produces for an item index -- JUCE's
