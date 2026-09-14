@@ -376,11 +376,11 @@ private:
     //  An entry now records WHAT THE USER'S OWN BATCH MOVED, and both ends of it. `owned` carries
     //  one `ParamEdit` per parameter the batch declared as its own -- a parameter with a change
     //  gesture of its own, or one the imager's coupled stores declared through
-    //  `noteOwnedParamWrite` -- with the value it held when the batch opened and the value it held
-    //  when the batch's last gesture closed. Undo writes the `before` ends, Redo writes the
-    //  `after` ends, and the SAME entry moves between the two stacks, so the two directions cannot
-    //  disagree. Everything else the live sound holds is left exactly where it is, which is what
-    //  makes a later host write survive both.
+    //  `noteOwnedParamWrite` -- with the value it held when the batch FIRST TOOK it and the latest
+    //  value its own gesture or store produced (PER PARAMETER SINCE ROUND 17). Undo writes the
+    //  `before` ends, Redo writes the `after` ends, and the SAME entry moves between the two
+    //  stacks, so the two directions cannot disagree. Everything else the live sound holds is left
+    //  exactly where it is, which is what makes a later host write survive both.
     //
     //  `before.params` VALID MEANS A WHOLE-STATE ENTRY, and two push sites still make them: a
     //  preset load (`commitPresetSwitchUndoStep`) and an A/B Copy (`abCopyToOther`). Neither opens

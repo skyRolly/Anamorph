@@ -3903,3 +3903,26 @@ Closing it needs a per-write user hook, which on this architecture means `parame
 audio-thread-reachable and forbidden by ADR-0036. Recorded in ADR-0008 as an implementation limit,
 not as a product rule: automation is still never a user Undo step, never redefines a `before`, and
 for every parameter a store declares it cannot reach `after` either.
+
+### Two things the final audit found in this round's own work
+
+**The pinned warning gates caught a `-Wshadow` the local ones cannot run.** `linux` and
+`linux-lto-tests` went red on `72d78d8` with one site each, the same one: leg Z7 declares
+`float sx` inside its block and the enclosing function already has `sx` from leg D
+(`tests/state_tests.cpp:7939`). clang-22 and gcc-16 both report it; the baseline allows zero in
+`tests/state_tests.cpp` and is a debt list, not a permission list, so the local is renamed
+`splitX` rather than the baseline widened. This is the failure mode `scripts/preflight.sh`
+documents in its own header — the gates refuse to run against a different compiler major, so
+locally (gcc-13 / clang-18) they never run at all and a brand-new warning in first-party code is
+invisible until CI. Proved both directions with the local compiler on ninja's own compile line:
+with `sx` it reproduces `state_tests.cpp:8408:23: warning: declaration of 'sx' shadows a previous
+local [-Wshadow]`, with `splitX` the TU is clean.
+
+**The `UndoEntry` comment still described the representation this round replaced.**
+`src/PluginProcessor.h` said an entry carries, per owned parameter, *"the value it held when the
+batch opened and the value it held when the batch's last gesture closed"* — both halves falsified
+by this round, and contradicted twenty lines further down by the `batchOpenValue` block, which
+already carried the correction. Corrected in place, comment only, line-count preserving so no
+citation anchor moves. Same defect class as §69's false in-source comments: a comment that
+describes the code it used to sit next to is a trap for the next reader, and this review has paid
+for it before.

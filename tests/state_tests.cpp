@@ -8405,14 +8405,14 @@ static void testAScrollIsOneUndoStep()
                 while (proc.canUndo()) proc.undo();
                 proc.pollUndoCoalesce();
                 check (! proc.canUndo(), "leg Z7: the declared-endpoint leg starts with no undo history");
-                float sx = -1.0f;
+                float splitX = -1.0f;
                 for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
                 {
                     hover (x, laneY);
-                    if (im->getTooltip() == juce::String ("Drag to change the split frequency")) { sx = x; break; }
+                    if (im->getTooltip() == juce::String ("Drag to change the split frequency")) { splitX = x; break; }
                 }
-                check (sx >= 0.0f, "leg Z7: a split handle is findable");
-                if (sx >= 0.0f)
+                check (splitX >= 0.0f, "leg Z7: a split handle is findable");
+                if (splitX >= 0.0f)
                 {
                     const float s0 = plainOf (loP);
                     const float foreign = 7000.0f;
@@ -8426,15 +8426,15 @@ static void testAScrollIsOneUndoStep()
                         return juce::MouseEvent (src, { x, laneY },
                                                  juce::ModifierKeys::leftButtonModifier,
                                                  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
-                                                 t, { sx, laneY }, t, 1, dragged);
+                                                 t, { splitX, laneY }, t, 1, dragged);
                     };
-                    im->mouseDown (ev (sx, false));
-                    im->mouseDrag (ev (sx + 60.0f, true));
+                    im->mouseDown (ev (splitX, false));
+                    im->mouseDrag (ev (splitX + 60.0f, true));
                     const float dragged = plainOf (loP);
                     check (! juce::exactlyEqual (dragged, s0), "leg Z7: the drag moved the split");
                     loP->addListener (&poke);
                     poke.armed = true;
-                    im->mouseUp (ev (sx + 60.0f, true));   // the close dispatches; the probe writes
+                    im->mouseUp (ev (splitX + 60.0f, true));   // the close dispatches; the probe writes
                     const bool landed = poke.fired;
                     loP->removeListener (&poke);
                     proc.pollUndoCoalesce();
