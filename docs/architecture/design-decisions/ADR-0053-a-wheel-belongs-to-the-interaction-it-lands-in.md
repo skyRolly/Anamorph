@@ -33,6 +33,26 @@ recording it: ADR-0041 itself is *"Accepted (maintainer instruction 2026-09-07 �
 entered the same way. A maintainer instruction that states the behaviour and rules on the conflict is
 what clears the stop.
 
+**Re-audited 2026-09-14 (round 20), and the question was put the other way round: does this
+repository REQUIRE an `APPROVED` review?** It does not, and that is established by search rather
+than by inference — the word *approval* (in any form) appears nowhere in
+`ARCHITECTURE_REVIEW_GATE.md`, `AI_AGENT_POLICY.md` or `ADR_POLICY.md`. Step 2 asks for *"a human
+reviewer with DSP/audio context reviews against the relevant Policy + ADR"* and names no medium.
+The repository's own precedents record maintainer approval **in documentation**, not as a GitHub
+review state: `policies/THREADING_POLICY.md` (*"approved by the maintainer"*, KI-027) and
+`procedures/TESTING.md` (*"the maintainer reviewed and approved it on 2026-08-11"*). So the artifact
+the gate actually requires exists.
+
+**And the missing one cannot be produced from here, which is a fact about GitHub rather than a
+choice.** The session's GitHub principal is `skyRolly` — this PR's own author — and GitHub refuses
+self-approval. Submitting one would in any case be the agent approving its own work, which is the
+thing an architecture gate exists to prevent. It was therefore not attempted.
+
+**The exact missing artifact, for the owner:** an `APPROVED` review on PR #144 referencing ADR-0053,
+submitted by a maintainer account that is not the PR author. The alternative, if the documentary
+form is intended to be sufficient, is one sentence in `ARCHITECTURE_REVIEW_GATE.md` saying which
+medium step 2 takes — which would close the ambiguity permanently instead of once.
+
 **What does NOT exist, stated plainly rather than counted as satisfied:** there is no *approving
 review* on PR #144. Every review on it is `COMMENTED` — one from the code-scanning bot and four
 disposition replies from the owner account. Nothing in `ARCHITECTURE_REVIEW_GATE.md` names a medium
