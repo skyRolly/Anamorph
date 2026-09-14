@@ -109,4 +109,38 @@
 #     gives `exit=0` and ONE breakdown line with two entries in the file.
 # If that assertion fires, DELETE the dead entry or restore the coverage. Do not
 # broaden the pattern: a wider entry is worse than none, for the reason above.
+#
+# SECOND ENTRY, ADDED 2026-09-14 (round 20), and it is a DIFFERENT cycle from the
+# one above -- a different pair of locks, a different pair of stacks, its own
+# report. It is written out here rather than folded into the paragraph above,
+# because its justification is WEAKER and the difference matters.
+#
+# THE CYCLE. Edge one is pure production plus JUCE: restoring state takes the
+# APVTS `valueTreeChanging` lock and, inside it,
+# `ParameterAdapter::setNormalisedValue` -> `setValueNotifyingHost` ->
+# `sendValueChangedMessageToListeners` takes a parameter's `listenerLock`
+# (juce_AudioProcessorValueTreeState.cpp:413/425/457, juce_AudioProcessorParameter.cpp:113).
+# Edge two is the reverse: `endChangeGesture` holds `listenerLock` while it calls
+# listeners and then the `finalListener` (juce_AudioProcessorParameter.cpp:103-108),
+# and State test 93's `HostSeat` -- sitting in that final seat, where a host's
+# wrapper sits -- calls `pollUndoCoalesce`, which reaches `APVTS::copyState()` and
+# takes the APVTS lock. Both orders are taken by the MAIN thread at different
+# times, so the suite cannot deadlock.
+#
+# WHY THIS IS NOT THE SAME KIND OF SUPPRESSION AS THE ONE ABOVE, said plainly.
+# The entry above absorbs a cycle whose second edge exists ONLY in the harness:
+# no production listener writes a parameter. This one does not have that defence.
+# Edge two is what a HOST does if it pumps its message loop from inside its
+# gesture-end callback -- which is exactly the scenario State test 93 exists to
+# reproduce, and is therefore reachable in a shipped build. What is suppressed is
+# the REPORT, not the risk: the risk is recorded in `FUTURE_RISKS.md` under
+# RISK-010's family as a host-reachable inversion, and closing it needs a
+# threading-model change, which is an ARCHITECTURE_REVIEW_GATE item and not the
+# agent's to make. This entry is therefore a placeholder for an owner decision,
+# not a verdict that the cycle is benign.
+#
+# It names the harness double, as the rule above requires -- `HostSeat` is a test
+# type and cannot appear in a shipped build -- so a real host-vs-host inversion on
+# these same two locks, with no harness frame in either stack, is still REPORTED.
+deadlock:HostSeat
 deadlock:WriteFromInsideAGestureOpen

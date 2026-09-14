@@ -245,6 +245,32 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   an inversion whose stacks contain only production frames still fails the `tsan` job, and the
   canary step proves on every run that data-race detection is untouched. Reopen this risk if a
   host is ever observed writing cross-parameter from inside a dispatch on two threads.
+- **ROUND 20 (2026-09-14) — A SECOND, DIFFERENT INVERSION ON THE SAME DETECTOR, and this one does
+  NOT have the "harness only" defence. It is ESCALATED as an architecture-review item rather than
+  claimed away.** The locks are not two parameters' `listenerLock`s; they are ONE parameter's
+  `listenerLock` and the APVTS `valueTreeChanging` lock:
+    * one order is pure production plus JUCE — restoring state holds the APVTS lock and, inside it,
+      `ParameterAdapter::setNormalisedValue` -> `setValueNotifyingHost` ->
+      `sendValueChangedMessageToListeners` takes a parameter's `listenerLock`
+      (`juce_AudioProcessorValueTreeState.cpp:413`, `:425`, `:457`);
+    * the other is the nested poll this round's review finding is about — `endChangeGesture` holds
+      `listenerLock` while it calls the `finalListener`, a host pumps its message loop from that
+      callback, the editor's timer runs, and `pollUndoCoalesce` -> `currentStateSet()` ->
+      `APVTS::copyState()` takes the APVTS lock.
+  **The second edge is reachable in a shipped build** — it needs only a host that pumps inside its
+  gesture-end callback, which is exactly the scenario State test 93 reproduces — so unlike RISK-009
+  this is not an artefact of a harness double. It is not caused by the round-20 endpoint fix (which
+  changes no locking) and is not closed by it; it was SURFACED by that round's test, the first to
+  exercise a nested poll at all.
+- **Disposition: suppressed in the REPORT, recorded as the risk, and referred upward.** A second
+  `tests/tsan-suppressions.txt` entry names the harness type (`HostSeat`), so the suite stays
+  meaningful and a real host-vs-host inversion on these two locks — with no harness frame in either
+  stack — is still reported. Closing the underlying cycle needs a threading-model change, which is
+  an `ARCHITECTURE_REVIEW_GATE.md` item and an AI-agent hard stop: **this is an owner decision, not
+  an agent's.** Two shapes a reviewer might weigh: keep the poll off the APVTS lock while a gesture
+  dispatch is in flight, or defer a re-entrant poll to the next timer tick. Neither is attempted
+  here. Severity: **Medium** — a genuine deadlock requires the two orders on two threads, and every
+  order observed so far is taken by the message thread alone.
 
 ## RISK-010 — The DSP's multiband snapshot is not a snapshot (ESCALATED as an architecture-review item)
 - **Risk:** `PluginParameters::toEngine` builds the per-block DSP view of the multiband layout from

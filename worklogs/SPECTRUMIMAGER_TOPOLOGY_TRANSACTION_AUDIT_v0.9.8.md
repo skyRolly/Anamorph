@@ -4132,3 +4132,26 @@ directly — the store knows what it is installing — but that is a second chan
 this round's instruction scopes it to the attachment families. It is recorded in `FUTURE_RISKS.md`
 as an open defect rather than downgraded to an accepted residual, because it still violates the
 stated product rule.
+
+### The test found a second thing, and it is not this round's to fix
+
+State test 93 is the first test in this suite to drive `pollUndoCoalesce` from inside a gesture
+dispatch — which is what the review's own scenario requires. ThreadSanitizer's deadlock detector
+immediately reported a lock-order inversion, and it is a different pair from RISK-009's:
+
+* APVTS `valueTreeChanging` lock, then a parameter's `listenerLock` — the ordinary state-restore
+  path, all production and JUCE frames;
+* a parameter's `listenerLock`, then the APVTS lock — `endChangeGesture` holding its lock while the
+  host pumps, the editor timer running, and the poll reaching `APVTS::copyState()`.
+
+**The second edge is not a harness artefact.** RISK-009's existing suppression is defensible because
+no production listener writes a parameter; this one has no such defence, because the edge is exactly
+what a host that pumps inside `endEdit` does. It is not caused by the round-20 fix — that changes no
+locking — and it is not closed by it.
+
+Closing it means changing when the poll may take the APVTS lock, or deferring a re-entrant poll to
+the next tick. Both are threading-model changes, which `ARCHITECTURE_REVIEW_GATE.md` gates and
+`AI_AGENT_POLICY.md` makes a hard stop. So the report is suppressed by a second, narrowly-named
+entry, the risk is written into RISK-009 as a distinct host-reachable inversion with its severity
+and its two candidate shapes, and the decision is left to the owner. Recording a suppression without
+recording the risk would have been the failure mode this file exists to prevent.

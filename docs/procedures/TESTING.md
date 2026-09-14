@@ -1513,6 +1513,17 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   point; they now read it from the control, which is what the witness records. Recorded because the
   same mistake made a leg of round 18 pass against the defect.
 
+* **Round 20 — the test found a second thing, and the suppression file grew for it.** State test 93
+  is the first test here to drive `pollUndoCoalesce` from inside a gesture dispatch, and TSan's
+  deadlock detector reported a lock-order inversion between a parameter's `listenerLock` and the
+  APVTS lock. It is NOT the RISK-009 shape: its second edge is what a host that pumps inside its
+  gesture-end callback does, so it is reachable in a shipped build. A second suppression entry names
+  the harness type (`HostSeat`) so the suite stays meaningful, the risk is recorded in
+  `FUTURE_RISKS.md` under RISK-009, and the fix — a threading-model change — is left to the owner as
+  an architecture-review item. `tests/tsan-suppressions.txt` now has two entries and TSan's per-entry
+  breakdown has two lines, which is what the `tsan` job's "every suppression still matches something"
+  step requires.
+
 * **Round 19 — State test 92, and the one leg that is a control rather than a proof.** The refusal
   path is shared: every split and every bandwidth store in the multiband display goes through the one
   `SpectrumImager::storeOwned`, so a leg that reaches the refusal reaches it for all of them. Legs B
