@@ -176,7 +176,22 @@ private:
 
         void mark (bool post, float produced) noexcept
         {
-            if (! post) { wasNorm = param.getValue(); return; }
+            if (! post)
+            {
+                wasNorm = param.getValue();
+                // ROUND 20: SAY WHAT THIS CONTROL IS ABOUT TO ASK FOR, BEFORE THE ATTACHMENT RUNS.
+                // For a ComboBox or a Button the attachment opens, writes and CLOSES the gesture in
+                // its own callback, so the close -- which is where the batch becomes pollable --
+                // happens before `after` below can state anything. The request is what the close
+                // reads instead of the live parameter. It claims nothing: no ownership, no episode
+                // bit, no step; a host push arms it and disarms it with no gesture in between.
+                prevRequest = proc.noteAttachmentRequest (&param, produced);
+                return;
+            }
+            // ...and hand the previous request back before anything else, so this runs even for the
+            // host push that returns below.
+            proc.restoreAttachmentRequest (prevRequest);
+            prevRequest = {};
             if (juce::exactlyEqual (param.getValue(), wasNorm)) return;  // the host pushed IN
             proc.noteOwnedParamEndpoint (&param, produced);
         }
@@ -198,6 +213,7 @@ private:
         juce::RangedAudioParameter& param;
         Hook  before, after;
         float wasNorm = 0.0f;
+        AnamorphAudioProcessor::AttachmentRequest prevRequest {};
         std::function<void()> unhook;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AttachmentWitness)

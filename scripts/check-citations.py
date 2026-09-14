@@ -417,13 +417,13 @@ DELIBERATE_REAIMS = {
     # settled fails here rather than going quiet.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:246-249",
-     "src/PluginProcessor.h:307-310"): "parameterValueChanged",
+     "src/PluginProcessor.h:329-332"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:390",
-     "src/PluginProcessor.h:506"): "parameterValueChanged",
+     "src/PluginProcessor.h:528"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:325",
-     "src/PluginProcessor.h:423"): "UndoStacks",
+     "src/PluginProcessor.h:445"): "UndoStacks",
 
     # 2026-09-13 (round 14, ADR-0008 as amended): THREE ENTRIES, all for spans this change EDITED
     # rather than moved, which is exactly the case a declaration is for -- the line map returns
@@ -438,25 +438,25 @@ DELIBERATE_REAIMS = {
     # check actually sees, and the check runs against `origin/main`.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:924-1054"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:947-1086"): "parameterGestureChanged",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:924-1054"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:947-1086"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-826",
-     "src/PluginProcessor.cpp:924-1055"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:947-1087"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:250",
-     "src/PluginProcessor.h:423"): "UndoStacks",
+     "src/PluginProcessor.h:445"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     "src/PluginProcessor.cpp:2200-2299"): "setStateInformation",
+     "src/PluginProcessor.cpp:2232-2331"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     "src/PluginProcessor.cpp:2200"): "setStateInformation",
+     "src/PluginProcessor.cpp:2232"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     "src/PluginProcessor.cpp:1736"): "abActive",
+     "src/PluginProcessor.cpp:1768"): "abActive",
     #
     # 2026-09-13 (round 13) declared a re-aim of RISK-012's poll citation, `:963-1035` ->
     # `:980-1039`, onto the `sig != committedSig` gate. ROUND 14 DELETED IT, because round 14

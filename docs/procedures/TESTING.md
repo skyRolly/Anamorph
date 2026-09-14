@@ -1486,6 +1486,33 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   two notches, and the second notch's own close overwrote the first one's stolen endpoint. It now
   measures one notch in isolation first, and the chain assertions follow separately.
 
+* **Round 20 — State test 93, and the leg that exists for exactly one mutation.** The proofs are
+  legs **A** (a combo selection whose close the host both poisons and polls), **E** (the same with a
+  second gesture in the batch) and **J** (the same with a control notification nested inside the
+  one under test). A, E and J each fail at `e9a0353`.
+
+  **Leg J was added because M79 survived without it.** M79 makes `restoreAttachmentRequest` clear the
+  request instead of handing back the previous one — which is only observable when one control's
+  notification runs INSIDE another's, and no other leg nests. Rather than record M79 as an equivalent
+  mutant, the leg that distinguishes it was written: the host answers the combo's write by moving
+  Drive *notifyingly*, so Drive's attachment drives Drive's slider and Drive's witness pair runs
+  nested. M79 is now killed, by leg J alone.
+
+  **Leg B is a control, and the measurement is why.** It drives the identical shape on a Button.
+  Every toggle in this editor drives a `RawBool` (`getNumSteps() == 2`), so the only value a host can
+  install that is not the one the user just produced is the one the user just left — which restores
+  the committed sound, and the batch's `sig != committedSig` gate then correctly records nothing.
+  A two-valued parameter cannot carry a WRONG endpoint, so the button case is recorded as a control
+  even though the review named buttons alongside combo boxes. Legs C, D, F, G, H and I are controls
+  too: the round-18 case without a poll, the poll without a host write, unrelated automation, the
+  slider path (structurally out of reach), round 19's refusal with a nested poll on top, and a wheel
+  notch.
+
+  **Two control legs failed on their first run, and the harness was wrong, not the code.** Legs G and
+  I read "what the user produced" from the PARAMETER, which the host had already overwritten by that
+  point; they now read it from the control, which is what the witness records. Recorded because the
+  same mistake made a leg of round 18 pass against the defect.
+
 * **Round 19 — State test 92, and the one leg that is a control rather than a proof.** The refusal
   path is shared: every split and every bandwidth store in the multiband display goes through the one
   `SpectrumImager::storeOwned`, so a leg that reaches the refusal reaches it for all of them. Legs B
@@ -1784,6 +1811,13 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M73 | `storeOwned` stops reporting its refusal | KILLED — 92 legs B, C, E |
   | M74 | a refused store declares the controller's value as the endpoint | KILLED — 92 legs B, C, E **and 86 legs Z2, Z5, Z6** |
   | M75 | the refusal is recorded but the preserved endpoint is overwritten | KILLED — 92 legs B, C, E |
+  | M76 | the close ignores the request and live-reads again | KILLED — 93 legs A, E, J |
+  | M77 | the witness arms the request in `after` instead of `before` | KILLED — 93 legs A, E, J |
+  | M78 | the request records the LIVE value instead of what the control asked for | KILLED — 93 legs A, D, E, F, J |
+  | M79 | `restoreAttachmentRequest` clears instead of restoring | KILLED — 93 leg J **only** |
+  | M80 | the witness never arms a request at all | KILLED — 93 legs A, E, J |
+  | M81 | the request carries the index but not the value | KILLED — 93 legs A, D, E, F, J |
+  | M82 | the combo witness is registered AFTER the attachment on both hooks | KILLED — 93 legs A, C, E, J |
 
   **M34 is the row that proves the sweep is worth running twice.** Against the FIRST version of
   leg R it SURVIVED -- the leg pressed at the lane's middle, where no width drag is latched, so

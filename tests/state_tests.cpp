@@ -11237,6 +11237,599 @@ static void testARefusedStoreStatesNoEndpoint()
 
 
 
+// ---------------------------------------------------------------------------
+//  State test 93 -- a complete-gesture endpoint is known before the gesture can be polled
+//  (ADR-0008 round 20; review finding "nested polls capture stale endpoints",
+//  src/PluginEditor.h:R178-181).
+//
+//  ROUND 18 GAVE THE ATTACHMENT FAMILIES AN ENDPOINT WITNESS; ROUND 20 FOUND THE ONE ORDERING
+//  IT CANNOT REACH. For a ComboBox or a Button, JUCE's attachment performs the WHOLE gesture
+//  inside a single listener callback -- `setValueAsCompleteGesture` is beginChangeGesture /
+//  setValueNotifyingHost / endChangeGesture on one stack (juce_ParameterAttachments.cpp:59-67,
+//  called from :239 and :274) -- and the witness's after-hook is the NEXT listener in that same
+//  pass, so it cannot run until the gesture has already closed. A slider is not like this: it
+//  writes with `setValueAsPartOfGesture` and closes from a separate `sliderDragEnded` dispatch
+//  (juce_ParameterAttachments.cpp:189-193, .h:166-167), so its witness runs first and the close
+//  skips the live read on episode bit 1.
+//
+//  THE CLOSE IS WHERE THE BATCH BECOMES POLLABLE. `pendingGestureCommit = true`
+//  (PluginProcessor.cpp:1019) and the endpoint live read (:1049) both happen inside
+//  `parameterGestureChanged` -- and the plug-in is an ORDINARY parameter listener (:47) while the
+//  host's wrapper sits behind the parameter's `finalListener`, called LAST
+//  (juce_AudioProcessorParameter.cpp:103-108). The host is therefore handed control with the
+//  batch already pollable, the endpoint already read, and the witness still pending.
+//
+//  TWO INGREDIENTS ARE NEEDED AND THE REVIEW NAMED ONE. A host that merely pumps at the close
+//  makes the poll commit the live read -- which is what the user asked for, so nothing is wrong.
+//  The endpoint is poisoned only if a host write landed EARLIER, inside `setValueNotifyingHost`,
+//  before the read at :1049. Both halves are the host's own two callbacks, so this test drives
+//  them from the host's own seat rather than approximating one of them.
+// ---------------------------------------------------------------------------
+namespace {
+// THE HOST'S SEAT, AND IT IS THE LITERAL ONE -- no ordering trick. `AudioProcessorParameter`
+// walks `listeners` in reverse registration order and then calls `finalListener` last
+// (juce_AudioProcessorParameter.cpp:103-108); `finalListener` is `AudioProcessor`'s
+// `ParameterChangeForwarder` (juce_AudioProcessor.h:1664), which fans out to the
+// `AudioProcessorListener`s -- the seat the VST3/AU/VST2 wrapper occupies. Registering here runs
+// exactly where a host runs: after the plug-in's own close, before the witness resumes.
+struct HostSeat final : public juce::AudioProcessorListener
+{
+    AnamorphAudioProcessor*     proc   = nullptr;
+    juce::RangedAudioParameter* target = nullptr;   // what the host re-entrantly writes
+    int   index       = -1;                         // ...and the index whose callbacks arm it
+    float writeToNorm = 0.0f;
+    // ...and, optionally, a SECOND parameter written NOTIFYINGLY in the same breath. That one
+    // drives its own attachment, which sets its own control, which runs that control's witness
+    // pair NESTED inside the one still in flight -- the ordinary "a host moved another control
+    // while you were selecting" case, and the only thing that can strand an outer request.
+    juce::RangedAudioParameter* nestTarget = nullptr;
+    float nestToNorm = 0.0f;
+    bool  armWrite = false, armPoll = false;
+    bool  wrote    = false, polled  = false;
+
+    // The host answers the WRITE, re-entrantly, from inside `setValueNotifyingHost`. That is the
+    // only place a host value can land before the close's live read at PluginProcessor.cpp:1049.
+    // `setValue` rather than `setValueNotifyingHost`, so the answer does not recurse -- the same
+    // quiet shape `WriteFromInsideAStoreQuietly` uses.
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int i, float) override
+    {
+        if (! armWrite || i != index || target == nullptr) return;
+        armWrite = false; wrote = true;
+        target->setValue (writeToNorm);
+        if (nestTarget != nullptr) nestTarget->setValueNotifyingHost (nestToNorm);
+    }
+    // ...and PUMPS ITS MESSAGE LOOP from the gesture-end callback. The only thing the pump does
+    // that matters here is let the editor's 24 Hz timer run, and all that timer does is poll
+    // (PluginEditor.cpp:1545). Calling the poll IS the pump, for this purpose.
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
+    {
+        if (! armPoll || i != index || proc == nullptr) return;
+        armPoll = false; polled = true;
+        proc->pollUndoCoalesce();
+    }
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
+    void audioProcessorChanged (juce::AudioProcessor*,
+                                const juce::AudioProcessorListener::ChangeDetails&) override {}
+};
+} // namespace
+
+static void testACompleteGestureEndpointPrecedesThePoll()
+{
+    std::printf ("State test 93: a complete-gesture endpoint is known before the gesture can be polled\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "State test 93: the editor constructs for the nested-poll probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::ComboBox*>     combos;
+    std::vector<juce::ToggleButton*> toggles;
+    std::vector<juce::Slider*>       sliders;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* b = dynamic_cast<juce::ComboBox*>     (k)) combos.push_back (b);
+            if (auto* t = dynamic_cast<juce::ToggleButton*> (k)) toggles.push_back (t);
+            if (auto* s = dynamic_cast<juce::Slider*>       (k)) sliders.push_back (s);
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    // Move-and-see identification, as State tests 86/88/91 do: the editor exposes no component
+    // ids and every control is a private member, so the only handle is "which one follows".
+    auto findComboFor = [&] (juce::RangedAudioParameter* p) -> juce::ComboBox*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<int> before;
+        before.reserve (combos.size());
+        for (auto* c : combos) before.push_back (c->getSelectedItemIndex());
+        p->setValueNotifyingHost (was < 0.5f ? 1.0f : 0.0f);
+        juce::ComboBox* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < combos.size(); ++i)
+            if (combos[i]->getSelectedItemIndex() != before[i]) { found = combos[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+    auto findToggleFor = [&] (juce::RangedAudioParameter* p) -> juce::ToggleButton*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<bool> before;
+        before.reserve (toggles.size());
+        for (auto* t : toggles) before.push_back (t->getToggleState());
+        p->setValueNotifyingHost (was < 0.5f ? 1.0f : 0.0f);
+        juce::ToggleButton* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < toggles.size(); ++i)
+            if (toggles[i]->getToggleState() != before[i]) { found = toggles[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* algoP  = apvts.getParameter (pid::algorithm);
+    auto* monoP  = apvts.getParameter (pid::monoSum);
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* algoB  = findComboFor  (algoP);
+    auto* monoT  = findToggleFor (monoP);
+    auto* driveK = findSliderFor (driveP);
+    check (algoP != nullptr && algoB != nullptr,
+           "State test 93: the Algorithm combo is findable from its parameter");
+    check (monoP != nullptr && monoT != nullptr,
+           "State test 93: the Mono toggle is findable from its parameter");
+    check (driveP != nullptr && driveK != nullptr,
+           "State test 93: the Drive knob is findable from its parameter");
+    if (algoP == nullptr || algoB == nullptr || monoP == nullptr || monoT == nullptr
+        || driveP == nullptr || driveK == nullptr)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    const int nAlgo = algoB->getNumItems();
+    check (nAlgo >= 3, "State test 93: the Algorithm combo offers a third value the host can install");
+    if (nAlgo < 3) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto plainOf = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto normOf  = [] (juce::RangedAudioParameter* p) { return p->getValue(); };
+    auto near    = [] (float a, float b) { return std::abs (a - b) <= 1.0e-3f; };
+    auto settle  = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
+    // The normalised value the combo's own arithmetic produces for an item index -- JUCE's
+    // `ComboBoxParameterAttachment::comboBoxChanged` maps index/(numItems-1) and the attachment
+    // then round-trips it through the parameter's range (juce_ParameterAttachments.cpp:229-240).
+    auto normForItem = [&] (juce::RangedAudioParameter* p, int idx, int n)
+    {
+        const float rawv = n > 1 ? (float) idx / (float) (n - 1) : 0.0f;
+        return p->convertTo0to1 (p->convertFrom0to1 (rawv));
+    };
+
+    HostSeat host;
+    host.proc = &proc;
+    proc.addListener (&host);
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    int legNo = 0;
+    const auto suiteBase = juce::Time::getCurrentTime();
+    auto legStamp = [&] { return suiteBase + juce::RelativeTime::seconds (5.0 * ++legNo); };
+    auto dragKnob = [&] (juce::Slider* k, float dy, juce::Time t, const std::function<void()>& at)
+    {
+        const float cx = (float) k->getWidth() * 0.5f, cy = (float) k->getHeight() * 0.5f;
+        auto ev = [&] (float y, bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, y },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, k, k,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        k->mouseDown (ev (cy, false, true));
+        k->mouseDrag (ev (cy - dy, true, true));
+        if (at) at();
+        k->mouseUp   (ev (cy - dy, true, true));
+    };
+
+    // ---- LEG A: THE PROOF -- a combo selection whose close the host both poisons and polls ----
+    //      Start on item 0, the user selects the last item, and the host installs a THIRD item
+    //      from inside the write. Three distinct values, so neither "the host wrote what the user
+    //      wanted" nor "the host put it back" can mask the result.
+    settle();
+    {
+        algoP->setValueNotifyingHost (normForItem (algoP, 0, nAlgo));
+        settle();
+        const float start = plainOf (algoP);
+        const int   pick  = nAlgo - 1;
+        const int   hostItem = 1;                     // distinct from 0 and from pick
+        const float expected = algoP->convertFrom0to1 (normForItem (algoP, pick, nAlgo));
+
+        host.target      = algoP;
+        host.index       = algoP->getParameterIndex();
+        host.writeToNorm = normForItem (algoP, hostItem, nAlgo);
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        algoB->setSelectedItemIndex (pick, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+
+        check (host.wrote,  "leg A: the host answered the write from inside setValueNotifyingHost");
+        check (host.polled, "leg A: the host pumped -- a nested poll ran inside the gesture close");
+        check (proc.canUndo(), "leg A: the selection is one undoable step");
+        proc.undo();
+        check (near (plainOf (algoP), start),
+               "leg A: Undo returns Algorithm to the value the selection started from");
+        proc.redo();
+        if (near (plainOf (algoP), algoP->convertFrom0to1 (host.writeToNorm)))
+            std::printf ("  [leg A] the nested poll committed the HOST's value as the user's endpoint:"
+                         " Redo gives %.4f, where the user selected %.4f\n",
+                         (double) plainOf (algoP), (double) expected);
+        check (near (plainOf (algoP), expected),
+               "leg A: Redo restores what the USER selected, never the host's value");
+    }
+
+    // ---- LEG B: a CONTROL, and the measurement is why it is one -----------------------------
+    //      Same shape on a Button. Every toggle in this editor drives a `RawBool`
+    //      (PluginParameters.cpp:47-58, getNumSteps() == 2), so the host's re-entrant write has
+    //      only one value available that is not the one the user just produced: the one the user
+    //      just left. That restores the committed sound, and the batch's own `sig != committedSig`
+    //      gate (PluginProcessor.cpp:1135) then correctly records nothing. A two-valued parameter
+    //      cannot carry a WRONG endpoint, so this leg is a control rather than a second proof --
+    //      recorded because the review's finding named buttons alongside combo boxes.
+    settle();
+    {
+        const bool was = monoT->getToggleState();
+        host.target      = monoP;
+        host.index       = monoP->getParameterIndex();
+        host.writeToNorm = was ? 1.0f : 0.0f;         // ...the value the user just left
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        monoT->setToggleState (! was, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+
+        check (host.wrote && host.polled,
+               "leg B: the button case reached the same window (write in, poll at the close)");
+        std::printf ("  [leg B] two-valued parameter: live Mono %.0f, undo available %d\n",
+                     (double) plainOf (monoP), (int) proc.canUndo());
+        check (near (plainOf (monoP), was ? 1.0f : 0.0f),
+               "leg B: the host's write is what the plug-in is left holding");
+    }
+
+    // ---- LEG C: a CONTROL -- the host write WITHOUT the nested poll --------------------------
+    //      This is round 18's own case, and it must keep working: the witness's after-hook runs,
+    //      finds the parameter moved, and states the user's endpoint.
+    settle();
+    {
+        algoP->setValueNotifyingHost (normForItem (algoP, 0, nAlgo));
+        settle();
+        const float start = plainOf (algoP);
+        const int   pick  = nAlgo - 1;
+        const float expected = algoP->convertFrom0to1 (normForItem (algoP, pick, nAlgo));
+
+        host.target      = algoP;
+        host.index       = algoP->getParameterIndex();
+        host.writeToNorm = normForItem (algoP, 1, nAlgo);
+        host.armWrite = true; host.armPoll = false;   // ...the host does NOT pump this time
+        host.wrote = host.polled = false;
+
+        algoB->setSelectedItemIndex (pick, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+
+        check (host.wrote && ! host.polled, "leg C: the host wrote but did not pump");
+        check (proc.canUndo(), "leg C: the selection is one undoable step");
+        proc.undo();
+        check (near (plainOf (algoP), start), "leg C: Undo returns to the starting item");
+        proc.redo();
+        check (near (plainOf (algoP), expected),
+               "leg C: Redo restores the user's selection (round 18 preserved)");
+    }
+
+    // ---- LEG D: a CONTROL -- the nested poll WITHOUT a host write ----------------------------
+    //      The live read at the close IS the user's value here, so the nested poll commits the
+    //      right thing. This leg exists to show the fix does not depend on suppressing the poll.
+    settle();
+    {
+        algoP->setValueNotifyingHost (normForItem (algoP, 0, nAlgo));
+        settle();
+        const float start = plainOf (algoP);
+        const int   pick  = nAlgo - 1;
+        const float expected = algoP->convertFrom0to1 (normForItem (algoP, pick, nAlgo));
+
+        host.target      = algoP;
+        host.index       = algoP->getParameterIndex();
+        host.armWrite = false; host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        algoB->setSelectedItemIndex (pick, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+
+        check (! host.wrote && host.polled, "leg D: the host pumped but wrote nothing");
+        check (proc.canUndo(), "leg D: the selection is one undoable step");
+        proc.undo();
+        check (near (plainOf (algoP), start), "leg D: Undo returns to the starting item");
+        proc.redo();
+        check (near (plainOf (algoP), expected), "leg D: Redo restores the user's selection");
+    }
+
+    // ---- LEG E: two user gestures in one batch, the nested poll inside the FIRST --------------
+    //      The combo's close is polled while a knob drag is still to come. Whatever the poll
+    //      commits, the combo's own endpoint must be the user's -- a stale endpoint here would be
+    //      the same defect wearing a second gesture as cover.
+    settle();
+    {
+        algoP->setValueNotifyingHost (normForItem (algoP, 0, nAlgo));
+        settle();
+        const float aStart = plainOf (algoP), dStart = plainOf (driveP);
+        const int   pick   = nAlgo - 1;
+        const float aExpect = algoP->convertFrom0to1 (normForItem (algoP, pick, nAlgo));
+
+        host.target      = algoP;
+        host.index       = algoP->getParameterIndex();
+        host.writeToNorm = normForItem (algoP, 1, nAlgo);
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        algoB->setSelectedItemIndex (pick, juce::sendNotificationSync);
+        float dProduced = dStart;
+        dragKnob (driveK, 18.0f, legStamp(), [&] { dProduced = plainOf (driveP); });
+        proc.pollUndoCoalesce();
+
+        check (host.wrote && host.polled, "leg E: the first gesture's close was poisoned and polled");
+        check (! near (dProduced, dStart), "leg E: the drag moved Drive");
+        // Walk the history back to the start, then forward again, and read the combo.
+        while (proc.canUndo()) proc.undo();
+        check (near (plainOf (algoP), aStart) && near (plainOf (driveP), dStart),
+               "leg E: Undo puts both controls back where they started");
+        while (proc.canRedo()) proc.redo();
+        check (near (plainOf (algoP), aExpect),
+               "leg E: Redo restores the user's SELECTION, not the host's, even across two gestures");
+        check (near (plainOf (driveP), dProduced),
+               "leg E: ...and the drag's own endpoint is untouched by the nested poll");
+    }
+
+    // ---- LEG F: a CONTROL -- automation on a DIFFERENT parameter during the combo gesture -----
+    //      ADR-0008's per-parameter rule: a host move on Drive while the user is selecting an
+    //      algorithm must not join the user's step.
+    settle();
+    {
+        algoP->setValueNotifyingHost (normForItem (algoP, 0, nAlgo));
+        settle();
+        const float aStart = plainOf (algoP), dStart = plainOf (driveP);
+        const int   pick   = nAlgo - 1;
+
+        host.target      = driveP;                     // ...a parameter the user is NOT touching
+        host.index       = algoP->getParameterIndex(); // armed by the combo's callbacks
+        host.writeToNorm = driveP->convertTo0to1 (dStart + 3.0f);
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        algoB->setSelectedItemIndex (pick, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+
+        check (host.wrote && host.polled, "leg F: the unrelated automation landed inside the gesture");
+        check (! near (plainOf (driveP), dStart), "leg F: Drive really did move");
+        const float dAfter = plainOf (driveP);
+        proc.undo();
+        check (near (plainOf (algoP), aStart), "leg F: Undo puts the algorithm back");
+        check (near (plainOf (driveP), dAfter),
+               "leg F: ...and leaves the host's Drive move alone -- it was never the user's");
+    }
+
+    // ---- LEG G: a CONTROL -- the slider path, which is structurally out of reach --------------
+    //      A slider writes with `setValueAsPartOfGesture` and closes from a separate
+    //      `sliderDragEnded` dispatch, so its witness has already set episode bit 1 and the close
+    //      skips the live read. Driven here with BOTH ingredients to show it stays correct.
+    settle();
+    {
+        const float start = plainOf (driveP);
+        float produced = start;
+        host.target      = driveP;
+        host.index       = driveP->getParameterIndex();
+        host.writeToNorm = driveP->convertTo0to1 (9.0f);
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        // Read what the USER produced from the SLIDER, not from the parameter: by this point the
+        // host has already overwritten the parameter, and the slider's own value is exactly what
+        // the witness records (PluginEditor.h, `Hook::sliderValueChanged`).
+        dragKnob (driveK, 20.0f, legStamp(), [&] { produced = (float) driveK->getValue(); });
+        proc.pollUndoCoalesce();
+
+        check (! near (produced, start), "leg G: the drag moved Drive");
+        check (proc.canUndo(), "leg G: the drag is one undoable step");
+        proc.undo();
+        check (near (plainOf (driveP), start), "leg G: Undo returns to the pre-press value");
+        proc.redo();
+        check (near (plainOf (driveP), produced),
+               "leg G: Redo restores what the DRAG produced (rounds 18/19 preserved)");
+    }
+
+    // ---- LEG H: a CONTROL -- round 19's refusal, now with a nested poll on top ---------------
+    //      R1032-1035 is covered end-to-end by State test 92, which runs in this same suite. What
+    //      is NEW here is the combination: a store the imager REFUSES, whose gesture close is then
+    //      polled from the host's seat. Episode bit 2 must still suppress the live read, so the
+    //      poll commits the endpoint the last standing write left rather than the controller's.
+    settle();
+    {
+        anamorph::gui::SpectrumImager* im = nullptr;
+        std::function<void (juce::Component*)> findIm = [&] (juce::Component* c)
+        {
+            if (im != nullptr) return;
+            for (int i = 0; i < c->getNumChildComponents(); ++i)
+            {
+                auto* k = c->getChildComponent (i);
+                if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) { im = si; return; }
+                findIm (k);
+                if (im != nullptr) return;
+            }
+        };
+        findIm (ed);
+        auto* bandsP = apvts.getParameter (pid::mbBands);
+        auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+        check (im != nullptr && im->getWidth() > 300 && bandsP != nullptr && wLoP != nullptr,
+               "leg H: the imager and its band-width parameter are available");
+        if (im != nullptr && im->getWidth() > 300 && bandsP != nullptr && wLoP != nullptr)
+        {
+            bandsP->setValueNotifyingHost (bandsP->convertTo0to1 (1.0f));
+            wLoP->setValueNotifyingHost (wLoP->convertTo0to1 (1.0f));
+            settle();
+            const float start = plainOf (wLoP);
+
+            const float W = (float) im->getWidth(), H = (float) im->getHeight();
+            const float bx = 0.5f * W;
+            auto mev = [&] (float x, float y, bool dragged)
+            {
+                const auto t = juce::Time::getCurrentTime();
+                return juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                         t, { x, y }, t, 1, dragged);
+            };
+            float wy = -1.0f;
+            for (float y = 4.0f; y < H - 4.0f; y += 1.0f)
+            {
+                im->mouseMove (juce::MouseEvent (src, { bx, y }, juce::ModifierKeys(),
+                                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                                 juce::Time::getCurrentTime(), { bx, y },
+                                                 juce::Time::getCurrentTime(), 1, false));
+                if (im->getTooltip() == juce::String ("Band width")) { wy = y; break; }
+            }
+            check (wy > 0.0f, "leg H: the band-width line is findable");
+            if (wy > 0.0f)
+            {
+                WriteFromInsideAStoreQuietly echo;
+                echo.target = wLoP;
+                echo.to     = 1.4f;                 // the controller's value, refused by storeOwned
+                echo.armed  = true;
+                wLoP->addListener (&echo);
+
+                host.target   = wLoP;
+                host.index    = wLoP->getParameterIndex();
+                host.armWrite = false;              // the refusal is the poison here, not the host
+                host.armPoll  = true;               // ...but the host still pumps at the close
+                host.wrote = host.polled = false;
+
+                im->mouseDown (mev (bx, wy, false));
+                im->mouseDrag (mev (bx, wy - 18.0f, true));
+                im->mouseUp   (mev (bx, wy - 18.0f, true));
+                wLoP->removeListener (&echo);
+                proc.pollUndoCoalesce();
+
+                check (echo.fired, "leg H: the controller replaced the value inside the store");
+                if (proc.canUndo())
+                {
+                    proc.undo();
+                    proc.redo();
+                    if (near (plainOf (wLoP), 1.4f))
+                        std::printf ("  [leg H] a refused store plus a nested poll recorded the"
+                                     " controller's value: Redo gives %.4f\n", (double) plainOf (wLoP));
+                    check (! near (plainOf (wLoP), 1.4f),
+                           "leg H: a refused store states no endpoint, nested poll or not");
+                }
+                else
+                {
+                    std::printf ("  [leg H] the refused store recorded no step at all"
+                                 " (width %.4f, started %.4f)\n",
+                                 (double) plainOf (wLoP), (double) start);
+                    check (true, "leg H: a refused store recorded no user step");
+                }
+            }
+        }
+    }
+
+    // ---- LEG I: a CONTROL -- a standalone wheel notch whose close the host polls --------------
+    //      ADR-0053's wheel rules are untouched by this round. JUCE wraps a slider's wheel in a
+    //      one-shot drag notification, so the witness still runs before the close; with the host
+    //      both writing and pumping, the notch must still be the user's own step.
+    settle();
+    {
+        const float start = plainOf (driveP);
+        juce::MouseWheelDetails wheel;
+        wheel.deltaX = 0.0f; wheel.deltaY = 0.5f;
+        wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+        host.target      = driveP;
+        host.index       = driveP->getParameterIndex();
+        host.writeToNorm = driveP->convertTo0to1 (9.5f);
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();
+        driveK->mouseWheelMove (juce::MouseEvent (src, { cx, cy }, juce::ModifierKeys(),
+                                                  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                                  t, { cx, cy }, t, 1, false), wheel);
+        const float produced = (float) driveK->getValue();   // the notch's own value, as in leg G
+        proc.pollUndoCoalesce();
+
+        check (! near (produced, start) || ! host.wrote,
+               "leg I: the notch either moved Drive or the host never got its chance");
+        if (proc.canUndo())
+        {
+            proc.undo();
+            check (near (plainOf (driveP), start), "leg I: Undo returns to the pre-notch value");
+            proc.redo();
+            check (near (plainOf (driveP), produced),
+                   "leg I: Redo restores what the NOTCH produced (ADR-0053 preserved)");
+        }
+    }
+
+    // ---- LEG J: a nested control notification inside the one under test ----------------------
+    //      The host answers the combo's write by moving Drive NOTIFYINGLY, so Drive's attachment
+    //      sets Drive's slider and Drive's own witness pair runs INSIDE the combo's. The inner
+    //      after-hook must hand the combo's request back rather than clear it, or the combo's
+    //      close falls through to a live read that the host has already poisoned.
+    settle();
+    {
+        algoP->setValueNotifyingHost (normForItem (algoP, 0, nAlgo));
+        settle();
+        const float aStart = plainOf (algoP), dStart = plainOf (driveP);
+        const int   pick   = nAlgo - 1;
+        const float aExpect = algoP->convertFrom0to1 (normForItem (algoP, pick, nAlgo));
+
+        host.target      = algoP;
+        host.index       = algoP->getParameterIndex();
+        host.writeToNorm = normForItem (algoP, 1, nAlgo);
+        host.nestTarget  = driveP;
+        host.nestToNorm  = driveP->convertTo0to1 (dStart + 4.0f);
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        algoB->setSelectedItemIndex (pick, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+        host.nestTarget = nullptr;
+
+        check (host.wrote && host.polled, "leg J: the combo's close was poisoned and polled");
+        check (! near (plainOf (driveP), dStart),
+               "leg J: the host's notifying write really did drive the other control");
+        check (proc.canUndo(), "leg J: the selection is one undoable step");
+        proc.undo();
+        check (near (plainOf (algoP), aStart), "leg J: Undo returns to the starting item");
+        proc.redo();
+        check (near (plainOf (algoP), aExpect),
+               "leg J: Redo restores the user's selection even with a nested control notification");
+    }
+
+    proc.removeListener (&host);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
 static void testTooltipSourceOfTruth()
 {
     std::printf ("Tooltip source of truth: the cached component vs the live pointer\n");
@@ -19717,7 +20310,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1759).
+//  baseline", src/PluginProcessor.cpp:1791).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -19950,7 +20543,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1488).
+//  targets", src/PluginProcessor.cpp:1520).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -20327,7 +20920,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1944).
+//  mixed sound", src/PluginProcessor.cpp:1976).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -24333,6 +24926,7 @@ int main (int argc, char* argv[])
     testAUserStepsEndpointsBelongToTheUser();
     testAnAttachmentEndpointBelongsToTheUser();
     testARefusedStoreStatesNoEndpoint();
+    testACompleteGestureEndpointPrecedesThePoll();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

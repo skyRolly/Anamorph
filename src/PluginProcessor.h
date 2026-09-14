@@ -134,6 +134,28 @@ public:
     //
     // It states no value, deliberately: a refused store has none to state.
     void noteOwnedParamRefused (const juce::AudioProcessorParameter* p) noexcept;
+
+    // ADR-0008, ROUND 20. WHAT THE CONTROL ASKED FOR, KNOWN BEFORE THE GESTURE CAN BE POLLED.
+    // `noteOwnedParamEndpoint` above states the endpoint AFTER the write, which is early enough for
+    // a slider -- its attachment writes in one callback and closes the gesture in a later one, so
+    // the endpoint is standing before the close. It is NOT early enough for a ComboBox or a Button:
+    // JUCE's attachment does begin/write/end for those inside a SINGLE listener callback
+    // (`setValueAsCompleteGesture`), and the editor's witness is the next listener in that same
+    // pass -- so the batch becomes pollable, and its endpoint is read, while the witness is still
+    // pending. A host that pumps the message loop from its gesture-end callback (it is entered
+    // last, as the parameter's `finalListener`) gets a nested `pollUndoCoalesce` in that gap, and
+    // the entry it commits is final: `UndoEntry` stores the value, so a later declaration cannot
+    // reach it.
+    //
+    // So the control says what it is about to ask for BEFORE handing over to the attachment, and
+    // the close prefers that over its live read. It is a REQUEST, not a declaration: it states no
+    // ownership and creates no step -- a host push arms and disarms it with no gesture in between
+    // and nothing consumes it. The previous request is returned so the caller can restore it,
+    // which keeps one control's notification nested inside another's from stranding the outer one.
+    struct AttachmentRequest { int index = -1; float norm = 0.0f; };
+    AttachmentRequest noteAttachmentRequest (const juce::AudioProcessorParameter* p,
+                                             float norm) noexcept;
+    void restoreAttachmentRequest (AttachmentRequest prev) noexcept;
     // The name a parameter-backed control answers to. A parameter's index is stable for the life of
     // the processor and unique to it, so two controls driving the SAME parameter -- a knob and the
     // numeric box under it -- are correctly one control for this purpose. +1 keeps 0 meaning "none".
@@ -582,10 +604,17 @@ private:
     std::vector<char>  batchOwnedParam;
     // ...and which parameters the CURRENT gesture episode is about. Bit 0 is "a gesture opened on
     // it since the last zero-crossing close"; bit 1 is "a store declared its endpoint in this
-    // episode, so the close must not second-guess it with a live read". Cleared at every
+    // episode, so the close must not second-guess it with a live read"; bit 2 (round 19) is "a
+    // store on it was REFUSED this episode, so the live value is known not to be the user's and
+    // the endpoint must stay where the last thing that stood left it". Cleared at every
     // zero-crossing close and whenever the batch is re-based. This is what keeps a closing gesture
     // from retaking an endpoint that belongs to an earlier gesture of the same batch.
     std::vector<char>  batchEpisodeParam;
+    // ROUND 20: the one piece of endpoint bookkeeping that is NOT per-batch, and must not be --
+    // it is armed before the gesture opens, and opening a fresh batch re-bases every vector above.
+    // At most one control notification is in flight at a time; nesting is handled by save/restore
+    // at the witness rather than by a stack here.
+    AttachmentRequest  attachRequest;
 
     StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;

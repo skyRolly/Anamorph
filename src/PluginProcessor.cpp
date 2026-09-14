@@ -525,6 +525,29 @@ void AnamorphAudioProcessor::noteOwnedParamRefused (const juce::AudioProcessorPa
     batchEpisodeParam[(size_t) i] |= (char) 4;
 }
 
+// ADR-0008, ROUND 20. The request, armed. Deliberately weaker than every `note*` above it: no
+// ownership test, no episode bit, no step. It says only "the control whose notification is running
+// is about to ask for this", and the only reader is the close, which prefers it to its live read.
+AnamorphAudioProcessor::AttachmentRequest
+AnamorphAudioProcessor::noteAttachmentRequest (const juce::AudioProcessorParameter* p,
+                                               float norm) noexcept
+{
+    const AttachmentRequest prev = attachRequest;
+    if (p != nullptr)
+    {
+        const int i = p->getParameterIndex();
+        if (i >= 0) attachRequest = { i, norm };
+    }
+    return prev;
+}
+
+// ...and disarmed, by restoring whatever was armed before. Restoring rather than clearing is what
+// makes a nested control notification safe: the inner one puts the outer one's request back.
+void AnamorphAudioProcessor::restoreAttachmentRequest (AttachmentRequest prev) noexcept
+{
+    attachRequest = prev;
+}
+
 // The ownership record starts empty and both edges read the live sound: called wherever the undo
 // bookkeeping is dropped wholesale (a program state jump, an Undo, a Redo, a preset switch)
 // -- AND at the open of a FRESH pending batch, which is the fifth caller and the only one
@@ -1045,8 +1068,17 @@ void AnamorphAudioProcessor::parameterGestureChanged (int parameterIndex, bool g
                 // was REFUSED in this episode, so the live value below is known NOT to be the
                 // user's and the endpoint must stay where the last thing that stood left it.
                 if ((ep & 1) == 0 || (ep & 2) != 0 || (ep & 4) != 0) continue;
+                // ROUND 20: ...and where a live read is not good enough at all. A ComboBox or
+                // Button attachment closes its gesture inside the control's own callback, so this
+                // close runs BEFORE the editor's witness can state the endpoint -- and from here
+                // the batch is pollable, so a host that pumps gets a nested poll that commits
+                // whatever this line wrote. The control armed its request before handing over to
+                // the attachment, so what it asked for is available now; a live read here could
+                // only differ from it by having picked up a re-entrant host write.
                 if (i < (int) batchCloseValue.size() && ps[i] != nullptr)
-                    batchCloseValue[(size_t) i] = ps[i]->getValue();
+                    batchCloseValue[(size_t) i] = (i == attachRequest.index)
+                                                ? attachRequest.norm
+                                                : ps[i]->getValue();
             }
             for (auto& c : batchEpisodeParam) c = (char) 0;   // the episode is over
         }

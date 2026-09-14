@@ -4076,3 +4076,59 @@ shadowing the member — so sweeping it prints an ACCEPTED warning on every run.
 useful property is that silence means "nothing new"; one line the reader learns to skip destroys that
 faster than the missing coverage costs. The reason is written at the list so the next person does not
 re-add it, and the condition for adding it is named: the day that debt row is paid off.
+
+## §77. Round 20 — the endpoint a complete gesture could not state in time
+
+`src/PluginEditor.h:R178-181`. CONFIRMED, with one correction to the reported ordering.
+
+### What is structural, and what the report left out
+
+Three facts settle it, and all three are in the source rather than in the report:
+
+1. For a ComboBox or a Button the attachment does begin / write / end inside ONE listener callback
+   (`setValueAsCompleteGesture`, juce_ParameterAttachments.cpp:59-67, reached from :239 and :274).
+   The round-18 witness is the next listener in that same pass, so it cannot speak until the gesture
+   has already closed. A slider is different by construction: it writes with
+   `setValueAsPartOfGesture` and closes from `sliderDragEnded`, a separate dispatch, so its witness
+   sets episode bit 1 first and the close skips the live read entirely.
+2. The close is where the batch becomes pollable. `pendingGestureCommit = true` and the endpoint
+   live read are both inside `parameterGestureChanged`, with no dispatch between them.
+3. The host runs AFTER both. The plug-in is an ordinary parameter listener; the wrapper is the
+   parameter's `finalListener`, called last (juce_AudioProcessorParameter.cpp:103-108). So a host
+   that pumps its message loop from its gesture-end callback lands a nested `pollUndoCoalesce`
+   exactly in the gap, and the entry it pushes stores the value — the witness cannot reach it.
+
+**The report's ordering is wrong in one step, and it matters.** It has the host writing "during
+endChangeGesture". A write there lands AFTER the close's live read, so the endpoint is already the
+user's and the nested poll commits the right thing. The poisoning write has to be earlier, inside
+`setValueNotifyingHost`. Two host callbacks, not one.
+
+### Scope, narrowed by measurement rather than by structure
+
+The structural argument says "button and combo". The measurement says combo. Every toggle in this
+editor drives a `RawBool` with `getNumSteps() == 2`, so the only value a host can install that is
+not the one the user just produced is the one the user just left — which restores the committed
+sound, and the batch's own `sig != committedSig` gate then correctly records nothing. Leg B drives
+the button case and prints exactly that.
+
+### The fix, and why it is a request rather than a declaration
+
+The witness's before-hook already runs ahead of the attachment, and the control is already holding
+its new value by then. It tells the processor what it is about to ask for; the close prefers that to
+its live read. It is deliberately the weakest thing in the file: no ownership test, no episode bit,
+no step, no value semantics beyond "this is what was asked for". A host push arms and disarms it
+with no gesture in between and nothing consumes it. It cannot live in the batch vectors, because
+opening a fresh batch re-bases those and the request is armed before the gesture opens.
+
+Restoring the previous request rather than clearing it is the one piece that looked like
+over-engineering and is not: M79 removes it and survived every leg until leg J was written.
+
+### What this round did NOT do, deliberately
+
+RISK-012 is still open. The imager's gesture-bracketed bare stores (`resetParam`, `setBands`,
+`setSoloMask`) declare no endpoint at all, so a host write inside their own `setValueNotifyingHost`
+is still live-read as the user's `after`. The request mechanism built here generalises to them
+directly — the store knows what it is installing — but that is a second change on a second path, and
+this round's instruction scopes it to the attachment families. It is recorded in `FUTURE_RISKS.md`
+as an open defect rather than downgraded to an accepted residual, because it still violates the
+stated product rule.

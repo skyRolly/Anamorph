@@ -353,6 +353,69 @@ declares, `after` is the control's own value and no read can replace it. What re
 ADR-0052 already governs: a write made with no change gesture open is not a user step at all, and
 this decision does not give it one. State test 91 legs I and J hold that line.
 
+## Decision — correction, 2026-09-14 (round 20)
+
+**An attachment-backed endpoint must be known BEFORE the gesture it belongs to can be polled.** The
+round-18 witness states the endpoint after the attachment's write, which is early enough for a
+slider — its attachment writes in one callback (`setValueAsPartOfGesture`) and closes the gesture in
+a later one (`sliderDragEnded`), so the endpoint is standing before the close. It is NOT early
+enough for a ComboBox or a Button: JUCE does begin/write/end for those inside a SINGLE listener
+callback (`setValueAsCompleteGesture`, juce_ParameterAttachments.cpp:59-67), and the witness is the
+next listener in that same pass — so the gesture closes, and its endpoint is read, while the witness
+is still pending.
+
+**The close is also where the batch becomes pollable, and the host is handed control in between.**
+`pendingGestureCommit = true` and the endpoint live read both happen inside
+`parameterGestureChanged`; the plug-in is an ORDINARY parameter listener while the host's wrapper is
+the parameter's `finalListener`, called last (juce_AudioProcessorParameter.cpp:103-108). A host that
+pumps its message loop from the gesture-end callback therefore gets a nested `pollUndoCoalesce` in
+that gap, and what it commits is final — `UndoEntry` stores the value, so the witness's later
+declaration cannot reach it:
+
+```text
+user selects Algorithm item 3, from item 0
+a controller answers the write from inside `setValueNotifyingHost`, Algorithm 1
+gesture closes  -> after(Algorithm) = 1        (the live read)
+the host pumps  -> nested poll commits the step
+the witness finally runs and states 3, into an entry that has already been pushed
+    -> Redo restores 1, a value the user never selected
+```
+
+Measured on the real Algorithm combo at `e9a0353` (State test 93 legs A, E and J — two failing
+checks at the head, three once leg J was added).
+
+**TWO INGREDIENTS ARE NEEDED, and the report named one.** A host that merely pumps at the close makes
+the poll commit the live read, which IS what the user asked for. The endpoint is poisoned only if a
+host write landed EARLIER, inside `setValueNotifyingHost`, before the close read it. Both halves are
+the host's own two callbacks.
+
+**The correction is a REQUEST, armed before the attachment runs.** The witness's before-hook — which
+already runs ahead of JUCE's attachment, and by which time the control is holding its new value —
+tells the processor what this control is about to ask for; the close prefers that to its live read.
+It is deliberately weaker than every `note*` beside it: no ownership, no episode bit, no step. A host
+push arms and disarms it with no gesture in between and nothing consumes it. The previous request is
+handed back rather than cleared, so one control's notification nested inside another's cannot strand
+the outer one.
+
+**Scope, established rather than assumed.** Combo boxes are affected. Buttons reach the same window
+but cannot carry a wrong endpoint here: every toggle in this editor drives a `RawBool`
+(`getNumSteps() == 2`), so the only value a host can install that is not the one the user just
+produced is the one the user just left — which restores the committed sound, and the batch's own
+`sig != committedSig` gate then correctly records nothing. Sliders and the imager's stores are out
+of reach for the structural reason above.
+
+**Round 19's "where the live read still runs, stated exactly" was incomplete, and is corrected here.**
+It named two cases — an empty press, and the imager's bare-`setValueNotifyingHost` stores. There was
+a third: an attachment-backed parameter whose complete gesture closes before its witness can speak.
+That third case is what this round closes. The first two are unchanged, and the second remains the
+open window RISK-012 is recorded against.
+
+**What this does NOT change.** No gesture span, no host touch or latch span, no parameter ID, range,
+default or serialization field, no DSP node or stage order, no reported latency, no thread and no new
+cross-thread path. Nothing was added to `parameterValueChanged`; `foreignSinceEdge` was not touched.
+The 24 Hz poll, the batching and ADR-0053's wheel rules are untouched, and no poll was suppressed:
+the fix makes the nested poll commit the right value rather than preventing it from running.
+
 ## Decision — correction, 2026-09-14 (round 19)
 
 **A refused store states no endpoint, and that is a fact the close has to be told.** Round 18 gave
@@ -435,5 +498,5 @@ in-gesture window this decision has recorded since round 16, and this round does
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:426-542, :340-520
+- Source: src/PluginProcessor.cpp:426-565, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")
