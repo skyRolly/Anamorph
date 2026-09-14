@@ -156,6 +156,48 @@ coalescer has — the pre-existing window ADR-0053 already records — and if it
 batch owns, that parameter's after-value is the host's. It cannot reach a parameter the batch does
 not own, which is the case RISK-012 was about, and it cannot make automation undoable on its own.
 
+## Decision — correction, 2026-09-14 (round 16)
+
+**A store declares itself only if it stood, on EVERY unbracketed path — and there is now one store
+that does it.** Round 15 gave `SpectrumImager::storeOwned` that rule and left
+`SpectrumImager::setParam` with a declaration of its own: convert, store, declare, unconditionally.
+The declared VALUE was never the problem — round 15 passes the value the store asked for,
+deliberately, so that a spread running after its gesture has closed still has an ending value — but
+the OWNERSHIP FLAG is, because `batchCloseValue` is retaken IN FULL at the next zero-crossing close,
+and `setBands` ends every add and every remove. So a host answering a topology store's own dispatch
+left the parameter holding somebody else's value, declared the user's anyway, and the close snapshot
+then read that value back as the user's endpoint. `addBandAt` and `removeBand` cannot catch it
+either: their loops prove slot *i* BEFORE storing slot *i* and never again, and `setBands`' own
+guard proves only the count.
+
+Measured on a three-band add with a listener answering the first split store that moves:
+*"Undo took back an authoritative write the user's Add never made: the split is at 300.0 Hz, not the
+4000.0 that was installed"*, and Redo reinstalled the host's value as though the Add had produced it.
+The same measurement through the delete x, on the remove transaction.
+
+`setParam` is now `storeOwned` — the whole body, not a copy of the proof — because the two differ
+only in what they do with the result and `setParam` has no caller that consumes one (ADR-0046: the
+four stores inside `addBandAt` / `removeBand` prove the count in their own loops). The transaction is
+deliberately NOT aborted: `setParam` has always returned void and its callers have always continued,
+and withholding the declaration is the whole of what the defect needs.
+
+**The line this draws, and the residual it deliberately does not move.** A store that brackets a
+gesture of its own — `resetParam`, `setBands`, `setSoloMask` — keeps the other rule: *a gesture IS
+the declaration*, whatever the store did. A host write landing inside one of those brackets stays
+the narrow residual recorded at the end of this section, not this defect. The distinction is exactly
+"who declared the parameter": a gesture, which says the user is editing it, or a store, which can
+only speak for a value that is still there. State test 86 leg Z5 is written on split 1 rather than
+split 0 for this reason — the click that adds a band opens a gesture on split 0 for the drag that
+may follow, so split 0 is the residual and split 1 is the defect.
+
+**And the 128-entry cap is enforced where the Consequences below always said it was.** It lived as
+two hand-copied `push_back` / `size() > 128` / `erase (begin())` triples — the poll's step push and
+the preset-switch push — while `abCopyToOther` had neither, so repeated A/B Copies grew the target
+slot's history without limit, and a Copy's entry is the expensive kind: two whole `ValueTree`s
+rather than a handful of `{index, before, after}` triples. One `pushCapped` helper now holds the
+bound for all three. `undo()` and `redo()` MOVE an entry between the stacks rather than growing
+either, so they are not capped and do not need to be. State test 89 measures it end to end.
+
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
   not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots
@@ -166,7 +208,8 @@ not own, which is the case RISK-012 was about, and it cannot make automation und
 - A `soundSignature()` over non-view params drives coalescing.
 - A **preset switch is one undo step** in the *active* A/B slot's history (via the bracket hooks);
   consecutive switches within a slot chain, while the two slots keep independent histories.
-- Cost: a hand-rolled history with a 128-entry cap per slot.
+- Cost: a hand-rolled history with a 128-entry cap per slot, enforced since 2026-09-14 by the single
+  `pushCapped` helper that every growing append goes through (State test 89).
 - **Since the 2026-09-13 amendment, a scoped entry is CHEAPER than the snapshot it replaces**: a
   handful of `{index, before, after}` triples and two short strings instead of a whole `ValueTree`.
   Only the two whole-state entries (preset load, A/B Copy) still carry trees, and they carry two.

@@ -795,14 +795,30 @@ void SpectrumImager::setParam (juce::RangedAudioParameter* p, float plain, int e
 {
     if (p == nullptr) return;
     if (expectedBands >= 0 && bandCount() != expectedBands) return;
-    const float norm = p->convertTo0to1 (plain);
-    p->setValueNotifyingHost (norm);
-    // ADR-0008 round 14, round 15's correction applied here too: the declaration carries the value
-    // THIS store asked for rather than a read-back. Unlike `storeOwned` this function proves no
-    // read-back at all (see the paragraph above it), so a read-back here would hand the step
-    // whatever a reentrant write left behind and call it the user's; `norm` is what the user's
-    // action produced, which is what the step is a record of.
-    if (onOwnedWrite) onOwnedWrite (p, norm);
+    // ADR-0008 round 16. THE STORE IS `storeOwned`, AND THERE IS NOW ONE OF IT. Round 14 gave this
+    // function a declaration of its own and round 15 gave that declaration a value; neither gave it
+    // the PROOF `storeOwned` has carried since ADR-0040, so a host answering this store's own
+    // dispatch left the parameter holding somebody else's value and declared the user's anyway.
+    // The value handed to `onOwnedWrite` was never the problem -- it was the user's asked-for value,
+    // deliberately -- but the OWNERSHIP FLAG is, because `batchCloseValue` is retaken in full at the
+    // next zero-crossing close (`setBands` ends every add and every remove), and that snapshot reads
+    // the parameter LIVE. Measured on a three-band add with a listener answering the first split
+    // store: `Undo took back an authoritative write the user's Add never made: the split is at
+    // 200.0 Hz, not the 4000.0 that was installed`, and Redo reinstalled the host's value as though
+    // the Add had produced it.
+    //
+    // WHY THE WHOLE BODY GOES RATHER THAN A COPY OF THE PROOF. The two functions differ only in what
+    // they do with the result -- this one has no caller that consumes it (ADR-0046: the four stores
+    // inside `addBandAt` / `removeBand` prove the count in their own loops) -- so a second copy of
+    // convert/expect/store/verify/declare is two places to keep in step for no gain. The transaction
+    // is deliberately NOT aborted here: `setParam` has always returned void and its callers have
+    // always continued, and withholding the declaration is the whole of what the defect needs.
+    // The guarded stores that bracket a gesture of their own (`resetParam`, `setBands`,
+    // `setSoloMask`) keep the OTHER rule -- a gesture IS the declaration -- and the host write that
+    // lands inside one of those brackets stays the residual ADR-0008 records rather than becoming
+    // this one.
+    float stood = 0.0f;
+    (void) storeOwned (p, plain, stood);
 }
 void SpectrumImager::resetParam (juce::RangedAudioParameter* p, int expectedBands)
 {

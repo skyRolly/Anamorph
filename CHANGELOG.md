@@ -96,6 +96,21 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   reset.
   Decision: ADR-0008 (amended 2026-09-13). Regression coverage: State test 86 legs Z, Z2, Z3 and Z4.
   Evidence: PR #144. [Verified]
+- **Adding or removing a Multiband band no longer lets your DAW's automation be taken back by your
+  Undo.** Adding or removing a band shifts the splits and widths around it. If your DAW wrote one of
+  those same controls at the exact moment the plug-in was moving it, the plug-in recorded your
+  action as having produced your DAW's value: one Undo then took that automation back, and Redo put
+  it in again as though your edit had made it. The controls the action really did move are undone
+  and redone exactly as before; one your DAW overwrote mid-action is left where your DAW put it.
+  Decision: ADR-0008 (amended 2026-09-13). Regression coverage: State test 86 legs Z5 and Z6.
+  Evidence: PR #144. [Verified]
+- **Repeatedly copying between A and B no longer grows that slot's Undo history without limit.**
+  Each side of A/B keeps up to 128 Undo steps. Every other way of adding a step respected that
+  limit; the A/B **Copy** button did not, so a session that copied back and forth kept every copy it
+  had ever made — and a copy's step is the largest kind, a complete snapshot of the whole plug-in.
+  The limit now applies to Copy as well: the newest 128 are kept and the oldest is dropped, and Undo
+  and Redo behave normally either side of that boundary.
+  Decision: ADR-0008. Regression coverage: State test 89. Evidence: PR #144. [Verified]
 - **Scrolling during a drag no longer sends your DAW a brief value you never asked for.** A notch
   taken while the mouse button is held is added to the drag, and until now that addition happened
   *after* the drag had already published its own position — so every subsequent mouse movement

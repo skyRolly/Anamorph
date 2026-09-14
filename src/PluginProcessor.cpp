@@ -1149,8 +1149,7 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
                         entry.owned  = std::move (edits);
                         entry.before = { {}, committed.name, committed.baseline, committed.selection };
                         entry.after  = { {}, fresh.name,     fresh.baseline,     fresh.selection };
-                        stacks.undo.push_back (std::move (entry));
-                        if (stacks.undo.size() > 128) stacks.undo.erase (stacks.undo.begin());
+                        pushCapped (stacks.undo, std::move (entry));
                     }
                     stacks.redo.clear();
                     // Recorded only where a step was actually recorded: a gesture that changed nothing has
@@ -1231,8 +1230,7 @@ void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
         abUndo[abActive].redo.clear();                 // a new user action invalidates the redo stack
         committed = currentStateSet();                 // now carries the NEW preset name + clean baseline
         entry.after = committed;
-        abUndo[abActive].undo.push_back (std::move (entry));
-        if (abUndo[abActive].undo.size() > 128) abUndo[abActive].undo.erase (abUndo[abActive].undo.begin());
+        pushCapped (abUndo[abActive].undo, std::move (entry));
         committedSig = sig;
     }
     else
@@ -1266,6 +1264,12 @@ void AnamorphAudioProcessor::commitPresetSwitchUndoStep()
 // ADR-0008 as amended (round 14). Install one end of an undo entry -- see the header for why a
 // scoped entry is applied by handing `applyStateSet` the LIVE state with this entry's parameters
 // overwritten rather than by writing them directly.
+void AnamorphAudioProcessor::pushCapped (std::vector<UndoEntry>& stack, UndoEntry&& e)
+{
+    stack.push_back (std::move (e));
+    if (stack.size() > kUndoDepth) stack.erase (stack.begin());   // oldest out, newest kept
+}
+
 void AnamorphAudioProcessor::applyUndoEntry (const UndoEntry& e, bool toAfter)
 {
     const StateSet& end = toAfter ? e.after : e.before;
@@ -1446,7 +1450,9 @@ void AnamorphAudioProcessor::abCopyToOther()
     abUndo[other].redo.clear();
     abSlot[other] = currentStateSet(); // overwrite the other slot with the FULL state set (#6)
     entry.after = abSlot[other];
-    abUndo[other].undo.push_back (std::move (entry));
+    // ADR-0008's 128-entry-per-slot bound applies HERE too, and until round 16 it did not: this
+    // was the one append that never enforced it, and a Copy's entry is the expensive kind.
+    pushCapped (abUndo[other].undo, std::move (entry));
     publishProgram();                  // both slots moved and no preset metadata did (D-2)
 }
 

@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1400`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1404`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:1854`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:1860`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1669`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1675`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:1291 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:1307 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1604`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1620`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1291 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1307 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10809,7 +10809,7 @@ change, and no Accepted ADR conflict. [Verified]
 topology count commit may still report success"*, and its converse for `setSoloMask`.
 
 **Ruled B — already prevented, invariant documented.** Both halves are true of the code:
-`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:854`) and
+`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:870`) and
 `setSoloMask` returns `stored && soloMask() == mask` (`:662`), so each re-reads only its own
 parameter after its own dispatches even though both prove BOTH on the near side. What covers it is
 the **callers** — every one that acts on the result re-proves the other parameter on its next line,
@@ -11919,3 +11919,42 @@ the thirty-second pass's claim is corrected in place rather than deleted.
 `docs/procedures/TESTING.md` (legs Z, Z2, Z3, Z4, the rendered-grid comparison, mutations M55–M57);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §72. [Verified]
+
+### Thirty-fourth pass — the store that spoke for a value that was no longer there (2026-09-14)
+
+**Trigger.** Round 15 claimed MERGE-READY on a PR carrying four unresolved Code Scanning threads,
+and the review then raised two production findings against that same tree. The claim is withdrawn.
+
+**Finding 1 — confirmed, mechanism corrected.** `SpectrumImager::setParam` declared ownership
+unconditionally after its notifying store. The review said the declaration could carry the host's
+value; it could not — round 15 passes the value the store asked for, deliberately. The OWNERSHIP
+FLAG is what carries it, because `batchCloseValue` is retaken in full at the next zero-crossing
+close and `setBands` ends every add and every remove. Measured on both transactions: *"Undo took
+back an authoritative write the user's Add never made: the split is at 300.0 Hz, not the 4000.0 that
+was installed"*, and the same through the delete x. `setParam` is now `storeOwned` — one store, one
+proof — and the transaction is deliberately not aborted. Gesture-bracketed stores keep the other
+rule, so the accepted in-gesture residual does not move.
+
+**Finding 2 — confirmed.** `abCopyToOther` was the one append into an undo stack that never enforced
+ADR-0008's documented 128-entry-per-slot cap, and its entries are the expensive kind. One
+`pushCapped` helper now holds the bound for all three growing appends.
+
+**The four PREfast threads — accepted as test-only, with per-function evidence.**
+`sizeof (AnamorphAudioProcessor)` is 141,320 bytes; the real frames are 284,224 / 142,688 / 142,400 /
+142,464 against claims of 569,696 / 432,084 / 142,296 / 426,672, the worst being 27 % of the Windows
+1 MB reserve. None raises the suite's maximum (708,480, a pre-existing test), and both binaries run
+green under `ulimit -s 1024`. The stale aggregate figures in `TESTING.md` and `CI_CD.md` are
+refreshed in the same change.
+
+**Validation.** State 3 231 / 0, DSP 396 / 0, eleven mutations re-run or added (M50–M60), all killed.
+
+**Gate.** No gate item. The ADR-0008 amendment this corrects is Accepted and the correction is
+recorded inside it; the cap was already its documented Consequence. Thread Model: not triggered — no
+new thread, path, atomic or ordering. Serialization Registry, Parameter Registry, DSP Graph, Signal
+Flow, Latency, Plugin Format, Build System: untouched.
+
+**Documentation.** `ADR-0008` (a round-16 correction section and a Consequences line);
+`docs/procedures/TESTING.md` (legs Z5, Z6, State test 89, the per-function stack table, mutations
+M57–M60); `docs/procedures/CI_CD.md` (the re-measured stack figures);
+`CHANGELOG.md` `[0.9.8]` (two Fixed entries);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §73. [Verified]

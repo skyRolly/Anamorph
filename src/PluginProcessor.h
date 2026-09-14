@@ -395,6 +395,16 @@ private:
     // `noteWholeSoundReplaced()` all still happen on the undo path (State test 49's `undoStep` leg
     // is the one that would stop measuring its interleaving if they did not).
     void applyUndoEntry (const UndoEntry& e, bool toAfter);
+    // ADR-0008's history bound, in the ONE place that enforces it. The ADR's Consequences call it
+    // "a hand-rolled history with a 128-entry cap per slot", and until round 16 that cap lived as
+    // two hand-copied `push_back` / `size() > 128` / `erase (begin())` triples -- the poll's step
+    // push and the preset-switch push -- while `abCopyToOther` had neither, so repeated A/B Copies
+    // grew a slot's history without limit, and each of those entries is the expensive kind: two
+    // whole `ValueTree`s rather than a handful of `{index, before, after}` triples. `undo()` and
+    // `redo()` MOVE an entry between the two stacks rather than growing either, so they need no
+    // cap and do not call this: the undo stack they push to has just had an entry popped from it.
+    static constexpr size_t kUndoDepth = 128;
+    static void pushCapped (std::vector<UndoEntry>& stack, UndoEntry&& e);
     StateSet committed;
     juce::String committedSig, lastPolledSig;
     std::atomic<juce::uint32> soundParamGen { 1 }; // bumped by parameterValueChanged (S10)

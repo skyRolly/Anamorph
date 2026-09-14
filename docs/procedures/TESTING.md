@@ -1400,6 +1400,20 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   EXACTLY, which is the property that matters. Recording the rendered endpoints in the poll instead
   was tried and changed nothing measurable, so it was not kept.
 
+* **Round 16's legs — the topology stores, and the history cap.** **86 leg Z5** is the only leg in
+  which a host answers a topology store's OWN dispatch and the transaction carries on: `addBandAt`
+  proves slot *i* before storing slot *i* and never again, so the store is replaced and nothing
+  downstream can see it. It is written on **split 1, not split 0**, and that is the whole reason it
+  is a `setParam` leg rather than a re-run of an accepted residual: the click that adds a band
+  returns index 0 and `mouseDown` opens a change gesture on `freqP[0]` for the drag that may follow,
+  which declares split 0 by GESTURE whatever its store did. Split 1 gets no gesture in an add, so
+  `setParam`'s declaration is the only thing that can own it. **86 leg Z6** is the same probe through
+  `removeBand`, pressed and released on `deleteBox(0)` — the coordinates State test 69 established —
+  which opens no gesture on any split either. **State test 89** drives 130 A/B Copies and then counts
+  the Undos the slot will actually perform, which is the only thing a user can see and the only thing
+  the cap is for; each Copy carries its own Drive value, so the test can say WHICH entries survived
+  rather than only how many, and it checks the redo side across the same boundary.
+
 * **Three legs were RE-BASED by the amendment rather than extended, and the previous expectation is
   recorded in each.** **86 legs I and J** asserted that a burst whose own store was refused did not
   extend the previous scroll, which was true only because that burst recorded a whole-state step whose
@@ -1652,7 +1666,10 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M54 | the batch's closing values are never snapshotted | 15 checks across State tests 3, 10, 41, 83 and 86 |
   | M55 | `storeOwned` declares its store BEFORE proving the read-back (the round-14 order) | 86 leg Z2, 1 check |
   | M56 | a declaration no longer writes its own slot of the closing snapshot | 86 legs Z and Z3, 2 checks |
-  | M57 | `setParam` stops declaring its store through `onOwnedWrite` | 86 leg Z4, 1 check |
+  | M57 | `setParam` stores without going through the proof at all | 86 leg Z4, 1 check |
+  | M58 | `setParam` declares unconditionally again (the round-15 body) | 86 legs Z5 and Z6, 2 checks |
+  | M59 | `abCopyToOther` appends without the cap | 89, 4 checks |
+  | M60 | the cap evicts the NEWEST entry instead of the oldest | 89, 4 checks |
 
   **M34 is the row that proves the sweep is worth running twice.** Against the FIRST version of
   leg R it SURVIVED -- the leg pressed at the lane's middle, where no width drag is latched, so
@@ -2158,12 +2175,31 @@ reproduces the failure it exists for.
 processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `tests/dsp_tests.cpp`
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
-with `g++ -fstack-usage`, the largest frames are **707,824 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, state_tests.cpp:8967) and
+with `g++ -fstack-usage`, the largest frames are **708,480 bytes** in the state suite
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, state_tests.cpp:17430) and
 **289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, dsp_tests.cpp:1388) — 68%
 and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
 state_tests.cpp:2659 is 1,280,508 where the real frame is 283,968.
+
+**The four ADR-0053 tests PREfast flags on PR #144, measured rather than argued (round 16).** The
+wheel work added four functions and PREfast opened one `C6262` on each. One `AnamorphAudioProcessor`
+automatic is `sizeof` **141,320 bytes**, which is the whole of it:
+
+| Alert | Function | PREfast says | `-fstack-usage` says | Of the 1 MB reserve |
+|---|---|---|---|---|
+| 167 | `testAWheelNotchInsideAPressBelongsToIt` (:4801) | 569,696 | **284,224** | 27 % |
+| 182 | `testAScrollIsOneUndoStep` (:7093) | 432,084 | **142,688** | 14 % |
+| 187 | `testHoldingSoloAndScrollingMovesTheBand` (:8784) | 142,296 | **142,400** | 14 % |
+| 189 | `testAWheelNotchInsideAKnobPressBelongsToIt` (:9109) | 426,672 | **142,464** | 14 % |
+
+Test 80 is the only one of the four that holds **two** processors live at once — an outer `proc` plus
+one of `proc2`/`proc3`/`proc4` in a nested scope — and 2 x 141,320 is its real frame almost exactly.
+The other three hold one each, and the two that PREfast puts near 430 K are the sum-across-siblings
+artefact this section already documents; test 87's claim is the one that happens to be accurate,
+which is the control that says the tool is not simply wrong everywhere. **None of the four raises the
+suite's maximum frame** — that is still the pre-existing Settings test at 68 % — and both binaries
+run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Both suites also run with `stdout` unbuffered**
 (`setvbuf(..., _IONBF, ...)`), so a crash can no longer take the log with it: on Windows the CRT

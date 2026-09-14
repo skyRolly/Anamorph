@@ -3737,3 +3737,88 @@ saying the typed value-box path creates no Undo step while the suite asserted th
 here with a dated status line, and the thirty-second pass's claim corrected in place. The failure
 mode is worth naming: a round can validate its code against measurement and still ship a false
 statement about its own documentation, because nothing in the gate set reads a report.
+
+## §73. Round 16 — the store that spoke for a value that was no longer there
+
+Round 15's report claimed MERGE-READY. The PR still carried four unresolved Code Scanning threads
+and the review raised two production findings against the tree that claim was made on. The claim is
+withdrawn; this is what the items were.
+
+### The review's conclusion was right and its mechanism was wrong
+
+The finding says `setParam` "calls `onOwnedWrite` unconditionally after the notifying store" so "the
+declaration can therefore describe the final host-overwritten value". The second half is false
+against the code: round 15 passes `norm` — the value the store ASKED for, computed before
+`setValueNotifyingHost` — precisely so that a spread running after its gesture has closed still has
+an ending value, and the comment above it says so. Nothing there reads the parameter back.
+
+What is true is the conclusion, by a different route. `onOwnedWrite` does two things: it records the
+value AND it sets `batchOwnedParam`. The flag is the one that matters here, because
+`batchCloseValue` is retaken IN FULL at every zero-crossing gesture close, and `setBands` ends every
+add and every remove. So the sequence is:
+
+```text
+setSoloMask opens the batch          batchOpenValue = pre-Add
+setParam stores split 1 -> B         host listener answers the dispatch: split 1 := C
+setParam declares split 1 owned      batchCloseValue[split1] = B   (the asked-for value)
+setBands opens, stores, closes       batchCloseValue = FULL snapshot -> split1 = C
+poll                                 entry { split1: before pre-Add, after C }
+Undo                                 split 1 := pre-Add   -- the host's C is gone
+```
+
+`addBandAt` cannot catch it: its loops prove slot *i* BEFORE storing slot *i* and never again, and
+`setBands`' own `expectedBands` proves only the count. `removeBand` has the identical shape.
+
+### Measured first, on both transactions
+
+```
+[leg Z5] Undo took back an authoritative write the user's Add never made:
+         the split is at 300.0 Hz, not the 4000.0 that was installed
+[leg Z6] Undo took back an authoritative write the user's Remove never made:
+         the split is at 2000.0 Hz, not the 4000.0 that was installed
+```
+
+Two failures in 3219 checks at `d31a6d8`, zero with the fix.
+
+**The first attempt at leg Z5 measured the wrong thing, and that is worth recording.** It poked
+split 0 — and the click that adds a band returns index 0, so `mouseDown` opens a change gesture on
+`freqP[0]` for the drag that may follow. Split 0 is therefore declared by GESTURE whatever its store
+did, which is the narrow in-gesture window ADR-0008 records as an accepted residual, not this
+defect. The leg still failed, for the wrong reason. Re-aimed at split 1, which gets no gesture in an
+add, it isolates `setParam`'s declaration as the only thing that can own the parameter.
+
+### The fix is a deletion
+
+`setParam` now IS `storeOwned` — the whole body, not a copy of the proof. They differed only in what
+they do with the result, and `setParam` has no caller that consumes one. The transaction is
+deliberately not aborted; withholding the declaration is the whole of what the defect needs. The
+line this draws: a store that brackets a gesture of its own (`resetParam`, `setBands`,
+`setSoloMask`) keeps the other rule — a gesture IS the declaration — so the residual does not move.
+
+### And the cap that was documented in one place and enforced in two
+
+ADR-0008's Consequences have always said "a 128-entry cap per slot". It lived as two hand-copied
+`push_back` / `size() > 128` / `erase (begin())` triples, and `abCopyToOther` had neither — the one
+append that never enforced it, and the one whose entries are two whole `ValueTree`s apiece. One
+`pushCapped` helper now holds the bound for all three; `undo()` and `redo()` move an entry between
+the stacks rather than growing either, so they are not capped and do not need to be. State test 89
+drives 130 Copies and counts the Undos the slot will actually perform.
+
+### The four PREfast threads, measured rather than argued
+
+`sizeof (AnamorphAudioProcessor)` is **141,320 bytes**, and that is the whole story: test 80 holds
+two processors live at once, the other three hold one each.
+
+| Alert | Function | PREfast | `-fstack-usage` | Of 1 MB |
+|---|---|---|---|---|
+| 167 | `testAWheelNotchInsideAPressBelongsToIt` | 569,696 | 284,224 | 27 % |
+| 182 | `testAScrollIsOneUndoStep` | 432,084 | 142,688 | 14 % |
+| 187 | `testHoldingSoloAndScrollingMovesTheBand` | 142,296 | 142,400 | 14 % |
+| 189 | `testAWheelNotchInsideAKnobPressBelongsToIt` | 426,672 | 142,464 | 14 % |
+
+Three of the four claims are 2-3x the real frame — the sum-across-disjoint-sibling-scopes artefact
+`CI_CD.md` documented in the Code Scanning round — and test 87's is accurate, which is the control
+that says the tool is not simply wrong everywhere. None of the four raises the suite's maximum,
+still the pre-existing Settings test at 708,480 (68 %), and both binaries run green under
+`ulimit -s 1024`, which is the control that actually holds this line. Accepted as test-only under
+the established policy, with the numbers now on the record per function rather than in aggregate.

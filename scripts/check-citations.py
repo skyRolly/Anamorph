@@ -420,7 +420,7 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.h:276-279"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:390",
-     "src/PluginProcessor.h:461"): "parameterValueChanged",
+     "src/PluginProcessor.h:471"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:325",
      "src/PluginProcessor.h:388"): "UndoStacks",
@@ -450,13 +450,13 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.h:388"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     "src/PluginProcessor.cpp:2110-2209"): "setStateInformation",
+     "src/PluginProcessor.cpp:2116-2215"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     "src/PluginProcessor.cpp:2110"): "setStateInformation",
+     "src/PluginProcessor.cpp:2116"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     "src/PluginProcessor.cpp:1646"): "abActive",
+     "src/PluginProcessor.cpp:1652"): "abActive",
     #
     # 2026-09-13 (round 13) declared a re-aim of RISK-012's poll citation, `:963-1035` ->
     # `:980-1039`, onto the `sig != committedSig` gate. ROUND 14 DELETED IT, because round 14

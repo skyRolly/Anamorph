@@ -8252,6 +8252,137 @@ static void testAScrollIsOneUndoStep()
                 }
             }
 
+            // ---- LEG Z5: a topology store an authoritative write REPLACED is not owned ---------
+            //      The other side of leg Z4. `setParam` had no read-back -- `addBandAt`'s loops
+            //      prove slot i BEFORE storing slot i and never again, and `setBands`' own guard
+            //      proves only the COUNT -- so a host answering the store's own dispatch left the
+            //      transaction running with the parameter holding somebody else's value, declared
+            //      the user's anyway. The declared VALUE was never the problem (round 15 passes the
+            //      asked-for value deliberately); the OWNERSHIP FLAG is, because `batchCloseValue`
+            //      is retaken IN FULL at the next zero-crossing close -- `setBands` ends every add
+            //      -- and that snapshot reads the parameter live. Mutation M58 restores the
+            //      unconditional declaration and this leg is what notices.
+            //
+            //      THE PROBE TARGETS SPLIT 1, NOT SPLIT 0, and the distinction is the whole reason
+            //      this leg is a `setParam` leg at all. The click inserts at the far left, so
+            //      `addBandAt` returns index 0 and `mouseDown` opens a change gesture on `freqP[0]`
+            //      for the drag that may follow -- which declares split 0 by GESTURE, whatever its
+            //      store did, and a host write there is the narrow in-gesture window ADR-0008
+            //      records as an accepted residual rather than this defect. Split 1 gets no gesture
+            //      in an add, so `setParam`'s declaration is the only thing that can own it.
+            resetBands();
+            {
+                while (proc.canUndo()) proc.undo();
+                im->cancelActiveDrag();
+                setPlain (bandsP, 3.0f);
+                setPlain (loP, 200.0f); setPlain (midP, 300.0f); setPlain (hiP, 10000.0f);
+                proc.pollUndoCoalesce();
+                check (! proc.canUndo(), "leg Z5: the replaced-store leg starts with no undo history");
+                const float addY = 30.0f;
+                float ax = -1.0f;
+                for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+                {
+                    hover (x, addY);
+                    if (im->getTooltip() == juce::String ("Click to add a band split")) { ax = x; break; }
+                }
+                check (ax >= 0.0f, "leg Z5: the add affordance is findable");
+                if (ax >= 0.0f)
+                {
+                    const float b0 = plainOf (bandsP);
+                    WriteFromInsideAStore poke;       // the host answers split 1's own store dispatch
+                    poke.target = midP;
+                    poke.to     = 4000.0f;
+                    midP->addListener (&poke);
+                    poke.armed = true;
+                    const auto t = juce::Time::getCurrentTime();
+                    const juce::MouseEvent d (src, { ax, addY }, juce::ModifierKeys::leftButtonModifier,
+                                              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                              t, { ax, addY }, t, 1, false);
+                    im->mouseDown (d); im->mouseUp (d);
+                    const bool landed = poke.fired;
+                    midP->removeListener (&poke);
+                    proc.pollUndoCoalesce();
+                    const float after = plainOf (midP);
+
+                    check (landed, "leg Z5: the probe write landed inside the add's own split store");
+                    check (! landed || std::abs (after - 4000.0f) <= 1.0f,
+                           "leg Z5: the replaced store leaves the authoritative value standing");
+                    check (! landed || ! juce::exactlyEqual (plainOf (bandsP), b0),
+                           "leg Z5: the add itself still committed");
+                    check (! landed || proc.canUndo(), "leg Z5: ...and is undoable");
+                    if (landed) proc.undo();
+                    if (landed && std::abs (plainOf (midP) - 4000.0f) > 1.0f)
+                        std::printf ("  [leg Z5] Undo took back an authoritative write the user's Add"
+                                     " never made: the split is at %.1f Hz, not the 4000.0 that was"
+                                     " installed\n", (double) plainOf (midP));
+                    check (! landed || std::abs (plainOf (midP) - 4000.0f) <= 1.0f,
+                           "leg Z5: one Undo leaves the authoritative write that replaced the store");
+                    check (! landed || juce::exactlyEqual (plainOf (bandsP), b0),
+                           "leg Z5: ...and still takes the band back out");
+                    check (! landed || ! proc.canUndo(), "leg Z5: ...in ONE step");
+                    if (landed)
+                    {
+                        proc.redo();
+                        if (std::abs (plainOf (midP) - 4000.0f) > 1.0f)
+                            std::printf ("  [leg Z5] Redo moved a split the user's Add never"
+                                         " installed: %.1f Hz\n", (double) plainOf (midP));
+                        check (std::abs (plainOf (midP) - 4000.0f) <= 1.0f,
+                               "leg Z5: Redo leaves it alone too -- the step never owned it");
+                    }
+                }
+            }
+
+            // ---- LEG Z6: ...and the same rule through the REMOVE transaction -----------------
+            //      `removeBand` reaches the parameters through the same `setParam`, so this leg
+            //      exercises the other caller of the one proof. The delete x at `deleteBox(0)` is
+            //      pressed and released over the same spot (State test 69's coordinates), which
+            //      opens no change gesture on any split -- so `setParam`'s declaration is again the
+            //      only thing that can own one. The probe answers the SECOND split store, the one
+            //      that shifts slot 1 up to the old slot 2.
+            resetBands();
+            {
+                while (proc.canUndo()) proc.undo();
+                im->cancelActiveDrag();
+                setPlain (bandsP, 4.0f);
+                setPlain (loP, 200.0f); setPlain (midP, 2000.0f); setPlain (hiP, 10000.0f);
+                proc.pollUndoCoalesce();
+                check (! proc.canUndo(), "leg Z6: the remove leg starts with no undo history");
+                const float delX = 13.0f, delY = H - 30.0f;   // deleteBox(0), as State test 69 has it
+                const float b0 = plainOf (bandsP), s0 = plainOf (loP);
+                WriteFromInsideAStore poke;
+                poke.target = midP;
+                poke.to     = 4000.0f;
+                midP->addListener (&poke);
+                poke.armed = true;
+                const auto t = juce::Time::getCurrentTime();
+                const juce::MouseEvent d (src, { delX, delY }, juce::ModifierKeys::leftButtonModifier,
+                                          1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                          t, { delX, delY }, t, 1, false);
+                im->mouseDown (d); im->mouseUp (d);
+                const bool landed = poke.fired;
+                midP->removeListener (&poke);
+                proc.pollUndoCoalesce();
+
+                check (landed, "leg Z6: the probe write landed inside the remove's own split store");
+                check (! landed || juce::exactlyEqual (plainOf (bandsP), b0 - 1.0f),
+                       "leg Z6: the delete x still removed its band");
+                check (! landed || std::abs (plainOf (midP) - 4000.0f) <= 1.0f,
+                       "leg Z6: the replaced store leaves the authoritative value standing");
+                check (! landed || proc.canUndo(), "leg Z6: ...and the remove is undoable");
+                if (landed) proc.undo();
+                if (landed && std::abs (plainOf (midP) - 4000.0f) > 1.0f)
+                    std::printf ("  [leg Z6] Undo took back an authoritative write the user's Remove"
+                                 " never made: the split is at %.1f Hz, not the 4000.0 that was"
+                                 " installed\n", (double) plainOf (midP));
+                check (! landed || std::abs (plainOf (midP) - 4000.0f) <= 1.0f,
+                       "leg Z6: one Undo leaves the authoritative write that replaced the store");
+                check (! landed || juce::exactlyEqual (plainOf (bandsP), b0),
+                       "leg Z6: ...and still puts the band back");
+                check (! landed || juce::exactlyEqual (plainOf (loP), s0),
+                       "leg Z6: ...and still restores the split whose store DID stand");
+                check (! landed || ! proc.canUndo(), "leg Z6: ...in ONE step");
+            }
+
             // ---- LEG I: a host write from inside the notch's OWN gesture-open stands -------
             //      This window did not exist before this round. The multiband wheel opened no
             //      change gesture, so nothing dispatched between the reading and the store;
@@ -9863,6 +9994,91 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
     delete ed;
 }
 
+
+// ----------------------------------------------------------------------------
+//  State test 89 -- the A/B history obeys ADR-0008's cap on EVERY path into it
+// ----------------------------------------------------------------------------
+//  ADR-0008's Consequences call the history "a hand-rolled history with a 128-entry cap per slot".
+//  Until round 16 that cap was two hand-copied triples -- the poll's step push and the
+//  preset-switch push -- and `abCopyToOther` had neither, so repeated A/B Copies grew the TARGET
+//  slot's history without limit. A Copy's entry is also the expensive kind: two whole `ValueTree`s,
+//  where an ordinary step is a handful of `{index, before, after}` triples.
+//
+//  The observable is the number of Undos the slot will actually perform, which is the only thing a
+//  user can see and the only thing the cap is for. Each Copy carries a distinguishable Drive, so
+//  the leg can say WHICH entries survived rather than only how many.
+static void testTheABHistoryObeysItsCap()
+{
+    std::printf ("State test 89: the A/B copy history obeys ADR-0008's 128-entry cap\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    auto* driveP = apvts.getParameter (pid::drive);
+    check (driveP != nullptr, "State test 89: the Drive parameter exists");
+    if (driveP == nullptr) return;
+    auto plainOf = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+
+    // 130 Copies from slot A into slot B, each carrying its own Drive. Two more than the cap, so
+    // the eviction boundary is crossed by a known amount rather than by exactly one.
+    const int kCopies = 130;
+    check (proc.abActiveSlot() == 0, "State test 89: the probe starts on slot A");
+    for (int k = 1; k <= kCopies; ++k)
+    {
+        setPlain (driveP, (float) k * 0.1f);
+        proc.pollUndoCoalesce();
+        proc.abCopyToOther();
+    }
+
+    // Stand on the slot the Copies were pushed onto; a switch is not itself an undo step (ADR-0008).
+    proc.abToggle();
+    check (proc.abActiveSlot() == 1, "State test 89: the probe is standing on slot B");
+    check (std::abs (plainOf (driveP) - (float) kCopies * 0.1f) <= 1.0e-4f,
+           "State test 89: slot B holds what the LAST Copy put there");
+
+    // The newest entry is retained: one Undo reverts exactly the last Copy.
+    check (proc.canUndo(), "State test 89: the copy history is undoable at all");
+    proc.undo();
+    if (std::abs (plainOf (driveP) - (float) (kCopies - 1) * 0.1f) > 1.0e-4f)
+        std::printf ("  [test 89] one Undo did not revert the NEWEST Copy: Drive %.4f, expected"
+                     " %.4f\n", (double) plainOf (driveP), (double) ((float) (kCopies - 1) * 0.1f));
+    check (std::abs (plainOf (driveP) - (float) (kCopies - 1) * 0.1f) <= 1.0e-4f,
+           "State test 89: one Undo reverts the newest Copy -- the cap evicts from the OLD end");
+
+    // Drain, counting. The bound is what the cap says, not what the loop did.
+    int steps = 1;
+    while (proc.canUndo() && steps < 4 * kCopies) { proc.undo(); ++steps; }
+    if (steps != 128)
+        std::printf ("  [test 89] %d Copies left %d undo steps, where ADR-0008 caps a slot at 128\n",
+                     kCopies, steps);
+    check (steps == 128,
+           "State test 89: 130 A/B Copies leave exactly 128 undo steps, not 130");
+
+    // ...and the two that went are the OLDEST: the drained state is the one Copy 2 left behind,
+    // not the slot's initial state.
+    if (std::abs (plainOf (driveP) - (float) (kCopies - 128) * 0.1f) > 1.0e-4f)
+        std::printf ("  [test 89] the drained state is Drive %.4f, not the %.4f Copy %d left\n",
+                     (double) plainOf (driveP), (double) ((float) (kCopies - 128) * 0.1f),
+                     kCopies - 128);
+    check (std::abs (plainOf (driveP) - (float) (kCopies - 128) * 0.1f) <= 1.0e-4f,
+           "State test 89: ...and the evicted entries are the oldest, not the newest");
+
+    // Redo across the eviction boundary: the first Redo re-applies the oldest RETAINED entry.
+    check (proc.canRedo(), "State test 89: the drained history is redoable");
+    proc.redo();
+    check (std::abs (plainOf (driveP) - (float) (kCopies - 127) * 0.1f) <= 1.0e-4f,
+           "State test 89: one Redo re-applies the oldest entry the cap kept");
+
+    // And the redo stack is bounded by the same rule, because it is fed from a capped undo stack.
+    int back = 1;
+    while (proc.canRedo() && back < 4 * kCopies) { proc.redo(); ++back; }
+    check (back == 128, "State test 89: the redo side holds the same 128 and no more");
+    check (std::abs (plainOf (driveP) - (float) kCopies * 0.1f) <= 1.0e-4f,
+           "State test 89: ...and redoing them all returns slot B to the last Copy's state");
+}
 
 static void testTooltipSourceOfTruth()
 {
@@ -18344,7 +18560,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1669).
+//  baseline", src/PluginProcessor.cpp:1675).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -18577,7 +18793,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1400).
+//  targets", src/PluginProcessor.cpp:1404).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -18954,7 +19170,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1854).
+//  mixed sound", src/PluginProcessor.cpp:1860).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -22956,6 +23172,7 @@ int main (int argc, char* argv[])
     testAScrollIsOneUndoStep();
     testHoldingSoloAndScrollingMovesTheBand();
     testAWheelNotchInsideAKnobPressBelongsToIt();
+    testTheABHistoryObeysItsCap();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

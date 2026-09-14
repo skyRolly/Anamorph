@@ -1345,8 +1345,15 @@ both binaries were verified green under `ulimit -s 1024` first.
 **PREfast's `C6262` numbers are not frame sizes.** The same audit measured its largest claim,
 1,280,508 bytes at state_tests.cpp:2659, against GCC's 283,968 for that function — /analyze sums a
 function's locals across disjoint sibling scopes, without the lifetime overlap a real compiler
-applies. Use `-fstack-usage`, not the alert text, when judging headroom. The 130 `C6262` alerts are
+applies. Use `-fstack-usage`, not the alert text, when judging headroom. The `C6262` alerts are
 accepted as test-only; the control that actually holds this line is the guard step, not the alert.
+
+**Re-measured for the four PR #144 wheel tests (round 16)**, because those functions are new and the
+figures above predate them: one `AnamorphAudioProcessor` automatic is `sizeof` 141,320 bytes, the
+four real frames are **284,224 / 142,688 / 142,400 / 142,464** against PREfast's
+569,696 / 432,084 / 142,296 / 426,672, and the worst of them is **27 %** of the reserve. The suite's
+maximum is unchanged at 708,480 (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`), which
+none of the four approaches. `docs/procedures/TESTING.md` carries the per-function table.
 
 ### Why the valgrind lane needs the suite's spinners paced (`sanitizers`)
 
