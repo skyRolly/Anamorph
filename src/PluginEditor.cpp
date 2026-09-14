@@ -579,6 +579,10 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     imager->onOwnedWrite       = [this] (const juce::AudioProcessorParameter* owned,
                                          float was, float now)
                                  { processor.noteOwnedParamWrite (owned, was, now); };
+    // Round 19: and the refusal, which is the same sentence's other half -- a store that did not
+    // stand states no endpoint, and the batch's close must not invent one from the live value.
+    imager->onOwnedRefused     = [this] (const juce::AudioProcessorParameter* p)
+                                 { processor.noteOwnedParamRefused (p); };
     imager->isSweeping         = [this] { return uiAnimOn && knobSweepTime > 0.0; };
     addAndMakeVisible (*imager);
 

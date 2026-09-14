@@ -6810,7 +6810,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2439),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2443),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -10831,6 +10831,410 @@ static void testAnAttachmentEndpointBelongsToTheUser()
     delete raw;
     std::printf ("\n");
 }
+
+// ----------------------------------------------------------------------------
+//  State test 92 -- a REFUSED store states no endpoint at all
+// ----------------------------------------------------------------------------
+//  ADR-0008, round 19. `SpectrumImager::storeOwned` proves its own write: it reads the parameter
+//  back and REFUSES the declaration when what is there is not what it installed, because a refused
+//  store means somebody else's value is in the slot. Round 18 gave the close a second source of
+//  endpoints (the attachment witness), and left the refusal with only the ABSENCE of a declaration
+//  to say so -- which is exactly what an attachment control that has written nothing yet looks like.
+//  The close could not tell them apart, so it live-read the parameter and the host's replacement
+//  became the user's `after`.
+//
+//  A refused store is a positive fact and is now recorded as one. Every leg drives the real
+//  multiband display with synthetic events, and the "host/controller replaces the value during
+//  `setValueNotifyingHost`" case is produced by `WriteFromInsideAStoreQuietly` pointed at the very
+//  parameter being stored -- a write with no notification, for the reason that probe's own comment
+//  gives, and the exact shape `storeOwned`'s read-back proof exists to catch.
+static void testARefusedStoreStatesNoEndpoint()
+{
+    std::printf ("State test 92: a refused store states no endpoint at all\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "State test 92: the editor constructs for the refused-store probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (im != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) { im = si; return; }
+            walk (k);
+            if (im != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "State test 92: the imager is laid out");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* driveP = apvts.getParameter (pid::drive);
+    check (bandsP && wLoP && loP && driveP, "State test 92: the parameters it drives exist");
+    if (! (bandsP && wLoP && loP && driveP)) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto near     = [] (float a, float b) { return std::abs (a - b) <= 1.0e-3f; };
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float dx, float dy, bool dragged)
+    {
+        return juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                 juce::Time::getCurrentTime(), { dx, dy },
+                                 juce::Time::getCurrentTime(), 1, dragged);
+    };
+    auto hov = [&] (float x, float y)
+    {
+        return juce::MouseEvent (src, { x, y }, juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                 juce::Time::getCurrentTime(), { x, y },
+                                 juce::Time::getCurrentTime(), 1, false);
+    };
+    const float W = (float) im->getWidth(), H = (float) im->getHeight();
+    const float bx = 0.5f * W;
+    auto findY = [&] (const char* want, float x) -> float
+    {
+        for (float y = 4.0f; y < H - 4.0f; y += 1.0f)
+        {
+            im->mouseMove (mev (x, y, x, y, false));
+            if (im->getTooltip() == juce::String (want)) return y;
+        }
+        return -1.0f;
+    };
+    auto findX = [&] (const char* want, float y) -> float
+    {
+        for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (x, y, x, y, false));
+            if (im->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f; wheel.deltaY = 0.4f;
+    wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+    // Two bands, a known Width, and no history: the state every leg starts from.
+    // ONE band and a known Width: the state State test 80's own width legs start from, because the
+    // width line the tooltip names is band 0's and a two-band layout puts a split under `bx`.
+    auto settle = [&] { im->cancelActiveDrag();
+                        setPlain (bandsP, 1.0f); setPlain (wLoP, 1.0f);
+                        while (proc.canUndo()) proc.undo();
+                        proc.pollUndoCoalesce(); };
+    // ...and the split leg needs a layout that HAS a split.
+    auto settleSplit = [&] { im->cancelActiveDrag();
+                             setPlain (bandsP, 2.0f);
+                             while (proc.canUndo()) proc.undo();
+                             proc.pollUndoCoalesce(); };
+
+    // ---- LEG A: a store that STOOD still states its endpoint (control) ---------------
+    settle();
+    {
+        const float start = plainOf (wLoP);
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg A: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            im->mouseDown (mev (bx, wy, bx, wy, false));
+            im->mouseDrag (mev (bx, wy - 6.0f, bx, wy, true));
+            im->mouseDrag (mev (bx, wy - 18.0f, bx, wy, true));
+            const float produced = plainOf (wLoP);
+            im->mouseUp   (mev (bx, wy - 18.0f, bx, wy, true));
+            proc.pollUndoCoalesce();
+
+            check (! near (produced, start), "leg A: the drag moved the width");
+            check (proc.canUndo(), "leg A: ...and it is one undoable step");
+            proc.undo();
+            check (near (plainOf (wLoP), start), "leg A: Undo gives the pre-press width");
+            proc.redo();
+            check (near (plainOf (wLoP), produced), "leg A: Redo gives what the store installed");
+        }
+    }
+
+    // ---- LEG B: a REFUSED store states NOTHING -- the reported case -------------------
+    //      The controller replaces the value from inside the store's own dispatch, so the
+    //      read-back proof fails and `storeOwned` refuses. Nothing the user asked for stood, so
+    //      the interaction has no endpoint and must leave no step -- and above all the host's
+    //      replacement must not become one.
+    settle();
+    {
+        const float start   = plainOf (wLoP);
+        const float foreign = 1.4f;
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg B: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            check (! proc.canUndo(), "leg B: the leg starts with no undo history");
+            WriteFromInsideAStoreQuietly echo;
+            echo.target = wLoP;
+            echo.to     = foreign;
+            wLoP->addListener (&echo);
+            im->mouseDown (mev (bx, wy, bx, wy, false));
+            echo.armed = true;      // ...the controller answers the FIRST store, so none ever stood
+            im->mouseDrag (mev (bx, wy - 6.0f, bx, wy, true));
+            im->mouseDrag (mev (bx, wy - 18.0f, bx, wy, true));
+            im->mouseUp   (mev (bx, wy - 18.0f, bx, wy, true));
+            wLoP->removeListener (&echo);
+            proc.pollUndoCoalesce();
+
+            check (echo.fired, "leg B: the controller replaced the value inside the store");
+            check (near (plainOf (wLoP), foreign),
+                   "leg B: the controller's value is what the plug-in is left holding");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                proc.redo();
+                std::printf ("  [leg B] a refused store recorded a step: Redo gives %.4f,"
+                             " where the controller wrote %.4f\n",
+                             (double) plainOf (wLoP), (double) foreign);
+                check (! near (plainOf (wLoP), foreign),
+                       "leg B: Redo never produces the controller's value");
+            }
+            check (! proc.canUndo() || ! near (plainOf (wLoP), foreign),
+                   "leg B: a refused store states no endpoint");
+            check (! near (start, foreign), "leg B: the leg's two values differ");
+        }
+    }
+
+    // ---- LEG E: the same refusal on the STANDALONE width scroll ----------------------
+    //      A different bracket: `beginGesture` / `storeOwned` / `endGesture` around one notch,
+    //      with no drag in flight at all.
+    settle();
+    {
+        const float foreign = 0.6f;
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg E: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            check (! proc.canUndo(), "leg E: the leg starts with no undo history");
+            WriteFromInsideAStoreQuietly echo;
+            echo.target = wLoP;
+            echo.to     = foreign;
+            wLoP->addListener (&echo);
+            echo.armed = true;
+            im->mouseWheelMove (hov (bx, wy), wheel);
+            wLoP->removeListener (&echo);
+            proc.pollUndoCoalesce();
+
+            check (echo.fired, "leg E: the controller replaced the notch's own store");
+            check (! proc.canUndo() || ! near (plainOf (wLoP), foreign),
+                   "leg E: a refused standalone notch states no endpoint");
+        }
+    }
+
+    // ---- LEG D: the same refusal on a SPLIT FREQUENCY store --------------------------
+    settleSplit();
+    {
+        const float hy = 0.5f * H;
+        const float hx = findX ("Drag to change the split frequency", hy);
+        check (hx >= 0.0f, "leg D: a split handle is findable");
+        if (hx >= 0.0f)
+        {
+            const float foreign = 7000.0f;
+            check (! proc.canUndo(), "leg D: the leg starts with no undo history");
+            WriteFromInsideAStoreQuietly echo;
+            echo.target = loP;
+            echo.to     = foreign;
+            loP->addListener (&echo);
+            im->mouseDown (mev (hx, hy, hx, hy, false));
+            echo.armed = true;
+            im->mouseDrag (mev (hx + 40.0f, hy, hx, hy, true));
+            im->mouseUp   (mev (hx + 40.0f, hy, hx, hy, true));
+            loP->removeListener (&echo);
+            proc.pollUndoCoalesce();
+
+            check (echo.fired, "leg D: the controller replaced the split store");
+            // MEASURED rather than asserted away, and the measurement is not what a first reading
+            // predicts: the controller's value DOES stand -- the split is left at 7000 Hz -- and no
+            // undo step is recorded for it all the same, before the round-19 fix as well as after.
+            // So the split path never reached the window legs B, C and E reach, and this leg is a
+            // CONTROL for it rather than a second proof. The rule itself is covered by those three
+            // through the one `storeOwned` that every split and width store shares.
+            std::printf ("  [leg D] after the refused split store: split %.1f Hz, controller wrote"
+                         " %.1f Hz, undo available %d\n",
+                         (double) plainOf (loP), (double) foreign, (int) proc.canUndo());
+            check (! proc.canUndo() || ! near (plainOf (loP), foreign),
+                   "leg D: a refused split store states no endpoint");
+        }
+    }
+
+    // ---- LEG C: several notches, the LAST of them refused ----------------------------
+    //      The endpoint must be the last value that actually STOOD, not the controller's and not
+    //      the pre-scroll value.
+    settle();
+    {
+        const float start = plainOf (wLoP);
+        const float foreign = 0.25f;
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg C: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            im->mouseWheelMove (hov (bx, wy), wheel);
+            proc.pollUndoCoalesce();
+            const float afterOne = plainOf (wLoP);
+            check (! near (afterOne, start), "leg C: the first notch moved the width");
+            const float wy2 = findY ("Band width", bx);
+            if (wy2 >= 0.0f)
+            {
+                WriteFromInsideAStoreQuietly echo;
+                echo.target = wLoP;
+                echo.to     = foreign;
+                wLoP->addListener (&echo);
+                echo.armed = true;
+                im->mouseWheelMove (hov (bx, wy2), wheel);
+                wLoP->removeListener (&echo);
+                proc.pollUndoCoalesce();
+                check (echo.fired, "leg C: the controller replaced the second notch's store");
+                check (proc.canUndo(), "leg C: the first notch is still undoable");
+                proc.undo();
+                check (near (plainOf (wLoP), start), "leg C: Undo gives the pre-scroll width");
+                proc.redo();
+                check (! near (plainOf (wLoP), foreign),
+                       "leg C: Redo never produces the controller's value");
+                check (near (plainOf (wLoP), afterOne),
+                       "leg C: ...it gives the last value that actually stood");
+            }
+        }
+    }
+
+    // ---- LEG F: a refused store, then another user gesture before the poll -----------
+    //      They share one pending batch. The refused parameter must contribute nothing to it, and
+    //      the second gesture's own endpoint must be unaffected.
+    settle();
+    {
+        const float foreign = 1.75f;
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg F: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            WriteFromInsideAStoreQuietly echo;
+            echo.target = wLoP;
+            echo.to     = foreign;
+            wLoP->addListener (&echo);
+            im->mouseDown (mev (bx, wy, bx, wy, false));
+            im->mouseDrag (mev (bx, wy - 6.0f, bx, wy, true));
+            echo.armed = true;
+            im->mouseDrag (mev (bx, wy - 18.0f, bx, wy, true));
+            im->mouseUp   (mev (bx, wy - 18.0f, bx, wy, true));
+            wLoP->removeListener (&echo);
+
+            const float d0 = plainOf (driveP);          // ...a second, ordinary user gesture
+            driveP->beginChangeGesture();
+            setPlain (driveP, d0 + 3.0f);
+            const float dProduced = plainOf (driveP);
+            driveP->endChangeGesture();
+            proc.pollUndoCoalesce();                    // ...one poll, one batch
+
+            check (echo.fired, "leg F: the controller replaced the width store");
+            check (proc.canUndo(), "leg F: the second gesture is undoable");
+            proc.undo();
+            check (near (plainOf (driveP), d0), "leg F: Undo gives Drive its pre-gesture value");
+            proc.redo();
+            check (near (plainOf (driveP), dProduced), "leg F: Redo gives Drive what the user made");
+            check (near (plainOf (wLoP), foreign),
+                   "leg F: ...and the refused width is left where the controller put it -- the"
+                   " step does not carry it");
+        }
+    }
+
+    // ---- LEG G: automation AFTER a completed user batch ------------------------------
+    settle();
+    {
+        const float a = plainOf (driveP);
+        driveP->beginChangeGesture();
+        setPlain (driveP, a + 4.0f);
+        const float b = plainOf (driveP);
+        driveP->endChangeGesture();
+        proc.pollUndoCoalesce();
+        setPlain (driveP, b + 5.0f);                    // ...automation, after the step is closed
+        proc.undo();
+        check (near (plainOf (driveP), a), "leg G: Undo gives A");
+        proc.redo();
+        check (near (plainOf (driveP), b), "leg G: Redo gives B, never the automation's C");
+    }
+
+    // ---- LEG H: the round-18 attachment path is unchanged ----------------------------
+    //      A gesture on an attachment-backed parameter, automation before the close, Redo must give
+    //      the user's value. Driven through the parameter here because State test 91 already drives
+    //      the real knob; this leg exists so a change to the refusal rule cannot silently undo it.
+    settle();
+    {
+        std::vector<juce::Slider*> sliders;
+        std::function<void (juce::Component*)> sw = [&] (juce::Component* c)
+        {
+            for (int i = 0; i < c->getNumChildComponents(); ++i)
+            {
+                auto* k = c->getChildComponent (i);
+                if (auto* sl = dynamic_cast<juce::Slider*> (k)) sliders.push_back (sl);
+                sw (k);
+            }
+        };
+        sw (ed);
+        juce::Slider* driveK = nullptr;
+        {
+            const float was = driveP->getValue();
+            std::vector<double> before;
+            before.reserve (sliders.size());
+            for (auto* sl : sliders) before.push_back (sl->getValue());
+            driveP->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+            int hits = 0;
+            for (size_t i = 0; i < sliders.size(); ++i)
+                if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { driveK = sliders[i]; ++hits; }
+            driveP->setValueNotifyingHost (was);
+            if (hits != 1) driveK = nullptr;
+        }
+        check (driveK != nullptr, "leg H: the Drive knob is findable from its parameter");
+        if (driveK != nullptr)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP);
+            const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+            const auto t = juce::Time::getCurrentTime();
+            auto kev = [&] (float y, bool dragged)
+            {
+                return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                         t, { cx, cy }, t, 1, dragged);
+            };
+            driveK->mouseDown (kev (cy, false));
+            driveK->mouseDrag (kev (cy - 20.0f, true));
+            const float produced = plainOf (driveP);
+            setPlain (driveP, d0 + 9.0f);               // ...host automation, before the release
+            driveK->mouseUp (kev (cy - 20.0f, true));
+            proc.pollUndoCoalesce();
+
+            check (! near (produced, d0), "leg H: the knob drag moved Drive");
+            proc.undo();
+            check (near (plainOf (driveP), d0), "leg H: Undo gives the pre-press value");
+            proc.redo();
+            check (near (plainOf (driveP), produced),
+                   "leg H: Redo gives the drag's own value -- round 18 is intact");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+    std::printf ("\n");
+}
+
 
 
 static void testTooltipSourceOfTruth()
@@ -19313,7 +19717,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1745).
+//  baseline", src/PluginProcessor.cpp:1759).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -19546,7 +19950,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1474).
+//  targets", src/PluginProcessor.cpp:1488).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -19923,7 +20327,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1930).
+//  mixed sound", src/PluginProcessor.cpp:1944).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -23928,6 +24332,7 @@ int main (int argc, char* argv[])
     testTheABHistoryObeysItsCap();
     testAUserStepsEndpointsBelongToTheUser();
     testAnAttachmentEndpointBelongsToTheUser();
+    testARefusedStoreStatesNoEndpoint();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

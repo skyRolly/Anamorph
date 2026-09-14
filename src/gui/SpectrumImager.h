@@ -87,6 +87,10 @@ public:
     // before this store -- its `before` endpoint if this store is what first takes it into the
     // pending step -- and the second is what the store installed.
     std::function<void(const juce::AudioProcessorParameter*, float, float)> onOwnedWrite;
+    // ADR-0008 round 19: ...and the other half of the same sentence. A store that did NOT stand
+    // says so, so the undo batch's close can tell a refusal from a control that has written
+    // nothing yet -- the two used to look identical, and the close guessed.
+    std::function<void(const juce::AudioProcessorParameter*)> onOwnedRefused;
 
     // UI-animation flag now lives in InternalState (host-hidden), injected by the editor.
     void setAnimationSource (const std::atomic<float>* p) noexcept { animOnP = p; }

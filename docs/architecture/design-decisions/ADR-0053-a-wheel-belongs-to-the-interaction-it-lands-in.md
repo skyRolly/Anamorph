@@ -18,6 +18,28 @@ serialization field changes; no DSP node, stage order or reported latency; no th
 path or atomic ordering (every line of this is message-thread state, as the undo coalescer already
 was); no plug-in format and no build change.
 
+**Gate compliance, audited 2026-09-14 (round 19) against `ARCHITECTURE_REVIEW_GATE.md` §Procedure,
+step by step, because "cleared" above is a claim and this is its evidence.**
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | the paragraph above, and the PR #144 body's opening block |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | the maintainer instruction of 2026-09-12 quoted in **Status**, which states the new behaviour for every affected control and rules explicitly on the ADR-0041 conflict; ratified again by the owner on 2026-09-14 (*"the current ADR-0053 direction is accepted"*) |
+| 3 | if the change is a decision, an ADR is added/updated | this ADR, and the superseded Consequences line recorded in **both** this ADR and ADR-0041 |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag or serialization field changes, which is the condition that checklist exists for |
+
+**The form step 2 takes here is the form this repository has always used**, and that is the point of
+recording it: ADR-0041 itself is *"Accepted (maintainer instruction 2026-09-07 …)"* and ADR-0052 was
+entered the same way. A maintainer instruction that states the behaviour and rules on the conflict is
+what clears the stop.
+
+**What does NOT exist, stated plainly rather than counted as satisfied:** there is no *approving
+review* on PR #144. Every review on it is `COMMENTED` — one from the code-scanning bot and four
+disposition replies from the owner account. Nothing in `ARCHITECTURE_REVIEW_GATE.md` names a medium
+for step 2, so the maintainer instruction satisfies it; but the PR itself carries no artifact of the
+decision, and a reader auditing the merge from GitHub alone would not find one. Recommended, and not
+done here because it is the owner's to give: an approving review on PR #144 referencing this ADR.
+
 **Supersedes ONE Consequences line of [ADR-0041](ADR-0041-a-coupled-update-is-all-of-it-or-none-of-it.md)
 — *"A wheel tick during a drag ends the drag"* — and PRESERVES ADR-0041's Decision, which is what makes
 the replacement safe.** ADR-0041 stays **Accepted**: its rule that *a refresh which cannot bring every

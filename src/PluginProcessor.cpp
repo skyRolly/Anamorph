@@ -514,6 +514,17 @@ void AnamorphAudioProcessor::noteOwnedParamEndpoint (const juce::AudioProcessorP
     if (i < (int) batchCloseValue.size())   batchCloseValue[(size_t) i]   = nowNorm;
 }
 
+// ADR-0008, ROUND 19. The refusal, recorded. No ownership test: this only ever SUPPRESSES a read,
+// and a read that would not have happened costs nothing to suppress. No value either -- a store
+// that did not stand has none.
+void AnamorphAudioProcessor::noteOwnedParamRefused (const juce::AudioProcessorParameter* p) noexcept
+{
+    if (p == nullptr) return;
+    const int i = p->getParameterIndex();
+    if (i < 0 || i >= (int) batchEpisodeParam.size()) return;
+    batchEpisodeParam[(size_t) i] |= (char) 4;
+}
+
 // The ownership record starts empty and both edges read the live sound: called wherever the undo
 // bookkeeping is dropped wholesale (a program state jump, an Undo, a Redo, a preset switch)
 // -- AND at the open of a FRESH pending batch, which is the fifth caller and the only one
@@ -1030,7 +1041,10 @@ void AnamorphAudioProcessor::parameterGestureChanged (int parameterIndex, bool g
             for (int i = 0; i < ps.size() && i < (int) batchEpisodeParam.size(); ++i)
             {
                 const char ep = batchEpisodeParam[(size_t) i];
-                if ((ep & 1) == 0 || (ep & 2) != 0) continue;
+                // Bit 2 (round 19) is the third answer this test needs: a store on this parameter
+                // was REFUSED in this episode, so the live value below is known NOT to be the
+                // user's and the endpoint must stay where the last thing that stood left it.
+                if ((ep & 1) == 0 || (ep & 2) != 0 || (ep & 4) != 0) continue;
                 if (i < (int) batchCloseValue.size() && ps[i] != nullptr)
                     batchCloseValue[(size_t) i] = ps[i]->getValue();
             }

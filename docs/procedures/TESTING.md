@@ -1486,6 +1486,21 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   two notches, and the second notch's own close overwrote the first one's stolen endpoint. It now
   measures one notch in isolation first, and the chain assertions follow separately.
 
+* **Round 19 — State test 92, and the one leg that is a control rather than a proof.** The refusal
+  path is shared: every split and every bandwidth store in the multiband display goes through the one
+  `SpectrumImager::storeOwned`, so a leg that reaches the refusal reaches it for all of them. Legs B
+  (bandwidth drag, no earlier store standing), C (several notches, the last refused) and E (the
+  standalone notch) each failed at `98464db` and each is killed by all four round-19 mutations.
+
+  **Leg D is a control, and its measurement is printed rather than asserted away.** It drives the
+  same refusal on a split-frequency store, and the split is left holding the controller's value —
+  but no undo step is recorded for it, before the fix as well as after, so this leg never reached the
+  window the other three reach. Recorded as a control for the split path rather than as a second
+  proof, because a leg that passes for a reason the round did not establish is not coverage. Legs A,
+  F, G and H are controls too: a store that stood, a refusal sharing a batch with a later gesture,
+  automation after a completed batch, and the round-18 attachment path driven through the real Drive
+  knob so that the refusal rule cannot be bought at its expense.
+
 * **M71 SURVIVED and is an EQUIVALENT mutant, proven rather than assumed.** It removes
   `noteOwnedParamEndpoint`'s refusal to state an endpoint for a parameter the batch does not own.
   Both of its effects are unobservable. The `batchCloseValue` it writes for an unowned slot can never
@@ -1765,6 +1780,10 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M69 | the endpoint stops updating after the batch's first user write | 91 legs A, B, D, E, G |
   | M70 | the witness fires on host automation as well as the user's write | 91 legs A, B, D, E, F, G |
   | M71 | the endpoint declaration no longer refuses an unowned parameter | **SURVIVED — equivalent, proven below** |
+  | M72 | the close live-reads again after a refused store | KILLED — 92 legs B, C, E |
+  | M73 | `storeOwned` stops reporting its refusal | KILLED — 92 legs B, C, E |
+  | M74 | a refused store declares the controller's value as the endpoint | KILLED — 92 legs B, C, E **and 86 legs Z2, Z5, Z6** |
+  | M75 | the refusal is recorded but the preserved endpoint is overwritten | KILLED — 92 legs B, C, E |
 
   **M34 is the row that proves the sweep is worth running twice.** Against the FIRST version of
   leg R it SURVIVED -- the leg pressed at the lane's middle, where no width drag is latched, so

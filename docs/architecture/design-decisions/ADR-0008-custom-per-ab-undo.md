@@ -353,6 +353,52 @@ declares, `after` is the control's own value and no read can replace it. What re
 ADR-0052 already governs: a write made with no change gesture open is not a user step at all, and
 this decision does not give it one. State test 91 legs I and J hold that line.
 
+## Decision — correction, 2026-09-14 (round 19)
+
+**A refused store states no endpoint, and that is a fact the close has to be told.** Round 18 gave
+the close a second source of endpoints — the editor's attachment witness — and left the third case
+speaking only by silence. `SpectrumImager::storeOwned` reads its own write back and REFUSES the
+declaration when what is in the slot is not what it installed; the refusal means somebody else's
+value is there, so the store produced nothing the user can be said to have made. But "no declaration"
+is exactly what an attachment-backed control that has not written yet looks like, so the close could
+not tell them apart and fell through to its live read:
+
+```text
+user presses a bandwidth, Width 1.0
+user drag stores Width 1.1
+a controller answers the store from inside `setValueNotifyingHost`, Width 1.4
+`storeOwned` reads back, sees 1.4, refuses
+gesture closes
+    -> after(Width) = 1.4       Redo restores a value the user never produced
+```
+
+Measured on the real multiband display at `98464db`, on three paths: the bandwidth drag when no
+earlier store stood, the standalone bandwidth notch, and a multi-notch scroll whose last store is
+refused (State test 92 legs B, C and E — six failing checks).
+
+**The correction is one bit and one call.** `batchEpisodeParam` gains bit 2: *a store on this
+parameter was refused in this episode*. `storeOwned` reports it through `onOwnedRefused` on the same
+line that already returns `false`, and the close skips any parameter carrying it. The endpoint then
+stays exactly where the last thing that actually stood left it — the value `noteFirstOwnership`
+seeded at the gesture open, or the last store that stood — so a refusal costs the step that
+parameter rather than inventing an endpoint for it.
+
+**It states no value, deliberately**: a store that did not stand has none to state. And it makes no
+ownership test, because it only ever SUPPRESSES a read.
+
+**What this does NOT change.** No gesture span, no host touch or latch span, no parameter ID, range,
+default or serialization field, no DSP node or stage order, no reported latency, no thread and no new
+cross-thread path. Nothing was added to `parameterValueChanged`; `foreignSinceEdge` was not touched,
+because scroll continuation and endpoint attribution are different questions and stay separate. The
+24 Hz poll, the batching and ADR-0053's wheel rules are untouched.
+
+**Where the live read still runs, stated exactly.** After this round it survives for two cases only:
+a gesture that produced no write at all (an empty press — where the live value equals the `before`
+unless a host writes inside the press), and the imager's gesture-bracketed stores that write with a
+bare `setValueNotifyingHost` rather than through `storeOwned` (`resetParam`, `setBands`,
+`setSoloMask`), for which it is the only endpoint source. Those are the pre-existing narrow
+in-gesture window this decision has recorded since round 16, and this round does not move it.
+
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
   not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots
@@ -378,16 +424,16 @@ this decision does not give it one. State test 91 legs I and J hold that line.
 - `src/PluginProcessor.cpp` — `soundSignature`, `pollUndoCoalesceAdopted`, `applyUndoEntry`,
   `undo`/`redo`, `commitPresetSwitchUndoStep`, `abCopyToOther`, `pushCapped`,
   `parameterGestureChanged`, `noteFirstOwnership`, `noteOwnedParamWrite`, `noteOwnedParamEndpoint`,
-  `resetBatchOwnership` (`snapshotSoundValues` was deleted in round 17 — both of its call sites were
-  the defect)
+  `noteOwnedParamRefused`, `resetBatchOwnership` (`snapshotSoundValues` was deleted in round 17 —
+  both of its call sites were the defect)
 - `src/PluginProcessor.h` — `StateSet`, `ParamEdit`, `UndoEntry`, `UndoStacks`, `kUndoDepth`,
   `batchOpenValue` / `batchCloseValue` / `batchOwnedParam` / `batchEpisodeParam`, the A/B members
 - `src/PluginEditor.h` / `src/PluginEditor.cpp` — `AttachmentWitness`, `makeWitness`, and the three
   attachment sites that straddle it (`attachSlider`, `setupCombo`, `setupToggle`)
-- `src/gui/SpectrumImager.h` / `.cpp` — `onOwnedWrite`, `storeOwned`, `setParam`, `resetCrossover`,
-  `commitFreqEditor`, `spreadSplits`
+- `src/gui/SpectrumImager.h` / `.cpp` — `onOwnedWrite`, `onOwnedRefused`, `storeOwned`, `setParam`,
+  `resetCrossover`, `commitFreqEditor`, `spreadSplits`
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:426-531, :340-520
+- Source: src/PluginProcessor.cpp:426-542, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")

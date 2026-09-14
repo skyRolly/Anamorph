@@ -121,6 +121,19 @@ public:
     // step's endpoint, and declaring one here would hand an undo step to the gesture-less writes
     // ADR-0052 deliberately leaves alone.
     void noteOwnedParamEndpoint (const juce::AudioProcessorParameter* p, float nowNorm) noexcept;
+
+    // ADR-0008, ROUND 19. A REFUSED STORE IS A POSITIVE FACT, AND THIS IS WHERE IT IS RECORDED.
+    // `SpectrumImager::storeOwned` reads its own write back and refuses the declaration when what is
+    // there is not what it installed -- the slot holds somebody else's value, so the store has
+    // produced nothing the user can be said to have made. Until round 19 the refusal said that by
+    // saying NOTHING, which is indistinguishable from a control that has not written yet: the close
+    // fell through to its live read and the replacement became the user's `after` (State test 92
+    // legs B, C and E). Recorded, the close leaves the endpoint exactly where the last thing that
+    // actually stood left it -- the value `noteFirstOwnership` seeded, or the last store that stood
+    // -- so a refusal costs the step the parameter rather than inventing an endpoint for it.
+    //
+    // It states no value, deliberately: a refused store has none to state.
+    void noteOwnedParamRefused (const juce::AudioProcessorParameter* p) noexcept;
     // The name a parameter-backed control answers to. A parameter's index is stable for the life of
     // the processor and unique to it, so two controls driving the SAME parameter -- a knob and the
     // numeric box under it -- are correctly one control for this purpose. +1 keeps 0 meaning "none".

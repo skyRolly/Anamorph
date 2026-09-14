@@ -3995,3 +3995,57 @@ There is none for this mechanism. For a parameter a control declares, `after` is
 value and no later read can replace it. What remains is what ADR-0052 already governs and this
 decision does not change: a write made with no change gesture open is not a user step at all.
 RISK-012 is closed in full.
+
+## §76. Round 19 — the refusal that spoke by saying nothing
+
+Round 18 closed the attachment window and wrote "RISK-012 is closed in full". The review then named a
+third path, and it is real. The round-18 sentence is withdrawn in `FUTURE_RISKS.md` rather than left
+standing; a claim that turned out to be wrong is worth more as a correction than as a deletion.
+
+### The mechanism
+
+`SpectrumImager::storeOwned` has proved its own write since ADR-0040: it stores, reads the parameter
+back, and REFUSES the ownership declaration when what is there is not what it installed. The refusal
+is correct and long-standing. What it did not do was TELL anybody — it returned `false` to its caller
+and declared nothing to the undo batch. After round 18 the close had three cases to distinguish and
+only two signals:
+
+```text
+bit 0 set, bit 1 set    a store or the attachment witness stated the endpoint   -> skip
+bit 0 set, bit 1 clear  ...either a control that has not written yet,
+                        ...or a store that was REFUSED                          -> live read
+```
+
+The second row is two different facts wearing one spelling, and the live read is right for at most
+one of them. Measured at `98464db` on the bandwidth drag, the standalone bandwidth notch and a
+multi-notch scroll whose last store is refused: `a refused store recorded a step: Redo gives 1.4000,
+where the controller wrote 1.4000`.
+
+### The fix, and why it is one bit
+
+A refusal is a positive fact, so it is recorded as one: `batchEpisodeParam` bit 2, set by
+`storeOwned` on the same line that already returns `false`, and tested by the close. It states no
+value, because a store that did not stand has none, and it makes no ownership test, because it only
+ever suppresses a read. The endpoint then stays where the last thing that actually stood left it —
+what `noteFirstOwnership` seeded at the gesture open, or the last store that stood — so a refusal
+costs the step that parameter instead of inventing an endpoint for it.
+
+Reusing bit 1 would have been one line smaller and was rejected: "a store stated the endpoint" and "a
+store proved the live value is not the user's" are different facts, and round 18's own root cause was
+a single-writer bit whose meaning nobody could see from the close. Two bits cost one `| 4`.
+
+### What the round measured rather than assumed
+
+Leg D drives the same refusal on a split-frequency store and PASSES both before and after the fix.
+The split is left holding the controller's value and no undo step is recorded for it — so the leg
+never reached the window the other three reach. It is recorded as a control with its measurement
+printed, not as a second proof: a leg that passes for a reason the round did not establish is not
+coverage, and the first version of round 18's leg G made exactly that mistake.
+
+### Where the live read still runs
+
+Two cases, stated in ADR-0008 rather than implied: a gesture that produced no write at all, and the
+imager's gesture-bracketed stores that write with a bare `setValueNotifyingHost` rather than through
+`storeOwned` — `resetParam`, `setBands`, `setSoloMask` — for which it is the only endpoint source
+there has ever been. That is the narrow in-gesture window ADR-0008 has recorded since round 16, and
+this round does not move it. RISK-012 stays open against that alone.

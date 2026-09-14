@@ -517,7 +517,15 @@ bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, flo
     // with nothing bracketed, so there is no gesture open here to have read it.
     const float was    = p->getValue();
     p->setValueNotifyingHost (norm);
-    if (! juce::exactlyEqual (p->getValue(), expect)) return false;
+    if (! juce::exactlyEqual (p->getValue(), expect))
+    {
+        // ADR-0008 round 19. THE REFUSAL IS REPORTED, not merely returned. Returning false tells
+        // this function's CALLER to stop; it told the undo batch nothing, so the batch could not
+        // tell "a store that did not stand" from "a control that has not written yet" and closed
+        // on a live read of somebody else's value.
+        if (onOwnedRefused) onOwnedRefused (p);
+        return false;
+    }
     // ADR-0008 round 14, corrected in round 15. THE DECLARATION IS MADE BY A STORE THAT STOOD, AND
     // IT CARRIES WHAT THE STORE INSTALLED. Made before the store, it claimed a parameter this
     // function is about to REFUSE -- and the refusal means the slot holds somebody else's value,
