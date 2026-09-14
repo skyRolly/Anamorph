@@ -107,6 +107,105 @@ private:
     using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
 
+    // ========================================================================================
+    //  ADR-0008, ROUND 18. THE CONTROL THAT WROTE THE PARAMETER SAYS WHAT IT WROTE.
+    // ========================================================================================
+    //  A JUCE parameter attachment declares OWNERSHIP when its gesture opens and declares no VALUE
+    //  at all, so until this class existed the undo batch had nothing to close a step with except a
+    //  live read of the parameter at the gesture close. A host write landing after the user's last
+    //  attachment write and before that close therefore became the value Redo restored -- the user's
+    //  own value recoverable from neither end of the step (State test 91 legs A, B, D, E, G).
+    //
+    //  WHAT IS HARD ABOUT IT, stated rather than implied: a host write reaches the control's
+    //  value-changed callbacks EXACTLY as a user write does. `SliderParameterAttachment::setValue`
+    //  pushes the host's value in with `sendNotificationSync`, and the `ignoreCallbacks` flag that
+    //  suppresses the echo is private to JUCE's own attachment with no accessor -- so
+    //  `Slider::valueChanged`, `Slider::Listener::sliderValueChanged` and `Slider::onValueChange`
+    //  all fire for both, and the value alone cannot tell them apart. `Slider::snapValue` CAN
+    //  (JUCE reaches it only from user input), but its coverage hole is categorical: it is declared
+    //  on `juce::Slider` alone, so it can see no Button and no ComboBox write, and four of this
+    //  editor's own user-write sites call `Slider::setValue` directly and never consult it.
+    //
+    //  SO THE DISCRIMINATOR IS NOT THE VALUE, IT IS WHO MOVED THE PARAMETER. Two hooks per control,
+    //  one registered BEFORE JUCE's attachment and one AFTER it -- `juce::ListenerList` dispatches
+    //  in registration order, and the attachment writes the parameter inside its own callback, so
+    //  the pair straddles the write:
+    //
+    //      user   : before = P_old ... attachment writes P ... after = P_new   -> P MOVED, record
+    //      host   : before = P_host ... attachment suppresses itself ...       -> P did not move
+    //
+    //  A host push writes the parameter FIRST and only then sets the control, so the parameter
+    //  cannot move during the control's own notification; a user write is the only thing that can.
+    //  A user write that lands on the value the parameter already holds moves nothing either, and
+    //  JUCE skips it outright (`ParameterAttachment::callIfParameterValueChanged`) -- correctly, as
+    //  it produced nothing to record.
+    //
+    //  WHAT IS RECORDED IS WHAT THE CONTROL ASKED FOR, not a second reading of the parameter: a
+    //  host answering the write re-entrantly would be in the live value by then, which is the same
+    //  reason `SpectrumImager::storeOwned` passes its own installed value (round 15).
+    //
+    //  THREADING: message thread only, inside the user's own event handler, on the same synchronous
+    //  stack as the write. No timer, no lock, no `callAsync`, and nothing added to
+    //  `parameterValueChanged` -- the audio-thread-reachable path ADR-0036 forbids.
+    struct AttachmentWitness
+    {
+        AttachmentWitness (AnamorphAudioProcessor& p, juce::RangedAudioParameter& rp)
+            : proc (p), param (rp), before (*this, false), after (*this, true) {}
+
+        // One object serves all three control families: the three JUCE listener interfaces have
+        // distinct method names, so there is nothing to disambiguate.
+        struct Hook final : juce::Slider::Listener,
+                            juce::Button::Listener,
+                            juce::ComboBox::Listener
+        {
+            Hook (AttachmentWitness& o, bool isAfter) : owner (o), post (isAfter) {}
+            void sliderValueChanged (juce::Slider* s) override
+            { owner.mark (post, owner.param.convertTo0to1 ((float) s->getValue())); }
+            void buttonClicked (juce::Button* b) override
+            { owner.mark (post, owner.param.convertTo0to1 (b->getToggleState() ? 1.0f : 0.0f)); }
+            void comboBoxChanged (juce::ComboBox* c) override
+            {
+                // The arithmetic JUCE's own `ComboBoxParameterAttachment::comboBoxChanged` does.
+                const int n = c->getNumItems();
+                const float raw = n > 1 ? (float) c->getSelectedItemIndex() / (float) (n - 1) : 0.0f;
+                owner.mark (post, owner.param.convertTo0to1 (owner.param.convertFrom0to1 (raw)));
+            }
+            AttachmentWitness& owner;
+            const bool post;
+        };
+
+        void mark (bool post, float produced) noexcept
+        {
+            if (! post) { wasNorm = param.getValue(); return; }
+            if (juce::exactlyEqual (param.getValue(), wasNorm)) return;  // the host pushed IN
+            proc.noteOwnedParamEndpoint (&param, produced);
+        }
+
+        // The order is the mechanism: `listenBefore` runs before JUCE's attachment is constructed
+        // and `listenAfter` after it, so the pair straddles the attachment's own callback.
+        template <typename Control> void listenBefore (Control& c)
+        {
+            unhook = [this, &c] { c.removeListener (&before); c.removeListener (&after); };
+            c.addListener (&before);
+        }
+        template <typename Control> void listenAfter (Control& c) { c.addListener (&after); }
+
+        // Both hooks come off the control while the control is still alive: the witnesses are
+        // declared after every control they watch, so they are destroyed first.
+        ~AttachmentWitness() { if (unhook) unhook(); }
+
+        AnamorphAudioProcessor&     proc;
+        juce::RangedAudioParameter& param;
+        Hook  before, after;
+        float wasNorm = 0.0f;
+        std::function<void()> unhook;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AttachmentWitness)
+    };
+
+    // Make the witness for `id`, or nullptr when the control is not parameter-backed.
+    AttachmentWitness* makeWitness (const char* id);
+
     // Consumes the click that dismissed a pop-up, so it cannot also act on whatever sits under it.
     //
     // JUCE re-delivers that click on purpose: Component::internalMouseDown sees the modal menu,
@@ -680,6 +779,7 @@ private:
     juce::TextButton saveOkButton { "Save" }, saveCancelButton { "Cancel" };
     std::unique_ptr<juce::FileChooser> fileChooser;
 
+    juce::OwnedArray<AttachmentWitness>  writeWitnesses;   // ADR-0008 round 18, see the class above
     juce::OwnedArray<SliderAttachment>   sliderAtts;
     juce::OwnedArray<ButtonAttachment>   buttonAtts;
     juce::OwnedArray<ComboBoxAttachment> comboAtts;

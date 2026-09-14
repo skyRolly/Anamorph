@@ -267,6 +267,92 @@ than asserted, by State test 86 leg Z7: a host write placed in exactly that wind
 final proved store and inside the same split's gesture close, does not become the value Redo
 restores. Mutation M65 removes the rule and the leg fails.
 
+> **SUPERSEDED 2026-09-14 (round 18). It was not a residual, it was the same defect one control
+> family further out — and its stated reason was wrong.** The window is real and the scope is
+> accurately described, but calling it an implementation limit understated it: a user drags Drive,
+> the host writes Drive before the button comes up, and Redo restores the host's value as though the
+> user had produced it. That is the sentence this decision opens with, violated. The claim that
+> closing it "would need `parameterValueChanged`" is also false: the write is observable on the
+> MESSAGE thread, at the control, because JUCE's attachment writes the parameter inside the
+> control's own value-changed dispatch. The correction is below; nothing about ADR-0036 had to move.
+
+## Decision — correction, 2026-09-14 (round 18)
+
+**A control that writes a parameter says what it wrote, and no later read may replace it.** Round 17
+made the endpoints per parameter and gave a declaring store a way to state its own `after`
+(`noteOwnedParamWrite`, episode bit 1). Everything else — every knob, slider, numeric value box,
+button and combo, which is to say the whole editor outside the multiband display — writes through a
+JUCE parameter attachment, which declares OWNERSHIP when its gesture opens and declares no VALUE at
+all. The close therefore had nothing but a live read of the parameter, and a host write landing
+after the user's last attachment write and before that gesture closed became the recorded `after`:
+
+```text
+user drags Drive to 1.92 dB
+host automation writes Drive 9.00 dB     (before the button comes up)
+gesture closes
+    -> after(Drive) = 9.00       Redo restores the host's value
+```
+
+Measured exactly that way at `8b136fa`, on the real Drive knob driven by synthetic mouse events, at
+both instants that can reach it: a host write interposed between the last `mouseDrag` and `mouseUp`,
+and one fired from inside the `endChangeGesture` dispatch itself. State test 91 legs A, B, D, E and
+G all failed.
+
+**The rule, unchanged; the missing half, supplied.**
+
+```text
+before = the value it held at the instant the batch FIRST took it
+after   = the latest value the OWNING gesture or control actually produced for it
+```
+
+`after` now has a witness on the UI side for the attachment families too. `noteOwnedParamEndpoint`
+is the narrow half of `noteOwnedParamWrite`: it sets the same episode bit 1, writes the same
+`batchCloseValue`, and **refuses to create ownership**, because a write the batch does not already
+own is not a user step's endpoint and declaring one would hand an undo step to the gesture-less
+writes ADR-0052 deliberately leaves alone.
+
+**Why the UI side can tell a user write from a host write, which is the whole difficulty.** It
+cannot do it from the value: `SliderParameterAttachment::setValue` pushes the host's value in with
+`sendNotificationSync`, so `Slider::valueChanged`, `Slider::Listener::sliderValueChanged` and
+`Slider::onValueChange` all fire for a host write exactly as they do for a user write, and JUCE's
+`ignoreCallbacks` guard is private with no accessor. `Slider::snapValue` *is* user-only, but its
+coverage hole is categorical — it is declared on `juce::Slider` alone, so it can see no Button and
+no ComboBox write, and four of this editor's own user-write sites call `Slider::setValue` directly
+and never reach it.
+
+So the discriminator is not the value, it is **who moved the parameter**. The editor registers two
+hooks per parameter-backed control, one before JUCE's attachment and one after it — `ListenerList`
+dispatches in registration order, and the attachment writes the parameter inside its own callback,
+so the pair straddles the write:
+
+```text
+user write : before = P_old   ... attachment writes P ...   after = P_new    -> P moved, record
+host push  : before = P_host  ... attachment suppresses ... after = P_host   -> P did not move
+```
+
+A host push writes the parameter first and only then sets the control, so the parameter cannot move
+during the control's own notification. A user write that lands on the value the parameter already
+holds moves nothing either, and JUCE skips it outright
+(`ParameterAttachment::callIfParameterValueChanged`) — correctly, since it produced nothing.
+
+**What is recorded is what the control ASKED FOR**, not a second reading of the parameter: a host
+answering the write re-entrantly would already be in the live value, which is the same reason
+`SpectrumImager::storeOwned` passes its own installed value (round 15). State test 91 leg H places
+exactly that reentrant write, and mutation M68 — record the live value instead — fails it.
+
+**What this does NOT change.** No gesture span, no host touch or latch span, no parameter ID, range,
+default or serialization field, no DSP node or stage order, no reported latency, no thread and no
+new cross-thread path: the witness runs on the message thread, on the same synchronous stack as the
+user's own event handler. JUCE's own attachments are kept — nothing is replaced or reimplemented —
+the 24 Hz poll is untouched, the sequential-gesture batching is untouched, ADR-0053's wheel rules
+are untouched (State test 91 leg G re-asserts chain extension and termination), and the whole-state
+entries for a preset load and an A/B Copy are untouched.
+
+**The residual is now stated in one line, and it is not this one.** For a parameter a control
+declares, `after` is the control's own value and no read can replace it. What remains is what
+ADR-0052 already governs: a write made with no change gesture open is not a user step at all, and
+this decision does not give it one. State test 91 legs I and J hold that line.
+
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
   not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots
@@ -290,14 +376,18 @@ restores. Mutation M65 removes the rule and the leg fails.
 
 ## Related code
 - `src/PluginProcessor.cpp` — `soundSignature`, `pollUndoCoalesceAdopted`, `applyUndoEntry`,
-  `undo`/`redo`, `commitPresetSwitchUndoStep`, `abCopyToOther`, `parameterGestureChanged`,
-  `snapshotSoundValues`, `noteOwnedParamWrite`, `resetBatchOwnership`
-- `src/PluginProcessor.h` — `StateSet`, `ParamEdit`, `UndoEntry`, `UndoStacks`, `batchOpenValue` /
-  `batchCloseValue` / `batchOwnedParam`, the A/B members
+  `undo`/`redo`, `commitPresetSwitchUndoStep`, `abCopyToOther`, `pushCapped`,
+  `parameterGestureChanged`, `noteFirstOwnership`, `noteOwnedParamWrite`, `noteOwnedParamEndpoint`,
+  `resetBatchOwnership` (`snapshotSoundValues` was deleted in round 17 — both of its call sites were
+  the defect)
+- `src/PluginProcessor.h` — `StateSet`, `ParamEdit`, `UndoEntry`, `UndoStacks`, `kUndoDepth`,
+  `batchOpenValue` / `batchCloseValue` / `batchOwnedParam` / `batchEpisodeParam`, the A/B members
+- `src/PluginEditor.h` / `src/PluginEditor.cpp` — `AttachmentWitness`, `makeWitness`, and the three
+  attachment sites that straddle it (`attachSlider`, `setupCombo`, `setupToggle`)
 - `src/gui/SpectrumImager.h` / `.cpp` — `onOwnedWrite`, `storeOwned`, `setParam`, `resetCrossover`,
   `commitFreqEditor`, `spreadSplits`
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:426-513, :340-520
+- Source: src/PluginProcessor.cpp:426-531, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")

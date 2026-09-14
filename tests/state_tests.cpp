@@ -6810,7 +6810,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2420),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2439),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -10351,6 +10351,487 @@ static void testAUserStepsEndpointsBelongToTheUser()
         check (near (plainOf (driveP), B), "leg F: Redo gives B, never the automation's C");
     }
 }
+
+// ----------------------------------------------------------------------------
+//  State test 91 -- an attachment-driven user endpoint belongs to the USER
+// ----------------------------------------------------------------------------
+//  ADR-0008 as amended, round 18. State test 90 proves the endpoint RULES, but it drives the
+//  parameters directly, so it can only place host automation BETWEEN gestures. The window this test
+//  exists for is INSIDE one: a control that writes through a JUCE parameter attachment declares
+//  ownership when its gesture opens and declares no value at all, so until round 18 the close took
+//  the LIVE parameter -- and a host write landing after the user's last attachment write and before
+//  that gesture closed became the value Redo restored.
+//
+//  So every leg here drives a REAL attachment-backed control through synthetic mouse and wheel
+//  events, exactly as a user does. Two different instants are used deliberately, because they are
+//  reached by different code:
+//    * a bare `setValueNotifyingHost` interposed between the last `mouseDrag` and `mouseUp` -- the
+//      ordinary case, a whole message-loop turn wide, which is what a DAW's automation lane does;
+//    * `WriteFromInsideAGestureOpen` with `onClose`, which fires from inside the `endChangeGesture`
+//      dispatch itself -- the tightest instant that can still reach the endpoint, reachable because
+//      JUCE walks a parameter's listeners in REVERSE registration order, so a listener the test adds
+//      runs before the processor's own handler.
+static void testAnAttachmentEndpointBelongsToTheUser()
+{
+    std::printf ("State test 91: an attachment-driven user endpoint belongs to the user\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "State test 91: the editor constructs for the attachment-endpoint probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    // Identify a control by MOVING its parameter and seeing which single slider follows -- the same
+    // identification State tests 86 and 88 use, and the only one available: the editor exposes no
+    // component ids and the knobs are private members.
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto hostSets = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto near     = [] (float a, float b) { return std::abs (a - b) <= 1.0e-3f; };
+    auto settle   = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f; wheel.deltaY = 0.5f;
+    wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+    // Each leg stamps its events from its own instant, for the reason State test 88 records: the
+    // wheel handlers' duplicate-event filters compare stamps for EQUALITY, and two legs can read a
+    // millisecond clock inside one millisecond.
+    int legNo = 0;
+    const auto suiteBase = juce::Time::getCurrentTime();
+    auto legStamp = [&] { return suiteBase + juce::RelativeTime::seconds (5.0 * ++legNo); };
+
+    auto* driveP  = apvts.getParameter (pid::drive);
+    auto* amountP = apvts.getParameter (pid::amount);
+    auto* driveK  = findSliderFor (driveP);
+    auto* amountK = findSliderFor (amountP);
+    check (driveP != nullptr && driveK != nullptr,
+           "State test 91: the Drive knob is findable from its parameter");
+    check (amountP != nullptr && amountK != nullptr,
+           "State test 91: the Amount knob is findable from its parameter");
+    if (driveP == nullptr || driveK == nullptr || amountP == nullptr || amountK == nullptr)
+    { delete raw; return; }
+
+    // One drag of `dy` pixels upward on `k`, with the events stamped from `t`. `hostAt` runs after
+    // the LAST drag event and before `mouseUp`, which is the window under test.
+    auto dragWith = [&] (juce::Slider* k, float dy, juce::Time t,
+                         const std::function<void()>& hostAt) -> void
+    {
+        const float cx = (float) k->getWidth() * 0.5f, cy = (float) k->getHeight() * 0.5f;
+        auto ev = [&] (float y, bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, y },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, k, k,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        k->mouseDown (ev (cy, false, true));
+        k->mouseDrag (ev (cy - dy, true, true));
+        if (hostAt) hostAt();
+        k->mouseUp   (ev (cy - dy, true, true));
+    };
+
+    // ---- LEG A: the exact Devin case, the tightest instant ---------------------------
+    //      The host write fires from INSIDE the gesture-close dispatch, after the drag's last
+    //      attachment write and before the processor's close handler reads. Nothing the user did
+    //      can be recovered from the live value at that point: this is the leg that says the
+    //      endpoint must have been recorded when the user's write happened.
+    settle();
+    {
+        const float start   = plainOf (driveP);
+        const float foreign = 9.0f;
+        WriteFromInsideAGestureOpen poke;
+        poke.onClose = true;
+        poke.target  = driveP;
+        poke.to      = foreign;
+        driveP->addListener (&poke);
+        float produced = start;
+        dragWith (driveK, 20.0f, legStamp(), [&]
+        {
+            produced   = plainOf (driveP);    // what the user's own drag actually produced
+            poke.armed = true;                // ...and the host answers the close, not the drag
+        });
+        driveP->removeListener (&poke);
+        proc.pollUndoCoalesce();
+
+        check (poke.fired, "leg A: the host write landed inside the gesture close");
+        check (! near (produced, start), "leg A: the drag moved Drive");
+        check (near (plainOf (driveP), foreign),
+               "leg A: the host's write is what the plug-in is left holding");
+        check (proc.canUndo(), "leg A: the drag is one undoable step");
+        proc.undo();
+        check (near (plainOf (driveP), start),
+               "leg A: Undo returns Drive to the value it held when the press started");
+        proc.redo();
+        if (near (plainOf (driveP), foreign))
+            std::printf ("  [leg A] REDO restored the host's automation value as the user's endpoint:"
+                         " Drive %.4f, where the user's own drag produced %.4f\n",
+                         (double) plainOf (driveP), (double) produced);
+        check (near (plainOf (driveP), produced),
+               "leg A: Redo restores what the DRAG produced, never the automation");
+    }
+
+    // ---- LEG D: the same defect at the ordinary instant ------------------------------
+    //      A whole message-loop turn wide: the user has stopped moving and has not yet let go.
+    //      Listed separately from leg A because it is reached by different code -- no listener is
+    //      involved, the write is simply a DAW's automation lane arriving while the button is held.
+    settle();
+    {
+        const float start   = plainOf (driveP);
+        const float foreign = 3.0f;
+        float produced = start;
+        dragWith (driveK, 24.0f, legStamp(), [&]
+        {
+            produced = plainOf (driveP);
+            hostSets (driveP, foreign);       // ...between the last drag write and the release
+        });
+        proc.pollUndoCoalesce();
+
+        check (! near (produced, start), "leg D: the drag moved Drive");
+        check (near (plainOf (driveP), foreign),
+               "leg D: the host's write is what the plug-in is left holding");
+        proc.undo();
+        check (near (plainOf (driveP), start), "leg D: Undo returns Drive to the pre-press value");
+        proc.redo();
+        check (near (plainOf (driveP), produced),
+               "leg D: Redo restores the drag's own value, not the automation that followed it");
+    }
+
+    // ---- LEG B: several user writes, then automation, then the close -----------------
+    //      `after` must be the LAST value the user produced, not the first and not the host's.
+    settle();
+    {
+        const float start   = plainOf (driveP);
+        const float foreign = 11.0f;
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();
+        auto ev = [&] (float y, bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, y },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        driveK->mouseDown (ev (cy, false, true));
+        driveK->mouseDrag (ev (cy - 10.0f, true, true));
+        const float a1 = plainOf (driveP);
+        driveK->mouseDrag (ev (cy - 20.0f, true, true));
+        const float a2 = plainOf (driveP);
+        driveK->mouseDrag (ev (cy - 30.0f, true, true));
+        const float a3 = plainOf (driveP);
+        hostSets (driveP, foreign);
+        driveK->mouseUp (ev (cy - 30.0f, true, true));
+        proc.pollUndoCoalesce();
+
+        check (! near (a1, a2) && ! near (a2, a3), "leg B: the three drag events each moved Drive");
+        proc.undo();
+        check (near (plainOf (driveP), start), "leg B: Undo returns to the pre-press value");
+        proc.redo();
+        check (near (plainOf (driveP), a3),
+               "leg B: Redo restores the LAST value the user produced, not the first and not the host's");
+    }
+
+    // ---- LEG C: automation BETWEEN two user writes, before the close -----------------
+    //      The user writes again after the automation, so the last user-produced value is the
+    //      endpoint and the automation is simply overwritten while the press is still held.
+    settle();
+    {
+        const float start   = plainOf (driveP);
+        const float foreign = 1.5f;
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();
+        auto ev = [&] (float y, bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, y },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        driveK->mouseDown (ev (cy, false, true));
+        driveK->mouseDrag (ev (cy - 12.0f, true, true));
+        hostSets (driveP, foreign);
+        driveK->mouseDrag (ev (cy - 26.0f, true, true));
+        const float last = plainOf (driveP);
+        driveK->mouseUp (ev (cy - 26.0f, true, true));
+        proc.pollUndoCoalesce();
+
+        check (! near (last, foreign), "leg C: the second drag event wrote over the automation");
+        proc.undo();
+        check (near (plainOf (driveP), start), "leg C: Undo returns to the pre-press value");
+        proc.redo();
+        check (near (plainOf (driveP), last),
+               "leg C: Redo restores the user's later value");
+    }
+
+    // ---- LEG E: two parameters in one batch, automation on one of them ---------------
+    //      The endpoints are per parameter: automating Drive must not reach Amount's endpoint, and
+    //      Amount's own close must not retake Drive's.
+    settle();
+    {
+        const float d0 = plainOf (driveP), a0 = plainOf (amountP);
+        const float foreign = 7.5f;
+        float dProduced = d0;
+        dragWith (driveK, 18.0f, legStamp(), [&]
+        {
+            dProduced = plainOf (driveP);
+            hostSets (driveP, foreign);
+        });
+        float aProduced = a0;
+        dragWith (amountK, 18.0f, legStamp(), [&] { aProduced = plainOf (amountP); });
+        proc.pollUndoCoalesce();
+
+        check (! near (dProduced, d0) && ! near (aProduced, a0),
+               "leg E: both drags moved their own parameter");
+        proc.undo();
+        check (near (plainOf (driveP), d0) && near (plainOf (amountP), a0),
+               "leg E: one Undo puts both back to where their own presses started");
+        proc.redo();
+        check (near (plainOf (driveP), dProduced),
+               "leg E: Redo gives Drive what ITS drag produced, not the automation");
+        check (near (plainOf (amountP), aProduced),
+               "leg E: ...and Amount what its own drag produced");
+    }
+
+    // ---- LEG F: sequential gestures in one batch (the round-17 guarantee) ------------
+    //      Two presses that finish inside one 24 Hz period share a pending batch by design. The
+    //      SECOND one's close must not retake the FIRST one's endpoint -- which is what round 17
+    //      fixed, and what this round must not undo.
+    settle();
+    {
+        const float d0 = plainOf (driveP), a0 = plainOf (amountP);
+        const float foreign = 2.5f;
+        float dProduced = d0;
+        dragWith (driveK, 16.0f, legStamp(), [&] { dProduced = plainOf (driveP); });
+        hostSets (driveP, foreign);                        // ...between the two presses
+        float aProduced = a0;
+        dragWith (amountK, 16.0f, legStamp(), [&] { aProduced = plainOf (amountP); });
+        proc.pollUndoCoalesce();                           // ...one poll, one step
+
+        proc.undo();
+        check (near (plainOf (driveP), d0), "leg F: Undo gives Drive its own pre-press value");
+        proc.redo();
+        check (near (plainOf (driveP), dProduced),
+               "leg F: Redo gives Drive the first press's own value, not the automation between them");
+        check (near (plainOf (amountP), aProduced),
+               "leg F: ...and Amount the second press's");
+    }
+
+    // ---- LEG G: the standalone wheel, and ADR-0053's chain ---------------------------
+    //      A standalone notch is bracketed by JUCE's own `ScopedDragNotification`, so it has the
+    //      same open/write/close shape and the same window. The chain assertions are here so the
+    //      endpoint fix cannot buy correctness by breaking the wheel rules State test 86 owns.
+    settle();
+    {
+        const float start   = plainOf (driveP);
+        const float foreign = 8.25f;
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();
+        auto wev = [&] (juce::Time when)
+        {
+            return juce::MouseEvent (src, { cx, cy }, juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                     when, { cx, cy }, when, 1, false);
+        };
+        // What ONE notch from `start` produces, measured with nothing interfering. The notch is a
+        // pure function of the start value and the wheel delta, so the poked run below produces the
+        // same thing -- and reading it here is the only way to know it, because the poke fires
+        // inside the very call that would otherwise report it.
+        driveK->mouseWheelMove (wev (t), wheel);
+        const float oneNotch = plainOf (driveP);
+        proc.pollUndoCoalesce();
+        check (! near (oneNotch, start), "leg G: one notch moves Drive");
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        check (near (plainOf (driveP), start), "leg G: ...and the measurement leaves no residue");
+
+        // ...and now the same notch with the host answering its gesture close. A standalone notch is
+        // bracketed by JUCE's own `ScopedDragNotification` (juce_Slider.cpp:1164), so it has the
+        // same open / write / close shape a drag has, and the same window.
+        WriteFromInsideAGestureOpen poke;
+        poke.onClose = true;
+        poke.target  = driveP;
+        poke.to      = foreign;
+        driveP->addListener (&poke);
+        poke.armed = true;
+        driveK->mouseWheelMove (wev (t + juce::RelativeTime::seconds (1.0)), wheel);
+        driveP->removeListener (&poke);
+        proc.pollUndoCoalesce();
+
+        check (poke.fired, "leg G: the host write landed inside the notch's own gesture close");
+        check (near (plainOf (driveP), foreign),
+               "leg G: the host's write is what the plug-in is left holding");
+        proc.undo();
+        check (near (plainOf (driveP), start), "leg G: Undo returns Drive to the pre-scroll value");
+        proc.redo();
+        check (near (plainOf (driveP), oneNotch),
+               "leg G: Redo restores what the NOTCH produced, not the automation inside its close");
+
+        // ...and ADR-0053's chain is untouched by any of this: a second notch on the same control,
+        // with nothing else in between, extends the same step rather than starting another.
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        driveK->mouseWheelMove (wev (t + juce::RelativeTime::seconds (2.0)), wheel);
+        proc.pollUndoCoalesce();
+        driveK->mouseWheelMove (wev (t + juce::RelativeTime::seconds (3.0)), wheel);
+        proc.pollUndoCoalesce();
+        const float twoNotches = plainOf (driveP);
+        check (! near (twoNotches, start), "leg G: two notches move Drive further");
+        proc.undo();
+        check (near (plainOf (driveP), start),
+               "leg G: one Undo walks back the WHOLE scroll -- the chain still extends");
+        check (! proc.canUndo(), "leg G: ...and it was one step, not two");
+        proc.redo();
+        check (near (plainOf (driveP), twoNotches),
+               "leg G: Redo restores what the whole scroll produced");
+    }
+
+    // ---- LEG H: a host write REENTRANT inside the user's own store -------------------
+    //      The one instant a live read taken right after the attachment's write would still get
+    //      wrong: a host answering `setValueNotifyingHost` from inside its own listener dispatch.
+    //      The value the CONTROL asked for is the user's; the value the parameter holds when the
+    //      call returns is the host's. This leg is why the witness records the former.
+    //      `WriteFromInsideAStoreQuietly` writes with `setValue` rather than
+    //      `setValueNotifyingHost` for the reason its own comment gives -- a notifying write from
+    //      inside a store re-enters JUCE's listener lock.
+    settle();
+    {
+        const float start   = plainOf (driveP);
+        const float foreign = 5.75f;
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();
+        auto ev = [&] (float y, bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, y },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        WriteFromInsideAStoreQuietly echo;
+        echo.target = driveP;
+        echo.to     = foreign;
+        driveP->addListener (&echo);
+        driveK->mouseDown (ev (cy, false, true));
+        echo.armed = true;                         // ...fires from inside the drag's own store
+        driveK->mouseDrag (ev (cy - 22.0f, true, true));
+        // The control still holds what the user's drag asked for; the PARAMETER holds the echo's.
+        const float asked = driveP->convertFrom0to1 (driveP->convertTo0to1 ((float) driveK->getValue()));
+        driveK->mouseUp (ev (cy - 22.0f, true, true));
+        driveP->removeListener (&echo);
+        proc.pollUndoCoalesce();
+
+        check (echo.fired, "leg H: the host answered the drag's own store");
+        check (! near (asked, start), "leg H: the drag asked for a value of its own");
+        proc.undo();
+        check (near (plainOf (driveP), start), "leg H: Undo returns Drive to the pre-press value");
+        proc.redo();
+        check (near (plainOf (driveP), asked),
+               "leg H: Redo restores what the CONTROL asked for, not what the reentrant host left");
+    }
+
+    // ---- LEG I: a gesture-less UI write must not state an endpoint -------------------
+    //      A write with no change gesture open is the automation-shaped path ADR-0052 leaves
+    //      alone -- the numeric value box's drag is one. It must not declare an endpoint, because
+    //      a LATER gesture on the same parameter would then close on the value box's value instead
+    //      of its own. The sequence is what makes it visible: a first press leaves a batch pending,
+    //      so the second press's open does NOT re-base the episode bits.
+    settle();
+    {
+        const float a0 = plainOf (amountP);
+        (void) a0;
+        dragWith (amountK, 14.0f, legStamp(), nullptr);   // ...a batch is now pending, unpolled
+        const float d0 = plainOf (driveP);
+        const float loose = d0 + 4.0f;
+        driveK->setValue ((double) loose, juce::sendNotificationSync);  // gesture-LESS, like the box
+        check (near (plainOf (driveP), loose), "leg I: the gesture-less write moved Drive");
+        float produced = loose;
+        dragWith (driveK, 20.0f, legStamp(), [&] { produced = plainOf (driveP); });
+        proc.pollUndoCoalesce();
+
+        check (! near (produced, loose), "leg I: the press that followed moved Drive again");
+        proc.undo();
+        proc.redo();
+        check (near (plainOf (driveP), produced),
+               "leg I: Redo restores the PRESS's own value, not the gesture-less write before it");
+    }
+
+    // ---- LEG J: ...and it must not survive to be somebody else's endpoint ------------
+    //      The sharp edge of leg I. A gesture-less write that DID state an endpoint would leave it
+    //      behind, and the empty press that follows -- a click that starts no drag, which owns the
+    //      parameter and produces nothing -- would close on it. With a host write in between, the
+    //      press's `before` is the host's value and the stale endpoint is not, so the poll records a
+    //      step for a press that edited nothing and Redo lands on a value the user never produced.
+    //      The batch must already be pending, or the second press's open re-bases the episode bits
+    //      and the stale endpoint is cleared before it can be read.
+    settle();
+    {
+        dragWith (amountK, 14.0f, legStamp(), nullptr);   // ...a batch is now pending, unpolled
+        const float d0    = plainOf (driveP);
+        const float loose = d0 + 5.0f;
+        const float host  = d0 - 3.0f;
+        driveK->setValue ((double) loose, juce::sendNotificationSync);   // gesture-LESS
+        check (near (plainOf (driveP), loose), "leg J: the gesture-less write moved Drive");
+        hostSets (driveP, host);
+        check (near (plainOf (driveP), host), "leg J: ...and the host moved it again afterwards");
+
+        // An EMPTY press on Drive: it owns the parameter and produces nothing.
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();
+        auto ev = [&] (bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, cy },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        driveK->mouseDown (ev (false, true));
+        driveK->mouseUp   (ev (false, true));
+        proc.pollUndoCoalesce();
+
+        check (near (plainOf (driveP), host),
+               "leg J: the empty press left the host's value alone");
+        proc.undo();
+        proc.redo();
+        check (near (plainOf (driveP), host),
+               "leg J: ...and Redo does not hand the press an endpoint the gesture-less write left");
+    }
+
+    delete raw;
+    std::printf ("\n");
+}
+
 
 static void testTooltipSourceOfTruth()
 {
@@ -18832,7 +19313,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1727).
+//  baseline", src/PluginProcessor.cpp:1745).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -19065,7 +19546,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1456).
+//  targets", src/PluginProcessor.cpp:1474).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -19442,7 +19923,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1912).
+//  mixed sound", src/PluginProcessor.cpp:1930).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -23446,6 +23927,7 @@ int main (int argc, char* argv[])
     testAWheelNotchInsideAKnobPressBelongsToIt();
     testTheABHistoryObeysItsCap();
     testAUserStepsEndpointsBelongToTheUser();
+    testAnAttachmentEndpointBelongsToTheUser();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

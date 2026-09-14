@@ -108,6 +108,19 @@ public:
     // knows either: it runs with nothing bracketed, so no gesture edge can read them for it.
     void noteOwnedParamWrite (const juce::AudioProcessorParameter* p,
                               float wasNorm, float nowNorm) noexcept;
+
+
+    // ADR-0008, ROUND 18. THE CONTROL THAT WROTE THE PARAMETER SAYS WHAT IT WROTE, and this is the
+    // narrow half of `noteOwnedParamWrite` for the controls that cannot bring a `before`. A JUCE
+    // parameter attachment declares ownership when its gesture OPENS and declares no value at all,
+    // so the close had nothing but a live read -- and a host write landing after the user's last
+    // attachment write and before that gesture closed became the value Redo restored (State test
+    // 91). The editor's per-control witness calls this with the value the control actually asked
+    // the parameter to take, which is exactly what `noteOwnedParamWrite` does for the imager's
+    // stores. It REFUSES to create ownership: a write the batch does not already own is not a user
+    // step's endpoint, and declaring one here would hand an undo step to the gesture-less writes
+    // ADR-0052 deliberately leaves alone.
+    void noteOwnedParamEndpoint (const juce::AudioProcessorParameter* p, float nowNorm) noexcept;
     // The name a parameter-backed control answers to. A parameter's index is stable for the life of
     // the processor and unique to it, so two controls driving the SAME parameter -- a knob and the
     // numeric box under it -- are correctly one control for this purpose. +1 keeps 0 meaning "none".
@@ -537,10 +550,21 @@ private:
     // Per parameter, `before` is written once at first ownership and `after` only from a value the
     // owning gesture or store actually produced, so no later read of anything can redefine either.
     //
+    // ROUND 18 completes the sentence above for the controls that declare NOTHING. A parameter
+    // written through a JUCE attachment used to reach the close with only bit 0 set, so the close
+    // live-read it -- and a host write landing after the user's last attachment write and before
+    // that gesture closed became the recorded `after`. The editor's `AttachmentWitness` now states
+    // the value the control asked for, through `noteOwnedParamEndpoint`, which is the same bit-1
+    // declaration a declaring store makes. State test 91.
+    //
     // Sized ONCE in the constructor and never resized, so a gesture callback allocates nothing.
-    // Written and read only in `parameterGestureChanged`, `noteOwnedParamWrite`,
-    // `noteFirstOwnership` and `pollUndoCoalesceAdopted` -- all message-thread, which is why this
-    // is NOT the `parameterValueChanged` design RISK-012 flagged as a new cross-thread path.
+    // SIX functions touch them, and this list is exhaustive because a fix that adds per-parameter
+    // state and misses `resetBatchOwnership` would leak it across a program-state jump: the
+    // constructor (sizing, on the host's construction thread, before anything can observe the
+    // object), `parameterGestureChanged`, `noteFirstOwnership`, `noteOwnedParamWrite`,
+    // `noteOwnedParamEndpoint`, `resetBatchOwnership` and `pollUndoCoalesceAdopted`. Every one of
+    // those but the constructor is message-thread, which is why this is NOT the
+    // `parameterValueChanged` design RISK-012 flagged as a new cross-thread path.
     std::vector<float> batchOpenValue, batchCloseValue;
     std::vector<char>  batchOwnedParam;
     // ...and which parameters the CURRENT gesture episode is about. Bit 0 is "a gesture opened on

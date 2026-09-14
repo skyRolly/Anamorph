@@ -484,22 +484,40 @@ void AnamorphAudioProcessor::noteOwnedParamWrite (const juce::AudioProcessorPara
     // take, for the rest of this gesture episode. A store knows what it installed; the close can
     // only see what is there, which after a reentrant host write is not the same thing.
     if (i < (int) batchEpisodeParam.size()) batchEpisodeParam[(size_t) i] |= (char) 2;
-    // ROUND 15: ...AND THE STORE BRINGS ITS OWN ENDING VALUE. `batchCloseValue` is retaken in full
-    // at every zero-crossing gesture close, which covers every coupled store made INSIDE a bracket
-    // -- but not the ones made after it. `SpectrumImager::resetCrossover` and `commitFreqEditor`
+    // ROUND 15: ...AND THE STORE BRINGS ITS OWN ENDING VALUE. `batchCloseValue` used to be retaken
+    // in full at every zero-crossing gesture close, which covered every coupled store made INSIDE a
+    // bracket -- but not the ones made after it. `SpectrumImager::resetCrossover` and `commitFreqEditor`
     // close the primary split's gesture and only then call `spreadSplits`, so the neighbours that
     // spread pushes are stored with nothing open: the snapshot that was meant to hold their ending
     // values was taken before they moved, they read as `before == after`, and the poll dropped them
     // from the very step that moved them. One Undo then restored the reset split and left its
     // neighbours displaced -- a layout no user action ever produced. Writing the slot HERE costs
     // one float and is exact, because the caller passes what its own store installed rather than a
-    // second reading of a parameter three threads write. A later close simply retakes the whole
-    // snapshot over it, so a store inside a bracket is unaffected.
+    // second reading of a parameter three threads write. ROUND 17 REPLACED THE RETAKE: the close
+    // now reads only this episode's own gesture-declared parameters, and the bit set two lines
+    // above makes it skip the ones a store has already spoken for -- so what used to be "a later
+    // close retakes the whole snapshot over it" is now "no later close touches it at all".
     if (i < (int) batchCloseValue.size()) batchCloseValue[(size_t) i] = nowNorm;
 }
 
+// ADR-0008, ROUND 18. The same declaration, for a control that has no `before` to bring -- its
+// gesture already took one at the open. Everything the header says about refusing to create
+// ownership is the `batchOwnedParam` test below, and it is the whole of the difference.
+void AnamorphAudioProcessor::noteOwnedParamEndpoint (const juce::AudioProcessorParameter* p,
+                                                     float nowNorm) noexcept
+{
+    if (p == nullptr) return;
+    const int i = p->getParameterIndex();
+    if (i < 0 || i >= (int) batchOwnedParam.size()) return;
+    if (batchOwnedParam[(size_t) i] == 0) return;   // not the user's: there is no endpoint to state
+    if (i < (int) batchEpisodeParam.size()) batchEpisodeParam[(size_t) i] |= (char) 2;
+    if (i < (int) batchCloseValue.size())   batchCloseValue[(size_t) i]   = nowNorm;
+}
+
 // The ownership record starts empty and both edges read the live sound: called wherever the undo
-// bookkeeping is dropped wholesale (a program state jump, an Undo, a Redo, a preset switch).
+// bookkeeping is dropped wholesale (a program state jump, an Undo, a Redo, a preset switch)
+// -- AND at the open of a FRESH pending batch, which is the fifth caller and the only one
+// that is a user gesture rather than a jump (see the `pendingGestureCommit` test there).
 void AnamorphAudioProcessor::resetBatchOwnership()
 {
     // ROUND 17: clearing ownership is the whole of a re-base. The two value arrays used to be

@@ -302,6 +302,14 @@ visible rather than asserted away.
 > step contains; ADR-0008 does.** Round 12's withdrawn push gate is likewise superseded rather than
 > revived: the empty-press face it was aimed at is fixed by the endpoints, not by a gate, so legs K,
 > I and J stand untouched.
+>
+> **Extended 2026-09-14 (round 18).** "`after` only from a value the owning gesture or store
+> produced" was true of the multiband display's declaring stores and not yet of anything else: every
+> control bound by a JUCE parameter attachment declared ownership and no value, so its close still
+> took a live read and a host write inside the gesture became the recorded `after`. The editor now
+> witnesses the attachment write itself (ADR-0008, round-18 correction). **No wheel rule in this ADR
+> moves**, and State test 91 leg G re-asserts chain extension and termination against the change so
+> that it cannot be traded away for the endpoint fix.
 
 **3b. ...and the first version of THAT fix broke the guarantee it serves, which is the round's own
 best evidence for verifying a fix as adversarially as a finding.** Every program state jump -- Undo,

@@ -3926,3 +3926,72 @@ already carried the correction. Corrected in place, comment only, line-count pre
 citation anchor moves. Same defect class as §69's false in-source comments: a comment that
 describes the code it used to sit next to is a trap for the next reader, and this review has paid
 for it before.
+
+## §75. Round 18 — the endpoint the attachment never stated
+
+Round 17 fixed the endpoints for the parameters a store declares and recorded the rest as an
+accepted implementation limit. The review then reported that limit as a production defect. It is,
+and the sentence that excused it was wrong as well.
+
+### The finding, reconstructed from source rather than from the report
+
+`src/PluginProcessor.cpp:1010-1020` — the gesture-close block — live-reads the parameter for every
+parameter with episode bit 0 set and bit 1 clear. Bit 1's only writer is `noteOwnedParamWrite`, and
+its only call site is the SpectrumImager's `onOwnedWrite` lambda. So **every** control bound by a
+JUCE parameter attachment — eleven knobs, their numeric value boxes, every toggle and every combo —
+reached the close with bit 1 clear and had its `after` taken from whatever the parameter happened to
+hold. An independent read-only reconstruction pinned at `8b136fa` (seven readers, twenty adversarial
+refutation passes) confirmed the mechanism line by line and refuted all five candidate savers: the
+rendered-grid drop does not drop the entry, `foreignSinceEdge` gates only scroll chaining, the host
+write opens no gesture, no drain or adoption intervenes, and the window is not tight — JUCE writes
+on `mouseDrag` and closes on a later `mouseUp`, so it spans real message-loop turns.
+
+### Why the fix is not `snapValue`, and not `parameterValueChanged` either
+
+ADR-0008's round-17 text said closing this window "would need a per-write user hook, which on this
+architecture means `parameterValueChanged` — audio-thread-reachable, and forbidden by ADR-0036".
+That is false, and the pinned JUCE source says so: `SliderParameterAttachment::sliderValueChanged`
+writes the parameter from inside the control's own value-changed dispatch, on the message thread.
+
+The difficulty is not observing the write, it is telling it from a host push, which reaches the same
+callbacks with `sendNotificationSync` and is suppressed only by an `ignoreCallbacks` flag private to
+JUCE with no accessor. `Slider::snapValue` is genuinely user-only — six call sites in the pinned
+tree, all user input — but its coverage hole is categorical: it is declared on `juce::Slider` alone,
+so it can see no Button and no ComboBox write, and four of this editor's own user-write sites call
+`Slider::setValue` directly and never reach it.
+
+So the discriminator is **who moved the parameter**, not what the value is. Two hooks per control,
+one registered before JUCE's attachment and one after it — `ListenerList` dispatches in registration
+order — straddle the attachment's own callback. A user write moves the parameter between them; a
+host push moved it before the control was touched at all, so nothing moves during the notification.
+What is recorded is the value the control ASKED FOR, not a second reading, for the same reason
+round 15 made `storeOwned` pass its own installed value.
+
+### Measured first, on the unmodified tree
+
+State test 91 at `8b136fa`: five failures.
+
+```
+[leg A] REDO restored the host's automation value as the user's endpoint: Drive 9.0000,
+        where the user's own drag produced 1.9200
+```
+
+Legs B, D, E and G failed with it; legs C, F, H, I and J passed and are controls.
+
+### Two things the round found in its own predecessors' work
+
+`noteOwnedParamWrite`'s round-15 paragraph still said "`batchCloseValue` is retaken in full at every
+zero-crossing gesture close" and "a later close simply retakes the whole snapshot over it" — both
+falsified by round 17, two lines below the bit-1 write that falsifies them. And the endpoint-vector
+comment in `src/PluginProcessor.h` claimed the vectors are "written and read only in" four
+functions, omitting the constructor and `resetBatchOwnership`; `resetBatchOwnership`'s own comment
+enumerated only its four program-state-jump callers and omitted the fifth, the batch-opening user
+gesture. The second is load-bearing rather than cosmetic: it invites a fix that adds per-parameter
+state and never clears it on an Undo, a Redo or a preset switch. Both corrected.
+
+### The residual
+
+There is none for this mechanism. For a parameter a control declares, `after` is the control's own
+value and no later read can replace it. What remains is what ADR-0052 already governs and this
+decision does not change: a write made with no change gesture open is not a user step at all.
+RISK-012 is closed in full.

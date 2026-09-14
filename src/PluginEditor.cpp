@@ -771,9 +771,22 @@ void AnamorphAudioProcessorEditor::setupRotary (juce::Slider& s, juce::Label& l,
     registerAnimated (s); // eased hover/press glow (F3)
 }
 
+AnamorphAudioProcessorEditor::AttachmentWitness*
+AnamorphAudioProcessorEditor::makeWitness (const char* id)
+{
+    auto* p = processor.getAPVTS().getParameter (id);
+    return p != nullptr ? writeWitnesses.add (new AttachmentWitness (processor, *p)) : nullptr;
+}
+
 void AnamorphAudioProcessorEditor::attachSlider (juce::Slider& s, const char* id)
 {
+    // ADR-0008 round 18: the witness straddles the attachment, so it can tell a user write (which
+    // moves the parameter inside the attachment's own callback) from a host push (which moved it
+    // before the control was touched at all). Registration ORDER is the whole mechanism.
+    auto* w = makeWitness (id);
+    if (w != nullptr) w->listenBefore (s);
     sliderAtts.add (new SliderAttachment (processor.getAPVTS(), id, s));
+    if (w != nullptr) w->listenAfter (s);
 
     auto* p = processor.getAPVTS().getParameter (id);
     if (auto* k = dynamic_cast<Knob*> (&s); k != nullptr && p != nullptr)
@@ -833,7 +846,10 @@ void AnamorphAudioProcessorEditor::setupCombo (juce::ComboBox& box, const char* 
     passComboHoverThrough (box);
     allCombos.add (&box); // timer drives the hover repaint (#20)
     addAndMakeVisible (box);
+    auto* w = makeWitness (id);                       // ADR-0008 round 18, see `attachSlider`
+    if (w != nullptr) w->listenBefore (box);
     comboAtts.add (new ComboBoxAttachment (processor.getAPVTS(), id, box));
+    if (w != nullptr) w->listenAfter (box);
     registerAnimated (box); // eased hover lift (F3)
 }
 
@@ -843,7 +859,10 @@ void AnamorphAudioProcessorEditor::setupToggle (juce::ToggleButton& t, const cha
     t.setButtonText (text);
     if (tip.isNotEmpty()) t.setTooltip (tidyTip (tip));
     addAndMakeVisible (t);
+    auto* w = makeWitness (id);                       // ADR-0008 round 18, see `attachSlider`
+    if (w != nullptr) w->listenBefore (t);
     buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), id, t));
+    if (w != nullptr) w->listenAfter (t);
     registerAnimated (t); // eased switch slide + hover (F3)
 }
 

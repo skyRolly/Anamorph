@@ -1451,6 +1451,53 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   CI gate asserts every entry in that file is matched — a second, differently named probe of the
   identical shape would need a second entry for no gain.
 
+* **Round 18 — M65's final disposition, and it is not the one round 17 recorded.** Round 17 reported
+  M65 as a survivor closed by leg Z7. Re-run at the round-18 head it is **KILLED, with seven failing
+  checks**: leg Z7's two, plus five in the new State test 91, which reaches the same rule through the
+  JUCE attachment path instead of a declaring store. The classification "survivor" belonged to the
+  suite as it stood before leg Z7 existed and must not be carried forward — it is recorded here as
+  killed, by measurement, on the current suite.
+
+* **Round 18 — State test 91, and why it drives real controls where State test 90 drives
+  parameters.** State test 90 establishes the endpoint RULES by calling
+  `beginChangeGesture` / `setValueNotifyingHost` / `endChangeGesture` directly, which is exactly what
+  a JUCE attachment does — but it can only place host automation BETWEEN gestures. The window this
+  round is about is INSIDE one, so every leg of State test 91 builds a real editor and drives a real
+  attachment-backed knob with synthetic mouse and wheel events. Two instants are used deliberately,
+  because different code reaches them: a bare `setValueNotifyingHost` interposed between the last
+  `mouseDrag` and `mouseUp` (a whole message-loop turn wide — what a DAW's automation lane does), and
+  `WriteFromInsideAGestureOpen` with `onClose`, which fires from inside the `endChangeGesture`
+  dispatch itself.
+
+  | Leg | What it pins | At `8b136fa` |
+  |---|---|---|
+  | A | the reported case at the tightest instant — the host answers the gesture close | **failed** |
+  | B | three user writes, then automation, then the close: `after` is the LAST user value | **failed** |
+  | C | automation BETWEEN two user writes: the later user write is the endpoint | passed (control) |
+  | D | the ordinary instant — automation between the last `mouseDrag` and `mouseUp` | **failed** |
+  | E | two parameters in one batch, automation on one: endpoints stay independent | **failed** |
+  | F | sequential gestures in one batch — the round-17 guarantee | passed (control) |
+  | G | the standalone wheel, plus ADR-0053 chain extension and termination | **failed** |
+  | H | a host write REENTRANT inside the user's own store | passed (control) |
+  | I | a gesture-less UI write states no endpoint | passed (control) |
+  | J | ...and cannot become a later empty press's endpoint | passed (control) |
+
+  Leg G's first version passed against the defect and is recorded rather than quietly fixed: it took
+  two notches, and the second notch's own close overwrote the first one's stolen endpoint. It now
+  measures one notch in isolation first, and the chain assertions follow separately.
+
+* **M71 SURVIVED and is an EQUIVALENT mutant, proven rather than assumed.** It removes
+  `noteOwnedParamEndpoint`'s refusal to state an endpoint for a parameter the batch does not own.
+  Both of its effects are unobservable. The `batchCloseValue` it writes for an unowned slot can never
+  be read — `pollUndoCoalesceAdopted` gates on `batchOwnedParam` before it looks at either endpoint —
+  and it is overwritten the instant the parameter becomes owned, because `noteFirstOwnership` seeds
+  BOTH ends from the value at the open. The episode bit it sets can only make a later close skip a
+  live read for a parameter whose `before` and `after` are then equal, which the poll drops either
+  way. Legs I and J assert the behaviour the refusal states and pass with the mutation applied; they
+  are controls, not kills. The refusal is kept as a local statement of the contract — a reader should
+  not have to reconstruct that two-step argument — and is documented here as defence in depth rather
+  than as covered code.
+
 * **Three legs were RE-BASED by the amendment rather than extended, and the previous expectation is
   recorded in each.** **86 legs I and J** asserted that a burst whose own store was refused did not
   extend the previous scroll, which was true only because that burst recorded a whole-state step whose
@@ -1712,6 +1759,12 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M63 | `before` comes from a whole-list snapshot at the batch open again | 90 legs D and E |
   | M64 | a declaring store no longer contributes its own endpoint | 86 legs Z and Z3 |
   | M65 | a live read at the close overrides a store's own declaration | 86 leg Z7, 2 checks |
+  | M66 | the attachment witness records nothing at all | 91 legs A, B, D, E, G |
+  | M67 | the endpoint declaration does not set episode bit 1, so the close overwrites it | 91 legs A, B, D, E, G |
+  | M68 | the witness records the LIVE value instead of what the control asked for | 91 leg H |
+  | M69 | the endpoint stops updating after the batch's first user write | 91 legs A, B, D, E, G |
+  | M70 | the witness fires on host automation as well as the user's write | 91 legs A, B, D, E, F, G |
+  | M71 | the endpoint declaration no longer refuses an unowned parameter | **SURVIVED — equivalent, proven below** |
 
   **M34 is the row that proves the sweep is worth running twice.** Against the FIRST version of
   leg R it SURVIVED -- the leg pressed at the lane's middle, where no width drag is latched, so
