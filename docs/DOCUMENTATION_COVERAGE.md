@@ -11985,6 +11985,21 @@ ADR**. ADR-0008 gains the round-19 correction and states exactly where the live 
 **Validation.** State 3 354 / 0, DSP 396 / 0. Four mutations M72-M75, all killed; M74 additionally
 fails three pre-existing legs (86 Z2, Z5, Z6).
 
+**And the round's own push went red, which is recorded rather than quietly amended away.** The new
+callback's lambda parameter was named `p`, which shadows the editor constructor's own
+`AnamorphAudioProcessor& p` (`src/PluginEditor.cpp:258`) -- caught by BOTH pinned gates, clang-22 as
+`-Wshadow-uncaptured-local` and gcc-16 as plain `-Wshadow`, and by neither of the two neighbouring
+lambdas, which avoid it by naming their parameters `wheelParam` and `owned`. Renamed to `refused`.
+
+Two gaps in `scripts/preflight.sh`'s advisory sweep let it through, and both were **measured on the
+defective form afterwards rather than guessed at**: the sweep ran `command -v clang++ || command -v
+g++`, and on this machine local clang 18 is SILENT on it while local g++ 13 reports it -- the `||`
+picked the silent detector; and its TU list did not contain `src/PluginEditor.cpp` at all, the file
+rounds 18 and 19 both added code to. The sweep now runs every local compiler it finds over a list
+that includes the editor. `src/PluginProcessor.cpp` is deliberately still excluded, with the reason
+written at the list: it carries a declared `-Wshadow` debt row in both pinned baselines, and a line
+the reader must learn to skip would cost this sweep the only property that makes it useful.
+
 ### Thirty-sixth pass — the endpoint the attachment never stated (2026-09-14)
 
 **Trigger.** Round 17 closed the endpoint defect for the parameters a store declares and recorded

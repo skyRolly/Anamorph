@@ -4049,3 +4049,30 @@ imager's gesture-bracketed stores that write with a bare `setValueNotifyingHost`
 `storeOwned` — `resetParam`, `setBands`, `setSoloMask` — for which it is the only endpoint source
 there has ever been. That is the narrow in-gesture window ADR-0008 has recorded since round 16, and
 this round does not move it. RISK-012 stays open against that alone.
+
+### The push went red, and the detector that should have caught it was pointed away
+
+`57de9e6` failed **both** pinned warning gates on one line: the new `onOwnedRefused` lambda named its
+parameter `p`, shadowing the editor constructor's own `AnamorphAudioProcessor& p`
+(`src/PluginEditor.cpp:258`). clang-22 reported it as `-Wshadow-uncaptured-local`, gcc-16 as plain
+`-Wshadow`, and both gates allow 0 in that file. The two lambdas registered immediately above it name
+their parameters `wheelParam` and `owned` — the shape was already established and the new line broke
+it. Renamed to `refused`.
+
+The interesting part is why `scripts/preflight.sh` was green over it, and both halves were measured on
+the defective form afterwards rather than reasoned about:
+
+* **The sweep picked one compiler with `||`, and picked the silent one.** Re-run here on the
+  defective source, local **g++ 13 reports the shadow** and local **clang++ 18 does not**.
+  `command -v clang++ || command -v g++` had therefore been resolving to the detector that cannot see
+  this class since the sweep was written. It now runs every local compiler it finds.
+* **`src/PluginEditor.cpp` was not in the sweep's TU list.** The list was
+  `src/gui/SpectrumImager.cpp` and `tests/state_tests.cpp` — and the editor is the file rounds 18
+  (the `AttachmentWitness` and its three registrations) and 19 (this callback) both added code to.
+
+`src/PluginProcessor.cpp` was added to the list and then deliberately taken back out. It carries a
+declared `-Wshadow` debt row in both pinned baselines — a `params` local in `setStateInformation`
+shadowing the member — so sweeping it prints an ACCEPTED warning on every run. This sweep's only
+useful property is that silence means "nothing new"; one line the reader learns to skip destroys that
+faster than the missing coverage costs. The reason is written at the list so the next person does not
+re-add it, and the condition for adding it is named: the day that debt row is paid off.
