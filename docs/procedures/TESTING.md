@@ -1414,6 +1414,43 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   the cap is for; each Copy carries its own Drive value, so the test can say WHICH entries survived
   rather than only how many, and it checks the redo side across the same boundary.
 
+* **Round 17 — State test 90, and why it drives the parameters directly.** The endpoint rules are
+  processor bookkeeping, so this test opens and closes change gestures on the parameter itself
+  (`beginChangeGesture` / `setValueNotifyingHost` / `endChangeGesture`) rather than through the
+  editor. That is exactly what JUCE's parameter attachments do for every knob, slider, value box,
+  button and combo — the dominant declaration path, and the one with no `beginChangeGesture` call
+  site anywhere in `src/` — and it is the only way to place a host write at an EXACT instant between
+  two gestures. A gesture-less `setValueNotifyingHost` is host automation by the only definition the
+  coalescer has.
+
+  **Leg A** is the reported case: Drive by the user, automation on Drive, then a Width edit, all
+  before one 24 Hz poll. **Leg B** is the same parameter twice with automation between, which
+  distinguishes "before is the FIRST ownership" from "before is the last gesture's start".
+  **Leg C** is a parameter the batch never owned. **Leg D** is the empty press — a click that starts
+  no drag — landing after a host write, which is the face round 12 tried to fix with a push gate.
+  **Leg E** is three parameters at once, including one the user first takes AFTER automation moved
+  it, which is the only leg that can see a `before` taken at the batch's open. **Leg F** re-asserts
+  the completed-step `A -> B -> C / Undo A / Redo B` sequence so the round cannot quietly trade one
+  guarantee for the other. Legs B, C and F passed at `85b91f9` and are controls, not regressions;
+  legs A, D and E failed there.
+
+* **M65 SURVIVED its first run, and leg Z7 exists because of it.** The rule it attacks — a store that
+  declared its own endpoint is not second-guessed by the live read at its gesture's close — had no
+  observable in the suite, because no leg placed a host write in the one window where the two can
+  disagree: after the drag's final `storeOwned` has installed AND PROVED its value, and before that
+  same split's gesture closes. `storeOwned`'s read-back cannot see that write; it lands after the
+  store returned. Leg Z7 reaches it by registering a probe on the split's own parameter that fires on
+  the gesture CLOSE — JUCE walks a parameter's listeners in REVERSE registration order, so a listener
+  the test adds runs before the processor's handler and its write is already in place when the close
+  reads. Recorded rather than quietly fixed: a mutation that survives is the only routine thing that
+  finds a rule nothing was watching, and this is the second round running in which one did.
+
+  The probe REUSES `WriteFromInsideAGestureOpen` with an `onClose` flag rather than adding a new
+  type, deliberately: `tests/tsan-suppressions.txt` carries `deadlock:WriteFromInsideAGestureOpen`
+  because writing a parameter from inside a gesture dispatch re-enters JUCE's listener lock, and the
+  CI gate asserts every entry in that file is matched — a second, differently named probe of the
+  identical shape would need a second entry for no gain.
+
 * **Three legs were RE-BASED by the amendment rather than extended, and the previous expectation is
   recorded in each.** **86 legs I and J** asserted that a burst whose own store was refused did not
   extend the previous scroll, which was true only because that burst recorded a whole-state step whose
@@ -1670,6 +1707,11 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M58 | `setParam` declares unconditionally again (the round-15 body) | 86 legs Z5 and Z6, 2 checks |
   | M59 | `abCopyToOther` appends without the cap | 89, 4 checks |
   | M60 | the cap evicts the NEWEST entry instead of the oldest | 89, 4 checks |
+  | M61 | the gesture close retakes the WHOLE parameter list again (the round-16 body) | 90 legs A and E, 2 checks |
+  | M62 | `noteFirstOwnership` drops its already-owned guard, so `before` moves | 90 leg B **and three pre-existing legs** (86 legs G and D, 86 leg Z4), 4 in all |
+  | M63 | `before` comes from a whole-list snapshot at the batch open again | 90 legs D and E |
+  | M64 | a declaring store no longer contributes its own endpoint | 86 legs Z and Z3 |
+  | M65 | a live read at the close overrides a store's own declaration | 86 leg Z7, 2 checks |
 
   **M34 is the row that proves the sweep is worth running twice.** Against the FIRST version of
   leg R it SURVIVED -- the leg pressed at the lane's middle, where no width drag is latched, so

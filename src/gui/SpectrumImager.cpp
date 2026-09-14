@@ -512,6 +512,10 @@ bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, flo
     if (p == nullptr) return false;
     const float norm   = p->convertTo0to1 (plain);
     const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
+    // ADR-0008, round 17: what the parameter held before THIS store. It is the step's `before` for
+    // this parameter if this store is what first takes it into the batch -- a coupled store runs
+    // with nothing bracketed, so there is no gesture open here to have read it.
+    const float was    = p->getValue();
     p->setValueNotifyingHost (norm);
     if (! juce::exactlyEqual (p->getValue(), expect)) return false;
     // ADR-0008 round 14, corrected in round 15. THE DECLARATION IS MADE BY A STORE THAT STOOD, AND
@@ -521,7 +525,7 @@ bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, flo
     // read the ending value back. Made here, with `expect`, the step learns both halves from the
     // one store that actually committed: `spreadSplits` runs after the primary's gesture has
     // closed, so this is the only place the pushed neighbour's ending value can come from.
-    if (onOwnedWrite) onOwnedWrite (p, expect);
+    if (onOwnedWrite) onOwnedWrite (p, was, expect);
     ownedNorm = expect;
     return true;
 }

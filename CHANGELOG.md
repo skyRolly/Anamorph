@@ -111,6 +111,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   The limit now applies to Copy as well: the newest 128 are kept and the oldest is dropped, and Undo
   and Redo behave normally either side of that boundary.
   Decision: ADR-0008. Regression coverage: State test 89. Evidence: PR #144. [Verified]
+- **Redo no longer restores a value your DAW's automation wrote instead of the one you made.** Two
+  edits you make in quick succession are recorded as a single Undo step. If your DAW moved one of
+  those same controls in the gap between them, the step took your DAW's value as the ending value
+  for the control you had edited first — so Redo put that automated value back as though you had
+  made it, and the value you actually set was gone from the history entirely. Two related cases went
+  with it: a control your DAW moved *before* you first touched it was undone to the value it had
+  before your DAW's move rather than before yours, and a click that changed nothing could make a
+  concurrent automation move undoable. Each control in a step now keeps the value it had when your
+  edit first took it and the value your edit produced for it, and nothing your DAW does afterwards
+  can change either one.
+  Decision: ADR-0008 (amended 2026-09-13). Regression coverage: State test 90 and State test 86 leg
+  Z7. Evidence: PR #144. [Verified]
 - **Scrolling during a drag no longer sends your DAW a brief value you never asked for.** A notch
   taken while the mouse button is held is added to the drag, and until now that addition happened
   *after* the drag had already published its own position — so every subsequent mouse movement

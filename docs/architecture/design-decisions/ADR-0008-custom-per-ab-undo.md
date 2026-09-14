@@ -156,6 +156,15 @@ coalescer has — the pre-existing window ADR-0053 already records — and if it
 batch owns, that parameter's after-value is the host's. It cannot reach a parameter the batch does
 not own, which is the case RISK-012 was about, and it cannot make automation undoable on its own.
 
+> **SUPERSEDED 2026-09-14 (round 17), and it was wrong in both directions.** It was too GENEROUS:
+> the paragraph describes a window one gesture wide, and the implementation's window was the whole
+> pending batch, because the closing snapshot re-read every parameter rather than the ones the
+> closing gesture was about. It was also too WEAK as a statement of intent: an automation value
+> becoming a user step's endpoint is not a residual this decision accepts, it is a violation of the
+> decision's own sentence. Both are corrected below; what genuinely remains is recorded there as an
+> implementation residual with its exact scope, and it no longer includes any parameter a store
+> declares.
+
 ## Decision — correction, 2026-09-14 (round 16)
 
 **A store declares itself only if it stood, on EVERY unbracketed path — and there is now one store
@@ -198,6 +207,66 @@ rather than a handful of `{index, before, after}` triples. One `pushCapped` help
 bound for all three. `undo()` and `redo()` MOVE an entry between the stacks rather than growing
 either, so they are not capped and do not need to be. State test 89 measures it end to end.
 
+## Decision — correction, 2026-09-14 (round 17)
+
+**The endpoints are per parameter, and nothing but the user's own action may write either of them.**
+Rounds 14-16 built the ownership set per parameter and left both ENDPOINTS as whole-parameter-list
+snapshots: one taken when the batch opened, one retaken at every zero-crossing gesture close. That
+representation cannot express this ADR's own sentence, and three measured failures followed from it
+(State test 90):
+
+* **A later gesture's close replaced an earlier gesture's endpoint.** Two gestures that finish inside
+  one 24 Hz period share a pending batch — deliberately, and that grouping is unchanged. The second
+  one's close re-read the whole list, so a host write that landed between them overwrote the first
+  gesture's `after`. Measured: *Drive 0 → 6 by the user, host → 9, then a Width edit; Redo restored
+  Drive 9.* The value the user produced was recoverable from neither end of the step.
+* **`before` came from the batch's open, not from the parameter's own first ownership.** A parameter
+  the user first touches late in a batch took the value it had when some OTHER parameter's gesture
+  opened the batch — so automation that moved it in between became the value Undo restored.
+* **An empty press made a host write undoable.** A click that starts no drag still declares its
+  parameter; the close then handed that parameter whatever the host had written, and `before` and
+  `after` differed only by the automation. (Round 12 tried to fix this face by gating the push on
+  whether the batch edited anything, and withdrew it because that gate took away a double-click
+  reset's step and the legs I and J boundary. Per-parameter endpoints fix it without any push gate:
+  `before` and `after` are the same value, so the poll records nothing.)
+
+**The rule, stated once.** For every parameter the pending batch owns:
+
+```text
+before = the value it held at the instant the batch first took it
+after   = the latest value the owning gesture or store actually produced for it
+```
+
+`before` is written exactly once, by `noteFirstOwnership`, whose only job is the already-owned guard.
+`after` is written by a declaring store (`noteOwnedParamWrite`, which now carries both ends) and, for
+controls that write through JUCE's attachments and declare nothing, by a live read at the close of
+the gesture episode **that parameter's own gesture belongs to** — never the whole list. A store's
+declaration outranks that live read for the rest of its episode, because a store knows what it
+installed and a live read can only see what is there.
+
+**What this does NOT change.** The grouping is untouched: two gestures still share a pending batch,
+and `resetBatchOwnership` still re-bases only on a batch the poll has already consumed. The 24 Hz
+poll, the wheel attribution and chain rules (ADR-0053), the whole-state entries for a preset load and
+an A/B Copy, and the message-thread-only ownership model (ADR-0036) are all as they were. No timer
+was added, no lock, and nothing moved into `parameterValueChanged`.
+
+**`foreignSinceEdge` is a different concern and stayed one.** It gates whether a scroll chain
+extends and whether a step is nobody's scroll. It is read on no writer path of the endpoint arrays,
+before or after this correction — verified by enumeration — so automation detection is not, and must
+not become, a substitute for ownership bookkeeping.
+
+**The implementation residual that genuinely remains, with its exact scope.** For a parameter whose
+writes go through JUCE's attachment rather than through a declaring store, a host write that lands
+after the user's last write to that parameter and before that same parameter's own gesture closes is
+indistinguishable at the close: the live read is all there is. The window is one gesture wide on one
+parameter, and closing it would need a per-write user hook, which on this architecture means
+`parameterValueChanged` — audio-thread-reachable, and forbidden by ADR-0036. It is an implementation
+limit, not a product rule: automation is still never a user Undo step, never redefines a `before`,
+and for every parameter a store declares it cannot reach `after` either — which is measured rather
+than asserted, by State test 86 leg Z7: a host write placed in exactly that window, after the drag's
+final proved store and inside the same split's gesture close, does not become the value Redo
+restores. Mutation M65 removes the rule and the leg fails.
+
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
   not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots
@@ -230,5 +299,5 @@ either, so they are not capped and do not need to be. State test 89 measures it 
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:425-494, :340-520
+- Source: src/PluginProcessor.cpp:426-513, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")

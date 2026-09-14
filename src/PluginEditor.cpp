@@ -576,8 +576,9 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // they write as the user's own, so a pushed neighbour belongs to the step that moved it.
     // Round 15: with the value the store installed, because a spread that runs after the primary's
     // gesture has closed is past the snapshot that would otherwise have read it back.
-    imager->onOwnedWrite       = [this] (const juce::AudioProcessorParameter* owned, float norm)
-                                 { processor.noteOwnedParamWrite (owned, norm); };
+    imager->onOwnedWrite       = [this] (const juce::AudioProcessorParameter* owned,
+                                         float was, float now)
+                                 { processor.noteOwnedParamWrite (owned, was, now); };
     imager->isSweeping         = [this] { return uiAnimOn && knobSweepTime > 0.0; };
     addAndMakeVisible (*imager);
 

@@ -102,7 +102,12 @@ public:
     // so by calling this instead. Without it a pushed neighbour would fall outside the very step
     // that moved it and one Undo would leave the split row half restored. Message thread only, like
     // every other member of this section; a no-op when no batch is pending.
-    void noteOwnedParamWrite (const juce::AudioProcessorParameter* p, float norm) noexcept;
+    // ROUND 17: it takes BOTH ends. `wasNorm` is what the parameter held immediately before this
+    // store -- its `before` endpoint if this store is what first takes it into the batch -- and
+    // `nowNorm` is what the store installed, which is its `after`. A store is the only place that
+    // knows either: it runs with nothing bracketed, so no gesture edge can read them for it.
+    void noteOwnedParamWrite (const juce::AudioProcessorParameter* p,
+                              float wasNorm, float nowNorm) noexcept;
     // The name a parameter-backed control answers to. A parameter's index is stable for the life of
     // the processor and unique to it, so two controls driving the SAME parameter -- a knob and the
     // numeric box under it -- are correctly one control for this purpose. +1 keeps 0 meaning "none".
@@ -334,8 +339,12 @@ private:
     };
     StateSet currentStateSet();                  // current params + live preset meta
     void applyStateSet (const StateSet&);        // restore params (keeping view) + meta
-    void snapshotSoundValues (std::vector<float>& into) const;
     void resetBatchOwnership();
+    // ROUND 17. THE ONE PLACE A `before` ENDPOINT IS WRITTEN, and it writes each one exactly once:
+    // the instant the pending batch first takes that parameter. A second declaration of an
+    // already-owned parameter is a no-op, which is what makes the endpoint stable against every
+    // later gesture, snapshot and automation write in the same batch.
+    void noteFirstOwnership (int index, float beforeNorm) noexcept;
 
     // Undo helpers
     static bool isViewParam (const juce::String& id) noexcept;
@@ -507,19 +516,39 @@ private:
     // writes have moved it past the evidence. Message thread only, like everything else here.
     bool foreignSinceEdge = false;
 
-    // ADR-0008 as amended (round 14). THE PARAMETERS THE PENDING BATCH OWNS, and the values they
-    // held at its two edges. `batchOwnedParam[i]` is set where the batch declared parameter i its
-    // own -- a change gesture opened on it, or `noteOwnedParamWrite` said so -- and the two value
-    // arrays are whole-parameter-list snapshots taken when the batch OPENS and when its last
-    // gesture CLOSES, so a step's two ends are the values the user's own interaction produced
-    // rather than whatever is live when the poll or an Undo happens to run.
+    // ADR-0008 as amended (round 14), IMPLEMENTED PER PARAMETER SINCE ROUND 17. The parameters the
+    // pending batch owns, and for each of them the value it held when the batch first took it and
+    // the latest value the user's own action produced for it. `batchOwnedParam[i]` is set where the
+    // batch declared parameter i its own -- a change gesture opened on it, or `noteOwnedParamWrite`
+    // said so.
+    //
+    // THESE ARE NOT SNAPSHOTS ANY MORE, and that is the whole of the round-17 correction. They were
+    // whole-parameter-list reads taken when the batch opened and re-taken at EVERY zero-crossing
+    // close, which made three things wrong at once, all measured (State test 90):
+    //   * a second gesture's close re-read the WHOLE list, so a host write that landed between two
+    //     gestures of one batch replaced the first gesture's `after` -- Redo then restored the
+    //     automation value as though the user had produced it, and the value the user actually
+    //     produced was not recoverable from either end;
+    //   * `before` came from the batch's open rather than from the parameter's own first
+    //     ownership, so automation that moved a parameter BEFORE the user first touched it became
+    //     the value Undo restored;
+    //   * an empty press -- a click that starts no drag -- declared a parameter and the close
+    //     handed it whatever the host had written, turning pure automation into a user Undo step.
+    // Per parameter, `before` is written once at first ownership and `after` only from a value the
+    // owning gesture or store actually produced, so no later read of anything can redefine either.
     //
     // Sized ONCE in the constructor and never resized, so a gesture callback allocates nothing.
-    // Written and read only in `parameterGestureChanged`, `noteOwnedParamWrite` and
-    // `pollUndoCoalesceAdopted` -- all message-thread, which is why this is NOT the
-    // `parameterValueChanged` design RISK-012 flagged as a new cross-thread path.
+    // Written and read only in `parameterGestureChanged`, `noteOwnedParamWrite`,
+    // `noteFirstOwnership` and `pollUndoCoalesceAdopted` -- all message-thread, which is why this
+    // is NOT the `parameterValueChanged` design RISK-012 flagged as a new cross-thread path.
     std::vector<float> batchOpenValue, batchCloseValue;
     std::vector<char>  batchOwnedParam;
+    // ...and which parameters the CURRENT gesture episode is about. Bit 0 is "a gesture opened on
+    // it since the last zero-crossing close"; bit 1 is "a store declared its endpoint in this
+    // episode, so the close must not second-guess it with a live read". Cleared at every
+    // zero-crossing close and whenever the batch is re-based. This is what keeps a closing gesture
+    // from retaking an endpoint that belongs to an earlier gesture of the same batch.
+    std::vector<char>  batchEpisodeParam;
 
     StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;

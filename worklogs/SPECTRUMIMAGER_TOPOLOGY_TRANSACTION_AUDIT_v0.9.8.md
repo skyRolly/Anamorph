@@ -3822,3 +3822,84 @@ that says the tool is not simply wrong everywhere. None of the four raises the s
 still the pre-existing Settings test at 708,480 (68 %), and both binaries run green under
 `ulimit -s 1024`, which is the control that actually holds this line. Accepted as test-only under
 the established policy, with the numbers now on the record per function rather than in aggregate.
+
+## §74. Round 17 — the endpoints were still whole-list snapshots
+
+Round 16's report claimed MERGE-READY. The review then reported that automation can replace a user's
+recorded endpoint. The claim is withdrawn, the finding is confirmed, and it had three faces rather
+than one.
+
+### The review's conclusion is right; its causal sentence is half the mechanism
+
+The finding names the close snapshot, and that is the right line. What it does not say is WHY the
+close reaches a parameter the closing gesture never touched: because `snapshotSoundValues` writes
+the WHOLE parameter list, and two gestures that finish inside one 24 Hz period share one pending
+batch by design (`if (! pendingGestureCommit) resetBatchOwnership();`). So the second gesture's
+close re-reads every parameter, including the one the first gesture owned, and whatever the host
+wrote in between becomes that parameter's `after`.
+
+An independent read-only reconstruction pinned at `85b91f9` — seven traces, each adversarially
+re-read twice — returned the enumeration and agreed on every value:
+
+```text
+owned = [ { Drive, before D0, after DA }, { Width, before W0, after W1 } ]
+Undo  -> Drive D0   (already correct)
+Redo  -> Drive DA   (the host's value, as though the user had produced it)
+```
+
+and recorded that D1, the value the user actually produced, is recoverable from neither end. It also
+confirmed that `foreignSinceEdge` / `gestureEdgeGen` / `soundParamGen` are read on NO writer path of
+the three vectors — they gate `extend` and `lastStepWheelKey` and nothing else — so automation
+detection was never going to be the fix.
+
+### Three faces, one representation
+
+The same reconstruction surfaced two more consequences of the same choice, both measured:
+
+* **`before` came from the batch's open.** `batchOpenValue` had no per-slot writer at all; it was a
+  whole-list snapshot taken in `resetBatchOwnership`. A parameter the user first touches late in a
+  batch therefore carried the value it had when some OTHER parameter opened the batch, so automation
+  in between became the value Undo restored.
+* **An empty press made a host write undoable.** A click that starts no drag still declares its
+  parameter at the gesture open; the close then handed it the host's value, and `before` differed
+  from `after` by exactly the automation. This is the face round 12 tried to fix with an `edited`
+  push gate and withdrew when legs K, I and J broke.
+
+### The fix is a representation change inside the decision already taken
+
+Per parameter: `before` written exactly once, at the instant the batch first takes it
+(`noteFirstOwnership`, whose whole body is the already-owned guard); `after` written only from a
+value the owning gesture or store produced — by a declaring store through `noteOwnedParamWrite`,
+which now carries both ends, and otherwise by a live read at the close of the gesture episode **that
+parameter's own gesture belongs to**. A store's declaration outranks that live read for the rest of
+its episode. `snapshotSoundValues` had exactly two call sites, both of them the bug, and is gone.
+
+Nothing else moved: the grouping of sequential gestures, the 24 Hz poll, ADR-0053's wheel rules,
+whole-state entries for preset loads and A/B Copies, and the message-thread-only ownership model are
+all as they were. No timer, no lock, nothing in `parameterValueChanged`.
+
+### Measured first, on the unmodified tree
+
+State test 90 at `85b91f9`: four failures.
+
+```
+[leg A] REDO restored the host's automation value as the user's endpoint: Drive 9.0000,
+        where the user's own edit produced 6.0000 (the host wrote 9.0000)
+[leg D] an empty press made the host's write undoable: Width 1.0000, where the host had written 1.8000
+[leg E] Mix's before-value was taken before the automation that preceded the user's first touch:
+        0.5000, expected 0.2000
+```
+
+Legs B, C and F passed at `85b91f9` and still pass: the same-parameter case was already right
+because Drive was owned from the batch's first instant, the never-owned case was never at risk, and
+the completed-step `A -> B -> C / Undo A / Redo B` sequence is a different mechanism entirely.
+
+### The residual that genuinely remains
+
+For a parameter written through JUCE's attachment rather than a declaring store, a host write that
+lands after the user's last write to it and before that same parameter's own gesture closes is
+indistinguishable at the close — the live read is all there is. One gesture wide, one parameter.
+Closing it needs a per-write user hook, which on this architecture means `parameterValueChanged`,
+audio-thread-reachable and forbidden by ADR-0036. Recorded in ADR-0008 as an implementation limit,
+not as a product rule: automation is still never a user Undo step, never redefines a `before`, and
+for every parameter a store declares it cannot reach `after` either.

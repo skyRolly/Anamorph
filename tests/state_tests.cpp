@@ -2798,10 +2798,17 @@ struct WriteFromInsideAGestureOpen final : public juce::AudioProcessorParameter:
     juce::RangedAudioParameter* target = nullptr;
     float to = 0.0f;
     bool  armed = false, fired = false;
+    // ROUND 17: ...or the CLOSE, which is the only instant that can reach a batch's endpoint after
+    // the user's last store and before the close reads it. Same type, deliberately: the TSan
+    // suppression `deadlock:WriteFromInsideAGestureOpen` exists because writing a parameter from
+    // inside a gesture dispatch re-enters JUCE's listener lock, and the CI gate asserts that every
+    // entry in the file is matched -- a second, differently named probe of the identical shape
+    // would need a second entry for no gain.
+    bool onClose = false;
     void parameterValueChanged (int, float) override {}
     void parameterGestureChanged (int, bool starting) override
     {
-        if (! starting || ! armed || target == nullptr) return;
+        if (starting == onClose || ! armed || target == nullptr) return;
         armed = false;
         fired = true;
         target->setValueNotifyingHost (target->convertTo0to1 (to));
@@ -6803,7 +6810,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2419),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2420),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -8381,6 +8388,77 @@ static void testAScrollIsOneUndoStep()
                 check (! landed || juce::exactlyEqual (plainOf (loP), s0),
                        "leg Z6: ...and still restores the split whose store DID stand");
                 check (! landed || ! proc.canUndo(), "leg Z6: ...in ONE step");
+            }
+
+            // ---- LEG Z7: a store's own endpoint outranks the live read at its close ------------
+            //      The last instant that can still reach a user endpoint: after the drag's final
+            //      `storeOwned` has installed and PROVED its value, and before that same split's
+            //      gesture closes. `storeOwned`'s read-back cannot see it -- the write lands after
+            //      the store returned -- so the only thing standing between the host's value and
+            //      the user's Redo destination is the rule that a store which declared its own
+            //      endpoint is not second-guessed by a live read at the close. JUCE walks a
+            //      parameter's listeners in REVERSE registration order, so a listener the test adds
+            //      runs before the processor's own handler and its write is already in place when
+            //      the close reads. Mutation M65 removes that rule and this leg is what notices.
+            resetBands();
+            {
+                while (proc.canUndo()) proc.undo();
+                proc.pollUndoCoalesce();
+                check (! proc.canUndo(), "leg Z7: the declared-endpoint leg starts with no undo history");
+                float sx = -1.0f;
+                for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+                {
+                    hover (x, laneY);
+                    if (im->getTooltip() == juce::String ("Drag to change the split frequency")) { sx = x; break; }
+                }
+                check (sx >= 0.0f, "leg Z7: a split handle is findable");
+                if (sx >= 0.0f)
+                {
+                    const float s0 = plainOf (loP);
+                    const float foreign = 7000.0f;
+                    WriteFromInsideAGestureOpen poke;   // ...on the CLOSE, see onClose below
+                    poke.onClose = true;
+                    poke.target  = loP;
+                    poke.to      = foreign;
+                    const auto t = juce::Time::getCurrentTime();
+                    auto ev = [&] (float x, bool dragged)
+                    {
+                        return juce::MouseEvent (src, { x, laneY },
+                                                 juce::ModifierKeys::leftButtonModifier,
+                                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                                 t, { sx, laneY }, t, 1, dragged);
+                    };
+                    im->mouseDown (ev (sx, false));
+                    im->mouseDrag (ev (sx + 60.0f, true));
+                    const float dragged = plainOf (loP);
+                    check (! juce::exactlyEqual (dragged, s0), "leg Z7: the drag moved the split");
+                    loP->addListener (&poke);
+                    poke.armed = true;
+                    im->mouseUp (ev (sx + 60.0f, true));   // the close dispatches; the probe writes
+                    const bool landed = poke.fired;
+                    loP->removeListener (&poke);
+                    proc.pollUndoCoalesce();
+
+                    check (landed, "leg Z7: the probe write landed inside the gesture's own close");
+                    check (! landed || std::abs (plainOf (loP) - foreign) <= 1.0f,
+                           "leg Z7: the host's value is live after the release");
+                    check (! landed || proc.canUndo(), "leg Z7: the drag is undoable");
+                    if (landed)
+                    {
+                        proc.undo();
+                        check (juce::exactlyEqual (plainOf (loP), s0),
+                               "leg Z7: Undo restores the value the split held before the drag");
+                        proc.redo();
+                        if (std::abs (plainOf (loP) - foreign) <= 1.0f)
+                            std::printf ("  [leg Z7] Redo restored the host's value as the user's"
+                                         " endpoint: %.1f Hz, where the drag's own store installed"
+                                         " %.1f\n", (double) plainOf (loP), (double) dragged);
+                        check (std::abs (plainOf (loP) - foreign) > 1.0f,
+                               "leg Z7: Redo does not restore the host's value as the drag's endpoint");
+                        check (juce::exactlyEqual (plainOf (loP), dragged),
+                               "leg Z7: ...it restores exactly what the drag's own store installed");
+                    }
+                }
             }
 
             // ---- LEG I: a host write from inside the notch's OWN gesture-open stands -------
@@ -10078,6 +10156,200 @@ static void testTheABHistoryObeysItsCap()
     check (back == 128, "State test 89: the redo side holds the same 128 and no more");
     check (std::abs (plainOf (driveP) - (float) kCopies * 0.1f) <= 1.0e-4f,
            "State test 89: ...and redoing them all returns slot B to the last Copy's state");
+}
+
+// ----------------------------------------------------------------------------
+//  State test 90 -- a user step's endpoints belong to the USER, per parameter
+// ----------------------------------------------------------------------------
+//  ADR-0008 as amended: a user step is the set of parameters that action moved, each with the value
+//  it held when the action first took it and the value the action produced for it. Host automation
+//  may move the LIVE value and must not redefine either endpoint.
+//
+//  This test drives the bookkeeping directly -- `beginChangeGesture` / `setValueNotifyingHost` /
+//  `endChangeGesture` on the parameter itself -- because that is exactly what a JUCE attachment
+//  does for every knob, slider, value box, button and combo in the editor, and it lets a leg place
+//  an automation write at an exact instant between two gestures. A gesture-less
+//  `setValueNotifyingHost` is host automation by the only definition the coalescer has.
+static void testAUserStepsEndpointsBelongToTheUser()
+{
+    std::printf ("State test 90: a user step's endpoints belong to the user, per parameter\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* widthP = apvts.getParameter (pid::width);
+    auto* mixP   = apvts.getParameter (pid::mix);
+    check (driveP != nullptr && widthP != nullptr && mixP != nullptr,
+           "State test 90: the parameters the endpoint probe drives exist");
+    if (driveP == nullptr || widthP == nullptr || mixP == nullptr) return;
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    // A user edit: the gesture bracket a JUCE attachment opens around every control write.
+    auto userSets = [&] (juce::RangedAudioParameter* p, float v)
+    { p->beginChangeGesture(); setPlain (p, v); p->endChangeGesture(); };
+    // A user press that changes nothing -- a click that starts no drag.
+    auto userTouches = [] (juce::RangedAudioParameter* p)
+    { p->beginChangeGesture(); p->endChangeGesture(); };
+    // Host automation: the same store with NO gesture, which is the only thing that tells the
+    // coalescer it was not the user.
+    auto hostSets = setPlain;
+
+    auto near = [] (float a, float b) { return std::abs (a - b) <= 1.0e-3f; };
+    auto reset = [&] (float d, float w, float m)
+    {
+        while (proc.canUndo()) proc.undo();
+        setPlain (driveP, d); setPlain (widthP, w); setPlain (mixP, m);
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        setPlain (driveP, d); setPlain (widthP, w); setPlain (mixP, m);
+        proc.pollUndoCoalesce();
+    };
+
+    // ---- LEG A: the reported case -- automation between two gestures of one batch -------
+    //      Drive 0 -> D1 by the user; the host then moves Drive to DA; the user edits Width; both
+    //      gestures close before the 24 Hz poll, so they share ONE pending batch. The batch's
+    //      closing snapshot used to be a full live re-read, so Drive's user endpoint D1 was
+    //      replaced by DA and REDO restored the host's value as though the user had produced it.
+    {
+        reset (2.0f, 1.0f, 0.50f);
+        const float D0 = plainOf (driveP), W0 = plainOf (widthP);
+        const float D1 = 6.0f, DA = 9.0f, W1 = 1.6f;
+        check (! proc.canUndo(), "leg A: the endpoint probe starts with no undo history");
+        userSets (driveP, D1);
+        hostSets (driveP, DA);
+        userSets (widthP, W1);
+        proc.pollUndoCoalesce();
+        check (near (plainOf (driveP), DA), "leg A: the host's value is live before the Undo");
+        check (proc.canUndo(), "leg A: the two gestures recorded one undoable step");
+        proc.undo();
+        check (near (plainOf (driveP), D0), "leg A: Undo restores Drive's first-owned before-value");
+        check (near (plainOf (widthP), W0), "leg A: ...and Width's");
+        check (! proc.canUndo(), "leg A: ...and the two gestures were ONE step");
+        proc.redo();
+        if (! near (plainOf (driveP), D1))
+            std::printf ("  [leg A] REDO restored the host's automation value as the user's endpoint:"
+                         " Drive %.4f, where the user's own edit produced %.4f (the host wrote %.4f)\n",
+                         (double) plainOf (driveP), (double) D1, (double) DA);
+        check (near (plainOf (driveP), D1),
+               "leg A: Redo restores the value the USER produced, never the automation that followed it");
+        check (near (plainOf (widthP), W1), "leg A: ...and Width's user value too");
+    }
+
+    // ---- LEG B: the SAME parameter, automation between the two gestures -----------------
+    //      before stays the value Drive held when the batch first took it; after is the LATEST
+    //      value the user produced. The automation in between is neither.
+    {
+        reset (2.0f, 1.0f, 0.50f);
+        const float D0 = plainOf (driveP);
+        const float A = 5.0f, X = 8.0f, B = 3.0f;
+        userSets (driveP, A);
+        hostSets (driveP, X);
+        userSets (driveP, B);
+        proc.pollUndoCoalesce();
+        check (proc.canUndo(), "leg B: the repeated-parameter batch is undoable");
+        proc.undo();
+        if (! near (plainOf (driveP), D0))
+            std::printf ("  [leg B] Undo did not reach the FIRST-owned before-value: Drive %.4f,"
+                         " expected %.4f\n", (double) plainOf (driveP), (double) D0);
+        check (near (plainOf (driveP), D0), "leg B: Undo restores the value Drive held at first ownership");
+        proc.redo();
+        if (! near (plainOf (driveP), B))
+            std::printf ("  [leg B] Redo did not restore the LATEST user-produced value: Drive %.4f,"
+                         " expected %.4f (the host wrote %.4f in between)\n",
+                         (double) plainOf (driveP), (double) B, (double) X);
+        check (near (plainOf (driveP), B), "leg B: Redo restores the latest value the user produced");
+    }
+
+    // ---- LEG C: automation on a parameter the batch never owned ------------------------
+    {
+        reset (2.0f, 1.0f, 0.50f);
+        const float D0 = plainOf (driveP);
+        const float D1 = 6.0f, WA = 1.8f;
+        userSets (driveP, D1);
+        hostSets (widthP, WA);
+        proc.pollUndoCoalesce();
+        check (proc.canUndo(), "leg C: the user's own edit is undoable");
+        proc.undo();
+        check (near (plainOf (driveP), D0), "leg C: Undo takes back the user's edit");
+        if (! near (plainOf (widthP), WA))
+            std::printf ("  [leg C] Undo moved a parameter the user never touched: Width %.4f,"
+                         " where the host had written %.4f\n", (double) plainOf (widthP), (double) WA);
+        check (near (plainOf (widthP), WA),
+               "leg C: ...and leaves the host's value on the parameter it never owned");
+        proc.redo();
+        check (near (plainOf (driveP), D1) && near (plainOf (widthP), WA),
+               "leg C: Redo restores the user's edit and still leaves the host's value alone");
+    }
+
+    // ---- LEG D: an EMPTY gesture must not make a host write undoable --------------------
+    //      A press that starts no drag opens and closes a gesture without producing a value. It
+    //      still declares the parameter, and a full live close snapshot then handed it whatever
+    //      the host had written -- turning pure automation into a user Undo step. With the
+    //      endpoints taken at first ownership and from user-produced values only, before and after
+    //      are the same value and the poll records nothing for it.
+    {
+        reset (2.0f, 1.0f, 0.50f);
+        const float D0 = plainOf (driveP);
+        const float D1 = 6.0f, WA = 1.8f;
+        userSets (driveP, D1);
+        hostSets (widthP, WA);
+        userTouches (widthP);              // the empty press, AFTER the host wrote
+        proc.pollUndoCoalesce();
+        check (proc.canUndo(), "leg D: the real edit is still undoable");
+        proc.undo();
+        if (! near (plainOf (widthP), WA))
+            std::printf ("  [leg D] an empty press made the host's write undoable: Width %.4f,"
+                         " where the host had written %.4f\n", (double) plainOf (widthP), (double) WA);
+        check (near (plainOf (widthP), WA),
+               "leg D: an empty press does not make a concurrent host write part of the user's step");
+        check (near (plainOf (driveP), D0), "leg D: ...and the real edit is still undone");
+    }
+
+    // ---- LEG E: three parameters, each tracked independently ----------------------------
+    {
+        reset (2.0f, 1.0f, 0.50f);
+        const float D0 = plainOf (driveP), W0 = plainOf (widthP), M0 = plainOf (mixP);
+        const float D1 = 6.0f, W1 = 1.6f, M1 = 0.80f, DA = 9.0f, MA = 0.20f;
+        userSets (driveP, D1);
+        hostSets (driveP, DA);
+        userSets (widthP, W1);
+        hostSets (mixP, MA);               // a parameter the batch has not owned yet
+        userSets (mixP, M1);               // ...and now the user takes it, AFTER the automation
+        proc.pollUndoCoalesce();
+        check (proc.canUndo(), "leg E: the three-parameter batch is undoable");
+        proc.undo();
+        check (near (plainOf (driveP), D0), "leg E: Drive returns to its first-owned before");
+        check (near (plainOf (widthP), W0), "leg E: Width returns to its first-owned before");
+        if (! near (plainOf (mixP), MA))
+            std::printf ("  [leg E] Mix's before-value was taken before the automation that preceded"
+                         " the user's first touch: %.4f, expected %.4f\n",
+                         (double) plainOf (mixP), (double) MA);
+        check (near (plainOf (mixP), MA),
+               "leg E: Mix returns to the value it held when the USER first took it, not before the host's");
+        juce::ignoreUnused (M0);
+        proc.redo();
+        check (near (plainOf (driveP), D1) && near (plainOf (widthP), W1) && near (plainOf (mixP), M1),
+               "leg E: Redo restores every user-produced endpoint");
+    }
+
+    // ---- LEG F: the completed-step semantics are unchanged ------------------------------
+    //      A -> B by the user, the step commits, THEN automation moves it to C. Undo gives A and
+    //      Redo gives B. This is ADR-0008's canonical sequence and must not move.
+    {
+        reset (2.0f, 1.0f, 0.50f);
+        const float A = plainOf (driveP), B = 6.0f, C = 9.0f;
+        userSets (driveP, B);
+        proc.pollUndoCoalesce();           // the step is committed HERE
+        hostSets (driveP, C);
+        proc.pollUndoCoalesce();
+        proc.undo();
+        check (near (plainOf (driveP), A), "leg F: Undo gives A");
+        proc.redo();
+        check (near (plainOf (driveP), B), "leg F: Redo gives B, never the automation's C");
+    }
 }
 
 static void testTooltipSourceOfTruth()
@@ -18560,7 +18832,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1675).
+//  baseline", src/PluginProcessor.cpp:1727).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -18793,7 +19065,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1404).
+//  targets", src/PluginProcessor.cpp:1456).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -19170,7 +19442,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1860).
+//  mixed sound", src/PluginProcessor.cpp:1912).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -23173,6 +23445,7 @@ int main (int argc, char* argv[])
     testHoldingSoloAndScrollingMovesTheBand();
     testAWheelNotchInsideAKnobPressBelongsToIt();
     testTheABHistoryObeysItsCap();
+    testAUserStepsEndpointsBelongToTheUser();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

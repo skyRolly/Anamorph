@@ -291,6 +291,18 @@ user's is retroactively edited, and no chain merges across automation. Leg O pri
 each run (`after one Undo the host's Width reads 1.0000 (it wrote 1.4000...)`) so the residual is
 visible rather than asserted away.
 
+> **SUPERSEDED 2026-09-14 (round 17). An undo entry is no longer a whole `StateSet`, and automation
+> is no longer any part of a user's step.** The maintainer-approved ADR-0008 amendment of 2026-09-13
+> made an ordinary user step the parameters that action moved with per-parameter endpoints, and the
+> round-17 correction finished implementing it: `before` is written once at the instant the batch
+> first takes a parameter, `after` only from a value the owning gesture or store produced. The "no
+> third answer" sentence above was true only of whole-state entries; with scoped entries the third
+> answer is the one that now ships — a foreign write is in NO step. Every wheel rule in this ADR is
+> unchanged, because every one of them is about ATTRIBUTION. **This ADR does not define what a user
+> step contains; ADR-0008 does.** Round 12's withdrawn push gate is likewise superseded rather than
+> revived: the empty-press face it was aimed at is fixed by the endpoints, not by a gate, so legs K,
+> I and J stand untouched.
+
 **3b. ...and the first version of THAT fix broke the guarantee it serves, which is the round's own
 best evidence for verifying a fix as adversarially as a finding.** Every program state jump -- Undo,
 Redo, a preset load, an A/B switch -- polls FIRST and applies its parameters AFTER, and applying

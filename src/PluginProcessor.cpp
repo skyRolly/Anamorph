@@ -117,6 +117,7 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     batchOpenValue .assign ((size_t) getParameters().size(), 0.0f);
     batchCloseValue.assign ((size_t) getParameters().size(), 0.0f);
     batchOwnedParam.assign ((size_t) getParameters().size(), (char) 0);
+    batchEpisodeParam.assign ((size_t) getParameters().size(), (char) 0);
 
     syncCommitted(); // establish the undo baseline
 
@@ -451,23 +452,38 @@ juce::String AnamorphAudioProcessor::soundSignature() const
 // lock, no APVTS tree read -- so it is safe from inside the parameter-listener dispatch that calls
 // `parameterGestureChanged` (which JUCE delivers holding that parameter's listener lock; taking the
 // APVTS lock there would invert the order a host-thread save takes them in, D-2/ADR-0036).
-void AnamorphAudioProcessor::snapshotSoundValues (std::vector<float>& into) const
+// ROUND 17. A `before` ENDPOINT IS WRITTEN EXACTLY ONCE PER BATCH, HERE. The guard is the whole
+// mechanism: a parameter already owned keeps the value it was first taken at, so no later gesture
+// of the same batch, no later store and no host write in between can move that end of the step.
+// `after` is seeded to the same value, so a declaration that never produces anything -- an empty
+// press -- reads as `before == after` and the poll records nothing for it.
+void AnamorphAudioProcessor::noteFirstOwnership (int i, float beforeNorm) noexcept
 {
-    const auto& ps = getParameters();
-    for (int i = 0; i < ps.size() && i < (int) into.size(); ++i)
-        into[(size_t) i] = ps[i]->getValue();
+    if (i < 0 || i >= (int) batchOwnedParam.size()) return;
+    if (batchOwnedParam[(size_t) i] != 0) return;              // already ours: `before` is settled
+    batchOwnedParam[(size_t) i] = (char) 1;
+    if (i < (int) batchOpenValue.size())  batchOpenValue [(size_t) i] = beforeNorm;
+    if (i < (int) batchCloseValue.size()) batchCloseValue[(size_t) i] = beforeNorm;
 }
 
 // ADR-0008 as amended (round 14). Declare a parameter the pending batch's own. Called by the
 // multiband display's two unbracketed stores (see the header), and implied for every parameter a
 // change gesture opens on.
 void AnamorphAudioProcessor::noteOwnedParamWrite (const juce::AudioProcessorParameter* p,
-                                                  float norm) noexcept
+                                                  float wasNorm, float nowNorm) noexcept
 {
     if (p == nullptr) return;
     const int i = p->getParameterIndex();
     if (i < 0 || i >= (int) batchOwnedParam.size()) return;
-    batchOwnedParam[(size_t) i] = (char) 1;
+    // ROUND 17: the store brings its own `before` too, and it is used only if this store is what
+    // first takes the parameter -- a coupled store made after automation has already moved that
+    // parameter must not reach back past the automation, and the SECOND store of a drag must not
+    // move the end the FIRST one established.
+    noteFirstOwnership (i, wasNorm);
+    // ...and the endpoint this store produced outranks the live read the close would otherwise
+    // take, for the rest of this gesture episode. A store knows what it installed; the close can
+    // only see what is there, which after a reentrant host write is not the same thing.
+    if (i < (int) batchEpisodeParam.size()) batchEpisodeParam[(size_t) i] |= (char) 2;
     // ROUND 15: ...AND THE STORE BRINGS ITS OWN ENDING VALUE. `batchCloseValue` is retaken in full
     // at every zero-crossing gesture close, which covers every coupled store made INSIDE a bracket
     // -- but not the ones made after it. `SpectrumImager::resetCrossover` and `commitFreqEditor`
@@ -479,16 +495,19 @@ void AnamorphAudioProcessor::noteOwnedParamWrite (const juce::AudioProcessorPara
     // one float and is exact, because the caller passes what its own store installed rather than a
     // second reading of a parameter three threads write. A later close simply retakes the whole
     // snapshot over it, so a store inside a bracket is unaffected.
-    if (i < (int) batchCloseValue.size()) batchCloseValue[(size_t) i] = norm;
+    if (i < (int) batchCloseValue.size()) batchCloseValue[(size_t) i] = nowNorm;
 }
 
 // The ownership record starts empty and both edges read the live sound: called wherever the undo
 // bookkeeping is dropped wholesale (a program state jump, an Undo, a Redo, a preset switch).
 void AnamorphAudioProcessor::resetBatchOwnership()
 {
-    for (auto& c : batchOwnedParam) c = (char) 0;
-    snapshotSoundValues (batchOpenValue);
-    batchCloseValue = batchOpenValue;
+    // ROUND 17: clearing ownership is the whole of a re-base. The two value arrays used to be
+    // re-snapshotted here from every parameter; they are now written per slot at first ownership,
+    // so a slot nobody owns holds a stale value that nothing can read -- the poll skips it on
+    // `batchOwnedParam` before it looks at either end.
+    for (auto& c : batchOwnedParam)   c = (char) 0;
+    for (auto& c : batchEpisodeParam) c = (char) 0;
 }
 
 void AnamorphAudioProcessor::syncCommitted()
@@ -917,10 +936,25 @@ void AnamorphAudioProcessor::parameterGestureChanged (int parameterIndex, bool g
         }
         // ...AND A GESTURE IS THE DECLARATION. A parameter with a change gesture open on it is one
         // the USER is editing -- no host calls begin/endChangeGesture on a plug-in's parameters,
-        // and every call site in this plug-in is message-thread GUI code -- so this is where an
-        // undo step learns what it owns, at no cost and with no new cross-thread path.
+        // and every call site that reaches here is message-thread GUI code (JUCE's own parameter
+        // attachments included, which is how every ordinary knob, slider, value box, button and
+        // combo declares itself) -- so this is where an undo step learns what it owns, at no cost
+        // and with no new cross-thread path.
+        //
+        // ROUND 17: ...AND WHERE ITS `before` COMES FROM. The live value HERE is the value the
+        // parameter held when the user first took it: the open dispatches before the control has
+        // written anything, so nothing of this gesture's own is in it yet. Taking it here rather
+        // than from a snapshot at the batch's open is what stops automation that moved the
+        // parameter earlier in the same batch from becoming the value Undo restores.
         if (parameterIndex >= 0 && parameterIndex < (int) batchOwnedParam.size())
-            batchOwnedParam[(size_t) parameterIndex] = (char) 1;
+        {
+            const auto& ps = getParameters();
+            const float live = (parameterIndex < ps.size() && ps[parameterIndex] != nullptr)
+                             ? ps[parameterIndex]->getValue() : 0.0f;
+            noteFirstOwnership (parameterIndex, live);
+            if (parameterIndex < (int) batchEpisodeParam.size())
+                batchEpisodeParam[(size_t) parameterIndex] |= (char) 1;
+        }
     }
     else if (openGestures > 0 && --openGestures == 0)
     {
@@ -960,12 +994,30 @@ void AnamorphAudioProcessor::parameterGestureChanged (int parameterIndex, bool g
         // taken HERE is the line between the batch's edits and whatever lands before the poll.
         // A relaxed load of a counter this thread has just been bumping, not a second measurement.
         gestureEdgeGen = soundParamGen.load (std::memory_order_relaxed);
-        // ADR-0008 as amended (round 14): ...AND WHERE THE STEP'S "AFTER" VALUES ARE READ. The same
-        // sentence above is why this is the right instant -- everything the batch was going to
-        // write has been written -- and it is retaken at every zero-crossing close, so a release
-        // action that opens further gestures of its own (`removeBand`/`addBandAt` end in
-        // `setBands`) is captured after its last store rather than before it.
-        snapshotSoundValues (batchCloseValue);
+        // ADR-0008 as amended (round 14), CORRECTED IN ROUND 17: ...AND WHERE THIS EPISODE'S OWN
+        // "AFTER" VALUES ARE READ -- this episode's, not the whole parameter list's. The sentence
+        // above is still why this is the right instant for the parameters whose gestures are
+        // closing here: everything they were going to write has been written. It was NEVER a
+        // reason to re-read a parameter this episode never touched, and doing so is what let a
+        // host write that landed between two gestures of one batch replace the first gesture's
+        // endpoint -- Redo then restored the automation value as though the user had produced it
+        // (State test 90 leg A), and an empty press turned a pure host move into an undoable user
+        // edit (leg D).
+        //
+        // Bit 1 is the other half: a store that declared its own endpoint in this episode said what
+        // it installed, and a live read here could only disagree with it by picking up somebody
+        // else's write. The declaration wins.
+        {
+            const auto& ps = getParameters();
+            for (int i = 0; i < ps.size() && i < (int) batchEpisodeParam.size(); ++i)
+            {
+                const char ep = batchEpisodeParam[(size_t) i];
+                if ((ep & 1) == 0 || (ep & 2) != 0) continue;
+                if (i < (int) batchCloseValue.size() && ps[i] != nullptr)
+                    batchCloseValue[(size_t) i] = ps[i]->getValue();
+            }
+            for (auto& c : batchEpisodeParam) c = (char) 0;   // the episode is over
+        }
     }
 }
 

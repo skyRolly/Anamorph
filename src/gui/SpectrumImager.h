@@ -83,7 +83,10 @@ public:
     // the reset back while leaving the pushed neighbours where the reset had shoved them. The
     // declaration is also made only by a store that STOOD, so a store an authoritative write
     // refused claims nothing -- see `storeOwned`.
-    std::function<void(const juce::AudioProcessorParameter*, float)> onOwnedWrite;
+    // ROUND 17: BOTH ENDS. The first argument after the parameter is what it held immediately
+    // before this store -- its `before` endpoint if this store is what first takes it into the
+    // pending step -- and the second is what the store installed.
+    std::function<void(const juce::AudioProcessorParameter*, float, float)> onOwnedWrite;
 
     // UI-animation flag now lives in InternalState (host-hidden), injected by the editor.
     void setAnimationSource (const std::atomic<float>* p) noexcept { animOnP = p; }
