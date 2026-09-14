@@ -2235,6 +2235,14 @@ automatic is `sizeof` **141,320 bytes**, which is the whole of it:
 | 187 | `testHoldingSoloAndScrollingMovesTheBand` (:8784) | 142,296 | **142,400** | 14 % |
 | 189 | `testAWheelNotchInsideAKnobPressBelongsToIt` (:9109) | 426,672 | **142,464** | 14 % |
 
+**Re-measured after round 17, which added State test 90 and State test 86 leg Z7.** The four figures
+above move by +32 bytes each (leg Z7's locals) and are otherwise unchanged: **284,256 / 142,720 /
+142,432 / 142,464**. The new `testAUserStepsEndpointsBelongToTheUser` is **141,888** — one
+`AnamorphAudioProcessor` and nothing else, **13.5 %** of the reserve, the smallest of the family, so
+if `/analyze` opens a `C6262` on it the disposition below already covers it without re-measurement.
+`testTheABHistoryObeysItsCap` (round 16) is **141,712**, likewise. The suite maximum is still the
+pre-existing Settings test, now 708,624.
+
 Test 80 is the only one of the four that holds **two** processors live at once — an outer `proc` plus
 one of `proc2`/`proc3`/`proc4` in a nested scope — and 2 x 141,320 is its real frame almost exactly.
 The other three hold one each, and the two that PREfast puts near 430 K are the sum-across-siblings
