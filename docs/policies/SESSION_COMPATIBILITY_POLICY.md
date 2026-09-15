@@ -45,7 +45,7 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
 These same checks are enforced at release time via the release compatibility checklist
 (`docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`).
 
-Evidence [Verified]: src/PluginProcessor.cpp:1590-1882 (write), :595-685 (read), :540-561
+Evidence [Verified]: src/PluginProcessor.cpp:1643-1964 (write), :595-685 (read), :540-561
 (the identity helpers); src/InternalState.h:197-321.
 
 ## Enforcement

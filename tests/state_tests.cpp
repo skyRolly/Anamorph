@@ -6810,7 +6810,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2443),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2444),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -20749,7 +20749,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1791).
+//  baseline", src/PluginProcessor.cpp:1873).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -20982,7 +20982,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1520).
+//  targets", src/PluginProcessor.cpp:1573).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21359,7 +21359,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1976).
+//  mixed sound", src/PluginProcessor.cpp:2058).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running

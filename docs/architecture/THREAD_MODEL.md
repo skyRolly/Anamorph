@@ -15,7 +15,7 @@ are in `docs/policies/THREADING_POLICY.md` and `docs/policies/REALTIME_AUDIO_POL
 | **Host prepare thread** (external) | host → `prepareToPlay` off the message thread (JUCE Linux VST3 pre-`IRunLoop`, FL Studio's Patcher, an AU `Initialize` off main) | Engine prepare under the format contract that no `processBlock` runs concurrently; latency through the D-1 request (round 15). |
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:326-394 (`processBlock`), :240 `ScopedNoDenormals`
+- Source: src/PluginProcessor.cpp:330-398 (`processBlock`), :240 `ScopedNoDenormals`
 - Source: src/PluginEditor.cpp:705 (24 Hz timer), :686-692 (VBlank), :306-320 (OpenGL gate)
 - Source: src/gui/Vectorscope.h:22 ("Nothing is ever drawn on the audio thread")
 
@@ -37,7 +37,7 @@ path — visually identical. macOS/Windows keep GPU compositing.
 
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:307-321 (gate + rationale comment)
-- Source: src/PluginEditor.cpp:1893-1894 (`triggerRepaint` guarded by `isAttached()`)
+- Source: src/PluginEditor.cpp:1894-1895 (`triggerRepaint` guarded by `isAttached()`)
 - Partially Verified (history): CHANGELOG.md [0.8.5]; commit c924ff8
 - See `design-decisions/ADR-0011-linux-x11-cpu-render.md` for the decision record.
 
@@ -46,7 +46,7 @@ Evidence [Verified]:
 | Mechanism | Rate | Work | Source |
 |---|---|---|---|
 | `VBlankAttachment meterVBlank` | per display frame (dt clamped ≤ 0.05 s) | meter-reveal + micro-anims easing | src/PluginEditor.cpp:708-714 |
-| Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | src/PluginEditor.cpp:705, 1426-1589 |
+| Editor `juce::Timer` | 24 Hz | view-state sync, preset display, `pollUndoCoalesce()`, undo/redo enable, match-gain readout | src/PluginEditor.cpp:705, 1426-1590 |
 | `Vectorscope` `FrameClock` | display-rate, capped ~120 Hz | `repaint()` | Vectorscope.cpp; FrameClock.h |
 | `LevelMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | `repaint()` | LevelMeter.cpp; FrameClock.h |
 | `StereoMeter` `FrameClock` | display-rate, capped ~120 Hz (shown only) | dt-corrected smooth + `repaint()` | CorrelationMeter.cpp; FrameClock.h |
@@ -99,7 +99,7 @@ freed while another thread can reach it, because a pointer is reachable from exa
 | Host-hidden params (Oversampling, view) | `InternalState` `juce::ValueTree` + `int`/`float` atomics | GUI `juce::Value` binding | audio (oversample only) | InternalState.h:60-138 |
 | Momentary solo audition | `std::atomic<int> soloPreviewMask` (relaxed, −1 = use param) | GUI `setSoloPreview` | audio processBlock | PluginProcessor.h:72-73,130; .cpp:128 |
 | Meter hold reset | `std::atomic<int> resetReq` (exchange) | GUI `resetHold()` | audio `process()` | LevelMeters.h:58,62 |
-| UI-animation flag → imager | `const std::atomic<float>*` (relaxed) | InternalState | GUI imager timer | src/InternalState.h:72; src/gui/SpectrumImager.cpp:1646 |
+| UI-animation flag → imager | `const std::atomic<float>*` (relaxed) | InternalState | GUI imager timer | src/InternalState.h:72; src/gui/SpectrumImager.cpp:1692 |
 
 ## Forbidden
 
