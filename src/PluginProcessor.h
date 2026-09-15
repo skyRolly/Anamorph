@@ -314,9 +314,19 @@ public:
     // capture while the generation the poll started from does not name it. It is the only place a
     // deterministic harness can put a write, because nothing the poll body calls re-enters a
     // parameter write, so the race is otherwise cross-thread only (State test 86 leg U).
+    // `insideDurableCapture` (round 22) fires inside `copyStateWithRawValues`, WITH the §24
+    // replacement lock held and on WHATEVER THREAD took it -- a host thread's save reaches it
+    // through `writeState`, and so does every message-thread A/B slot, undo step and baseline.
+    // It is the ONLY way a harness can park a NON-ANNOUNCING holder of that lock, which is the
+    // contender ADR-0036 §27 is about: a restore announces its generation before it installs,
+    // so parking a restore inside `insideSoundReplacement` cannot produce the contention the
+    // adoption's own acquisition has to survive. Same contract as `insideSoundReplacement`: a
+    // harness may sample or arm from here, never join a thread that performs a whole-sound
+    // replacement or a durable capture of its own. Filter by thread -- it fires very often.
     struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake, beforeRestorePut,
                                         afterRestoreSoundApplied, beforeSoundReplacementWrites,
                                         atRelativeDecision, insideSoundReplacement,
+                                        insideDurableCapture,
                                         betweenStateSetApplyAndMeta, insidePollBody; };   // ADR-0037: proves no live read
     Seams seams;
 
@@ -910,6 +920,13 @@ private:
     // decode, and by a host thread only AFTER it has announced its generation (§25).
     void installRestoredSound (RestoreDecode& d);
     bool decodeRestore (const void* data, int sizeInBytes, RestoreDecode& out);
+    // The SOUND half of an adoption (ADR-0036 §27, round 22). Re-installs the decode's own
+    // sound when some other state set has replaced the live one since the decode ran, so the
+    // metadata the tail is about to publish describes the sound underneath it. The CALLER
+    // holds `soundReplacement` across this AND the `pendingRestore.take()` that produced `d`:
+    // the two are one step, because a take that is not followed by the re-install has already
+    // emptied the cell and leaves the mixed session permanently.
+    void reinstallRestoredSound (const RestoreDecode& d);
     // The adoption tail, message thread only: today's restore tail, verbatim.
     void adoptRestoreTail (const RestoreDecode&, bool mayBlock = true);
     // `mayBlock` as above, and it reaches exactly one line: the baseline snapshot, which

@@ -161,6 +161,18 @@ private:
             Hook (AttachmentWitness& o, bool isAfter) : owner (o), post (isAfter) {}
             void sliderValueChanged (juce::Slider* s) override
             { owner.mark (post, owner.param.convertTo0to1 ((float) s->getValue())); }
+            // ROUND 22, RISK-012. A PRESS THAT PRODUCES NOTHING SAYS SO. JUCE opens the change
+            // gesture from `SliderParameterAttachment::sliderDragStarted` and closes it from
+            // `sliderDragEnded`, so a press that never moves the slider -- a click on a knob or a
+            // value box with no drag -- brackets a gesture around no write at all. The batch close
+            // then had nothing declared to prefer and fell back to a LIVE READ, which is whatever
+            // host automation left in the parameter during the press: a value the user never
+            // produced, becoming that press's Undo/Redo endpoint (ADR-0008). Only the BEFORE hook
+            // acts, because `juce::ListenerList` dispatches in registration order and this hook is
+            // registered ahead of JUCE's attachment -- so the refusal is recorded before
+            // `endChangeGesture` runs, which is where the close reads it.
+            void sliderDragStarted (juce::Slider*) override { if (! post) owner.pressProduced = false; }
+            void sliderDragEnded   (juce::Slider*) override { if (! post) owner.notePressEnded(); }
             void buttonClicked (juce::Button* b) override
             { owner.mark (post, owner.param.convertTo0to1 (b->getToggleState() ? 1.0f : 0.0f)); }
             void comboBoxChanged (juce::ComboBox* c) override
@@ -194,6 +206,18 @@ private:
             prevRequest = {};
             if (juce::exactlyEqual (param.getValue(), wasNorm)) return;  // the host pushed IN
             proc.noteOwnedParamEndpoint (&param, produced);
+            pressProduced = true;   // ...and this press has an endpoint of its own (round 22)
+        }
+
+        // The other half of the round-22 rule above: the press is over and nothing this control
+        // did moved the parameter, so it has NO endpoint to state and the close must not invent
+        // one. `noteOwnedParamRefused` is exactly that sentence -- it suppresses the live read and
+        // leaves `after` where `noteFirstOwnership` seeded it, which is `before`, which is how the
+        // poll comes to record no step for a press that did nothing (ADR-0008, ADR-0053).
+        void notePressEnded() noexcept
+        {
+            if (! pressProduced) proc.noteOwnedParamRefused (&param);
+            pressProduced = false;
         }
 
         // The order is the mechanism: `listenBefore` runs before JUCE's attachment is constructed
@@ -213,6 +237,9 @@ private:
         juce::RangedAudioParameter& param;
         Hook  before, after;
         float wasNorm = 0.0f;
+        // Round 22: did anything this control did move the parameter between its drag start and
+        // its drag end? Message thread only, like everything else in this type.
+        bool  pressProduced = false;
         AnamorphAudioProcessor::AttachmentRequest prevRequest {};
         std::function<void()> unhook;
 

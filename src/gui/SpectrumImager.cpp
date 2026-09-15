@@ -768,7 +768,28 @@ bool SpectrumImager::bandAddTarget (int b, float x, float& outX, int n, const fl
 //  Parameter writes
 // ----------------------------------------------------------------------------
 void SpectrumImager::beginGesture (juce::RangedAudioParameter* p) { if (p) p->beginChangeGesture(); }
-void SpectrumImager::endGesture   (juce::RangedAudioParameter* p) { if (p) p->endChangeGesture(); }
+// ...AND THE IMAGER'S GESTURE NEVER LEAVES ITS ENDPOINT TO A LIVE READ (round 22, RISK-012).
+// Every gesture this display opens goes through the pair above, and several of them can close
+// having stored NOTHING: `writeCrossovers` returns early when the topology moved or the plan is
+// inside `kSplitMovedPx`; `resetCrossover` and `commitFreqEditor` skip their store when the handle
+// is no longer live; the wheel's split and width branches decline at a rail; a width press inside
+// the 3 px dead zone opens on `mouseDown` and never reaches a store. In every one of those the
+// batch close used to fall back to a live read of the parameter -- which, during the press, is
+// whatever HOST AUTOMATION left there, and ADR-0008 forbids a value the user never produced from
+// becoming that action's Undo/Redo endpoint.
+//
+// The refusal is stated UNCONDITIONALLY rather than only when nothing was stored, and that is
+// deliberate: it sets one bit and carries no value, and the close already skips a parameter whose
+// store DECLARED an endpoint (bit 2) before it looks at the refusal bit at all -- so a drag that
+// did store keeps the value its last `storeOwned` installed, exactly as before. Stating it here,
+// at the one place every imager gesture closes, is what makes the property true by construction
+// instead of true at the six sites someone remembered.
+void SpectrumImager::endGesture   (juce::RangedAudioParameter* p)
+{
+    if (p == nullptr) return;
+    if (onOwnedRefused) onOwnedRefused (p);
+    p->endChangeGesture();
+}
 namespace
 {
 // Holds the ownership claim for a scope and releases it on every exit, including an early return
@@ -835,6 +856,29 @@ void SpectrumImager::setParam (juce::RangedAudioParameter* p, float plain, int e
 void SpectrumImager::resetParam (juce::RangedAudioParameter* p, int expectedBands)
 {
     if (p == nullptr) return;
+
+    // A RESET THAT HAS NOTHING TO RESET IS NOT AN EDIT (ADR-0052, round 22; Devin R853-864).
+    // Asked HERE -- before the sweep animation and before the gesture opens -- because both are
+    // things an edit COSTS, and this is the same question `Knob::resetWouldMove()` asks before its
+    // own three doors (PluginEditor.h). A double-click or Alt-click on a width already at its
+    // default used to run the sweep and bracket a `setValueNotifyingHost` that moved nothing in a
+    // begin/end pair: an automation punch-in a host recording touch or latch writes a point for,
+    // for an edit the user did not make.
+    //
+    // ASKED IN THE SNAPPED SPACE, which is the space the store's own read-back proof compares in
+    // five lines below: `getValue()` reports `convertTo0to1` of what `setValue` stored, and both
+    // conversions snap (juce_RangedAudioParameter.cpp), so `getDefaultValue()` alone is the WRONG
+    // term for a stepped or skewed range -- it can differ from what writing it would leave behind,
+    // and a guard on it would then refuse a reset that really does move. `expect` is that value.
+    //
+    // WHAT IS NOT MOVED OUT WITH IT: the ADR-0045 topology re-proof below stays adjacent to the
+    // store, because it answers a question about the WORLD (has a host lane dropped Bands inside
+    // our gesture open?) that only becomes true once the gesture has dispatched. This one answers
+    // a question about the PARAMETER, and is already settled before anything is dispatched.
+    const float norm   = p->getDefaultValue();
+    const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
+    if (juce::exactlyEqual (p->getValue(), expect)) return;   // no sweep, no gesture, no store, no undo
+
     if (onSweep) onSweep();
     // ADR-0045. The band index its callers pass is derived from `bandAtX` OUTSIDE this call, and
     // `beginChangeGesture` below dispatches to every listener before the store -- so a host lane
@@ -853,9 +897,7 @@ void SpectrumImager::resetParam (juce::RangedAudioParameter* p, int expectedBand
     p->beginChangeGesture();
     if (expectedBands < 0 || bandCount() == expectedBands)
     {
-        const float was    = p->getValue();
-        const float norm   = p->getDefaultValue();
-        const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
+        const float was = p->getValue();
         p->setValueNotifyingHost (norm);
         if (! juce::exactlyEqual (p->getValue(), expect))
         {

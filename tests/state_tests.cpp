@@ -10068,6 +10068,75 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
             }
         }
 
+    // ---- LEG O: an empty knob press cannot make automation the user's Redo (RISK-012) ---
+    //      The last open face of RISK-012, and the one no earlier leg reached: a press that opens
+    //      a change gesture and NEVER MOVES THE PARAMETER. JUCE opens the gesture from
+    //      `SliderParameterAttachment::sliderDragStarted` and closes it from `sliderDragEnded`, so
+    //      a click on a knob with no drag brackets a gesture around no write at all. The batch
+    //      close then had nothing declared to prefer for that parameter and fell back to a LIVE
+    //      READ -- which, during the press, is whatever host automation left there. The user's
+    //      Redo destination became a value the user never produced, which is precisely what
+    //      ADR-0008 forbids and what R983 and RISK-012 have recorded as open since round 12.
+    //
+    //      Round 22's fix is the missing sentence, not a new mechanism: `AttachmentWitness` now
+    //      states a REFUSAL at the drag end when nothing this control did moved the parameter, and
+    //      a refusal has suppressed the close's live read since round 19.
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        while (proc.canUndo()) proc.undo();
+        driveP->setValueNotifyingHost (driveP->convertTo0to1 (3.0f));
+        proc.pollUndoCoalesce();
+        const float pressedAt = plainOf (driveP);
+        const float hostTo    = 7.25f;
+        check (std::abs (pressedAt - hostTo) > 1.0e-3f,
+               "leg O: the two values the leg distinguishes are distinct");
+
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto  t  = legStamp();
+        const juce::MouseEvent press (src, { cx, cy }, juce::ModifierKeys::leftButtonModifier,
+                                      1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                      t, { cx, cy }, t, 1, false);
+        CountGestures cg;
+        driveP->addListener (&cg);
+        driveK->mouseDown (press);
+        driveP->setValueNotifyingHost (driveP->convertTo0to1 (hostTo));   // automation, INSIDE the press
+        driveK->mouseUp (press);
+        driveP->removeListener (&cg);
+        proc.pollUndoCoalesce();
+
+        check (cg.opens == 1 && cg.closes == 1,
+               "leg O: non-vacuity -- the press really did bracket one host change gesture");
+        check (std::abs (plainOf (driveP) - hostTo) < 1.0e-3f,
+               "leg O: ...and the host's value is what is live afterwards");
+        check (! proc.canUndo(),
+               "leg O: a press that moved nothing records no step, so the automation is in none");
+
+        // ---- the control the rule needs: a press that DID move the knob is still one step ----
+        while (proc.canUndo()) proc.undo();
+        driveP->setValueNotifyingHost (driveP->convertTo0to1 (3.0f));
+        proc.pollUndoCoalesce();
+        const float from = plainOf (driveP);
+        const auto  t2   = legStamp();
+        const juce::MouseEvent press2 (src, { cx, cy }, juce::ModifierKeys::leftButtonModifier,
+                                       1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                       t2, { cx, cy }, t2, 1, false);
+        driveK->mouseDown (press2);
+        driveK->setValue ((double) (from + 4.0f), juce::sendNotificationSync);   // the drag's own write
+        const float produced = plainOf (driveP);
+        driveK->mouseUp (press2);
+        proc.pollUndoCoalesce();
+        check (std::abs (produced - from) > 1.0e-3f, "leg O: the control leg really moved the knob");
+        check (proc.canUndo(), "leg O: ...and a press that produced a value IS one undoable step");
+        if (proc.canUndo())
+        {
+            proc.undo();
+            check (std::abs (plainOf (driveP) - from) < 1.0e-3f, "leg O: Undo returns the user's start");
+            proc.redo();
+            check (std::abs (plainOf (driveP) - produced) < 1.0e-3f,
+                   "leg O: Redo restores the value the user produced, not a live read");
+        }
+    }
+
     proc.editorBeingDeleted (ed);
     delete ed;
 }
@@ -12262,6 +12331,88 @@ static void testBareStoresDeclareTheirEndpointAndThePollNeverWaits()
                              " %.4f is in none\n", (double) hostMask);
                 check (true, "leg H2: a refused solo store records no user step");
             }
+        }
+    }
+
+    // ---- LEG J: a reset with nothing to reset is not an edit (R853-864, ADR-0052) -----
+    //  `resetParam` ran its sweep animation and bracketed a `setValueNotifyingHost` in a change
+    //  gesture before it looked at the value, so a double-click on a width ALREADY at its default
+    //  punched a host touch/latch write region for a parameter that never moved -- the same defect
+    //  ADR-0052 closed for `Knob::doReset` in round 11, on the one reset that had not been given
+    //  the rule. The four observables below are that ADR's Decision, verbatim: no gesture, no
+    //  write, no sweep, no undo entry.
+    //
+    //  THE GUARD ASKS IN THE SNAPPED SPACE, and so does this leg: `expect` is what writing the
+    //  default would actually leave in the parameter, which for a stepped or skewed range is not
+    //  `getDefaultValue()` itself. Driving the width through `setPlain` and then reading it back
+    //  puts the leg on the same side of that conversion as the code.
+    {
+        setPlain (bandsP, 1.0f);   // one band, for the reason leg A records
+        const float deflt = wLoP->convertFrom0to1 (wLoP->getDefaultValue());
+        setPlain (wLoP, deflt);
+        settle();
+        check (juce::exactlyEqual (wLoP->getValue(),
+                                   wLoP->convertTo0to1 (wLoP->convertFrom0to1 (wLoP->getDefaultValue()))),
+               "leg J: the width really is sitting on what a reset would install");
+
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg J: band 1's width line is findable");
+        if (wy >= 0.0f)
+        {
+            const bool  undoBefore = proc.canUndo();
+            int         sweeps     = 0;
+            auto        prevSweep  = im->onSweep;
+            im->onSweep = [&] { ++sweeps; if (prevSweep) prevSweep(); };
+            CountGestures cg;
+            wLoP->addListener (&cg);
+            im->mouseDoubleClick (mev (bx, wy, bx, wy, false));
+            wLoP->removeListener (&cg);
+            im->onSweep = prevSweep;
+            proc.pollUndoCoalesce();
+
+            check (cg.opens == 0 && cg.closes == 0, "leg J: no host change gesture was opened");
+            check (cg.writes == 0, "leg J: ...and the host was told of no write");
+            check (sweeps == 0, "leg J: ...and the sweep animation did not run");
+            check (proc.canUndo() == undoBefore, "leg J: ...and no undo entry was created");
+            check (near (plainOf (wLoP), deflt), "leg J: ...and the width is where it already was");
+        }
+    }
+
+    // ---- LEG K: an empty imager press cannot make automation the user's Redo (RISK-012) ----
+    //  The press branch's own comment has said since ADR-0046 that a bare click on a width line
+    //  "begins+ends an EMPTY gesture -- no value change, no divider jump, no automation/undo step".
+    //  The last clause was false: the batch close fell back to a LIVE READ for a parameter whose
+    //  episode declared nothing, so a host write landing inside the press became the press's `after`
+    //  and therefore the destination of the user's Redo -- ADR-0008's rule that a value no user
+    //  operation produced cannot be that operation's endpoint, broken by an action that produced
+    //  nothing at all. Round 22 makes `endGesture` state the refusal that was missing.
+    {
+        setPlain (bandsP, 1.0f);
+        setPlain (wLoP, 1.60f);
+        settle();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg K: band 1's width line is findable");
+        if (wy >= 0.0f)
+        {
+            const float pressedAt = plainOf (wLoP);
+            const float hostTo    = 1.15f;
+            check (! near (pressedAt, hostTo), "leg K: the two values the leg distinguishes are distinct");
+            CountGestures cg;
+            wLoP->addListener (&cg);
+            im->mouseDown (mev (bx, wy, bx, wy, false));
+            setPlain (wLoP, hostTo);                       // host automation, INSIDE the press
+            im->mouseUp (mev (bx, wy, bx, wy, false));
+            wLoP->removeListener (&cg);
+            proc.pollUndoCoalesce();
+
+            check (cg.opens == 1 && cg.closes == 1,
+                   "leg K: non-vacuity -- the press really did bracket one change gesture");
+            check (near (plainOf (wLoP), hostTo), "leg K: ...and the host's value is what is live");
+            check (! proc.canUndo(),
+                   "leg K: a press that moved nothing records no step, so the automation is in none");
         }
     }
 
@@ -20749,7 +20900,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1873).
+//  baseline", src/PluginProcessor.cpp:1921).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -20982,7 +21133,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1573).
+//  targets", src/PluginProcessor.cpp:1592).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21359,7 +21510,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2058).
+//  mixed sound", src/PluginProcessor.cpp:2106).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -22267,6 +22418,126 @@ static int runD2StressProbe()
     return 0;
 }
 
+
+// ---------------------------------------------------------------------------
+//  State test 95 -- round 22. A RESTORE IS CONSUMED ONLY WHEN ITS SOUND CAN GO
+//  WITH IT (Devin R1792-1795, ADR-0036 §27).
+//
+//  Round 21 made the two TIMER doors non-blocking (§26): a failed try on
+//  `soundReplacement` skips the restore tail's sound re-install rather than waiting
+//  for it. The `pendingRestore.take()` that produced the decode was left IN FRONT of
+//  that try, so a failed acquisition CONSUMED the restore and then published its
+//  metadata over whatever sound happened to be live. The cell has no put-back -- a
+//  host thread owns the writing end -- so the mixed session is PERMANENT: no later
+//  adoption repairs it, because there is nothing left to adopt.
+//
+//  WHY ROUND 21'S SAFETY ARGUMENT DID NOT COVER THIS. It said a failed try proves
+//  the holder is another thread; that `applySoundTree` from `installRestoredSound`
+//  is the only site another thread ever holds; and that such a holder has already
+//  ANNOUNCED a newer generation (§25), which makes the re-install's own guard false
+//  -- so skipping reaches the state the wait would have. The middle premise is
+//  false. `copyStateWithRawValues`, the durable capture behind every save, has taken
+//  the same lock since round 18 (§25), an off-message-thread `getStateInformation`
+//  reaches it through `writeState`, and it announces NOTHING. Against that holder the
+//  guard can be true, the re-install genuinely owed, and the try still fail.
+//
+//  THE THREE STATES ARE FORCED, NOT RACED:
+//    * the pending restore's sound is made STALE while the restore is held between
+//      its install and its handoff (`seams.afterRestoreSoundApplied`), by an A/B
+//      switch the owner runs in that window -- so its adoption owes a re-install;
+//    * a HOST-THREAD SAVE is parked inside the durable capture
+//      (`seams.insideDurableCapture`), holding the lock and announcing nothing;
+//    * the TIMER door then runs, and must consume nothing.
+//  Before the fix the door consumed the restore, skipped the re-install and published
+//  the restored session's NAME over the A/B switch's sound.
+// ---------------------------------------------------------------------------
+static void testARestoreIsConsumedOnlyWhenItsSoundCanGoWithIt()
+{
+    std::printf ("State test 95: a restore is consumed only when its sound can go with it (R1792, ADR-0036 §27)\n");
+
+    const auto R = d2::author ("D2-R22-R", 0.30f, 0.30f, 0, 1);
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& p = *owned;
+    p.prepareToPlay (48000.0, 512);
+
+    // Two slots with DIFFERENT sounds, so "the switch's sound" and "the restore's sound"
+    // are distinguishable by one read. The instance ends on A.
+    setRaw (p, "width", 0.45f);
+    p.abCopyToOther();                 // B := 0.45 for now
+    p.abSwitchTo (1);
+    setRaw (p, "width", 0.70f);        // B's own sound
+    p.abSwitchTo (0);                  // stores B, applies A
+    p.pollUndoCoalesce();
+    checkNear ((double) rawOf (p, "width"), 0.45, 1.0e-6, "State test 95: the owner sits on A's sound");
+
+    // ---- 1. a restore whose sound is stale by the time it is adopted ------------------
+    std::atomic<bool> installed { false }, switchDone { false };
+    p.seams.afterRestoreSoundApplied = [&]
+    {
+        installed.store (true);
+        for (int i = 0; i < 4000 && ! switchDone.load(); ++i)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    };
+    std::thread restoring ([&] { p.setStateInformation (R.blob.getData(), (int) R.blob.getSize()); });
+    for (int i = 0; i < 4000 && ! installed.load(); ++i)
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    check (installed.load(), "State test 95: the restore is held between its install and its handoff");
+
+    // The owner replaces the whole sound in that window. The cell is still empty, so this
+    // entry point's own drain adopts nothing -- exactly the §10 window the re-install exists for.
+    p.abSwitchTo (1);
+    switchDone.store (true);
+    restoring.join();
+    p.seams.afterRestoreSoundApplied = nullptr;
+    checkNear ((double) rawOf (p, "width"), 0.70, 1.0e-6,
+               "State test 95: the switch's sound is live, and it is not the restore's");
+    check (p.getPresets().currentName() != R.name, "State test 95: the restore has not been adopted yet");
+
+    // ---- 2. a NON-ANNOUNCING holder of the replacement lock ---------------------------
+    const auto ownerThread = std::this_thread::get_id();
+    std::atomic<bool> parked { false }, releaseSave { false };
+    std::atomic<int>  saveWaited { -1 };
+    p.seams.insideDurableCapture = [&]
+    {
+        if (std::this_thread::get_id() == ownerThread) return;   // the owner's own captures pass through
+        parked.store (true);
+        int waited = 0;
+        for (; waited < 4000 && ! releaseSave.load(); ++waited)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        saveWaited.store (waited);
+    };
+    juce::MemoryBlock hostSave;
+    std::thread saver ([&] { hostSave = d2::saveOf (p); });
+    for (int i = 0; i < 4000 && ! parked.load(); ++i)
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    check (parked.load(), "State test 95: a host save is parked inside the durable capture, holding the lock");
+
+    // ---- 3. the timer door, which may neither wait nor consume ------------------------
+    const auto t0 = std::chrono::steady_clock::now();
+    p.pollUndoCoalesceFromTimer();
+    const int millis = (int) std::chrono::duration_cast<std::chrono::milliseconds> (
+                           std::chrono::steady_clock::now() - t0).count();
+    std::printf ("  [test 95] the timer door returned in %d ms with a restore pending and the capture open\n", millis);
+    check (millis < 500, "State test 95: the timer door did not wait for the durable capture (§26 still holds)");
+    check (p.getPresets().currentName() != R.name,
+           "State test 95: the door consumed nothing -- no metadata was published without its sound");
+    checkNear ((double) rawOf (p, "width"), 0.70, 1.0e-6,
+               "State test 95: ...and the live sound is still the one the switch installed");
+
+    releaseSave.store (true);
+    saver.join();
+    p.seams.insideDurableCapture = nullptr;
+    check (saveWaited.load() > 0, "State test 95: non-vacuity -- the capture really was open across the door");
+
+    // ---- 4. the next door adopts it WHOLE --------------------------------------------
+    p.pollUndoCoalesce();
+    check (p.getPresets().currentName() == R.name, "State test 95: the next door adopted the restore");
+    check (d2::View::of (p).matches (R), "State test 95: ...and its program view");
+    checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6,
+               "State test 95: ...with ITS OWN sound: one adoption, one session");
+    check (d2::saveOf (p) == R.blob, "State test 95: a save is byte-identical to the session restored");
+}
 
 // ---------------------------------------------------------------------------
 //  State test 65 -- a legacy A/B slot is canonical at the decode boundary, and no
@@ -25337,6 +25608,7 @@ int main (int argc, char* argv[])
     testOverlappingReplacementsCannotMixTwoSessions();
     testObsoleteRestoreCannotReassertOverNewerOne();
     testDurableCaptureNeverRecordsTwoReplacements();
+    testARestoreIsConsumedOnlyWhenItsSoundCanGoWithIt();
     testLegacySlotIsCanonicalAtTheBoundary();
     testBandRiseDuringDragKeepsUncapturedSplits();
     testStaleOutwardDragRemovesNothing();
