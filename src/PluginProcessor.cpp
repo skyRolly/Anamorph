@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "AbSlotIndex.h"
 #include "SerializedNumber.h"   // the shared malformed-value predicate (both restore paths)
+#include "ParameterDispatch.h"  // ADR-0036 round 27 (R1390): every host-notifying write is bracketed
 
 #include <cmath>   // std::isfinite -- the non-finite guards on the restore paths
 
@@ -449,11 +450,11 @@ void AnamorphAudioProcessor::applyAutoGain()
         if (p == nullptr) return;
         const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
         const float was    = p->getValue();
-        p->beginChangeGesture();
-        p->setValueNotifyingHost (norm);
+        anamorph::param::beginChangeGesture (p);
+        anamorph::param::setValueNotifyingHost (p, norm);
         if (! juce::exactlyEqual (p->getValue(), expect)) noteOwnedParamRefused (p);
         else                                              noteOwnedParamWrite (p, was, expect);
-        p->endChangeGesture();
+        anamorph::param::endChangeGesture (p);
     };
 
     if (auto* og = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (pid::outputGain)))
@@ -710,14 +711,43 @@ void AnamorphAudioProcessor::endUserTransaction()
 // call out to the host from inside it; running them under a lock this function held would be the
 // inversion pointing the other way -- the one State test 27 hangs on (measured, round 21).
 //
-// WHAT THIS DOES NOT FIX, SAID HERE RATHER THAN LEFT TO BE FOUND. Those acquisitions of the
-// commands' own are still BLOCKING, and `pollUndoCoalesceFromTimer` is now one of the two doors
-// that runs them -- so a tick reached from a host's pump can still block, which is what section 26
-// forbids its timer doors. The retry had to go somewhere: leaving it to the user's next action
-// alone would strand a command the user asked for. It is a rarer instance of a surface that
-// already exists (a pumped click reaching `undo()` directly blocks today, with no transaction
-// involved), not a new class of one, and RISK-009 carries it OPEN with the count of coincidences
-// each path needs. ADR-0036 section 29.
+// ROUND 27 (Devin R1390) CLOSED WHAT ROUND 26 WROTE DOWN HERE AND DID NOT FIX. The paragraph this
+// replaces said it plainly: the commands' OWN acquisitions are still blocking, and
+// `pollUndoCoalesceFromTimer` is one of the two doors that runs them -- so a tick reached from a
+// host's pump could still block, which is exactly what section 26 forbids its timer doors. Devin
+// named the same shape at `pollUndoCoalesceFromTimer`, and the report is right:
+//
+//   message thread:  holds listenerLock(P) -> host pumps -> the 20 Hz tick runs
+//                    -> flushDeferredCommands -> the try below SUCCEEDS and is RELEASED
+//                    -> a deferred undo/redo/A-B/preset runs
+//                    -> applyStatePreservingView -> WAITS for soundReplacement
+//   host thread:     HOLDS soundReplacement -> apvts.replaceState -> setValueNotifyingHost
+//                    -> WAITS for listenerLock(P)
+//
+// The try proves nothing about the command, because the command acquires AFTER it is released.
+//
+// THE OWNER'S DECISION, ALREADY APPROVED AND IMPLEMENTED HERE: a timer-facing retry may inspect,
+// may do non-blocking bookkeeping, may DECIDE that work is ready -- and may not EXECUTE a command
+// that can block while still inside a parameter listener's dynamic extent. So the question the
+// door asks is the invariant itself, and `anamorph::param::insideDispatch()` is what finally makes
+// it askable: every parameter write this plug-in makes is bracketed (`src/ParameterDispatch.h`,
+// and `scripts/check-dispatch.py` fails the build on an unbracketed one), so a non-zero depth means
+// this thread's stack really may contain a `listenerLock`. Outside that extent the message thread
+// holds NO listener lock, so a blocking acquisition here cannot be half of any cycle: the host
+// thread's `replaceState` gets the `listenerLock` it wants, finishes, and releases
+// `soundReplacement`.
+//
+// THE RETRY IS THE SAME ONE, and that is why nothing strands. A dispatch extent ENDS -- it is one
+// parameter call -- so the depth is zero again by the time the pumped event returns, and the next
+// door (the user's next action, or the next 20/24 Hz tick) finds it zero and runs the queue. There
+// is no sleep, no added delay and no new scheduler: the two doors round 26 already installed are
+// the retry, and this guard only decides which visit does the work.
+//
+// WHAT IS LEFT OF ROUND 26'S TRY, deliberately. It stays, ahead of the commands, for the
+// preliminary poll -- `pollUndoCoalesceAdopted` reaches `currentStateSet` and a concurrent restore
+// may own the lock at that instant. It is no longer load-bearing for the CYCLE (the guard above
+// answers that), which is why the round-26 sentence claiming it was a proof "by construction" is
+// not repeated.
 void AnamorphAudioProcessor::flushDeferredCommands()
 {
     // ONLY AT THE OUTERMOST BOUNDARY (round 24/25's rule, and now stated only here): an inner
@@ -726,6 +756,13 @@ void AnamorphAudioProcessor::flushDeferredCommands()
     // poll inside `undo()`/`redo()` -- would otherwise re-enter this loop while `queued` is being
     // walked, running commands out of the order the user gave them.
     if (userTransactionDepth != 0 || deferredCommands.empty() || runningDeferredCommands)
+        return;
+
+    // ...AND ONLY OUTSIDE A PARAMETER LISTENER'S DYNAMIC EXTENT (round 27, Devin R1390). Every
+    // command below can block on `soundReplacement`; none of them may do so from inside a dispatch.
+    // Nothing is consumed and nothing is decided -- the step still pends, the queue is untouched,
+    // and the next door does the work once the extent this is nested in has returned.
+    if (anamorph::param::insideDispatch())
         return;
 
     const juce::ScopedValueSetter<bool> running (runningDeferredCommands, true);
@@ -910,7 +947,7 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
 
     auto copy = target.createCopy();
     repairSerializedValues (copy);
-    apvts.replaceState (copy);
+    anamorph::param::replaceState (apvts, copy);
     // Synchronously force every parameter to its exact (raw) value from the snapshot, so undo /
     // redo / A-B apply propagate exactly like host state restore -- replaceState alone can leave a
     // param at a stale/snapped value (see reassertParameters). View params are re-overridden below.
@@ -920,7 +957,7 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
     reassertParameters (target, /*notifyHost*/ true); // undo/redo/A-B is editor-initiated: notify host+editor
 
     for (size_t i = 0; i < std::size (pid::viewParams); ++i)
-        apvts.getParameter (pid::viewParams[i])->setValueNotifyingHost (saved[i]);
+        anamorph::param::setValueNotifyingHost (apvts.getParameter (pid::viewParams[i]), saved[i]);
 
     // A state set replaced the live sound, and it is finished replacing it: the counter
     // is bumped HERE, after the last write, so replacements are ordered by completion
@@ -1132,7 +1169,7 @@ void AnamorphAudioProcessor::reassertParameters (const juce::ValueTree& restored
         if (valueMoves)
         {
             if (notifyHost)
-                rp->setValueNotifyingHost (norm);
+                anamorph::param::setValueNotifyingHost (rp, norm);
             else
             {
                 rp->setValue (norm); // getValue() only -- no host / listener notification
@@ -1198,7 +1235,7 @@ juce::uint32 AnamorphAudioProcessor::applySoundTree (const juce::ValueTree& soun
     const auto begin = soundSetGen.load (std::memory_order_relaxed);
     auto copy = soundTree.createCopy();
     repairSerializedValues (copy);
-    apvts.replaceState (copy);
+    anamorph::param::replaceState (apvts, copy);
     // From the ORIGINAL (ADR-0037): `copy` is the live tree now and carries what replaceState
     // flushed back, one rendering pass away from the bytes the baseline was predicted from.
     reassertParameters (soundTree, /*notifyHost*/ false); // host restore: no host-notify (see above)
@@ -1391,8 +1428,32 @@ void AnamorphAudioProcessor::parameterGestureChanged (int parameterIndex, bool g
 // `endChangeGesture`, which JUCE dispatches to `finalListener` AFTER this plug-in's own listener
 // has returned -- so a depth counter kept around our callback body reads zero at exactly the moment
 // it would need to read one. Not blocking at all needs to detect nothing.
+//
+// ROUND 27 (RISK-009, and MEASURED rather than argued). The try answers for `soundReplacement` and
+// says nothing about the APVTS lock, which `copyStateWithRawValues` takes INSIDE it via
+// `apvts.copyState()`. ThreadSanitizer reported the full cycle on the round-27 tree with the flush
+// already guarded, and named this function on BOTH sides of it:
+//
+//   M0 => M1   `endChangeGesture` holds a parameter's `listenerLock`, the host pumps, this tick
+//              runs -> `pollUndoCoalesceAdopted` -> `currentStateSet` -> `copyStateWithRawValues`
+//              -> `copyState` takes the APVTS lock          (this function, the poll body below)
+//   M1 => M0   a whole-sound replacement holds the APVTS lock in `replaceState` ->
+//              `valueTreeRedirected` -> `setValueNotifyingHost` -> takes the `listenerLock`
+//              (a deferred command here; a HOST THREAD's `applySoundTree` in production)
+//
+// The second order is what a host thread does during `setStateInformation`, so the pair is a real
+// two-thread cycle, not a harness artefact -- it is RISK-009's round-20 escalation, reached through
+// the door round 21 built. The predicate `flushDeferredCommands` now has answers it: this whole
+// function is a TIMER-DRIVEN RETRY, called only from the processor's 20 Hz tick and the editor's
+// 24 Hz tick, and the owner's round-27 ruling is that such a path stays non-blocking. Inside a
+// dispatch it therefore does NOTHING AT ALL -- not the drain, not the poll, not the flush -- and
+// the next tick, 50 ms later and outside the extent, does all three. Nothing is consumed and
+// nothing is decided, exactly as a failed try already behaved.
 void AnamorphAudioProcessor::pollUndoCoalesceFromTimer()
 {
+    if (anamorph::param::insideDispatch())
+        return;
+
     // The drain first, exactly as `pollUndoCoalesce` does it -- but with its one acquisition made a
     // try. NOT under a lock of ours: the adoption calls out to the host from inside itself.
     adoptPendingHostState (/*mayBlock*/ false);

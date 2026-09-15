@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_opengl/juce_opengl.h>
 #include "PluginProcessor.h"
+#include "ParameterDispatch.h"  // ADR-0036 round 27 (R1390): the attachment straddle raises the dispatch depth
 #include "gui/LookAndFeel.h"
 #include "gui/Vectorscope.h"
 #include "gui/SpectrumImager.h"
@@ -152,6 +153,37 @@ private:
         AttachmentWitness (AnamorphAudioProcessor& p, juce::RangedAudioParameter& rp)
             : proc (p), param (rp), before (*this, false), after (*this, true) {}
 
+        // ADR-0036 ROUND 27 (Devin R1390). THE ONE PARAMETER-DISPATCH BRACKET IN THE TREE THAT IS
+        // NOT A SINGLE SCOPE, because the thing it brackets is not a call this editor makes:
+        // JUCE's own attachment writes the parameter from inside its listener callback, and this
+        // witness already STRADDLES that write -- `before` is registered ahead of the attachment
+        // and `after` behind it (`juce::ListenerList` dispatches in registration order). So the
+        // raise belongs to the BEFORE hook and the lower to the AFTER one, and the pair covers
+        // `beginChangeGesture` (from `sliderDragStarted`), the value write (from
+        // `sliderValueChanged` / `buttonClicked` / `comboBoxChanged`) and `endChangeGesture` (from
+        // `sliderDragEnded`) -- every dispatch a JUCE attachment can start.
+        //
+        // WHY A LEAK IS NOT POSSIBLE, which is the question a two-callback bracket has to answer.
+        // `juce::Slider` dispatches through `listeners.callChecked` with a `BailOutChecker` on the
+        // control, so if the control is DELETED from inside the attachment's callback -- which a
+        // host pumping its message loop there really can do, by closing the editor -- the AFTER
+        // hook is never reached. A leaked raise would make `flushDeferredCommands` refuse forever,
+        // which is the "strand indefinitely" failure the mechanism exists to prevent. So the
+        // witness counts its own raises and unwinds them in its destructor: the witnesses are
+        // members of the editor and the controls they watch are members too, so a control that
+        // dies takes its witness with it and the count returns to zero. `raised` is a count and
+        // not a flag because a nested notification can straddle a straddle.
+        struct ScopedStraddle
+        {
+            ScopedStraddle (AttachmentWitness& o, bool isAfter) : owner (o), post (isAfter)
+            { if (! post) owner.raiseDispatch(); }
+            ~ScopedStraddle() { if (post) owner.lowerDispatch(); }
+            ScopedStraddle (const ScopedStraddle&)            = delete;
+            ScopedStraddle& operator= (const ScopedStraddle&) = delete;
+            AttachmentWitness& owner;
+            const bool         post;
+        };
+
         // One object serves all three control families: the three JUCE listener interfaces have
         // distinct method names, so there is nothing to disambiguate.
         struct Hook final : juce::Slider::Listener,
@@ -160,7 +192,10 @@ private:
         {
             Hook (AttachmentWitness& o, bool isAfter) : owner (o), post (isAfter) {}
             void sliderValueChanged (juce::Slider* s) override
-            { owner.mark (post, owner.param.convertTo0to1 ((float) s->getValue())); }
+            {
+                const ScopedStraddle straddle (owner, post);
+                owner.mark (post, owner.param.convertTo0to1 ((float) s->getValue()));
+            }
             // ROUND 22, RISK-012. A PRESS THAT PRODUCES NOTHING SAYS SO. JUCE opens the change
             // gesture from `SliderParameterAttachment::sliderDragStarted` and closes it from
             // `sliderDragEnded`, so a press that never moves the slider -- a click on a knob or a
@@ -171,12 +206,24 @@ private:
             // acts, because `juce::ListenerList` dispatches in registration order and this hook is
             // registered ahead of JUCE's attachment -- so the refusal is recorded before
             // `endChangeGesture` runs, which is where the close reads it.
-            void sliderDragStarted (juce::Slider*) override { if (! post) owner.pressProduced = false; }
-            void sliderDragEnded   (juce::Slider*) override { if (! post) owner.notePressEnded(); }
+            void sliderDragStarted (juce::Slider*) override
+            {
+                const ScopedStraddle straddle (owner, post);
+                if (! post) owner.pressProduced = false;
+            }
+            void sliderDragEnded   (juce::Slider*) override
+            {
+                const ScopedStraddle straddle (owner, post);
+                if (! post) owner.notePressEnded();
+            }
             void buttonClicked (juce::Button* b) override
-            { owner.mark (post, owner.param.convertTo0to1 (b->getToggleState() ? 1.0f : 0.0f)); }
+            {
+                const ScopedStraddle straddle (owner, post);
+                owner.mark (post, owner.param.convertTo0to1 (b->getToggleState() ? 1.0f : 0.0f));
+            }
             void comboBoxChanged (juce::ComboBox* c) override
             {
+                const ScopedStraddle straddle (owner, post);
                 // The arithmetic JUCE's own `ComboBoxParameterAttachment::comboBoxChanged` does.
                 const int n = c->getNumItems();
                 const float raw = n > 1 ? (float) c->getSelectedItemIndex() / (float) (n - 1) : 0.0f;
@@ -227,11 +274,30 @@ private:
             unhook = [this, &c] { c.removeListener (&before); c.removeListener (&after); };
             c.addListener (&before);
         }
-        template <typename Control> void listenAfter (Control& c) { c.addListener (&after); }
+        template <typename Control> void listenAfter (Control& c)
+        { c.addListener (&after); straddleArmed = true; }
+
+        // The raise/lower pair `ScopedStraddle` drives, and the count that makes it unwindable.
+        //
+        // ARMED ONLY ONCE BOTH HOOKS ARE ON THE CONTROL, and that guard is not a nicety: it was
+        // found by this round's own suite. `attachSlider` registers `before`, CONSTRUCTS the JUCE
+        // attachment, then registers `after` -- and the attachment's constructor calls
+        // `ParameterAttachment::sendInitialUpdate()`, which pushes the parameter's value into the
+        // control and therefore fires `sliderValueChanged` while only `before` is listening. That
+        // raise has no `after` to lower it. Measured: the dispatch depth stood at 14 -- one per
+        // parameter-backed control -- from the moment the editor finished constructing, so every
+        // deferred command in State tests 99 and 100 refused forever. The initial update writes no
+        // parameter (it is the host->control direction, and JUCE suppresses the echo), so there is
+        // nothing to bracket there and not raising is the correct answer as well as the safe one.
+        void raiseDispatch() noexcept
+        { if (! straddleArmed) return; ++raised; anamorph::param::enterDispatch(); }
+        void lowerDispatch() noexcept { if (raised > 0) { --raised; anamorph::param::exitDispatch(); } }
 
         // Both hooks come off the control while the control is still alive: the witnesses are
-        // declared after every control they watch, so they are destroyed first.
-        ~AttachmentWitness() { if (unhook) unhook(); }
+        // declared after every control they watch, so they are destroyed first. ROUND 27: and any
+        // raise this witness still holds comes off here, so a control deleted from inside its own
+        // notification cannot leave the dispatch depth standing (see `ScopedStraddle`).
+        ~AttachmentWitness() { while (raised > 0) lowerDispatch(); if (unhook) unhook(); }
 
         AnamorphAudioProcessor&     proc;
         juce::RangedAudioParameter& param;
@@ -240,6 +306,10 @@ private:
         // Round 22: did anything this control did move the parameter between its drag start and
         // its drag end? Message thread only, like everything else in this type.
         bool  pressProduced = false;
+        // ROUND 27 (R1390): how many dispatch raises this witness is currently holding, and
+        // whether the pair that balances them is complete (see `raiseDispatch`).
+        int   raised = 0;
+        bool  straddleArmed = false;
         AnamorphAudioProcessor::AttachmentRequest prevRequest {};
         std::function<void()> unhook;
 
@@ -398,6 +468,11 @@ private:
     void showPresetMenu();
     void showSavePreset (bool);
     void focusSaveNameField (int attemptsLeft); // deferred, verified grab (Space-vs-host fix)
+    // ADR-0036 round 27 (R640): the Save dialog's PENDING state. A save that could not run
+    // synchronously -- one issued from inside a multi-store user transaction -- is queued to a
+    // safe boundary, and the dialog must neither close nor claim success until its completion
+    // says what happened. While pending the OK button is disabled, so one click is one save.
+    void setSavePending (bool pending);
     void showLoadPreset();               // OS file chooser (#3)
     void setupRotary (juce::Slider&, juce::Label&, const juce::String& name, const juce::String& tip);
     void attachSlider (juce::Slider&, const char* id);
@@ -617,10 +692,10 @@ private:
                 // latch writes a point for (ADR-0052, round 11 -- the same rule the multiband
                 // wheel branches answer for their own rails).
                 if (! resetWouldMove()) return;
-                if (resetParam != nullptr) resetParam->beginChangeGesture();
+                anamorph::param::beginChangeGesture (resetParam);
                 doReset();
                 noteResetProducedNothing();   // round 23, see below
-                if (resetParam != nullptr) resetParam->endChangeGesture();
+                anamorph::param::endChangeGesture (resetParam);
                 return;
             }
             juce::Slider::mouseDown (e);
@@ -628,10 +703,10 @@ private:
         void mouseDoubleClick (const juce::MouseEvent& e) override
         {
             if (e.getNumberOfClicks() != 2 || ! resetWouldMove()) return;
-            if (resetParam != nullptr) resetParam->beginChangeGesture();
+            anamorph::param::beginChangeGesture (resetParam);
             doReset();
             noteResetProducedNothing();   // round 23, see below
-            if (resetParam != nullptr) resetParam->endChangeGesture();
+            anamorph::param::endChangeGesture (resetParam);
         }
 
         // ADR-0008, ROUND 23 (Devin R1117-1119). A RESET THAT REACHES ITS CLOSE WITH NOTHING
@@ -850,6 +925,9 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     juce::OwnedArray<AttachmentWitness>  writeWitnesses;   // ADR-0008 round 18, see the class above
+    // ROUND 27: the slot the A/B letter was last painted for. -1 forces the first tick to
+    // paint, which costs one repaint at editor construction and removes a special case.
+    int lastAbSlot = -1;
     juce::OwnedArray<SliderAttachment>   sliderAtts;
     juce::OwnedArray<ButtonAttachment>   buttonAtts;
     juce::OwnedArray<ComboBoxAttachment> comboAtts;

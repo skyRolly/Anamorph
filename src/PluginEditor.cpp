@@ -389,13 +389,40 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     saveNameEditor.onReturnKey = [this] { saveOkButton.triggerClick(); };
     saveNameEditor.onEscapeKey = [this] { showSavePreset (false); };
     savePresetBackdrop.addAndMakeVisible (saveNameEditor);
+    // ADR-0036 ROUND 27 (Devin R640). THE DIALOG CLOSES ON A SAVE, NOT ON A QUEUE.
+    //
+    // This used to be `if (saveUser (name)) { showSavePreset (false); ... }`, and `saveUser`
+    // returned true for a save it had merely QUEUED behind an open user transaction -- so the
+    // dialog closed, the user believed the preset was written, and the write's own failure (a
+    // read-only preset folder, a full disk) was discarded by the deferred call. The completion
+    // now carries the real answer and the dialog waits for it.
+    //
+    // `SafePointer` because the wait can outlive the editor: the deferred save runs at the next
+    // safe boundary, and a host can close the plug-in window before that boundary arrives.
     saveOkButton.onClick = [this]
     {
-        if (processor.getPresets().saveUser (saveNameEditor.getText()))
-        {
-            showSavePreset (false);
-            refreshPresetDisplay();
-        }
+        setSavePending (true);
+        processor.getPresets().saveUser (saveNameEditor.getText(),
+            [safeThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)] (bool ok)
+            {
+                if (safeThis == nullptr) return;   // the editor went away while the save waited
+                safeThis->setSavePending (false);
+                if (ok)
+                {
+                    safeThis->showSavePreset (false);
+                    safeThis->refreshPresetDisplay();
+                }
+                else
+                {
+                    // The dialog STAYS OPEN with the text intact, which is the same visible
+                    // outcome the synchronous failure always had -- the save failed visibly, and
+                    // the name is still there to correct or retry.
+                    safeThis->saveNameEditor.setColour (juce::TextEditor::outlineColourId,
+                                                        colours::warn);
+                    safeThis->saveTitle.setText ("SAVE FAILED", juce::dontSendNotification);
+                    safeThis->focusSaveNameField (4);
+                }
+            });
     };
     saveCancelButton.onClick = [this] { showSavePreset (false); };
     savePresetBackdrop.addAndMakeVisible (saveOkButton);
@@ -1466,6 +1493,22 @@ void AnamorphAudioProcessorEditor::timerCallback()
     if (msToggle.getToggleState() != msState) // external / preset / automation change (#12/#13)
         updateMsLabels();
 
+    // ROUND 27 — THE A/B LETTER IS THE ONE INDICATOR WITH NO OTHER WAY BACK. Found by this round's
+    // sibling audit of the round-25 deferral, not by a review finding. `ABControl::paint` reads
+    // `processor.abActiveSlot()` live, and the only repaints it ever gets are its own hover/exit
+    // handlers and the editor-wide `repaint()` in its click handler — which runs BEFORE a DEFERRED
+    // `abToggle` has executed. Every other post-command read in this editor is re-run from this
+    // tick (the preset name and dirty dot at `refreshPresetDisplay`, the undo/redo enablement
+    // below), so it is stale for at most one period; this one had no such path at all, and after a
+    // deferred toggle the letter kept showing the outgoing slot until the pointer happened to
+    // cross it. One comparison per tick, repainting only when the slot really moved — the same
+    // shape as the three reconciliations above it.
+    if (const int slot = processor.abActiveSlot(); slot != lastAbSlot)
+    {
+        lastAbSlot = slot;
+        abControl.repaint();
+    }
+
     uiAnimOn = animToggle.getToggleState(); // micro-anims follow the Settings switch (F3)
 
     // Whole-window scale: follow the parameter (Settings combo, state recall, F4).
@@ -2148,11 +2191,19 @@ void AnamorphAudioProcessorEditor::showLoadPreset()
                 // The chooser reaches any file on the machine, so this is the path most likely to
                 // be handed a foreign preset -- and the one where a duck for a refused load was
                 // most visible. The masking now comes from the load path itself (ER-GUI-06).
-                if (safeThis->processor.getPresets().loadFile (file))
-                {
-                    safeThis->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
-                    safeThis->refreshPresetDisplay();
-                }
+                // ROUND 27 (R640): the sweep and the refresh are the SUCCESS UI, so they run
+                // when the load has actually happened -- which for a load deferred behind an open
+                // user transaction is later, and for a foreign or unparsable file is never. The
+                // parse is synchronous either way, so "not an Anamorph preset" is still answered
+                // the instant the chooser closes.
+                safeThis->processor.getPresets().loadFile (file,
+                    [inner = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (safeThis)]
+                    (bool ok)
+                    {
+                        if (inner == nullptr || ! ok) return;
+                        inner->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
+                        inner->refreshPresetDisplay();
+                    });
             }
         });
 }
@@ -2167,6 +2218,7 @@ void AnamorphAudioProcessorEditor::showSavePreset (bool show)
         // The RAW name on purpose, not refreshPresetDisplay's placeholder: for a state that
         // carries no preset the right pre-fill is an empty field the user types into, never
         // "No Preset" offered as a preset file name.
+        setSavePending (false);   // round 27 (R640): a fresh dialog, never the last one's state
         saveNameEditor.setText (processor.getPresets().currentName(), false);
         focusSaveNameField (4);
     }
@@ -2199,6 +2251,19 @@ void AnamorphAudioProcessorEditor::showSavePreset (bool show)
 // message-loop passes until the grab actually STICKS. Bounded at 4 x 50 ms, and it
 // stops the moment the field reports focus, so it cannot still be running while the
 // user types.
+// ADR-0036 ROUND 27 (Devin R640). The dialog's pending state, and the two things it has to do:
+// stop a second click starting a second save while the first is still queued, and say that
+// something is happening. It is deliberately not a modal spinner -- the wait is bounded by the
+// user's own next action (the transaction they are in the middle of has to finish), so the honest
+// signal is a disabled button and a label that reads as in-progress.
+void AnamorphAudioProcessorEditor::setSavePending (bool pending)
+{
+    saveOkButton.setEnabled (! pending);
+    saveTitle.setText (pending ? "SAVING..." : "SAVE PRESET", juce::dontSendNotification);
+    if (! pending)
+        saveNameEditor.setColour (juce::TextEditor::outlineColourId, colours::outline);
+}
+
 void AnamorphAudioProcessorEditor::focusSaveNameField (int attemptsLeft)
 {
     if (! savePresetBackdrop.isVisible()) return; // dismissed meanwhile -- stop retrying

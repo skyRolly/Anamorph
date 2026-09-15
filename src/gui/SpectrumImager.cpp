@@ -1,6 +1,7 @@
 #include "SpectrumImager.h"
 #include "LookAndFeel.h"
 #include "PluginParameters.h"
+#include "../ParameterDispatch.h"  // ADR-0036 round 27 (R1390): every host-notifying write is bracketed
 #include <iterator>
 #include <cmath>
 
@@ -516,7 +517,7 @@ bool SpectrumImager::storeOwned (juce::RangedAudioParameter* p, float plain, flo
     // this parameter if this store is what first takes it into the batch -- a coupled store runs
     // with nothing bracketed, so there is no gesture open here to have read it.
     const float was    = p->getValue();
-    p->setValueNotifyingHost (norm);
+    anamorph::param::setValueNotifyingHost (p, norm);
     if (! juce::exactlyEqual (p->getValue(), expect))
     {
         // ADR-0008 round 19. THE REFUSAL IS REPORTED, not merely returned. Returning false tells
@@ -767,7 +768,7 @@ bool SpectrumImager::bandAddTarget (int b, float x, float& outX, int n, const fl
 // ----------------------------------------------------------------------------
 //  Parameter writes
 // ----------------------------------------------------------------------------
-void SpectrumImager::beginGesture (juce::RangedAudioParameter* p) { if (p) p->beginChangeGesture(); }
+void SpectrumImager::beginGesture (juce::RangedAudioParameter* p) { anamorph::param::beginChangeGesture (p); }
 // ...AND THE IMAGER'S GESTURE NEVER LEAVES ITS ENDPOINT TO A LIVE READ (round 22, RISK-012).
 // Every gesture that goes through the pair above can close having stored NOTHING: `writeCrossovers`
 // returns early when the topology moved or the plan is inside `kSplitMovedPx`; the wheel's split and
@@ -789,7 +790,7 @@ void SpectrumImager::endGesture   (juce::RangedAudioParameter* p)
 {
     if (p == nullptr) return;
     if (onOwnedRefused) onOwnedRefused (p);
-    p->endChangeGesture();
+    anamorph::param::endChangeGesture (p);
 }
 namespace
 {
@@ -895,11 +896,11 @@ void SpectrumImager::resetParam (juce::RangedAudioParameter* p, int expectedBand
     // value, becoming the user's `after` and therefore the destination of the user's Redo. Same
     // read-back proof `storeOwned` uses: what is there afterwards either is what was installed, or
     // somebody else's, and those are different facts.
-    p->beginChangeGesture();
+    anamorph::param::beginChangeGesture (p);
     if (expectedBands < 0 || bandCount() == expectedBands)
     {
         const float was = p->getValue();
-        p->setValueNotifyingHost (norm);
+        anamorph::param::setValueNotifyingHost (p, norm);
         if (! juce::exactlyEqual (p->getValue(), expect))
         {
             if (onOwnedRefused) onOwnedRefused (p);
@@ -910,7 +911,7 @@ void SpectrumImager::resetParam (juce::RangedAudioParameter* p, int expectedBand
     // nothing, so the live value at the close is whatever the host left there -- which is exactly
     // the value that must not become this user action's endpoint.
     else if (onOwnedRefused) onOwnedRefused (p);
-    p->endChangeGesture();
+    anamorph::param::endChangeGesture (p);
 }
 // ADR-0040, round-3 correction 3: THE COMMIT POINT OPENS A GESTURE FIRST, so a check in the caller
 // is NOT adjacent to this store. `beginChangeGesture` dispatches parameterGestureChanged(idx, true)
@@ -934,7 +935,7 @@ bool SpectrumImager::setBands (int n, int expectedBands, int expectedMask)
     if (p == nullptr) return false;
     const int want = juce::jlimit (1, 4, n);
     bool stored = false;
-    p->beginChangeGesture();
+    anamorph::param::beginChangeGesture (p);
     // ADR-0044. `expectedMask` is why this guard is more than a repeat of the caller's. The count
     // is the store that REINTERPRETS the solo word (`SoloMonitor::process` masks it with
     // ((1 << bands) - 1)), and `beginChangeGesture` above dispatches to every listener BEFORE this
@@ -948,7 +949,7 @@ bool SpectrumImager::setBands (int n, int expectedBands, int expectedMask)
         const float was    = p->getValue();
         const float norm   = p->convertTo0to1 ((float) want);
         const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
-        p->setValueNotifyingHost (norm);
+        anamorph::param::setValueNotifyingHost (p, norm);
         if (! juce::exactlyEqual (p->getValue(), expect))
         {
             if (onOwnedRefused) onOwnedRefused (p);
@@ -960,7 +961,7 @@ bool SpectrumImager::setBands (int n, int expectedBands, int expectedMask)
         }
     }
     else if (onOwnedRefused) onOwnedRefused (p);
-    p->endChangeGesture();
+    anamorph::param::endChangeGesture (p);
     // WHAT THIS FAR SIDE DOES NOT PROVE, and why that is enough (review round 2026-09-08).
     // It re-reads the COUNT only. A listener that moves mbSolo from inside the store's own
     // dispatch, or from inside `endChangeGesture`, is invisible here and this still returns true --
@@ -992,7 +993,7 @@ bool SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
     if (soloP == nullptr) return false;
     mask &= 0x0F;
     bool stored = false;
-    soloP->beginChangeGesture();
+    anamorph::param::beginChangeGesture (soloP);
     // ADR-0045, THE SOUND HALF OF ITS OWN SECOND SENTENCE: "a store whose gesture bracket
     // dispatches before it proves the topology inside the bracket, never outside it." That is what
     // the two clauses below do for the COUNT -- and ADR-0039 settled that the count is not the whole
@@ -1013,7 +1014,7 @@ bool SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
         const float was    = soloP->getValue();
         const float norm   = soloP->convertTo0to1 ((float) mask);
         const float expect = soloP->convertTo0to1 (soloP->convertFrom0to1 (norm));
-        soloP->setValueNotifyingHost (norm);
+        anamorph::param::setValueNotifyingHost (soloP, norm);
         if (! juce::exactlyEqual (soloP->getValue(), expect))
         {
             if (onOwnedRefused) onOwnedRefused (soloP);
@@ -1025,7 +1026,7 @@ bool SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
         }
     }
     else if (onOwnedRefused) onOwnedRefused (soloP);
-    soloP->endChangeGesture();
+    anamorph::param::endChangeGesture (soloP);
     // ADR-0042: confirmed on the far side as well -- see setBands. Measured on the value dispatch
     // rather than the gesture open: `the mask store was overwritten from inside its dispatch and the
     // transaction carried on: Bands 3 with mask 0x9`. `soloMask()` rounds through std::lround, so
@@ -1233,7 +1234,7 @@ void SpectrumImager::resetCrossover (int i)
     // commitFreqEditor -- `projectGaps` slides the pin by an amount derived from the NEIGHBOURS, and
     // `beginChangeGesture` dispatches to the host before the store. ADR-0042: the reset is then
     // confirmed before anything is moved to make room for it.
-    p->beginChangeGesture();
+    anamorph::param::beginChangeGesture (p);
     const int M = bandCount() - 1;
     float xs[3] {}, was[3] {}, owned = 0.0f;
     bool ok = (i < M);
@@ -1256,7 +1257,7 @@ void SpectrumImager::resetCrossover (int i)
     // reason: it carries no value, and the close skips a parameter whose store DECLARED an
     // endpoint before it looks at the refusal bit, so a reset that stood keeps what it installed.
     if (onOwnedRefused) onOwnedRefused (p);
-    p->endChangeGesture();
+    anamorph::param::endChangeGesture (p);
     if (! ok || ! juce::exactlyEqual (p->getValue(), owned)) return;
     (void) spreadSplits (xs, was, M, i, owned);
 }
@@ -1701,7 +1702,7 @@ void SpectrumImager::commitFreqEditor()
     // that had already moved: measured `8440.1 / 3000.0 / 19500.0`, the first split above the
     // second. Computed here, `projectGaps` is pure and nothing dispatches between the snapshot and
     // the store, so the projection is a function of the world one statement earlier.
-    p->beginChangeGesture();
+    anamorph::param::beginChangeGesture (p);
     const int M = bandCount() - 1;
     float xs[3] {}, was[3] {}, owned = 0.0f;
     bool ok = (i < M);
@@ -1719,7 +1720,7 @@ void SpectrumImager::commitFreqEditor()
         ok = storeOwned (p, juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i])), owned);
     }
     if (onOwnedRefused) onOwnedRefused (p);   // ROUND 22, RISK-012 -- see `resetCrossover`
-    p->endChangeGesture();
+    anamorph::param::endChangeGesture (p);
     if (ok && juce::exactlyEqual (p->getValue(), owned))
         (void) spreadSplits (xs, was, M, i, owned);
     closeFreqEditor();

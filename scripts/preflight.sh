@@ -56,6 +56,8 @@ python3 scripts/check-portability.py --self-test
 python3 scripts/check-portability.py
 python3 scripts/check-realtime.py --self-test
 python3 scripts/check-realtime.py
+python3 scripts/check-dispatch.py --self-test
+python3 scripts/check-dispatch.py
 python3 scripts/check-clang-warnings.py --self-test
 python3 scripts/check-gcc-warnings.py --self-test
 # The toolchain installer's release-identity verifier. Its --self-test drives the

@@ -1644,6 +1644,117 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   than by where the test reads; a probe on the OPEN and a probe on the CLOSE measure different
   windows, and round 22 used the wrong one.
 
+* **Round 27 — State tests 101 and 102: the invariant gets a predicate, and `true` stops meaning two things.**
+
+  **State test 101** (`a timer retry never runs a blocking command from inside a parameter dispatch`,
+  R1390, ADR-0036 §30). Round 26 closed the flush's own wait and wrote down the half it did not
+  close; this is that half.
+
+  **THE PROBE DRIVES THE DISPATCH THROUGH `anamorph::param`, AND THAT IS THE TEST RATHER THAN A
+  CONVENIENCE.** The first run of this test used a raw `driveP->endChangeGesture()` and measured
+  **nothing**: the fix brackets the calls THIS PLUG-IN makes, and a raw JUCE call from the harness
+  is a dispatch no part of the plug-in ever starts, so the depth read zero and every leg passed on
+  the unfixed tree too. In production every gesture close goes through the wrapper — the imager's
+  `endGesture`, the editor's Alt-click reset, `applyAutoGain` — so the probe spells it the same way.
+  Leg J then drives the same invariant through a REAL editor control, which is what proves the
+  wiring rather than assuming it.
+
+  | Leg | Shape | The thing only this leg measures |
+  |---|---|---|
+  | A | a queued Undo, then a pumped **timer retry**, with a holder parked inside the command's own `applyStatePreservingView` | the defect, measured: the retry must not WAIT from inside the dispatch — and the Undo then runs at the next door, unprompted |
+  | B | the same pump with `soundReplacement` held throughout | **preservation** — round 26's try still answers this one, so it passes on both trees by design, and a later change cannot take that guarantee away while satisfying round 27's |
+  | C–F | a transaction closing inside the dispatch, once per command class (Undo, Redo, A/B, preset) | none of the four runs inside the extent, all four run at the next boundary, and each really took effect |
+  | G | two commands queued from one pumped transaction | order preserved across the boundary, and the A/B switch really happened |
+  | H | a command queued BY a deferred command | the nested enqueue is not stranded, and it runs behind the ones already in front of it |
+  | I | a real edit inside the pumped transaction, then a deferred Undo | round 25's ordering at the new boundary: the transaction's own step is standing before the command runs, and the Undo pops THAT step |
+  | J | a real editor, a real slider, a real JUCE attachment write | the one bracket `check-dispatch.py` cannot see — and the depth is zero after construction, after the write and after destruction |
+
+  **THE HOLDER IS PARKED FROM INSIDE THE COMMAND**, which is what makes leg A R1390 rather than
+  R651: `seams.beforeSoundReplacementWrites` fires at `applyStatePreservingView`'s last instant
+  before it takes the lock, so a tree that runs the command from the timer blocks THERE, after the
+  flush's own try has already succeeded and been released. It is a non-announcing holder (an
+  off-thread `getStateInformation`) and a harness watchdog releases it at 400 ms, so a mutant fails
+  an elapsed-time assertion instead of hanging the suite.
+
+  **State test 102** (`a deferred preset operation reports its real result, not its queueing`, R640,
+  ADR-0008 round-27 amendment).
+
+  | Leg | Shape | The thing only this leg measures |
+  |---|---|---|
+  | A | a plain synchronous save | `completed`, and the completion fires once with `true` — the leg that caught the moved-from `std::function` |
+  | B | an illegal name, outside AND inside a transaction | a bad name is refused NOW either way, so an open transaction cannot turn it into queued work |
+  | C | a save inside a transaction | `deferred`, nothing claimed and nothing written until the boundary, then one completion saying `true` |
+  | D | the same, with the write made to fail | the failure the old `(void) saveUser` discarded reaches the caller |
+  | E | a foreign-rooted file, outside AND inside a transaction | a load's only failure mode is synchronous, so the deferred half has none left |
+  | F | the whole save issued from inside a pumped parameter dispatch | the completion still arrives, and still only when the work is done |
+  | G | two saves queued from one transaction | one completion each, in the order the user gave them, both files written |
+  | H | the editor destroyed before the boundary | there is no cancellation: the completion runs anyway and touches nothing destroyed (ASan/UBSan/valgrind run this suite) |
+  | I | the REAL Save button, panel and name field on a real editor | the sentence the finding actually reported: the panel stays open and Save is disabled while the save is queued, and closes when it has happened |
+
+  | Mutation | What it changes | Result |
+  |---|---|---|
+  | M120 | the dispatch guard deleted from `flushDeferredCommands` — the round-26 behaviour restored | **KILLED** — 15 checks, leg A measuring **411.9 ms** against 0.1 ms |
+  | M121 | `ScopedDispatch`'s destructor does not lower — an extent that never ends | **KILLED** — 42 checks: the depth only ever rises, so every deferred command strands forever |
+  | M122 | `raiseDispatch` drops its `straddleArmed` guard — the `sendInitialUpdate` leak restored | **KILLED** — 20 checks, the same stranding, from a depth of 14 at editor construction |
+  | M123 | `~AttachmentWitness` drops its unwind — the backstop for a control deleted mid-notification | **SURVIVED** — see below. NOT equivalent, and not claimed to be |
+  | M124 | the transaction's history committed AFTER the commands | **KILLED** — State test 99 leg E and round 27's own leg I2 |
+  | M125 | a refused flush clears the queue — commands dropped | **KILLED** — State test 100 legs C and D |
+  | M126 | the queue walked in reverse — user order lost | **KILLED** — State test 100 leg D |
+  | M127 | `saveUser` returns `completed` for work it queued — the R640 defect restored | **KILLED** — State test 102 leg C |
+  | M128 | the deferred save's completion says `true` unconditionally — the failure discarded again | **KILLED** — State test 102 leg D |
+  | M129 | the Save panel closes on queueing rather than on completion | **KILLED** — State test 102 leg I, on the real button and the real panel |
+  | M130 | `loadFile`'s synchronous failure path does not call the completion | **KILLED** — State test 102 leg E |
+  | M131 | the name check moved BEHIND the deferral — section 9 bypassed | **KILLED** — State test 102 leg B |
+
+  **M123 SURVIVED, AND IT IS NOT EQUIVALENT — IT IS UNREACHABLE FROM THIS HARNESS.** The line it
+  deletes unwinds a raise the witness still holds when it is destroyed, and the only thing that can
+  leave one standing is a control deleted from inside its own notification: `juce::Slider` dispatches
+  through `listeners.callChecked` with a `Component::BailOutChecker` on itself
+  (`juce_Slider.cpp:368-369`, `:387-388`, `:401-402`), so a deletion there skips every remaining
+  listener — including the witness's `after` hook. A host closing the editor from inside a pumped
+  attachment write does exactly that; the suite cannot, because the before hook and the attachment
+  are both JUCE's or the editor's and a test can only append a listener BEHIND the after hook, where
+  it is too late to delete anything. Killing it would need a production seam whose only purpose is to
+  make this mutant killable, and that seam would itself be untested. **Recorded as a survivor with
+  its reason, not dropped and not called equivalent** — the rule this repository has applied since
+  round 15's M57 and round 20's M71.
+
+  **AND ONE ROUND-27 CHANGE HAS NO MUTANT AT ALL, WHICH IS ALSO RECORDED.** The A/B letter's tick
+  reconciliation (`timerCallback`, and see the sibling-audit note) is a `repaint()` request. JUCE
+  exposes no public accessor for a component's pending repaint region, and painting the component
+  into an image bypasses the defect entirely — `ABControl::paint` reads `abActiveSlot()` live, so it
+  always draws the CURRENT slot; the bug is that nothing ever asks it to draw. There is therefore no
+  headless observable, the change carries **no** regression leg, and its correctness rests on
+  inspection plus the three reconciliations immediately above it in the same function that it copies
+  exactly. Said here rather than left to be assumed from the absence of a row.
+
+  **LEG D NEEDED A NON-EMPTY DIRECTORY, AND THE FIRST VERSION PASSED VACUOUSLY.** An empty directory
+  at the target path was supposed to make `File::replaceWithText` impossible; measured, the move onto
+  it succeeded, the leg reported success and asserted the wrong thing about a setup that did not
+  hold. A directory with a child in it cannot be replaced by a file on any platform. Recorded because
+  it is the same lesson as M114's: only running a leg tells you whether its premise is true.
+
+  **THE SUPPRESSION FILE SHRANK, AND THAT IS THE ROUND'S BEST EVIDENCE.** `tests/tsan-suppressions.txt`
+  carried FOUR deadlock entries after round 26. Run on the round-27 tree with `print_suppressions=1`
+  it matched only two — `WriteFromInsideAGestureOpen` and `PumpedUserInteraction` — which trips CI's
+  *"Every TSan suppression still matches something"* step, whose whole purpose is that a dead entry
+  is silent. Re-run with suppressions OFF, the full suite raises **two** lock-order reports where the
+  round-26 tree raised four, and the two that are gone are State test 93's `HostSeat` and State test
+  98's `PumpFromGestureEnd`: both reach `apvts.copyState()` through `pollUndoCoalesceFromTimer`, and
+  both pump from a gesture the PLUG-IN opened, so the round-27 predicate reads non-zero and the tick
+  does nothing. Their entries are therefore **deleted**, per the file's own rule — never broadened —
+  and the deletion is what makes a regression loud: re-open either door and the report comes back
+  with nothing left to absorb it.
+
+  **THE ONE THAT SURVIVES SAYS EXACTLY WHERE THE BOUNDARY IS.** State test 100's report reaches
+  `copyState` through `flushDeferredCommands` -> `pollUndoCoalesceAdopted`, and the flush did not
+  refuse because the gesture it is nested in was opened with a RAW
+  `juce::AudioProcessorParameter::beginChangeGesture` in the harness — deliberately, because that is
+  what a host's own gesture looks like and a host's dispatch raises no depth of ours. So the measured
+  boundary is the one `src/ParameterDispatch.h` claims and no more: every door whose dispatch this
+  plug-in starts is closed; a dispatch the host starts is not seen. `docs/FUTURE_RISKS.md` RISK-009
+  records that as still OPEN rather than rounding it up to closed.
+
 * **Round 26 — State test 100, and a door that may not wait.**
 
   Round 25 put the BLOCKING poll at the user transaction's outermost `1 -> 0` boundary. **State

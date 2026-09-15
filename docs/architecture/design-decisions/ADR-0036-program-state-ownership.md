@@ -1031,7 +1031,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:2245`).
+    (`src/PluginProcessor.cpp:2306`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1100,7 +1100,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     the one-pass reassert makes exact by construction.
 
 23. **A relative operation acts on the session it observed (round 16).** Review finding *"relative
-    navigation uses stale targets"* (`src/PluginProcessor.cpp:1866`).
+    navigation uses stale targets"* (`src/PluginProcessor.cpp:1927`).
 
     **What a relative operation is.** One whose target is a function of the current state rather than
     of the user's input: *the other slot* (`abToggle`), *the next/previous preset*
@@ -1206,7 +1206,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     derived program-state target there to go stale.
 
 24. **One whole-sound replacement at a time (round 17).** Review finding *"overlapping restores
-    expose mixed sound"* (`src/PluginProcessor.cpp:2430`).
+    expose mixed sound"* (`src/PluginProcessor.cpp:2491`).
 
     **What a whole-sound replacement is.** An operation that installs an ENTIRE sound over the live
     parameter set, as opposed to moving one parameter: a host restore's install
@@ -1930,6 +1930,119 @@ turn late) and leaves a save issued on the host thread right after its restore d
     discovered finding rather than closed here, because closing it needs a notion of "dynamically
     inside a listener dispatch" that this codebase does not yet have and that the owner has not
     ruled on.
+
+    > **Round 27 supplies exactly that notion, and the owner has now ruled.** §30 below adds
+    > `anamorph::param::insideDispatch()` and applies it to the flush, which closes BOTH of the two
+    > things this section left open at that door: the widening recorded above (a timer tick running
+    > a command whose own acquisitions block) and the APVTS edge, because a door that never runs
+    > from inside an extent holds no `listenerLock` to be the waiting half with. The user-action
+    > door named in this paragraph — a pumped Undo click with **no** transaction open, which reaches
+    > `undo()` directly and not through the flush at all — is **still open**: §30 guards the flush,
+    > and that path does not go through it. Do not read §30 as closing it.
+
+
+30. **THE DYNAMIC EXTENT OF A PARAMETER DISPATCH, MADE ASKABLE — AND A TIMER RETRY THAT DECIDES
+    RATHER THAN DOES (round 27).** Review finding `src/PluginProcessor.cpp:R1390`, *"timer retry
+    deadlocks state replacement"*. Confirmed, reproduced with real threads, and fixed.
+
+    **The finding is §29's own closing paragraph, reported.** §29 wrote it out: *"a command's own
+    blocking acquisitions are not changed by this round. A timer tick reached from a host's pump can
+    therefore still block, which is exactly what §26 forbids its timer doors."* Devin named the same
+    shape at the same door. The try-lock proves nothing about the command, because the command
+    acquires **after** the try is released:
+
+    | thread | holds | wants |
+    |---|---|---|
+    | message | `listenerLock(P)` (JUCE holds it across the whole dispatch), reached by: host pumps → 20 Hz tick → `pollUndoCoalesceFromTimer` → `flushDeferredCommands` → try succeeds and is **released** → the deferred command runs | `soundReplacement`, via `undo()` → `applyStatePreservingView`, or a preset load → `applySoundTree` |
+    | host | `soundReplacement` | `listenerLock(P)`, via `apvts.replaceState` → `setValueNotifyingHost` |
+
+    **WHY THE INVARIANT COULD NOT BE ENFORCED BEFORE, and what changed.** The rule has existed since
+    round 18 — *nothing that can block on `soundReplacement` may execute from the dynamic extent of a
+    parameter listener callback* — and nothing in the tree could ASK whether it held. Round 21
+    established why the obvious place fails: a depth counter kept around this plug-in's own listener
+    body *"reads zero at exactly the moment it would need to read one"*, because JUCE calls the
+    `finalListener` LAST, and the `finalListener` is JUCE's own `ParameterChangeForwarder` relaying
+    to every `AudioProcessorListener` — i.e. to the host, which is where the pump happens
+    (`juce_AudioProcessor.h:1572`, `juce_AudioProcessorParameter.cpp:78-85, :101-108, :111-120`).
+
+    So the bracket goes on the **call**, not the callback. `setValueNotifyingHost`,
+    `beginChangeGesture` and `endChangeGesture` are **non-virtual** on `juce::AudioProcessorParameter`
+    (`juce_AudioProcessorParameter.h:141, :149, :156`), so no parameter subclass can intercept them
+    and the caller is the only place left. `src/ParameterDispatch.h` wraps those three plus
+    `AudioProcessorValueTreeState::replaceState` (JUCE pushes every parameter out through
+    `setValueNotifyingHost` from inside it) and raises a `thread_local` depth across each.
+    `flushDeferredCommands` refuses while the depth is non-zero, consuming nothing.
+
+    **§29 REJECTED THIS ON A COUNT THAT WAS WRONG, and the correction is recorded rather than
+    quietly dropped.** §29 said extent detection was non-minimal because there were *"43 raw
+    parameter-write calls across 15 functions in the imager alone, plus editor attachments,
+    `applyAutoGain`, `PresetManager`"*. That count came from a grep that matched the API names inside
+    **comments**, of which this tree has many. The real figure is **30 call sites across four files**
+    — 7 in `PluginProcessor.cpp`, 4 in `PresetManager.cpp`, 15 in `SpectrumImager.cpp`, 4 in
+    `PluginEditor.h` — and the fix was therefore available a round earlier than it was taken. The
+    count is now a gate rather than a recollection: `scripts/check-dispatch.py` fails the build on a
+    raw member call anywhere in `src/`, with a self-test in both directions, and its comment-stripper
+    exists precisely because the miscount is what deferred the fix.
+
+    **THE ONE BRACKET THE LINT CANNOT SEE.** JUCE's own attachment writes the parameter from inside
+    `SliderParameterAttachment` and friends, which is not in `src/` at all. It is bracketed at
+    runtime by `AttachmentWitness`, which already straddles the attachment for round 18's reasons —
+    `before` is registered ahead of it and `after` behind it — so the raise belongs to the before
+    hook and the lower to the after one. Two things make that safe, and both were found by the
+    suite rather than reasoned into place:
+
+    * **It is armed only once both hooks are on the control.** `attachSlider` registers `before`,
+      constructs the attachment, then registers `after`, and the attachment's constructor calls
+      `sendInitialUpdate()` — which fires the before hook with no after hook to balance it. Measured:
+      the depth stood at **14**, one per parameter-backed control, from the moment the editor
+      finished constructing, and every deferred command refused forever.
+    * **A raise the witness still holds is unwound in its destructor.** `juce::Slider` dispatches
+      through `listeners.callChecked` with a `BailOutChecker`, so a control deleted from inside the
+      attachment's callback never reaches the after hook. The witnesses are members of the editor and
+      the controls they watch are members too, so the count returns to zero when the control dies.
+
+    **Nothing strands, and nothing new schedules.** A dispatch extent ENDS — it is one parameter
+    call — so the depth is zero again by the time the pumped event returns, and the two retry doors
+    §29 already installed find it zero and run the queue. There is no sleep, no added delay and no
+    parallel scheduler; the guard only decides which visit does the work. Round 25's ordering is
+    untouched: the transaction's own step is still committed before the commands, and a refusal
+    still skips both rather than half.
+
+    **Measured.** State test 101 leg A, with the guard deleted (mutation M120): the pumped timer
+    retry takes **411.9 ms** — it waits out the harness watchdog while JUCE holds Drive's
+    `listenerLock` — against **0.1 ms** with it, the Undo then running at the next door. Legs B–I
+    cover the re-entrant refusal, all four command classes, ordering, nested enqueue and the
+    transaction-first rule without threads; leg J drives the attachment straddle through a real
+    editor and asserts the depth is zero after construction, after the write and after destruction.
+
+    **What this closes at this door, precisely.** The message thread reaching the commands from the
+    flush now provably holds **no** `listenerLock`, so it cannot be the waiting half of either edge —
+    neither the `soundReplacement` edge R651 named nor the APVTS `valueTreeChanging` edge §29 had to
+    leave open. The widening §29 recorded (a timer tick running a command whose own acquisitions
+    block) is closed by the same sentence. What is **not** closed is the user-action door §29's last
+    paragraph names — a pumped Undo click with no transaction open reaches `undo()` directly, never
+    through the flush — and RISK-009 carries that, unchanged.
+
+    **Gate: APPROVED by the owner, 2026-09-15 (round 27), as a DISTINCT approval.** This is a Thread
+    Model change under `ARCHITECTURE_REVIEW_GATE.md` (*"new cross-thread path, new atomic ordering"*)
+    and an ADR is mandatory under `ADR_POLICY.md` (*"Threading model"*); it is recorded here, as a
+    section of the ADR that owns this model, and not as a new ADR. The §26, §27 and §29 approvals are
+    not claimed to reach it.
+
+    | Step | Requirement | Evidence |
+    |---|---|---|
+    | 1 | the author flags the change as gated | this section, and the round-27 comment on PR #144 |
+    | 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's ruling of 2026-09-15 (round 27)**: *"Timer-driven retry paths must remain non-blocking. A timer-facing retry may inspect state, perform try-lock/non-blocking bookkeeping, decide that work is ready, and schedule/defer work. It must NOT execute a deferred command whose execution can perform blocking whole-sound/state capture while still inside a parameter-listener re-entrant dynamic extent. Any such command must instead be deferred to a known-safe message-thread boundary that is outside parameter-listener dispatch"* — with the preservation requirement (completed user transaction → commit its Undo step → execute deferred commands in original user order) and the prohibitions (do not drop commands, no sleeps, no arbitrary timer delays, do not make the host's pumping behaviour a prerequisite for correctness, do not change Undo/Redo semantics, do not redesign `soundReplacement` ownership unless no smaller boundary exists), and the statement that the direction is already approved and is not to be asked again |
+    | 3 | if the change is a decision, an ADR is added/updated | this section — §30, a new mechanism rather than an extension of §26's, recorded separately |
+    | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes |
+
+    Nothing was manufactured on GitHub: no `APPROVED` review exists on PR #144 and none was submitted
+    from this session. ADR-0053 was not reopened and is unchanged. §26–§29 keep the approvals already
+    recorded in them.
+
+    **`soundReplacement` ownership was NOT redesigned**, which the owner's ruling permitted only if
+    no smaller boundary existed. A smaller one did: the lock keeps exactly the owner, the scope and
+    the order it had, and the change is entirely on the *caller* side of it.
 
 
 ## Consequences

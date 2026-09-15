@@ -403,7 +403,7 @@ DELIBERATE_REAIMS = {
     # the ordinary drift check watching it.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/SpectrumImager.cpp:657",
-     "src/gui/SpectrumImager.cpp:724"): "bandCount",
+     "src/gui/SpectrumImager.cpp:725"): "bandCount",
     #
     # 2026-09-13 (ADR-0053 round 12), SIX AT ONCE AND ALL ONE CAUSE, which is why they are listed
     # together rather than argued one by one. The round's own hunks -- one seam, the poll's edge
@@ -438,25 +438,25 @@ DELIBERATE_REAIMS = {
     # check actually sees, and the check runs against `origin/main`.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:1210-1386"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1247-1423"): "parameterGestureChanged",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:1210-1386"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1247-1423"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-826",
-     "src/PluginProcessor.cpp:1210-1387"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1247-1424"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:250",
      "src/PluginProcessor.h:571"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     "src/PluginProcessor.cpp:2686-2785"): "setStateInformation",
+     "src/PluginProcessor.cpp:2747-2846"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     "src/PluginProcessor.cpp:2686"): "setStateInformation",
+     "src/PluginProcessor.cpp:2747"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     "src/PluginProcessor.cpp:2222"): "abActive",
+     "src/PluginProcessor.cpp:2283"): "abActive",
 
     # 2026-09-15 (round 21, ADR-0036 §26): ONE ENTRY, for a span this change EDITED rather than
     # moved. ADR-0008's "Source:" line brackets the whole custom-undo block, from its banner comment
@@ -476,7 +476,7 @@ DELIBERATE_REAIMS = {
     # the same anchor is a plain move that came along with it.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:922, 1251-1254",
-     "src/PluginProcessor.cpp:1135, 1483-1487"): "openGestures",
+     "src/PluginProcessor.cpp:1172, 1544-1548"): "openGestures",
     # ...and the SAME transition declared from the branch's OTHER base. `preflight.sh` runs the gate
     # against `origin/main`, the merge base and `HEAD~1`, and a declaration is keyed on the
     # TRANSITION, so the entry above answers only for the `HEAD~1` base this round pushes from. The
@@ -485,7 +485,7 @@ DELIBERATE_REAIMS = {
     # while another did not, and the green one was the one that got read.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:737, 870-873",
-     "src/PluginProcessor.cpp:1135, 1483-1487"): "openGestures",
+     "src/PluginProcessor.cpp:1172, 1544-1548"): "openGestures",
     # 2026-09-15 (round 26): THE SAME ENTRY, RE-AIMED, not a second one. Round 26 inserted comment
     # lines above `syncCommitted` in `PluginProcessor.cpp`, so the ADR's span end moved 713 -> 810
     # while its two ends kept naming the same banner and the same function. That is ordinary drift
@@ -498,7 +498,7 @@ DELIBERATE_REAIMS = {
     # neither spelling of the pair is behind it -- the run's own note says "keep it".
     ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
      "src/PluginProcessor.cpp:426-565",
-     "src/PluginProcessor.cpp:469-810"): "syncCommitted",
+     "src/PluginProcessor.cpp:470-847"): "syncCommitted",
     #
     # 2026-09-13 (round 13) declared a re-aim of RISK-012's poll citation, `:963-1035` ->
     # `:980-1039`, onto the `sig != committedSig` gate. ROUND 14 DELETED IT, because round 14
@@ -507,6 +507,50 @@ DELIBERATE_REAIMS = {
     # longer contains is dead, and this file's own rule -- an entry that matches nothing silently
     # widens what a future report can be absorbed by -- says delete it rather than re-aim it at
     # something the sentence is not about. The self-test caught it, which is what that test is for.
+    #
+    # 2026-09-15 (round 27): FOUR OF THE ENTRIES ABOVE ARE RE-AIMED, not replaced and not joined by
+    # new ones. `1210-1386` / `1210-1387` (three entries, `parameterGestureChanged`) and `469-810`
+    # (ADR-0008's `Source:` bracket) are spellings their documents stopped carrying when this
+    # round's source growth moved them on -- and an entry naming a string no document contains
+    # excuses nothing, which is exactly what section 9 of the self-test says out loud. Their bases
+    # are unchanged; only the far end moved.
+    #
+    # 2026-09-15 (round 27, ADR-0036 section 30): THREE ENTRIES, ONE CAUSE, and the cause is the
+    # bracket itself. Round 27 rewrote every raw `p->setValueNotifyingHost (v)` /
+    # `p->beginChangeGesture()` / `p->endChangeGesture()` into the `anamorph::param::` wrapper that
+    # raises the dispatch depth `flushDeferredCommands` reads. Three citations aim AT those exact
+    # lines, so for them this is an EDITED span, not a moved one: the line map returns `None` and
+    # the run reports UNMAPPABLE rather than inventing a number, which is precisely the case a
+    # declaration is for. Each sentence is unchanged and still true -- PREfast's `C6001` on the
+    # view-param restore loop, the imager's owned-store shape, and ADR-0010's point that the
+    # host-hidden Settings controls are not what the undo poll's gesture guard is looking at -- so
+    # each anchor is re-aimed by hand onto the same statement at its new spelling. The target
+    # symbols below are resolved against the current file on every run, so a number computed before
+    # the file settled fails here rather than going quiet.
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/PluginProcessor.cpp:923",
+     "src/PluginProcessor.cpp:960"): "viewParams",
+    # ...and the SAME transition from the branch's OTHER two bases, which both carry `:526`. A
+    # declaration is keyed on the PAIR, so the entry above answers only for the base that carries
+    # `:923`; leaving the older spelling undeclared is what let an anchor ship stale once already
+    # (see the header) -- one base goes green while another does not, and the green one is the one
+    # that gets read. `origin/main` and the merge base are the same commit for this anchor, so one
+    # entry covers both.
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/PluginProcessor.cpp:526",
+     "src/PluginProcessor.cpp:960"): "viewParams",
+    ("docs/FUTURE_RISKS.md",
+     "src/gui/SpectrumImager.cpp:898-913",
+     "src/gui/SpectrumImager.cpp:899-914"): "beginChangeGesture",
+    # ...and ADR-0010's, whose anchor is a PAIR: the notifying write the wrapper replaced, and the
+    # poll's gesture guard, which merely moved. One end edited is enough to make the whole anchor
+    # unmappable, so the entry carries both ends at their re-derived spellings. The two entries
+    # above it in this table declare the SAME final spelling from the branch's two older bases; this
+    # one answers for the base CI compares against when the push predecessor is this round's own
+    # first commit.
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:1135, 1483-1487",
+     "src/PluginProcessor.cpp:1172, 1544-1548"): "openGestures",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

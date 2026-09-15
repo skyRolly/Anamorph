@@ -79,7 +79,23 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   a second later instead of being lost. And the waiting itself can no longer stall the plug-in: if
   your DAW happens to be saving or restoring the session at that exact moment, the postponed command
   now steps aside and runs a fraction of a second later instead of holding the interface until the
-  save finishes.
+  save finishes. And the postponed command itself no longer runs at a moment when it could stall:
+  some DAWs deliver mouse clicks and timer ticks from inside their own parameter housekeeping, and a
+  postponed Undo, Redo, A/B switch or preset load that ran there could hold the interface until a
+  session save or restore on another thread finished. It now waits for the housekeeping to return
+  first — a fraction of a second at most — and runs then, in the order you asked for it.
+- **Saving a preset now waits until the preset is actually saved, and a save that fails says so.**
+  If you pressed Save while the plug-in was in the middle of a Multiband band change, the save was
+  postponed to the moment that change finished — but the panel closed immediately and the preset list
+  refreshed, so it looked done. If the postponed write then failed — a preset folder you cannot write
+  to, a full disk — nothing told you, and the preset you thought you had saved did not exist. The
+  Save panel now stays open with your name still in it until the write has really happened: on
+  success it closes as before, on failure it stays open and marks the field so you can retry. An
+  empty or unusable name is still refused immediately, as it always was. Loading a preset from
+  **Load Preset…** is the same: a file that is not an Anamorph preset is still refused the instant
+  you choose it, and the knob sweep now happens when the preset has actually loaded rather than when
+  it was queued.
+  Decision: ADR-0008. Regression coverage: State test 102. Evidence: PR #144. [Verified]
 - **Adding or removing a Multiband band is one Undo step again, never half of one.** A band split is
   not a single change: adding or removing one renumbers the solo bits, moves the widths, shifts the
   neighbouring splits and finally changes the band count — and in between, some DAWs run their own

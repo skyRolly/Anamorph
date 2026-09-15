@@ -162,6 +162,36 @@ learned: a rule of the form *"nothing reaches X from a listener"* must be checke
 HOST may run inside the callback — and an exemption of the form *"…except this class of caller"*
 must be checked the same way, because the pump does not know the classes.
 
+**ROUND 27 (2026-09-15) — AND THE RULE FINALLY HAS A PREDICATE.** Round 21's "checked against what
+a host may run inside the callback" was, for six rounds, a review instruction: nothing in the tree
+could ASK whether execution was inside a listener's dynamic extent, so every application of the rule
+was an argument about reachability rather than a test. Round 21 also established why the obvious
+implementation fails — a depth kept around this plug-in's own listener body *"reads zero at exactly
+the moment it would need to read one"*, because JUCE calls the `finalListener` LAST and the
+`finalListener` is what relays to the host, which is where the pump is.
+
+`src/ParameterDispatch.h` (ADR-0036 §30) puts the bracket on the CALL instead. The three
+`AudioProcessorParameter` entry points are non-virtual, so a caller is the only place that can
+bracket them; `anamorph::param`'s four wrappers raise a `thread_local` depth across each, and
+`scripts/check-dispatch.py` fails the build on a raw member call anywhere in `src/`. The one write
+the lint cannot see — JUCE's own attachment — is bracketed by `AttachmentWitness`'s existing
+straddle and regression-tested by State test 101 leg J.
+
+**The rule as it now stands, and what enforces each half:**
+
+| clause | enforced by |
+|---|---|
+| nothing that can WAIT for `soundReplacement` may run from the deferred-command flush while this thread is inside a parameter dispatch | `anamorph::param::insideDispatch()` in `flushDeferredCommands`; State test 101 legs A–J, mutation M120 (411.9 ms against 0.1 ms) |
+| every parameter dispatch this plug-in starts raises the depth | `scripts/check-dispatch.py`, with a self-test in both directions |
+| a JUCE attachment's own write raises it too | `AttachmentWitness`'s before/after straddle; State test 101 leg J |
+| a refusal consumes nothing and is retried | unchanged from §26/§29 — both polls call the flush |
+
+**Still OPEN, and not narrowed by the above:** `undo()`, `redo()`, the A/B paths and the preset loads
+block when a pumped click reaches them **directly**, with no transaction running and therefore no
+flush involved. The predicate now exists to close that too, but doing so means deciding what a
+refused *direct* user action should do — there is no queue holding it — and that is a product
+decision the owner has not been asked for. RISK-009 records it.
+
 **GIVING THE TICK UP IS NOT FREE, AND ROUND 22 PAID THE DIFFERENCE (ADR-0036 §27).** "Take the lock
 without waiting" answers the deadlock and says nothing about what the caller has already CONSUMED by
 the time it tries. The restore drain had taken the decode out of `pendingRestore` before its try, so
@@ -259,7 +289,7 @@ relies on.
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-190;
-  src/PluginProcessor.cpp:129-151, 346; src/InternalState.h:175, 548-571
+  src/PluginProcessor.cpp:130-152, 347; src/InternalState.h:175, 548-571
 - D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
   generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,
   `getStateInformation`); ADR-0036; State tests 37–41; the `tsan` job in

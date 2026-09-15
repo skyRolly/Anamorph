@@ -857,6 +857,11 @@ leg.
   The consequence, stated: the Save panel closes before the file exists, and a genuine failure inside
   the deferred run is reported nowhere. UI convergence itself is fine — `refreshPresetDisplay()` runs
   on the editor's 24 Hz tick, so the caller's immediate reads are corrected within one period.
+  > **WITHDRAWN in round 27 — see the amendment below.** Review finding
+  > `src/PresetManager.cpp:R640` reported exactly the consequence this bullet recorded and declined
+  > to fix, and the owner has ruled against the reasoning. The two are not the same question: "has
+  > not been read YET" is a statement about TIMING, and the caller was reading it as a statement
+  > about OUTCOME. A third answer -- deferred -- costs nothing and says both.
 
 **Architecture Review Gate: APPROVED by the owner, 2026-09-15 (round 25).** The approval covers
 preventing state-replacing commands from executing re-entrantly inside `userTransactionDepth`,
@@ -872,6 +877,73 @@ step.
 
 ADR-0036 and ADR-0053 are untouched by this round and keep the owner approvals already recorded in
 them; neither was reopened.
+
+## Decision — amendment, 2026-09-15 (round 27): queued is not done
+
+Review finding `src/PresetManager.cpp:R640`, *"deferred preset failures report success"*. Confirmed.
+It is the round-25 examined residual above, reported — and the reasoning recorded there is withdrawn.
+
+**What the defect actually was.** Round 25 made `saveUser` and `loadFile` deferrable and had them
+return `true` for work they had merely queued, with the deferred re-entry written
+`(void) saveUser (rawName)`. Three consequences, all real:
+
+| path | what the user saw | what had happened |
+|---|---|---|
+| `PluginEditor.cpp` Save button | the panel closed, the preset list refreshed | nothing was on disk yet |
+| the deferred write then failing (read-only folder, full disk) | nothing at all | the save never happened, and the `(void)` discarded the answer |
+| `PluginEditor.cpp` chooser load of a foreign file | the knobs swept and the display refreshed | the load was refused later, by a call whose result nobody held |
+
+**The contract, as the owner ruled it.** A synchronous result means the operation really completed.
+Anything that cannot complete synchronously reports its FINAL result through an explicit completion,
+and the initiating UI stays pending until that completion arrives. Concretely:
+
+* `PresetManager::OpResult` is `{ failed, completed, deferred }` — a **scoped** enum, so
+  `if (saveUser (n))` cannot compile and quietly mean "queued OR saved" again. Changing the type
+  rather than the meaning of `true` is what makes every caller a compile error instead of a reader's
+  problem.
+* `onComplete`, when supplied, is called **exactly once** with the final answer: synchronously before
+  returning for `completed` and `failed`, later from the deferred execution for `deferred`. A caller
+  may ignore the return value entirely and still be correct, which is what the editor does.
+* **Failures knowable without touching the disk are decided before anything is queued.** An empty or
+  illegal name is a property of the argument; "is this an Anamorph preset" is a property of the
+  bytes. `saveUser` checks the name first, `loadFile` parses first — so a deferred load has no
+  failure mode left at all, and a deferred save can only fail in I/O. An open transaction does not
+  turn a bad name or an unreadable file into queued work.
+* The UI: the Save panel stays open and its button is disabled while the save is queued; on success
+  it closes as before, on failure it stays open with the text intact and the field marked. The
+  completions capture a `juce::Component::SafePointer`, which is the pattern the OS file chooser on
+  the same screen already used.
+
+**There is no cancellation, and that is stated rather than invented.** A queued command is never
+dropped — that is this ADR's round-25 rule — so a completion always runs, and it may run after the
+editor that asked for it has gone. The lifecycle constraint is therefore *the completion must survive
+its initiator*, not *the initiator must be able to cancel*. State test 102 leg H builds a real editor,
+queues a save from it, destroys the editor and then reaches the boundary; ASan, UBSan and valgrind all
+run that suite.
+
+**Architecture Review Gate: NOT TRIGGERED, and the determination is recorded rather than assumed.**
+`ARCHITECTURE_REVIEW_GATE.md` lists eight gated areas — DSP graph, signal flow, thread model,
+parameter registry, serialization registry, latency, plugin format, build system — and this change
+touches none of them: no parameter, no serialized field, no thread, no reported latency. `ADR_POLICY.md`
+makes an ADR mandatory for nine categories and this is in none of them either, so **no new ADR was
+created**; it is recorded here, as an amendment to the ADR whose own round-25 deferral produced the
+defect. The owner's completion-semantics ruling of 2026-09-15 is the decision being recorded, and it
+was given before the work started and is not asked again.
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | **not gated** — the determination above, against the eight areas by name |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's ruling of 2026-09-15 (round 27)**: *"A deferred operation must not return synchronous success merely because it was queued"* — with the synchronous/deferred split, the requirement that the final result travel on an explicit completion and not be discarded, the UI requirement that a queued operation is not presented as completed, and the section-9 requirement that synchronously-knowable failures are rejected before queuing |
+| 3 | if the change is a decision, an ADR is added/updated | this amendment to ADR-0008; **no new ADR**, per `ADR_POLICY.md`'s categories |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — the preset FILE format is byte-for-byte unchanged; only the C++ return type of two internal entry points changed, and no session or preset written by any earlier build reads differently |
+
+**What was checked and left alone.** `PresetManager::load (int)` and `step (int)` return `void`, so
+they report no success to misread; the editor's `refreshPresetDisplay()` after them can show the
+pre-load name for up to one 24 Hz tick, which the editor's own tick then corrects — a transient, not
+a discarded failure, and not the R640 class. The A/B and undo commands
+(`undo`, `redo`, `abToggle`, `abSwitchTo`, `abCopyToOther`) return `void` for the same reason and are
+unchanged.
+
 
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
@@ -914,5 +986,5 @@ them; neither was reopened.
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:469-810, :340-520
+- Source: src/PluginProcessor.cpp:470-847, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")

@@ -4803,3 +4803,224 @@ to a test written in the same round that added the file's newest entry.
 
 Renamed to `PumpedUserInteraction`, which no entry matches. The rule for future probes: a new
 harness type must not share a prefix with any existing suppression string.
+
+## §84. Round 27 — the invariant that had no predicate, and the `true` that meant two things
+
+Two findings, and both of them are sentences this repository had already written down and declined
+to act on. That is the shape of the round: nothing here was a surprise to the documentation, only to
+the code.
+
+### §84a. R1390 — the timer retry, which is §29's own closing paragraph reported back
+
+`docs/architecture/design-decisions/ADR-0036-program-state-ownership.md` §29 ends:
+
+> *"Those acquisitions of the commands' own are still BLOCKING, and `pollUndoCoalesceFromTimer` is
+> now one of the two doors that runs them — so a tick reached from a host's pump can still block,
+> which is exactly what §26 forbids its timer doors."*
+
+Devin's `src/PluginProcessor.cpp:R1390` names exactly that. The try-lock round 26 added protects the
+flush's own preliminary poll and says nothing about the command, because the command acquires after
+the try is released. Confirmed from source before anything was written.
+
+**Why six rounds of the same rule never enforced it.** The rule dates from round 18 —
+*nothing that can block on `soundReplacement` may execute from the dynamic extent of a parameter
+listener callback* — and until this round nothing in the tree could ask whether it held. Every
+application of it was an argument about which callers were reachable, and round 21, round 25 and
+round 26 each got one of those arguments wrong in turn. Round 21 also recorded, correctly, why the
+obvious implementation cannot work: a depth kept around this plug-in's own listener body *"reads zero
+at exactly the moment it would need to read one"*, because JUCE calls the `finalListener` last and
+the `finalListener` is `AudioProcessor::ParameterChangeForwarder`, which is what relays to the host —
+and the host is where the pump is.
+
+**So the bracket went on the call.** `setValueNotifyingHost`, `beginChangeGesture` and
+`endChangeGesture` are non-virtual on `juce::AudioProcessorParameter`, so no parameter subclass can
+intercept them and the caller is the only place left. `src/ParameterDispatch.h` wraps those three
+plus `replaceState` and raises a `thread_local` depth; `flushDeferredCommands` refuses while it is
+non-zero, consuming nothing, and the two retry doors round 26 installed do the work once the extent
+has returned.
+
+### §84b. The count that deferred the fix by a round
+
+§29 rejected extent detection as non-minimal, and gave a number: *"43 raw parameter-write calls
+across 15 functions in the imager alone, plus editor attachments, `applyAutoGain`, `PresetManager`."*
+
+That number was wrong, and wrong in a way worth recording. The grep behind it matched the API names
+inside **comments**, and this tree comments these APIs constantly — `SpectrumImager.cpp` mentions
+`beginChangeGesture` 33 times and calls it 5 times. The real total is **30 call sites across four
+files**: 7 in `PluginProcessor.cpp`, 4 in `PresetManager.cpp`, 15 in `SpectrumImager.cpp`, 4 in
+`PluginEditor.h`. The fix was affordable a round before it was taken, and the reason it looked
+unaffordable was a measurement nobody re-ran.
+
+`scripts/check-dispatch.py` now replaces the recollection with a gate. Its comment/string stripper is
+not incidental — it is the direct answer to the miscount, and its self-test asserts in both
+directions that prose does not fire the lint and that a real call does.
+
+### §84c. The leak the suite found, which no amount of reading would have
+
+JUCE's own attachment write is not in `src/` at all, so the lint cannot see it; it is bracketed by
+`AttachmentWitness`, which already straddles the attachment for round 18's reasons. Wiring the raise
+into the before hook and the lower into the after hook looked obviously correct and was not:
+
+`attachSlider` registers `before`, **constructs the attachment**, then registers `after` — and
+`ParameterAttachment`'s constructor calls `sendInitialUpdate()`, which pushes the parameter's value
+into the control and therefore fires the before hook while only the before hook is listening. That
+raise has nothing to lower it.
+
+Measured: the dispatch depth stood at **14** — one per parameter-backed control — from the moment
+the editor finished constructing, and every deferred command in State tests 99 and 100 refused
+forever. The suite went from 3669/0 to 3669/14 and the debug print read `flush refused, depth=14` on
+every attempt. The straddle is now armed only once both hooks are on the control (the initial update
+writes no parameter, so not raising there is correct as well as safe), and the witness unwinds any
+raise it still holds in its destructor, because `juce::Slider` dispatches through a `BailOutChecker`
+and a control deleted inside its own notification never reaches the after hook.
+
+### §84d. R640 — the `true` that round 25 wrote down and did not fix
+
+ADR-0008's round-25 section carries this, as an examined residual:
+
+> *"**A deferred `loadFile` / `saveUser` returns `true`.** … The consequence, stated: the Save panel
+> closes before the file exists, and a genuine failure inside the deferred run is reported nowhere."*
+
+Devin's `src/PresetManager.cpp:R640` is that paragraph, reported. The reasoning it gave — *"reporting
+failure would make the editor say the file could not be read when it simply has not been read YET"* —
+is withdrawn, and the reason it was wrong is worth one sentence: **"has not been read yet" is a
+statement about timing and the caller was reading it as a statement about outcome.** A third answer
+costs nothing and says both.
+
+The contract is now `{ failed, completed, deferred }` plus a completion called exactly once with the
+final result, and the failures that are knowable without touching the disk are decided before
+anything is queued — so a deferred load has no failure mode left and a deferred save can only fail in
+I/O. The return TYPE changed rather than the meaning of `true`, which made all 24 call sites compile
+errors instead of a reader's problem.
+
+### §84e. Two defects in this round's own work, both found by its own tests
+
+* **The completion was moved-from on the synchronous path.** `cb = std::move (onComplete)` in a
+  lambda init-capture is evaluated when the lambda is CONSTRUCTED — before `deferIfBusy` is called,
+  and regardless of what it answers — so the synchronous caller was handed an empty `std::function`
+  and told nothing at all. State test 102 leg A read `completion calls 0` on a save that had plainly
+  succeeded. Copied, not moved.
+* **Leg D's forced I/O failure did not fail.** Creating an empty directory at the target path was
+  supposed to make `File::replaceWithText` impossible; measured, the move onto it succeeded and the
+  leg passed vacuously reporting success. A directory with a child in it cannot be replaced by a file
+  on any platform, and that is what the leg builds now.
+
+Both are the same lesson in different clothes: a leg that asserts the right thing about a setup that
+does not hold is a leg that proves nothing, and only running it says which you have.
+
+### §84f. The survivor, and why it is not called equivalent
+
+M123 deletes `~AttachmentWitness`'s unwind — the line that lowers a dispatch raise the witness is
+still holding when it dies. It **survived**, and the reason is worth the space because the wrong
+thing to do here is obvious and tempting.
+
+The only way to leave a raise standing is for the `after` hook never to run, and the only thing that
+prevents it is the control being deleted from inside its own notification: `juce::Slider` dispatches
+through `listeners.callChecked` with a `Component::BailOutChecker` on itself (`juce_Slider.cpp:368`,
+`:387`, `:401`). A host that closes the editor from inside a pumped attachment write does exactly
+that. The suite cannot: the before hook and the attachment are JUCE's and the editor's, and a test
+can only append a listener BEHIND the after hook, where deleting the slider is already too late.
+
+So M123 is **unreachable from this harness**, which is a different thing from **equivalent**. An
+equivalent mutant produces a program indistinguishable from the original; this one produces a
+program that leaks a raise in a scenario that really exists and that the harness has no way to build.
+Calling it equivalent would be a false claim, and dropping it would hide a line with no coverage.
+It is recorded as what it is. The alternative — adding a production seam whose only purpose is to let
+this mutant be killed — would put an untested branch into `AttachmentWitness` to prove an untested
+branch is tested, which is worse than the honest record.
+
+### §84g. Leg I measured the value where it should have measured the step
+
+The first version of leg I asked whether the transaction's Width had moved by the time the deferred
+command ran. It had — the parameter is written whether or not the STEP was committed first — so the
+leg passed under M124 (the mutation that commits the history after the commands) and State test 99
+leg E killed it instead.
+
+Two corrections came out of that. The observable is now `canUndo()` against an emptied history, so
+the only step that can exist is the one the transaction just produced. And the leg was split: leg I
+closes its transaction INSIDE the dispatch, where the flush refuses and `pollUndoCoalesce` supplies
+the ordering from outside the flush; **leg I2** closes it at depth zero, where the flush runs its own
+loop and its internal order is the only thing that can decide the answer. M124 now dies to leg I2 as
+well as to round 25's leg E.
+
+The general shape is the same one §84e records: a leg whose premise does not hold proves nothing,
+and the premise here was "if the ordering were wrong, this observable would change" — which was
+false for the observable chosen.
+
+### §84h. The sibling audit found one thing Devin did not name
+
+R640's audit was widened past its two callers, as the brief required. Nine of the ten deferral sites
+are `void` and cannot misreport anything; the editor reads a post-condition on the statement after
+every one of them, and almost all of those reads are re-run from the 24 Hz tick, so they are stale
+for at most one period.
+
+**The A/B letter is the exception, and it has no reconciliation path at all.** `ABControl::paint`
+reads `processor.abActiveSlot()` live, but the only repaints it ever receives are its own
+`mouseEnter`/`mouseExit` and the editor-wide `repaint()` in its click handler — which runs **before**
+a deferred `abToggle` has executed. `timerCallback` never repaints it on a state change and
+`refreshPresetDisplay` does not touch it. So after a deferred A/B toggle the letter keeps showing the
+outgoing slot until the pointer happens to cross it, while the sound is the other slot's.
+
+Round 25's deferral introduced it and nothing since has looked. Fixed with the same four-line shape
+the tick already uses for the Advanced, meters and M/S toggles. It carries no regression leg, and
+`TESTING.md` says why rather than leaving the absence to be inferred: a `repaint()` request has no
+headless observable, and painting the component into an image bypasses the defect entirely, because
+`paint` always draws the current slot — the bug is that nothing asks it to draw.
+
+### §84i. RISK-009 measured rather than argued: the suppression file is the evidence
+
+The round-27 brief forbids closing RISK-009 because a new test stops reproducing it, and lists what
+closure would need: the exact old cycle, the exact new invariant, a deterministic regression, TSan
+evidence, no newly introduced inversion, and a broader run. The measurement below gives the first
+five and settles the sixth the other way — **RISK-009 stays OPEN**, and the evidence for what DID
+close is the suppression file getting smaller.
+
+`tests/tsan-suppressions.txt` carried four deadlock entries after round 26. On the round-27 tree the
+full `AnamorphStateTests` run under `print_suppressions=1` credits **two**:
+`WriteFromInsideAGestureOpen` and `PumpedUserInteraction`. Two entries matching nothing is the exact
+condition CI's *"Every TSan suppression still matches something"* step exists to fail on, and the
+file's own header says what to do about it: delete the dead entry, never broaden the pattern.
+
+Re-run with the suppressions replaced by an empty file and `halt_on_error=0`, the suite raises
+**two** `lock-order-inversion` reports where the round-26 tree raised four:
+
+| report | locks | still there? |
+|---|---|---|
+| State test 75 leg D vs leg G (`WriteFromInsideAGestureOpen` / `WriteFromInsideAStore`) | two parameters' `listenerLock`s | **yes** — harness-only nesting, untouched by round 27 |
+| State test 93 (`HostSeat`) | `listenerLock` vs APVTS `valueTreeChanging` | **gone** |
+| State test 98 (`PumpFromGestureEnd`) | the same pair | **gone** |
+| State test 100 (`PumpedUserInteraction`) | the same pair | **yes** |
+
+The two that are gone are precisely the two the round-27 predicate answers. Both reach
+`apvts.copyState()` through `pollUndoCoalesceFromTimer`, and both pump from a gesture the PLUG-IN
+opened — test 93's through the editor's attachment, test 98's through the imager's `addBandAt` and
+`anamorph::param::beginChangeGesture`. The depth is non-zero when the pump arrives, so the tick does
+nothing at all and never reaches the APVTS lock. Their entries are deleted.
+
+**The one that survives is the interesting one, and it says exactly where the boundary is.** Its
+`M0 => M1` stack, read frame by frame:
+
+```
+endChangeGesture  ->  ParameterChangeForwarder  ->  PumpedUserInteraction (the host's pump)
+  -> mouseDown -> addBandAt -> ~ScopedUserTransaction -> endUserTransaction
+  -> flushDeferredCommands -> pollUndoCoalesceAdopted -> currentStateSet
+  -> copyStateWithRawValues -> AudioProcessorValueTreeState::copyState   [APVTS lock]
+```
+
+and `M1 => M0` is `replaceState` holding the APVTS lock and reaching a parameter's `listenerLock`
+through `valueTreeRedirected` -> `setNewState` -> `setValueNotifyingHost`.
+
+The flush did **not** refuse, and the reason is not a hole in the guard. State test 100 opens its
+outer gesture with a RAW `driveP->beginChangeGesture()` / `driveP->endChangeGesture()`, deliberately:
+that is what a HOST's own gesture looks like, and a host's dispatch raises no depth of ours.
+`src/ParameterDispatch.h` says so in its first paragraph — the question the depth answers is *"is
+this thread inside a parameter dispatch THIS PLUG-IN started"*. So the measured boundary is the one
+claimed and no more: every door whose dispatch we start is closed; a dispatch the host starts is
+invisible, and the round-20 pair is still reachable through it.
+
+That is why RISK-009 is not closed here. Closing it needs either a fact JUCE does not publish (is
+*any* parameter dispatch in flight on this thread, whoever started it?) or a threading-model change
+that keeps `copyStateWithRawValues` off the APVTS lock — both `ARCHITECTURE_REVIEW_GATE.md` items
+and both an owner decision. Deleting the two dead entries is also the cheapest regression detector
+available for the half that DID close: re-open either door and the report comes back with nothing
+left in the file to absorb it.

@@ -64,6 +64,15 @@ namespace
     int failures = 0;
     int checks   = 0;
 
+    // ADR-0036 round 27 (Devin R640). `saveUser` and `loadFile` no longer return a bool, because
+    // `true` used to mean "saved OR merely queued" and the editor read it as "saved". These two
+    // read the tri-state for the SYNCHRONOUS cases every call site below is in -- none of them has
+    // a user transaction open, so `deferred` would itself be a failure and reads as one.
+    bool opCompleted (anamorph::PresetManager::OpResult r)
+    { return r == anamorph::PresetManager::OpResult::completed; }
+    bool opFailed (anamorph::PresetManager::OpResult r)
+    { return r == anamorph::PresetManager::OpResult::failed; }
+
     void check (bool cond, const char* what)
     {
         ++checks;
@@ -858,7 +867,7 @@ static void testPresetSaveReloadRoundTrip()
     const bool hadUserFile = presetFile.existsAsFile();
     if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
 
-    check (presets.saveUser (name), "saveUser succeeds");
+    check (opCompleted (presets.saveUser (name)), "saveUser succeeds");
     check (presetFile.existsAsFile(), "preset file written");
     checkStr (presets.currentName(), name, "current preset adopts saved name");
     check (! presets.isDirty(), "freshly saved preset is clean");
@@ -911,7 +920,7 @@ static void testPresetSaveReloadRoundTrip()
     if (presetFile.copyFileTo (tempCopy))
     {
         setRaw (p, "drive", 0.9f);
-        check (presets.loadFile (tempCopy), "loadFile loads an arbitrary .anamorph path");
+        check (opCompleted (presets.loadFile (tempCopy)), "loadFile loads an arbitrary .anamorph path");
         checkNear ((double) rawOf (p, "drive"), (double) driveSaved, 1.0e-5,
                    "loadFile restores the saved sound");
         tempCopy.deleteFile();
@@ -1070,7 +1079,7 @@ static void testDuplicateNameFactoryVsUserPreset()
     check (presets.currentIndex() == factoryIdx, "the factory preset is current before any user file exists");
 
     // The case the split exists for: save a user preset under the factory name.
-    check (presets.saveUser (shared), "saveUser succeeds under a factory preset's name");
+    check (opCompleted (presets.saveUser (shared)), "saveUser succeeds under a factory preset's name");
     check (presetFile.existsAsFile(), "user preset file written");
     checkStr (presets.currentName(), shared, "the shared name is still what is DISPLAYED");
     const int userIdx = presets.currentIndex();
@@ -1093,7 +1102,7 @@ static void testDuplicateNameFactoryVsUserPreset()
     // baseline; without the onSaved hook `committed` keeps the pre-save (factory) identity
     // and the first undo restores it.
     presets.load (factoryIdx);
-    check (presets.saveUser (shared), "re-save under the shared name");
+    check (opCompleted (presets.saveUser (shared)), "re-save under the shared name");
     check (presets.currentIndex() == userIdx, "the save selects the user row");
     if (auto* drive = p.getAPVTS().getParameter ("drive"))
     {
@@ -1141,7 +1150,7 @@ static void testDuplicateNameFactoryVsUserPreset()
         check (stagedOutside, "outside-folder copy staged");
         if (stagedOutside)
         {
-            check (presets.loadFile (outside), "loadFile accepts a preset from outside the folder");
+            check (opCompleted (presets.loadFile (outside)), "loadFile accepts a preset from outside the folder");
             checkStr (presets.currentName(), shared, "an outside file still displays its own name");
             check (presets.currentIndex() < 0, "an outside file ticks nothing, not the same-named factory row");
             outside.deleteFile();
@@ -1153,7 +1162,7 @@ static void testDuplicateNameFactoryVsUserPreset()
     check (presetFile.deleteFile(), "user preset file removed while selected");
     presets.refresh();
     check (presets.currentIndex() < 0, "a deleted user preset ticks nothing, not the same-named factory row");
-    check (presets.saveUser (shared), "re-create the user preset for the restore check");
+    check (opCompleted (presets.saveUser (shared)), "re-create the user preset for the restore check");
 
     // The session carries the identity too since 0.9.2, so the tick survives a reload.
     // (State test 12 covers the restore matrix in full, including the fallbacks.)
@@ -1305,11 +1314,11 @@ static void testPresetIndicatorIdentityAcrossRestore()
     }
 
     // --- Case 2: a USER preset sharing the factory name is current ----------------
-    check (presets.saveUser (shared), "a user preset can be saved under the factory name");
+    check (opCompleted (presets.saveUser (shared)), "a user preset can be saved under the factory name");
     const int userIdx = presets.currentIndex();
     check (userIdx > factoryIdx, "the saved user preset sits below the factory block");
     setRaw (p, "drive", 0.61f);                  // make the user preset's sound distinct
-    check (presets.saveUser (shared), "re-save so the file matches the live sound");
+    check (opCompleted (presets.saveUser (shared)), "re-save so the file matches the live sound");
     const auto userRaw = rawSnapshot (p);
     juce::MemoryBlock userBlob;
     p.getStateInformation (userBlob);
@@ -1336,7 +1345,7 @@ static void testPresetIndicatorIdentityAcrossRestore()
         check (stagedNested, "nested sub-folder copy staged");
         if (stagedNested)
         {
-            check (presets.loadFile (nested), "loadFile accepts a preset from a sub-folder");
+            check (opCompleted (presets.loadFile (nested)), "loadFile accepts a preset from a sub-folder");
             check (presets.currentIndex() < 0, "a nested preset ticks nothing while live");
             const auto nestedRaw = rawSnapshot (p);
             juce::MemoryBlock nestedBlob;
@@ -1377,7 +1386,7 @@ static void testPresetIndicatorIdentityAcrossRestore()
 
     // --- A/B: each slot carries its own identity across the reload ----------------
     {
-        check (presets.saveUser (shared), "re-create the user preset for the A/B check");
+        check (opCompleted (presets.saveUser (shared)), "re-create the user preset for the A/B check");
         const int userRow = presets.currentIndex();
         p.abSwitchTo (1);
         presets.load (factoryIdx);        // slot B := the factory preset
@@ -6835,7 +6844,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2450),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2515),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -12821,7 +12830,7 @@ static void testNonFiniteParameterInStateIsRejected()
         if (auto xml = tree.createXml())
             check (xml->writeTo (presetFile), "poisoned preset file written");
 
-        check (pm.loadFile (presetFile), "the poisoned preset file loads (it is well-formed XML)");
+        check (opCompleted (pm.loadFile (presetFile)), "the poisoned preset file loads (it is well-formed XML)");
         std::printf ("  width after loading a preset with value=\"nan\": %f\n",
                      rawOf (viaPreset, pid::width));
         check (std::isfinite (rawOf (viaPreset, pid::width)),
@@ -12878,7 +12887,7 @@ static void testValuelessParamMeansDefault()
     if (auto xml = tree.createXml())
         check (xml->writeTo (presetFile), "value-less preset file written");
 
-    check (pm.loadFile (presetFile), "the value-less preset file loads (it is well-formed XML)");
+    check (opCompleted (pm.loadFile (presetFile)), "the value-less preset file loads (it is well-formed XML)");
     const float after = rawOf (proc, pid::width);
     std::printf ("  width after loading a preset with a value-less PARAM: %f\n", after);
     check (juce::approximatelyEqual (after, expected),
@@ -13286,7 +13295,7 @@ static void testMalformedValuesRestoreDefaults()
             node.setProperty ("value", juce::String (poison), nullptr);
             tree.appendChild (node, nullptr);
             if (auto xml = tree.createXml()) xml->writeTo (f);
-            const bool loaded = proc.getPresets().loadFile (f);
+            const bool loaded = opCompleted (proc.getPresets().loadFile (f));
             f.deleteFile();
 
             check (loaded, "the malformed preset file loads (it is well-formed XML)");
@@ -13660,7 +13669,7 @@ static int runPresetSemanticsProbe()
             tree.appendChild (node, nullptr);
             bool wrote = false;
             if (auto xml = tree.createXml()) wrote = xml->writeTo (f);
-            const bool loaded = wrote && proc.getPresets().loadFile (f);
+            const bool loaded = wrote && opCompleted (proc.getPresets().loadFile (f));
             const float after = rp2->getValue();
             f.deleteFile();
 
@@ -16847,7 +16856,7 @@ static void testRejectedPresetDoesNotDuck()
         juce::AudioBuffer<float> buf (2, block);
         juce::MidiBuffer midi;
         for (int nb = 0; nb < 60; ++nb) { fill (buf, rng); p.processBlock (buf, midi); }
-        check (p.getPresets().loadFile (validFile), "the valid harness preset loads");
+        check (opCompleted (p.getPresets().loadFile (validFile)), "the valid harness preset loads");
         fill (buf, rng);
         p.processBlock (buf, midi);
         const double sideLoaded = sideRms (buf);
@@ -16867,7 +16876,7 @@ static void testRejectedPresetDoesNotDuck()
         juce::AudioBuffer<float> buf (2, block);
         juce::MidiBuffer midi;
         for (int nb = 0; nb < 60; ++nb) { fill (buf, rng); p.processBlock (buf, midi); }
-        check (! p.getPresets().loadFile (brokenFile), "a malformed preset is still refused");
+        check (opFailed (p.getPresets().loadFile (brokenFile)), "a malformed preset is still refused");
         fill (buf, rng);
         p.processBlock (buf, midi);
         check (std::abs (sideRms (buf) - sideControl) < 1.0e-9,
@@ -16981,7 +16990,7 @@ static void testForeignPresetDoesNotResetSound()
         for (const auto& s : sentinelA) std::printf (" %s=%.4f", s.id, (double) rawOf (p, s.id));
         std::printf ("\n");
     }
-    const bool foreignAccepted = presets.loadFile (foreignFile);
+    const bool foreignAccepted = opCompleted (presets.loadFile (foreignFile));
     {
         std::printf ("  after  foreign load: loadFile returned %s |", foreignAccepted ? "TRUE" : "false");
         for (const auto& s : sentinelA)
@@ -17013,13 +17022,13 @@ static void testForeignPresetDoesNotResetSound()
     // A->B transition is not a guard. Change the sound, reject again, re-check.
     applySentinel (sentinelB, 5);
     check (differsFromDefaults (sentinelB, 5) == 5, "second sentinel also differs from every default");
-    check (! presets.loadFile (foreignFile), "loadFile still rejects the foreign root from the second state");
+    check (opFailed (presets.loadFile (foreignFile)), "loadFile still rejects the foreign root from the second state");
     if (foreignIndex >= 0) presets.load (foreignIndex);
     check (sameAsSentinel (sentinelB, 5), "the second sound survives BOTH loaders unchanged");
 
     // ---- malformed XML keeps its existing behaviour ----
     check (brokenFile.replaceWithText ("<ANAMORPH><PARAM id=\"width\" value="), "malformed preset written");
-    check (! presets.loadFile (brokenFile), "loadFile still rejects unparsable XML (unchanged behaviour)");
+    check (opFailed (presets.loadFile (brokenFile)), "loadFile still rejects unparsable XML (unchanged behaviour)");
     check (sameAsSentinel (sentinelB, 5), "malformed XML leaves the sound untouched (unchanged behaviour)");
 
     // ---- a VALID Anamorph root with missing parameters keeps the documented
@@ -17032,7 +17041,7 @@ static void testForeignPresetDoesNotResetSound()
         "  <PARAM id=\"width\" value=\"1.85\"/>\n"
         "</" + p.getAPVTS().state.getType().toString() + ">\n";
     check (sparseFile.replaceWithText (sparseXml), "sparse Anamorph preset written");
-    check (presets.loadFile (sparseFile), "a VALID Anamorph root still LOADS, however few params it carries");
+    check (opCompleted (presets.loadFile (sparseFile)), "a VALID Anamorph root still LOADS, however few params it carries");
     if (widthP != nullptr)
         check (std::abs (rawOf (p, "width") - widthP->convertTo0to1 (1.85f)) < 1.0e-4f,
                "the one parameter the sparse preset carries is adopted");
@@ -17058,11 +17067,11 @@ static void testForeignPresetDoesNotResetSound()
         // was saved in, and take the reading as the expectation for the reload
         // from a DIFFERENT state below. Any discrepancy is then about the load,
         // not about float text.
-        check (presets.loadFile (goodFile), "a valid Anamorph preset still loads successfully");
+        check (opCompleted (presets.loadFile (goodFile)), "a valid Anamorph preset still loads successfully");
         for (int i = 0; i < 5; ++i) savedSound[i] = rawOf (p, sentinelA[i].id);
     }
     applySentinel (sentinelB, 5);
-    check (presets.loadFile (goodFile), "...and loads again from a different current sound");
+    check (opCompleted (presets.loadFile (goodFile)), "...and loads again from a different current sound");
     {
         bool restored = true;
         for (int i = 0; i < 5; ++i)
@@ -19337,7 +19346,7 @@ static void testPresetSavedDuringRestoreIsCleanAgainstItsOwnFile()
                    "the A/B switch finished last, so the live sound is not the restore's yet");
         }
 
-        check (p.getPresets().saveUser (name), "saveUser succeeds");
+        check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds");
         check (presetFile.existsAsFile(), "the preset file was written");
         check (! p.getPresets().isDirty(), "the preset the save selected reads CLEAN");
 
@@ -19465,7 +19474,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
             if (pm.isDirty()) continue;      // dirty is always safe: the star can only over-report
             ++cleanLegs;
             const auto soundBefore = anamorph::PresetManager::soundSignatureFor (proc.getAPVTS());
-            check (pm.loadFile (f), "the preset file the save wrote loads back");
+            check (opCompleted (pm.loadFile (f)), "the preset file the save wrote loads back");
             proc.pollUndoCoalesce();
             checkStr (anamorph::PresetManager::soundSignatureFor (proc.getAPVTS()), soundBefore,
                       (juce::String ("a preset that reads CLEAN reloads without changing the sound (")
@@ -19490,7 +19499,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
         setRaw (p, "width", A);
         int fires = 0;
         p.getPresets().beforeStateCapture = [&] { ++fires; setRaw (p, "width", B); };
-        check (p.getPresets().saveUser (name), "saveUser succeeds");
+        check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds");
         p.getPresets().beforeStateCapture = nullptr;
         assertCoherent (p, presetFile, A, B, fires, "one mutation in the window");
     }
@@ -19509,7 +19518,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
             ++fires;
             setRaw (p, "width", (fires % 2) == 1 ? B : A);   // cycle, like an LFO on the lane
         };
-        check (p.getPresets().saveUser (name), "saveUser succeeds under sustained automation");
+        check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds under sustained automation");
         p.getPresets().beforeStateCapture = nullptr;
         assertCoherent (p, presetFile, A, B, fires, "sustained cycling automation");
     }
@@ -19529,7 +19538,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
             setRaw (p, "drive", driveB);
             setRaw (p, "amount", 0.61f);
         };
-        check (p.getPresets().saveUser (name), "saveUser succeeds with several parameters moving");
+        check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds with several parameters moving");
         p.getPresets().beforeStateCapture = nullptr;
         assertCoherent (p, presetFile, A, B, fires, "several parameters in the window");
     }
@@ -19577,7 +19586,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
         // the save returned", so it would pass on exactly the vacuous run this leg has to
         // reject.
         const int writesBeforeSave = writes.load (std::memory_order_relaxed);
-        const bool ok = p.getPresets().saveUser (name);
+        const bool ok = opCompleted (p.getPresets().saveUser (name));
         run.store (false, std::memory_order_release);
         automation.join();
         p.getPresets().beforeStateCapture = nullptr;
@@ -19604,12 +19613,12 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("algorithm")))
             check (! juce::exactlyEqual (normalisedAsRendered (*rp, 0.66f), 0.66f),
                    "...and that value is NOT what the plug-in renders, so the two could disagree");
-        check (p.getPresets().saveUser (name), "saveUser succeeds for a sub-step discrete value");
+        check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds for a sub-step discrete value");
         check (! p.getPresets().isDirty(), "the freshly saved preset reads clean");
         const auto baselineAtSave = p.getPresets().baseline();
         checkStr (baselineAtSave, signatureOfFile (p, presetFile),
                   "the clean baseline is the signature of the bytes on disk (sub-step discrete)");
-        check (p.getPresets().loadFile (presetFile), "the preset file loads back");
+        check (opCompleted (p.getPresets().loadFile (presetFile)), "the preset file loads back");
         p.pollUndoCoalesce();
         check (! p.getPresets().isDirty(),
                "...and reloading a preset saved at a sub-step discrete value leaves it CLEAN");
@@ -19686,7 +19695,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
         AnamorphAudioProcessor p;
         p.prepareToPlay (48000.0, 512);
         setRaw (p, "mbFreqLow", 0.381175071f);
-        check (p.getPresets().saveUser (name), "saveUser succeeds at a custom-mapped frequency value");
+        check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds at a custom-mapped frequency value");
         check (! p.getPresets().isDirty(),
                "a freshly saved preset reads CLEAN at a custom-mapped frequency value");
         checkStr (p.getPresets().baseline(), signatureOfFile (p, presetFile),
@@ -19777,7 +19786,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
 
             auto xml = tree.createXml();
             if (xml == nullptr || ! probe.replaceWithText (xml->toString())) { ++loadsFailed; continue; }
-            if (! p.getPresets().loadFile (probe)) { ++loadsFailed; continue; }
+            if (! opCompleted (p.getPresets().loadFile (probe))) { ++loadsFailed; continue; }
 
             if (p.getPresets().isDirty()) ++markerWrong;
             if (anamorph::PresetManager::soundSignatureFor (apvts) != sigAtSave) ++sigDrift;
@@ -20041,11 +20050,11 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
         AnamorphAudioProcessor p;
         p.prepareToPlay (48000.0, 512);
         setRaw (p, "width", A);
-        check (p.getPresets().saveUser (name), "the preset (width A) is on disk");
+        check (opCompleted (p.getPresets().saveUser (name)), "the preset (width A) is on disk");
         setRaw (p, "width", 0.5f);                                     // leave the file's sound
         int fires = 0;
         p.getPresets().beforeStateCapture = [&] { ++fires; setRaw (p, "width", B); };   // automation, in the window
-        if (viaFile) check (p.getPresets().loadFile (presetFile), "loadFile succeeds");
+        if (viaFile) check (opCompleted (p.getPresets().loadFile (presetFile)), "loadFile succeeds");
         else       { p.getPresets().refresh(); const int idx = [&] { int i = 0; for (const auto& e : p.getPresets().entries()) { if (! e.isFactory && e.name == name) return i; ++i; } return -1; }();
                      check (idx >= 0, "the saved preset is listed"); p.getPresets().load (idx); }
         p.getPresets().beforeStateCapture = nullptr;
@@ -20057,7 +20066,7 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
         setRaw (p, "width", A);
         check (! p.getPresets().isDirty(), "...and CLEAN at the file's value");
         const auto before = anamorph::PresetManager::soundSignatureFor (p.getAPVTS());
-        check (p.getPresets().loadFile (presetFile), "reloading the clean preset");
+        check (opCompleted (p.getPresets().loadFile (presetFile)), "reloading the clean preset");
         p.pollUndoCoalesce();
         checkStr (anamorph::PresetManager::soundSignatureFor (p.getAPVTS()), before,
                   "a preset that reads CLEAN reloads without changing the sound");
@@ -20110,7 +20119,7 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
             const auto sigAfter = anamorph::PresetManager::soundSignatureAfterLoading (apvts, tree);
             const auto sigSaved = anamorph::PresetManager::soundSignatureForSavedTree (apvts, tree);
             auto xml = tree.createXml();
-            if (xml == nullptr || ! probe.replaceWithText (xml->toString()) || ! p.getPresets().loadFile (probe)) { ++loadsFailed; continue; }
+            if (xml == nullptr || ! probe.replaceWithText (xml->toString()) || ! opCompleted (p.getPresets().loadFile (probe))) { ++loadsFailed; continue; }
             const auto live = anamorph::PresetManager::soundSignatureFor (apvts);
             if (live != sigAfter) ++afterLoadingMismatch;
             if (live != sigSaved) ++savedTreeMismatch;
@@ -20431,9 +20440,9 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
         // 1. The preset is written at `base`, and loaded ONCE UNDISTURBED so the test holds
         //    an oracle for the baseline that does not come from the function under test.
         rp->setValueNotifyingHost (b.base);
-        check (p.getPresets().saveUser (name), "the preset is written at the base value");
+        check (opCompleted (p.getPresets().saveUser (name)), "the preset is written at the base value");
         rp->setValueNotifyingHost (0.5f);                       // leave the preset's sound
-        check (p.getPresets().loadFile (presetFile), "the preset loads undisturbed");
+        check (opCompleted (p.getPresets().loadFile (presetFile)), "the preset loads undisturbed");
         p.pollUndoCoalesce();
         check (! p.getPresets().isDirty(), "an undisturbed load reads clean");
         const auto oracle = anamorph::PresetManager::soundSignatureFor (p.getAPVTS());
@@ -20442,7 +20451,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
         rp->setValueNotifyingHost (0.5f);
         int fires = 0;
         p.getPresets().beforeStateCapture = [&] { ++fires; rp->setValueNotifyingHost (b.nudged); };
-        check (p.getPresets().loadFile (presetFile), "the preset loads");
+        check (opCompleted (p.getPresets().loadFile (presetFile)), "the preset loads");
         p.getPresets().beforeStateCapture = nullptr;
         p.pollUndoCoalesce();
         check (fires == 1, "the seam fired once, after the apply and before the baseline");
@@ -20463,7 +20472,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
                "a sub-1e-6 automation write inside the load window leaves the preset DIRTY, not absorbed");
 
         // ...and reloading it, undisturbed, is clean again at the file's own value.
-        check (p.getPresets().loadFile (presetFile), "the preset reloads");
+        check (opCompleted (p.getPresets().loadFile (presetFile)), "the preset reloads");
         p.pollUndoCoalesce();
         check (! p.getPresets().isDirty(), "a reload reads clean");
         checkNear ((double) rp->getValue(), (double) normalisedAsRendered (*rp, b.base), 1.0e-7,
@@ -20488,7 +20497,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
             if (b.found)
             {
                 rp->setValueNotifyingHost (b.base);
-                check (p.getPresets().saveUser (name), "the preset is written");
+                check (opCompleted (p.getPresets().saveUser (name)), "the preset is written");
                 const int idx = p.getPresets().currentIndex();
                 check (idx >= 0, "the freshly saved preset is the selected list entry");
                 if (idx >= 0)
@@ -20539,7 +20548,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
         if (! cell.found) continue;
 
         rp->setValueNotifyingHost (base);
-        check (p.getPresets().saveUser (name), "the preset is written");
+        check (opCompleted (p.getPresets().saveUser (name)), "the preset is written");
         check (! p.getPresets().isDirty(), "freshly saved reads clean");
 
         rp->setValueNotifyingHost (base + cell.step * 0.2f);             // a fifth of THIS cell
@@ -20562,7 +20571,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
         check (crossing > 0.0 && crossing <= 1.0e-6,
                "non-vacuity: ...and the move between them is real and smaller than 1e-6");
         rp->setValueNotifyingHost (below);
-        check (p.getPresets().saveUser (name), "the preset is written at the boundary");
+        check (opCompleted (p.getPresets().saveUser (name)), "the preset is written at the boundary");
         check (! p.getPresets().isDirty(), "...and reads clean there");
         rp->setValueNotifyingHost (above);
         check (p.getPresets().isDirty(),
@@ -20597,7 +20606,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
             if (midBucket)
             {
                 rp->setValueNotifyingHost (base);
-                check (p.getPresets().saveUser (name), "the preset is written");
+                check (opCompleted (p.getPresets().saveUser (name)), "the preset is written");
                 check (! p.getPresets().isDirty(), "freshly saved reads clean");
                 float v = rp->getValue();
                 v += nudge; rp->setValueNotifyingHost (v);
@@ -20721,7 +20730,7 @@ static void testARestoreIsAFixedPoint()
             // Make the project CLEAN against a preset holding exactly this sound.
             auto xml = apvts.copyState().createXml();
             if (xml == nullptr || ! probe.replaceWithText (xml->toString())
-                || ! p.getPresets().loadFile (probe)) { ++loadsFailed; continue; }
+                || ! opCompleted (p.getPresets().loadFile (probe))) { ++loadsFailed; continue; }
             p.pollUndoCoalesce();
             if (p.getPresets().isDirty()) ++dirtyBeforeSave;
             const auto sigBefore = anamorph::PresetManager::soundSignatureFor (apvts);
@@ -21037,7 +21046,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:2245).
+//  baseline", src/PluginProcessor.cpp:2306).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -21270,7 +21279,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1866).
+//  targets", src/PluginProcessor.cpp:1927).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21647,7 +21656,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2430).
+//  mixed sound", src/PluginProcessor.cpp:2491).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -27606,6 +27615,900 @@ static void testTheDeferredFlushNeverWaitsForAReplacement()
     delete ed;
 }
 
+// ---------------------------------------------------------------------------
+//  State test 101 -- round 27, Devin R1390. A TIMER RETRY MAY DECIDE THAT WORK IS
+//  READY. IT MAY NOT DO THE WORK.
+//
+//  Round 26 closed the edge R651 named -- the flush's own preliminary poll no longer WAITS for
+//  `soundReplacement` -- and wrote down, in ADR-0036 section 29, the half it did not close:
+//
+//      "Those acquisitions of the commands' own are still BLOCKING, and
+//       `pollUndoCoalesceFromTimer` is now one of the two doors that runs them -- so a tick
+//       reached from a host's pump can still block."
+//
+//  R1390 is that sentence, reported. The try-lock proves nothing about the command, because the
+//  command acquires AFTER the try is released:
+//
+//    message thread   holds listenerLock(P) -> host pumps -> the 20 Hz tick runs
+//                     -> flushDeferredCommands -> try SUCCEEDS and is RELEASED
+//                     -> the deferred Undo runs -> applyStatePreservingView
+//                     -> WAITS for soundReplacement
+//    another thread   HOLDS soundReplacement -> apvts.replaceState -> setValueNotifyingHost
+//                     -> WAITS for listenerLock(P)
+//
+//  THE OWNER-APPROVED ANSWER, implemented in `flushDeferredCommands` and measured here: a door
+//  runs commands only when this thread is provably OUTSIDE a parameter listener's dynamic extent
+//  (`anamorph::param::insideDispatch`, src/ParameterDispatch.h). Outside it the message thread
+//  holds no `listenerLock`, so a blocking acquisition cannot be half of any cycle.
+//
+//  WHAT EACH LEG IS FOR. Leg A is the DEFECT and the only one that needs threads: it measures
+//  that a timer retry reached from inside a dispatch does not wait, with a real holder parked
+//  inside the command's own blocking acquisition. Legs B-I asssert the same invariant without
+//  threads, by the observable that distinguishes the two trees directly -- whether a deferred
+//  command RAN while the message thread was inside the dispatch -- across every command class,
+//  ordering, nesting and the transaction-first rule. Leg B is a PRESERVATION leg: it passes on
+//  both trees, because round 26's try already answers it, and it is here so a later change cannot
+//  quietly take round 26's guarantee away while satisfying round 27's.
+//
+//  THE HOLDER IS NON-ANNOUNCING, exactly as in State test 100: an off-thread `getStateInformation`
+//  parked inside `copyStateWithRawValues` (ADR-0036 section 25) never wants a `listenerLock`, so
+//  the cycle is never actually closed and a mutation of the fix FAILS leg A instead of hanging
+//  the suite. A harness watchdog releases it at 400 ms.
+// ---------------------------------------------------------------------------
+namespace {
+// The host seat for round 27: a pump that delivers a TIMER TICK. R1390 is about the retry door,
+// so the thing pumped in is `pollUndoCoalesceFromTimer` itself and nothing else.
+struct TimerRetrySeat final : public juce::AudioProcessorListener
+{
+    std::function<void()> pumped;
+    int    index     = -1;
+    int    toFire    = 0;
+    int    fired     = 0;
+    double elapsedMs = 0.0;
+    bool   pumping   = false;      // "the message thread is inside the dispatch right now"
+    bool   onValue   = false;      // leg J pumps from a VALUE dispatch, not a gesture end
+    void fire (int i)
+    {
+        if (toFire <= 0 || (index >= 0 && i != index) || ! pumped) return;
+        toFire = 0; ++fired;                       // cleared FIRST: the pump re-enters this
+        const juce::ScopedValueSetter<bool> inside (pumping, true);
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        pumped();
+        elapsedMs = juce::Time::getMillisecondCounterHiRes() - t0;
+    }
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
+    { if (! onValue) fire (i); }
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int i, float) override
+    { if (onValue) fire (i); }
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
+    void audioProcessorChanged (juce::AudioProcessor*,
+                                const juce::AudioProcessorListener::ChangeDetails&) override {}
+};
+} // namespace
+
+static void testATimerRetryNeverRunsACommandInsideADispatch()
+{
+    std::printf ("State test 101: a timer retry never runs a blocking command from inside a parameter dispatch (R1390)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* widthP = apvts.getParameter (pid::width);
+    check (driveP != nullptr && widthP != nullptr, "the probe's parameters exist");
+    if (driveP == nullptr || widthP == nullptr) return;
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto near     = [] (float a, float b) { return std::abs (a - b) < 1.0e-3f; };
+
+    TimerRetrySeat seat;
+    seat.index = driveP->getParameterIndex();
+    proc.addListener (&seat);
+
+    // One undoable user edit on the stack, and nothing pending anywhere.
+    auto arm = [&] (float from, float to)
+    {
+        while (proc.canUndo()) proc.undo();
+        setPlain (driveP, from);
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        driveP->beginChangeGesture();
+        setPlain (driveP, to);
+        driveP->endChangeGesture();                  // the seat is disarmed here (toFire == 0)
+        proc.pollUndoCoalesce();
+        check (proc.canUndo() && near (plainOf (driveP), to),
+               "the probe starts with exactly one undoable edit");
+    };
+
+    // The dispatch this test is about: a bare knob gesture whose CLOSE is where the host pumps.
+    //
+    // AND IT GOES THROUGH `anamorph::param`, WHICH IS THE POINT AND NOT A CONVENIENCE. In
+    // production every parameter write this plug-in makes goes through those wrappers -- the
+    // imager's `beginGesture`/`endGesture`, the editor's Alt-click reset, `applyAutoGain`, both
+    // whole-sound replacements -- and `scripts/check-dispatch.py` fails the build on one that does
+    // not. A raw `driveP->endChangeGesture()` here would be a dispatch NO PART of this plug-in
+    // ever starts, so the depth would read zero and the leg would measure nothing: that is exactly
+    // what the first run of this test did, and it is why the call is spelled this way. Leg J drives
+    // the same invariant through a REAL editor control instead, so the wiring is proven and not
+    // merely assumed.
+    auto pumpFromGestureEnd = [&] (float to, std::function<void()> whilePumping)
+    {
+        seat.pumped = std::move (whilePumping);
+        seat.fired = 0; seat.toFire = 1; seat.elapsedMs = 0.0;
+        anamorph::param::beginChangeGesture (driveP);
+        anamorph::param::setValueNotifyingHost (driveP, driveP->convertTo0to1 (to));
+        anamorph::param::endChangeGesture (driveP);   // <- `seat` fires from inside this
+        seat.toFire = 0;
+    };
+
+    // ---- LEG A: THE DEFECT, measured. A timer retry inside a dispatch must not WAIT -----------
+    {
+        arm (3.0f, 9.0f);
+
+        // Queue an Undo and leave it queued: the transaction's own close is refused by a holder,
+        // exactly as State test 100 leg C does it, so the queue survives into the pumped tick.
+        std::atomic<bool> parkedA { false }, releaseA { false };
+        proc.seams.insideDurableCapture = [&]
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread()) return;
+            if (parkedA.exchange (true)) return;
+            while (! releaseA.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        std::thread holderA ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb); });
+        for (int waited = 0; waited < 2000 && ! parkedA.load(); waited += 2)
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        check (parkedA.load(), "leg A: non-vacuity -- the queue really survives a refused close");
+
+        bool ranWhilePumping = false, ranAtAll = false;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            proc.deferWhileUserTransactionActive ([&]
+            { ranAtAll = true; ranWhilePumping = ranWhilePumping || seat.pumping; proc.undo(); });
+        }
+        releaseA.store (true, std::memory_order_release);
+        holderA.join();
+        proc.seams.insideDurableCapture = nullptr;
+        check (near (plainOf (driveP), 9.0f), "leg A: the refused close ran nothing");
+
+        // THE SECOND HOLDER, and this is the one R1390 is about. It is parked from inside the
+        // COMMAND's own path -- `applyStatePreservingView`'s last instant before it takes the
+        // replacement lock -- so on a tree that runs the command here the message thread blocks
+        // while JUCE holds Drive's `listenerLock`. The holder needs no listener lock of its own,
+        // so nothing actually deadlocks and the watchdog is only a bound.
+        std::atomic<bool> parkedB { false }, releaseB { false }, seamFired { false };
+        std::thread holderB;
+        proc.seams.beforeSoundReplacementWrites = [&]
+        {
+            if (seamFired.exchange (true)) return;                      // arm exactly once
+            holderB = std::thread ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb); });
+            for (int waited = 0; waited < 2000 && ! parkedB.load(); waited += 2)
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        proc.seams.insideDurableCapture = [&]
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread()) return;
+            if (parkedB.exchange (true)) return;
+            while (! releaseB.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        constexpr int kWatchdogMs = 400;
+        std::thread watchdog ([&]
+        {
+            for (int waited = 0; waited < kWatchdogMs; waited += 5)
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            releaseB.store (true, std::memory_order_release);
+        });
+
+        pumpFromGestureEnd (11.0f, [&proc] { proc.pollUndoCoalesceFromTimer(); });
+
+        const double blockedMs = seat.elapsedMs;
+        std::printf ("  [leg A] the pumped timer retry took %.1f ms; the command ran inside the"
+                     " dispatch: %s\n", blockedMs, ranWhilePumping ? "YES" : "no");
+        check (seat.fired > 0, "leg A: non-vacuity -- the timer retry really ran inside the dispatch");
+
+        // THE INVARIANT. JUCE holds Drive's `listenerLock` for the whole of `endChangeGesture`, so
+        // nothing reached from inside it may wait. 250 ms is a hundred times the uncontended cost
+        // of the whole scenario and well under the watchdog the unfixed tree waits out.
+        check (blockedMs < 250.0,
+               "leg A: the timer retry did NOT wait for the replacement lock from inside the dispatch");
+        check (! ranWhilePumping,
+               "leg A: ...because no deferred command ran inside the parameter dispatch at all");
+
+        releaseB.store (true, std::memory_order_release);
+        watchdog.join();
+        if (holderB.joinable()) holderB.join();
+        proc.seams.beforeSoundReplacementWrites = nullptr;
+        proc.seams.insideDurableCapture = nullptr;
+
+        // ...AND NOTHING WAS DROPPED. The very next door -- outside the dispatch -- does the work.
+        // The Undo pops the PUMPED gesture (9 -> 11), which is the newest step, so Drive returns
+        // to 9 and the armed 3 -> 9 edit is still there to undo. That ordering is leg I's subject;
+        // here it is only the evidence that the command really ran.
+        check (! ranAtAll, "leg A: non-vacuity -- the command had not run before the next door");
+        proc.pollUndoCoalesceFromTimer();
+        std::printf ("  [leg A] after the next door (outside the dispatch): Drive %.2f, ran: %s\n",
+                     (double) plainOf (driveP), ranAtAll ? "yes" : "NO");
+        check (ranAtAll && near (plainOf (driveP), 9.0f),
+               "leg A: the Undo the retry refused ran at the next safe boundary, unprompted");
+        check (proc.canUndo(), "leg A: ...and it popped the pumped gesture, not the whole history");
+    }
+
+    // ---- LEG B: PRESERVATION -- a concurrent restore still makes the re-entrant path refuse ----
+    //  Round 26's try answers this one, so it passes on both trees by design. It is here so a
+    //  later change cannot satisfy round 27 while taking round 26's guarantee away.
+    {
+        arm (3.0f, 9.0f);
+        std::atomic<bool> parked { false }, release { false };
+        proc.seams.insideDurableCapture = [&]
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread()) return;
+            if (parked.exchange (true)) return;
+            while (! release.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        std::thread holder ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb); });
+        for (int waited = 0; waited < 2000 && ! parked.load(); waited += 2)
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        check (parked.load(), "leg B: non-vacuity -- a NON-ANNOUNCING holder really owns the lock");
+        std::thread watchdog ([&]
+        {
+            for (int waited = 0; waited < 400; waited += 5)
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            release.store (true, std::memory_order_release);
+        });
+
+        pumpFromGestureEnd (11.0f, [&proc] { proc.pollUndoCoalesceFromTimer(); });
+        const double blockedMs = seat.elapsedMs;
+        std::printf ("  [leg B] with the replacement lock HELD, the pumped tick took %.1f ms\n", blockedMs);
+        check (seat.fired > 0, "leg B: non-vacuity -- the pumped tick really ran");
+        check (blockedMs < 250.0, "leg B: the re-entrant timer path did not wait for the holder");
+
+        release.store (true, std::memory_order_release);
+        watchdog.join(); holder.join();
+        proc.seams.insideDurableCapture = nullptr;
+    }
+
+    // ---- LEGS C-F: EVERY COMMAND CLASS EXECUTES ONLY AT THE SAFE BOUNDARY ----------------------
+    //  Same shape four times, over the four families of state-replacing command R1279-1283's
+    //  matrix names. No threads: the observable that separates the two trees is whether the
+    //  command RAN while the message thread was inside the dispatch, and that is exact.
+    {
+        struct Case { const char* leg; const char* what; std::function<void (AnamorphAudioProcessor&)> run; };
+        const Case cases[] = {
+            { "C", "Undo",    [] (AnamorphAudioProcessor& p) { p.undo(); } },
+            { "D", "Redo",    [] (AnamorphAudioProcessor& p) { p.redo(); } },
+            { "E", "A/B",     [] (AnamorphAudioProcessor& p) { p.abToggle(); } },
+            { "F", "preset",  [] (AnamorphAudioProcessor& p) { p.getPresets().load (0); } },
+        };
+
+        for (const auto& c : cases)
+        {
+            arm (3.0f, 9.0f);
+            if (juce::String (c.what) == "Redo") { proc.undo(); proc.pollUndoCoalesce(); }
+
+            bool ranInside = false, ranAtAll = false;
+            const int  slotBefore  = proc.abActiveSlot();
+            const float driveBefore = plainOf (driveP);
+
+            pumpFromGestureEnd (11.0f, [&]
+            {
+                AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+                const bool queued = proc.deferWhileUserTransactionActive ([&]
+                { ranAtAll = true; ranInside = ranInside || seat.pumping; c.run (proc); });
+                check (queued, "the command was queued by the open transaction");
+            });                                   // <- the transaction CLOSES inside the dispatch
+
+            check (seat.fired > 0, "non-vacuity -- the whole transaction really ran inside the dispatch");
+            check (! ranInside, "the deferred command did NOT run inside the parameter dispatch");
+            check (! ranAtAll,  "...so it did not run at all while the extent was open");
+
+            proc.pollUndoCoalesce();              // the next door, outside the dispatch
+            std::printf ("  [leg %s] %s: ran inside the dispatch: %s; ran at the next door: %s\n",
+                         c.leg, c.what, ranInside ? "YES" : "no", ranAtAll ? "yes" : "NO");
+            check (ranAtAll, "...and it ran at the next safe boundary, so nothing was dropped");
+            // ...and it really DID something, so the leg cannot pass on a command that no-oped.
+            const bool moved = ! near (plainOf (driveP), driveBefore)
+                            || proc.abActiveSlot() != slotBefore
+                            || proc.getPresets().currentName().isNotEmpty();
+            check (moved, "...and the command actually took effect");
+        }
+    }
+
+    // ---- LEG G: MORE THAN ONE COMMAND, in the order the user gave them -------------------------
+    {
+        arm (3.0f, 9.0f);
+        proc.undo(); proc.pollUndoCoalesce();      // ...so there is a Redo to do
+        std::vector<int> ran;
+        const int slotBefore = proc.abActiveSlot();
+
+        pumpFromGestureEnd (11.0f, [&]
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            proc.deferWhileUserTransactionActive ([&] { ran.push_back (1); proc.redo(); });
+            proc.deferWhileUserTransactionActive ([&] { ran.push_back (2); proc.abToggle(); });
+        });
+        check (ran.empty(), "leg G: neither command ran inside the dispatch");
+
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg G] order at the safe boundary: ");
+        for (int v : ran) std::printf ("%d ", v);
+        std::printf ("(expected 1 2)\n");
+        check (ran.size() == 2 && ran[0] == 1 && ran[1] == 2,
+               "leg G: both ran at the safe boundary, in the order the user gave them");
+        check (proc.abActiveSlot() != slotBefore, "leg G: ...and the A/B switch really happened");
+    }
+
+    // ---- LEG H: a command deferred BY a deferred command is not stranded ------------------------
+    {
+        arm (3.0f, 9.0f);
+        std::vector<int> ran;
+        pumpFromGestureEnd (11.0f, [&]
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            proc.deferWhileUserTransactionActive ([&]
+            {
+                ran.push_back (1);
+                AnamorphAudioProcessor::ScopedUserTransaction fromCommand (proc);
+                proc.deferWhileUserTransactionActive ([&] { ran.push_back (3); });
+            });
+            proc.deferWhileUserTransactionActive ([&] { ran.push_back (2); });
+        });
+        check (ran.empty(), "leg H: nothing ran inside the dispatch");
+
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg H] order: ");
+        for (int v : ran) std::printf ("%d ", v);
+        std::printf ("(expected 1 2 3)\n");
+        check (ran.size() == 3 && ran[0] == 1 && ran[1] == 2 && ran[2] == 3,
+               "leg H: the nested enqueue ran too, and behind the ones already in front of it");
+    }
+
+    // ---- LEG I: the transaction's OWN undo step is committed BEFORE the deferred command --------
+    //  Round 25's ordering, re-asserted at the new boundary: the step the completed transaction
+    //  produced must already be on the stack when the command runs, or the command's Undo pops
+    //  something the user never finished.
+    //  AND THE OBSERVABLE IS THE STEP, NOT THE VALUE. The first version of this leg asked whether
+    //  the transaction's WIDTH had moved by the time the command ran, and that is true whether or
+    //  not the step was committed first -- the parameter is written either way. It therefore did
+    //  not kill the mutation that commits the history AFTER the commands (M124); State test 99
+    //  leg E did, because `abToggle` has no poll of its own while `undo()` does, and round 25's
+    //  own note says exactly that. So this leg empties the history first, defers a command with no
+    //  internal poll, and asks the command whether ANY step exists yet: with nothing armed, the
+    //  only step that can exist is the one the transaction just produced.
+    {
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        check (! proc.canUndo(), "leg I: the history really is empty before the transaction");
+
+        bool sawOwnStep = false, ran = false;
+        const float widthStart = plainOf (widthP);
+        pumpFromGestureEnd (11.0f, [&]
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            // A real edit inside the transaction, so the transaction HAS a step of its own.
+            anamorph::param::beginChangeGesture (widthP);
+            anamorph::param::setValueNotifyingHost (widthP, widthP->convertTo0to1 (1.6f));
+            anamorph::param::endChangeGesture (widthP);
+            proc.deferWhileUserTransactionActive ([&]
+            { ran = true; sawOwnStep = proc.canUndo(); proc.abToggle(); });
+        });
+
+        proc.pollUndoCoalesce();                   // the safe boundary: step first, then the command
+        std::printf ("  [leg I] the command ran with the transaction's own step already on the"
+                     " stack: %s (ran: %s)\n", sawOwnStep ? "yes" : "NO", ran ? "yes" : "no");
+        check (ran, "leg I: non-vacuity -- the deferred command really ran");
+        check (sawOwnStep,
+               "leg I: the transaction's own Undo step was committed BEFORE the command ran");
+        // ...and it is the transaction's step, not something else: undoing on this slot returns
+        // the Width the transaction changed.
+        while (proc.abActiveSlot() != 0) proc.abToggle();
+        proc.pollUndoCoalesce();
+        proc.undo();
+        std::printf ("  [leg I] after one Undo: Width %.3f (started %.3f)\n",
+                     (double) plainOf (widthP), (double) widthStart);
+        check (near (plainOf (widthP), widthStart),
+               "leg I: ...and that step is the transaction's own edit");
+    }
+
+    // ---- LEG I2: THE SAME ORDER, AT THE OTHER BOUNDARY ----------------------------------------
+    //  Leg I above closes its transaction INSIDE the dispatch, so the flush refuses and the work
+    //  happens at the retry door -- where `pollUndoCoalesce` commits the step before it calls the
+    //  flush at all. The ordering is therefore correct there for a reason OUTSIDE the flush, and a
+    //  mutation of the flush's own internal order is invisible to it (measured: M124 passes leg I
+    //  and is killed by State test 99 leg E instead). This leg closes the transaction with the
+    //  depth at zero, so the flush runs its own loop and its internal order is the only thing
+    //  deciding the answer.
+    {
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        check (! proc.canUndo(), "leg I2: the history really is empty before the transaction");
+
+        bool sawOwnStep = false, ran = false;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            anamorph::param::beginChangeGesture (widthP);
+            anamorph::param::setValueNotifyingHost (widthP, widthP->convertTo0to1 (1.7f));
+            anamorph::param::endChangeGesture (widthP);
+            // `abToggle` on purpose: it has no `pollUndoCoalesce` of its own, so nothing but the
+            // flush's own order can put the transaction's step on the stack before it runs.
+            proc.deferWhileUserTransactionActive ([&]
+            { ran = true; sawOwnStep = proc.canUndo(); proc.abToggle(); });
+        }                                          // <- the flush runs HERE, at depth zero
+        std::printf ("  [leg I2] the flush's own order put the step first: %s (ran: %s)\n",
+                     sawOwnStep ? "yes" : "NO", ran ? "yes" : "no");
+        check (ran, "leg I2: non-vacuity -- the command ran at the transaction's own close");
+        check (sawOwnStep,
+               "leg I2: the flush commits the transaction's step BEFORE it runs the commands");
+        while (proc.abActiveSlot() != 0) proc.abToggle();
+        proc.pollUndoCoalesce();
+    }
+
+    // ---- LEG J: THE ONE BRACKET `check-dispatch.py` CANNOT SEE -------------------------------
+    //  Every raw parameter call in `src/` is wrapped, and the lint proves it. JUCE's OWN
+    //  attachment write is not in `src/` at all: `SliderParameterAttachment` calls
+    //  `setValueNotifyingHost` from inside its own listener callback, and the only thing that can
+    //  bracket it is `AttachmentWitness`, which already straddles it for round 18's reasons. So
+    //  the straddle is tested here, through a real editor and a real control, because nothing
+    //  static can.
+    //
+    //  IT ALSO PINS THE LEAK THIS ROUND FOUND. The straddle raises in the BEFORE hook and lowers
+    //  in the AFTER one, and `attachSlider` registers `before`, constructs the attachment, then
+    //  registers `after` -- so the attachment's own `sendInitialUpdate()` fired the before hook
+    //  with no after hook to balance it. The depth stood at 14 from the moment the editor was
+    //  built and every deferred command refused forever. The first check below is that, exactly.
+    {
+        auto* raw = proc.createEditor();
+        auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        check (ed != nullptr, "leg J: the editor constructs");
+        if (ed == nullptr) { delete raw; }
+        else
+        {
+            check (! anamorph::param::insideDispatch(),
+                   "leg J: building the editor leaves the dispatch depth at zero");
+
+            juce::Slider* knob = nullptr;
+            std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+            {
+                for (int i = 0; i < c->getNumChildComponents(); ++i)
+                { auto* k = c->getChildComponent (i);
+                  if (knob == nullptr)
+                      if (auto* sl = dynamic_cast<juce::Slider*> (k))
+                          if (sl->getMaximum() > sl->getMinimum()) knob = sl;
+                  walk (k); }
+            };
+            walk (ed);
+            check (knob != nullptr, "leg J: a parameter-backed slider is findable");
+
+            if (knob != nullptr)
+            {
+                arm (3.0f, 9.0f);
+
+                // Queue a command and leave it queued, exactly as leg A does.
+                std::atomic<bool> parked { false }, release { false };
+                proc.seams.insideDurableCapture = [&]
+                {
+                    if (juce::MessageManager::existsAndIsCurrentThread()) return;
+                    if (parked.exchange (true)) return;
+                    while (! release.load (std::memory_order_acquire))
+                        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+                };
+                std::thread holder ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb); });
+                for (int waited = 0; waited < 2000 && ! parked.load(); waited += 2)
+                    std::this_thread::sleep_for (std::chrono::milliseconds (2));
+
+                bool ranInside = false, ranAtAll = false;
+                {
+                    AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+                    proc.deferWhileUserTransactionActive ([&]
+                    { ranAtAll = true; ranInside = ranInside || seat.pumping; proc.undo(); });
+                }
+                release.store (true, std::memory_order_release);
+                holder.join();
+                proc.seams.insideDurableCapture = nullptr;
+                check (! ranAtAll, "leg J: non-vacuity -- the refused close left the command queued");
+
+                // THE ATTACHMENT WRITE. `sendNotificationSync` runs the control's listener list on
+                // this stack: the before hook, then JUCE's attachment (which writes the parameter
+                // and dispatches), then the after hook. The seat pumps a timer retry from inside
+                // the VALUE dispatch, which is where a host pumping a slider release really is.
+                seat.onValue = true;
+                seat.index   = -1;                   // whichever parameter this control is bound to
+                seat.pumped  = [&proc] { proc.pollUndoCoalesceFromTimer(); };
+                seat.fired = 0; seat.toFire = 1;
+                const double target = knob->getValue() < 0.5 * (knob->getMinimum() + knob->getMaximum())
+                                    ? knob->getMaximum() : knob->getMinimum();
+                knob->setValue (target, juce::sendNotificationSync);
+                seat.toFire = 0; seat.onValue = false; seat.index = driveP->getParameterIndex();
+
+                std::printf ("  [leg J] the attachment write pumped a tick: fired %d; the command"
+                             " ran inside it: %s\n", seat.fired, ranInside ? "YES" : "no");
+                check (seat.fired > 0,
+                       "leg J: non-vacuity -- the timer retry really ran inside the attachment's write");
+                check (! ranInside,
+                       "leg J: the attachment's own parameter write is a dispatch too, so nothing ran");
+                check (! anamorph::param::insideDispatch(),
+                       "leg J: ...and the straddle balanced: the depth is back to zero");
+
+                proc.pollUndoCoalesce();
+                check (ranAtAll, "leg J: the command ran at the next safe boundary, so nothing was dropped");
+            }
+
+            proc.editorBeingDeleted (ed);
+            delete ed;
+            check (! anamorph::param::insideDispatch(),
+                   "leg J: destroying the editor leaves the dispatch depth at zero");
+        }
+    }
+
+    proc.removeListener (&seat);
+}
+
+// ---------------------------------------------------------------------------
+//  State test 102 -- round 27, Devin R640. QUEUED IS NOT DONE.
+//
+//  Round 25 made `saveUser` and `loadFile` deferrable -- they replace state, so they may not run
+//  inside a multi-store user transaction -- and returned `true` when the work had merely been
+//  QUEUED, with the deferred re-entry written `(void) saveUser (rawName)`. Three things followed
+//  from that one `true`:
+//
+//    * the editor's `if (saveUser (...)) { showSavePreset (false); ... }` closed the Save dialog
+//      on a save that had not happened;
+//    * the write's own failure -- a read-only preset folder, a full disk, a name that resolves to
+//      a degenerate path -- was discarded by the `(void)`, so it reached nobody;
+//    * `loadFile` did the same for a file that turned out not to be an Anamorph preset: the
+//      editor swept the knobs and refreshed the display for a load that was later refused.
+//
+//  THE OWNER-APPROVED CONTRACT, measured here. A synchronous result means the operation really
+//  completed. Anything that cannot complete synchronously reports its FINAL result through
+//  `onComplete`, exactly once, and the initiating UI stays pending until it arrives. Failures that
+//  are knowable without touching the disk -- an empty or illegal name, a file that does not parse
+//  -- are decided BEFORE anything is queued (section 9), so the deferred half of a load cannot
+//  fail at all and the deferred half of a save can only fail in I/O.
+// ---------------------------------------------------------------------------
+static void testADeferredPresetOperationReportsItsRealResult()
+{
+    std::printf ("State test 102: a deferred preset operation reports its real result, not its queueing (R640)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& presets = proc.getPresets();
+    using Op = anamorph::PresetManager::OpResult;
+
+    const juce::String stem = "__AnamorphR640Harness__";
+    auto dir  = anamorph::PresetManager::presetDirectory();
+    auto fileFor = [&] (const juce::String& n)
+    { return dir.getChildFile (n + anamorph::PresetManager::fileSuffix()); };
+    // Nothing here ever touches a name a user could have: every file this test makes carries the
+    // harness stem and is removed below, and the one deliberately-unwritable path is a DIRECTORY
+    // this test creates and deletes.
+    juce::StringArray made;
+    auto cleanUp = [&]
+    {
+        for (const auto& n : made)
+        { auto f = fileFor (n); f.deleteFile(); f.deleteRecursively(); }
+        made.clear();
+    };
+
+    // ---- LEG A: NORMAL SYNCHRONOUS SUCCESS ---------------------------------------------------
+    {
+        const juce::String name = stem + "A";
+        made.add (name);
+        int calls = 0; bool said = false;
+        const auto r = presets.saveUser (name, [&] (bool ok) { ++calls; said = ok; });
+        std::printf ("  [leg A] sync save: result %s, completion calls %d, said %s, file on disk %s\n",
+                     r == Op::completed ? "completed" : r == Op::failed ? "failed" : "deferred",
+                     calls, said ? "true" : "false", fileFor (name).existsAsFile() ? "yes" : "no");
+        check (r == Op::completed, "leg A: a save that really happened reports completed");
+        check (calls == 1 && said, "leg A: ...and the completion said so, exactly once");
+        check (fileFor (name).existsAsFile(), "leg A: ...and the file is on disk");
+    }
+
+    // ---- LEG B: SYNCHRONOUS VALIDATION FAILURE, and NOTHING IS QUEUED -------------------------
+    //  An empty or whitespace-only name is a property of the argument, so it is answered now --
+    //  and answered now EVEN INSIDE A TRANSACTION, which is the half of section 9 that matters:
+    //  a name the API would always reject must not be carried into a queue to be rejected later.
+    {
+        int calls = 0; bool said = true;
+        const auto r = presets.saveUser ("   ", [&] (bool ok) { ++calls; said = ok; });
+        check (r == Op::failed, "leg B: an illegal name fails synchronously");
+        check (calls == 1 && ! said, "leg B: ...and the completion says false, exactly once");
+
+        int inTxCalls = 0; bool inTxSaid = true;
+        Op inTx = Op::completed;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            inTx = presets.saveUser ("", [&] (bool ok) { ++inTxCalls; inTxSaid = ok; });
+        }
+        std::printf ("  [leg B] illegal name inside a transaction: %s, completion calls %d\n",
+                     inTx == Op::failed ? "failed" : inTx == Op::deferred ? "deferred" : "completed",
+                     inTxCalls);
+        check (inTx == Op::failed,
+               "leg B: ...and an open transaction does not turn a bad name into queued work");
+        check (inTxCalls == 1 && ! inTxSaid, "leg B: ...the completion still said false, once");
+    }
+
+    // ---- LEG C: DEFERRED SUCCESS. The caller stays pending, then is told it worked ------------
+    {
+        const juce::String name = stem + "C";
+        made.add (name);
+        fileFor (name).deleteFile();
+        int calls = 0; bool said = false;
+        Op r = Op::completed;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            r = presets.saveUser (name, [&] (bool ok) { ++calls; said = ok; });
+            check (r == Op::deferred, "leg C: a save inside a transaction reports deferred");
+            check (calls == 0, "leg C: ...and says NOTHING yet -- queued is not done");
+            check (! fileFor (name).existsAsFile(), "leg C: ...and has written nothing yet");
+        }                                          // <- the transaction closes: the flush runs it
+        std::printf ("  [leg C] after the boundary: completion calls %d, said %s, file %s\n",
+                     calls, said ? "true" : "false", fileFor (name).existsAsFile() ? "yes" : "no");
+        check (calls == 1 && said, "leg C: the completion arrived once, with the real answer");
+        check (fileFor (name).existsAsFile(), "leg C: ...and the file really was written");
+    }
+
+    // ---- LEG D: DEFERRED I/O FAILURE. The failure the `(void)` used to swallow ----------------
+    //  The write is made to fail deterministically and portably: a DIRECTORY is created at the
+    //  exact path the save will try to write, so `replaceWithText` cannot succeed. No permissions,
+    //  no platform-specific path tricks, and nothing outside the harness stem.
+    {
+        const juce::String name = stem + "D";
+        made.add (name);
+        auto target = fileFor (name);
+        target.deleteFile();
+        // A NON-EMPTY directory, not an empty one: `File::replaceWithText` writes a temp sibling
+        // and moves it onto the target, and a move onto an EMPTY directory is allowed to succeed
+        // on some platforms (measured here: it did, and the leg passed vacuously). A directory
+        // with a child in it cannot be replaced by a file anywhere.
+        check (target.createDirectory(), "leg D: the target directory is created");
+        check (target.getChildFile ("occupied").replaceWithText ("x"),
+               "leg D: ...and is non-empty, so nothing can move a file onto it");
+
+        int calls = 0; bool said = true;
+        Op r = Op::completed;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            r = presets.saveUser (name, [&] (bool ok) { ++calls; said = ok; });
+            check (r == Op::deferred, "leg D: the save is queued, the disk not yet consulted");
+            check (calls == 0, "leg D: ...and nothing is claimed while it waits");
+        }
+        std::printf ("  [leg D] after the boundary: completion calls %d, said %s\n",
+                     calls, said ? "true" : "false");
+        check (calls == 1, "leg D: the completion arrived exactly once");
+        check (! said, "leg D: ...and it reported the I/O FAILURE, which used to be discarded");
+        check (! target.existsAsFile(), "leg D: ...and nothing was written");
+    }
+
+    // ---- LEG E: A LOAD'S ONLY FAILURE IS SYNCHRONOUS, TRANSACTION OR NOT ----------------------
+    //  Section 9 in its strongest form: the parse decides "is this an Anamorph preset" from the
+    //  BYTES, which is knowable without any plug-in state, so it is decided before anything is
+    //  queued -- and the deferred half then has no failure mode left to discard.
+    {
+        auto foreign = juce::File::createTempFile (".anamorph");
+        foreign.replaceWithText ("<NOTANAMORPH><PARAM id=\"drive\" value=\"5\"/></NOTANAMORPH>");
+
+        int calls = 0; bool said = true;
+        const auto sync = presets.loadFile (foreign, [&] (bool ok) { ++calls; said = ok; });
+        check (sync == Op::failed, "leg E: a foreign-rooted file fails synchronously");
+        check (calls == 1 && ! said, "leg E: ...and the completion says false, once");
+
+        int txCalls = 0; bool txSaid = true;
+        Op txResult = Op::completed;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            txResult = presets.loadFile (foreign, [&] (bool ok) { ++txCalls; txSaid = ok; });
+        }
+        std::printf ("  [leg E] foreign file inside a transaction: %s, completion calls %d\n",
+                     txResult == Op::failed ? "failed" : txResult == Op::deferred ? "deferred" : "completed",
+                     txCalls);
+        check (txResult == Op::failed,
+               "leg E: ...and an open transaction does not defer a file that cannot be read");
+        check (txCalls == 1 && ! txSaid, "leg E: ...the completion still said false, once");
+        foreign.deleteFile();
+    }
+
+    // ---- LEG F: THE RE-ENTRANT PATH, which is the one the architecture is actually about ------
+    //  Not a hand-made transaction: the whole save is issued from inside a parameter dispatch the
+    //  host pumped, which is the shape R1279-1283 and R1390 are both about. The completion must
+    //  still arrive, and still only when the work is done.
+    {
+        const juce::String name = stem + "F";
+        made.add (name);
+        fileFor (name).deleteFile();
+
+        auto* driveP = proc.getAPVTS().getParameter (pid::drive);
+        check (driveP != nullptr, "leg F: the probe parameter exists");
+        if (driveP != nullptr)
+        {
+            TimerRetrySeat seat;
+            seat.index = driveP->getParameterIndex();
+            proc.addListener (&seat);
+
+            int calls = 0; bool said = false; Op r = Op::completed;
+            seat.pumped = [&]
+            {
+                AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+                r = presets.saveUser (name, [&] (bool ok) { ++calls; said = ok; });
+            };
+            seat.fired = 0; seat.toFire = 1;
+            anamorph::param::beginChangeGesture (driveP);
+            anamorph::param::setValueNotifyingHost (driveP, driveP->convertTo0to1 (7.0f));
+            anamorph::param::endChangeGesture (driveP);
+            seat.toFire = 0;
+
+            check (seat.fired > 0, "leg F: non-vacuity -- the save really was issued from a dispatch");
+            check (r == Op::deferred, "leg F: it was queued, not done");
+            check (calls == 0, "leg F: ...and nothing was claimed inside the dispatch");
+
+            proc.pollUndoCoalesce();               // the safe boundary, outside the dispatch
+            std::printf ("  [leg F] after the safe boundary: completion calls %d, said %s, file %s\n",
+                         calls, said ? "true" : "false", fileFor (name).existsAsFile() ? "yes" : "no");
+            check (calls == 1 && said, "leg F: the completion arrived once, with the real answer");
+            check (fileFor (name).existsAsFile(), "leg F: ...and the file really was written");
+            proc.removeListener (&seat);
+        }
+    }
+
+    // ---- LEG G: MORE THAN ONE QUEUED OPERATION -- order, and one completion each --------------
+    {
+        const juce::String n1 = stem + "G1", n2 = stem + "G2";
+        made.add (n1); made.add (n2);
+        fileFor (n1).deleteFile(); fileFor (n2).deleteFile();
+
+        std::vector<int> order;
+        int c1 = 0, c2 = 0;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            presets.saveUser (n1, [&] (bool ok) { order.push_back (1); c1 += ok ? 1 : 0; });
+            presets.saveUser (n2, [&] (bool ok) { order.push_back (2); c2 += ok ? 1 : 0; });
+            check (order.empty(), "leg G: neither completion fired while the transaction was open");
+        }
+        std::printf ("  [leg G] completion order: ");
+        for (int v : order) std::printf ("%d ", v);
+        std::printf ("(expected 1 2); both files: %s\n",
+                     (fileFor (n1).existsAsFile() && fileFor (n2).existsAsFile()) ? "yes" : "NO");
+        check (order.size() == 2 && order[0] == 1 && order[1] == 2,
+               "leg G: both completions arrived, in the order the user gave the saves");
+        check (c1 == 1 && c2 == 1, "leg G: ...each exactly once, and each said success");
+        check (fileFor (n1).existsAsFile() && fileFor (n2).existsAsFile(),
+               "leg G: ...and both files really were written");
+    }
+
+    // ---- LEG H: THE EDITOR CAN DIE WHILE THE WORK WAITS ---------------------------------------
+    //  The lifecycle constraint the architecture really has, stated rather than invented: there is
+    //  no cancellation. A queued command is never dropped (that is R1279-1283's rule), so the
+    //  completion WILL run -- and it may run after the editor that asked for it has gone. The
+    //  editor's own completions therefore capture a `juce::Component::SafePointer` and return when
+    //  it is null, which is the pattern already used for the OS file chooser. This leg builds a
+    //  real editor, queues a save from it, destroys the editor, and then reaches the boundary: the
+    //  completion must run and must touch nothing that has been destroyed. ASan, UBSan and
+    //  valgrind all run this suite, so "touches nothing destroyed" is checked by them, not merely
+    //  asserted here.
+    {
+        const juce::String name = stem + "H";
+        made.add (name);
+        fileFor (name).deleteFile();
+
+        auto* raw = proc.createEditor();
+        auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        check (ed != nullptr, "leg H: the editor constructs");
+        if (ed == nullptr) { delete raw; }
+        else
+        {
+            int calls = 0; bool said = false;
+            juce::Component::SafePointer<AnamorphAudioProcessorEditor> safe (ed);
+            {
+                AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+                presets.saveUser (name, [&calls, &said, safe] (bool ok)
+                {
+                    ++calls; said = ok;
+                    if (safe == nullptr) return;          // the editor went away: touch nothing
+                    // Any member touch would do; this one is public and cheap. The point of the
+                    // leg is that it does NOT happen, and that the sanitizers agree.
+                    safe->abortAbandonedDragGestures();
+                });
+                check (calls == 0, "leg H: the save is queued while the editor is still alive");
+
+                proc.editorBeingDeleted (ed);
+                delete ed;                                 // ...and the editor dies FIRST
+            }                                              // <- then the boundary runs the save
+            std::printf ("  [leg H] editor destroyed before the boundary: completion calls %d,"
+                         " said %s, safe pointer null: %s\n",
+                         calls, said ? "true" : "false", safe == nullptr ? "yes" : "NO");
+            check (safe == nullptr, "leg H: non-vacuity -- the editor really was destroyed");
+            check (calls == 1 && said,
+                   "leg H: the completion still ran, and reported the real result");
+            check (fileFor (name).existsAsFile(), "leg H: ...and the save really happened");
+        }
+    }
+
+    // ---- LEG I: THE DIALOG ITSELF, end to end ------------------------------------------------
+    //  Legs A-H are about the API's contract. This one is about the sentence the finding actually
+    //  reported: "dialog closes / success UI happens". It drives the REAL Save button on a REAL
+    //  editor and watches the REAL backdrop, because the defect was visible there and nowhere else
+    //  -- `if (saveUser (...)) { showSavePreset (false); ... }` closed the panel on a queued save.
+    {
+        const juce::String name = stem + "I";
+        made.add (name);
+        fileFor (name).deleteFile();
+
+        auto* raw = proc.createEditor();
+        auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        check (ed != nullptr, "leg I: the editor constructs");
+        if (ed == nullptr) { delete raw; }
+        else
+        {
+            juce::TextButton* saveBtn = nullptr;
+            std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+            {
+                for (int i = 0; i < c->getNumChildComponents(); ++i)
+                { auto* k = c->getChildComponent (i);
+                  if (saveBtn == nullptr)
+                      if (auto* b = dynamic_cast<juce::TextButton*> (k))
+                          if (b->getButtonText() == "Save") saveBtn = b;
+                  walk (k); }
+            };
+            walk (ed);
+            check (saveBtn != nullptr, "leg I: the Save button is findable");
+
+            auto* backdrop = saveBtn != nullptr ? saveBtn->getParentComponent() : nullptr;
+            juce::TextEditor* nameField = nullptr;
+            if (backdrop != nullptr)
+                for (int i = 0; i < backdrop->getNumChildComponents(); ++i)
+                    if (auto* te = dynamic_cast<juce::TextEditor*> (backdrop->getChildComponent (i)))
+                        nameField = te;
+            check (backdrop != nullptr && nameField != nullptr,
+                   "leg I: ...and so are the panel it sits on and the name field");
+
+            if (saveBtn != nullptr && backdrop != nullptr && nameField != nullptr)
+            {
+                backdrop->setVisible (true);       // the panel as the user sees it, open
+                nameField->setText (name, false);
+
+                {
+                    AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+                    if (saveBtn->onClick) saveBtn->onClick();
+                    std::printf ("  [leg I] with the save QUEUED: panel visible %s, Save enabled %s,"
+                                 " file %s\n",
+                                 backdrop->isVisible() ? "yes" : "NO",
+                                 saveBtn->isEnabled() ? "yes" : "no",
+                                 fileFor (name).existsAsFile() ? "YES" : "no");
+                    check (backdrop->isVisible(),
+                           "leg I: the panel is STILL OPEN while the save is only queued");
+                    check (! saveBtn->isEnabled(),
+                           "leg I: ...and Save is disabled, so one click is one save");
+                    check (! fileFor (name).existsAsFile(),
+                           "leg I: ...and nothing has been written yet");
+                }                                  // <- the boundary: the save actually happens
+
+                std::printf ("  [leg I] after the boundary: panel visible %s, file %s\n",
+                             backdrop->isVisible() ? "yes" : "no",
+                             fileFor (name).existsAsFile() ? "yes" : "NO");
+                check (! backdrop->isVisible(),
+                       "leg I: the panel closes when the save has really happened");
+                check (fileFor (name).existsAsFile(), "leg I: ...and the file is on disk");
+                check (saveBtn->isEnabled(), "leg I: ...and Save is usable again");
+            }
+
+            proc.editorBeingDeleted (ed);
+            delete ed;
+        }
+    }
+
+    cleanUp();
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -27780,6 +28683,8 @@ int main (int argc, char* argv[])
     testATopologyChangeIsOneUndoStep();
     testAStateReplacingCommandWaitsForTheTransaction();
     testTheDeferredFlushNeverWaitsForAReplacement();
+    testATimerRetryNeverRunsACommandInsideADispatch();
+    testADeferredPresetOperationReportsItsRealResult();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

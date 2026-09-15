@@ -218,14 +218,49 @@ public:
     static juce::String soundSignatureAfterRestoring (const juce::AudioProcessorValueTreeState&,
                                                       const juce::ValueTree& sessionSound);
 
+    // ADR-0036 ROUND 27 (Devin R640). QUEUED IS NOT DONE.
+    //
+    // THE DEFECT, in one line: round 25 made a save and a chooser-load DEFERRABLE (they replace
+    // state, so they may not run inside a multi-store user transaction) and returned `true` when
+    // the work was merely queued, on the reasoning that "reporting failure would make the editor
+    // say the file could not be read when it simply has not been read YET". The editor's
+    // `if (saveUser (...)) { showSavePreset (false); ... }` therefore closed the Save dialog on a
+    // save that had not happened, the deferred call discarded its own result (`(void) saveUser`),
+    // and an I/O failure -- a read-only preset folder, a full disk -- reached nobody at all.
+    //
+    // THE OWNER-APPROVED CONTRACT, implemented below. A synchronous result means the operation
+    // really completed; anything that cannot complete synchronously reports its FINAL result
+    // through an explicit completion, and the initiating UI stays pending until it arrives.
+    //
+    //   `onComplete`, when supplied, is called EXACTLY ONCE with the final success/failure --
+    //   synchronously, before this returns, for `completed` and `failed`; later, from the
+    //   deferred execution, for `deferred`. A caller can therefore ignore the return value
+    //   entirely and still be correct, which is what the editor does.
+    //
+    // WHY THE RETURN TYPE CHANGED RATHER THAN THE MEANING OF `true`. A scoped enum makes every
+    // caller a compile error, so no reader can carry the old reading forward by accident; it has
+    // no implicit conversion to bool, so `if (saveUser (n))` cannot compile and quietly mean
+    // "queued OR saved" again. That is the whole reason it is not a bool with a new comment.
+    enum class OpResult
+    {
+        failed,      // decided NOW, and it did not happen: the name is illegal, the file unparsable
+        completed,   // decided NOW, and it happened
+        deferred     // queued behind an open user transaction; `onComplete` reports the real answer
+    };
+
     void load (int index);                           // message thread only
     // `load` with the drain already done. `step` calls this directly: it has drained itself and
     // derived its row from what that drain established, and a second adoption here would move
     // the selection under a row already chosen (ADR-0036 §23, round 16).
     void loadAdopted (int index);
-    bool loadFile (const juce::File&);               // load an arbitrary .anamorph file (OS chooser, #3)
+    // Load an arbitrary .anamorph file (OS chooser, #3). The PARSE is synchronous even when the
+    // apply is deferred (§9): "this is not an Anamorph preset" is knowable now, so it is answered
+    // now, and the deferred half then cannot fail.
+    OpResult loadFile (const juce::File&, std::function<void (bool)> onComplete = {});
     void step (int delta);                           // prev/next with wrap-around
-    bool saveUser (const juce::String& name);        // write + select; false on IO error
+    // Write + select. The NAME check is synchronous even when the write is deferred (§9); the
+    // write itself can only fail during I/O, so that failure travels on `onComplete`.
+    OpResult saveUser (const juce::String& name, std::function<void (bool)> onComplete = {});
 
     // REMOVED in D-2 round 15 (ADR-0036 §22): `adoptRestoredState (name, sel)`, the host-restore
     // entry point for a session that carried no `presetBaseline`. It derived the baseline from a
@@ -349,6 +384,13 @@ public:
     std::function<juce::uint32 ()> soundParamGeneration;
 
 private:
+    // ROUND 27 (R640): the halves the public entry points split into. `applyParsedFile` is
+    // everything `loadFile` used to do after its parse, and `writeUserPreset` everything
+    // `saveUser` used to do after its name check -- so the deferred execution and the synchronous
+    // one run the SAME code and cannot drift apart.
+    void applyParsedFile (const juce::File&, const juce::ValueTree& sound);
+    bool writeUserPreset (const juce::String& legalName);
+
     // Stands in when no processor wired one up, so the ScopedLock always has an object to take.
     // Never contended in that case: without a processor there is no host restore thread.
     juce::CriticalSection fallbackSoundLock;

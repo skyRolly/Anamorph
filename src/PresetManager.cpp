@@ -1,6 +1,7 @@
 #include "PresetManager.h"
 
 #include "SerializedNumber.h"   // the shared malformed-value predicate (both restore paths)
+#include "ParameterDispatch.h"  // ADR-0036 round 27 (R1390): every host-notifying write is bracketed
 #include <cmath>   // std::isfinite -- the non-finite guards on the restore paths
 
 namespace anamorph
@@ -185,7 +186,7 @@ juce::String PresetManager::soundSig() const
 void PresetManager::resetSolo()
 {
     if (auto* sp = apvts.getParameter (pid::mbSolo))
-        sp->setValueNotifyingHost (sp->getDefaultValue());
+        anamorph::param::setValueNotifyingHost (sp, sp->getDefaultValue());
 }
 
 // ONE AT A TIME (§24). This is HALF of the factory apply -- the overrides in loadAdopted are
@@ -200,7 +201,7 @@ void PresetManager::applyDefaults()
             if (! pid::isPresetExcluded (wid->paramID))
             {
                 if (++written == 4 && insideReplacement) insideReplacement();
-                p->setValueNotifyingHost (p->getDefaultValue());
+                anamorph::param::setValueNotifyingHost (p, p->getDefaultValue());
             }
     resetSolo();
 }
@@ -317,7 +318,7 @@ void PresetManager::applySoundTree (const juce::ValueTree& state)
                 if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
                 {
                     if (++written == 4 && insideReplacement) insideReplacement();
-                    rp->setValueNotifyingHost (normalisedFromSavedTree (*rp, state, wid->paramID));
+                    anamorph::param::setValueNotifyingHost (rp, normalisedFromSavedTree (*rp, state, wid->paramID));
                 }
     resetSolo();
     if (noteReplaced) noteReplaced();   // completion, published before the scope closes (§24)
@@ -545,7 +546,7 @@ void PresetManager::loadAdopted (int index)
             // identity the selection is about to adopt, so the two can never disagree (#4).
             for (const auto& o : factory->set)
                 if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (o.id)))
-                    rp->setValueNotifyingHost (rp->convertTo0to1 (o.value));
+                    anamorph::param::setValueNotifyingHost (rp, rp->convertTo0to1 (o.value));
             if (noteReplaced) noteReplaced();   // completion, published before the scope closes (§24)
         }
         // The resolver mirrors the two writes above: an override's value where the table
@@ -576,19 +577,57 @@ void PresetManager::loadAdopted (int index)
     if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
 }
 
-bool PresetManager::loadFile (const juce::File& f)
+// ROUND 27 (Devin R640). THE PARSE IS SYNCHRONOUS, THE APPLY MAY BE DEFERRED, AND THE CALLER IS
+// TOLD WHICH.
+//
+// Round 25's version returned `true` when it had merely QUEUED the load, with the deferred
+// re-entry written `(void) loadFile (f)` -- so a file that turned out to be another plug-in's
+// preset was refused into a void while the editor had already swept the knobs and refreshed the
+// display for a load that never happened.
+//
+// The split is what makes the contract honest rather than a promise. "Is this an Anamorph preset"
+// is knowable NOW -- it is a property of the bytes, not of the plug-in's state -- so it is decided
+// before anything is queued (section 9), and the half that remains cannot fail. Parsing before the
+// deferral is also one read instead of two, and the parsed tree IS the preset: a file edited in the
+// meantime cannot change what the user asked to load.
+//
+// THE DRAIN STAYS WHERE IT WAS. `adoptPending` runs at the instant the apply happens, not when the
+// command is queued, so a host restore arriving during the transaction is still adopted before the
+// preset lands on it (ADR-0036 sections 18 and 23).
+PresetManager::OpResult PresetManager::loadFile (const juce::File& f,
+                                                 std::function<void (bool)> onComplete)
 {
-    // ADR-0008 round 25 (R1279-1283): the OS-chooser load is the same command by another door.
-    // It returns `true` when deferred: the command was accepted, and reporting failure would
-    // make the editor say the file could not be read when it simply has not been read YET.
-    if (deferIfBusy && deferIfBusy ([this, f] { (void) loadFile (f); })) return true;
-    if (adoptPending) adoptPending();   // as `load`: the drain `onAboutToLoad` used to carry (§23)
-
-    // Unparsable OR foreign-rooted -> false, and nothing is touched: the chooser
-    // can point at any file on the machine, so this is the path a user is most
-    // likely to hand another plug-in's preset to (ER-STATE-24).
+    // Unparsable OR foreign-rooted -> failed, and nothing is touched: the chooser can point at any
+    // file on the machine, so this is the path a user is most likely to hand another plug-in's
+    // preset to (ER-STATE-24). Decided here, before any queuing, because it is decidable here.
     auto sound = parseSoundFile (f);
-    if (! sound.isValid()) return false;
+    if (! sound.isValid())
+    {
+        if (onComplete) onComplete (false);
+        return OpResult::failed;
+    }
+
+    // ADR-0008 round 25 (R1279-1283): the OS-chooser load is the same state-replacing command by
+    // another door, so it waits for an open user transaction exactly as Undo does.
+    // COPIED, NOT MOVED, and the test that found this is State test 102 leg A. An init-capture is
+    // evaluated when the LAMBDA is constructed -- which happens before `deferIfBusy` is called and
+    // regardless of what it answers -- so `cb = std::move (onComplete)` emptied `onComplete` even
+    // on the path that then ran synchronously, and the synchronous caller was told nothing at all.
+    // A `std::function` copy is cheap and cannot do that.
+    if (deferIfBusy && deferIfBusy ([this, f, sound, cb = onComplete]
+                                    { applyParsedFile (f, sound); if (cb) cb (true); }))
+        return OpResult::deferred;
+
+    applyParsedFile (f, sound);
+    if (onComplete) onComplete (true);
+    return OpResult::completed;
+}
+
+// Everything `loadFile` used to do once the bytes had proved themselves. One body, so the deferred
+// path and the synchronous one cannot drift.
+void PresetManager::applyParsedFile (const juce::File& f, const juce::ValueTree& sound)
+{
+    if (adoptPending) adoptPending();   // as `load`: the drain `onAboutToLoad` used to carry (§23)
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
     applySoundTree (sound);
     if (beforeStateCapture) beforeStateCapture();   // test seam: after the apply, before the baseline
@@ -600,7 +639,6 @@ bool PresetManager::loadFile (const juce::File& f)
     sigAtLoad = soundSignatureAfterLoading (apvts, sound);   // from the bytes, no live read (§18, KI-029; §19)
     if (onMetaChanged) onMetaChanged();
     if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
-    return true;
 }
 
 void PresetManager::step (int delta)
@@ -631,16 +669,49 @@ void PresetManager::step (int delta)
     loadAdopted (((from + delta) % n + n) % n);
 }
 
-bool PresetManager::saveUser (const juce::String& rawName)
+// ROUND 27 (Devin R640). A NAME IS JUDGED NOW; A DISK IS JUDGED WHEN IT IS WRITTEN.
+//
+// Round 25's version deferred FIRST and returned `true`, so the editor closed the Save dialog on a
+// save that had not happened -- and the deferred re-entry was written `(void) saveUser (rawName)`,
+// so when the write later failed (a read-only preset folder, a full disk, a name that resolves to
+// a degenerate path -- see the tilde note below) nothing anywhere learned of it. The user had a
+// closed dialog, an unchanged preset list, and no error.
+//
+// SO THE TWO KINDS OF FAILURE ARE SEPARATED (section 9). An illegal or empty name is a property of
+// the ARGUMENT: knowable now, answered now, nothing queued. Everything else is a property of the
+// FILESYSTEM at the moment of writing, which is exactly what cannot be known in advance -- so it
+// travels on `onComplete`, and the initiating UI stays pending until it arrives.
+PresetManager::OpResult PresetManager::saveUser (const juce::String& rawName,
+                                                 std::function<void (bool)> onComplete)
 {
+    // The one failure that is decidable without touching the disk.
+    const juce::String name = juce::File::createLegalFileName (rawName.trim());
+    if (name.isEmpty())
+    {
+        if (onComplete) onComplete (false);
+        return OpResult::failed;
+    }
+
     // ADR-0008 round 25 (R1279-1283): a save writes no parameter, but the processor's `onSaved`
     // hook calls `syncCommitted`, which clears `pendingGestureCommit` -- so a save arriving
     // inside a transaction silently deletes that transaction's undo step. Deferred like the
     // loads, and for the better outcome too: the file then records the COMPLETED action.
-    if (deferIfBusy && deferIfBusy ([this, rawName] { (void) saveUser (rawName); })) return true;
-    const juce::String name = juce::File::createLegalFileName (rawName.trim());
-    if (name.isEmpty()) return false;
+    // Copied, not moved: see the note in `loadFile`. Moving here emptied the completion on the
+    // synchronous path too, because the capture is evaluated before `deferIfBusy` answers.
+    if (deferIfBusy && deferIfBusy ([this, name, cb = onComplete]
+                                    { const bool ok = writeUserPreset (name); if (cb) cb (ok); }))
+        return OpResult::deferred;
 
+    const bool ok = writeUserPreset (name);
+    if (onComplete) onComplete (ok);
+    return ok ? OpResult::completed : OpResult::failed;
+}
+
+// Everything `saveUser` used to do once the name had proved itself. `legalName` has already been
+// through `createLegalFileName` and is non-empty, so the deferred execution re-derives nothing --
+// the name the user typed is the name that gets written, whenever the write happens.
+bool PresetManager::writeUserPreset (const juce::String& name)
+{
     auto dir = presetDirectory();
     if (! dir.createDirectory()) return false;
 

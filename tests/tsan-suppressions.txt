@@ -183,7 +183,18 @@
 # It names the harness double, as the rule above requires -- `HostSeat` is a test
 # type and cannot appear in a shipped build -- so a real host-vs-host inversion on
 # these same two locks, with no harness frame in either stack, is still REPORTED.
-deadlock:HostSeat
+#
+# ROUND 27 (2026-09-15) DELETED THIS ENTRY, and the deletion is the evidence rather than a
+# tidy-up. `deadlock:HostSeat` named State test 93's host seat, which pumps the editor's tick from
+# inside `endChangeGesture`. ADR-0036 section 30 gives `pollUndoCoalesceFromTimer` a predicate --
+# `anamorph::param::insideDispatch()` -- and test 93 drives its gesture through the plug-in's own
+# wrapped writes, so the depth is non-zero when the pump arrives and the tick now does NOTHING:
+# no drain, no poll, no flush, and so no `apvts.copyState()`. The report is gone, not absorbed.
+# Measured on the round-27 tree with suppressions OFF: the whole suite raises TWO lock-order
+# reports, and neither names `HostSeat`. Per the rule above -- an entry that matches nothing
+# silently widens what a future report can be absorbed by -- it is deleted rather than kept
+# "just in case", which also makes a regression LOUD: re-opening that door brings the report back
+# with nothing left in this file to swallow it.
 deadlock:WriteFromInsideAGestureOpen
 #
 # ROUND 24 ADDS A THIRD NAME FOR THE SAME REPORT, and it is a third name rather than
@@ -210,7 +221,14 @@ deadlock:WriteFromInsideAGestureOpen
 # in a shipped build, so this entry obeys the same rule as the two above: a real
 # host-vs-host inversion on these two locks, with no harness frame in either stack,
 # is still REPORTED.
-deadlock:PumpFromGestureEnd
+#
+# ROUND 27 (2026-09-15) DELETED THIS ENTRY TOO, for the same measured reason. `PumpFromGestureEnd`
+# is State test 98's seat and it calls `pollUndoCoalesceFromTimer` directly; the gesture it pumps
+# from is the imager's own `addBandAt`, i.e. a dispatch this plug-in starts through
+# `anamorph::param::beginChangeGesture`, so the round-27 predicate reads non-zero and the tick
+# returns without touching the APVTS lock. Same measurement, same conclusion, same reason not to
+# keep a dead pattern: with suppressions off the suite raises two reports and this is not one of
+# them.
 
 # ---------------------------------------------------------------------------
 # ROUND 26 (Devin R651). `PumpedUserInteraction` is State test 100's host seat: a
