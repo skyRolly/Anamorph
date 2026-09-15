@@ -462,6 +462,45 @@ bare `setValueNotifyingHost` rather than through `storeOwned` (`resetParam`, `se
 `setSoloMask`), for which it is the only endpoint source. Those are the pre-existing narrow
 in-gesture window this decision has recorded since round 16, and this round does not move it.
 
+## Decision — correction, 2026-09-15 (round 21)
+
+**The three bare imager stores are not an exception to the rule; they were an omission, and they
+are closed.** Review finding `src/PluginProcessor.cpp:R1078-1081` names the second half of the
+paragraph directly above: `SpectrumImager::resetParam`, `setBands` and `setSoloMask` opened a change
+gesture, wrote with a bare `setValueNotifyingHost` and declared nothing, so the close fell back to a
+LIVE READ to learn the endpoint. Every round since 16 has recorded that window as "narrow" and left
+it; this round measured what is actually in it.
+
+**What the window contains.** The write is `setValueNotifyingHost`, whose listeners run
+SYNCHRONOUSLY inside it. A host answering that write — a control surface echoing, automation
+writing back, anything in the wrapper's seat — is sitting in the parameter when the close reads it.
+The host's value therefore became the user action's `after`, and so the destination of the user's
+Redo. That is not a narrow window on a benign value: it is exactly the rule this ADR's round-14
+amendment exists to state, broken in three places. State test 94 leg A measures it — with the
+pre-round-21 stores in place, a width reset the host answered has **Redo landing on the host's
+value** — and leg H2 measures the same for the solo mask.
+
+**The fix uses the mechanism that was already correct.** No parallel attribution system: the three
+stores now take the read-back shape `storeOwned` has used since round 15 — capture `was`, compute
+the value the parameter will render, write, compare — and report through the same `onOwnedWrite` /
+`onOwnedRefused` callbacks the batch bookkeeping already consumes. What is there afterwards either
+is what was installed or is somebody else's, and those are different facts.
+
+**The guard branches are refusals too.** When the topology check ahead of the store fails, the
+gesture has opened and closed having written nothing, so the live value at the close is whatever a
+host left there — the one value that must not become this action's endpoint. Each of the three now
+reports a refusal on that branch as well, and `setBands` / `setSoloMask` set their `stored` result
+only on the branch that actually stood.
+
+**Where the live read still runs, restated.** One case, not three: a gesture that produced no write
+at all (an empty press), where the live value equals the `before` unless a host writes inside the
+press. RISK-012 stays OPEN against that alone.
+
+**What this does NOT change.** No gesture span, no parameter ID, range, default or serialization
+field, no DSP node or stage order, no reported latency, no thread and no new cross-thread path. The
+topology guards themselves are untouched — the same check, in the same place, deciding the same
+thing; only what the store REPORTS afterwards is new.
+
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
   not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots

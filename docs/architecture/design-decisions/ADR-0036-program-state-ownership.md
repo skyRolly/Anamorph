@@ -1539,6 +1539,128 @@ turn late) and leaves a save issued on the host thread right after its restore d
     sound and in the host save; removing the guard's announcement term alone fails **4** (C and E),
     which is the term shown load-bearing.
 
+26. **A TIMER NEVER WAITS FOR A WHOLE-SOUND REPLACEMENT (round 21).** Review finding *"Nested
+    gesture polling can deadlock"* (`src/PluginProcessor.cpp:R1204`). Closes RISK-009's second
+    inversion — the one round 20 escalated as an owner decision — under the owner's round-21
+    instruction that it must not remain an accepted residual. It is a threading-model change and so
+    an `ARCHITECTURE_REVIEW_GATE.md` item; the instruction is the authorisation, and this section
+    is the record of what was changed and why nothing smaller would do.
+
+    **The cycle, with the finding's own naming corrected.** Two edges, both production plus pinned
+    JUCE:
+      * a HOST THREAD inside `setStateInformation` off the message thread takes `soundReplacement`
+        in `applySoundTree` (§24) and then, inside `apvts.replaceState`, waits for a parameter's
+        `listenerLock`;
+      * the MESSAGE THREAD reaches the undo poll from a TIMER, and a timer runs from any loop that
+        drains the message queue — including one a host pumps from its gesture-end callback, which
+        JUCE dispatches to `finalListener` while that same `listenerLock` is HELD
+        (`juce_AudioProcessorParameter.cpp:103-108`). The poll then waits for `soundReplacement`.
+    The finding named the APVTS `valueTreeChanging` lock as the one the poll waits on. It is not:
+    the poll's wait is on `soundReplacement`, and the APVTS lock is what the host thread takes
+    *underneath* it. The cycle is the same shape either way, and the correction matters because it
+    is what makes the fix land in the right place.
+
+    **THREE acquisitions, not one.** The cited line is one of them. Reached from a timer:
+      * `adoptRestoreTail`'s re-install of the restored sound (§24's lock, taken directly);
+      * `syncCommitted` -> `currentStateSet` -> `copyStateWithRawValues`, at the very END of that
+        same tail — found by the round's own regression leg G, not by reading, after the first
+        attempt at this fix gated only the first and still measured a 4366 ms wait;
+      * the poll body's own `currentStateSet`, which is the one the finding points at.
+    A fix that closes fewer than all three closes nothing.
+
+    **The rule.** The two TIMER entry points — `AnamorphAudioProcessor::timerCallback` and
+    `pollUndoCoalesceFromTimer`, which is what `PluginEditor.cpp` calls on its 24 Hz tick — never
+    block on `soundReplacement`. The USER-ACTION doors (`pollUndoCoalesce`, undo, redo, a preset
+    save, an A/B switch, `getStateInformation`, `setStateInformation`) keep the blocking
+    acquisition they have always had: none is reachable from inside a parameter dispatch, which is
+    the standing obligation `copyStateWithRawValues` already records, and their flush must not be
+    skipped.
+
+    **Why a try-lock and not a re-entrancy flag.** The dangerous re-entry is the host's pump from
+    inside `endChangeGesture`, which JUCE dispatches to `finalListener` AFTER this plug-in's own
+    listener has returned. A depth counter kept around our own callback body therefore reads zero
+    at exactly the moment it would need to read one. Not blocking at all needs to detect nothing.
+
+    **Why not ONE try-lock around the whole timer tick, which is the obvious shape.** Because the
+    adoption calls OUT to the host from inside itself: a restored Oversampling delivers the
+    reported latency synchronously and `AudioProcessorListener`s run on this thread while it does.
+    Holding a replacement lock across a host callback is the same inversion pointing the other way,
+    and it is not theoretical — State test 27 (ER-STATE-14), whose whole subject is a host thread
+    restoring while the message thread sits in a latency callback, HANGS on it. Measured, round 21:
+    the suite spun at 99% CPU in that leg until it was killed. So the drain is gated from inside
+    and only the poll body, which calls out to nothing, is covered by a lock held across it.
+
+    **Why skipping the sound re-install is the same answer as waiting for it.** Evaluated on the
+    message thread, a failed `tryEnter` on a RECURSIVE lock proves the holder is another thread —
+    and exactly one site is ever held by another thread. The audio thread never takes this lock;
+    every other whole-sound replacement, and every `currentStateSet`, is message-thread work; and
+    an off-message-thread `getStateInformation` answers from `programMailbox` and takes no lock at
+    all. So the contender is `applySoundTree` from `installRestoredSound` — a host-thread restore,
+    which by §25 has ALREADY ANNOUNCED. Its generation is higher than any restore in the cell, so
+    the re-install guard's `internal.engineConfigGeneration() == d.generation` is false; a blocking
+    acquisition would have waited and then found the same false. The TAIL still runs either way.
+
+    **Why the baseline snapshot is DEFERRED rather than skipped.** `syncCommitted` does more than
+    take a snapshot: it clears `openGestures`, `pendingGestureCommit` and the wheel keys, and
+    re-anchors the ADR-0053 edge. All of that is message-thread scalars and a signature built from
+    one-at-a-time parameter reads, so it runs unconditionally; only the tree copy needs the lock.
+    When a timer cannot take it, `committedNeedsResync` records the fact and
+    `pollUndoCoalesceAdopted` repairs it at its FIRST line — ahead of the early return and ahead of
+    every branch that pushes — so no undo entry is ever built on a `committed` the flag still
+    names. The timer door already holds the replacement lock across that body, so the repair is a
+    free recursive re-entry; a user-action door blocks on it exactly as it always has.
+
+    **What is NOT changed, deliberately.** No audio-thread path takes any lock, new or old. No wait,
+    no sleep, no timer is used as a synchronisation device: the only new primitive is a
+    `ScopedTryLock` that either succeeds or returns. Gesture semantics, endpoint attribution and
+    the undo model are untouched — a skipped tick consumes nothing (`pendingRestore`,
+    `pendingGestureCommit`, the batch vectors and `polledGen` are all left as they were), so the
+    next tick does the work 42 ms later.
+
+    **Evidence.** State test 94 legs F and G build both edges out of two real threads —
+    `seams.insideSoundReplacement` parks a host thread inside the write loop WITH the lock held,
+    and `HostSeat`, sitting behind `finalListener`, polls from inside `endChangeGesture` with the
+    parameter's `listenerLock` held — and measure the nested poll: **0 ms** against a replacement
+    held open beside it. Reverting the timer door to the blocking poll (M84) measures **4388 ms**
+    and **4382 ms** on the same two legs; reverting the re-install acquisition (M85) and the
+    baseline acquisition (M86) each measure ~4360 ms on leg G. The seam's wait is bounded so a
+    build carrying the cycle reports a long poll instead of hanging the suite.
+
+    **THE TSAN REPORT DOES NOT GO AWAY, AND READING IT CORRECTED ROUND 20.** `deadlock:HostSeat`
+    still matches on the fixed tree. Running the suite with the suppressions off and reading the
+    four reports shows why, and shows that round 20 named the wrong pair: in the `HostSeat` report
+    BOTH orders are taken with `soundReplacement` already held — `copyStateWithRawValues` takes it
+    one line above its `copyState`, and `applyStatePreservingView` / `applySoundTree` take it before
+    their `replaceState` — and that was true before this round too. Two threads cannot hold it at
+    once, so the APVTS-vs-`listenerLock` pair could never close. What could close was
+    `soundReplacement` against `listenerLock`, which is this section. TSan keeps a PAIRWISE
+    lock-order graph and does not model an outer lock that serialises both orders, so it still
+    reports the pair; the suppression stays, with its justification rewritten to say both things.
+
+    **GATE COMPLIANCE for this section, audited 2026-09-15 against `ARCHITECTURE_REVIEW_GATE.md`
+    §Procedure.** This is a **Thread Model change** under that policy's third bullet and an AI-agent
+    hard stop.
+
+    | Step | Requirement | Evidence |
+    |---|---|---|
+    | 1 | the author flags the change as gated | this section's opening paragraph, and the PR #144 body |
+    | 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | the owner's round-21 instruction, which names the risk (RISK-009), rules that it *"must not remain as an accepted residual"*, directs *"the smallest safe threading-model change"*, and states the constraints the fix had to obey — no audio-thread mutex, no waits, no timer used as a synchronisation device, no suppression dressed up as a fix |
+    | 3 | if the change is a decision, an ADR is added/updated | this section; `THREADING_POLICY.md` and `THREAD_MODEL.md` carry the restated rule |
+    | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes |
+
+    **The form step 2 takes is the form this repository has always used** — ADR-0041 is *"Accepted
+    (maintainer instruction …)"* and ADR-0052 was entered the same way. `ARCHITECTURE_REVIEW_GATE.md`
+    names no medium for step 2; the word *approval* appears nowhere in it, in `AI_AGENT_POLICY.md`
+    or in `ADR_POLICY.md`.
+
+    **What does NOT exist, stated rather than counted as satisfied:** there is no approving review on
+    PR #144. All five reviews on it are `COMMENTED` — one from the code-scanning bot, four
+    disposition replies from the owner account (re-checked 2026-09-15). It cannot be produced from
+    here either: the session's GitHub principal is `skyRolly`, this PR's own author, and GitHub
+    refuses self-approval — and an agent approving its own threading change is the thing this gate
+    exists to prevent. The exact missing artifact, for the owner: an `APPROVED` review on PR #144
+    referencing **this section** as well as ADR-0053.
+
 ## Consequences
 
 - **Realtime.** `processBlock`, `toEngine`, `setParameters` and `process` are unchanged. The one

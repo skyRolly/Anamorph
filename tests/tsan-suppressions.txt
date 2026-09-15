@@ -132,12 +132,44 @@
 # no production listener writes a parameter. This one does not have that defence.
 # Edge two is what a HOST does if it pumps its message loop from inside its
 # gesture-end callback -- which is exactly the scenario State test 93 exists to
-# reproduce, and is therefore reachable in a shipped build. What is suppressed is
-# the REPORT, not the risk: the risk is recorded in `FUTURE_RISKS.md` under
-# RISK-010's family as a host-reachable inversion, and closing it needs a
-# threading-model change, which is an ARCHITECTURE_REVIEW_GATE item and not the
-# agent's to make. This entry is therefore a placeholder for an owner decision,
-# not a verdict that the cycle is benign.
+# reproduce, and is therefore reachable in a shipped build.
+#
+# ROUND 21 (2026-09-15) REWRITES THE REST OF THIS PARAGRAPH, because what it said
+# is no longer true. It used to say this entry was "a placeholder for an owner
+# decision, not a verdict that the cycle is benign", and that closing the cycle
+# needed a threading-model change nobody had authorised. That change was
+# authorised and has landed: ADR-0036 §26. The entry stays anyway, and the reason
+# is a property of the DETECTOR rather than of the code.
+#
+# WHAT THE FIX DID. The two TIMER doors into the undo poll --
+# `AnamorphAudioProcessor::timerCallback` and `pollUndoCoalesceFromTimer` -- no
+# longer block on `soundReplacement`, so the message thread can no longer wait for
+# a host thread's whole-sound replacement while it holds a parameter's
+# `listenerLock`. Three acquisitions were reachable from those doors and all three
+# are gated (the restore tail's sound re-install, `syncCommitted`'s baseline
+# snapshot, and the poll body's `currentStateSet`).
+#
+# WHY THE REPORT SURVIVES IT, AND WHY THE PARAGRAPH ABOVE NAMED THE WRONG PAIR.
+# Reading the actual stacks with the suppressions off, BOTH orders of this report
+# are taken with `soundReplacement` already held -- and were before round 21 too:
+# `copyStateWithRawValues` has taken it one line above its `copyState` since round
+# 17, and `applyStatePreservingView` / `applySoundTree` take it before their
+# `replaceState`. Two threads cannot hold it at once, so the APVTS-vs-listenerLock
+# pair could never close. What the nested poll could actually deadlock on was
+# `soundReplacement` ITSELF -- waiting for it while holding a `listenerLock` a host
+# thread's `replaceState` was about to want -- and that is what round 21 fixed.
+#
+# TSan still reports this pair because its deadlock detector keeps a PAIRWISE
+# lock-order graph and does not model an outer lock that serialises both orders.
+# Measured on the fixed tree: `Matched 3 deadlock:HostSeat`.
+#
+# So this is a suppression of a report whose cycle cannot close, not a deferred
+# decision, and not the cycle that could hang. Removing the report itself would
+# mean removing the nesting -- not reading the parameter tree from inside a gesture
+# dispatch at all -- which is a larger change with no defect behind it.
+# `FUTURE_RISKS.md` RISK-009 carries the same correction, including the one place
+# the outer-lock rule is NOT observed (`PresetManager::saveUser`, which only reads
+# and so cannot join the cycle).
 #
 # It names the harness double, as the rule above requires -- `HostSeat` is a test
 # type and cannot appear in a shipped build -- so a real host-vs-host inversion on

@@ -60,6 +60,15 @@ for step 2, so the maintainer instruction satisfies it; but the PR itself carrie
 decision, and a reader auditing the merge from GitHub alone would not find one. Recommended, and not
 done here because it is the owner's to give: an approving review on PR #144 referencing this ADR.
 
+**Re-checked 2026-09-15 (round 21): unchanged in every particular.** The PR still carries five
+reviews and all five are still `COMMENTED`; no round-21 change touches this ADR's scope (the wheel
+rules, the batching and the 24 Hz cadence are untouched — what changed is which DOOR the editor's
+timer enters the poll through, and whether that door may wait for a lock). Round 21 adds a SECOND
+gated item of its own, a Thread Model change, whose gate audit lives in **ADR-0036 §26** rather than
+here. Both are cleared the same way and both are missing the same optional artifact, so the
+recommendation above now covers two ADRs: an approving review on PR #144 referencing ADR-0053 and
+ADR-0036 §26.
+
 **Supersedes ONE Consequences line of [ADR-0041](ADR-0041-a-coupled-update-is-all-of-it-or-none-of-it.md)
 — *"A wheel tick during a drag ends the drag"* — and PRESERVES ADR-0041's Decision, which is what makes
 the replacement safe.** ADR-0041 stays **Accepted**: its rule that *a refresh which cannot bring every

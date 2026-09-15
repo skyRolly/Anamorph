@@ -105,7 +105,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the commercial JUCE licence required by the closed-source model is not yet obtained | High | High (already true) |
 | RISK-007 | **RESOLVED 2026-09-03 (D-2, ADR-0036)** — State calls on a non-main host thread raced message-thread state (AU autosave; out-of-spec VST3 hosts); program metadata is now message-thread-owned and exchanged through two lock-free cells | — | — |
 | RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Low — real-host validated in REAPER; other Linux hosts unverified |
-| RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once |
+| RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once. The second inversion round 20 added here (a nested poll against a host thread's whole-sound replacement) was REACHABLE and is CLOSED in round 21 by ADR-0036 §26 |
 | RISK-010 | The DSP snapshot of the ten multiband parameters is ten independent `load()` calls, so the audio thread can read a layout that never existed as a whole | Medium | **Certain** — it is the shipped reader model; what is bounded is the harm, not the occurrence |
 | RISK-011 | A gesture count that returns to zero mid-transaction lets a poll record an undo step for a layout the user never had (the v0.9.8 rounds' residuals U1-U3) | Medium | Low as observed, **structural** as a mechanism — nothing in the current code prevents it |
 
@@ -271,6 +271,68 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   dispatch is in flight, or defer a re-entrant poll to the next timer tick. Neither is attempted
   here. Severity: **Medium** — a genuine deadlock requires the two orders on two threads, and every
   order observed so far is taken by the message thread alone.
+- **ROUND 21 (2026-09-15) — CLOSED as a reachable production deadlock, under the owner's
+  instruction that it must not remain an accepted residual. The TSan REPORT remains, and that
+  difference is the whole of this entry.**
+
+  **The cycle that was real, and it is not the pair round 20 named.** Round 20 recorded
+  `listenerLock` against the APVTS `valueTreeChanging` lock. The review finding this round
+  (`src/PluginProcessor.cpp:R1204`) pointed at the same poll, and reconstructing it from the two
+  threads showed the lock the poll actually WAITS on is `soundReplacement` — §24's whole-sound
+  replacement lock — with the APVTS lock taken *underneath* it by the host thread. Both edges are
+  production plus pinned JUCE: a host thread inside an off-message-thread `setStateInformation`
+  holds `soundReplacement` across `applySoundTree` and then waits inside `apvts.replaceState` for a
+  parameter's `listenerLock`; the message thread reaches the poll from a TIMER, which runs from any
+  loop that drains the message queue — including one a host pumps from its gesture-end callback,
+  dispatched by JUCE with that same `listenerLock` held.
+
+  **Fixed by ADR-0036 §26:** the two timer entry points never block on `soundReplacement`. Three
+  acquisitions were reachable from them, not the one cited line, and all three are gated; the
+  user-action doors keep the blocking acquisition they have always had. The round's own regression
+  leg G found the third one — `syncCommitted`'s baseline snapshot — after the first attempt gated
+  only two and still measured a 4366 ms wait. State test 94 legs F and G build both edges out of
+  two real threads and measure the nested poll at **0 ms**; reverting each gate in turn (M84, M85,
+  M86) measures ~4.4 s, which is the deadlock with a stopwatch on it.
+
+  **ROUND 20 NAMED THE WRONG LOCK PAIR, AND THE STACKS SAY SO.** Running the suite with the
+  suppressions off and reading the four reports, the `HostSeat` one is
+  `listenerLock` against the APVTS lock exactly as round 20 described — but BOTH of its orders are
+  taken with `soundReplacement` already held, and they were before this round as well:
+    * `HostSeat::audioProcessorParameterChangeGestureEnd` -> `pollUndoCoalesceFromTimer` ->
+      `pollUndoCoalesceAdopted` -> `currentStateSet` -> `copyStateWithRawValues` -> `copyState`.
+      `copyStateWithRawValues` has taken `soundReplacement` since round 17, one line above its
+      `copyState`, so the APVTS lock was never reached without it.
+    * `undo()` -> `applyUndoEntry` -> `applyStateSet` -> `applyStatePreservingView` ->
+      `replaceState` -> `ParameterAdapter::setNormalisedValue` -> `listenerLock`, under
+      `applyStatePreservingView`'s own `soundReplacement`. Its production counterpart,
+      `applySoundTree` on a host thread, is under the same lock by §24.
+  Two threads cannot hold `soundReplacement` at once, so that pair could never close. **What the
+  poll actually deadlocked on was `soundReplacement` itself** — the message thread WAITING for it
+  while holding a `listenerLock` a host thread's `replaceState` was about to want. That is the pair
+  R1204 named and the pair §26 closes. Round 20's escalation pointed at the symptom TSan printed
+  rather than at the edge that could hang, and this paragraph corrects it rather than leaving the
+  stronger claim standing.
+
+  **THE TSAN REPORT IS STILL THERE, AND IS STILL SUPPRESSED.** `deadlock:HostSeat` matched 3 times
+  on the fixed tree. TSan's deadlock detector keeps a PAIRWISE lock-order graph and does not model
+  an outer lock that serialises both orders, so `listenerLock -> … -> APVTS` and
+  `APVTS -> listenerLock` remain an edge pair in it and remain reported. The suppression therefore
+  stays, with its justification rewritten: it is no longer a placeholder for an owner decision, and
+  it never named the cycle that could actually hang. Removing the REPORT would mean removing the
+  nesting — not reading the parameter tree from inside a gesture dispatch at all — which is a larger
+  change with no defect behind it.
+
+  **Residual, stated rather than claimed away.** `PresetManager::saveUser`
+  (`src/PresetManager.cpp:687`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
+  `soundReplacement`, the only durable reader in the tree that does. It cannot join this cycle: it
+  only reads, so it never waits for a `listenerLock`, and it always releases. It is recorded here
+  because the rule the paragraphs above rest on — every APVTS acquisition that can happen with a
+  `listenerLock` held is under `soundReplacement` — is the rule a future edit would break there
+  first.
+
+  Severity of what remains: **Low** — the two-parameter `listenerLock` nesting at the top of this
+  entry, which needs a host to write cross-parameter from inside a dispatch on two threads in
+  opposite orders, and which no listener in this plug-in creates.
 
 ## RISK-010 — The DSP's multiband snapshot is not a snapshot (ESCALATED as an architecture-review item)
 - **Risk:** `PluginParameters::toEngine` builds the per-block DSP view of the multiband layout from
@@ -463,6 +525,24 @@ mitigation. Do not invent risks to fill the template.
   defect rather than a tolerated one. The round-20 request mechanism generalises to it (such a store
   knows what it is installing), which is the recommended next step; it is **not** done here because
   this round's scope is the attachment path, and widening it is the owner's call.
+- **ROUND 21 (2026-09-15): the window round 20 left open is FIXED, and it did not need the request
+  mechanism.** Review finding `src/PluginProcessor.cpp:R1078-1081` named exactly the three stores
+  the paragraph above names. They now use the read-back shape `storeOwned` has used since round 15 —
+  capture `was`, compute what the parameter will render, write, compare — and report through the
+  existing `onOwnedWrite` / `onOwnedRefused` callbacks. No parallel attribution system: the mechanism
+  that was already correct was simply extended to the three sites that had never been brought under
+  it. Their topology-guard branches report a refusal too, because a gesture that opened and closed
+  having written nothing leaves the live value equal to whatever a host put there. Measured at
+  `16852e1`: State test 94 leg A (a width reset the host answers re-entrantly — Redo landed on the
+  host's 1.6400) and leg H2 (the solo mask — Redo landed on the host's 2.0000); both pass with the
+  fix and both fail again under mutation M83.
+- **STATUS AFTER ROUND 21: STILL OPEN, and still not reclassified.** One window remains and it is
+  the one ADR-0008 has always named separately: a gesture that produces **no write at all** — an
+  empty press — where the close's live read is the only thing there is, so a host write landing
+  inside that press is indistinguishable from the user's own value. It is smaller than any previous
+  statement of this risk and it is the last of the enumerated windows, but "smaller" is not
+  "closed", and this entry has been declared closed prematurely twice (rounds 18 and 19). It stays
+  OPEN until an empty-press leg measures it shut.
 
 ## RISK-013 — The foreign-write test counts raw parameter stores where everything else asks the rendered value
 - **STATUS, 2026-09-13: FORMALLY ACCEPTED RESIDUAL.** Correct and one-directional, and the same item

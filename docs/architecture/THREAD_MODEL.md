@@ -114,6 +114,13 @@ freed while another thread can reach it, because a pointer is reachable from exa
   five replacement sites (the restore install, the adoption's re-install with its guard, the
   undo / redo / A/B apply, a user preset load, and both halves of a factory preset apply) take this
   one lock. `PresetManager` takes the same object through a pointer the processor supplies.
+  **Round 21: the TIMER doors do not WAIT for it** (`AnamorphAudioProcessor::timerCallback`,
+  `pollUndoCoalesceFromTimer`). A timer runs from any loop that drains the message queue,
+  including one a host pumps from inside its own gesture-end callback with a parameter's
+  `listenerLock` held — and a host thread's `applySoundTree` holds this lock and then waits for
+  that `listenerLock`. Those two doors therefore take it with `ScopedTryLock` and give the tick
+  up instead of blocking; a skipped tick consumes nothing and the next one does the work. Every
+  other caller blocks exactly as before. ADR-0036 §26.
   Ordering is one-directional — `soundReplacement` → the APVTS lock → `listenerLock` — and **the
   audio thread never takes it**, so the no-locking rule above is untouched. Since round 18 (§25)
   the one DURABLE reader of the live sound, `copyStateWithRawValues` (session saves on either

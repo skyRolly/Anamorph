@@ -1486,6 +1486,70 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   two notches, and the second notch's own close overwrote the first one's stolen endpoint. It now
   measures one notch in isolation first, and the chain assertions follow separately.
 
+* **Round 21 — State test 94, and the leg that found a hole in the fix it was written to defend.**
+  Two findings, one test. Legs **F** and **G** are the deadlock; legs **A** and **H2** are the bare
+  imager stores.
+
+  **Legs F and G build a lock cycle out of two real threads rather than asserting about one.**
+  `seams.insideSoundReplacement` parks a host thread inside `applySoundTree`'s write loop WITH the
+  replacement lock held; `HostSeat`, which sits behind `finalListener` where a wrapper sits, polls
+  from inside `endChangeGesture` with the parameter's `listenerLock` held. What is measured is the
+  elapsed time of the nested poll: **0 ms** on the fixed tree, ~4.4 s under M84/M85/M86, against a
+  replacement held open for 4000 ms. The seam's wait is BOUNDED on purpose — a build carrying the
+  cycle reports a slow poll and fails the check instead of hanging the suite, which is the same
+  rule State test 27 leg ER-STATE-14 follows.
+
+  **Leg G exists because the first version of the fix was incomplete and nothing else said so.**
+  Leg F covers the poll body's acquisition, which is the one the review finding cites. The drain has
+  two more — the restore tail's sound re-install and `syncCommitted`'s baseline snapshot at the end
+  of that same tail — and the first commit gated only the first of those. Leg G, which puts a
+  restore in the cell before parking the replacement, measured **4366 ms**. That is the whole reason
+  a second leg was written rather than one: a cited line is where a reviewer looked, not the extent
+  of the defect.
+
+  **The first attempt at the fix hung the suite, and the measurement is what rejected it.** One
+  try-lock around the whole timer tick is the obvious shape and it is wrong: the adoption calls out
+  to the host from inside itself (a restored Oversampling delivers the reported latency
+  synchronously, and `AudioProcessorListener`s run on this thread while it does), so holding the
+  replacement lock across it is the same inversion pointing the other way. State test 27 spun at
+  99% CPU in ER-STATE-14 for three minutes until it was killed. Recorded because the suite caught a
+  threading change that reasoning had approved.
+
+  **Legs A and H2 are the bare stores, and leg H is a control that says so.** A drives a width-line
+  double click (`resetParam`) with the host answering the store's own write re-entrantly; H2 does
+  the same on the solo chip (`setSoloMask`). Both fail under M83 with Redo landing on the HOST's
+  value — 1.6400 for the width, mask 2.0000 for the solo — which is the reported defect reproduced.
+  Leg H holds under M83 too and is labelled a control in its own comment: a batch has only ever
+  owned the parameters whose gesture it opened, so a host's concurrent Drive write was never going
+  to be in that step. Leg C is a control as well — the same reset with nothing answering it, which
+  must stay an ordinary undoable action whose Redo destination is the default.
+
+  **Legs A and C mis-targeted on their first run, and the code was right.** At two bands the lane
+  midpoint is the SPLIT HANDLE, so `mouseDoubleClick` resolved a handle and called `resetCrossover`;
+  `resetParam` was never reached and the legs failed for a reason that had nothing to do with the
+  fix. They now run on a one-band layout. Recorded for the same reason round 20 recorded its two:
+  a leg that reaches no branch proves nothing, and only its own failure said so.
+
+  **Two mutations SURVIVE, and neither is claimed away.** M87 removes the `committedNeedsResync`
+  repair at the top of `pollUndoCoalesceAdopted`. The line is not dead — it is reached when a
+  timer's adoption had to defer the baseline snapshot, the next door's drain finds the cell empty
+  because the newer restore has announced and installed but not yet handed over, and that door's
+  body then takes the gesture branch and pushes. No pair of seams in this suite can place a thread
+  in that window, so there is no leg for it and the mutation stands unkilled rather than recorded as
+  equivalent. M88 reverts `PluginEditor.cpp`'s 24 Hz tick to the blocking door; the suite drives the
+  poll directly, so no leg observes which door the editor picks, and that one line is covered by
+  inspection only.
+
+* **Round 21 — the suppression file did NOT grow, and the reason is worth reading before editing
+  it.** `deadlock:HostSeat` still matches — 3 times, measured on the fixed tree — because TSan's
+  deadlock detector keeps a PAIRWISE lock-order graph and the tree still contains both orders.
+  Reading the stacks with the suppressions off also corrected round 20: BOTH orders of that report
+  are taken with `soundReplacement` already held, and were before this round too, so the
+  APVTS-vs-`listenerLock` pair could never close. The cycle that could hang was on
+  `soundReplacement` itself. The entry's justification has been rewritten to say both things,
+  because it used to call itself a placeholder for an owner decision and to name the pair that was
+  never the reachable one.
+
 * **Round 20 — State test 93, and the leg that exists for exactly one mutation.** The proofs are
   legs **A** (a combo selection whose close the host both poisons and polls), **E** (the same with a
   second gesture in the batch) and **J** (the same with a control notification nested inside the
@@ -1829,6 +1893,12 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M80 | the witness never arms a request at all | KILLED — 93 legs A, E, J |
   | M81 | the request carries the index but not the value | KILLED — 93 legs A, D, E, F, J |
   | M82 | the combo witness is registered AFTER the attachment on both hooks | KILLED — 93 legs A, C, E, J |
+  | M83 | the three bare imager stores as they were before round 21 | KILLED — 94 legs A, H2 |
+  | M84 | the timer door goes back to the blocking `pollUndoCoalesce` | KILLED — 94 legs F, G |
+  | M85 | the restore tail's sound re-install blocks on the replacement lock again | KILLED — 94 leg G |
+  | M86 | `syncCommitted`'s baseline snapshot blocks on it again | KILLED — 94 leg G |
+  | M87 | the `committedNeedsResync` repair is removed | **SURVIVED — no leg, reachability stated below** |
+  | M88 | `PluginEditor.cpp`'s tick goes back to `pollUndoCoalesce` | **SURVIVED — wiring, covered by inspection** |
 
   **M34 is the row that proves the sweep is worth running twice.** Against the FIRST version of
   leg R it SURVIVED -- the leg pressed at the lane's middle, where no width drag is latched, so

@@ -119,6 +119,29 @@ message thread under the parameter's `listenerLock`, and a widget callback reach
 `currentStateSet` from there would take the locks in the reverse of a host install's order. None is
 reached from a listener today; none may be in future.
 
+**ROUND 21 (2026-09-15) — THAT LAST SENTENCE WAS FALSE, and the way it was false is the part worth
+keeping.** "None is reached from a listener today" was checked against this plug-in's own listener
+callbacks, which are lock-free, and it is true of them. It is NOT true of the dynamic extent a
+listener callback creates. `AudioProcessorParameter` holds the parameter's `listenerLock` across
+the whole listener walk INCLUDING `finalListener`, which is the host wrapper's seat; a host that
+pumps its message loop from there runs the plug-in's TIMERS inside that extent — and the editor's
+24 Hz timer polls, and the poll reached `currentStateSet`. So `soundReplacement` was being taken
+from inside a parameter listener callback after all, by a path no grep for "listener" finds, and it
+could WAIT there for a host thread's `applySoundTree` that was itself waiting for that same
+`listenerLock`. Review finding `src/PluginProcessor.cpp:R1204`; measured at ~4.4 s in State test 94
+legs F and G against the pre-fix code.
+
+**The rule is therefore restated with the clause that was missing, and the code now enforces it:**
+nothing that takes `soundReplacement` may run from a parameter listener callback **or from any
+timer, message-loop callback or other work a host can pump from inside one — unless it takes the
+lock without waiting.** The two timer entry points (`AnamorphAudioProcessor::timerCallback` and
+`pollUndoCoalesceFromTimer`) use `ScopedTryLock` and give the tick up rather than block; the
+user-action doors, which a host cannot reach from inside a dispatch, keep their blocking
+acquisition. ADR-0036 §26 carries the decision, the three acquisitions it covers, and why skipping
+each is safe. The general lesson for future edits: a rule of the form "nothing reaches X from a
+listener" has to be checked against what a HOST may run inside the callback, not only against what
+this code calls there.
+
 **One whole-sound replacement at a time (D-2 round 17, ADR-0036 §24).** A replacement of the entire
 live sound — a restore's install, an undo, a redo, an A/B apply, a preset load — is
 `apvts.replaceState` (locked by JUCE) followed by a LOOP of per-parameter writes that is not. Two of

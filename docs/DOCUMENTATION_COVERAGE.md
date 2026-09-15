@@ -11959,6 +11959,58 @@ M57–M60); `docs/procedures/CI_CD.md` (the re-measured stack figures);
 `CHANGELOG.md` `[0.9.8]` (two Fixed entries);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §73. [Verified]
 
+### Thirty-ninth pass — the lock the poll was waiting on, and the stores that spoke for nobody (2026-09-15)
+
+**Trigger.** Two review findings on PR #144: `src/PluginProcessor.cpp:R1204` (a nested gesture poll
+can deadlock) and `src/PluginProcessor.cpp:R1078-1081` (host writes become Redo endpoints on the
+imager's three bare stores). The owner's instruction ruled that RISK-009 must not remain an accepted
+residual.
+
+**Root cause, R1204.** The timers' poll blocked on `soundReplacement` while a host thread held it
+across `applySoundTree` and waited inside `apvts.replaceState` for a parameter's `listenerLock` — and
+a timer runs inside the dynamic extent of a listener callback whenever a host pumps its message loop
+from one. `THREADING_POLICY.md` already carried the rule that nothing taking `soundReplacement` may
+run from a parameter listener callback, with a note saying nothing did; the note had been checked
+against this plug-in's own callbacks, not against what a host runs inside one. THREE acquisitions
+were reachable from the timer doors, not the one cited line.
+
+**Root cause, R1078-1081.** `resetParam`, `setBands` and `setSoloMask` wrote inside a change gesture
+and declared nothing, so the close live-read the parameter — and `setValueNotifyingHost` runs its
+listeners synchronously, so a host answering the store is sitting in that value.
+
+**Fix.** The two timer doors never block on `soundReplacement`: the poll body under one try-lock, the
+restore tail's sound re-install skipped when contended (provably the same answer, by ADR-0036 §25's
+announce-before-install), and `syncCommitted`'s baseline snapshot deferred with
+`committedNeedsResync`, repaired at the first line of `pollUndoCoalesceAdopted` ahead of anything
+that pushes. The three bare stores use `storeOwned`'s existing read-back shape and report through the
+existing `onOwnedWrite` / `onOwnedRefused` callbacks; their guard branches report refusals too. No
+new mechanism, no audio-thread lock, no wait, no timer used as a synchronisation device.
+
+**Classification.** R1204 is a **Thread Model change** and therefore an `ARCHITECTURE_REVIEW_GATE`
+item and an AI-agent hard stop; cleared by the owner's instruction, with the step-by-step audit in
+**ADR-0036 §26**. R1078-1081 is an implementation bug against the already-decided ADR-0008 amendment
+— no new ADR, no gate.
+
+**Validation.** State 3 431 / 0; ThreadSanitizer clean with both suppressions still matching (2
+entries, 2 breakdown lines). Mutations M83-M86 all killed; **M87 and M88 SURVIVE** and are recorded
+with their reachability rather than called equivalent.
+
+**The first fix was rejected by measurement, and that is recorded rather than tidied away.** One
+try-lock around the whole timer tick holds `soundReplacement` across the adoption's synchronous
+latency delivery to the host, which hung State test 27 (ER-STATE-14) at 99% CPU.
+
+**Documentation.** `ADR-0036` (§26, with its own gate-compliance table); `ADR-0008` (a round-21
+correction section closing the bare-store window and restating where the live read survives);
+`ADR-0053` (gate re-audit, unchanged, now pointing at ADR-0036 §26 for the second gated item);
+`docs/policies/THREADING_POLICY.md` (the false "none is reached from a listener" note corrected and
+the rule restated); `docs/architecture/THREAD_MODEL.md` (the timer-door exception);
+`docs/FUTURE_RISKS.md` (RISK-009 closed as a reachable deadlock, with round 20's lock pair corrected
+and the `PresetManager::saveUser` residual recorded; RISK-012 narrowed to the empty press and kept
+OPEN); `tests/tsan-suppressions.txt` (the `HostSeat` entry's justification rewritten);
+`docs/procedures/TESTING.md` (State test 94, legs F, G, A, C, H, H2, and M83-M88);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §78. No `CHANGELOG.md` change: both
+fixes are corrections to work already inside the unreleased `[0.9.8]` entry. [Verified]
+
 ### Thirty-eighth pass — the endpoint a complete gesture could not state in time (2026-09-14)
 
 **Trigger.** Round 19 fixed the refused-store window and named what remained. The review then

@@ -4155,3 +4155,101 @@ the next tick. Both are threading-model changes, which `ARCHITECTURE_REVIEW_GATE
 entry, the risk is written into RISK-009 as a distinct host-reachable inversion with its severity
 and its two candidate shapes, and the decision is left to the owner. Recording a suppression without
 recording the risk would have been the failure mode this file exists to prevent.
+
+## §78. Round 21 — the lock the poll was waiting on, and the stores that spoke for nobody
+
+Two review findings, and the second one is the more interesting of the two because the first attempt
+at fixing it was wrong in a way only the suite could tell me.
+
+### The findings
+
+`src/PluginProcessor.cpp:R1204` — *"Nested gesture polling can deadlock"*. `src/PluginProcessor.cpp:R1078-1081`
+— host writes become Redo endpoints on `SpectrumImager`'s three bare stores.
+
+### R1204 — REAL_DEADLOCK, with the lock pair corrected
+
+The finding names `listenerLock` against the APVTS lock. Tracing both threads says otherwise: the
+lock the nested poll WAITS on is `soundReplacement`, and the APVTS lock is what the host thread takes
+underneath it. Both edges are production plus pinned JUCE:
+
+* a host thread's off-message-thread `setStateInformation` takes `soundReplacement` in
+  `applySoundTree` and then waits inside `apvts.replaceState` for a parameter's `listenerLock`;
+* the message thread reaches the poll from a TIMER, and a timer runs from any loop that drains the
+  message queue — including one a host pumps from its gesture-end callback, which JUCE dispatches to
+  `finalListener` with that same `listenerLock` held.
+
+Not a theoretical inversion and not a harness artefact: `THREADING_POLICY.md` already carried the
+rule *"nothing that takes `soundReplacement` may run from a parameter listener callback"* with the
+note *"None is reached from a listener today; none may be in future"*. That note was checked against
+this plug-in's own listener callbacks, which are lock-free. It was never checked against the dynamic
+extent a host creates by pumping inside one. The policy text has been corrected to say so, because
+the shape of the mistake — a rule about "what we call from a listener" that misses "what a host can
+run inside one" — is the part worth keeping.
+
+**THREE acquisitions were reachable from the timers, and the cited line is one.** The other two are
+`adoptRestoreTail`'s re-install of the restored sound, and `syncCommitted`'s baseline snapshot at
+the very end of that same tail. I found the second by reading and the third only because leg G
+failed.
+
+### The first fix was wrong, and State test 27 said so
+
+The obvious shape is one try-lock around the whole timer tick. It hangs the suite. The adoption calls
+OUT to the host from inside itself — a restored Oversampling delivers the reported latency
+synchronously and `AudioProcessorListener`s run on this thread while it does — so holding
+`soundReplacement` across it is the same inversion pointing the other way. State test 27 leg
+ER-STATE-14 is precisely a host thread restoring while the message thread sits in a latency callback,
+and it spun at 99% CPU for three minutes before I killed it.
+
+I had spent a while before that convincing myself the pipe-buffered log meant the suite had hung for
+an unrelated reason. It had not: the change was the reason, and the suite was right.
+
+### What landed
+
+The two timer doors never block on `soundReplacement`. The drain takes a `mayBlock` flag, false for
+those doors only, and it reaches exactly two lines — the re-install's acquisition and
+`syncCommitted`'s. The poll body keeps a try-lock held across the whole of it, which is safe because
+that body calls out to nothing.
+
+Skipping the re-install is provably the same answer as waiting for it: on the message thread a
+failed `tryEnter` on a recursive lock proves the holder is another thread, exactly one site is ever
+held by another thread (`applySoundTree` from `installRestoredSound`), and by ADR-0036 §25 that
+restore has already announced — so the re-install guard is false after the wait too.
+
+Skipping the snapshot is NOT the same, so it is deferred rather than skipped: `committedNeedsResync`
+records it and `pollUndoCoalesceAdopted` repairs it at its first line, ahead of the early return and
+ahead of every branch that pushes.
+
+### R1078-1081 — confirmed, and closed with the mechanism that was already there
+
+`resetParam`, `setBands` and `setSoloMask` wrote inside a change gesture and declared nothing, so the
+close live-read the parameter. The write is `setValueNotifyingHost`, whose listeners run
+synchronously inside it, so a host answering it is sitting in that live value. Every round since 16
+recorded this window as "narrow" and left it; leg A measures what is actually in it — with the
+pre-round-21 stores, **Redo lands on the host's value**.
+
+No new mechanism. The three stores now use `storeOwned`'s read-back shape and report through the
+existing `onOwnedWrite` / `onOwnedRefused` callbacks. The guard branches report refusals too, which
+matters as much: a gesture that opened and closed having written nothing leaves the live value equal
+to whatever the host left there.
+
+### What the TSan run taught me, including about round 20
+
+`deadlock:HostSeat` still matches — 3 times on the fixed tree. Reading the four reports with the
+suppressions off shows that BOTH orders of that report are taken with `soundReplacement` already
+held, and were before this round as well. So the APVTS-vs-`listenerLock` pair round 20 escalated
+could never close; the pair that could was `soundReplacement` against `listenerLock`. Round 20
+pointed at the symptom TSan printed rather than at the edge that could hang. The suppression stays
+because TSan's graph is pairwise and does not model an outer lock that serialises both orders; its
+justification has been rewritten to say both things.
+
+One residual found on the way and recorded rather than fixed: `PresetManager::saveUser` takes the
+APVTS lock with no `soundReplacement` — the only durable reader that does. It cannot join the cycle
+(it only reads, so it never waits for a `listenerLock`), but it is where a future edit would break
+the rule the argument above rests on.
+
+### Mutations
+
+M83 (the bare stores as they were) killed by legs A and H2. M84 (the timer door back to the blocking
+poll) killed by F and G. M85 and M86 (each gate reverted) killed by G. M87 (the resync repair
+removed) and M88 (the editor's tick reverted) SURVIVE, and both are recorded with the reason rather
+than called equivalent.
