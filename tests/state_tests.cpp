@@ -11286,6 +11286,7 @@ struct HostSeat final : public juce::AudioProcessorListener
     float nestToNorm = 0.0f;
     bool  armWrite = false, armPoll = false;
     bool  wrote    = false, polled  = false;
+    int   pollMillis = -1;   // how long the nested poll took (round 21, State test 94 leg F)
 
     // The host answers the WRITE, re-entrantly, from inside `setValueNotifyingHost`. That is the
     // only place a host value can land before the close's live read at PluginProcessor.cpp:1049.
@@ -11301,11 +11302,20 @@ struct HostSeat final : public juce::AudioProcessorListener
     // ...and PUMPS ITS MESSAGE LOOP from the gesture-end callback. The only thing the pump does
     // that matters here is let the editor's 24 Hz timer run, and all that timer does is poll
     // (PluginEditor.cpp:1545). Calling the poll IS the pump, for this purpose.
+    //
+    // ROUND 21: THROUGH THE DOOR THE TIMER ACTUALLY USES. `PluginEditor.cpp:1545` calls
+    // `pollUndoCoalesceFromTimer`, not `pollUndoCoalesce`, and the difference is the whole of
+    // RISK-009: the timer's door must not block on `soundReplacement`, because this seat is
+    // reached with a parameter's `listenerLock` held. Calling the blocking door from here modelled
+    // a path production does not have. `pollMillis` is how State test 94 leg F reads the result.
     void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
     {
         if (! armPoll || i != index || proc == nullptr) return;
         armPoll = false; polled = true;
-        proc->pollUndoCoalesce();
+        const auto t0 = std::chrono::steady_clock::now();
+        proc->pollUndoCoalesceFromTimer();
+        pollMillis = (int) std::chrono::duration_cast<std::chrono::milliseconds> (
+                         std::chrono::steady_clock::now() - t0).count();
     }
     void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
     void audioProcessorChanged (juce::AudioProcessor*,
@@ -11825,6 +11835,436 @@ static void testACompleteGestureEndpointPrecedesThePoll()
     }
 
     proc.removeListener (&host);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 94 -- round 21. Two review findings whose fixes meet in one place:
+//  what a user action is allowed to claim it produced.
+//
+//  R1078-1081 (legs A-C, H). `SpectrumImager::resetParam`, `setBands` and
+//  `setSoloMask` wrote their parameter inside a change gesture and DECLARED
+//  NOTHING, so the gesture close fell back to a live read of the parameter to
+//  learn the endpoint (PluginProcessor.cpp, the batch close). The write is
+//  `setValueNotifyingHost`, whose listeners run synchronously inside it, so a
+//  host answering that write is sitting in the live value when the close reads
+//  it: the host's value became the user's `after`, and therefore the destination
+//  of the user's Redo. ADR-0008 forbids exactly that -- host automation is never
+//  a user action.
+//
+//  R1204 / RISK-009 (leg F). The nested poll blocked on `soundReplacement` while
+//  a host thread held it and waited for a parameter's `listenerLock`. Leg F
+//  builds both edges at once and measures the one that has to give.
+//
+//  WHAT LEG F PROVES AND HOW. The cycle needs two threads in two states at the
+//  same instant, so the harness puts them there rather than hoping:
+//    * the HOST THREAD is parked inside `applySoundTree`'s write loop, through
+//      `seams.insideSoundReplacement`, which fires WITH the replacement lock held
+//      (PluginProcessor.cpp) and part-way through a loop that takes parameters'
+//      listener locks one at a time;
+//    * the MESSAGE THREAD is inside `endChangeGesture`, in the host's own seat --
+//      `HostSeat` sits behind `finalListener`, which JUCE calls last and with the
+//      parameter's `listenerLock` HELD -- and from there it polls, which is what
+//      a host that pumps its message loop there makes the editor's timer do.
+//  A poll that waits for the replacement lock closes the cycle. The seam's wait
+//  is BOUNDED so that a build with the cycle reports a long poll instead of
+//  hanging the suite; the measurement is the elapsed time of the nested poll.
+// ---------------------------------------------------------------------------
+static void testBareStoresDeclareTheirEndpointAndThePollNeverWaits()
+{
+    std::printf ("State test 94: bare imager stores declare their endpoint, and the timer's poll never waits\n");
+
+    // ===== LEG F: the RISK-009 lock cycle, built and then measured =============
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto* driveP = proc.getAPVTS().getParameter (pid::drive);
+        check (driveP != nullptr, "leg F: the parameter the gesture runs on exists");
+
+        // A real session for the host thread to restore. Authored by an instance of its own, so
+        // the blob is a whole sound and the replacement it drives is the production one.
+        juce::MemoryBlock blob;
+        {
+            AnamorphAudioProcessor author;
+            author.prepareToPlay (48000.0, 512);
+            if (auto* d = author.getAPVTS().getParameter (pid::drive))
+                d->setValueNotifyingHost (d->convertTo0to1 (7.5f));
+            author.getStateInformation (blob);
+        }
+        check (blob.getSize() > 0, "leg F: the session to restore was authored");
+
+        std::atomic<bool> inReplacement { false }, messageThreadDone { false };
+        std::atomic<int>  seamWaited { -1 };
+
+        // WITH THE LOCK HELD. The seam's contract forbids joining a thread that itself performs a
+        // whole-sound replacement; the message thread below performs a GESTURE, not a replacement,
+        // so waiting for it is exactly what this seam is for. Bounded: a build in which the message
+        // thread is stuck on the replacement lock reports a slow poll here rather than hanging.
+        proc.seams.insideSoundReplacement = [&]
+        {
+            inReplacement.store (true);
+            int waited = 0;
+            for (; waited < 4000 && ! messageThreadDone.load(); ++waited)
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            seamWaited.store (waited);
+        };
+
+        HostSeat host;
+        host.proc  = &proc;
+        host.index = driveP != nullptr ? driveP->getParameterIndex() : -1;
+        proc.addListener (&host);
+
+        std::thread restorer ([&] { proc.setStateInformation (blob.getData(), (int) blob.getSize()); });
+
+        for (int i = 0; i < 4000 && ! inReplacement.load(); ++i)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        check (inReplacement.load(),
+               "leg F: a host thread is parked inside a whole-sound replacement, holding its lock");
+
+        host.armPoll = true;
+        host.polled  = false;
+        if (driveP != nullptr)
+        {
+            driveP->beginChangeGesture();
+            driveP->setValueNotifyingHost (driveP->convertTo0to1 (2.5f));
+            driveP->endChangeGesture();     // the nested poll runs from in here, listenerLock held
+        }
+        messageThreadDone.store (true);
+        restorer.join();
+        proc.removeListener (&host);
+        proc.seams.insideSoundReplacement = nullptr;
+
+        check (host.polled, "leg F: the poll ran from the host's seat inside the gesture close");
+        std::printf ("  [leg F] the nested poll returned in %d ms; the replacement was held open for %d ms\n",
+                     host.pollMillis, seamWaited.load());
+        check (host.polled && host.pollMillis >= 0 && host.pollMillis < 500,
+               "leg F: the nested poll did NOT wait for the whole-sound replacement it ran beside");
+        // Non-vacuity: the two threads really were in the two states at once. A seam that returned
+        // immediately would have measured nothing, and a poll that blocked would have held the
+        // seam open for its whole bound.
+        check (seamWaited.load() > 0,
+               "leg F: non-vacuity -- the replacement really was open while the gesture closed");
+    }
+
+    // ===== LEG G: the DRAIN's acquisition, which is the other half of the fix ==
+    //  Leg F exercises the poll body's `currentStateSet`. The adoption has an acquisition of its
+    //  own -- `adoptRestoreTail` re-installing a restored sound -- and it is reached from the same
+    //  timer door, so it needs the same proof. Here a FIRST off-thread restore is left undrained in
+    //  the cell and a SECOND one is parked inside its write loop holding the lock; the timer door
+    //  must adopt the first without waiting for the second.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+
+        auto author = [] (float drive)
+        {
+            AnamorphAudioProcessor a;
+            a.prepareToPlay (48000.0, 512);
+            if (auto* d = a.getAPVTS().getParameter (pid::drive))
+                d->setValueNotifyingHost (d->convertTo0to1 (drive));
+            juce::MemoryBlock b;
+            a.getStateInformation (b);
+            return b;
+        };
+        const juce::MemoryBlock first = author (6.0f), second = author (9.0f);
+
+        std::atomic<int>  seamRuns { 0 };
+        std::atomic<bool> parked { false }, messageThreadDone { false };
+        std::atomic<int>  seamWaited { -1 };
+        proc.seams.insideSoundReplacement = [&]
+        {
+            if (seamRuns.fetch_add (1) != 1) return;   // park on the SECOND replacement only
+            parked.store (true);
+            int waited = 0;
+            for (; waited < 4000 && ! messageThreadDone.load(); ++waited)
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            seamWaited.store (waited);
+        };
+
+        // The first restore lands in the cell and is deliberately NOT drained: no message-thread
+        // entry point runs between here and the measurement below.
+        std::thread r1 ([&] { proc.setStateInformation (first.getData(), (int) first.getSize()); });
+        r1.join();
+        std::thread r2 ([&] { proc.setStateInformation (second.getData(), (int) second.getSize()); });
+        for (int i = 0; i < 4000 && ! parked.load(); ++i)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        check (parked.load(), "leg G: the second restore is parked inside its replacement, holding the lock");
+
+        const auto t0 = std::chrono::steady_clock::now();
+        proc.pollUndoCoalesceFromTimer();
+        const int millis = (int) std::chrono::duration_cast<std::chrono::milliseconds> (
+                               std::chrono::steady_clock::now() - t0).count();
+        messageThreadDone.store (true);
+        r2.join();
+        proc.seams.insideSoundReplacement = nullptr;
+
+        std::printf ("  [leg G] the timer door returned in %d ms with a restore pending and the"
+                     " replacement lock held elsewhere\n", millis);
+        check (millis < 500, "leg G: the drain did not wait for the replacement either");
+        check (seamWaited.load() > 0, "leg G: non-vacuity -- the replacement really was open");
+    }
+
+    // ===== LEGS A-C and H: the three bare stores ==============================
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "State test 94: the editor constructs for the bare-store probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (im != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { im = si; return; }
+            walk (kid);
+            if (im != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "State test 94: the imager is laid out");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* driveP = apvts.getParameter (pid::drive);
+    check (bandsP && soloP && wLoP && driveP, "State test 94: the parameters the legs drive exist");
+    if (! (bandsP && soloP && wLoP && driveP)) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto near     = [] (float a, float b) { return std::abs (a - b) < 1.0e-3f; };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float dx, float dy, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                 juce::Time::getCurrentTime(), { dx, dy },
+                                 juce::Time::getCurrentTime(), 1, dragged);
+    };
+    const float W = (float) im->getWidth(), H = (float) im->getHeight();
+    auto findY = [&] (const char* want, float x) -> float
+    {
+        for (float y = 4.0f; y < H - 4.0f; y += 1.0f)
+        {
+            im->mouseMove (mev (x, y, x, y, false));
+            if (im->getTooltip() == juce::String (want)) return y;
+        }
+        return -1.0f;
+    };
+    auto findX = [&] (const char* want, float y) -> float
+    {
+        for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (x, y, x, y, false));
+            if (im->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto settle = [&] { im->cancelActiveDrag(); proc.pollUndoCoalesce(); };
+    const float bx = 0.5f * W;
+
+    // ---- LEG A: a reset whose store the host OVERWRITES re-entrantly ----------
+    //  The user double-clicks a width line: `resetParam` opens a gesture, writes the default, and
+    //  the host answers that very write with a value of its own. The read-back no longer matches
+    //  what was installed, so the store is a REFUSAL -- and a refusal states no endpoint, which is
+    //  what keeps the host's value out of the user's Redo. Before this round the close read the
+    //  parameter live and found the host sitting in it.
+    {
+        // ONE band. At two the lane midpoint is the split HANDLE, and `mouseDoubleClick` resolves
+        // a handle before it ever asks about a width line -- measured: the first draft of this leg
+        // reset the crossover instead and never reached `resetParam` at all.
+        setPlain (bandsP, 1.0f);
+        setPlain (wLoP, 1.60f);
+        settle();
+        const float userStart = plainOf (wLoP);
+        const float deflt     = wLoP->convertFrom0to1 (wLoP->getDefaultValue());
+        const float hostTo    = 0.55f * (userStart + deflt) + 0.21f;   // neither endpoint
+        check (! near (userStart, deflt) && ! near (hostTo, deflt) && ! near (hostTo, userStart),
+               "leg A: the three values the leg distinguishes are distinct");
+
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg A: band 1's width line is findable");
+        if (wy >= 0.0f)
+        {
+            WriteFromInsideAStoreQuietly poke;
+            poke.target = wLoP;
+            poke.to     = hostTo;
+            poke.armed  = true;
+            wLoP->addListener (&poke);
+            im->mouseDoubleClick (mev (bx, wy, bx, wy, false));
+            wLoP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg A: the host answered the reset's own write, re-entrantly");
+            check (near (plainOf (wLoP), hostTo),
+                   "leg A: ...and the host's value is what is live afterwards");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                const float afterUndo = plainOf (wLoP);
+                proc.redo();
+                const float afterRedo = plainOf (wLoP);
+                std::printf ("  [leg A] a step was recorded: Undo -> %.4f, Redo -> %.4f"
+                             " (user started at %.4f, default %.4f, host wrote %.4f)\n",
+                             (double) afterUndo, (double) afterRedo,
+                             (double) userStart, (double) deflt, (double) hostTo);
+                check (! near (afterRedo, hostTo),
+                       "leg A: the host's re-entrant answer is NOT the user's Redo destination");
+            }
+            else
+            {
+                std::printf ("  [leg A] the refused reset recorded no step, and the host's %.4f"
+                             " is therefore in none\n", (double) hostTo);
+                check (true, "leg A: a refused reset records no user step");
+            }
+        }
+    }
+
+    // ---- LEG C: the same reset with NO host interference still works ----------
+    //  The counterpart leg A needs to mean anything: when nothing answers the store, the reset is
+    //  an ordinary undoable user action whose Redo destination is the DEFAULT the user asked for.
+    {
+        setPlain (bandsP, 1.0f);   // one band, for the reason leg A records
+        setPlain (wLoP, 1.60f);
+        settle();
+        const float userStart = plainOf (wLoP);
+        const float deflt     = wLoP->convertFrom0to1 (wLoP->getDefaultValue());
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg C: band 1's width line is findable");
+        if (wy >= 0.0f)
+        {
+            im->mouseDoubleClick (mev (bx, wy, bx, wy, false));
+            proc.pollUndoCoalesce();
+            check (near (plainOf (wLoP), deflt), "leg C: the reset installed the default");
+            check (proc.canUndo(), "leg C: an unanswered reset is one undoable user step");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                check (near (plainOf (wLoP), userStart), "leg C: Undo returns the user's own value");
+                proc.redo();
+                check (near (plainOf (wLoP), deflt), "leg C: Redo restores the default the user asked for");
+            }
+        }
+    }
+
+    // ---- LEG H: a solo click represents the solo bit and NOTHING ELSE ---------
+    //  `setSoloMask` is the second bare store. The host writes a DIFFERENT parameter from inside
+    //  the mask's own dispatch -- the ordinary "automation landed while you clicked" case -- and the
+    //  rule under test is the one ADR-0008 states: a user step carries only the parameters that
+    //  user's own action moved. Drive must not travel with the solo bit.
+    {
+        setPlain (bandsP, 2.0f);
+        setPlain (soloP, 0.0f);
+        setPlain (driveP, 3.0f);
+        settle();
+        const float driveStart = plainOf (driveP);
+        const float driveHost  = driveStart + 5.0f;
+        const float maskStart  = plainOf (soloP);
+
+        const float sx = findX ("Solo this band", 11.0f);
+        check (sx >= 0.0f, "leg H: a band's solo chip is findable");
+        if (sx >= 0.0f)
+        {
+            WriteFromInsideAStoreQuietly poke;
+            poke.target = driveP;
+            poke.to     = driveHost;
+            poke.armed  = true;
+            soloP->addListener (&poke);
+            im->mouseDown (mev (sx, 11.0f, sx, 11.0f, false));
+            im->mouseUp   (mev (sx, 11.0f, sx, 11.0f, false));
+            soloP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg H: the host moved Drive from inside the solo store's dispatch");
+            check (! near (plainOf (soloP), maskStart), "leg H: the click really did move the solo mask");
+            check (near (plainOf (driveP), driveHost), "leg H: ...and Drive carries the host's value");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                std::printf ("  [leg H] after Undo: mask %.4f (started %.4f), Drive %.4f"
+                             " (host wrote %.4f, user never touched it)\n",
+                             (double) plainOf (soloP), (double) maskStart,
+                             (double) plainOf (driveP), (double) driveHost);
+                check (near (plainOf (driveP), driveHost),
+                       "leg H: Undo of the solo click does not drag the host's Drive back with it");
+            }
+        }
+    }
+
+
+    // ---- LEG H2: the solo store's OWN answer, which is what leg H does not reach --
+    //  Leg H holds for the pre-round-21 code too, and says so: a batch has only ever owned the
+    //  parameters whose gesture it opened, so Drive was never going to be in that step. The half
+    //  that changed is the store's own read-back. Here the host answers `mbSolo` itself, from
+    //  inside the store's dispatch, with a different mask -- so what is live at the close is the
+    //  host's mask, and the question is whether the user's Redo goes there.
+    {
+        setPlain (bandsP, 2.0f);
+        setPlain (soloP, 0.0f);
+        settle();
+        const float sx = findX ("Solo this band", 11.0f);
+        check (sx >= 0.0f, "leg H2: a band's solo chip is findable");
+        if (sx >= 0.0f)
+        {
+            // What the click produces on its own, measured rather than assumed -- the chip the
+            // tooltip scan finds first decides which bit moves.
+            im->mouseDown (mev (sx, 11.0f, sx, 11.0f, false));
+            im->mouseUp   (mev (sx, 11.0f, sx, 11.0f, false));
+            proc.pollUndoCoalesce();
+            const float userMask = plainOf (soloP);
+            check (! near (userMask, 0.0f), "leg H2: the click on its own moves the solo mask");
+
+            setPlain (soloP, 0.0f);
+            settle();
+            const float hostMask = near (userMask, 2.0f) ? 1.0f : 2.0f;
+
+            WriteFromInsideAStoreQuietly poke;
+            poke.target = soloP;
+            poke.to     = hostMask;
+            poke.armed  = true;
+            soloP->addListener (&poke);
+            im->mouseDown (mev (sx, 11.0f, sx, 11.0f, false));
+            im->mouseUp   (mev (sx, 11.0f, sx, 11.0f, false));
+            soloP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg H2: the host answered the solo store's own write, re-entrantly");
+            check (near (plainOf (soloP), hostMask), "leg H2: ...and the host's mask is what is live");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                const float afterUndo = plainOf (soloP);
+                proc.redo();
+                const float afterRedo = plainOf (soloP);
+                std::printf ("  [leg H2] a step was recorded: Undo -> %.4f, Redo -> %.4f"
+                             " (the user's own click makes %.4f, the host wrote %.4f)\n",
+                             (double) afterUndo, (double) afterRedo,
+                             (double) userMask, (double) hostMask);
+                check (! near (afterRedo, hostMask),
+                       "leg H2: the host's mask is NOT the user's Redo destination");
+            }
+            else
+            {
+                std::printf ("  [leg H2] the refused solo store recorded no step, so the host's"
+                             " %.4f is in none\n", (double) hostMask);
+                check (true, "leg H2: a refused solo store records no user step");
+            }
+        }
+    }
+
     proc.editorBeingDeleted (ed);
     delete ed;
 }
@@ -24926,6 +25366,7 @@ int main (int argc, char* argv[])
     testAnAttachmentEndpointBelongsToTheUser();
     testARefusedStoreStatesNoEndpoint();
     testACompleteGestureEndpointPrecedesThePoll();
+    testBareStoresDeclareTheirEndpointAndThePollNeverWaits();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

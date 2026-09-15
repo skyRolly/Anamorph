@@ -566,9 +566,26 @@ void AnamorphAudioProcessor::resetBatchOwnership()
     for (auto& c : batchEpisodeParam) c = (char) 0;
 }
 
-void AnamorphAudioProcessor::syncCommitted()
+void AnamorphAudioProcessor::syncCommitted (bool mayBlock)
 {
-    committed = currentStateSet();
+    // ROUND 21: THE ONE LINE HERE THAT TAKES A LOCK. `currentStateSet` copies the parameter tree
+    // under `soundReplacement`, and an adoption reached from a TIMER may not wait for that lock --
+    // the timer can be running inside a host's pump with a parameter's `listenerLock` held, which
+    // is the RISK-009 cycle. Everything else below is message-thread scalars and a signature built
+    // from one-at-a-time parameter reads, so it runs unconditionally: a restore's adoption still
+    // clears the gesture bookkeeping and re-anchors the ADR-0053 edge even when the snapshot is
+    // deferred. Deferring only the snapshot, and only for one tick, is what keeps that split safe.
+    if (mayBlock)
+    {
+        committed = currentStateSet();
+        committedNeedsResync = false;
+    }
+    else
+    {
+        const juce::ScopedTryLock notWhileReplacing (soundReplacement);
+        if (notWhileReplacing.isLocked()) { committed = currentStateSet(); committedNeedsResync = false; }
+        else                                committedNeedsResync = true;
+    }
     committedSig = soundSignature();
     lastPolledSig = committedSig;
     openGestures = 0;             // A/B switch / preset / session load is not a user gesture
@@ -1124,6 +1141,18 @@ void AnamorphAudioProcessor::pollUndoCoalesce()
 // been derived, so draining again here would move the selection under a chosen row (§23).
 void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
 {
+    // ROUND 21, AND IT IS THE FIRST LINE ON PURPOSE. A timer's adoption may have had to leave the
+    // baseline snapshot untaken (see `syncCommitted`), and every push below builds its entry's
+    // `before` from `committed`. Repairing it here, ahead of the early return and ahead of every
+    // branch that pushes, is what bounds that deferral to "no entry ever sees it": the timer door
+    // already holds the replacement lock across this body, so this is a free recursive re-entry,
+    // and a user-action door blocks on it exactly as it always has.
+    if (committedNeedsResync)
+    {
+        committed = currentStateSet();
+        committedNeedsResync = false;
+    }
+
 
     // S10: the signature is a pure function of the listened sound parameters,
     // so an unchanged generation means it is character-identical to the one
@@ -1843,7 +1872,7 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d, bool mayB
     const auto adoptedName = d.haveName ? d.restoredName : anamorph::PresetManager::defaultName();
     presets.setMeta (adoptedName, baselineOfRestore (d), d.restoredSelection);
 
-    syncCommitted();
+    syncCommitted (mayBlock);
 }
 
 // THE CLEAN BASELINE A RESTORE ADOPTS (D-2 round 15, ADR-0036 §22). One function, so the

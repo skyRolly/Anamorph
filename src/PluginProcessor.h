@@ -444,7 +444,6 @@ private:
     // apvts.copyState() with each PARAM node additively stamped with its exact raw getValue()
     // ("raw" attribute), so every saved snapshot (host state, A/B slots, undo) round-trips exactly.
     juce::ValueTree copyStateWithRawValues();
-    void syncCommitted();
 
     // ------------------------------------------------------------------------
     //  ADR-0008 AS AMENDED (round 14, approved). WHAT AN UNDO ENTRY IS.
@@ -498,6 +497,13 @@ private:
     static constexpr size_t kUndoDepth = 128;
     static void pushCapped (std::vector<UndoEntry>& stack, UndoEntry&& e);
     StateSet committed;
+    // ROUND 21 (ADR-0036 §26). SET WHEN A TIMER'S ADOPTION COULD NOT TAKE THE BASELINE, and
+    // cleared by the first door that can. `syncCommitted` copies the parameter tree under
+    // `soundReplacement`; a timer may not wait for that lock (see `pollUndoCoalesceFromTimer`),
+    // so when a host thread is mid-replacement the snapshot is skipped and this says so. Every
+    // path that can PUSH an undo entry runs through `pollUndoCoalesceAdopted`, which repairs it
+    // at its first line, so no entry is ever built on a `committed` this flag still names.
+    bool committedNeedsResync = false;
     juce::String committedSig, lastPolledSig;
     std::atomic<juce::uint32> soundParamGen { 1 }; // bumped by parameterValueChanged (S10)
     // D-2 round 5 (ADR-0036 §12). Bumped once every time the live parameters are REPLACED
@@ -906,6 +912,11 @@ private:
     bool decodeRestore (const void* data, int sizeInBytes, RestoreDecode& out);
     // The adoption tail, message thread only: today's restore tail, verbatim.
     void adoptRestoreTail (const RestoreDecode&, bool mayBlock = true);
+    // `mayBlock` as above, and it reaches exactly one line: the baseline snapshot, which
+    // copies the parameter tree under `soundReplacement`. A timer that may not wait leaves
+    // `committed` alone and raises `committedNeedsResync`; every door into the poll body
+    // repairs it before that body can push anything.
+    void syncCommitted (bool mayBlock = true);
     // Serialize a program snapshot plus the live parameters. Any thread: the APVTS
     // copy is JUCE-locked and the snapshot is immutable.
     // `settings` is the Settings tree to write, passed separately because a save inside the
