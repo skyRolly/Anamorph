@@ -1644,6 +1644,77 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   than by where the test reads; a probe on the OPEN and a probe on the CLOSE measure different
   windows, and round 22 used the wrong one.
 
+* **Round 24 — State test 98, and the class the finding named only two members of.**
+
+  **State test 98 (`a multiband topology change is one user action, so it is one undo step`, R1092,
+  ADR-0008)** drives the SHIPPED `mouseDown` / `mouseDrag` / `mouseUp` handlers and a host that pumps
+  its message loop from the gesture-end callback it has just been handed. Nothing in it is a
+  harness path: the press is the editor's, the transaction is `addBandAt`/`removeBand`, and the pump
+  is the `HostSeat` shape RISK-009 and ADR-0036 §26 already accept as production.
+
+  **The measurement, before the fix:** one Add-band click on a two-band layout with band 1 soloed,
+  then one Undo — `bands 2 (started 2), solo 0x4 (started 0x2), more undo available: yes`. 0x4 names
+  band 2 in a two-band layout, and `SoloMonitor::process` masks it with `((1 << bands) - 1)` down to
+  nothing, so the user's soloed band is silently gone in a layout no completed action produced.
+
+  **WHY THE PUMP LANDS WHERE IT DOES, which is the whole of the reachability argument.**
+  `AudioProcessorParameter::endChangeGesture` notifies every `AudioProcessorParameter::Listener`
+  first — the processor among them, which is what drops `openGestures` to zero and raises
+  `pendingGestureCommit` — and only THEN the `finalListener`, which is
+  `AudioProcessor::ParameterChangeForwarder` and which fans out to every `AudioProcessorListener`,
+  i.e. to the host (`juce_AudioProcessorParameter.cpp:102-108`,
+  `juce_AudioProcessor.cpp:1476-1487`). The host therefore arrives with the processor's bookkeeping
+  already done and both of the poll's eligibility tests already satisfied. This is the dispatch order
+  round 23 measured for the OTHER direction (reverse registration order among the parameter
+  listeners); the same reading answers this question too.
+
+  **The seven legs are the §5 matrix.** A is the control (no pump, one add, one step). B is the add
+  under the pump. C is the removal, reached by the shipped drag-out-to-delete gesture. D lands host
+  automation on a parameter the transaction never touches, from inside the burst, and checks it is in
+  NO user step — the transaction holds the poll open longer than before, so the first question to ask
+  is whether that window collects somebody else's writes; it does not, for ADR-0008's own reason. E
+  is the no-op: at the four-band cap every add is refused and nothing is recorded. F is the crossover
+  reset and its spread. G is Apply Gain.
+
+  **Two of the seven cover code the finding did not name, and that is the point of the sweep.**
+  `resetCrossover` and `commitFreqEditor` store the primary INSIDE a gesture, close it, and only then
+  call `spreadSplits` — so splitting there is **R515's defect (round 15) arriving through a different
+  door**, one Undo putting the reset back and leaving the pushed neighbours where the reset shoved
+  them. `applyAutoGain` is code ROUND 23 wrote: two read-back stores, two gesture brackets, and the
+  first one's close is a commit point. Leg F measures `the Alt-click reset moved 2 of the three
+  splits`, which is its own non-vacuity check — a reset that spread nothing would prove nothing.
+
+  **Mutations M96-M100, and what each one is for.** They are not five spellings of one mutation: each
+  attacks a different sentence of the decision, and the failure counts differ accordingly.
+
+  | Mutation | What it changes | Result |
+  |---|---|---|
+  | M96 | the `\|\| userTransactionDepth > 0` guard removed | **KILLED** — 11 checks, legs B, C, D, F and G |
+  | M97 | the guard DISCARDS `pendingGestureCommit` instead of skipping | **KILLED** — 14 checks; the step vanishes entirely rather than being made whole |
+  | M98 | the scope begins AFTER `setSoloMask`, i.e. the commit moves back to the inner boundary | **KILLED** — 4 checks, legs B and D |
+  | M99 | only `addBandAt` is protected; `removeBand` left bare | **KILLED** — 4 checks, leg C alone |
+  | M100 | `endUserTransaction` is a no-op, so no transaction ever ends | **KILLED** — 44 checks across the whole suite |
+
+  **M97 is the one to read.** It is the difference between "the poll waits" and "the poll throws the
+  commit away", and the symptom of getting it wrong is the opposite of the defect: no undo step at
+  all rather than two. A guard written as a discard would have passed a test that only asked "is
+  there exactly one step", which is why legs B, C, F and G each assert the CONTENT of the step as
+  well as its count.
+
+  **The suppression file grew by one, and round 21's "it did NOT grow" bullet below is history rather
+  than a rule.** State test 98's host double polls from a gesture-end callback — the seat `HostSeat`
+  occupies, through a different type — so TSan reports the same APVTS-vs-`listenerLock` pair under a
+  stack neither existing entry names. The cycle still cannot close, and the reason is one line of
+  round 21's own fix rather than a repeat of its argument: `pollUndoCoalesceFromTimer` takes its
+  `ScopedTryLock` on `soundReplacement` BEFORE the poll body and holds it across all of it, so the
+  `listenerLock` → `copyState` order this report names is taken with `soundReplacement` already held
+  by that thread; the other order takes it first too; and had a host thread been holding it, the try
+  would have FAILED and the poll would never have reached the APVTS lock. `PumpFromGestureEnd` is a
+  test type, so a real host-vs-host inversion on these locks is still reported. Measured on the fixed
+  tree: `Matched 5 suppressions` across **3 entries** — `3 deadlock:HostSeat`,
+  `1 deadlock:WriteFromInsideAGestureOpen`, `1 deadlock:PumpFromGestureEnd` — which is what CI's
+  "every suppression still matches something" step asserts.
+
 * **Round 23 — State test 97, and the two survivors round 22 left standing.**
 
   Round 22 recorded M87 and M88 as unkilled rather than as equivalent, and gave a harness reason for

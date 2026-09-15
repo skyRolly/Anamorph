@@ -583,6 +583,12 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // stand states no endpoint, and the batch's close must not invent one from the live value.
     imager->onOwnedRefused     = [this] (const juce::AudioProcessorParameter* refused)
                                  { processor.noteOwnedParamRefused (refused); };
+    // ADR-0008 round 24 (Devin R1092): and the LIFETIME of a multi-store user action, so the undo
+    // poll cannot commit half a topology change when a host pumps the loop from the inner gesture
+    // close in the middle of one.
+    imager->onUserTransaction  = [this] (bool begin)
+                                 { if (begin) processor.beginUserTransaction();
+                                   else       processor.endUserTransaction(); };
     imager->isSweeping         = [this] { return uiAnimOn && knobSweepTime > 0.0; };
     addAndMakeVisible (*imager);
 

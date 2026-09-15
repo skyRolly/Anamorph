@@ -433,6 +433,12 @@ void AnamorphAudioProcessor::applyAutoGain()
     // owned: `noteOwnedParamWrite` forwards to `noteFirstOwnership`, which keeps the `before` the
     // first owner brought (round 17) -- a drag on Output Gain followed by Apply in the same 24 Hz
     // window is still one step starting where the drag started.
+    // ROUND 24 (Devin R1092, the same defect one class wider). Apply is ONE button press and the
+    // two stores below bracket TWO gestures; the first one's close is a commit point a pumping host
+    // can reach, which would put Output Gain in one undo step and Level Match in the next. Found by
+    // this round's own sweep over every multi-store action, in code round 23 wrote.
+    const ScopedUserTransaction wholeApply (*this);
+
     const auto storeApplied = [this] (juce::RangedAudioParameter* p, float norm)
     {
         if (p == nullptr) return;
@@ -555,6 +561,21 @@ void AnamorphAudioProcessor::noteOwnedParamRefused (const juce::AudioProcessorPa
     const int i = p->getParameterIndex();
     if (i < 0 || i >= (int) batchEpisodeParam.size()) return;
     batchEpisodeParam[(size_t) i] |= (char) 4;
+}
+
+// ADR-0008, ROUND 24 (Devin R1092). See the declaration in the header for the whole argument.
+// A plain increment on a message-thread int: no lock, no allocation, nothing that can fail. The
+// clamp on the way down is not defensive tidiness -- it is what keeps a re-entrant program jump
+// (a host pumping the loop and the user hitting Undo inside a transaction, which zeroes
+// `openGestures`) from driving this negative and leaving the poll permanently blocked.
+void AnamorphAudioProcessor::beginUserTransaction() noexcept
+{
+    ++userTransactionDepth;
+}
+
+void AnamorphAudioProcessor::endUserTransaction() noexcept
+{
+    if (userTransactionDepth > 0) --userTransactionDepth;
 }
 
 // ADR-0008, ROUND 20. The request, armed. Deliberately weaker than every `note*` above it: no
@@ -1248,7 +1269,14 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
     const auto sig = soundSignature();
     if (seams.insidePollBody) seams.insidePollBody();   // test seam: land a host write HERE
 
-    if (openGestures > 0)          // a user gesture is in progress -> never commit mid-gesture
+    // ...and the SECOND half of the same question, added in round 24 (Devin R1092). `openGestures`
+    // asks "is a gesture open"; `userTransactionDepth` asks "is a multi-store user action still
+    // running", and a topology change spends most of its life answering yes to the second and no to
+    // the first -- `setSoloMask` closes at the front and `setBands` opens at the back, and in
+    // between there is no gesture and up to seven more stores to come. Skipping is the same
+    // skipping: `pendingGestureCommit` is left standing, so the action is committed WHOLE by the
+    // first poll after the transaction ends rather than discarded or delayed.
+    if (openGestures > 0 || userTransactionDepth > 0)
     {
         lastPolledSig = sig;
         return;

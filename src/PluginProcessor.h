@@ -165,6 +165,42 @@ public:
     // It states no value, deliberately: a refused store has none to state.
     void noteOwnedParamRefused (const juce::AudioProcessorParameter* p) noexcept;
 
+    // ADR-0008, ROUND 24 (Devin R1092). ONE USER ACTION IS ONE UNDO STEP, EVEN WHEN IT IS NINE
+    // STORES. A multiband topology change (`SpectrumImager::addBandAt` / `removeBand`), a crossover
+    // reset or a typed frequency (`resetCrossover` / `commitFreqEditor`, which store the primary and
+    // only then spread its neighbours) and the editor's Apply Gain (`applyAutoGain`, two bracketed
+    // stores) all CLOSE an inner change gesture and keep writing afterwards. The close drops
+    // `openGestures` to zero and raises `pendingGestureCommit`, which is everything the poll asks
+    // before it commits -- so a host that pumps its message loop from the gesture-end callback it
+    // has just been handed (JUCE delivers that to `AudioProcessorListener`s LAST, after the
+    // processor's own bookkeeping: juce_AudioProcessorParameter.cpp:102-108 ->
+    // juce_AudioProcessor.cpp:1476-1487) lets the editor's 24 Hz tick commit HALF the action.
+    // Measured before this round, State test 98 leg B: one Undo of one Add-band click left
+    // `bands 2, solo 0x4` -- a word naming band 2 in a two-band layout, which `SoloMonitor::process`
+    // masks away to nothing -- and a second Undo was needed to finish the job.
+    //
+    // WHAT THIS DOES AND, AS IMPORTANTLY, DOES NOT DO. While the depth is non-zero the poll SKIPS,
+    // exactly as it already skips for `openGestures > 0`: `pendingGestureCommit` is not consumed,
+    // not cleared and not discarded, the batch vectors keep accumulating, and the first poll after
+    // the transaction ends commits the whole action as ONE step with every endpoint the action
+    // produced. It is not a delay, not an inactivity timer and not a dependence on the host
+    // behaving: the scope is the transaction's own lifetime, closed by RAII on every exit including
+    // the ten early returns `addBandAt` alone has.
+    void beginUserTransaction() noexcept;
+    void endUserTransaction()   noexcept;
+
+    // RAII over the pair, for the transactions that live inside this class. The imager reaches the
+    // same counter through its `onUserTransaction` callback and has a scope of its own, because it
+    // holds no processor pointer by design.
+    struct ScopedUserTransaction
+    {
+        explicit ScopedUserTransaction (AnamorphAudioProcessor& p) noexcept : proc (p)
+        { proc.beginUserTransaction(); }
+        ~ScopedUserTransaction() { proc.endUserTransaction(); }
+        AnamorphAudioProcessor& proc;
+        JUCE_DECLARE_NON_COPYABLE (ScopedUserTransaction)
+    };
+
     // ADR-0008, ROUND 20. WHAT THE CONTROL ASKED FOR, KNOWN BEFORE THE GESTURE CAN BE POLLED.
     // `noteOwnedParamEndpoint` above states the endpoint AFTER the write, which is early enough for
     // a slider -- its attachment writes in one callback and closes the gesture in a later one, so
@@ -587,6 +623,15 @@ private:
     // never opens a gesture, so it is never recorded.
     int  openGestures = 0;
     bool pendingGestureCommit = false;
+    // ADR-0008, ROUND 24 (Devin R1092). HOW DEEP INSIDE A MULTI-STORE USER ACTION THIS THREAD IS.
+    // `openGestures` answers "is a gesture open", and that is NOT the same question. A topology
+    // change is a plan applied as six to nine stores, two of which bracket a gesture of their own
+    // (`setSoloMask` at the front, `setBands` at the back) -- so between them `openGestures` is
+    // ZERO with `pendingGestureCommit` already raised, and a poll landing there commits a topology
+    // that is half old and half new. Message-thread-owned, exactly like the two fields above; a
+    // plain int because a transaction is a synchronous burst on one thread and nesting is only
+    // possible through re-entrancy this counter is what makes safe.
+    int  userTransactionDepth = 0;
     // ADR-0053, the three halves of "a scroll is one undo step". `wheelStepKey` is the control a
     // wheel edit currently in flight names; `pendingStepWheelKey` is that name LATCHED at the
     // instant the gesture closed, because the poll that acts on it runs up to a timer period later,

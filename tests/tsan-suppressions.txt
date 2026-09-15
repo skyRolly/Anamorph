@@ -185,3 +185,29 @@
 # these same two locks, with no harness frame in either stack, is still REPORTED.
 deadlock:HostSeat
 deadlock:WriteFromInsideAGestureOpen
+#
+# ROUND 24 ADDS A THIRD NAME FOR THE SAME REPORT, and it is a third name rather than
+# a third finding. State test 98 (Devin R1092) drives a topology transaction with a
+# host that pumps its message loop from the gesture-end callback -- the same seat
+# `HostSeat` occupies, through a different harness type -- so the identical
+# APVTS-vs-`listenerLock` pair is reported under a stack TSan has not seen before
+# and the entries above do not match it.
+#
+# THE CYCLE CANNOT CLOSE HERE EITHER, AND THE REASON IS ONE LINE OF THE ROUND-21 FIX
+# rather than a repeat of the argument above. `pollUndoCoalesceFromTimer` takes its
+# `ScopedTryLock` on `soundReplacement` BEFORE calling the poll body and holds it
+# across the whole of it -- "every acquisition inside it becomes a free recursive
+# re-entry, and one try answers for all of them" -- so the M1 -> M0 order this
+# report names (`listenerLock`, then `copyStateWithRawValues`' `copyState`) is taken
+# with `soundReplacement` ALREADY held by that thread. The other order
+# (`applyStatePreservingView` -> `replaceState` -> a store's `listenerLock`) takes
+# `soundReplacement` first too. Two threads cannot hold it at once, so no pair of
+# threads can occupy the two ends of the cycle. Had a host thread been holding it,
+# the try would have FAILED and the poll would have returned without touching the
+# APVTS lock at all -- which is exactly what ADR-0036 section 26 was for.
+#
+# `PumpFromGestureEnd` is a test type in `tests/state_tests.cpp` and cannot appear
+# in a shipped build, so this entry obeys the same rule as the two above: a real
+# host-vs-host inversion on these two locks, with no harness frame in either stack,
+# is still REPORTED.
+deadlock:PumpFromGestureEnd

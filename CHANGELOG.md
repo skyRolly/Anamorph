@@ -65,6 +65,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **Adding or removing a Multiband band is one Undo step again, never half of one.** A band split is
+  not a single change: adding or removing one renumbers the solo bits, moves the widths, shifts the
+  neighbouring splits and finally changes the band count — and in between, some DAWs run their own
+  housekeeping. When that happened at exactly the wrong moment, the plug-in recorded the half-finished
+  layout as an Undo step of its own, so one click produced two of them. Pressing Undo once then left
+  you with a layout you had never made — most visibly a soloed band that silently went quiet, because
+  its solo bit now pointed past the last band — and you had to press Undo a second time to get back.
+  The whole add or removal is now treated as one action from start to finish, so one click is one
+  Undo step and one Undo returns the complete layout you had before it. The same fix covers resetting
+  or typing a crossover frequency (which also nudges its neighbours) and the **Apply Gain** button.
 - **Applying the matched gain, or resetting a knob, can no longer hand your DAW's automation to your
   Undo.** Two places still told the plug-in "a user edit happened here" without saying what the edit
   produced, so the value recorded as the result was read back from the control at the end — and if

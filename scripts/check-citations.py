@@ -417,13 +417,13 @@ DELIBERATE_REAIMS = {
     # settled fails here rather than going quiet.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:246-249",
-     "src/PluginProcessor.h:374-377"): "parameterValueChanged",
+     "src/PluginProcessor.h:410-413"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:390",
-     "src/PluginProcessor.h:579"): "parameterValueChanged",
+     "src/PluginProcessor.h:615"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:325",
-     "src/PluginProcessor.h:489"): "UndoStacks",
+     "src/PluginProcessor.h:525"): "UndoStacks",
 
     # 2026-09-13 (round 14, ADR-0008 as amended): THREE ENTRIES, all for spans this change EDITED
     # rather than moved, which is exactly the case a declaration is for -- the line map returns
@@ -438,25 +438,25 @@ DELIBERATE_REAIMS = {
     # check actually sees, and the check runs against `origin/main`.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:997-1173"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1018-1194"): "parameterGestureChanged",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:997-1173"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1018-1194"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-826",
-     "src/PluginProcessor.cpp:997-1174"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1018-1195"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:250",
-     "src/PluginProcessor.h:489"): "UndoStacks",
+     "src/PluginProcessor.h:525"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     "src/PluginProcessor.cpp:2409-2508"): "setStateInformation",
+     "src/PluginProcessor.cpp:2437-2536"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     "src/PluginProcessor.cpp:2409"): "setStateInformation",
+     "src/PluginProcessor.cpp:2437"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     "src/PluginProcessor.cpp:1945"): "abActive",
+     "src/PluginProcessor.cpp:1973"): "abActive",
 
     # 2026-09-15 (round 21, ADR-0036 §26): ONE ENTRY, for a span this change EDITED rather than
     # moved. ADR-0008's "Source:" line brackets the whole custom-undo block, from its banner comment
@@ -466,9 +466,29 @@ DELIBERATE_REAIMS = {
     # drifted and no `--fix` can carry it: the two ends were re-derived by hand from the banner and
     # from the function they name, and `verify_reaim_targets` re-resolves the token below against
     # the current file on every run.
+    # 2026-09-15 (round 24, ADR-0008 R1092): ONE ENTRY, for a span this change EDITED rather than
+    # moved. ADR-0010's "Related code" cites the undo poll's gesture guard, and the guard grew a
+    # second term (`|| userTransactionDepth > 0`), so the cited lines no longer read as they did and
+    # the ordinary mapping reports UNMAPPABLE rather than inventing a number. The sentence the
+    # citation supports -- that the host-hidden Settings controls are not APVTS parameters and so are
+    # not what the poll is looking at -- is unchanged and still true, so the anchor is re-aimed by
+    # hand onto the same guard at its new spelling and the transition declared here. `922 -> 943` in
+    # the same anchor is a plain move that came along with it.
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:922, 1251-1254",
+     "src/PluginProcessor.cpp:943, 1279-1283"): "openGestures",
+    # ...and the SAME transition declared from the branch's OTHER base. `preflight.sh` runs the gate
+    # against `origin/main`, the merge base and `HEAD~1`, and a declaration is keyed on the
+    # TRANSITION, so the entry above answers only for the `HEAD~1` base this round pushes from. The
+    # origin/main spelling is a different pair for the same anchor and the same edit, and leaving it
+    # undeclared is what let an anchor ship stale once already (see the header): one base went green
+    # while another did not, and the green one was the one that got read.
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:737, 870-873",
+     "src/PluginProcessor.cpp:943, 1279-1283"): "openGestures",
     ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
      "src/PluginProcessor.cpp:426-565",
-     "src/PluginProcessor.cpp:458-597"): "syncCommitted",
+     "src/PluginProcessor.cpp:464-618"): "syncCommitted",
     #
     # 2026-09-13 (round 13) declared a re-aim of RISK-012's poll citation, `:963-1035` ->
     # `:980-1039`, onto the `sig != committedSig` gate. ROUND 14 DELETED IT, because round 14

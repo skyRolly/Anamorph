@@ -6835,7 +6835,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2444),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2450),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -21037,7 +21037,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1968).
+//  baseline", src/PluginProcessor.cpp:1996).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -21270,7 +21270,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1630).
+//  targets", src/PluginProcessor.cpp:1658).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21647,7 +21647,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2153).
+//  mixed sound", src/PluginProcessor.cpp:2181).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -26045,6 +26045,447 @@ static void testTheDeferredBaselineAndTheDoorTheEditorPicks()
     }
 }
 
+// ---------------------------------------------------------------------------
+//  State test 98 -- round 24, Devin R1092. A MULTIBAND TOPOLOGY CHANGE IS ONE
+//  USER ACTION, SO IT IS ONE UNDO STEP.
+//
+//  `addBandAt` and `removeBand` are not one write. Each is a plan computed from a
+//  snapshot and then applied as six to nine `setValueNotifyingHost` calls -- the solo
+//  word, the widths, the splits, and the count last (ADR-0040) -- and TWO of those
+//  stores bracket a change gesture of their own: `setSoloMask` at the front and
+//  `setBands` at the back. The front one CLOSES, in the middle of the transaction.
+//
+//  What a close does, at `PluginProcessor.cpp:R1092`: `--openGestures` reaches zero and
+//  `pendingGestureCommit` is raised. Both of the poll's eligibility tests are then
+//  satisfied while the rest of the burst has not run -- so a poll landing THERE commits
+//  an undo step built from a topology that is half old and half new, and the remaining
+//  stores go into a second step after it.
+//
+//  THE POLL CAN LAND THERE, and the door is the one JUCE dispatches LAST.
+//  `AudioProcessorParameter::endChangeGesture` notifies every
+//  `AudioProcessorParameter::Listener` first -- the processor among them, which is what
+//  drops `openGestures` -- and only then the `finalListener`, which is
+//  `AudioProcessor::ParameterChangeForwarder` and which fans out to every
+//  `AudioProcessorListener`, i.e. to the HOST
+//  (juce_AudioProcessorParameter.cpp:102-108, juce_AudioProcessor.cpp:1476-1487).
+//  A host that pumps its message loop from that callback -- the same seat State test 94
+//  legs F and G use, and the seat RISK-009 and ADR-0036 section 26 are written for --
+//  lets the editor's 24 Hz tick run, and all that tick does is poll
+//  (`PluginEditor.cpp`, `pollUndoCoalesceFromTimer`). The processor's bookkeeping has
+//  already run by then. Nothing in this leg is test-only: the press is the shipped
+//  `mouseDown`, the transaction is the shipped `addBandAt`, and the pump is a host
+//  behaviour JUCE's own documentation warns about.
+// ---------------------------------------------------------------------------
+namespace {
+struct PumpFromGestureEnd final : public juce::AudioProcessorListener
+{
+    AnamorphAudioProcessor* proc = nullptr;
+    bool armed = false;
+    int  pumps = 0;
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int) override
+    {
+        if (! armed || proc == nullptr) return;
+        ++pumps;
+        proc->pollUndoCoalesceFromTimer();   // the editor's tick, reached through the host's pump
+    }
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
+    void audioProcessorChanged (juce::AudioProcessor*,
+                                const juce::AudioProcessorListener::ChangeDetails&) override {}
+};
+} // namespace
+
+static void testATopologyChangeIsOneUndoStep()
+{
+    std::printf ("State test 98: a multiband topology change is one user action, so it is one undo step (R1092)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the topology-transaction probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        { auto* k = c->getChildComponent (i);
+          if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+          walk (k); }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "the imager is laid out");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* wMidP  = apvts.getParameter (pid::mbWidthMid);
+    check (bandsP && soloP && loP && midP && hiP && wLoP && wMidP, "the multiband parameters exist");
+    if (! (bandsP && soloP && loP && midP && hiP && wLoP && wMidP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    const float W = (float) im->getWidth(), H = (float) im->getHeight();
+    auto hover = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseMove (juce::MouseEvent (src, { x, y }, juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto pressAt = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseDown (juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto altPressAt = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseDown (juce::MouseEvent (src, { x, y },
+                                         juce::ModifierKeys::leftButtonModifier | juce::ModifierKeys::altModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto dragFrom = [&] (float dx, float dy, float tx, float ty)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseDown (juce::MouseEvent (src, { dx, dy }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { dx, dy }, t, 1, false));
+        im->mouseDrag (juce::MouseEvent (src, { tx, ty }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { dx, dy }, t, 1, true));
+    };
+    auto releaseAt = [&] (float x, float y, float dx, float dy)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseUp (juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                       1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { dx, dy }, t, 1, true));
+    };
+    auto near = [] (float a, float b) { return std::abs (a - b) < 1.0e-3f; };
+    const float laneY = 0.5f * H;
+    auto findSplitX = [&] (float y) -> float
+    {
+        for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+        { hover (x, y);
+          if (im->getTooltip() == juce::String ("Drag to change the split frequency")) return x; }
+        return -1.0f;
+    };
+
+    // A two-band layout with band 1 SOLOED. The solo word is what makes the transaction's first
+    // store a real move: `addBandAt` renumbers the mask for the new count, and an insertion to the
+    // LEFT of the existing split shifts band 1's bit from 0x2 to 0x4. With no band soloed the mask
+    // store writes the value already there and the intermediate state is invisible -- which is why
+    // this leg solos one, not to be exotic but to make the first store observable at all.
+    auto arm = [&]
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 2.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 6000.0f); setPlain (hiP, 12000.0f);
+        setPlain (soloP, 2.0f);                    // band 1
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+    };
+
+    // Three bands with band 2 soloed, for the removal leg: `removeBand` compacts the mask, so
+    // merging band 1 away moves band 2's bit from 0x4 down to 0x2 and the first store is real.
+    auto arm3 = [&]
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 3.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 6000.0f); setPlain (hiP, 12000.0f);
+        setPlain (wLoP, 1.3f); setPlain (wMidP, 0.7f);
+        setPlain (soloP, 4.0f);                    // band 2
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+    };
+
+    // The x at which the shipped affordance says a click adds a band, found the way State test 86
+    // finds it -- by asking the component, not by computing a layout.
+    auto findAddX = [&] (float y) -> float
+    {
+        for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+        { hover (x, y);
+          if (im->getTooltip() == juce::String ("Click to add a band split")) return x; }
+        return -1.0f;
+    };
+
+    PumpFromGestureEnd host;
+    host.proc = &proc;
+    proc.addListener (&host);
+
+    const float addY = 0.25f * H;
+
+    // ---- LEG A: the control -- no pump, one add, one step ----------------------------
+    {
+        arm();
+        const float ax = findAddX (addY);
+        check (ax >= 0.0f, "leg A: the add affordance is findable");
+        if (ax >= 0.0f)
+        {
+            const float b0 = plainOf (bandsP), s0 = plainOf (soloP);
+            const float l0 = plainOf (loP), m0 = plainOf (midP), h0 = plainOf (hiP);
+            host.armed = false;
+            pressAt (ax, addY);
+            im->cancelActiveDrag();
+            proc.pollUndoCoalesce();
+
+            check (! juce::exactlyEqual (plainOf (bandsP), b0), "leg A: the click added a band");
+            const float b1 = plainOf (bandsP), s1 = plainOf (soloP);
+            check (proc.canUndo(), "leg A: the add is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (bandsP), b0), "leg A: one Undo puts the count back");
+            check (juce::exactlyEqual (plainOf (soloP),  s0), "leg A: ...and the solo word with it");
+            check (juce::exactlyEqual (plainOf (loP), l0) && juce::exactlyEqual (plainOf (midP), m0)
+                   && juce::exactlyEqual (plainOf (hiP), h0), "leg A: ...and every split");
+            check (! proc.canUndo(), "leg A: ...in ONE step");
+            proc.redo();
+            check (juce::exactlyEqual (plainOf (bandsP), b1) && juce::exactlyEqual (plainOf (soloP), s1),
+                   "leg A: Redo restores the whole post-add topology");
+        }
+    }
+
+    // ---- LEG B: the host pumps from the inner gesture close ---------------------------
+    {
+        arm();
+        const float ax = findAddX (addY);
+        check (ax >= 0.0f, "leg B: the add affordance is findable");
+        if (ax >= 0.0f)
+        {
+            const float b0 = plainOf (bandsP), s0 = plainOf (soloP);
+            const float l0 = plainOf (loP), m0 = plainOf (midP), h0 = plainOf (hiP);
+            host.pumps = 0; host.armed = true;
+            pressAt (ax, addY);
+            im->cancelActiveDrag();
+            host.armed = false;
+            proc.pollUndoCoalesce();
+
+            check (host.pumps > 0, "leg B: non-vacuity -- the host really pumped from a gesture end");
+            check (! juce::exactlyEqual (plainOf (bandsP), b0), "leg B: the click added a band");
+            const float b1 = plainOf (bandsP), s1 = plainOf (soloP);
+
+            check (proc.canUndo(), "leg B: the add is undoable");
+            proc.undo();
+            std::printf ("  [leg B] after ONE Undo: bands %.0f (started %.0f), solo 0x%X (started 0x%X),"
+                         " more undo available: %s\n",
+                         (double) plainOf (bandsP), (double) b0,
+                         (unsigned) juce::roundToInt (plainOf (soloP)), (unsigned) juce::roundToInt (s0),
+                         proc.canUndo() ? "yes" : "no");
+            check (juce::exactlyEqual (plainOf (bandsP), b0), "leg B: one Undo puts the count back");
+            check (juce::exactlyEqual (plainOf (soloP),  s0),
+                   "leg B: ...and the solo word with it -- no half-old, half-new topology");
+            check (juce::exactlyEqual (plainOf (loP), l0) && juce::exactlyEqual (plainOf (midP), m0)
+                   && juce::exactlyEqual (plainOf (hiP), h0), "leg B: ...and every split");
+            check (! proc.canUndo(), "leg B: ...in ONE step, exactly as without the pump");
+            proc.redo();
+            check (juce::exactlyEqual (plainOf (bandsP), b1) && juce::exactlyEqual (plainOf (soloP), s1),
+                   "leg B: Redo restores the whole user-produced post-add topology");
+        }
+    }
+
+    // ---- LEG C: the sibling -- a REMOVAL under the same pump --------------------------
+    //  `removeBand` is the same nine-store transaction with the same `setSoloMask` at the front,
+    //  and it is reached by the shipped drag-out-to-delete gesture (#18): press a split handle,
+    //  drag far above the plot (mouseDrag's `out` test is y < -50), release.
+    {
+        arm3();
+        const float hx = findSplitX (laneY);
+        check (hx >= 0.0f, "leg C: a split handle is findable at three bands");
+        if (hx >= 0.0f)
+        {
+            const float b0 = plainOf (bandsP), s0 = plainOf (soloP);
+            const float l0 = plainOf (loP), m0 = plainOf (midP), h0 = plainOf (hiP);
+            const float w0 = plainOf (wLoP), w1 = plainOf (wMidP);
+            host.pumps = 0; host.armed = true;
+            dragFrom (hx, laneY, hx, -100.0f);      // arm the removal
+            releaseAt (hx, -100.0f, hx, laneY);     // ...and take it
+            host.armed = false;
+            proc.pollUndoCoalesce();
+
+            check (host.pumps > 0, "leg C: non-vacuity -- the host pumped from a gesture end");
+            check (! juce::exactlyEqual (plainOf (bandsP), b0), "leg C: the release removed a band");
+            check (! juce::exactlyEqual (plainOf (soloP),  s0), "leg C: ...and renumbered the solo word");
+            const float b1 = plainOf (bandsP), s1 = plainOf (soloP);
+            check (proc.canUndo(), "leg C: the removal is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (bandsP), b0) && juce::exactlyEqual (plainOf (soloP), s0),
+                   "leg C: one Undo puts the count AND the solo word back together");
+            check (juce::exactlyEqual (plainOf (loP), l0) && juce::exactlyEqual (plainOf (midP), m0)
+                   && juce::exactlyEqual (plainOf (hiP), h0), "leg C: ...and every split");
+            check (juce::exactlyEqual (plainOf (wLoP), w0) && juce::exactlyEqual (plainOf (wMidP), w1),
+                   "leg C: ...and every width the merge moved");
+            check (! proc.canUndo(), "leg C: ...in ONE step");
+            proc.redo();
+            check (juce::exactlyEqual (plainOf (bandsP), b1) && juce::exactlyEqual (plainOf (soloP), s1),
+                   "leg C: Redo restores the whole post-removal topology");
+        }
+    }
+
+    // ---- LEG D: host automation inside the transaction is in NO user step -------------
+    //  The transaction holds the poll open for longer than it used to, so the first question to
+    //  ask of it is whether that window has become a place for somebody else's writes to be
+    //  collected. It has not, and the reason is ADR-0008's, not this round's: an entry carries
+    //  only parameters the user's own batch DECLARED, and a host lane declares nothing. The probe
+    //  writes Drive -- a parameter no topology store touches -- from inside the burst.
+    {
+        arm();
+        const float ax = findAddX (addY);
+        check (ax >= 0.0f, "leg D: the add affordance is findable");
+        auto* driveP = apvts.getParameter (pid::drive);
+        check (driveP != nullptr, "leg D: Drive exists");
+        if (ax >= 0.0f && driveP != nullptr)
+        {
+            const float d0 = plainOf (driveP);
+            const float dHost = juce::exactlyEqual (d0, 7.5f) ? 3.5f : 7.5f;
+            WriteFromInsideAStoreQuietly poke;   // a host lane, answering the burst's own dispatch
+            poke.target = driveP;
+            poke.to     = dHost;
+            poke.armed  = true;
+            soloP->addListener (&poke);          // armed on the transaction's FIRST store
+            host.pumps = 0; host.armed = true;
+            pressAt (ax, addY);
+            im->cancelActiveDrag();
+            host.armed = false;
+            soloP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg D: non-vacuity -- the host wrote inside the transaction");
+            check (near (plainOf (driveP), dHost), "leg D: ...and its value is what is live");
+            check (proc.canUndo(), "leg D: the add is still one undoable step");
+            proc.undo();
+            check (near (plainOf (driveP), dHost),
+                   "leg D: Undo of the topology action leaves the host's Drive exactly where it is");
+            check (! proc.canUndo(), "leg D: ...and there is no second step holding it");
+            proc.redo();
+            check (near (plainOf (driveP), dHost), "leg D: Redo does not reinstall it either");
+            setPlain (driveP, d0);
+            proc.pollUndoCoalesce();
+        }
+    }
+
+    // ---- LEG E: an action that performs no edit creates no history --------------------
+    //  Four bands is the cap, so `addBandAt` returns -1 having stored nothing. The transaction
+    //  still opens and closes -- the scope is the function's, not the store's -- and the point of
+    //  the leg is that opening one costs nothing: no gesture, no step, no pending commit left
+    //  standing for the next unrelated edit to inherit.
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 6000.0f); setPlain (hiP, 12000.0f);
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        check (! proc.canUndo(), "leg E: the no-op leg starts with no history");
+
+        const float b0 = plainOf (bandsP);
+        host.pumps = 0; host.armed = true;
+        for (float x = 4.0f; x < W - 4.0f; x += 7.0f) { hover (x, addY); pressAt (x, addY); im->cancelActiveDrag(); }
+        host.armed = false;
+        proc.pollUndoCoalesce();
+        check (juce::exactlyEqual (plainOf (bandsP), b0), "leg E: the cap refused every add");
+        check (! proc.canUndo(), "leg E: ...and a refused topology action records nothing");
+    }
+
+    // ---- LEG F: the wider class -- a crossover reset and its spread -------------------
+    //  `resetCrossover` stores the primary INSIDE a gesture, closes it, and only then calls
+    //  `spreadSplits` to push the neighbours out of the way. That close is the same commit point,
+    //  and a poll landing on it recorded the primary alone -- which is R515's defect (round 15)
+    //  arriving through a different door. Alt-click is the shipped path (`mouseDown`, ADR-0045).
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 2400.0f); setPlain (hiP, 2900.0f);  // crowded
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+
+        const float l0 = plainOf (loP), m0 = plainOf (midP), h0 = plainOf (hiP);
+        const float hx = findSplitX (laneY);
+        check (hx >= 0.0f, "leg F: a split handle is findable");
+        if (hx >= 0.0f)
+        {
+            host.pumps = 0; host.armed = true;
+            altPressAt (hx, laneY);
+            im->cancelActiveDrag();
+            host.armed = false;
+            proc.pollUndoCoalesce();
+
+            const int moved = (juce::exactlyEqual (plainOf (loP),  l0) ? 0 : 1)
+                            + (juce::exactlyEqual (plainOf (midP), m0) ? 0 : 1)
+                            + (juce::exactlyEqual (plainOf (hiP),  h0) ? 0 : 1);
+            std::printf ("  [leg F] the Alt-click reset moved %d of the three splits\n", moved);
+            check (moved >= 2, "leg F: non-vacuity -- the reset spread its neighbours too");
+            if (moved >= 2)
+            {
+                check (proc.canUndo(), "leg F: the reset is undoable");
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (loP), l0) && juce::exactlyEqual (plainOf (midP), m0)
+                       && juce::exactlyEqual (plainOf (hiP), h0),
+                       "leg F: one Undo puts the primary AND every neighbour it pushed back");
+                check (! proc.canUndo(), "leg F: ...in ONE step");
+            }
+        }
+    }
+
+    // ---- LEG G: Apply Gain, the same shape outside the imager --------------------------
+    //  Round 23 gave `applyAutoGain` two read-back stores, each bracketing a gesture of its own.
+    //  The FIRST one's close is a commit point, so a pumping host used to put Output Gain in one
+    //  undo step and Level Match in the next -- one button press, two steps. Found by this round's
+    //  own sweep rather than reported, in code round 23 wrote.
+    {
+        auto* ogP    = apvts.getParameter (pid::outputGain);
+        auto* matchP = apvts.getParameter (pid::autoGainMatch);
+        check (ogP != nullptr && matchP != nullptr, "leg G: Apply Gain's two parameters exist");
+        if (ogP != nullptr && matchP != nullptr)
+        {
+            while (proc.canUndo()) proc.undo();
+            setPlain (ogP, 6.0f);
+            matchP->setValueNotifyingHost (1.0f);
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float g0 = plainOf (ogP), m0 = matchP->getValue();
+
+            host.pumps = 0; host.armed = true;
+            proc.applyAutoGain();
+            host.armed = false;
+            proc.pollUndoCoalesce();
+
+            check (host.pumps > 0, "leg G: non-vacuity -- the host pumped from Apply's first close");
+            const bool movedG = ! juce::exactlyEqual (plainOf (ogP), g0);
+            const bool movedM = ! juce::exactlyEqual (matchP->getValue(), m0);
+            check (movedG && movedM, "leg G: non-vacuity -- Apply moved both of its parameters");
+            if (movedG && movedM)
+            {
+                check (proc.canUndo(), "leg G: Apply is undoable");
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (ogP), g0) && juce::exactlyEqual (matchP->getValue(), m0),
+                       "leg G: one Undo puts BOTH of Apply's parameters back");
+                check (! proc.canUndo(), "leg G: ...in ONE step");
+            }
+        }
+    }
+    proc.removeListener (&host);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -26216,6 +26657,7 @@ int main (int argc, char* argv[])
     testACancellationClosesEachGestureOnce();
     testAnamorphsOwnBareBracketsDeclareTheirEndpoint();
     testTheDeferredBaselineAndTheDoorTheEditorPicks();
+    testATopologyChangeIsOneUndoStep();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

@@ -615,6 +615,99 @@ matrix and the disposition.
 step whose Redo restores what Apply produced), leg C (a Knob reset whose guard answered on a stale
 slider, with the host write landing at the gesture CLOSE).
 
+## Decision — correction, 2026-09-15 (round 24)
+
+**ONE USER ACTION IS ONE UNDO STEP, EVEN WHEN IT IS NINE STORES.** Review finding
+`src/PluginProcessor.cpp:R1092` — the line that raises `pendingGestureCommit` when a gesture closes —
+reported that Undo can record a PARTIAL topology. Reproduced, and the report is right.
+
+**The mechanism, reconstructed from the source rather than from the report.** A multiband topology
+change is not one write. `SpectrumImager::addBandAt` and `removeBand` compute a plan from a snapshot
+and apply it as six to nine `setValueNotifyingHost` calls (ADR-0040) — and two of those stores bracket
+a change gesture of their own: `setSoloMask` at the FRONT and `setBands` at the BACK. The front one
+CLOSES, in the middle of the transaction. At that close `--openGestures` reaches zero and
+`pendingGestureCommit` is raised, which is the whole of what `pollUndoCoalesceAdopted` asks before it
+commits — while the widths, the splits and the count have not been written yet.
+
+**The poll can land there, and the door is the one JUCE dispatches LAST.**
+`AudioProcessorParameter::endChangeGesture` notifies every `AudioProcessorParameter::Listener` first —
+the processor among them, which is what drops `openGestures` — and only then the `finalListener`,
+which is `AudioProcessor::ParameterChangeForwarder`, which fans out to every `AudioProcessorListener`,
+i.e. to the HOST (`juce_AudioProcessorParameter.cpp:102-108`, `juce_AudioProcessor.cpp:1476-1487`). A
+host that pumps its message loop from that callback lets the editor's 24 Hz tick run, and all that
+tick does is poll. This is the same seat State test 94 legs F and G use and the same one RISK-009 and
+ADR-0036 §26 are written for; it is a production path, not a harness artefact.
+
+**Measured before the fix, State test 98 leg B** — one Add-band click on a two-band layout with band 1
+soloed, one Undo: `bands 2 (started 2), solo 0x4 (started 0x2), more undo available: yes`. A solo word
+naming band 2 in a two-band layout, which `SoloMonitor::process` masks with `((1 << bands) - 1)` down
+to **nothing**: the user's soloed band silently gone, in a state no completed action ever produced, and
+a second Undo needed to finish undoing one click.
+
+**THE CLASS IS WIDER THAN THE TWO FUNCTIONS THE FINDING NAMES, and the sweep that found the rest is
+the reason this section exists rather than a two-line patch.** Every multi-store action that closes an
+inner gesture and keeps writing has the same window:
+
+| Action | Closes an inner gesture at | ...and then still writes |
+|---|---|---|
+| `SpectrumImager::addBandAt` | `setSoloMask` | up to four widths, three splits, the count |
+| `SpectrumImager::removeBand` | `setSoloMask` | the widths, the splits, the count |
+| `SpectrumImager::resetCrossover` | the primary split's own bracket | `spreadSplits`' neighbours |
+| `SpectrumImager::commitFreqEditor` | the primary split's own bracket | `spreadSplits`' neighbours |
+| `AnamorphAudioProcessor::applyAutoGain` | Output Gain's bracket | Level Match's bracket |
+
+The last two rows are worth naming out loud. `resetCrossover` splitting into two steps is
+**R515's defect (round 15) arriving through a different door** — one Undo puts the reset back and
+leaves the pushed neighbours where the reset shoved them — and `applyAutoGain` is code ROUND 23 wrote:
+its two read-back stores bracket two gestures, and the first one's close is a commit point. Neither
+was reported; both were found by asking the same question of every multi-store action in the tree.
+
+**Decision.** A multi-store user action declares its own LIFETIME, and the undo poll does not commit
+inside one. `AnamorphAudioProcessor::beginUserTransaction` / `endUserTransaction` count depth on the
+message thread; `pollUndoCoalesceAdopted` adds `|| userTransactionDepth > 0` beside the
+`openGestures > 0` test it has always had. The imager reaches the counter through a new
+`onUserTransaction` callback (it holds no processor pointer, by design) and both sides drive it only
+through an RAII scope — `addBandAt` alone has ten early returns, and a hand-written pair would miss
+them.
+
+**What this deliberately does NOT do**, because each of these was a way to get the same symptom wrong:
+
+- It does not CONSUME, clear or discard `pendingGestureCommit`. The guard SKIPS, exactly as the
+  `openGestures` guard does: the batch vectors keep accumulating and the first poll after the
+  transaction ends commits the whole action as one step. Mutation M97 makes the guard discard instead,
+  and 14 checks fail — the step vanishes rather than being made whole.
+- It is not a delay, an inactivity timer or a sleep, and it does not depend on the host behaving. The
+  scope is the transaction's own stack lifetime.
+- It does not move the commit to a new place or introduce a second undo model. Nothing about
+  endpoints, ownership bits, wheel-step naming or the batch's own rules changes; the only new fact is
+  *when the poll may act*.
+- It does not widen what a step contains. Host automation landing inside the transaction is in no
+  step, for the reason it already was not: an entry carries only parameters the user's own batch
+  DECLARED, and a host lane declares nothing (State test 98 leg D).
+
+**Coverage.** State test 98, seven legs: A (the control, no pump), B (the add under a pumping host),
+C (the removal), D (automation inside the transaction is in no step), E (a refused action records
+nothing), F (the crossover reset and its spread), G (Apply Gain). Mutations M96-M100 — the guard
+removed (11 checks fail), the guard discarding the commit (14), the scope started after the inner
+close (4), only `addBandAt` protected (4), the transaction end omitted (44).
+
+**Architecture Review Gate: APPROVED by the owner, 2026-09-15 (round 24).** The approval covers the
+topology transaction/Undo change as implemented in this round, the ruling that `addBandAt` and
+`removeBand` are each ONE user Undo action, and the prevention of intermediate timer commits during a
+transaction.
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | this section, and the PR #144 body |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's ruling of 2026-09-15**, which states the invariant (*"a multiband topology mutation such as `addBandAt` or `removeBand` is one user action and must produce one coherent Undo step"*), names the shape (*"prefer an explicit transaction-lifetime guard/scope over implicit inference from `openGestures`"*) and the prohibitions (no arbitrary sleep, no polling delay, no inactivity timer, no reliance on the host being well behaved, no silently discarded commit), and states that the direction is already approved and is not to be asked again |
+| 3 | if the change is a decision, an ADR is added/updated | this section of ADR-0008; no new ADR — the invariant is ADR-0008's own (*one user topology operation produces one coherent set of parameter endpoints*) and this is its enforcement |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes; the guard is one message-thread int |
+
+**This is an implementation correction, not a new model.** Nothing here reverses or competes with an
+Accepted ADR: ADR-0040's re-validated burst, ADR-0044's mask proofs, ADR-0052's no-op rule and
+ADR-0053's wheel rules are all untouched, and the step's CONTENT is decided exactly as rounds 17-23
+left it. What changed is that the poll now knows when an action is still running.
+
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
   not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots
@@ -640,16 +733,17 @@ slider, with the host write landing at the gesture CLOSE).
 - `src/PluginProcessor.cpp` — `soundSignature`, `pollUndoCoalesceAdopted`, `applyUndoEntry`,
   `undo`/`redo`, `commitPresetSwitchUndoStep`, `abCopyToOther`, `pushCapped`,
   `parameterGestureChanged`, `noteFirstOwnership`, `noteOwnedParamWrite`, `noteOwnedParamEndpoint`,
-  `noteOwnedParamRefused`, `resetBatchOwnership` (`snapshotSoundValues` was deleted in round 17 —
-  both of its call sites were the defect)
+  `noteOwnedParamRefused`, `resetBatchOwnership`, `beginUserTransaction` / `endUserTransaction`
+  (`snapshotSoundValues` was deleted in round 17 — both of its call sites were the defect)
 - `src/PluginProcessor.h` — `StateSet`, `ParamEdit`, `UndoEntry`, `UndoStacks`, `kUndoDepth`,
   `batchOpenValue` / `batchCloseValue` / `batchOwnedParam` / `batchEpisodeParam`, the A/B members
 - `src/PluginEditor.h` / `src/PluginEditor.cpp` — `AttachmentWitness`, `makeWitness`, and the three
   attachment sites that straddle it (`attachSlider`, `setupCombo`, `setupToggle`)
-- `src/gui/SpectrumImager.h` / `.cpp` — `onOwnedWrite`, `onOwnedRefused`, `storeOwned`, `setParam`,
-  `resetCrossover`, `commitFreqEditor`, `spreadSplits`
+- `src/gui/SpectrumImager.h` / `.cpp` — `onOwnedWrite`, `onOwnedRefused`, `onUserTransaction`,
+  `ScopedUserTransaction`, `storeOwned`, `setParam`, `addBandAt`, `removeBand`, `resetCrossover`,
+  `commitFreqEditor`, `spreadSplits`
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:458-597, :340-520
+- Source: src/PluginProcessor.cpp:464-618, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")

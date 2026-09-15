@@ -4424,3 +4424,107 @@ round-22 passages saying the artifact was an instruction to make the change rath
 the change as made are marked SUPERSEDED in place rather than deleted, because what they establish
 about the policy is still true. No `APPROVED` GitHub review was manufactured and the PR was not
 self-approved.
+
+## §81. Round 24 — the transaction that had a beginning and an end but never said so
+
+**Trigger.** One item on PR #144 at head `f9b1c10`: `src/PluginProcessor.cpp:R1092` — undo records
+partial topology states — plus the documentary approval for the change it needs, and a check of the
+repository's own policy on commit metadata.
+
+### R1092 — the poll's two questions were one question short
+
+`openGestures > 0` asks *is a gesture open*. `pollUndoCoalesceAdopted` has never asked the other
+question — *is a multi-store user action still running* — and a topology change spends most of its
+life answering yes to the second and no to the first.
+
+`addBandAt` and `removeBand` apply their plan as six to nine `setValueNotifyingHost` calls (ADR-0040),
+and two of those bracket a gesture of their own: `setSoloMask` at the front, `setBands` at the back.
+The front one CLOSES. At that close `--openGestures` reaches zero and `pendingGestureCommit` is
+raised — both of the poll's tests satisfied — with the widths, the splits and the count still to come.
+
+**The door is the one JUCE dispatches last, and that is what makes it reachable.**
+`AudioProcessorParameter::endChangeGesture` runs every `AudioProcessorParameter::Listener` first (the
+processor among them, which is what does the bookkeeping above) and only then the `finalListener`,
+`AudioProcessor::ParameterChangeForwarder`, which fans out to every `AudioProcessorListener` — the
+host. A host that pumps its message loop there lets the editor's 24 Hz tick run, and the tick polls.
+Same seat as State test 94 legs F and G; same seat RISK-009 and ADR-0036 §26 are written for.
+
+**Measured before the fix.** One Add-band click, two bands, band 1 soloed, one Undo:
+`bands 2 (started 2), solo 0x4 (started 0x2), more undo available: yes`. A solo word naming band 2 in
+a two-band layout, which `SoloMonitor::process` masks to nothing — the soloed band silently gone, in a
+layout no completed action produced, needing a second Undo to finish undoing one click.
+
+### The class is five, not two, and three of them were found by sweeping rather than by reading the report
+
+| Action | Closes an inner gesture at | ...and then still writes |
+|---|---|---|
+| `addBandAt` | `setSoloMask` | up to four widths, three splits, the count |
+| `removeBand` | `setSoloMask` | the widths, the splits, the count |
+| `resetCrossover` | the primary split's bracket | `spreadSplits`' neighbours |
+| `commitFreqEditor` | the primary split's bracket | `spreadSplits`' neighbours |
+| `applyAutoGain` | Output Gain's bracket | Level Match's bracket |
+
+Rows three and four are **R515 (round 15) arriving through a different door**: one Undo puts the
+reset back and leaves the neighbours where the reset shoved them. Row five is code **round 23 wrote** —
+its two read-back stores bracket two gestures, and the first close is a commit point, so one button
+press could become two undo steps. Neither was reported.
+
+### Fix
+
+`beginUserTransaction` / `endUserTransaction` count depth on the message thread;
+`pollUndoCoalesceAdopted` adds `|| userTransactionDepth > 0` beside the test it has always had. The
+imager reaches the counter through a new `onUserTransaction` callback — it holds no processor pointer
+by design — and both sides drive it only through an RAII scope, because `addBandAt` alone has ten
+early returns.
+
+**The guard SKIPS; it does not consume.** `pendingGestureCommit` is left standing and the batch
+vectors keep accumulating, so the first poll after the transaction ends commits the whole action as
+one step. Mutation M97 makes it discard instead and 14 checks fail — the symptom of that mistake is
+the OPPOSITE of the defect (no step at all rather than two), which is why every leg asserts the
+step's CONTENT and not just its count.
+
+No sleep, no inactivity timer, no dependence on the host behaving, no new undo model: endpoints,
+ownership bits, wheel-step naming and the batch's rules are exactly as rounds 17-23 left them. The
+only new fact is when the poll may act.
+
+### Coverage
+
+State test 98, seven legs: A (control), B (add under a pumping host), C (removal), D (automation
+inside the transaction is in no step), E (a refused action records nothing), F (the crossover reset
+and its spread), G (Apply Gain). Mutations M96-M100 all killed — 11, 14, 4, 4 and 44 failing checks
+respectively, each leg failing for its own reason.
+
+### Commit metadata — the policy does not say what the task assumed
+
+Checked directly rather than taken from the round-23 report. `docs/policies/` (15 files),
+`CLAUDE.md`, `.github/` and the whole documentation tree contain **no rule about commit trailers,
+`Co-Authored-By`, session links or model identifiers** — the strings appear nowhere outside git
+metadata itself. Of the 39 commits on this branch since the merge base, 23 carry
+`Co-Authored-By` + `Claude-Session` and 16 do not. **No history was rewritten**, per the task's own
+instruction to stop and report when repository policy does not confirm the prohibition.
+
+### Gates
+
+The topology transaction change is an implementation correction under ADR-0008's own invariant — one
+user operation, one coherent set of endpoints — and touches no hard-stop class: no parameter ID, no
+serialization field, no thread-model change (one message-thread int beside two that were already
+there), no DSP signal order, no latency. The owner's approval of the change as made is recorded in
+ADR-0008's round-24 section and its step-2 row. ADR-0036 §26/§27 and ADR-0053 were verified to still
+carry their round-23 approvals and were not reopened.
+
+### Validation
+
+State 3 557 / 0 (3 557 / 3 on the unfixed tree, the three being leg B's partial-topology assertions).
+DSP 396 / 0. ThreadSanitizer exit 0 with zero warnings.
+
+**AND THE SUPPRESSION FILE GREW BY ONE, which is a fact to state rather than bury.** State test 98's
+host double polls from a gesture-end callback, which is the seat `HostSeat` occupies through a
+different type, so TSan reported the same APVTS-vs-`listenerLock` pair under a stack the two existing
+entries do not name. The cycle cannot close for the reason round 21 established and one line of its
+own fix: `pollUndoCoalesceFromTimer` takes its `ScopedTryLock` on `soundReplacement` BEFORE the poll
+body and holds it across all of it, so the `listenerLock` -> `copyState` order this report names is
+taken with `soundReplacement` already held by that thread, and the other order takes it first too.
+Had a host thread held it, the try would have failed and the poll would never have touched the APVTS
+lock. `deadlock:PumpFromGestureEnd` names a test type that cannot appear in a shipped build, so a
+real host-vs-host inversion on these locks is still reported. Three entries, three matched.
+

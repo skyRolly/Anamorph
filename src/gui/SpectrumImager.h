@@ -92,10 +92,31 @@ public:
     // nothing yet -- the two used to look identical, and the close guessed.
     std::function<void(const juce::AudioProcessorParameter*)> onOwnedRefused;
 
+    // ADR-0008, ROUND 24 (Devin R1092). THE LIFETIME OF A MULTI-STORE USER ACTION, told to the
+    // processor so its undo poll cannot commit half of one. `true` opens, `false` closes; the
+    // processor counts, and while the count is non-zero the poll skips without consuming anything.
+    // Four functions here are such an action -- `addBandAt`, `removeBand`, `resetCrossover` and
+    // `commitFreqEditor` -- and all four CLOSE an inner change gesture and keep storing afterwards,
+    // which is the window the poll used to land in. Driven only through `ScopedUserTransaction`
+    // below: `addBandAt` alone has ten early returns and a hand-written pair would miss them.
+    std::function<void(bool)> onUserTransaction;
+
     // UI-animation flag now lives in InternalState (host-hidden), injected by the editor.
     void setAnimationSource (const std::atomic<float>* p) noexcept { animOnP = p; }
 
 private:
+    // ADR-0008 round 24: see `onUserTransaction` above. Non-copyable and non-movable on purpose --
+    // the only correct use is a named local at the top of a transaction.
+    struct ScopedUserTransaction
+    {
+        explicit ScopedUserTransaction (const SpectrumImager& o) noexcept : owner (o)
+        { if (owner.onUserTransaction) owner.onUserTransaction (true); }
+        ~ScopedUserTransaction()
+        { if (owner.onUserTransaction) owner.onUserTransaction (false); }
+        const SpectrumImager& owner;
+        JUCE_DECLARE_NON_COPYABLE (ScopedUserTransaction)
+    };
+
     void tick (double dt); // FrameClock callback (display-rate; dt-corrected eases/decays)
     void visibilityChanged() override; // Advanced-only: no vblank ticks while hidden (Simple mode)
     bool pushFFT();        // runs the FFT only when the window changed; true = new magnitudes

@@ -1221,6 +1221,10 @@ void SpectrumImager::endBandMove()
 
 void SpectrumImager::resetCrossover (int i)
 {
+    // ADR-0008 round 24 (R1092): the primary's gesture CLOSES and `spreadSplits` stores the
+    // neighbours after it, so a poll landing on that close recorded the primary alone and left
+    // the pushed neighbours to a second step -- R515's defect, reached by a different door.
+    const ScopedUserTransaction wholeReset (*this);
     auto* p = (i >= 0 && i < 3) ? freqP[i] : nullptr;
     if (p == nullptr) return;
     if (i >= bandCount() - 1) return;   // same rule as commitFreqEditor: the handle must still be live
@@ -1259,6 +1263,8 @@ void SpectrumImager::resetCrossover (int i)
 
 int SpectrumImager::addBandAt (float hz, int& resultingBands)
 {
+    // ADR-0008 round 24 (R1092): this whole burst is ONE user action -- see `onUserTransaction`.
+    const ScopedUserTransaction wholeAdd (*this);
     const int N = bandCount();
     resultingBands = N;          // nothing added -> the caller's gesture keeps the count it had
     // ADR-0048 CONSIDERED AND REJECTED A REFUSAL HERE, and the reason is the ADR-0044/0045 asymmetry
@@ -1398,6 +1404,8 @@ int SpectrumImager::addBandAt (float hz, int& resultingBands)
 
 void SpectrumImager::removeBand (int b, int expectedBands)
 {
+    // ADR-0008 round 24 (R1092): `addBandAt`'s sibling, and the same multi-store transaction.
+    const ScopedUserTransaction wholeRemove (*this);
     const int N = bandCount();
     if (N <= 1) return;
     // REFUSE, NEVER CLAMP (ADR-0038). This used to be `b = juce::jlimit (0, N - 1, b)`, and
@@ -1655,6 +1663,8 @@ void SpectrumImager::openFreqEditor (int i)
 }
 void SpectrumImager::commitFreqEditor()
 {
+    // ADR-0008 round 24 (R1092): same shape as `resetCrossover` -- store, close, then spread.
+    const ScopedUserTransaction wholeCommit (*this);
     if (editingHandle < 0) return;
     const int i = editingHandle;
     // ADR-0039's rule, at this commit point too: the handle names a split by POSITION, and
