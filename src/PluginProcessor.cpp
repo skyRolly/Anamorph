@@ -298,7 +298,11 @@ void AnamorphAudioProcessor::timerCallback()
     // latency synchronously (a changed Oversampling fires onOversampleChanged on
     // this thread), which clears the flag below; the exchange then finds nothing,
     // so nothing is delivered twice.
-    adoptPendingHostState();
+    // ROUND 21, same cycle as `pollUndoCoalesceFromTimer`: this timer is a message-queue consumer
+    // too, so it can run inside a host's pump while a parameter's `listenerLock` is held -- and the
+    // adoption's own acquisition of `soundReplacement` would then close it. `false` makes that one
+    // acquisition a try: the restore stays in the cell and this timer comes round again in 50 ms.
+    adoptPendingHostState (/*mayBlock*/ false);
 
     // exchange() IS the clear for this delivery, so call deliverLatency() rather
     // than updateLatency() -- the latter would clear a SECOND time, and anything
@@ -1085,6 +1089,26 @@ void AnamorphAudioProcessor::parameterGestureChanged (int parameterIndex, bool g
     }
 }
 
+// ADR-0036 round 21: the non-blocking door the timers come through. See the header for the cycle
+// this breaks and for why the drain and the poll body are gated separately. A try-lock rather than
+// a re-entrancy flag, deliberately: the dangerous re-entry is the HOST's pump from inside
+// `endChangeGesture`, which JUCE dispatches to `finalListener` AFTER this plug-in's own listener
+// has returned -- so a depth counter kept around our callback body reads zero at exactly the moment
+// it would need to read one. Not blocking at all needs to detect nothing.
+void AnamorphAudioProcessor::pollUndoCoalesceFromTimer()
+{
+    // The drain first, exactly as `pollUndoCoalesce` does it -- but with its one acquisition made a
+    // try. NOT under a lock of ours: the adoption calls out to the host from inside itself.
+    adoptPendingHostState (/*mayBlock*/ false);
+
+    // ...then the poll body, which reaches `currentStateSet`'s acquisition. Held across the whole
+    // body on purpose: the body calls out to nothing, so every acquisition inside it becomes a free
+    // recursive re-entry, and one try answers for all of them.
+    const juce::ScopedTryLock notWhileReplacing (soundReplacement);
+    if (! notWhileReplacing.isLocked()) return;   // a replacement is in flight: the next tick does it
+    pollUndoCoalesceAdopted();
+}
+
 void AnamorphAudioProcessor::pollUndoCoalesce()
 {
     // D-2: the editor's tick comes through here, so a host restore handed over
@@ -1640,7 +1664,7 @@ void AnamorphAudioProcessor::publishProgram()
     programMailbox.put (new ProgramSnapshot (ownedProgram()));
 }
 
-void AnamorphAudioProcessor::adoptPendingHostState()
+void AnamorphAudioProcessor::adoptPendingHostState (bool mayBlock)
 {
     // Drains to a FIXED POINT (D-2 round 8, ADR-0036 §15). Every caller is a message-
     // thread entry point about to read or mutate program state, and the guarantee it
@@ -1677,7 +1701,7 @@ void AnamorphAudioProcessor::adoptPendingHostState()
         internal.noteAdoptedGeneration (adoptedGeneration);
         {
             const juce::ScopedValueSetter<bool> adopting (adoptingRestore, true);
-            adoptRestoreTail (*r);
+            adoptRestoreTail (*r, mayBlock);
         }
         publishProgram();
     }
@@ -1688,7 +1712,7 @@ void AnamorphAudioProcessor::adoptPendingHostState()
 // from adoptPendingHostState(). Its order is the order the pre-D-2 restore ran:
 // the Settings tree, the A/B slot set, the undo history, the preset metadata, the
 // committed baseline.
-void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
+void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d, bool mayBlock)
 {
     // SESSION COHERENCE (D-2 round 4, ADR-0036 §10). A restore handed over from a host
     // thread applied its sound there -- at its install, after announcing (§25) -- and its
@@ -1731,8 +1755,26 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
     // every install, so checking it and then writing outside the lock decides on a state
     // that can be gone before the first parameter moves. The lock is recursive, so
     // `applySoundTree` re-entering it below is free.
+    //
+    // ROUND 21: THE TIMER MAY NOT WAIT HERE, AND GIVING UP COSTS NOTHING. `mayBlock` is false only
+    // for the two timer doors, which can be running inside a host's message pump with a parameter's
+    // `listenerLock` held -- and a host thread inside `applySoundTree` holds this lock and then
+    // waits for that very `listenerLock`, which is the cycle (ADR-0036 §26, RISK-009). So the timer
+    // TRIES, and a failed try skips the re-install rather than waiting it out.
+    //
+    // WHY THAT IS THE SAME STATE, not an approximation. Evaluated on the message thread, a failed
+    // `tryEnter` on a RECURSIVE lock proves the holder is ANOTHER thread -- and exactly one site is
+    // ever held by another thread: `applySoundTree` from `installRestoredSound`, the sound half of
+    // an off-message-thread restore (the audio thread never takes it; every other replacement, and
+    // every `currentStateSet`, is message-thread work -- an off-thread save answers from
+    // `programMailbox` and takes no lock at all). And a host-thread restore ANNOUNCES BEFORE IT
+    // INSTALLS (§25): the contender has already published its generation, which is higher than any
+    // restore already in the cell, so `internal.engineConfigGeneration() == d.generation` is false.
+    // The guard below would therefore be false after the wait too. Skipping reaches that same
+    // answer without joining the cycle. The TAIL still runs, exactly as it does after a blocking
+    // acquisition that finds the guard false.
+    const auto reinstallTheRestoredSound = [this, &d]
     {
-        const juce::ScopedLock oneAtATime (soundReplacement);
         if (d.generation != 0
             && internal.engineConfigGeneration() == d.generation
             && soundSetGen.load (std::memory_order_relaxed) != d.soundSetGen   // 0 (no owner provable) never matches
@@ -1740,6 +1782,17 @@ void AnamorphAudioProcessor::adoptRestoreTail (const RestoreDecode& d)
         {
             applySoundTree (d.soundParams);
         }
+    };
+
+    if (mayBlock)
+    {
+        const juce::ScopedLock oneAtATime (soundReplacement);
+        reinstallTheRestoredSound();
+    }
+    else
+    {
+        const juce::ScopedTryLock oneAtATime (soundReplacement);
+        if (oneAtATime.isLocked()) reinstallTheRestoredSound();
     }
 
     // The host-hidden Settings. A changed Oversampling fires InternalState's callback

@@ -1542,7 +1542,8 @@ void AnamorphAudioProcessorEditor::timerCallback()
         if (dimOverlay.isVisible()) dimOverlay.toFront (false);
     }
 
-    processor.pollUndoCoalesce(); // fold settled sound edits into undo steps (#10-12)
+    processor.pollUndoCoalesceFromTimer(); // fold settled sound edits into undo steps (#10-12)
+                                           // ...through the door that never blocks (ADR-0036 round 21)
     undoButton.setEnabled (processor.canUndo());
     redoButton.setEnabled (processor.canRedo());
     // Wave 4: re-format the readout only when the raw published float changed.

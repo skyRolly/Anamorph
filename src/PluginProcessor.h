@@ -69,6 +69,36 @@ public:
     bool canRedo() const noexcept { return ! abUndo[abActive].redo.empty(); }
     void pollUndoCoalesce();
 
+    // ADR-0036, ROUND 21. THE TIMER'S POLL NEVER BLOCKS ON A WHOLE-SOUND REPLACEMENT, and that is
+    // a deadlock fix rather than a performance one. `soundReplacement` is taken by a HOST thread
+    // inside `applySoundTree` (an off-message-thread `setStateInformation`), which then calls
+    // `apvts.replaceState` and, inside it, waits for a parameter's `listenerLock`. The message
+    // thread reaches this poll from a TIMER -- and a timer runs from any loop that drains the
+    // message queue, including one a host pumps from its gesture-end callback, which JUCE
+    // dispatches while that same `listenerLock` is HELD. A poll that blocks there closes the
+    // cycle: host thread holds the replacement lock and wants the listener lock; message thread
+    // holds the listener lock and wants the replacement lock.
+    //
+    // TWO acquisitions are reachable from here and BOTH are handled, which is why this is not one
+    // try-lock around the whole thing:
+    //   * the DRAIN's (`adoptRestoreTail` -> `applySoundTree`), taken through
+    //     `adoptPendingHostState (false)`. It cannot be covered by a lock held out here, because
+    //     the adoption calls OUT to the host from inside itself -- a restored Oversampling
+    //     delivers the reported latency synchronously, and `AudioProcessorListener`s run on this
+    //     thread while it does. Holding a replacement lock across a host callback is the same
+    //     inversion pointing the other way, and State test 27 (ER-STATE-14) hangs on it: measured,
+    //     round 21.
+    //   * the POLL BODY's (`currentStateSet`), covered by the try-lock below. That body calls out
+    //     to nothing -- it reads parameters and copies the tree -- so the lock is safe to hold
+    //     across it, and every acquisition inside it is then a free recursive re-entry.
+    //
+    // Nothing is consumed on the way out -- `pendingRestore`, `pendingGestureCommit`, the batch
+    // vectors and `polledGen` are all untouched -- so the next tick does the work. The USER-ACTION
+    // callers of `pollUndoCoalesce` (undo, redo, a preset save) keep the blocking acquisition they
+    // have always had: they cannot be re-entered from inside a parameter dispatch, and their flush
+    // must not be skipped.
+    void pollUndoCoalesceFromTimer();
+
     // ------------------------------------------------------------------------
     //  A SCROLL IS ONE UNDO STEP (ADR-0053).
     //
@@ -239,7 +269,12 @@ public:
     // through pollUndoCoalesce) and because the state suite drains deterministically
     // instead of waiting a timer period. Message thread only; a no-op when nothing
     // is pending (one relaxed atomic load).
-    void adoptPendingHostState();
+    // `mayBlock` is false for the TIMER doors only (round 21), and it changes exactly one thing:
+    // the tail's re-install of the restored sound tries `soundReplacement` instead of waiting on
+    // it. The drain itself is unchanged -- it still runs to a fixed point and still applies every
+    // tail. See `pollUndoCoalesceFromTimer` for the cycle that forbids the wait, and
+    // `adoptRestoreTail` for the proof that the skip and the wait end in the same state.
+    void adoptPendingHostState (bool mayBlock = true);
 
     // THE RULE FOR RELATIVE NAVIGATION (D-2 round 16, ADR-0036 §23).
     //
@@ -870,7 +905,7 @@ private:
     void installRestoredSound (RestoreDecode& d);
     bool decodeRestore (const void* data, int sizeInBytes, RestoreDecode& out);
     // The adoption tail, message thread only: today's restore tail, verbatim.
-    void adoptRestoreTail (const RestoreDecode&);
+    void adoptRestoreTail (const RestoreDecode&, bool mayBlock = true);
     // Serialize a program snapshot plus the live parameters. Any thread: the APVTS
     // copy is JUCE-locked and the snapshot is immutable.
     // `settings` is the Settings tree to write, passed separately because a save inside the
