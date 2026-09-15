@@ -57,6 +57,14 @@ repository builds.
 > with a computation from the values already being written. No thread, no lock, no wait, no
 > allocation on any audio path, no new cross-thread reader, no serialization-format change, no
 > parameter or latency change. There is no architectural delta to review.
+> **Round 21 (§26) is NOT inside the boundary, and round 22 (§27) is not either.** Every round
+> listed above is covered because it adds no thread, no cross-thread path and no blocking
+> mechanism. §26 changes when the message thread may BLOCK on `soundReplacement` — a
+> synchronisation-behaviour change, which `ARCHITECTURE_REVIEW_GATE.md` classes as a Thread Model
+> change and `AI_AGENT_POLICY.md` as an agent hard stop — and §27 changes which statements one
+> acquisition of that lock spans. Both are gated in their own right, both carry their own
+> gate-compliance table, and neither is covered by the 2026-09-03 approval above. The artifact
+> that would close them is named at the end of §27 and does not exist.
 
 **Resolves decision D-2** (`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, deferred in
 round 4) and **closes RISK-007** (`docs/FUTURE_RISKS.md`). **Amends `THREADING_POLICY.md`** §Host state
@@ -1012,7 +1020,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:1873`).
+    (`src/PluginProcessor.cpp:1921`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1081,7 +1089,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     the one-pass reassert makes exact by construction.
 
 23. **A relative operation acts on the session it observed (round 16).** Review finding *"relative
-    navigation uses stale targets"* (`src/PluginProcessor.cpp:1573`).
+    navigation uses stale targets"* (`src/PluginProcessor.cpp:1592`).
 
     **What a relative operation is.** One whose target is a function of the current state rather than
     of the user's input: *the other slot* (`abToggle`), *the next/previous preset*
@@ -1187,7 +1195,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     derived program-state target there to go stale.
 
 24. **One whole-sound replacement at a time (round 17).** Review finding *"overlapping restores
-    expose mixed sound"* (`src/PluginProcessor.cpp:2058`).
+    expose mixed sound"* (`src/PluginProcessor.cpp:2106`).
 
     **What a whole-sound replacement is.** An operation that installs an ENTIRE sound over the live
     parameter set, as opposed to moving one parameter: a host restore's install
@@ -1590,15 +1598,21 @@ turn late) and leaves a save issued on the host thread right after its restore d
     the suite spun at 99% CPU in that leg until it was killed. So the drain is gated from inside
     and only the poll body, which calls out to nothing, is covered by a lock held across it.
 
-    **Why skipping the sound re-install is the same answer as waiting for it.** Evaluated on the
-    message thread, a failed `tryEnter` on a RECURSIVE lock proves the holder is another thread —
-    and exactly one site is ever held by another thread. The audio thread never takes this lock;
-    every other whole-sound replacement, and every `currentStateSet`, is message-thread work; and
-    an off-message-thread `getStateInformation` answers from `programMailbox` and takes no lock at
-    all. So the contender is `applySoundTree` from `installRestoredSound` — a host-thread restore,
-    which by §25 has ALREADY ANNOUNCED. Its generation is higher than any restore in the cell, so
-    the re-install guard's `internal.engineConfigGeneration() == d.generation` is false; a blocking
-    acquisition would have waited and then found the same false. The TAIL still runs either way.
+    **~~Why skipping the sound re-install is the same answer as waiting for it.~~ WITHDRAWN IN
+    ROUND 22 — THE PREMISE WAS FALSE, and §27 replaces both the argument and the code it defended.**
+    This paragraph argued that a failed `tryEnter` on a RECURSIVE lock proves the holder is another
+    thread; that *"exactly one site is ever held by another thread"*, because *"an off-message-thread
+    `getStateInformation` answers from `programMailbox` and takes no lock at all"*; and that such a
+    holder is therefore a host-thread restore which by §25 has ALREADY ANNOUNCED, so the re-install
+    guard would be false after the wait too.
+
+    The middle clause is measurably wrong, and `THREADING_POLICY.md` already said so two documents
+    away. An off-message-thread `getStateInformation` reaches `writeState`, and `writeState`'s live
+    capture is `copyStateWithRawValues` — which has taken `soundReplacement` since round 18 (§25),
+    one line above its `copyState`. This very section's own TSAN paragraph, three paragraphs below,
+    states that fact while this paragraph denied it. A durable capture announces NO generation, so
+    against it the guard can be TRUE, the re-install genuinely owed, and the try still fail. §27
+    carries the correction, the defect it caused, and the fix.
 
     **Why the baseline snapshot is DEFERRED rather than skipped.** `syncCommitted` does more than
     take a snapshot: it clears `openGestures`, `pendingGestureCommit` and the wheel keys, and
@@ -1615,7 +1629,10 @@ turn late) and leaves a save issued on the host thread right after its restore d
     `ScopedTryLock` that either succeeds or returns. Gesture semantics, endpoint attribution and
     the undo model are untouched — a skipped tick consumes nothing (`pendingRestore`,
     `pendingGestureCommit`, the batch vectors and `polledGen` are all left as they were), so the
-    next tick does the work 42 ms later.
+    next tick does the work 42 ms later. **ROUND 22 CORRECTION:** that was true of the poll body and
+    of `syncCommitted`, and FALSE of the drain — the drain had already taken the restore out of
+    `pendingRestore` before it tried the lock, so a skipped re-install consumed a restore it could
+    not complete. §27 makes the sentence true as written.
 
     **Evidence.** State test 94 legs F and G build both edges out of two real threads —
     `seams.insideSoundReplacement` parks a host thread inside the write loop WITH the lock held,
@@ -1660,6 +1677,86 @@ turn late) and leaves a save issued on the host thread right after its restore d
     refuses self-approval — and an agent approving its own threading change is the thing this gate
     exists to prevent. The exact missing artifact, for the owner: an `APPROVED` review on PR #144
     referencing **this section** as well as ADR-0053.
+
+27. **A RESTORE IS TAKEN OUT OF THE CELL ONLY WHEN ITS SOUND CAN GO WITH IT (round 22).** Review
+    finding *"restore coherence"* (`src/PluginProcessor.cpp:R1792-1795`). This corrects §26 rather
+    than extending it: the defect is one round 21 introduced, and the argument that permitted it is
+    withdrawn above.
+
+    **The defect.** §10 makes an adoption publish a restore's sound and its metadata TOGETHER —
+    `adoptRestoreTail` re-installs the decode's own sound when some other state set has replaced the
+    live one since the decode ran, so the metadata the tail then stamps describes the sound
+    underneath it. Round 21 put that re-install behind a `ScopedTryLock` for the two timer doors, and
+    left `pendingRestore.take()` in FRONT of it. A failed try therefore skipped the re-install on a
+    restore the drain had already consumed — and `ExchangeCell` has no put-back, because a host
+    thread owns the writing end and a put-back would clobber a newer arrival. The mixed session is
+    PERMANENT: metadata from restore A over the sound of some other action, with nothing left in the
+    cell for any later adoption to repair. This is exactly what §10 exists to forbid, reintroduced by
+    the mechanism of §26.
+
+    **Who the contender actually is.** Not a restore. A restore ANNOUNCES before it installs (§25),
+    so against a restore the guard is false and skipping really is the same answer as waiting. The
+    holder that matters is a NON-ANNOUNCING one: `copyStateWithRawValues`, the durable capture behind
+    every save (§25), reached on a host thread through `getStateInformation` → `writeState`. Against
+    it the guard can be true and the re-install genuinely owed. With an editor open, both continuous
+    adopters are the non-blocking doors — the processor's 20 Hz `timerCallback` and the editor's
+    24 Hz tick through `pollUndoCoalesceFromTimer` — so essentially every off-thread restore adopted
+    while a host save is in flight took the try path.
+
+    **The rule.** ONE acquisition of `soundReplacement` covers the `pendingRestore.take()` AND the
+    sound re-install that completes it. A blocking door takes it; a timer door TRIES it, and a failed
+    try returns having consumed NOTHING — the restore stays whole in the cell for the next door, a
+    later tick or the next user action, which blocks. Deferring a whole restore by one timer period is
+    the cost; a saved session made of two is what it buys off.
+
+    **What is deliberately OUTSIDE that acquisition**, because §26's own reasoning still applies:
+      * `seams.afterRestoreTake`, whose harnesses perform whole-sound replacements of their own and
+        would deadlock against a held lock;
+      * the whole restore TAIL, which calls OUT to the host — a restored Oversampling delivers the
+        reported latency synchronously and `AudioProcessorListener`s run on this thread while it does.
+        Holding a replacement lock across a host callback is the inversion pointing the other way, and
+        State test 27 hangs on it (measured, round 21).
+    The re-install moved out of `adoptRestoreTail` into its own function, `reinstallRestoredSound`,
+    so that the caller owns the acquisition and the tail decides nothing about blocking. The inline
+    restore path (`setStateInformation` on the message thread) never called it — an inline decode
+    carries generation 0 and the guard's first clause is false — and still does not.
+
+    **What is NOT changed.** No audio-thread path takes any lock. No new wait, sleep or timer-as-
+    synchronisation: the primitive is still a `ScopedTryLock` that either succeeds or returns. §26's
+    rule stands in full — the timer doors still never block, and legs F and G still measure it. The
+    only delta is WHICH statements one acquisition spans.
+
+    **Evidence.** State test 95 forces the three states rather than racing them: the pending restore's
+    sound is made stale by an A/B switch run while the restore is held between its install and its
+    handoff (`seams.afterRestoreSoundApplied`); a host-thread save is parked inside the durable
+    capture holding the lock and announcing nothing (`seams.insideDurableCapture`, added this round
+    for exactly this — a restore parked in `insideSoundReplacement` cannot produce this contention,
+    because it has announced); and the timer door then runs. It returns in **0 ms** and publishes
+    nothing, and the next door adopts the restore whole — same sound, same metadata, byte-identical
+    save. Mutation **M89** restores round 21's shape (consume, then skip) and three checks fail: the
+    name is published, the width reads the A/B switch's `0.700000048` where the restore's `0.3` is
+    expected, and the save no longer matches the session restored.
+
+    **GATE COMPLIANCE for this section, audited 2026-09-15 against `ARCHITECTURE_REVIEW_GATE.md`
+    §Procedure.** Same class as §26 — a **Thread Model change**, an AI-agent hard stop.
+
+    | Step | Requirement | Evidence |
+    |---|---|---|
+    | 1 | the author flags the change as gated | this section, and the PR #144 body |
+    | 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | the owner's round-22 instruction, which states the invariant this section implements — *"A restore operation must publish one coherent state"*, *"metadata from restore A + sound from restore B"* must never occur — and directs the fix shape: *"If sound coherence cannot be established: do not consume the restore tail; defer the complete restore; retry later"*, with *"Do not redesign restore architecture unless required by evidence"* |
+    | 3 | if the change is a decision, an ADR is added/updated | this section; `THREADING_POLICY.md` and `THREAD_MODEL.md` carry the restated rule |
+    | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes |
+
+    **What step 2 is and is not.** It is an instruction that names the invariant and the fix
+    direction, written before the change existed — which is the same form `ARCHITECTURE_REVIEW_GATE.md`
+    has always been satisfied in here (ADR-0041 is *"Accepted (maintainer instruction …)"*, ADR-0052
+    was entered the same way, and the policy names no medium for step 2; the word *approval* appears
+    nowhere in it, in `AI_AGENT_POLICY.md` or in `ADR_POLICY.md`). It is NOT a review of the change as
+    made. For §26 that gap was recorded and is unchanged; for §27 it is the same gap, and the same
+    missing artifact closes both: an `APPROVED` review on PR #144 naming §26, §27 and ADR-0053. There
+    is still no approving review on PR #144 and none can be produced from here — the session's GitHub
+    principal is this PR's own author and GitHub refuses self-approval, which is the outcome this gate
+    exists to produce rather than a problem to route around.
 
 ## Consequences
 

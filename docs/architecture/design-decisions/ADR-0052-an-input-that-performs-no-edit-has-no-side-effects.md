@@ -108,6 +108,25 @@ are now answered by asking the write path's own question before anything is esta
   (`resetWouldMove()`) is now asked before the gesture opens and again inside `doReset`, which is the
   double-click path's half of it.
 
+**A SIXTH SITE, 2026-09-15 (round 22): the multiband display's own reset** —
+`SpectrumImager::resetParam`, which the width line's double-click and Alt-click both call. It is the
+one reset that was never given this rule: it ran `onSweep` and bracketed a `setValueNotifyingHost` in
+a change gesture before it looked at the value, so a double-click on a width ALREADY at its default
+punched a host touch/latch write region and ran the sweep for an edit that never happened —
+`Knob::doReset`'s defect, on the control family this ADR's own bullets are otherwise about. Review
+finding `src/gui/SpectrumImager.cpp:R853-864`.
+
+The question is asked exactly where the other five ask it — before anything the edit would cost,
+which here means before the sweep and before the gesture opens — and it is asked in the SNAPPED space
+(`convertTo0to1 (convertFrom0to1 (getDefaultValue()))`), which is the space the store's own read-back
+proof compares in five lines below; `getDefaultValue()` alone is the wrong term for a stepped or
+skewed range and a guard on it would refuse a reset that really does move. What deliberately did NOT
+move out with it is the ADR-0045 topology re-proof: that answers a question about the WORLD which only
+becomes true once the gesture has dispatched, and it stays adjacent to the store. Regression coverage:
+State test 94 leg J (no gesture, no write, no sweep, no undo entry), with leg C as the standing control
+that a reset which does move is still one undoable user step. Mutation M90 restores the unconditional
+sweep and gesture and fails three of leg J's four checks.
+
 A fifth site was examined and left alone: the wheel latch (`scrollHandle` / `scrollBand` /
 `scrollAnchor` / `scrollBands` / `scrollFx`) is still established before the no-edit test. It is
 pointer memory rather than edit state — a `mouseMove` writes the same fields with no edit in sight —

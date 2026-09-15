@@ -4253,3 +4253,77 @@ M83 (the bare stores as they were) killed by legs A and H2. M84 (the timer door 
 poll) killed by F and G. M85 and M86 (each gate reverted) killed by G. M87 (the resync repair
 removed) and M88 (the editor's tick reverted) SURVIVE, and both are recorded with the reason rather
 than called equivalent.
+
+## §79. Round 22 — the restore that was taken but could not be finished, and the presses that spoke for nobody
+
+**Trigger.** Four items on PR #144 at head `06adf01`: `src/PluginProcessor.cpp:R1792-1795` (restore
+coherence), `src/gui/SpectrumImager.cpp:R853-864` (a no-op reset with side effects), RISK-012's
+remaining empty-gesture window, and the architecture-gate confirmation for ADR-0036 and ADR-0053.
+
+### R1792 — a restore taken out of the cell that could not be published coherently
+
+**Round-21-introduced, and the argument that permitted it was mine.** §26 gated the adoption's sound
+re-install behind a `ScopedTryLock` for the two timer doors and left `pendingRestore.take()` in front
+of it. A failed try therefore consumed a restore and then skipped the re-install that makes its
+metadata describe the sound underneath it. `ExchangeCell` has no put-back — a host thread owns the
+writing end, and a put-back would clobber a newer arrival — so the mixed session is PERMANENT rather
+than a bounded transient: nothing is left in the cell for any later adoption to repair.
+
+**The safety argument was false in one clause, and the tree said so two documents away.** §26 argued
+that *"exactly one site is ever held by another thread … an off-message-thread `getStateInformation`
+answers from `programMailbox` and takes no lock at all"*. Verified directly rather than re-reasoned:
+`writeState` captures the live sound with `copyStateWithRawValues`, which has taken `soundReplacement`
+since round 18, and the off-thread save reaches `writeState`. `THREADING_POLICY.md` already recorded
+that, and §26's own TSan paragraph states it three paragraphs below the denial. A durable capture
+announces NO generation, so the §25 inference ("the contender has already published a higher
+generation, so the guard would be false after the wait too") does not apply to it.
+
+**Fix (ADR-0036 §27).** One acquisition spans the take and the re-install. The re-install is now its
+own function, `reinstallRestoredSound`, so `adoptRestoreTail` decides nothing about blocking; the
+seam and the whole tail stay OUTSIDE the lock, for the reasons §26 gives (the seam's harnesses perform
+replacements; the tail calls out to the host and State test 27 hangs on a lock held across that). A
+failed try returns having consumed nothing.
+
+**Coverage.** State test 95, with a new seam — `seams.insideDurableCapture`, the only way to park a
+non-announcing holder. Mutation M89 restores round 21's shape: three checks fail.
+
+### R853 — a reset with nothing to reset ran the sweep and opened a gesture
+
+`SpectrumImager::resetParam` was the one reset never given ADR-0052's rule. The harm is the gesture
+pair and the sweep — an automation punch-in a host recording touch or latch writes a point for — not
+an undo entry: entries are built only from owned parameters whose rendered endpoints differ, so none
+was reachable. Recorded because two of three verifiers refuted the undo-entry half of the original
+finding and the sweep/gesture half survived all three. The guard is asked before the sweep and before
+the gesture opens, in the SNAPPED space the store's own read-back proof compares in. The ADR-0045
+topology re-proof stays adjacent to the store. State test 94 leg J; mutation M90.
+
+### RISK-012 — the empty press, and the repair that does NOT work
+
+The obvious fix is to delete the close's live read: `noteFirstOwnership` seeds `after` to `before`, so
+an episode that produced nothing would record no step. **Measured: 42 assertions fail.** A gesture the
+EDITOR DID NOT OPEN reaches the close in the same `ep == 1` state — a host's own generic editor
+brackets `setValueNotifyingHost` in a begin/end pair through the wrapper and declares nothing — and
+that is a real user edit whose endpoint the live value is the only record of. The discriminator
+therefore lives in the editor, not at the close: `AttachmentWitness` states a refusal at
+`sliderDragEnded` when nothing the control did moved the parameter, and `SpectrumImager::endGesture`
+states one for every gesture the display opens. Both use round 19's existing refusal bit; no new bit,
+vector or state. State test 88 leg O (with its own positive control) and State test 94 leg K;
+mutations M91 and M92. RISK-012 stays **OPEN**, narrowed to a host-opened, host-empty gesture, and is
+not reclassified as an accepted residual — that is the owner's call, and this entry has been declared
+closed prematurely twice.
+
+### Gates
+
+Confirmed against the governance text rather than assumed: no document in this repository requires a
+GitHub review state for `ARCHITECTURE_REVIEW_GATE.md` step 2, and Accepted ADRs here were entered on a
+maintainer instruction alone. What is genuinely short is narrower — for §26 and §27 the cited artifact
+is an instruction to MAKE the change, not a review OF the change as made — and it is recorded in both
+sections. ADR-0036's Status block now says explicitly that §26 and §27 are NOT inside the 2026-09-03
+approval boundary, which it did not say before. No `APPROVED` review was manufactured and none can be:
+the session's GitHub principal is this PR's author.
+
+### Validation
+
+State 3 464 / 0, DSP 396 / 0. ThreadSanitizer: exit 0, zero warnings, both suppression entries matched
+(3 × `deadlock:HostSeat`, 1 × `deadlock:WriteFromInsideAGestureOpen`) — the CI assertion that the
+matched-entry count equals the file's entry count still holds at 2. Mutations M89–M92 all killed.

@@ -501,6 +501,52 @@ field, no DSP node or stage order, no reported latency, no thread and no new cro
 topology guards themselves are untouched — the same check, in the same place, deciding the same
 thing; only what the store REPORTS afterwards is new.
 
+## Decision — correction, 2026-09-15 (round 22)
+
+**A CONTROL THAT PRODUCED NOTHING SAYS SO, AND THE CLOSE'S LIVE READ SURVIVES FOR THE GESTURES THIS
+PLUG-IN NEVER OPENED.** RISK-012's last enumerated window was the EMPTY PRESS: a change gesture
+opened on a parameter, no store declared an endpoint and none was refused (`ep == 1` exactly), so the
+batch close fell back to reading the parameter live — and during the press that value is whatever host
+automation left there. A value no user operation produced then became that operation's Undo/Redo
+endpoint, which is the one thing the round-14 amendment forbids.
+
+**The repair that does NOT work, recorded because it is the obvious one and it was measured.**
+`noteFirstOwnership` already seeds `after` to the same value as `before`, precisely so that "a
+declaration that never produces anything — an empty press — reads as `before == after` and the poll
+records nothing for it". Deleting the live read should therefore be enough. It is not: **42 assertions
+across the state suite fail**, because a gesture the EDITOR DID NOT OPEN reaches the close in the same
+state. A host's own generic editor brackets `setValueNotifyingHost` in a begin/end pair through the
+wrapper and declares nothing — that is a real user edit, and the live value at the close is the only
+record of its endpoint. At the close the two are indistinguishable; the discriminator has to live where
+the difference exists.
+
+**Where it lives.** In the editor, which knows whether one of ITS controls produced a value:
+- `AttachmentWitness` (`src/PluginEditor.h`) states a refusal at `sliderDragEnded` when nothing the
+  control did moved the parameter between drag start and drag end. JUCE opens the gesture from
+  `SliderParameterAttachment::sliderDragStarted` and closes it from `sliderDragEnded`; the witness's
+  BEFORE hook is registered ahead of JUCE's attachment, so the refusal lands before `endChangeGesture`.
+  ComboBox and Button need nothing: their attachments write only on a real change, and the round-20
+  request already covers the endpoint their close cannot see.
+- `SpectrumImager::endGesture` states the same refusal for every gesture the display opens — the one
+  place all of them close, which makes the property true by construction rather than at the six sites
+  someone remembered. It is unconditional: it carries no value, and the close skips a parameter whose
+  store declared an endpoint (bit 2) before it consults the refusal bit, so a drag that DID store keeps
+  the value its last `storeOwned` installed.
+
+**No new bookkeeping.** Bit 4 is round 19's refusal and has suppressed the close's live read since
+then. Round 22 adds the sentence at the two places that never said it, and adds no bit, no vector and
+no state. `ep == 1` remains "a gesture opened and nothing spoke for it"; what changed is that
+Anamorph's own controls no longer leave the close in that state when they produced nothing.
+
+**What is still open**, stated rather than implied: a HOST-OPENED, HOST-EMPTY gesture — the host
+brackets a gesture through the wrapper, writes nothing inside it, and its own automation moves that
+parameter during the bracket. `FUTURE_RISKS.md` RISK-012 carries it, still OPEN.
+
+**Regression coverage.** State test 88 leg O (knob press with automation inside it, plus the control
+leg where a press that moves the knob is still one undoable step with the user's own Redo destination)
+and State test 94 leg K (the same on the imager's width line). Mutations M91 and M92 each fail exactly
+their own leg.
+
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
   not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots

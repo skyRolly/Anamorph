@@ -69,6 +69,25 @@ here. Both are cleared the same way and both are missing the same optional artif
 recommendation above now covers two ADRs: an approving review on PR #144 referencing ADR-0053 and
 ADR-0036 §26.
 
+**Re-checked 2026-09-15 (round 22): unchanged again, and the recommendation now names three items.**
+Re-read against `ARCHITECTURE_REVIEW_GATE.md` §Procedure rather than assumed: PR #144 still carries
+five reviews, all `COMMENTED` (one code-scanning bot, four owner disposition replies). No round-22
+change touches this ADR's scope either — the wheel rules, the batching, the 24 Hz cadence and the
+scroll-step naming are untouched. What round 22 changes is (a) WHEN one acquisition of
+`soundReplacement` is taken, which is **ADR-0036 §27**'s gated item and audited there, and (b) that
+two editor paths now state an ADR-0008 REFUSAL when they produce no value — which uses round 19's
+existing mechanism, adds no bit and no state, and is an ADR-0008 correction rather than a gated
+change. So the outstanding optional artifact is one review naming ADR-0053, ADR-0036 §26 and
+ADR-0036 §27.
+
+**And a governance finding worth stating plainly, because it is the answer to "is the existing
+instruction enough?".** It is. No document in this repository — `ARCHITECTURE_REVIEW_GATE.md`,
+`AI_AGENT_POLICY.md`, `ADR_POLICY.md`, `DOCUMENTATION_LIFECYCLE_POLICY.md` — requires a GitHub review
+state for step 2, and several Accepted ADRs here were entered on a maintainer instruction alone
+(ADR-0041, ADR-0052). What IS genuinely short is narrower than "no approval": for §26 and §27 the
+cited artifact is an instruction to MAKE the change, written before it existed, not a review OF the
+change as made. That gap is recorded in both sections rather than counted as satisfied.
+
 **Supersedes ONE Consequences line of [ADR-0041](ADR-0041-a-coupled-update-is-all-of-it-or-none-of-it.md)
 — *"A wheel tick during a drag ends the drag"* — and PRESERVES ADR-0041's Decision, which is what makes
 the replacement safe.** ADR-0041 stays **Accepted**: its rule that *a refresh which cannot bring every

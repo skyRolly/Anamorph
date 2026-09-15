@@ -65,6 +65,25 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **Double-clicking a Multiband band's width line when it is already at its default no longer tells
+  your DAW you touched it.** The same defect the Option/Alt-click entry below describes, on the one
+  reset that had not been given the rule: the reset played its sweep animation and bracketed the
+  write in an edit whether or not there was anything to reset, so a DAW recording in Touch or Latch
+  punched in and wrote an automation point for a width that never moved. A double-click or
+  Option/Alt-click on a width already sitting on its default now does nothing at all. Resetting a
+  width that is off its default is unchanged, including the way it pushes its neighbours aside.
+  Decision: ADR-0052. Regression coverage: State test 94 leg J. Evidence: PR #144. [Verified]
+- **Pressing a control without moving it can no longer hand your DAW's automation to your Undo.**
+  Clicking a knob, a numeric readout or a Multiband width line and releasing it without dragging
+  still told the plug-in an edit had happened, and the value it recorded as the result of that
+  "edit" was read back from the control at the end — which, if your DAW's automation had moved that
+  control while the button was down, was your DAW's value and not yours. Pressing Undo then took
+  back something you never did, and Redo put your DAW's value back as though you had made it. A
+  press that moves nothing is now recorded as producing nothing, so automation arriving during it
+  stays exactly where your DAW put it. The same applies to the Multiband display's own presses and
+  scrolls that decline to move a split or a width. A press that does move the control is unchanged.
+  Decision: ADR-0008. Regression coverage: State test 88 leg O, State test 94 leg K.
+  Evidence: PR #144. [Verified]
 - **Scrolling a Multiband split that is packed against its neighbours no longer banks movement you
   have to scroll back through.** A split can only travel until the splits between it and the edge run
   out of room, and the wheel was measuring against the edge of the display instead — so once the

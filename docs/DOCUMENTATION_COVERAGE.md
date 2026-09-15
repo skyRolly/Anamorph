@@ -1483,10 +1483,10 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
-declared, and `--fix` moved all three from `src/PluginEditor.h:408` to `:223` in this change set.
+declared, and `--fix` moved all three from `src/PluginEditor.h:435` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:781`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:808`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1496,7 +1496,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:781`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:808`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1506,7 +1506,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:781"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:808"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1573`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1592`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2058`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2106`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1873`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1921`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -9953,7 +9953,7 @@ proof for the hour it took to write, and the wrong thing to leave standing.
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
 `/analyze` does not fold `std::size` on a constexpr array. In `removeBand` — line 512 as PREfast
-anchored it, src/gui/SpectrumImager.cpp:1365 today: `dropX`
+anchored it, src/gui/SpectrumImager.cpp:1407 today: `dropX`
 (:504) is always inside the fill loop's range, so exactly one index is skipped and `nf[0 .. N-3]` is
 written for every reachable `N ∈ {2, 3, 4}` — exactly the range read. Cross-checked on the project's
 own compile lines with `-Wmaybe-uninitialized -Wuninitialized -Warray-bounds=2 -Wstringop-overflow=4`
@@ -10007,7 +10007,7 @@ gap: its 4 results carry `analysisTarget tests/dsp_tests.cpp`, reaching the head
 `src/gui/SpectrumImager.cpp` down 13 lines, staling `THREAD_MODEL.md`'s `SpectrumImager.cpp:626`.
 `check-citations.py` did not report it: the cell cited **bare filenames**, and the parser claims a
 citation only when its path is one of `TRACKED` verbatim. The anchor is re-aimed to :639, both paths
-in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1678`), and
+in that cell are now written in full (`src/InternalState.h:72; src/gui/SpectrumImager.cpp:1720`), and
 `src/gui/SpectrumImager.cpp` joins `TRACKED` — so the entry is matched rather than inert, which is
 the failure mode that file's own §8 self-test warns about. The pair is new against `origin/main`, so
 it is checkable from the next change on.
@@ -10170,7 +10170,7 @@ to `src/gui/SpectrumImager.cpp` above three anchors that were correct when writt
 moves and `--fix` re-anchored them (`:307 → :325`, `:639 → :657`). The third was **not** a plain
 move: `:512` records where PREfast *anchored* a C6001, a historical fact `--fix` would have rewritten
 into a falsehood — the same prose-illustration hazard the 2026-09-06 round hit. It is now written as
-"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1365 today", which keeps the fact and
+"line 512 as PREfast anchored it, src/gui/SpectrumImager.cpp:1407 today", which keeps the fact and
 leaves exactly one checkable citation. **The lesson is the base, not the anchors:** a local
 `check-citations` run proves nothing about the gate unless it uses the same base CI does, and every
 run in this round checks both.
@@ -10772,7 +10772,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:968-1107`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:969-1126`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -10809,7 +10809,7 @@ change, and no Accepted ADR conflict. [Verified]
 topology count commit may still report success"*, and its converse for `setSoloMask`.
 
 **Ruled B — already prevented, invariant documented.** Both halves are true of the code:
-`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:902`) and
+`setBands` returns `stored && bandCount() == want` (`src/gui/SpectrumImager.cpp:944`) and
 `setSoloMask` returns `stored && soloMask() == mask` (`:662`), so each re-reads only its own
 parameter after its own dispatches even though both prove BOTH on the near side. What covers it is
 the **callers** — every one that acts on the result re-proves the other parameter on its next line,
@@ -11958,6 +11958,51 @@ Flow, Latency, Plugin Format, Build System: untouched.
 M57–M60); `docs/procedures/CI_CD.md` (the re-measured stack figures);
 `CHANGELOG.md` `[0.9.8]` (two Fixed entries);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §73. [Verified]
+
+### Fortieth pass — the restore that was taken but could not be finished, and the presses that spoke for nobody (2026-09-15)
+
+**Trigger.** Four items on PR #144 at head `06adf01`: `src/PluginProcessor.cpp:R1792-1795` (restore
+coherence), `src/gui/SpectrumImager.cpp:R853-864` (a no-op reset with side effects), RISK-012's
+remaining empty-gesture window, and the architecture-gate confirmation for ADR-0036 and ADR-0053.
+
+**Root cause, R1792 — and it is a defect ROUND 21 INTRODUCED.** §26 put the adoption's sound
+re-install behind a try-lock for the timer doors and left `pendingRestore.take()` in front of it, so a
+failed acquisition consumed a restore and then skipped the re-install that makes its metadata describe
+the sound underneath it. The cell has no put-back, so the mixed session is permanent. §26's own safety
+argument — *"an off-message-thread `getStateInformation` … takes no lock at all"* — is false:
+`writeState`'s live capture is `copyStateWithRawValues`, which has taken `soundReplacement` since round
+18, and that holder announces no generation, so the §25 inference does not cover it.
+
+**Root cause, R853.** `SpectrumImager::resetParam` ran `onSweep` and bracketed its store in a change
+gesture before it looked at the value — ADR-0052's rule, on the one reset that never got it. The harm
+is the gesture pair and the sweep, not an undo entry; the undo half of the finding was refuted by two
+of three verifiers and is recorded as refuted rather than quietly asserted.
+
+**Root cause, RISK-012.** `ep == 1` at the batch close — a gesture opened, nothing declared, nothing
+refused — still fell back to a live read. Deleting that read was measured and **fails 42 assertions**,
+because a gesture the editor did not open reaches the close in the same state and IS a user edit. The
+discriminator moved to the editor instead.
+
+**Classification.** §27 is a **Thread Model change** and an architecture-gate item in its own right,
+audited in ADR-0036 §27; R853 and RISK-012 are implementation corrections against already-decided
+ADRs (ADR-0052, ADR-0008) with no new gate. ADR-0036's Status block now states that §26 and §27 are
+outside the 2026-09-03 approval boundary — it did not before.
+
+**Validation.** State 3 464 / 0, DSP 396 / 0, ThreadSanitizer exit 0 with zero warnings and both
+suppression entries matched. Mutations M89–M92 all killed.
+
+**Documentation.** `ADR-0036` (§27 added; §26's withdrawn safety paragraph and its "consumes nothing"
+claim corrected in place; the Status block's approval boundary made explicit);
+`ADR-0008` (a round-22 correction section, including the 42-assertion measurement that rules out the
+obvious repair); `ADR-0052` (the sixth site); `ADR-0053` (the round-22 gate re-check, and the
+governance finding that documentary approval is what this repository has always used);
+`docs/FUTURE_RISKS.md` RISK-012 (narrowed, still OPEN);
+`docs/policies/THREADING_POLICY.md` and `docs/architecture/THREAD_MODEL.md` (a non-blocking
+acquisition must cover everything the operation does atomically, and an operation that cannot complete
+must consume nothing); `tests/tsan-suppressions.txt` (the round-21 paragraph corrected, and three of
+its own citations re-anchored — they were already stale at `06adf01`);
+`docs/procedures/TESTING.md` (State test 95, legs J/K/O, mutations M89–M92);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §79. [Verified]
 
 ### Thirty-ninth pass — the lock the poll was waiting on, and the stores that spoke for nobody (2026-09-15)
 

@@ -99,7 +99,7 @@ freed while another thread can reach it, because a pointer is reachable from exa
 | Host-hidden params (Oversampling, view) | `InternalState` `juce::ValueTree` + `int`/`float` atomics | GUI `juce::Value` binding | audio (oversample only) | InternalState.h:60-138 |
 | Momentary solo audition | `std::atomic<int> soloPreviewMask` (relaxed, −1 = use param) | GUI `setSoloPreview` | audio processBlock | PluginProcessor.h:72-73,130; .cpp:128 |
 | Meter hold reset | `std::atomic<int> resetReq` (exchange) | GUI `resetHold()` | audio `process()` | LevelMeters.h:58,62 |
-| UI-animation flag → imager | `const std::atomic<float>*` (relaxed) | InternalState | GUI imager timer | src/InternalState.h:72; src/gui/SpectrumImager.cpp:1692 |
+| UI-animation flag → imager | `const std::atomic<float>*` (relaxed) | InternalState | GUI imager timer | src/InternalState.h:72; src/gui/SpectrumImager.cpp:1734 |
 
 ## Forbidden
 
@@ -121,6 +121,13 @@ freed while another thread can reach it, because a pointer is reachable from exa
   that `listenerLock`. Those two doors therefore take it with `ScopedTryLock` and give the tick
   up instead of blocking; a skipped tick consumes nothing and the next one does the work. Every
   other caller blocks exactly as before. ADR-0036 §26.
+  **Round 22: "consumes nothing" is now true of the DRAIN too** (ADR-0036 §27). The restore drain
+  took the decode out of `pendingRestore` and only then tried the lock, so a failed try skipped the
+  adoption's sound re-install on a restore nothing could adopt again — the cell has no put-back —
+  and the session was left permanently mixed. One acquisition now spans the take and the
+  re-install; a failed try returns having consumed nothing. The holder that makes this reachable is
+  the DURABLE READER named two paragraphs down, not another restore: `copyStateWithRawValues`
+  announces no generation, so unlike a restore it cannot be reasoned away.
   Ordering is one-directional — `soundReplacement` → the APVTS lock → `listenerLock` — and **the
   audio thread never takes it**, so the no-locking rule above is untouched. Since round 18 (§25)
   the one DURABLE reader of the live sound, `copyStateWithRawValues` (session saves on either

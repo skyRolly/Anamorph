@@ -137,10 +137,22 @@ timer, message-loop callback or other work a host can pump from inside one — u
 lock without waiting.** The two timer entry points (`AnamorphAudioProcessor::timerCallback` and
 `pollUndoCoalesceFromTimer`) use `ScopedTryLock` and give the tick up rather than block; the
 user-action doors, which a host cannot reach from inside a dispatch, keep their blocking
-acquisition. ADR-0036 §26 carries the decision, the three acquisitions it covers, and why skipping
-each is safe. The general lesson for future edits: a rule of the form "nothing reaches X from a
-listener" has to be checked against what a HOST may run inside the callback, not only against what
-this code calls there.
+acquisition. ADR-0036 §26 carries the decision and the three acquisitions it covers. The general
+lesson for future edits: a rule of the form "nothing reaches X from a listener" has to be checked
+against what a HOST may run inside the callback, not only against what this code calls there.
+
+**GIVING THE TICK UP IS NOT FREE, AND ROUND 22 PAID THE DIFFERENCE (ADR-0036 §27).** "Take the lock
+without waiting" answers the deadlock and says nothing about what the caller has already CONSUMED by
+the time it tries. The restore drain had taken the decode out of `pendingRestore` before its try, so
+a failed acquisition skipped the sound re-install on a restore that no longer existed anywhere —
+`ExchangeCell` has no put-back — and published that restore's metadata over another session's sound,
+permanently. §26's own safety argument for skipping ("exactly one site is ever held by another
+thread… an off-thread save takes no lock at all") was false against the holder that matters: an
+off-message-thread `getStateInformation` reaches `copyStateWithRawValues`, which takes this very lock
+and announces no generation. **So the rule gains a second clause: a non-blocking acquisition must
+cover everything the operation has to do atomically, and an operation that cannot complete must
+consume nothing.** The drain's acquisition now spans the take AND the re-install, and a failed try
+returns with the restore still whole in the cell.
 
 **One whole-sound replacement at a time (D-2 round 17, ADR-0036 §24).** A replacement of the entire
 live sound — a restore's install, an undo, a redo, an A/B apply, a preset load — is

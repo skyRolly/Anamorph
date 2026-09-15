@@ -1540,6 +1540,44 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   poll directly, so no leg observes which door the editor picks, and that one line is covered by
   inspection only.
 
+
+* **Round 22 — State test 95, and two more legs on tests 88 and 94.**
+
+  **State test 95 (`a restore is consumed only when its sound can go with it`, ADR-0036 §27)** forces
+  three states rather than racing them, and needed a NEW SEAM to do it. The contender for
+  `soundReplacement` that makes the defect reachable is not another restore — a restore announces its
+  generation before it installs, so the adoption's guard is false against it and skipping really is
+  the same answer as waiting. It is a NON-ANNOUNCING holder: `copyStateWithRawValues`, the durable
+  capture behind every save, reached on a host thread through `getStateInformation` → `writeState`.
+  `seams.insideDurableCapture` fires inside it, with the lock held, on whatever thread took it — so a
+  harness can park exactly that holder. It fires very often (every message-thread A/B slot, undo step
+  and baseline reaches the same function), so a leg must filter by thread; its contract is otherwise
+  `insideSoundReplacement`'s, and a harness must never join a thread performing a replacement or a
+  durable capture of its own.
+
+  The leg then: parks the pending restore between its install and its handoff
+  (`seams.afterRestoreSoundApplied`) and runs an A/B switch in that window, so its sound is stale and
+  its adoption genuinely owes a re-install; parks a host-thread save inside the durable capture; and
+  runs the timer door. The door returns in **0 ms** and publishes nothing, and the next door adopts
+  the restore whole — same sound, same metadata, byte-identical save. M89 restores round 21's shape
+  and three checks fail.
+
+  **State test 94 leg J** (`a reset with nothing to reset is not an edit`, ADR-0052, R853-864) asserts
+  that ADR's Decision verbatim on the imager's width reset: no gesture, no write, no sweep, no undo
+  entry. It drives the width to the value a reset would install and then double-clicks the line.
+  Under M90 three of its four checks fail; the fourth — no undo entry — holds under the mutation too,
+  because no entry was reachable on the round-21 head either (entries are built only from owned
+  parameters whose rendered endpoints DIFFER, and push/extend are gated on a non-empty edit list).
+  The leg asserts it anyway rather than dropping it: it is what the ADR's Decision says, and a check
+  that is true for a reason elsewhere in the code is still a check that fails if that reason goes.
+
+  **State test 94 leg K and State test 88 leg O** (RISK-012's empty press) are the same measurement on
+  the imager's width line and on a knob: press, host automation moves that parameter INSIDE the press,
+  release. Exactly one gesture is bracketed, the host's value is live afterwards, and NO step is
+  recorded. Leg O carries its own control — a press that DOES move the knob is still one undoable step
+  whose Redo restores the user's own value — because the fix is a refusal, and a refusal stated too
+  widely would silently delete real steps. M91 and M92 each fail exactly their own leg.
+
 * **Round 21 — the suppression file did NOT grow, and the reason is worth reading before editing
   it.** `deadlock:HostSeat` still matches — 3 times, measured on the fixed tree — because TSan's
   deadlock detector keeps a PAIRWISE lock-order graph and the tree still contains both orders.
@@ -1899,6 +1937,10 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M86 | `syncCommitted`'s baseline snapshot blocks on it again | KILLED — 94 leg G |
   | M87 | the `committedNeedsResync` repair is removed | **SURVIVED — no leg, reachability stated below** |
   | M88 | `PluginEditor.cpp`'s tick goes back to `pollUndoCoalesce` | **SURVIVED — wiring, covered by inspection** |
+  | M89 | the drain takes the restore BEFORE trying the lock and skips the re-install (round 21's shape) | KILLED — 95 (3 checks: the name is published, the width reads the switch's `0.700000048` where `0.3` is expected, the save no longer matches the session restored) |
+  | M90 | `resetParam` runs its sweep and opens its gesture before asking whether the reset would move anything | KILLED — 94 leg J (3 of its 4 checks: gesture opens/closes, the host is told of a write, the sweep runs) |
+  | M91 | `AttachmentWitness` states no refusal when a press produced nothing | KILLED — 88 leg O |
+  | M92 | `SpectrumImager::endGesture` states no refusal | KILLED — 94 leg K |
 
   **M34 is the row that proves the sweep is worth running twice.** Against the FIRST version of
   leg R it SURVIVED -- the leg pressed at the lane's middle, where no width drag is latched, so

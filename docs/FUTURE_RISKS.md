@@ -224,9 +224,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood (evidence-based):** **Low.** It requires the HOST to write cross-parameter from
   inside a dispatch, on two threads, in opposite orders, overlapping. **No listener in this
   plug-in creates the nesting at all:** `AnamorphAudioProcessor::parameterValueChanged`
-  (`src/PluginProcessor.h:364-367`) is a single relaxed `fetch_add`,
-  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:569`) the same, and
-  `parameterGestureChanged` (`src/PluginProcessor.cpp:968-1108`) touches two ints — the last
+  (`src/PluginProcessor.h:374-377`) is a single relaxed `fetch_add`,
+  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:579`) the same, and
+  `parameterGestureChanged` (`src/PluginProcessor.cpp:969-1127`) touches two ints — the last
   deliberately, its comment recording that `--d2-stress-probe` once reported this same detector
   for an APVTS/`listenerLock` inversion, closed by **removing** the nesting.
 - **How it surfaced:** ThreadSanitizer's deadlock detector, on `AnamorphStateTests` at
@@ -391,7 +391,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 
 ## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps
 - **Risk:** `AnamorphAudioProcessor::parameterGestureChanged` counts open gestures and sets
-  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:968-1107`), and
+  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:969-1126`), and
   `pollUndoCoalesce` turns that into an undo entry. A `SpectrumImager` topology transaction is a
   burst of stores, several of which open and close their own gesture (`setBands`, `setSoloMask`,
   `resetParam`), so the open count returns to zero **inside** the burst. A poll that runs there —
@@ -403,7 +403,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   DSP, as RISK-010 describes — but it is a state-correctness one.
 - **Likelihood:** Low as observed (no reported occurrence, and no test in the suite reaches it),
   **structural** as a mechanism: nothing in the current code prevents it.
-- **Evidence [Verified]:** `src/PluginProcessor.cpp:968-1107` (the counter), `:827-834`
+- **Evidence [Verified]:** `src/PluginProcessor.cpp:969-1126` (the counter), `:827-834`
   (`pollUndoCoalesce`), `src/gui/SpectrumImager.cpp` `addBandAt` / `removeBand` (the multi-gesture
   bursts). Carried through the v0.9.8 review rounds as residuals **U1–U3** with a deliberate
   no-fix decision; recorded here on 2026-09-08 because a decision carried only in a worklog is a
@@ -518,7 +518,7 @@ mitigation. Do not invent risks to fill the template.
   prefers that request to its live read. Mutations M76-M82.
 - **STATUS AFTER ROUND 20: STILL OPEN, and deliberately NOT reclassified as an accepted residual.**
   What remains is the imager's gesture-bracketed bare stores (`resetParam`, `setBands`,
-  `setSoloMask`; `src/gui/SpectrumImager.cpp:853-870` is the shape), which declare no endpoint at
+  `setSoloMask`; `src/gui/SpectrumImager.cpp:897-912` is the shape), which declare no endpoint at
   all, so a host write landing inside their own `setValueNotifyingHost` is still live-read as the
   user's `after`. That violates the stated product rule -- host automation must never become a
   user's endpoint -- so it does not meet the bar for an accepted residual and is recorded as an open
@@ -544,6 +544,45 @@ mitigation. Do not invent risks to fill the template.
   "closed", and this entry has been declared closed prematurely twice (rounds 18 and 19). It stays
   OPEN until an empty-press leg measures it shut.
 
+- **ROUND 22 (2026-09-15): the empty-press window is CLOSED FOR EVERY GESTURE ANAMORPH'S UI OPENS,
+  and what is left is smaller and differently shaped.** The round began by trying the obvious repair
+  — delete the close's live read outright, since `noteFirstOwnership` already seeds `after` to
+  `before` so an episode that produced nothing would record no step. **Measured, and it is wrong:
+  42 assertions across the state suite fail.** A gesture the EDITOR DID NOT OPEN reaches the close in
+  the same `ep == 1` state — a host's own generic editor brackets `setValueNotifyingHost` in a
+  begin/end pair through the wrapper and declares nothing — and that IS a user edit whose endpoint
+  the live value is the only record of. The discriminator cannot live at the close, because at the
+  close the two are identical; it lives where the difference exists, which is the editor.
+  - `AttachmentWitness` (`src/PluginEditor.h`) now states a REFUSAL at `sliderDragEnded` when nothing
+    the control did moved the parameter between its drag start and its drag end. JUCE opens the
+    gesture from `SliderParameterAttachment::sliderDragStarted` and closes it from `sliderDragEnded`,
+    and the witness's BEFORE hook is registered ahead of JUCE's attachment, so the refusal is recorded
+    before `endChangeGesture` runs. That covers every knob, slider and value box: a press that never
+    moves the control, and a host push that arrives during one.
+  - `SpectrumImager::endGesture` states the same refusal for every gesture the display opens — the
+    one place all of them close. That covers `writeCrossovers`' early exits (topology moved, or the
+    plan inside `kSplitMovedPx`), `resetCrossover` and `commitFreqEditor` skipping their store when
+    the handle is no longer live, the wheel's split and width branches declining at a rail, and a
+    width press inside the 3 px dead zone whose own comment has claimed since ADR-0046 that it makes
+    "no automation/undo step". It is stated unconditionally rather than only when nothing was stored,
+    because it carries no value and the close already skips a parameter whose store DECLARED an
+    endpoint (bit 2) before it consults the refusal bit.
+  - Neither is a new mechanism: bit 4 is round 19's refusal, and it has suppressed the close's live
+    read since then. What round 22 adds is the missing sentence at the two places that never said it.
+  - **Evidence.** State test 88 leg O (a knob pressed and released with host automation landing inside
+    the press: one gesture bracketed, the host's value live, and NO step recorded — plus a control leg
+    where a press that does move the knob is still one undoable step whose Redo restores the user's own
+    value), and State test 94 leg K (the same shape on the imager's width line). Mutations **M91** (drop
+    the witness's refusal) and **M92** (drop the imager's) each fail exactly their own leg.
+- **STATUS AFTER ROUND 22: OPEN, and narrowed to a gesture Anamorph's UI never opened.** What remains
+  is a HOST-OPENED, HOST-EMPTY gesture: the host brackets a change gesture through the wrapper, writes
+  nothing inside it, and its own automation moves that parameter during the bracket. The close's live
+  read then attributes the automation to that gesture. It is not reachable from this plug-in's editor,
+  and it cannot be told apart at the close without a threading-model change (`ARCHITECTURE_REVIEW_GATE`)
+  — the wrapper's gesture and the wrapper's automation arrive on the same thread through the same API,
+  and the 42 failing assertions above are what the plug-in would have to give up to refuse them both.
+  It stays OPEN rather than being reclassified: this entry has been declared closed prematurely twice
+  (rounds 18 and 19), and a residual is accepted by the owner, not by the agent that narrowed it.
 ## RISK-013 — The foreign-write test counts raw parameter stores where everything else asks the rendered value
 - **STATUS, 2026-09-13: FORMALLY ACCEPTED RESIDUAL.** Correct and one-directional, and the same item
   the review has also raised as "inaudible writes split scrolls" — not two findings.
@@ -655,7 +694,7 @@ mitigation. Do not invent risks to fill the template.
   inside that window is ordered after the restore.
 - **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:2314-2413 read
+  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:2362-2461 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -733,7 +772,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:2314`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:2362`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -742,8 +781,8 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:1850`, against `canUndo()`; the `abUndo` vector's internals twice, via
-  `UndoStacks::operator=` (`src/PluginProcessor.h:479`) against the reader's iteration; and the
+  `src/PluginProcessor.cpp:1898`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `UndoStacks::operator=` (`src/PluginProcessor.h:489`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture
   change.

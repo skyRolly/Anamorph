@@ -417,13 +417,13 @@ DELIBERATE_REAIMS = {
     # settled fails here rather than going quiet.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:246-249",
-     "src/PluginProcessor.h:364-367"): "parameterValueChanged",
+     "src/PluginProcessor.h:374-377"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:390",
-     "src/PluginProcessor.h:569"): "parameterValueChanged",
+     "src/PluginProcessor.h:579"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:325",
-     "src/PluginProcessor.h:479"): "UndoStacks",
+     "src/PluginProcessor.h:489"): "UndoStacks",
 
     # 2026-09-13 (round 14, ADR-0008 as amended): THREE ENTRIES, all for spans this change EDITED
     # rather than moved, which is exactly the case a declaration is for -- the line map returns
@@ -438,25 +438,25 @@ DELIBERATE_REAIMS = {
     # check actually sees, and the check runs against `origin/main`.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:968-1107"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:969-1126"): "parameterGestureChanged",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:968-1107"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:969-1126"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-826",
-     "src/PluginProcessor.cpp:968-1108"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:969-1127"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:250",
-     "src/PluginProcessor.h:479"): "UndoStacks",
+     "src/PluginProcessor.h:489"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     "src/PluginProcessor.cpp:2314-2413"): "setStateInformation",
+     "src/PluginProcessor.cpp:2362-2461"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     "src/PluginProcessor.cpp:2314"): "setStateInformation",
+     "src/PluginProcessor.cpp:2362"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     "src/PluginProcessor.cpp:1850"): "abActive",
+     "src/PluginProcessor.cpp:1898"): "abActive",
 
     # 2026-09-15 (round 21, ADR-0036 §26): ONE ENTRY, for a span this change EDITED rather than
     # moved. ADR-0008's "Source:" line brackets the whole custom-undo block, from its banner comment
