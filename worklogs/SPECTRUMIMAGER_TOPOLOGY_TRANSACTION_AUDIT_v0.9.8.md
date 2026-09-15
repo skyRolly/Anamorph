@@ -4786,3 +4786,20 @@ command does a bounded number of times. The comment now says that.
 running anything, so with ONE command in flight a re-entrant flush finds an empty list and is
 genuinely unobservable. Leg E puts two commands in the queue and has the first open a transaction
 that queues a third: guarded gives `1 2 3`, unguarded gives `1 3 2`.
+
+### §83c. The new probe's TSan reports were being absorbed by round 24's suppression
+
+State test 100's host seat was first called `PumpFromGestureEndOf`. TSan matches suppression
+strings by SUBSTRING, so round 24's entry `deadlock:PumpFromGestureEnd` — written for a different
+harness type — matched it too, and any deadlock report the new probe produced would have been
+suppressed under an entry that says nothing about it.
+
+The only visible symptom was the matched-suppression count moving from 5 to 6. That is precisely
+why `print_suppressions=1` is on and why the count is read rather than just the exit code: §11 of
+this round's brief says an unchanged count is not proof, and the converse holds too — a CHANGED
+count is a question, and this one had an answer worth having. An over-broad entry absorbing a new
+report is the failure mode `tests/tsan-suppressions.txt` exists to prevent, and it nearly happened
+to a test written in the same round that added the file's newest entry.
+
+Renamed to `PumpedUserInteraction`, which no entry matches. The rule for future probes: a new
+harness type must not share a prefix with any existing suppression string.

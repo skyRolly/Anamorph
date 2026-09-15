@@ -1673,6 +1673,17 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   `applySoundTree` holds the lock across `apvts.replaceState`, and round 25 captured a thread under
   gdb doing exactly that, blocked in `sendValueChangedMessageToListeners`.
 
+  **AND THE PROBE HAD TO BE RENAMED, WHICH IS A FINDING ABOUT THE SUPPRESSION FILE.** Its first
+  name was `PumpFromGestureEndOf`, and TSan's suppression matching is by SUBSTRING — so the
+  round-24 entry `deadlock:PumpFromGestureEnd`, written for a different type, silently absorbed the
+  new probe's reports as well. The only visible symptom was the matched-suppression count moving
+  from 5 to 6, which is exactly why `print_suppressions` is on and why a count is checked rather
+  than an exit code: an over-broad entry swallowing a NEW report is the failure mode
+  `tests/tsan-suppressions.txt` exists to prevent, and it nearly happened to a test written in the
+  same round. The probe is now `PumpedUserInteraction`, which no entry matches, so whatever it
+  reports is reported. **The general rule for future probes: a new harness type must not share a
+  prefix with any existing suppression string.**
+
   **THE WATCHDOG IS THE HARNESS'S, NOT THE PRODUCT'S.** A second thread releases the holder after
   400 ms. On the fixed tree it is tidy-up; on a tree where the flush waits, it is the only thing
   that can wake a message thread stuck holding a `listenerLock`, which is what turns a hang into a

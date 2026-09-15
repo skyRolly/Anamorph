@@ -27234,7 +27234,7 @@ namespace {
 // is the nesting R651 needs and round 25's probe did not have -- there the transaction was the
 // outer thing and the pumped command was inner; here the listener dispatch is the outer thing and
 // the entire transaction runs inside it.
-struct PumpFromGestureEndOf final : public juce::AudioProcessorListener
+struct PumpedUserInteraction final : public juce::AudioProcessorListener
 {
     std::function<void()> pumped;
     int    index    = -1;
@@ -27324,7 +27324,7 @@ static void testTheDeferredFlushNeverWaitsForAReplacement()
     // THE TWO SEATS. `outer` is the host pumping from a knob's gesture-end -- the dispatch whose
     // `listenerLock` is held for everything below it. `inner` is the same seat State test 99 uses,
     // one level down: the Add burst's own solo store, from which the queued Undo click arrives.
-    PumpFromGestureEndOf outer, inner;
+    PumpedUserInteraction outer, inner;
     outer.index = driveP->getParameterIndex();
     inner.index = soloP->getParameterIndex();
     inner.pumped = [&proc] { proc.undo(); };          // deferred: the transaction is open
