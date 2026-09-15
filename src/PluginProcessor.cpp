@@ -640,8 +640,19 @@ void AnamorphAudioProcessor::endUserTransaction()
     //    returns without flushing. Flushing once would leave that command sitting in the queue
     //    until some LATER user transaction happened to close, which for a user who performs no
     //    further multi-store action is never. "Nothing is dropped" has to mean bounded, not merely
-    //    not-erased, so the outer loop re-tests. It cannot spin: every further iteration needs a
-    //    fresh command, and a command is only ever queued by a real user action the host pumped in.
+    //    not-erased, so the outer loop re-tests.
+    //
+    //    WHY IT TERMINATES, corrected in round 26 because the round-25 sentence here was loose. It
+    //    said "every further iteration needs a fresh command, and a command is only ever queued by a
+    //    real user action the host pumped in" -- the second half is false: State test 100 leg E
+    //    queues one from inside a command, with no user action anywhere. The real argument is the
+    //    DEPTH GUARD. A command runs with the depth at zero, so `deferWhileUserTransactionActive`
+    //    returns false to it and it cannot re-queue itself; the only way to add to the list is to
+    //    open a transaction first, and a command opens a bounded number of those. Mutation M114 is
+    //    what makes this concrete: delete the depth guard and the flush becomes eligible at an INNER
+    //    boundary, where the depth is still non-zero -- so the first deferred command re-defers
+    //    ITSELF into the loop that is running it, and the suite does not terminate. The guard is
+    //    what bounds this loop, not a fact about how commands arrive.
     flushDeferredCommands();
 }
 

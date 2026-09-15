@@ -1691,8 +1691,8 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M111 | the refusal consumes the queue anyway (moved before the try) | **KILLED** — legs C and D: the commands are dropped |
   | M112 | the transaction's history is committed AFTER the commands | **KILLED** — State test 99 leg E |
   | M113 | the retry doors removed | **KILLED** — legs C and D: the queue strands |
-  | M114 | the flush becomes eligible at an INNER transaction boundary | see below |
-  | M115 | the flush's re-entrancy guard removed | see below |
+  | M114 | the flush becomes eligible at an INNER transaction boundary | **KILLED** — the suite does not terminate (see below) |
+  | M115 | the flush's re-entrancy guard removed | **KILLED** — leg E |
 
   **M114 AND M115 SURVIVED THEIR FIRST RUN, AND THE REASON WAS A DUPLICATED GUARD.** Both rules
   were written twice — once in `flushDeferredCommands` and once at each of its three call sites —
@@ -1700,6 +1700,25 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   the behaviour it was written to produce. This is round 25's M103 lesson repeating: a mutant that
   cannot express its own defect is a bad mutant, not an equivalent one. The guards now live in ONE
   place, the function whose rule they are, and the call sites call it bare.
+
+  **M114 KILLS BY NON-TERMINATION, AND THE MECHANISM IS WORTH THE SPACE.** With the depth guard
+  gone the flush becomes eligible at an INNER transaction boundary — where the depth is still
+  non-zero — so the first deferred command reaches `deferWhileUserTransactionActive`, is told a
+  transaction is open, and **re-defers itself into the loop that is running it**. The suite spins in
+  State test 99 leg D (the preset step, which defers at its outermost entry point). That is not a
+  tidy failing assertion, and it is recorded as what it is; it also corrects a loose sentence round
+  25 left in `endUserTransaction`, which said the flush "cannot spin" because "a command is only
+  ever queued by a real user action the host pumped in". Leg E disproves the second half — it
+  queues a command from inside a command, with no user action anywhere. The real reason the loop
+  terminates is the depth guard: a command runs at depth zero, so it cannot re-queue itself, and the
+  only way to add to the list is to open a transaction first.
+
+  **M115 NEEDED A NEW LEG, NOT A NEW SPELLING.** The flush moves its queue into a local before
+  running anything, so a re-entrant flush that finds the list empty is invisible — with one command
+  in flight the mutant is genuinely unobservable. Leg E puts TWO commands in the queue and has the
+  first one open a transaction that queues a THIRD: guarded gives `1 2 3`, unguarded runs the third
+  at the inner close and gives `1 3 2`. That is the guard's only observable job, and it is now
+  covered.
 
 * **Round 25 — State test 99, and the door round 24 left open.**
 

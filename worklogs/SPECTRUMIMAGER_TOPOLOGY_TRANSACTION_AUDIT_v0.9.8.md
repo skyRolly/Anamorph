@@ -4763,3 +4763,26 @@ a depth counter kept around our callback reads zero at exactly the moment it wou
 — and building one means marking every first-party parameter write site (43 raw calls across 15
 functions in the imager alone, plus the editor's attachments, `applyAutoGain` and `PresetManager`).
 That is a threading-model change and an owner decision. RISK-009 stays OPEN and now says so.
+
+### §83b. M114 kills by not terminating, and it corrects a sentence round 25 left behind
+
+`M114` deletes the depth guard from `flushDeferredCommands`. The suite then spins in State test 99
+leg D. The mechanism is exact and is a source-level consequence of two functions, not a guess:
+with the guard gone the flush becomes eligible at an INNER transaction boundary, where
+`userTransactionDepth` is still non-zero — so the first deferred command reaches
+`deferWhileUserTransactionActive`, is told a transaction is open, and **re-defers itself into the
+loop that is running it**. `PresetManager::step` is the one leg D uses, and it defers at its
+outermost entry point by design (ADR-0036 §23), so it re-queues on every pass.
+
+A non-terminating mutant is a weaker record than a failing assertion and is written down as what it
+is rather than dressed up. It also falsified a sentence round 25 left in `endUserTransaction`: that
+the loop "cannot spin" because "a command is only ever queued by a real user action the host pumped
+in". State test 100 leg E queues a command from inside a command with no user action anywhere. The
+argument that actually holds is the depth guard — a command runs at depth zero, so it cannot
+re-queue itself, and the only way to add to the list is to open a transaction first, which a
+command does a bounded number of times. The comment now says that.
+
+`M115` needed a new leg rather than a new spelling. The flush moves its queue into a local before
+running anything, so with ONE command in flight a re-entrant flush finds an empty list and is
+genuinely unobservable. Leg E puts two commands in the queue and has the first open a transaction
+that queues a third: guarded gives `1 2 3`, unguarded gives `1 3 2`.
