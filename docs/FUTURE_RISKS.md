@@ -518,7 +518,7 @@ mitigation. Do not invent risks to fill the template.
   prefers that request to its live read. Mutations M76-M82.
 - **STATUS AFTER ROUND 20: STILL OPEN, and deliberately NOT reclassified as an accepted residual.**
   What remains is the imager's gesture-bracketed bare stores (`resetParam`, `setBands`,
-  `setSoloMask`; `src/gui/SpectrumImager.cpp:847-850` is the shape), which declare no endpoint at
+  `setSoloMask`; `src/gui/SpectrumImager.cpp:853-870` is the shape), which declare no endpoint at
   all, so a host write landing inside their own `setValueNotifyingHost` is still live-read as the
   user's `after`. That violates the stated product rule -- host automation must never become a
   user's endpoint -- so it does not meet the bar for an accepted residual and is recorded as an open

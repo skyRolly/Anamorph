@@ -537,5 +537,5 @@ thing; only what the store REPORTS afterwards is new.
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:426-565, :340-520
+- Source: src/PluginProcessor.cpp:430-569, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")

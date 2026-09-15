@@ -457,6 +457,18 @@ DELIBERATE_REAIMS = {
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
      "src/PluginProcessor.cpp:1850"): "abActive",
+
+    # 2026-09-15 (round 21, ADR-0036 §26): ONE ENTRY, for a span this change EDITED rather than
+    # moved. ADR-0008's "Source:" line brackets the whole custom-undo block, from its banner comment
+    # to `syncCommitted`, and round 21 changed `syncCommitted` itself -- it takes `mayBlock` now, so
+    # that the adoption reached from a TIMER can try the replacement lock instead of waiting on it.
+    # An edited span is what the line map returns `None` for, so it is UNMAPPABLE rather than
+    # drifted and no `--fix` can carry it: the two ends were re-derived by hand from the banner and
+    # from the function they name, and `verify_reaim_targets` re-resolves the token below against
+    # the current file on every run.
+    ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
+     "src/PluginProcessor.cpp:426-565",
+     "src/PluginProcessor.cpp:430-569"): "syncCommitted",
     #
     # 2026-09-13 (round 13) declared a re-aim of RISK-012's poll citation, `:963-1035` ->
     # `:980-1039`, onto the `sig != committedSig` gate. ROUND 14 DELETED IT, because round 14
