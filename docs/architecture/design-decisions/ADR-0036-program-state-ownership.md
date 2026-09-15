@@ -1031,7 +1031,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:2234`).
+    (`src/PluginProcessor.cpp:2245`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1100,7 +1100,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     the one-pass reassert makes exact by construction.
 
 23. **A relative operation acts on the session it observed (round 16).** Review finding *"relative
-    navigation uses stale targets"* (`src/PluginProcessor.cpp:1855`).
+    navigation uses stale targets"* (`src/PluginProcessor.cpp:1866`).
 
     **What a relative operation is.** One whose target is a function of the current state rather than
     of the user's input: *the other slot* (`abToggle`), *the next/previous preset*
@@ -1206,7 +1206,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     derived program-state target there to go stale.
 
 24. **One whole-sound replacement at a time (round 17).** Review finding *"overlapping restores
-    expose mixed sound"* (`src/PluginProcessor.cpp:2419`).
+    expose mixed sound"* (`src/PluginProcessor.cpp:2430`).
 
     **What a whole-sound replacement is.** An operation that installs an ENTIRE sound over the live
     parameter set, as opposed to moving one parameter: a host restore's install
@@ -1856,7 +1856,26 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
     **The rule.** `flushDeferredCommands` takes `soundReplacement` with a **try**, never a wait. A
     try that succeeds is itself the evidence that no holder exists at that instant; a try that fails
-    means one may, and the answer is §26's own sentence: consume nothing and come back. The refusal
+    means one may, and the answer is §26's own sentence: consume nothing and come back.
+
+    **AND THE TRY CLOSES THE `soundReplacement` EDGE ONLY — WHICH IS NOT THE WHOLE CYCLE.** An
+    earlier draft of this section claimed the try made the door safe "by construction", and that
+    claim is corrected here rather than left standing. `copyStateWithRawValues` takes
+    `soundReplacement` (free, recursively, under this function's own try) and **then blocks on the
+    APVTS `valueTreeChanging` lock** via `apvts.copyState()`. ThreadSanitizer says so on this very
+    door, measured on the fixed tree:
+
+    | order | thread | path |
+    |---|---|---|
+    | M0 → M1 | message | `endChangeGesture` holds `listenerLock(P)` → host pump → `mouseDown` → `addBandAt` → `~ScopedUserTransaction` → `flushDeferredCommands` → `pollUndoCoalesceAdopted` → `currentStateSet` → `copyStateWithRawValues` → `AudioProcessorValueTreeState::copyState` takes the APVTS lock |
+    | M1 → M0 | message here, a host thread in production | `applyStateSet` → `applyStatePreservingView` → `replaceState` holds the APVTS lock → `valueTreeRedirected` → `setNewState` → `setValueNotifyingHost` → `sendValueChangedMessageToListeners` takes `listenerLock(P)` |
+
+    That is **the round-20 escalation in RISK-009, verbatim** — not a new cycle, and not one this
+    round created: round 21 left the same residual at the timer doors, whose try is also on
+    `soundReplacement` alone. So the honest statement of what round 26 achieves is narrower than the
+    draft claimed: **the edge Devin's finding names is closed; the APVTS edge of the same door is
+    not.** Closing that one needs the threading-model change RISK-009 has been carrying to the owner
+    since round 20, and it is not an agent's to make. The refusal
     happens **before** the queue is moved and **before** `pollUndoCoalesceAdopted` runs, so
     `pendingGestureCommit` is left standing and the commands are left queued — exactly the round-24
     state — and both polls retry it, so the next user action or the next 20/24 Hz tick does the

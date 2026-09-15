@@ -211,3 +211,42 @@ deadlock:WriteFromInsideAGestureOpen
 # host-vs-host inversion on these two locks, with no harness frame in either stack,
 # is still REPORTED.
 deadlock:PumpFromGestureEnd
+
+# ---------------------------------------------------------------------------
+# ROUND 26 (Devin R651). `PumpedUserInteraction` is State test 100's host seat: a
+# host that pumps its message loop from a knob's gesture-end callback, delivering
+# a WHOLE user interaction (the Add-band click, its transaction and its close)
+# inside that dispatch. The report it raises is:
+#
+#   M0 => M1  main thread: `endChangeGesture` holds mbDrive's `listenerLock`, the
+#             pump runs `mouseDown` -> `addBandAt` -> `~ScopedUserTransaction` ->
+#             `flushDeferredCommands` -> `pollUndoCoalesceAdopted` ->
+#             `currentStateSet` -> `copyStateWithRawValues` ->
+#             `AudioProcessorValueTreeState::copyState` takes the APVTS lock.
+#   M1 => M0  `applyStateSet` -> `applyStatePreservingView` -> `replaceState` holds
+#             the APVTS lock -> `valueTreeRedirected` -> `setNewState` ->
+#             `setValueNotifyingHost` -> `sendValueChangedMessageToListeners`
+#             takes a parameter's `listenerLock`.
+#
+# THIS IS NOT A NEW CYCLE. It is RISK-009's round-20 escalation verbatim -- one
+# parameter's `listenerLock` against the APVTS `valueTreeChanging` lock -- reached
+# through a door round 26 added coverage for. Both orders are the MAIN thread in
+# this suite, so the suite itself cannot deadlock; in production the second order
+# is also a host thread's `installRestoredSound` -> `applySoundTree`, which is why
+# RISK-009 records it as reachable in a shipped build and refers it upward.
+#
+# WHAT ROUND 26 DID AND DID NOT CLOSE, because this entry must not be read as a
+# claim that the door is safe. `flushDeferredCommands` takes `soundReplacement`
+# with a TRY, so the edge Devin R651 names -- the message thread WAITING for
+# `soundReplacement` from inside a listener's dynamic extent -- is gone. The APVTS
+# edge above is NOT: `copyStateWithRawValues` still blocks on `apvts.copyState()`.
+# Round 21's timer doors have exactly the same residual for exactly the same
+# reason, and closing it is a threading-model change -- an ARCHITECTURE_REVIEW_GATE
+# item and an owner decision, not an agent's.
+#
+# THE ENTRY IS THE HARNESS TYPE AND NOTHING ELSE, so a real host-vs-host inversion
+# on these two locks, with no harness frame in either stack, is still REPORTED.
+# The name was chosen to share no prefix with any other entry: the first spelling,
+# `PumpFromGestureEndOf`, was absorbed by round 24's `PumpFromGestureEnd` entry,
+# and the only symptom was the matched-suppression count moving 5 -> 6.
+deadlock:PumpedUserInteraction

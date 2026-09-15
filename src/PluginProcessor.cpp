@@ -681,10 +681,21 @@ void AnamorphAudioProcessor::endUserTransaction()
 //
 // THE RULE, stated once and enforced by construction: NOTHING THAT CAN BLOCK ON `soundReplacement`
 // RUNS FROM THIS DOOR. The try never waits, so the message thread can never be the waiting half of
-// the cycle, whether or not it happens to be inside a listener's extent -- which is what makes this
+// THAT cycle, whether or not it happens to be inside a listener's extent -- which is what makes it
 // a proof rather than a reachability argument. A try that SUCCEEDS is itself the evidence that no
 // holder exists at that instant; a try that FAILS means one may, and the answer is the same
 // sentence ADR-0036 section 26 already gives its timer doors: consume nothing and come back.
+//
+// AND THE SCOPE OF THAT PROOF IS ONE MUTEX, WHICH IS NOT THE WHOLE CYCLE. `copyStateWithRawValues`
+// takes `soundReplacement` (free, recursively, under the try below) and THEN BLOCKS on the APVTS
+// `valueTreeChanging` lock inside `apvts.copyState()`. ThreadSanitizer reports that edge on this
+// door against the FIXED tree, and the opposite order -- `replaceState` holding the APVTS lock and
+// then taking a parameter's `listenerLock` -- is the one a host thread's restore takes. That pair
+// is RISK-009's round-20 escalation verbatim: not a new cycle, not one this round created (round
+// 21's timer doors try on `soundReplacement` alone and have the same residual), and not one an
+// agent may close, because closing it is a threading-model change. Devin R651 names the
+// `soundReplacement` edge and that edge is closed here. The APVTS edge is NOT, and RISK-009
+// carries it OPEN rather than this comment implying otherwise.
 //
 // WHAT "COME BACK" MEANS HERE, and why nothing is dropped. The refusal happens BEFORE the queue is
 // moved and BEFORE `pollUndoCoalesceAdopted` runs, so `pendingGestureCommit` is left standing and
