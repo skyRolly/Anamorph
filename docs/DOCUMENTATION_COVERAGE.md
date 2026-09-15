@@ -12015,6 +12015,18 @@ and a host's dispatch raises no depth of ours. The predicate closes every door w
 plug-in starts and none whose dispatch the host starts, which is what `ParameterDispatch.h` claims
 and no more.
 
+**And CI found one more, in the harness rather than the product.** The `linux` job's ADR-0046
+completion gate reported 1 out-of-range write in 1200 — the exact figure `--band-move-probe`'s own
+header records as its residual false positive. The band-move path is unchanged by this round (the
+whole imager diff is one include and fifteen one-for-one wrapper substitutions), and ~58 000 local
+samples score 0. The cause is the drain **five** probes share: the automation lane published
+`writing` after reading `phase`, so `phase = 0; while (writing) {}` could return with one more
+`setPlain` still to come, and that late write made the next iteration's press latch a count the
+lane was supposed to be too late to change. Fixed by publishing before looking, both accesses
+`seq_cst`. Forced with a 50 µs gap it scores 3 presses / 2 defects on the old drain and 0 / 0 on
+the new one, and **3, 4 and 2 defects per 1200 on the round-26 head `24b7400`** — which is the
+attribution: the hole predates this round. Nothing any probe measures changed.
+
 **Also in this pass, found by its own sibling audit rather than by the review.** A deferred A/B
 toggle left the A/B letter painting the outgoing slot, because `ABControl` has no reconciliation path
 in `timerCallback` where every other post-command indicator has one. Fixed with the same four-line

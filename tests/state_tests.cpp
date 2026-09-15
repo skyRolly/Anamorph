@@ -23405,11 +23405,34 @@ static int runSplitSnapshotProbe (int iterations)
     bool flip = false;
     std::thread automation ([&]
     {
-        while (! quit.load (std::memory_order_acquire))
+        while (! quit.load (std::memory_order_seq_cst))
         {
-            while (phase.load (std::memory_order_acquire) == 1)
+            // ROUND 27: PUBLISH FIRST, THEN LOOK, and both accesses are `seq_cst`. The old order
+            // read `phase` and only THEN set `writing`, so a GUI drain (`phase = 0; while
+            // (writing) {}`) that sampled `writing` in that gap saw `false` while one more
+            // `setPlain` was still to come -- and that late write landed in the NEXT iteration,
+            // between `reset()` and the press, so the press latched a count the lane was supposed
+            // to be too late to change. MEASURED, in both directions and on both trees, by widening
+            // the gap to 50 us on `--band-move-probe`: on the old order 3 presses latched a count
+            // != 3 and 2 of them were counted as defects; on this order, 0 and 0 across nine runs.
+            // The same forcing on the round-26 head `24b7400` -- which contains none of round 27 --
+            // scores 3, 4 and 2 defects per 1200, so the hole is the HARNESS's and predates the
+            // round that tripped over it. Unforced, this tree scores 0 across ~58 000 samples.
+            // That 1/1200 is exactly the false positive `--band-move-probe`'s own header records
+            // ("some presses latch gestureBands = 4, after which a band move writing freqP[2] is
+            // entirely CORRECT"), and exactly what failed the `linux` job on e889f24.
+            //
+            // WHY `seq_cst` AND NOT RELEASE/ACQUIRE. With the publish moved first, the argument is:
+            // if the lane's `phase` load returns 1 then it precedes the GUI's `phase = 0`, and the
+            // lane's `writing = true` precedes that load, so the GUI's `writing` load -- which
+            // follows its own store -- must observe `true` or a LATER store, and the only later
+            // store is the `writing = false` sequenced after the pass's writes. That argument is a
+            // statement about ONE total order, which only `seq_cst` provides: release/acquire on
+            // two different objects is the store-buffer shape, where both sides may read stale and
+            // the drain slips through exactly as before.
+            writing.store (true, std::memory_order_seq_cst);
+            while (phase.load (std::memory_order_seq_cst) == 1)
             {
-                writing.store (true, std::memory_order_release);
                 // A signal fence rather than a volatile counter: incrementing a volatile is
                 // deprecated in C++20 and the first draft of this loop earned a -Wdeprecated-volatile
                 // the warning gate would have failed on. The fence is not optimised away either.
@@ -23421,7 +23444,7 @@ static int runSplitSnapshotProbe (int iterations)
                 flip = ! flip;
                 setPlain (midP, flip ? kMidMovedA : kMidMovedB);
             }
-            writing.store (false, std::memory_order_release);
+            writing.store (false, std::memory_order_seq_cst);
         }
     });
 
@@ -23445,8 +23468,8 @@ static int runSplitSnapshotProbe (int iterations)
             imager->mouseDrag (mev (split0X + 2.0f, laneY, split0X, laneY, true));
             imager->mouseUp   (mev (split0X + 2.0f, laneY, split0X, laneY, true));
 
-            phase.store (0, std::memory_order_release);   // and stops
-            while (writing.load (std::memory_order_acquire)) { }
+            phase.store (0, std::memory_order_seq_cst);   // and stops
+            while (writing.load (std::memory_order_seq_cst)) { }   // seq_cst: see the lane above
             detector.armed.store (false, std::memory_order_release);
 
             // THE VERDICT IS THE LISTENER, NOT THE FINAL VALUE. With a lane that keeps writing, the
@@ -23610,17 +23633,21 @@ static int runAddTargetProbe (int iterations)
     bool flip = false;
     std::thread automation ([&]
     {
-        while (! quit.load (std::memory_order_acquire))
+        while (! quit.load (std::memory_order_seq_cst))
         {
-            while (phase.load (std::memory_order_acquire) == 1)
+            // ROUND 27, the shared lane handshake: publish `writing` BEFORE reading `phase`, both
+            // `seq_cst`. The whole argument -- and the 50 us forcing that measured the old order
+            // leaking one late write into the next iteration's press -- is written out at the
+            // first lane of this kind (`--split-snapshot-probe`'s, above).
+            writing.store (true, std::memory_order_seq_cst);
+            while (phase.load (std::memory_order_seq_cst) == 1)
             {
-                writing.store (true, std::memory_order_release);
                 const int n = spin.load (std::memory_order_relaxed);
                 for (int i = 0; i < n; ++i) std::atomic_signal_fence (std::memory_order_acq_rel);
                 flip = ! flip;
                 setPlain (bandsP, flip ? 3.0f : 2.0f);   // the lane moves the COUNT
             }
-            writing.store (false, std::memory_order_release);
+            writing.store (false, std::memory_order_seq_cst);
         }
     });
 
@@ -23649,8 +23676,8 @@ static int runAddTargetProbe (int iterations)
             imager->mouseDown (mev (clickX, laneY, false));
             imager->mouseUp   (mev (clickX, laneY, false));
 
-            phase.store (0, std::memory_order_release);
-            while (writing.load (std::memory_order_acquire)) { }
+            phase.store (0, std::memory_order_seq_cst);
+            while (writing.load (std::memory_order_seq_cst)) { }   // seq_cst: see the lane above
             for (auto& d : det) d.armed.store (false, std::memory_order_release);
 
             bool clamped = false;
@@ -23819,17 +23846,21 @@ static int runAddEdgeProbe (int iterations)
     bool flip = false;
     std::thread automation ([&]
     {
-        while (! quit.load (std::memory_order_acquire))
+        while (! quit.load (std::memory_order_seq_cst))
         {
-            while (phase.load (std::memory_order_acquire) == 1)
+            // ROUND 27, the shared lane handshake: publish `writing` BEFORE reading `phase`, both
+            // `seq_cst`. The whole argument -- and the 50 us forcing that measured the old order
+            // leaking one late write into the next iteration's press -- is written out at the
+            // first lane of this kind (`--split-snapshot-probe`'s, above).
+            writing.store (true, std::memory_order_seq_cst);
+            while (phase.load (std::memory_order_seq_cst) == 1)
             {
-                writing.store (true, std::memory_order_release);
                 const int n = spin.load (std::memory_order_relaxed);
                 for (int i = 0; i < n; ++i) std::atomic_signal_fence (std::memory_order_acq_rel);
                 flip = ! flip;
                 setPlain (loP, flip ? kHigh : kLow);     // the lane moves the SPLIT, not the count
             }
-            writing.store (false, std::memory_order_release);
+            writing.store (false, std::memory_order_seq_cst);
         }
     });
 
@@ -23856,8 +23887,8 @@ static int runAddEdgeProbe (int iterations)
             imager->mouseDown (mev (clickX, laneY, false));
             imager->mouseUp   (mev (clickX, laneY, false));
 
-            phase.store (0, std::memory_order_release);
-            while (writing.load (std::memory_order_acquire)) { }
+            phase.store (0, std::memory_order_seq_cst);
+            while (writing.load (std::memory_order_seq_cst)) { }   // seq_cst: see the lane above
             for (auto& d : det) d.armed.store (false, std::memory_order_release);
 
             bool clamped = false;
@@ -24050,17 +24081,21 @@ static int runBandMoveProbe (int iterations)
     bool flip = false;
     std::thread automation ([&]
     {
-        while (! quit.load (std::memory_order_acquire))
+        while (! quit.load (std::memory_order_seq_cst))
         {
-            while (phase.load (std::memory_order_acquire) == 1)
+            // ROUND 27, the shared lane handshake: publish `writing` BEFORE reading `phase`, both
+            // `seq_cst`. The whole argument -- and the 50 us forcing that measured the old order
+            // leaking one late write into the next iteration's press -- is written out at the
+            // first lane of this kind (`--split-snapshot-probe`'s, above).
+            writing.store (true, std::memory_order_seq_cst);
+            while (phase.load (std::memory_order_seq_cst) == 1)
             {
-                writing.store (true, std::memory_order_release);
                 const int n = spin.load (std::memory_order_relaxed);
                 for (int i = 0; i < n; ++i) std::atomic_signal_fence (std::memory_order_acq_rel);
                 flip = ! flip;
                 setPlain (bandsP, flip ? 4.0f : 3.0f);   // the ABA generator
             }
-            writing.store (false, std::memory_order_release);
+            writing.store (false, std::memory_order_seq_cst);
         }
     });
 
@@ -24081,8 +24116,8 @@ static int runBandMoveProbe (int iterations)
         im->mouseDrag (mev (sx + 40.0f, soloY, sx, soloY, true));
         if (laneOn)
         {
-            phase.store (0, std::memory_order_release);
-            while (writing.load (std::memory_order_acquire)) { }
+            phase.store (0, std::memory_order_seq_cst);
+            while (writing.load (std::memory_order_seq_cst)) { }   // seq_cst: see the lane above
         }
         im->mouseUp   (mev (sx + 40.0f, soloY, sx, soloY, true));
     };
@@ -25536,17 +25571,21 @@ static int runSoloAliasProbe (int iterations)
     bool flip = false;
     std::thread automation ([&]
     {
-        while (! quit.load (std::memory_order_acquire))
+        while (! quit.load (std::memory_order_seq_cst))
         {
-            while (phase.load (std::memory_order_acquire) == 1)
+            // ROUND 27, the shared lane handshake: publish `writing` BEFORE reading `phase`, both
+            // `seq_cst`. The whole argument -- and the 50 us forcing that measured the old order
+            // leaking one late write into the next iteration's press -- is written out at the
+            // first lane of this kind (`--split-snapshot-probe`'s, above).
+            writing.store (true, std::memory_order_seq_cst);
+            while (phase.load (std::memory_order_seq_cst) == 1)
             {
-                writing.store (true, std::memory_order_release);
                 const int n = spin.load (std::memory_order_relaxed);
                 for (int i = 0; i < n; ++i) std::atomic_signal_fence (std::memory_order_acq_rel);
                 flip = ! flip;
                 setPlain (bandsP, flip ? 4.0f : 2.0f);   // the ABA generator, count only
             }
-            writing.store (false, std::memory_order_release);
+            writing.store (false, std::memory_order_seq_cst);
         }
     });
 
@@ -25559,8 +25598,8 @@ static int runSoloAliasProbe (int iterations)
         im->mouseDown (mev (aliasX, soloY));
         if (laneOn)
         {
-            phase.store (0, std::memory_order_release);
-            while (writing.load (std::memory_order_acquire)) { }
+            phase.store (0, std::memory_order_seq_cst);
+            while (writing.load (std::memory_order_seq_cst)) { }   // seq_cst: see the lane above
             setPlain (bandsP, 2.0f);   // the release happens at the topology the press SAW, or is refused
         }
         im->mouseUp (mev (aliasX, soloY));

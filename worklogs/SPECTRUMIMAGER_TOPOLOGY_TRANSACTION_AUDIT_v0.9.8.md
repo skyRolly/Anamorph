@@ -5024,3 +5024,58 @@ that keeps `copyStateWithRawValues` off the APVTS lock — both `ARCHITECTURE_RE
 and both an owner decision. Deleting the two dead entries is also the cheapest regression detector
 available for the half that DID close: re-open either door and the report comes back with nothing
 left in the file to absorb it.
+
+### §84j. The `linux` job went red on a probe this round did not touch
+
+`e889f24`'s push run failed one step: the ADR-0046 completion gate, `TOTAL OUT-OF-RANGE WRITES: 1`
+at `spin 40`. Every other job — including `source-lint`, `tsan`, `sanitizers`/valgrind, `realtime`,
+`fuzz` and the pluginval gates on three platforms — was green.
+
+**First, attribution, before any fix.** Round 27's entire change to `src/gui/SpectrumImager.cpp` is
+the `ParameterDispatch.h` include plus fifteen one-for-one `anamorph::param::` substitutions; the
+band-move path (`beginBandMove`, `moveBand`, `endBandMove`, the release branch in `mouseUp`) is
+byte-for-byte the same logic, sized by the caller's proved `gestureBands` exactly as ADR-0046 and
+ADR-0051 left it. Locally the probe scored 0 across ~58 000 samples — 24 000 straight, 2 000
+pinned to one core, 32 000 under 2x oversubscription.
+
+**The mechanism is the probe's own drain, and five probes share it.** The lane is
+
+```
+while (! quit) { while (phase == 1) { writing = true; spin; setPlain (bandsP, flip ? 4 : 3); }
+                 writing = false; }
+```
+
+and the GUI stops it with `phase = 0; while (writing) {}`. `writing` is published INSIDE the inner
+loop, *after* `phase` is read, so a drain that samples `writing` in that gap sees `false` while one
+more `setPlain` is still to come. That late write lands in the NEXT iteration, between `reset()`
+and `mouseDown` — and the press then latches `gestureBands = 4`, after which a band move writing
+`freqP[2]` is **entirely correct** and is counted as a defect anyway. That is the false-positive
+class the probe's own header names, and the header believed keeping the lane off during `mouseDown`
+had removed it; the drain does not guarantee the lane is off.
+
+**Measured, in both directions and on both trees.** Widening the gap with a 50 µs sleep, and adding
+a temporary counter for presses that latched a count other than 3:
+
+| tree | forcing | presses latching ≠ 3 | defects / 1200 |
+|---|---|---|---|
+| round-27 head, old drain | on | 3 | 2 |
+| round-27 head, new drain | on | 0 | 0 (nine runs) |
+| round-26 head `24b7400`, old drain | on | — | 3, 4, 2 |
+
+The round-26 row settles the attribution: the hole is older than this round, and round 27 only
+changed the timing enough to sample it once in CI. The instrument and the forcing were both removed
+before committing; only the fix ships.
+
+**The fix.** Publish `writing` BEFORE reading `phase`, and make both `seq_cst`. The argument is a
+statement about one total order — if the lane's `phase` load returns 1 it precedes the GUI's
+`phase = 0`, and the lane's `writing = true` precedes that load, so the GUI's `writing` load must
+observe `true` or the later `writing = false` that is sequenced after the pass's writes — and only
+`seq_cst` supplies that order. Release/acquire on two different objects is the store-buffer shape,
+where both sides may read stale and the drain slips through exactly as before. It is written out
+once, at the first lane of the five, and referenced from the other four.
+
+**What it does NOT change.** Nothing about what any probe measures. The fix makes the lane actually
+stopped where all five already intended it stopped, so it can only remove false positives; a real
+out-of-range write is still counted, and the pre-fix figures those probes record (491/1200,
+40/3600) were taken with the lane deliberately running through the measured window. All six
+CI-gated probes exit 0 on the fixed harness, and the state suite is unchanged at 3782/0.

@@ -1755,6 +1755,37 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   plug-in starts is closed; a dispatch the host starts is not seen. `docs/FUTURE_RISKS.md` RISK-009
   records that as still OPEN rather than rounding it up to closed.
 
+  **AND THE `linux` JOB WENT RED ON A PROBE THIS ROUND DID NOT TOUCH, which turned out to be the
+  probes' own drain.** The ADR-0046 completion step reported `TOTAL OUT-OF-RANGE WRITES: 1` at
+  `spin 40` — 1 in 1200, which is the exact figure `--band-move-probe`'s own header records as its
+  residual false positive. Round 27 changes nothing in the band-move path: the whole
+  `SpectrumImager.cpp` diff for this round is the include plus fifteen one-for-one
+  `anamorph::param::` substitutions, and ~58 000 local samples score 0.
+
+  The cause is in the harness, and it is shared by **five** probes. The automation lane published
+  `writing` INSIDE its inner loop, *after* reading `phase`, while the GUI stopped it with
+  `phase = 0; while (writing) {}`. A drain that sampled `writing` in that gap saw `false` while one
+  more `setPlain (bandsP, …)` was still to come; that late write lands in the NEXT iteration,
+  between `reset()` and the press, so the press latches a count the lane was supposed to be too
+  late to change — and a four-band move writing `freqP[2]` is then **correct** and counted as a
+  defect anyway. Fixed by publishing `writing` BEFORE reading `phase`, with both accesses
+  `seq_cst` (release/acquire on two objects is the store-buffer shape and leaks the same way; the
+  in-source comment carries the total-order argument).
+
+  | tree | 50 µs forcing on the gap | presses latching a count ≠ 3 | "defects" per 1200 |
+  |---|---|---|---|
+  | round-27 head, old drain | on | 3 | 2 |
+  | round-27 head, new drain | on | 0 | 0 (nine runs) |
+  | round-26 head `24b7400`, old drain | on | — | 3, 4, 2 |
+  | round-27 head, new drain | off | 0 | 0 (~58 000 samples) |
+
+  The round-26 row is the attribution: the hole predates every line of round 27. All six
+  CI-gated probes — `--split-snapshot-probe`, `--add-target-probe`, `--add-edge-probe`,
+  `--band-move-probe`, `--band-move-adopt-probe`, `--solo-alias-probe` — exit 0 on the fixed
+  harness. **Nothing about what the probes measure changed**: the fix only makes the lane actually
+  stopped where every one of them already intended it stopped, so it can remove false positives
+  and cannot hide a true one.
+
 * **Round 26 — State test 100, and a door that may not wait.**
 
   Round 25 put the BLOCKING poll at the user transaction's outermost `1 -> 0` boundary. **State
