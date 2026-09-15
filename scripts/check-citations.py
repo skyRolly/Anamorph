@@ -486,9 +486,19 @@ DELIBERATE_REAIMS = {
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:737, 870-873",
      "src/PluginProcessor.cpp:1135, 1483-1487"): "openGestures",
+    # 2026-09-15 (round 26): THE SAME ENTRY, RE-AIMED, not a second one. Round 26 inserted comment
+    # lines above `syncCommitted` in `PluginProcessor.cpp`, so the ADR's span end moved 713 -> 810
+    # while its two ends kept naming the same banner and the same function. That is ordinary drift
+    # for the DOCUMENT -- every base in play maps it, which is why no base reports it -- but it is
+    # fatal for the DECLARATION, whose new spelling is a literal string the document must still
+    # carry. It stopped carrying `469-713` and section 9 of the self-test failed on it, exactly as
+    # the header says it should: an entry naming a string no document contains is excusing nothing.
+    # The entry is re-aimed rather than deleted because the base it was written for (an earlier push
+    # on this branch, which is what CI's `github.event.before` can still be) carries `426-565` and
+    # neither spelling of the pair is behind it -- the run's own note says "keep it".
     ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
      "src/PluginProcessor.cpp:426-565",
-     "src/PluginProcessor.cpp:469-713"): "syncCommitted",
+     "src/PluginProcessor.cpp:469-810"): "syncCommitted",
     #
     # 2026-09-13 (round 13) declared a re-aim of RISK-012's poll citation, `:963-1035` ->
     # `:980-1039`, onto the `sig != committedSig` gate. ROUND 14 DELETED IT, because round 14
