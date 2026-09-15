@@ -844,9 +844,29 @@ void SpectrumImager::resetParam (juce::RangedAudioParameter* p, int expectedBand
     // `setBands` and `setSoloMask` have carried since ADR-0041: the check and the store it guards
     // have nothing between them. -1 means the caller has no topology to prove (the non-multiband
     // resets).
+    // ADR-0008 ROUND 21. THIS STORE NOW SAYS WHAT IT PRODUCED, like every other user store.
+    // It used to write and say nothing, so the gesture close below fell back to a LIVE READ of the
+    // parameter -- and a host answering this very write re-entrantly would be sitting in that live
+    // value, becoming the user's `after` and therefore the destination of the user's Redo. Same
+    // read-back proof `storeOwned` uses: what is there afterwards either is what was installed, or
+    // somebody else's, and those are different facts.
     p->beginChangeGesture();
     if (expectedBands < 0 || bandCount() == expectedBands)
-        p->setValueNotifyingHost (p->getDefaultValue());
+    {
+        const float was    = p->getValue();
+        const float norm   = p->getDefaultValue();
+        const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
+        p->setValueNotifyingHost (norm);
+        if (! juce::exactlyEqual (p->getValue(), expect))
+        {
+            if (onOwnedRefused) onOwnedRefused (p);
+        }
+        else if (onOwnedWrite) onOwnedWrite (p, was, expect);
+    }
+    // ...AND A GUARD THAT REFUSED IS A REFUSAL TOO. The gesture opened and closed having written
+    // nothing, so the live value at the close is whatever the host left there -- which is exactly
+    // the value that must not become this user action's endpoint.
+    else if (onOwnedRefused) onOwnedRefused (p);
     p->endChangeGesture();
 }
 // ADR-0040, round-3 correction 3: THE COMMIT POINT OPENS A GESTURE FIRST, so a check in the caller
@@ -881,9 +901,22 @@ bool SpectrumImager::setBands (int n, int expectedBands, int expectedMask)
     if ((expectedBands < 0 || bandCount() == expectedBands)
         && (expectedMask < 0 || soloMask() == expectedMask))
     {
-        p->setValueNotifyingHost (p->convertTo0to1 ((float) want));
-        stored = true;
+        // ROUND 21: declared, not left to the close's live read -- see `resetParam`.
+        const float was    = p->getValue();
+        const float norm   = p->convertTo0to1 ((float) want);
+        const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
+        p->setValueNotifyingHost (norm);
+        if (! juce::exactlyEqual (p->getValue(), expect))
+        {
+            if (onOwnedRefused) onOwnedRefused (p);
+        }
+        else
+        {
+            if (onOwnedWrite) onOwnedWrite (p, was, expect);
+            stored = true;
+        }
     }
+    else if (onOwnedRefused) onOwnedRefused (p);
     p->endChangeGesture();
     // WHAT THIS FAR SIDE DOES NOT PROVE, and why that is enough (review round 2026-09-08).
     // It re-reads the COUNT only. A listener that moves mbSolo from inside the store's own
@@ -933,9 +966,22 @@ bool SpectrumImager::setSoloMask (int mask, int expectedBands, int expectedMask)
         && (expectedMask < 0 || soloMask() == expectedMask)
         && ! soundMovedUnderGesture())
     {
-        soloP->setValueNotifyingHost (soloP->convertTo0to1 ((float) mask));
-        stored = true;
+        // ROUND 21: declared, not left to the close's live read -- see `resetParam`.
+        const float was    = soloP->getValue();
+        const float norm   = soloP->convertTo0to1 ((float) mask);
+        const float expect = soloP->convertTo0to1 (soloP->convertFrom0to1 (norm));
+        soloP->setValueNotifyingHost (norm);
+        if (! juce::exactlyEqual (soloP->getValue(), expect))
+        {
+            if (onOwnedRefused) onOwnedRefused (soloP);
+        }
+        else
+        {
+            if (onOwnedWrite) onOwnedWrite (soloP, was, expect);
+            stored = true;
+        }
     }
+    else if (onOwnedRefused) onOwnedRefused (soloP);
     soloP->endChangeGesture();
     // ADR-0042: confirmed on the far side as well -- see setBands. Measured on the value dispatch
     // rather than the gesture open: `the mask store was overwritten from inside its dispatch and the
