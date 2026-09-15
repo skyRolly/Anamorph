@@ -787,6 +787,9 @@ namespace
     struct ValueBox : public juce::Label, public DragGestureOwner
     {
         double downProp = 0.0;
+        // The knob's twin (ADR-0053, round 11): JUCE dedupes wheel events on their timestamp
+        // because a notch moves by at least one interval, and this path now floors the same way.
+        juce::Time lastNotchTime;
 
         // Host change gesture held for the whole press, exactly as the knob's own
         // drag does (Slider begins its gesture on mouseDown too): without it the
@@ -842,6 +845,50 @@ namespace
             }
             else
                 juce::Label::mouseDrag (e);
+        }
+        // ADR-0053. A NOTCH INSIDE THIS BOX'S OWN DRAG BELONGS TO THAT DRAG. Without this override
+        // the event walks up to the parent Slider -- juce::Component::mouseWheelMove forwards to the
+        // nearest enabled ancestor -- and JUCE discards it there, because its wheel handler refuses
+        // to act while any mouse button is down. The drag maps `downProp + (-dragY) / 180.0` afresh
+        // on every mouse move and never reads the live value back, so writing the value alone would
+        // be erased by the next move: the notch has to move `downProp`, which is this box's anchor.
+        //
+        // Measured from the LIVE proportion and clamped, so a notch past a rail moves `downProp` by
+        // nothing and banks no dead travel. The write lands inside the ScopedDragNotification this
+        // press already holds, so the whole drag-plus-notch interaction stays ONE undo step.
+        //
+        // With no drag in flight the event is forwarded exactly as before, and the parent knob's own
+        // override gives it the standalone scroll's undo grouping -- so the knob and the number
+        // under it are ONE control for Undo, which is what they are for the user.
+        void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
+            if (takeWheelNotch (e, w)) return;
+            juce::Label::mouseWheelMove (e, w);
+        }
+
+        // The body of the branch above, reachable by the PARENT too: the box drag leaves the box
+        // within a few pixels of travel, so most of a drag's notches are delivered to the knob and
+        // it asks its children through this (ADR-0053). It never forwards the event onward -- the
+        // knob's ask would come straight back through `Label::mouseWheelMove` if it did.
+        bool takeWheelNotch (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
+            auto* s = rotaryParent (getParentComponent());
+            if (dragGesture == nullptr || s == nullptr || isBeingEdited()) return false;
+            if (e.eventTime == lastNotchTime) return true;   // JUCE's duplicate filter, see the knob's
+            lastNotchTime = e.eventTime;
+            // The knob's own in-drag branch and this one are the same notch on the same slider,
+            // so they ask the same function what JUCE would do with it -- floor included, which
+            // is what makes a sub-interval notch move the box instead of vanishing (round 11).
+            const double v0     = s->getValue();
+            const double target = anamorph::gui::wheelTargetValue (*s, w, v0);
+            if (juce::exactlyEqual (target, v0)) return true;  // ADR-0052: no edit, no side effects
+            const double base = s->valueToProportionOfLength (v0);
+            s->setValue (target, juce::sendNotificationSync);
+            // What ACTUALLY moved, read back after the snap -- the anchor must not bank travel the
+            // slider refused, or the next drag event applies it as a jump. ...and the drag carries
+            // on from here.
+            downProp += s->valueToProportionOfLength (s->getValue()) - base;
+            return true;
         }
         void editorShown (juce::TextEditor* ed) override
         {

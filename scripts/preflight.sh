@@ -56,6 +56,8 @@ python3 scripts/check-portability.py --self-test
 python3 scripts/check-portability.py
 python3 scripts/check-realtime.py --self-test
 python3 scripts/check-realtime.py
+python3 scripts/check-dispatch.py --self-test
+python3 scripts/check-dispatch.py
 python3 scripts/check-clang-warnings.py --self-test
 python3 scripts/check-gcc-warnings.py --self-test
 # The toolchain installer's release-identity verifier. Its --self-test drives the
@@ -83,27 +85,51 @@ echo "      (CI: linux, linux-lto-tests); only their self-tests ran here."
 # compiler is installed and report anything it says about a file under src/ or tests/.
 # Advisory, never fatal -- the authoritative gate is still CI's pinned major, and this
 # must not become a second baseline to argue with. It is a smoke alarm, not a gate.
-LOCAL_CXX="$(command -v clang++ || command -v g++ || true)"
-if [ -n "$LOCAL_CXX" ] && [ -d build/_deps/juce-src/modules ]; then
-    echo "== preflight: local first-party warning sweep ($(basename "$LOCAL_CXX")) =="
+# EVERY local compiler, not the first one found, and the reason is measured rather than
+# assumed (2026-09-14, round 19). A lambda parameter shadowing the editor constructor's own
+# `p` reached CI and failed BOTH pinned warning gates -- clang-22 as
+# `-Wshadow-uncaptured-local`, gcc-16 as plain `-Wshadow`. Re-run here afterwards on the
+# defective form: local **g++ 13 reports it**, local **clang++ 18 is silent**. Picking one
+# compiler with `||` picked the silent one. A sweep that is a smoke alarm should use every
+# detector in the building.
+LOCAL_CXXS=()
+for CANDIDATE in clang++ g++; do
+    FOUND="$(command -v "$CANDIDATE" || true)"
+    [ -n "$FOUND" ] && LOCAL_CXXS+=("$FOUND")
+done
+if [ ${#LOCAL_CXXS[@]} -gt 0 ] && [ -d build/_deps/juce-src/modules ]; then
+    SWEEP_NAMES=""
+    for CXX in "${LOCAL_CXXS[@]}"; do SWEEP_NAMES="${SWEEP_NAMES:+$SWEEP_NAMES, }$(basename "$CXX")"; done
+    echo "== preflight: local first-party warning sweep ($SWEEP_NAMES) =="
     SWEEP_LOG="$(mktemp)"
-    for TU in src/gui/SpectrumImager.cpp tests/state_tests.cpp; do
-        # -Wshadow is NOT in -Wall -Wextra, and its absence is why a `-Wshadow` on a loop
-        # variable shadowing a function parameter reached CI on 2026-09-10 with this sweep green.
-        # The pinned gates carry it; this advisory one now does too.
-        "$LOCAL_CXX" -std=c++23 -fsyntax-only -Wall -Wextra -Wshadow \
-            -I src -I src/dsp -I src/gui -I build/_deps/juce-src/modules \
-            -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_STANDALONE_APPLICATION=1 \
-            -DJUCE_WEB_BROWSER=0 -DJUCE_USE_CURL=0 \
-            "$TU" 2>>"$SWEEP_LOG" || true
+    # THE LIST IS THE FIRST-PARTY TUs THAT ARE ACTUALLY EDITED, and `src/PluginEditor.cpp` was
+    # missing from it while being the file two consecutive rounds of undo/endpoint work added
+    # code to -- which is the other half of why the shadow above reached CI with this sweep green.
+    # `src/PluginProcessor.cpp` is DELIBERATELY NOT HERE, and that is a judgement rather than an
+    # oversight: it carries a declared `-Wshadow` debt row in BOTH pinned baselines (a `params`
+    # local in `setStateInformation` shadowing the member), so sweeping it would print an ACCEPTED
+    # warning on every run. This sweep's whole value is that silence means "nothing new"; a line
+    # the reader must learn to skip destroys that faster than the missing coverage costs. Add the
+    # file the day that debt row is paid off, not before.
+    for TU in src/PluginEditor.cpp src/gui/SpectrumImager.cpp tests/state_tests.cpp; do
+        for CXX in "${LOCAL_CXXS[@]}"; do
+            # -Wshadow is NOT in -Wall -Wextra, and its absence is why a `-Wshadow` on a loop
+            # variable shadowing a function parameter reached CI on 2026-09-10 with this sweep green.
+            # The pinned gates carry it; this advisory one now does too.
+            "$CXX" -std=c++23 -fsyntax-only -Wall -Wextra -Wshadow \
+                -I src -I src/dsp -I src/gui -I build/_deps/juce-src/modules \
+                -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_STANDALONE_APPLICATION=1 \
+                -DJUCE_WEB_BROWSER=0 -DJUCE_USE_CURL=0 \
+                "$TU" 2>>"$SWEEP_LOG" || true
+        done
     done
     if grep -E '^(src|tests)/[^:]+:[0-9]+:[0-9]+: warning:' "$SWEEP_LOG" > /dev/null 2>&1; then
-        echo "warning: the local compiler reports first-party warnings. CI gates on the"
-        echo "         PINNED major and may disagree, but these are worth reading before"
+        echo "warning: a local compiler reports first-party warnings. CI gates on the"
+        echo "         PINNED majors and may disagree, but these are worth reading before"
         echo "         pushing -- a new one here is usually a new one there:"
         grep -E '^(src|tests)/[^:]+:[0-9]+:[0-9]+: warning:' "$SWEEP_LOG" | sort -u | head -40
     else
-        echo "local sweep: no first-party warnings from $(basename "$LOCAL_CXX")."
+        echo "local sweep: no first-party warnings from $SWEEP_NAMES."
     fi
     rm -f "$SWEEP_LOG"
 else

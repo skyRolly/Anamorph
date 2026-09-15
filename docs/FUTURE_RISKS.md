@@ -105,7 +105,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-006 | Undeclared licensing: no `LICENSE`/EULA, and the commercial JUCE licence required by the closed-source model is not yet obtained | High | High (already true) |
 | RISK-007 | **RESOLVED 2026-09-03 (D-2, ADR-0036)** — State calls on a non-main host thread raced message-thread state (AU autosave; out-of-spec VST3 hosts); program metadata is now message-thread-owned and exchanged through two lock-free cells | — | — |
 | RISK-008 | A Linux VST3 host that hands its `IRunLoop` over only through `IPlugFrame` leaves the plug-in's JUCE message queue unserviced while no editor is open (D-1 timer, APVTS value flush) | Medium | Low — real-host validated in REAPER; other Linux hosts unverified |
-| RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once |
+| RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once. The second inversion round 20 added here (a nested poll against a host thread's whole-sound replacement) was REACHABLE and is CLOSED in round 21 by ADR-0036 §26; round 27's dispatch predicate (§30) closes the two remaining doors whose dispatch the PLUG-IN starts, measured as two TSan reports where there were four — the risk stays OPEN for a dispatch the HOST starts |
 | RISK-010 | The DSP snapshot of the ten multiband parameters is ten independent `load()` calls, so the audio thread can read a layout that never existed as a whole | Medium | **Certain** — it is the shipped reader model; what is bounded is the harm, not the occurrence |
 | RISK-011 | A gesture count that returns to zero mid-transaction lets a poll record an undo step for a layout the user never had (the v0.9.8 rounds' residuals U1-U3) | Medium | Low as observed, **structural** as a mechanism — nothing in the current code prevents it |
 
@@ -224,9 +224,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood (evidence-based):** **Low.** It requires the HOST to write cross-parameter from
   inside a dispatch, on two threads, in opposite orders, overlapping. **No listener in this
   plug-in creates the nesting at all:** `AnamorphAudioProcessor::parameterValueChanged`
-  (`src/PluginProcessor.h:171-174`) is a single relaxed `fetch_add`,
-  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:315`) the same, and
-  `parameterGestureChanged` (`src/PluginProcessor.cpp:812-826`) touches two ints — the last
+  (`src/PluginProcessor.h:456-459`) is a single relaxed `fetch_add`,
+  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:661`) the same, and
+  `parameterGestureChanged` (`src/PluginProcessor.cpp:1247-1424`) touches two ints — the last
   deliberately, its comment recording that `--d2-stress-probe` once reported this same detector
   for an APVTS/`listenerLock` inversion, closed by **removing** the nesting.
 - **How it surfaced:** ThreadSanitizer's deadlock detector, on `AnamorphStateTests` at
@@ -245,6 +245,170 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   an inversion whose stacks contain only production frames still fails the `tsan` job, and the
   canary step proves on every run that data-race detection is untouched. Reopen this risk if a
   host is ever observed writing cross-parameter from inside a dispatch on two threads.
+- **ROUND 20 (2026-09-14) — A SECOND, DIFFERENT INVERSION ON THE SAME DETECTOR, and this one does
+  NOT have the "harness only" defence. It is ESCALATED as an architecture-review item rather than
+  claimed away.** The locks are not two parameters' `listenerLock`s; they are ONE parameter's
+  `listenerLock` and the APVTS `valueTreeChanging` lock:
+    * one order is pure production plus JUCE — restoring state holds the APVTS lock and, inside it,
+      `ParameterAdapter::setNormalisedValue` -> `setValueNotifyingHost` ->
+      `sendValueChangedMessageToListeners` takes a parameter's `listenerLock`
+      (`juce_AudioProcessorValueTreeState.cpp:413`, `:425`, `:457`);
+    * the other is the nested poll this round's review finding is about — `endChangeGesture` holds
+      `listenerLock` while it calls the `finalListener`, a host pumps its message loop from that
+      callback, the editor's timer runs, and `pollUndoCoalesce` -> `currentStateSet()` ->
+      `APVTS::copyState()` takes the APVTS lock.
+  **The second edge is reachable in a shipped build** — it needs only a host that pumps inside its
+  gesture-end callback, which is exactly the scenario State test 93 reproduces — so unlike RISK-009
+  this is not an artefact of a harness double. It is not caused by the round-20 endpoint fix (which
+  changes no locking) and is not closed by it; it was SURFACED by that round's test, the first to
+  exercise a nested poll at all.
+- **ROUND 26 (2026-09-15) — THE ROUND-20 EDGE WAS REACHED BY A DOOR THIS PROJECT ADDED, AND THAT
+  DOOR IS CLOSED.** Review finding `src/PluginProcessor.cpp:R651`, *"deferred command flush
+  deadlocks"*. The cycle is the round-20 one above, unchanged; what is new is the door. Round 25
+  put the BLOCKING poll at the user transaction's outermost `1 -> 0` boundary, and that boundary is
+  reachable from inside a parameter listener's dynamic extent, because a host that pumps its
+  message loop from a listener callback dispatches whatever UI events are queued — including the
+  Add-band click that opens and closes a whole transaction.
+  **Reproduced with real threads, deterministically** (State test 100 leg B): with a non-announcing
+  holder of `soundReplacement` parked inside `copyStateWithRawValues`, the pumped transaction's
+  close took **412.4 ms** on the round-25 tree — it waited until the harness released the holder —
+  while the message thread sat in `endChangeGesture` holding mbDrive's `listenerLock`. On the fixed
+  tree the same measurement is **0.0 ms** with the holder still parked.
+  **Closed by ADR-0036 §29:** `flushDeferredCommands` takes `soundReplacement` with a **try**, never
+  a wait, so the message thread can never be the waiting half of the cycle — a proof by
+  construction rather than a reachability argument. A refusal consumes nothing (the transaction's
+  step still pends, the commands stay queued) and both polls retry it. Mutations M110–M115.
+- **AND THE ROUND-20 EDGE ABOVE IS STILL THERE ON THAT SAME DOOR — measured on the FIXED tree.**
+  The try closes the `soundReplacement` edge and nothing else. `copyStateWithRawValues` takes
+  `soundReplacement` (free, recursively, under the flush's own try) and then **blocks on the APVTS
+  `valueTreeChanging` lock** inside `apvts.copyState()`. ThreadSanitizer reports exactly the
+  round-20 pair on the round-26 door: `M0 => M1` is the message thread holding a parameter's
+  `listenerLock` through `endChangeGesture` and reaching `copyState`; `M1 => M0` is
+  `replaceState` holding the APVTS lock and reaching `sendValueChangedMessageToListeners`. Round
+  21's timer doors have the identical residual for the identical reason — their try is on
+  `soundReplacement` alone too. **So round 26 closes the edge Devin R651 names and leaves the
+  round-20 edge exactly where this entry already had it**: escalated, owner-level, a
+  threading-model change. `tests/tsan-suppressions.txt` gains one entry naming the harness type
+  `PumpedUserInteraction`, with the analysis written out, so the REPORT is quiet and the RISK is
+  not.
+- **What round 26 does NOT close, and it is the honest half of this entry.** The same cycle stays
+  reachable through any OTHER user-action door a pumped click can deliver: an Undo button press
+  with no transaction running goes straight to `undo()` -> `pollUndoCoalesce` -> the blocking
+  capture, and then to `applyStatePreservingView`'s own blocking acquisition. That surface predates
+  round 25 and is not what R651 names. Closing it needs a first-class notion of *"dynamically
+  inside a parameter listener dispatch"*, which this codebase does not have — JUCE dispatches to
+  the `finalListener` AFTER the plug-in's own listener has returned, so a depth counter kept around
+  our callback reads zero at exactly the moment it would need to read one (the same fact round 21
+  recorded for the timer doors) — and building one means marking every first-party parameter write
+  site. That is a threading-model change and an owner decision, exactly as the round-20 entry
+  above says. **This risk therefore stays OPEN.**
+- **Disposition: suppressed in the REPORT, recorded as the risk, and referred upward.** A second
+  `tests/tsan-suppressions.txt` entry names the harness type (`HostSeat`), so the suite stays
+  meaningful and a real host-vs-host inversion on these two locks — with no harness frame in either
+  stack — is still reported. Closing the underlying cycle needs a threading-model change, which is
+  an `ARCHITECTURE_REVIEW_GATE.md` item and an AI-agent hard stop: **this is an owner decision, not
+  an agent's.** Two shapes a reviewer might weigh: keep the poll off the APVTS lock while a gesture
+  dispatch is in flight, or defer a re-entrant poll to the next timer tick. Neither is attempted
+  here. Severity: **Medium** — a genuine deadlock requires the two orders on two threads, and every
+  order observed so far is taken by the message thread alone.
+- **ROUND 21 (2026-09-15) — CLOSED as a reachable production deadlock, under the owner's
+  instruction that it must not remain an accepted residual. The TSan REPORT remains, and that
+  difference is the whole of this entry.**
+
+  **The cycle that was real, and it is not the pair round 20 named.** Round 20 recorded
+  `listenerLock` against the APVTS `valueTreeChanging` lock. The review finding this round
+  (`src/PluginProcessor.cpp:R1204`) pointed at the same poll, and reconstructing it from the two
+  threads showed the lock the poll actually WAITS on is `soundReplacement` — §24's whole-sound
+  replacement lock — with the APVTS lock taken *underneath* it by the host thread. Both edges are
+  production plus pinned JUCE: a host thread inside an off-message-thread `setStateInformation`
+  holds `soundReplacement` across `applySoundTree` and then waits inside `apvts.replaceState` for a
+  parameter's `listenerLock`; the message thread reaches the poll from a TIMER, which runs from any
+  loop that drains the message queue — including one a host pumps from its gesture-end callback,
+  dispatched by JUCE with that same `listenerLock` held.
+
+  **Fixed by ADR-0036 §26:** the two timer entry points never block on `soundReplacement`. Three
+  acquisitions were reachable from them, not the one cited line, and all three are gated; the
+  user-action doors keep the blocking acquisition they have always had. The round's own regression
+  leg G found the third one — `syncCommitted`'s baseline snapshot — after the first attempt gated
+  only two and still measured a 4366 ms wait. State test 94 legs F and G build both edges out of
+  two real threads and measure the nested poll at **0 ms**; reverting each gate in turn (M84, M85,
+  M86) measures ~4.4 s, which is the deadlock with a stopwatch on it.
+
+  **ROUND 20 NAMED THE WRONG LOCK PAIR, AND THE STACKS SAY SO.** Running the suite with the
+  suppressions off and reading the four reports, the `HostSeat` one is
+  `listenerLock` against the APVTS lock exactly as round 20 described — but BOTH of its orders are
+  taken with `soundReplacement` already held, and they were before this round as well:
+    * `HostSeat::audioProcessorParameterChangeGestureEnd` -> `pollUndoCoalesceFromTimer` ->
+      `pollUndoCoalesceAdopted` -> `currentStateSet` -> `copyStateWithRawValues` -> `copyState`.
+      `copyStateWithRawValues` has taken `soundReplacement` since round 17, one line above its
+      `copyState`, so the APVTS lock was never reached without it.
+    * `undo()` -> `applyUndoEntry` -> `applyStateSet` -> `applyStatePreservingView` ->
+      `replaceState` -> `ParameterAdapter::setNormalisedValue` -> `listenerLock`, under
+      `applyStatePreservingView`'s own `soundReplacement`. Its production counterpart,
+      `applySoundTree` on a host thread, is under the same lock by §24.
+  Two threads cannot hold `soundReplacement` at once, so that pair could never close. **What the
+  poll actually deadlocked on was `soundReplacement` itself** — the message thread WAITING for it
+  while holding a `listenerLock` a host thread's `replaceState` was about to want. That is the pair
+  R1204 named and the pair §26 closes. Round 20's escalation pointed at the symptom TSan printed
+  rather than at the edge that could hang, and this paragraph corrects it rather than leaving the
+  stronger claim standing.
+
+  **THE TSAN REPORT IS STILL THERE, AND IS STILL SUPPRESSED.** `deadlock:HostSeat` matched 3 times
+  on the fixed tree. TSan's deadlock detector keeps a PAIRWISE lock-order graph and does not model
+  an outer lock that serialises both orders, so `listenerLock -> … -> APVTS` and
+  `APVTS -> listenerLock` remain an edge pair in it and remain reported. The suppression therefore
+  stays, with its justification rewritten: it is no longer a placeholder for an owner decision, and
+  it never named the cycle that could actually hang. Removing the REPORT would mean removing the
+  nesting — not reading the parameter tree from inside a gesture dispatch at all — which is a larger
+  change with no defect behind it.
+
+  **Residual, stated rather than claimed away.** `PresetManager::saveUser`
+  (`src/PresetManager.cpp:776`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
+  `soundReplacement`, the only durable reader in the tree that does. It cannot join this cycle: it
+  only reads, so it never waits for a `listenerLock`, and it always releases. It is recorded here
+  because the rule the paragraphs above rest on — every APVTS acquisition that can happen with a
+  `listenerLock` held is under `soundReplacement` — is the rule a future edit would break there
+  first.
+
+  Severity of what remains: **Low** — the two-parameter `listenerLock` nesting at the top of this
+  entry, which needs a host to write cross-parameter from inside a dispatch on two threads in
+  opposite orders, and which no listener in this plug-in creates.
+- **ROUND 27 (2026-09-15) — TWO OF THE THREE DOORS ARE MEASURABLY GONE, AND THIS RISK IS STILL
+  OPEN. The two statements are one measurement, not a compromise between them.** Review finding
+  `src/PluginProcessor.cpp:R1390`, *"timer retry deadlocks state replacement"*, is fixed by
+  ADR-0036 §30: `anamorph::param` raises a `thread_local` depth across every parameter dispatch
+  this plug-in starts, and both `flushDeferredCommands` and `pollUndoCoalesceFromTimer` refuse to do
+  anything at all while that depth is non-zero. `scripts/check-dispatch.py` makes the bracket
+  complete rather than merely large, and State test 101 leg J proves the straddle that covers the
+  writes JUCE's own attachment makes.
+  **The evidence is the suppression file shrinking, which is the opposite of how a risk is usually
+  argued away.** Run with suppressions OFF on the round-27 tree, `AnamorphStateTests` raises
+  **two** lock-order reports where the round-26 tree raised four. The two that are gone are the two
+  the predicate answers: State test 93's `HostSeat` and State test 98's `PumpFromGestureEnd`, both
+  of which reach `apvts.copyState()` from `pollUndoCoalesceFromTimer` and both of which pump from a
+  gesture the PLUG-IN opened (the editor's attachment, and the imager's `addBandAt`). Their two
+  entries are therefore DELETED from `tests/tsan-suppressions.txt` rather than kept — an entry that
+  matches nothing widens what a future report can be absorbed by, and deleting it makes a
+  regression loud.
+- **WHAT SURVIVES, NAMED FROM ITS OWN STACK.** The remaining APVTS-vs-`listenerLock` report is
+  State test 100's, and its M0 ⇒ M1 order is
+  `endChangeGesture` → `ParameterChangeForwarder` → the host's pump → `mouseDown` → `addBandAt` →
+  `~ScopedUserTransaction` → `endUserTransaction` → `flushDeferredCommands` →
+  `pollUndoCoalesceAdopted` → `currentStateSet` → `copyStateWithRawValues` → `copyState`. The flush
+  did not refuse because **the gesture it is nested in was opened with a raw
+  `juce::AudioProcessorParameter::beginChangeGesture`** by the harness — deliberately, because that
+  is what a HOST's own gesture looks like, and a host's dispatch raises no depth of ours. So the
+  predicate closes every door whose dispatch this plug-in starts and none whose dispatch the host
+  starts, which is exactly the boundary `src/ParameterDispatch.h` claims for it and no more.
+- **Disposition: RISK-009 remains OPEN.** What is left is the round-20 pair, unchanged in kind:
+  `copyStateWithRawValues` blocks on the APVTS `valueTreeChanging` lock while a parameter's
+  `listenerLock` is held by a dispatch this plug-in cannot see, and the opposite order is a host
+  thread's `setStateInformation` → `applySoundTree` → `replaceState`. Closing it means either
+  keeping the poll off the APVTS lock whenever any gesture dispatch is in flight — which needs a
+  fact JUCE does not publish — or a threading-model change. Both are
+  `ARCHITECTURE_REVIEW_GATE.md` items and an AI-agent hard stop: **this is an owner decision, not
+  an agent's.** `deadlock:PumpedUserInteraction` keeps the REPORT quiet and this entry keeps the
+  RISK. Severity unchanged: **Medium** for this pair, **Low** for the two-parameter nesting above.
 
 ## RISK-010 — The DSP's multiband snapshot is not a snapshot (ESCALATED as an architecture-review item)
 - **Risk:** `PluginParameters::toEngine` builds the per-block DSP view of the multiband layout from
@@ -301,9 +465,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   tearing window on the reader side, so none of them is evidence about this risk in either
   direction.
 
-## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps
+## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps — **RESOLVED (rounds 24 and 25, three doors)**
 - **Risk:** `AnamorphAudioProcessor::parameterGestureChanged` counts open gestures and sets
-  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:812-825`), and
+  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:1247-1423`), and
   `pollUndoCoalesce` turns that into an undo entry. A `SpectrumImager` topology transaction is a
   burst of stores, several of which open and close their own gesture (`setBands`, `setSoloMask`,
   `resetParam`), so the open count returns to zero **inside** the burst. A poll that runs there —
@@ -315,15 +479,54 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   DSP, as RISK-010 describes — but it is a state-correctness one.
 - **Likelihood:** Low as observed (no reported occurrence, and no test in the suite reaches it),
   **structural** as a mechanism: nothing in the current code prevents it.
-- **Evidence [Verified]:** `src/PluginProcessor.cpp:812-825` (the counter), `:827-834`
+- **Evidence [Verified]:** `src/PluginProcessor.cpp:1247-1423` (the counter), `:827-834`
   (`pollUndoCoalesce`), `src/gui/SpectrumImager.cpp` `addBandAt` / `removeBand` (the multi-gesture
   bursts). Carried through the v0.9.8 review rounds as residuals **U1–U3** with a deliberate
   no-fix decision; recorded here on 2026-09-08 because a decision carried only in a worklog is a
   decision that gets lost.
-- **Mitigation until then:** none in code. A fix means either suppressing the poll for the duration
+- **~~Mitigation until then:~~ SUPERSEDED — the entry is RESOLVED, in two halves, by rounds 24 and
+  25.** The paragraph below is kept because its reasoning is why the fix took the shape it did: it
+  said a fix means *"either suppressing the poll for the duration of a burst or giving a transaction
+  one outer gesture, both of which change the undo model"*. The first of those is what round 24
+  built, and it did NOT change the undo model — suppressing the poll turned out to mean SKIPPING it,
+  leaving `pendingGestureCommit` standing so the action commits whole a moment later, which is the
+  model's own behaviour rather than a new one. The second was never needed.
+  ~~none in code. A fix means either suppressing the poll for the duration
   of a burst or giving a transaction one outer gesture, both of which change the undo model and so
   are `ARCHITECTURE_REVIEW_GATE` items in their own right. Deliberately **not** attempted inside a
-  GUI review round.
+  GUI review round.~~
+- **RESOLVED, 2026-09-15. The mechanism had TWO doors and both are now closed**, each with an
+  owner-approved architecture decision recorded in ADR-0008:
+  - **The poll (round 24, Devin R1092).** `userTransactionDepth` counts multi-store user actions —
+    `addBandAt`, `removeBand`, `resetCrossover`, `commitFreqEditor`, `applyAutoGain` — and
+    `pollUndoCoalesceAdopted` skips while it is non-zero, so no poll landing inside a burst can
+    commit half of one. Measured before the fix: one Add-band click, one Undo,
+    `bands 2 (started 2), solo 0x4 (started 0x2)`. State test 98; mutations M96–M100.
+  - **The command (round 25, Devin R1279-1283).** A poll is not the only thing a pumped message loop
+    can deliver. Undo, Redo, the A/B switch and Copy, a preset step, load, file load or save are all
+    ordinary message-thread commands, and every one of them replaces state or clears
+    `pendingGestureCommit` — `undo()` additionally wipes batch ownership, which is what turned the
+    interrupted burst's tail into a partial undo step. They are now queued by
+    `deferWhileUserTransactionActive` and run at the outermost `1 → 0` transition, AFTER the
+    transaction's own step is committed whole. Nothing is dropped. Measured before the fix, State
+    test 99 leg B: `bands 2 and solo 0x4 disagree`. Mutations M101–M107.
+  - **The DRAIN (round 25, found by writing the coverage rather than reported).** The third door is
+    not a command at all: `pollUndoCoalesceFromTimer`'s first line is `adoptPendingHostState`, which
+    sits AHEAD of round 24's guard, so a host-restore adoption reached re-entrantly ran
+    `adoptRestoreTail` → `syncCommitted()` under the open transaction and wiped the same bookkeeping.
+    The burst did not abort by itself because ADR-0036 §12 makes the sound half deliberately skip
+    when `soundSetGen` has not moved — so the per-store guards had nothing to see. The non-blocking
+    (timer) arm now returns consuming NOTHING while a transaction is open; the cell keeps the restore
+    whole and the next door adopts it. Measured before the guard, State test 99 leg I: `bands 3,
+    solo 0x4` and `undo step 1 left bands 2 with solo 0x4`. ADR-0036 §28; mutation M108.
+- **What would re-open it:** a NEW command that replaces a whole sound/state snapshot, or that
+  clears `pendingGestureCommit` / calls `syncCommitted()`, and does not ask
+  `deferWhileUserTransactionActive` first — or a NEW non-command path to a whole-state replacement
+  that does not test `userTransactionDepth`, which is what the third door was. The enumeration in
+  ADR-0008's round-25 command matrix is the list this closure rests on; adding to it without adding
+  the guard re-opens the entry. Nothing in the build enforces that today, which is the honest
+  residual of this closure — and the third door is the measured proof that the enumeration is the
+  weak part: it was written in this same round, and it was one row short.
 
 ---
 
@@ -332,6 +535,296 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 Create the next `RISK-NNN` only when a TODO/FIXME, issue, PR discussion, or concrete code limitation
 supports it. State the likelihood **basis**, cite evidence with a confidence level, and give a
 mitigation. Do not invent risks to fill the template.
+
+## RISK-012 — An undo entry is a whole state, so a host write inside a user's step is undone with it
+- **STATUS, 2026-09-13: RESOLVED. Fixed in 0.9.8 by the maintainer-approved amendment to ADR-0008.**
+  Round 12 recorded this as an accepted residual; round 13 re-classified it as a confirmed production
+  defect against the stated product rule — *host automation is not a user Undo/Redo action* — and
+  escalated it, because every correct fix needed per-parameter attribution and that contradicted
+  ADR-0008's *"undo/redo stacks of `StateSet` snapshots"* in terms. The maintainer approved that
+  amendment on 2026-09-13 and round 14 implemented it. The entry is kept rather than deleted because
+  the reasoning across three rounds is the record of why the architecture changed.
+- **What the defect was.** An undo entry was a whole `StateSet` snapshot, so the entry pushed beside a
+  user's edit necessarily predated any host write that arrived in the commit window, and one Undo took
+  that write back with the edit. Its far endpoint was worse: the redo entry was manufactured from the
+  LIVE parameters at the moment Undo was pressed (`st.redo.push_back (currentStateSet())`), so any
+  automation between the step and the Undo silently became the value Redo restored.
+- **What replaced it.** An entry now carries the parameters the user's own batch moved and both of
+  their endpoints, and the SAME entry moves between the undo and redo stacks. Attribution comes from
+  the change gesture JUCE already reports, read in `parameterGestureChanged` — message-thread-only, so
+  **the Thread Model trigger this entry named does not apply to what was built**: the
+  `parameterValueChanged` design it named as gated was not the one chosen. The multiband display's two
+  unbracketed stores declare themselves through `SpectrumImager::onOwnedWrite`. A preset load and an
+  A/B Copy stay whole-state entries. The full statement is ADR-0008's amendment section.
+- **Measured, not argued.** State test 86: leg Y asserts the canonical sequence (*A -> B by the user,
+  B -> C by the host, Undo gives A, Redo gives B*); leg O asserts that a write in the commit window
+  survives the Undo; leg X asserts the same for a write inside a HELD gesture, in both directions;
+  leg D2 asserts that a split the scroll pushed aside comes back with it. Mutations M49, M50 and M51
+  are each killed by one of them.
+- **Round 15 corrected the declaration, and the correction is part of this entry's record.** Reading a
+  declared parameter's ending value out of the batch's closing snapshot is right for a coupled store
+  made INSIDE a gesture bracket and wrong for one made after the last of them. `resetCrossover` and
+  `commitFreqEditor` close the primary split's gesture before calling `spreadSplits`, so a reset's
+  pushed neighbours were declared with `before == after` and dropped from the step: one Undo restored
+  the reset split and left the neighbours displaced (measured 50 Hz restored, neighbours left at
+  249.8/366.6 against the 200/280 the user had). A declaration now carries the value its own store
+  installed, and only a store that STOOD makes one. State test 86 legs Z, Z2, Z3 and Z4; mutations
+  M55, M56 and M57.
+- **One of round 12's three objections was withdrawn as wrong, and the other two are answered.** The
+  withdrawn one claimed the fix would break the multiband split drag because `dragCrossoverTo`'s
+  pushed neighbours are stored outside any bracket; `SpectrumImager::mouseDown` holds a gesture for
+  the whole drag, so they are inside the batch, and `onOwnedWrite` now names them explicitly. The
+  depth >= 2 objection is answered by construction: an older entry writes only its own parameters, so
+  a host value on any other survives any number of Undo/Redo steps. Redo symmetry is answered by the
+  entry moving between the stacks rather than being rebuilt.
+- **The residual that remains, and it is not this one.** A host write landing between one of the
+  batch's own gestures opening and that same gesture closing is inside the batch by every test the
+  coalescer has — ADR-0053 already records that window — and on a parameter the batch owns it can set
+  that parameter's after-value. It cannot reach a parameter the batch does not own, and it cannot make
+  automation undoable on its own.
+- **RECLASSIFIED 2026-09-14 (round 17): that paragraph described a defect, not an accepted residual,
+  and it under-described it.** The window was not one gesture wide — the endpoints were
+  whole-parameter-list snapshots and the closing one was retaken at EVERY zero-crossing close, so a
+  host write between two gestures of one pending batch replaced the FIRST gesture's after-value and
+  Redo restored the automation as though the user had produced it. Two further faces followed from
+  the same representation: a `before` taken at the batch's open rather than at the parameter's own
+  first ownership, and an empty press turning a concurrent host write into an undoable user edit
+  (the face round 12 tried to fix with a push gate and withdrew). All three are **FIXED**: endpoints
+  are now per parameter, `before` written once at first ownership and `after` only from a value the
+  owning gesture or store produced. State test 90 legs A-F; mutations M61-M65. What remains is an
+  implementation limit with a stated scope — for a parameter written through JUCE's attachment
+  rather than a declaring store, a host write landing after the user's last write to it and before
+  that same parameter's own gesture closes is indistinguishable at the close — and it is recorded as
+  such in ADR-0008 rather than as a product behaviour.
+- **CLOSED 2026-09-14 (round 18): that last sentence was wrong, and the limit it described was the
+  same defect on the other control family.** The window was reachable on every knob, slider, value
+  box, button and combo — the whole editor outside the multiband display — and it was not narrow:
+  a drag writes on `mouseDrag` and closes on a later `mouseUp`, so it spans real message-loop turns.
+  Measured on the real Drive knob at `8b136fa`, a host write arriving before the button came up
+  became the value Redo restored. The stated reason it could not be closed ("it would need
+  `parameterValueChanged`, which is audio-thread-reachable") was also false: JUCE's attachment
+  writes the parameter inside the control's own value-changed dispatch, so the write is observable
+  on the MESSAGE thread at the control, which is where the editor's `AttachmentWitness` now observes
+  it. State test 91 legs A-J; mutations M65-M71. Nothing in ADR-0036 moved.
+- **CORRECTED 2026-09-14 (round 19): round 18's "closed in full" was premature, and it is withdrawn.**
+  The sentence above claimed there was no remaining window in which host automation can become a
+  user's recorded endpoint. There was one, on a third path neither round had looked at: a store the
+  multiband display REFUSES. `storeOwned` reads its own write back and declines to declare when a
+  controller has replaced the value — and the refusal said so only by declaring nothing, which is
+  indistinguishable from an attachment-backed control that has not written yet, so the close fell
+  through to its live read and the controller's value became the user's `after`. Measured on the
+  real display at `98464db` on three paths (State test 92 legs B, C and E, six failing checks).
+  **FIXED**: a refusal is now recorded as a positive fact (`batchEpisodeParam` bit 2) and the close
+  skips the parameter. Mutations M72-M75. What remains is the pre-existing narrow in-gesture window
+  ADR-0008 has recorded since round 16 — a host write inside the bracket of a store that writes with
+  a bare `setValueNotifyingHost` (`resetParam`, `setBands`, `setSoloMask`), where the live read is
+  the only endpoint source there has ever been — and RISK-012 stays open against that alone rather
+  than being declared closed a third time.
+- **CORRECTED AGAIN 2026-09-14 (round 20): the sentence above enumerated ONE remaining window and
+  there were two.** It said what remains is the imager's bare-`setValueNotifyingHost` stores. A
+  second window was still open and the review found it: an attachment-backed **ComboBox or Button**
+  closes its whole gesture inside the control's own listener callback (`setValueAsCompleteGesture`),
+  so the close -- and with it `pendingGestureCommit` and the endpoint live read -- runs BEFORE the
+  round-18 witness can state anything. The host is entered in that gap as the parameter's
+  `finalListener`, and a host that pumps its message loop there gets a nested `pollUndoCoalesce`
+  which commits the live read; the witness's later declaration lands in an entry already pushed.
+  Measured on the real Algorithm combo at `e9a0353` (State test 93 legs A, E, J). **FIXED**: the
+  control states what it is about to ask for before handing over to the attachment, and the close
+  prefers that request to its live read. Mutations M76-M82.
+- **STATUS AFTER ROUND 20: STILL OPEN, and deliberately NOT reclassified as an accepted residual.**
+  What remains is the imager's gesture-bracketed bare stores (`resetParam`, `setBands`,
+  `setSoloMask`; `src/gui/SpectrumImager.cpp:899-914` is the shape), which declare no endpoint at
+  all, so a host write landing inside their own `setValueNotifyingHost` is still live-read as the
+  user's `after`. That violates the stated product rule -- host automation must never become a
+  user's endpoint -- so it does not meet the bar for an accepted residual and is recorded as an open
+  defect rather than a tolerated one. The round-20 request mechanism generalises to it (such a store
+  knows what it is installing), which is the recommended next step; it is **not** done here because
+  this round's scope is the attachment path, and widening it is the owner's call.
+- **ROUND 21 (2026-09-15): the window round 20 left open is FIXED, and it did not need the request
+  mechanism.** Review finding `src/PluginProcessor.cpp:R1078-1081` named exactly the three stores
+  the paragraph above names. They now use the read-back shape `storeOwned` has used since round 15 —
+  capture `was`, compute what the parameter will render, write, compare — and report through the
+  existing `onOwnedWrite` / `onOwnedRefused` callbacks. No parallel attribution system: the mechanism
+  that was already correct was simply extended to the three sites that had never been brought under
+  it. Their topology-guard branches report a refusal too, because a gesture that opened and closed
+  having written nothing leaves the live value equal to whatever a host put there. Measured at
+  `16852e1`: State test 94 leg A (a width reset the host answers re-entrantly — Redo landed on the
+  host's 1.6400) and leg H2 (the solo mask — Redo landed on the host's 2.0000); both pass with the
+  fix and both fail again under mutation M83.
+- **STATUS AFTER ROUND 21: STILL OPEN, and still not reclassified.** One window remains and it is
+  the one ADR-0008 has always named separately: a gesture that produces **no write at all** — an
+  empty press — where the close's live read is the only thing there is, so a host write landing
+  inside that press is indistinguishable from the user's own value. It is smaller than any previous
+  statement of this risk and it is the last of the enumerated windows, but "smaller" is not
+  "closed", and this entry has been declared closed prematurely twice (rounds 18 and 19). It stays
+  OPEN until an empty-press leg measures it shut.
+
+- **ROUND 22 (2026-09-15): the empty-press window is CLOSED FOR EVERY GESTURE ANAMORPH'S UI OPENS,
+  and what is left is smaller and differently shaped.** The round began by trying the obvious repair
+  — delete the close's live read outright, since `noteFirstOwnership` already seeds `after` to
+  `before` so an episode that produced nothing would record no step. **Measured, and it is wrong:
+  42 assertions across the state suite fail.** A gesture the EDITOR DID NOT OPEN reaches the close in
+  the same `ep == 1` state — a host's own generic editor brackets `setValueNotifyingHost` in a
+  begin/end pair through the wrapper and declares nothing — and that IS a user edit whose endpoint
+  the live value is the only record of. The discriminator cannot live at the close, because at the
+  close the two are identical; it lives where the difference exists, which is the editor.
+  - `AttachmentWitness` (`src/PluginEditor.h`) now states a REFUSAL at `sliderDragEnded` when nothing
+    the control did moved the parameter between its drag start and its drag end. JUCE opens the
+    gesture from `SliderParameterAttachment::sliderDragStarted` and closes it from `sliderDragEnded`,
+    and the witness's BEFORE hook is registered ahead of JUCE's attachment, so the refusal is recorded
+    before `endChangeGesture` runs. That covers every knob, slider and value box: a press that never
+    moves the control, and a host push that arrives during one.
+  - `SpectrumImager::endGesture` states the same refusal for every gesture opened through it — the
+    one place those close. That covers `writeCrossovers`' early exits (topology moved, or the plan
+    inside `kSplitMovedPx`), the wheel's split and width branches declining at a rail, and a width
+    press inside the 3 px dead zone whose own comment has claimed since ADR-0046 that it makes
+    "no automation/undo step". It is stated unconditionally rather than only when nothing was stored,
+    because it carries no value and the close already skips a parameter whose store DECLARED an
+    endpoint (bit 2) before it consults the refusal bit.
+  - `resetCrossover` and `commitFreqEditor` do NOT go through that pair — they bracket their own
+    gestures with `beginChangeGesture` / `endChangeGesture` directly — and their `ok = (i < M)` arm
+    leaves the gesture open around no store at all when the handle is no longer live (`M` is re-read
+    AFTER `beginChangeGesture`, which dispatches, so a host lane can drop Bands inside the open).
+    Each therefore states its refusal at its own site, as `resetParam`, `setBands` and `setSoloMask`
+    have since round 21. Recorded rather than glossed: this round's first draft put the refusal only
+    in `endGesture` and wrote a comment there claiming coverage it did not have.
+  - **And that pair's refusal is UNOBSERVABLE on the current head, which is stated rather than
+    claimed away.** State test 94 leg L builds the window — the probe drops Bands and automates the
+    split from inside the reset's own gesture open — and measures no undo step; mutation **M93**,
+    which removes the refusal, measures no undo step either. So something older than round 22 already
+    shuts this one, and this round did not isolate which rule. The refusal stays because it makes the
+    property local to the two functions rather than dependent on a mechanism two subsystems away, and
+    M93 is recorded as a SURVIVOR.
+  - None of it is a new mechanism: bit 4 is round 19's refusal, and it has suppressed the close's live
+    read since then. What round 22 adds is the missing sentence at the places that never said it.
+  - **Evidence.** State test 88 leg O (a knob pressed and released with host automation landing inside
+    the press: one gesture bracketed, the host's value live, and NO step recorded — plus a control leg
+    where a press that does move the knob is still one undoable step whose Redo restores the user's own
+    value), and State test 94 leg K (the same shape on the imager's width line). Mutations **M91** (drop
+    the witness's refusal) and **M92** (drop the imager's) each fail exactly their own leg.
+- **STATUS AFTER ROUND 22: OPEN, and narrowed to a gesture Anamorph's UI never opened.** What remains
+  is a HOST-OPENED, HOST-EMPTY gesture: the host brackets a change gesture through the wrapper, writes
+  nothing inside it, and its own automation moves that parameter during the bracket. The close's live
+  read then attributes the automation to that gesture. It is not reachable from this plug-in's editor,
+  and it cannot be told apart at the close without a threading-model change (`ARCHITECTURE_REVIEW_GATE`)
+  — the wrapper's gesture and the wrapper's automation arrive on the same thread through the same API,
+  and the 42 failing assertions above are what the plug-in would have to give up to refuse them both.
+  It stays OPEN rather than being reclassified: this entry has been declared closed prematurely twice
+  (rounds 18 and 19), and a residual is accepted by the owner, not by the agent that narrowed it.
+- **ROUND 23 (2026-09-15): THE RESIDUAL IS DISPOSED OF DEFINITIVELY, AND ROUND 22'S STATEMENT OF IT
+  WAS WRONG IN BOTH DIRECTIONS.** Round 22 said the remaining class was "a host-opened, host-empty
+  gesture" and that it "cannot be told apart at the close without a threading-model change". Both
+  halves are corrected by measurement.
+  - **A HOST CANNOT OPEN A GESTURE ON THIS PLUG-IN'S PARAMETERS AT ALL.** Measured across the pinned
+    JUCE tree at this head: `grep -rnE '(\.|->)(begin|end)ChangeGesture'
+    build/_deps/juce-src/modules/juce_audio_plugin_client/` returns **zero**. All 14 "ChangeGesture"
+    hits in that directory are the OUTBOUND `audioProcessorParameterChangeGestureBegin/End`
+    overrides -- the plug-in telling the host -- across VST3, AU, AUv3, AAX, LV2, VST2, Standalone
+    and Unity. LV2 discards a host touch explicitly: `void gesture (LV2_URID, bool) const noexcept {}`,
+    with the comment *"The host probably shouldn't send us 'touched' messages."* A host write arrives
+    as a VALUE, never as a bracket. **The class round 22 left open is empty in every shipped format.**
+  - **AND WHAT WAS ACTUALLY REACHING THE LIVE READ WAS OURS.** Enumerating every gesture opener in
+    the tree rather than reasoning about hosts turned up two first-party paths that opened a change
+    gesture and declared nothing, so the close's live read decided their endpoint:
+    `AnamorphAudioProcessor::applyAutoGain` -- the editor's **Apply Gain** button, the last bare
+    bracket in the tree and the one round 21 never reached because it does not live in the imager --
+    and `Knob`'s Alt-click and double-click resets, whose ADR-0052 guard `resetWouldMove()` asks the
+    SLIDER while the parameter can already be sitting on the default (a parameter written without
+    notifying never reaches `ParameterAttachment`; an off-message-thread write reaches it only
+    through `triggerAsyncUpdate`). Both are fixed at the site in round 23 by the same sentence every
+    other store says -- declare (bit 2) or refuse (bit 4). Measured before the fix, State test 96
+    leg A: `Undo -> 6.0000, Redo -> -11.5000`, the host's re-entrant answer standing as the user's
+    Redo destination.
+  - **THE COMPLETE ATTRIBUTION MATRIX**, every class, as the code stands after round 23:
+
+    | # | Gesture class | Who opens it | What declares the endpoint | User-produced endpoint provable? |
+    |---|---|---|---|---|
+    | 1 | slider / value-box drag | JUCE attachment (`sliderDragStarted`) | `AttachmentWitness` after-hook, bit 2 | **yes** |
+    | 2 | slider / value-box press that moves nothing | JUCE attachment | `notePressEnded`, bit 4 (round 22) | n/a -- nothing was produced |
+    | 3 | ComboBox / Button | attachment's `setValueAsCompleteGesture` | the round-20 `attachRequest` | **yes** |
+    | 4 | imager drag, wheel branch, width press | `SpectrumImager::beginGesture` | `storeOwned` bit 2, else `endGesture`'s bit 4 (round 22) | **yes** / nothing |
+    | 5 | `resetParam`, `setBands`, `setSoloMask` | their own bracket | bit 2 or bit 4 at the site (round 21) | **yes** / nothing |
+    | 6 | `resetCrossover`, `commitFreqEditor` | their own bracket | bit 2, else unconditional bit 4 (round 22) | **yes** / nothing |
+    | 7 | `Knob` Alt-click / double-click reset | `Knob::mouseDown` / `mouseDoubleClick` | bit 2 if the parameter moved, else bit 4 (**round 23**) | **yes** / nothing |
+    | 8 | Apply Gain (`applyAutoGain`) | its own bracket | read-back: bit 2 if the store stood, bit 4 if not (**round 23**) | **yes** / nothing |
+    | 9 | generic HOST-editor gesture | **nobody -- no wrapper opens one** | -- | class is empty |
+    | 10 | host-only gesture | **nobody** | -- | class is empty |
+    | 11 | refused write | -- | bit 4 | correctly none |
+    | 12 | no-op write | -- | every wrapper suppresses the callback before it dispatches | correctly none |
+
+  - **WOULD SUCH A BRACKET PRODUCE A STEP IF IT COULD OCCUR? YES -- nothing blocks it.** This was
+    traced through `pollUndoCoalesceAdopted` to the push rather than assumed: with `ep == 1` the
+    close writes the live value into `batchCloseValue`, the rendered endpoints differ, `edits` is
+    non-empty and the entry is pushed. There is no older invariant standing in the way. That matters
+    for the harness, which CAN produce the bracket and does so in 42 assertions.
+  - **DISPOSITION: the defect class is CLOSED for every shipped format; the live read is KEPT and is
+    now harness-only.** After rows 1-8 above, no path a user can drive reaches the `ep == 1` arm, and
+    rows 9-10 cannot occur. The read at the batch close therefore has no shipped consumer. It is not
+    deleted in this round because deleting it is a decision about what the TEST HARNESS should encode
+    -- 42 assertions bracket a bare `setValueNotifyingHost` to stand in for a user edit, a shape no
+    wrapper produces -- and that is a separate change from the attribution fixes, which would confound
+    the evidence for both if made together. **Recommended, and the owner's to take:** replace those 42
+    brackets with a helper that also declares ownership, then delete the arm. Until then this entry
+    stays OPEN against the harness shape alone, with no shipped-format exposure.
+## RISK-013 — The foreign-write test counts raw parameter stores where everything else asks the rendered value
+- **STATUS, 2026-09-13: FORMALLY ACCEPTED RESIDUAL.** Correct and one-directional, and the same item
+  the review has also raised as "inaudible writes split scrolls" — not two findings.
+- **Risk:** the poll's foreign test is `foreignSinceEdge || (snapGen != gestureEdgeGen)`, and both
+  terms are differences of `soundParamGen`, which `parameterValueChanged` bumps for EVERY store (JUCE
+  notifies its listeners unconditionally). `foreignSinceEdge` itself is set at a batch's first gesture
+  open when the counter moved since the last edge. Every other "did the sound change" test asks
+  `soundSignature()`, which signs the RENDERED value — `convertTo0to1 (convertFrom0to1 (v))`, snapped
+  to the parameter's own grid (`src/PluginParameters.h`). Three write classes therefore move the
+  counter and not the signature: inside one step of any of the 15 host-automatable discrete
+  parameters (whose `getValue()` keeps the exact normalised value on purpose); inside one interval of
+  an interval-snapped float (29 of the 33 preset-carried parameters); and below the signature's own
+  1e-5 quantum on the four log-mapped frequency ranges, which have no interval at all (worst case
+  1.38 Hz at 20 kHz).
+- **THE TWO HALVES DO NOT DISAGREE — they answer different questions**, and the entry said otherwise
+  until 2026-09-13. The non-gesture fold asks *"has the rendered sound changed?"*, which is the right
+  question for whether there is anything to record. The foreign test asks *"did somebody else store
+  into the batch I am about to commit?"*, and the quantity an entry stores is the RAW value
+  (`p->getValue()`), so the store is the right test for it. A rendered foreign test would let an
+  off-grid host write merge into a user's scroll, which is the error ADR-0053 §5.3 exists to prevent.
+- **Impact:** a scroll chain is ended by a write that changes nothing audible, so each further notch
+  becomes its own undo step while such a lane is moving. `foreign` has exactly two consumers — the
+  `extend` test and the chain name — and neither changes what an entry CONTAINS, so the error is
+  one-directional: **extra undo steps only. No lost edit, no wrong value, and never automation merged
+  into a user's step.** One second-order cost: extra steps reach the 128-entry cap sooner, so deep
+  history is evicted earlier than a coalesced chain would evict it.
+- **Bound:** the write has to land in a gesture-edge gap that contains no 24 Hz poll (a poll otherwise
+  absorbs it at the tail), so the ceiling is one chain break per poll period, and only while the user
+  is scrolling AND a lane is writing a non-view parameter. With no scroll in flight it has no effect
+  at all. Audio-thread-reachable on VST3, where the wrapper compares the host's request against the
+  already-snapped `getValue()` — so an off-grid request is never "equal" and notifies every time.
+  Not measured in a real host.
+- **Round 13 (2026-09-13) — unchanged in kind, marginally more frequent.** The R977-978 ordering fix
+  (`fresh`, then `snapGen`, then `foreign`) changed WHEN the counter is read, not WHAT it counts.
+  Because `gestureEdgeGen <= gen <= snapGen`, the new predicate is a superset of round 12's: writes
+  landing while `soundSignature()` is being built used to be absorbed into both the baseline and the
+  edge and counted nowhere, and are now counted. Slightly more often, in the safe direction.
+- **Round 14 (2026-09-13) — one face of it CLOSED.** A rendered-preserving host write is never folded
+  into `committed` (the fold is gated on `sig != committedSig`), so the baseline stayed at the
+  pre-write raw value and the write was swept into whatever step was pushed next. Under ADR-0008 as
+  amended a step contains only what the batch declared its own, so an unfolded write on a parameter
+  the user did not touch is in no step at all. What remains is purely the granularity cost above.
+- **Why the granularity half is not fixed — cost, not impossibility.** Making the two agree means
+  comparing each store against a per-parameter cache of the last RENDERED value inside
+  `parameterValueChanged`, which the header records as reachable from the AUDIO THREAD. The arithmetic
+  is allowed there and the callback is lock-free, so the blockers are architectural: the cache is new
+  state written from two threads — a **Thread Model change** under `ARCHITECTURE_REVIEW_GATE.md` — and
+  it redefines a cross-thread counter that `PresetManager::isDirty` and the poll's own skip key their
+  caches on, where an implementation that MISSES a rendered change leaves a stale dirty-star. Not a
+  wheel fix, and wider than the review that found it.
+- **Mitigation:** recorded and measured. State test 86 leg W drives a sub-step write on a choice
+  parameter and asserts that the rendered value really did not move; the split it causes is **printed
+  when it occurs, not asserted**, so the leg stays a measurement and does not lock the current
+  granularity in as correct. Leg W reaches only the gesture-open half (`foreignSinceEdge`); the
+  `snapGen != gestureEdgeGen` half is uncovered for an inaudible write.
+- **Evidence [Verified]:** `src/PluginProcessor.cpp` (`pollUndoCoalesceAdopted`'s foreign test, the
+  `extend` gate, the chain name and the non-gesture fold); `src/PluginProcessor.h`
+  (`parameterValueChanged`); `src/PluginParameters.h` (`normalisedAsRendered`, the grid note);
+  `src/PluginParameters.cpp` (the raw-value discrete parameters). Measured by State test 86 leg W.
 
 ## RISK-006 — Undeclared licensing (no LICENSE, no approved EULA, JUCE tier unchosen)
 - **Risk:** The repository root has **no `LICENSE` file** and neither installer presents an
@@ -384,7 +877,7 @@ mitigation. Do not invent risks to fill the template.
   inside that window is ordered after the restore.
 - **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:1727-1826 read
+  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:2747-2846 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -462,7 +955,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:1727`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:2747`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -471,8 +964,8 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:1263`, against `canUndo()`; the `abUndo` vector's internals twice, via
-  `UndoStacks::operator=` (`src/PluginProcessor.h:250`) against the reader's iteration; and the
+  `src/PluginProcessor.cpp:2283`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `UndoStacks::operator=` (`src/PluginProcessor.h:571`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture
   change.

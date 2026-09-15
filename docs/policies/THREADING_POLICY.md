@@ -119,6 +119,92 @@ message thread under the parameter's `listenerLock`, and a widget callback reach
 `currentStateSet` from there would take the locks in the reverse of a host install's order. None is
 reached from a listener today; none may be in future.
 
+**ROUND 21 (2026-09-15) — THAT LAST SENTENCE WAS FALSE, and the way it was false is the part worth
+keeping.** "None is reached from a listener today" was checked against this plug-in's own listener
+callbacks, which are lock-free, and it is true of them. It is NOT true of the dynamic extent a
+listener callback creates. `AudioProcessorParameter` holds the parameter's `listenerLock` across
+the whole listener walk INCLUDING `finalListener`, which is the host wrapper's seat; a host that
+pumps its message loop from there runs the plug-in's TIMERS inside that extent — and the editor's
+24 Hz timer polls, and the poll reached `currentStateSet`. So `soundReplacement` was being taken
+from inside a parameter listener callback after all, by a path no grep for "listener" finds, and it
+could WAIT there for a host thread's `applySoundTree` that was itself waiting for that same
+`listenerLock`. Review finding `src/PluginProcessor.cpp:R1204`; measured at ~4.4 s in State test 94
+legs F and G against the pre-fix code.
+
+**The rule is therefore restated with the clause that was missing, and the code now enforces it:**
+nothing that takes `soundReplacement` may run from a parameter listener callback **or from any
+timer, message-loop callback or other work a host can pump from inside one — unless it takes the
+lock without waiting.** The two timer entry points (`AnamorphAudioProcessor::timerCallback` and
+`pollUndoCoalesceFromTimer`) use `ScopedTryLock` and give the tick up rather than block; the
+user-action doors, which a host cannot reach from inside a dispatch, keep their blocking
+acquisition. ADR-0036 §26 carries the decision and the three acquisitions it covers. The general
+lesson for future edits: a rule of the form "nothing reaches X from a listener" has to be checked
+against what a HOST may run inside the callback, not only against what this code calls there.
+
+**ROUND 26 (2026-09-15) — AND THE CLAUSE ABOUT USER-ACTION DOORS WAS FALSE IN ITS TURN.** Round 21
+wrote *"the user-action doors, which a host cannot reach from inside a dispatch, keep their blocking
+acquisition."* A host reaches them exactly as it reaches the timers: it pumps its message loop from
+the listener callback and the pump delivers a queued UI event. Round 25 then put the blocking poll
+at the user transaction's outermost `1 -> 0` boundary — a boundary the pump can reach, because the
+event it delivers is the click that opens **and closes** the transaction. Review finding
+`src/PluginProcessor.cpp:R651`; measured at 412.4 ms in State test 100 leg B against the pre-fix
+code, with a non-announcing holder of `soundReplacement` parked and the message thread sitting in
+`endChangeGesture` holding a parameter's `listenerLock`.
+
+**The rule, restated once more and now without the exemption:** nothing that takes
+`soundReplacement` may WAIT for it from a parameter listener callback or from anything a host can
+pump from inside one — and *which door it is* does not enter into it. `flushDeferredCommands`
+(ADR-0036 §29) takes the lock with a `ScopedTryLock` and refuses without consuming anything; both
+polls retry it. **The remaining blocking acquisitions are a known open item, not a cleared one:**
+`undo()`, `redo()`, the A/B paths and the preset loads still block when reached directly by a pumped
+click with no transaction running, and RISK-009 records that as OPEN. The general lesson, now twice
+learned: a rule of the form *"nothing reaches X from a listener"* must be checked against what a
+HOST may run inside the callback — and an exemption of the form *"…except this class of caller"*
+must be checked the same way, because the pump does not know the classes.
+
+**ROUND 27 (2026-09-15) — AND THE RULE FINALLY HAS A PREDICATE.** Round 21's "checked against what
+a host may run inside the callback" was, for six rounds, a review instruction: nothing in the tree
+could ASK whether execution was inside a listener's dynamic extent, so every application of the rule
+was an argument about reachability rather than a test. Round 21 also established why the obvious
+implementation fails — a depth kept around this plug-in's own listener body *"reads zero at exactly
+the moment it would need to read one"*, because JUCE calls the `finalListener` LAST and the
+`finalListener` is what relays to the host, which is where the pump is.
+
+`src/ParameterDispatch.h` (ADR-0036 §30) puts the bracket on the CALL instead. The three
+`AudioProcessorParameter` entry points are non-virtual, so a caller is the only place that can
+bracket them; `anamorph::param`'s four wrappers raise a `thread_local` depth across each, and
+`scripts/check-dispatch.py` fails the build on a raw member call anywhere in `src/`. The one write
+the lint cannot see — JUCE's own attachment — is bracketed by `AttachmentWitness`'s existing
+straddle and regression-tested by State test 101 leg J.
+
+**The rule as it now stands, and what enforces each half:**
+
+| clause | enforced by |
+|---|---|
+| nothing that can WAIT for `soundReplacement` may run from the deferred-command flush while this thread is inside a parameter dispatch | `anamorph::param::insideDispatch()` in `flushDeferredCommands`; State test 101 legs A–J, mutation M120 (411.9 ms against 0.1 ms) |
+| every parameter dispatch this plug-in starts raises the depth | `scripts/check-dispatch.py`, with a self-test in both directions |
+| a JUCE attachment's own write raises it too | `AttachmentWitness`'s before/after straddle; State test 101 leg J |
+| a refusal consumes nothing and is retried | unchanged from §26/§29 — both polls call the flush |
+
+**Still OPEN, and not narrowed by the above:** `undo()`, `redo()`, the A/B paths and the preset loads
+block when a pumped click reaches them **directly**, with no transaction running and therefore no
+flush involved. The predicate now exists to close that too, but doing so means deciding what a
+refused *direct* user action should do — there is no queue holding it — and that is a product
+decision the owner has not been asked for. RISK-009 records it.
+
+**GIVING THE TICK UP IS NOT FREE, AND ROUND 22 PAID THE DIFFERENCE (ADR-0036 §27).** "Take the lock
+without waiting" answers the deadlock and says nothing about what the caller has already CONSUMED by
+the time it tries. The restore drain had taken the decode out of `pendingRestore` before its try, so
+a failed acquisition skipped the sound re-install on a restore that no longer existed anywhere —
+`ExchangeCell` has no put-back — and published that restore's metadata over another session's sound,
+permanently. §26's own safety argument for skipping ("exactly one site is ever held by another
+thread… an off-thread save takes no lock at all") was false against the holder that matters: an
+off-message-thread `getStateInformation` reaches `copyStateWithRawValues`, which takes this very lock
+and announces no generation. **So the rule gains a second clause: a non-blocking acquisition must
+cover everything the operation has to do atomically, and an operation that cannot complete must
+consume nothing.** The drain's acquisition now spans the take AND the re-install, and a failed try
+returns with the restore still whole in the cell.
+
 **One whole-sound replacement at a time (D-2 round 17, ADR-0036 §24).** A replacement of the entire
 live sound — a restore's install, an undo, a redo, an A/B apply, a preset load — is
 `apvts.replaceState` (locked by JUCE) followed by a LOOP of per-parameter writes that is not. Two of
@@ -203,7 +289,7 @@ relies on.
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-190;
-  src/PluginProcessor.cpp:117-139, 330; src/InternalState.h:175, 548-571
+  src/PluginProcessor.cpp:130-152, 347; src/InternalState.h:175, 548-571
 - D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
   generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,
   `getStateInformation`); ADR-0036; State tests 37–41; the `tsan` job in
