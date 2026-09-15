@@ -4301,10 +4301,12 @@ topology re-proof stays adjacent to the store. State test 94 leg J; mutation M90
 
 The obvious fix is to delete the close's live read: `noteFirstOwnership` seeds `after` to `before`, so
 an episode that produced nothing would record no step. **Measured: 42 assertions fail.** A gesture the
-EDITOR DID NOT OPEN reaches the close in the same `ep == 1` state — a host's own generic editor
-brackets `setValueNotifyingHost` in a begin/end pair through the wrapper and declares nothing — and
-that is a real user edit whose endpoint the live value is the only record of. The discriminator
-therefore lives in the editor, not at the close: `AttachmentWitness` states a refusal at
+EDITOR DID NOT OPEN reaches the close in the same `ep == 1` state — ~~a host's own generic editor
+brackets `setValueNotifyingHost` in a begin/end pair through the wrapper and declares nothing~~ — and
+that is a real user edit whose endpoint the live value is the only record of. *(The struck clause is
+FALSE and was corrected in §80: no JUCE wrapper makes an inbound `beginChangeGesture` call at all. The
+42 are the harness's own bare brackets plus `applyAutoGain`; the measurement stands, its explanation
+did not.)* The discriminator therefore lives in the editor, not at the close: `AttachmentWitness` states a refusal at
 `sliderDragEnded` when nothing the control did moved the parameter, and `SpectrumImager::endGesture`
 states one for every gesture the display opens. Both use round 19's existing refusal bit; no new bit,
 vector or state. State test 88 leg O (with its own positive control) and State test 94 leg K;
@@ -4327,3 +4329,98 @@ the session's GitHub principal is this PR's author.
 State 3 464 / 0, DSP 396 / 0. ThreadSanitizer: exit 0, zero warnings, both suppression entries matched
 (3 × `deadlock:HostSeat`, 1 × `deadlock:WriteFromInsideAGestureOpen`) — the CI assertion that the
 matched-entry count equals the file's entry count still holds at 2. Mutations M89–M92 all killed.
+
+
+## §80. Round 23 — the endpoint a first-party bare bracket never stated, and the two survivors
+
+**Trigger.** Five items on PR #144 at head `647c3ae`: `src/PluginProcessor.cpp:R1117-1119` (a generic
+host control's Redo destination), RISK-012 still open, the documentary architecture review for
+ADR-0036 §26/§27 and ADR-0053, the M93 mutation survivor, and full re-validation.
+
+### R1117-1119 — the headline was right, the mechanism named in it does not exist
+
+The finding described a **generic HOST editor** opening a gesture, writing a user value A, taking
+host automation to B before the close, and Redo landing on B. The first half of that path cannot
+happen in any shipped format, and it is one grep:
+
+    grep -rnE '(\.|->)(begin|end)ChangeGesture' build/_deps/juce-src/modules/juce_audio_plugin_client/
+
+returns **zero** across VST3, AU, AUv3, AAX, LV2, VST2, Standalone and Unity. All 14 "ChangeGesture"
+hits in that tree are the OUTBOUND `audioProcessorParameterChangeGestureBegin/End` overrides —
+the plug-in telling the host. LV2 is explicit about discarding the inbound direction:
+`void gesture (LV2_URID, bool) const noexcept {}`. So the `ep == 1` arm of the batch close — gesture
+opened, nothing declared, nothing refused — is not reachable from a host at all.
+
+**The defect underneath it is real, and it is first-party.** Two sites in this tree still opened a
+gesture and wrote without telling the batch what the write produced, so the close's live read was the
+only record of the endpoint — and a host write landing in that window became the Redo destination,
+which is exactly what ADR-0008 forbids:
+
+* **`applyAutoGain`** (the editor's Apply Gain button) was a bare
+  `beginChangeGesture(); setValueNotifyingHost(); endChangeGesture();` on `pid::outputGain` and
+  `pid::autoGainMatch`. It now uses the same read-back shape every other store has used since round
+  15: capture `was`, compute `expect = convertTo0to1 (convertFrom0to1 (norm))`, write, compare, then
+  `noteOwnedParamWrite` or `noteOwnedParamRefused`.
+* **`Knob`'s Alt-click and double-click resets** ask `resetWouldMove()`, which asks the SLIDER. The
+  slider can lag the parameter — a quiet write never reaches `ParameterAttachment`, and an
+  off-message-thread write reaches it only through `triggerAsyncUpdate` — so the reset can run,
+  JUCE's attachment can drop the write as a no-op, and nothing is declared. Both paths now state a
+  refusal (`noteResetProducedNothing`) between `doReset()` and `endChangeGesture()`.
+
+**A write-time hook in `parameterValueChanged` was considered and rejected on evidence**, not on
+taste. It is audio-thread reachable (VST3 `process` → `processParameterChanges`), the batch vectors
+are non-atomic message-thread-owned state, `MessageManager::existsAndIsCurrentThread()` takes a
+`std::mutex`, and the hook receives no provenance anyway — message-thread `parameterValueChanged`
+also fires for undo, redo, A/B and preset loads through `reassertParameters`. Declaring at the SITE
+uses round 17's and round 19's existing bits: no new bit, no new vector, no parallel framework.
+
+**The close's live read was KEPT.** Deleting it still fails 42 harness assertions (re-measured), and
+those 42 are bare brackets the SUITE writes plus `applyAutoGain` — not host generic editors. What
+changed is the justification: the in-source comment now carries the grep and the enumeration instead
+of the false claim round 22 wrote there, which also contradicted a correct statement 79 lines above
+it in the same file.
+
+**Coverage.** State test 96 legs A (Apply Gain answered re-entrantly — before the fix
+`Undo -> 6.0000, Redo -> -11.5000`), B (the uninterrupted control) and C (a reset against a stale
+slider, with the host write at the gesture CLOSE). Mutations M94 and M95, each killed by its own leg.
+
+### RISK-012 — a definitive disposition, not a narrowed residual
+
+The round-22 residual was "a host-opened, host-empty gesture". The grep above dissolves it: a host
+cannot open one. The twelve-row attribution matrix in `docs/FUTURE_RISKS.md` records, for every
+gesture class this tree can produce, whether a user-produced endpoint can be PROVEN — plugin
+attachment gestures, plugin-generated gestures, wheel gestures, reset gestures, generic host-editor
+gestures, host-only gestures, empty gestures, refused writes and no-op writes. Rows 9 and 10 (generic
+host-editor and host-only) are **EMPTY in every shipped format**, by measurement rather than by
+argument.
+
+### M93, and then M87 and M88
+
+**M93 was not equivalent — the leg was blind.** State test 94 leg L's probe fired on the gesture
+OPEN, and JUCE dispatches parameter listeners in REVERSE registration order
+(`juce_AudioProcessorParameter.cpp:80`, `:103`, `:115` all walk `for (int i = listeners.size(); --i >= 0;)`),
+so a probe registered after the processor runs BEFORE the processor's bookkeeping and the host's
+value became the step's `before` instead of contending with its `after`. Moving the automation to the
+CLOSE kills M93.
+
+**M87 and M88 were left standing by round 22 with a harness reason each, and both reasons were
+wrong.** M87's window is reached through `seams.afterRestoreTake`, which fires between the take's
+lock release and the tail's snapshot — the two jobs round 22 looked for one seam to do are on
+opposite sides of one lock release. M88's door is driven through
+`juce::Timer::callPendingTimersSynchronously()`, which runs every due timer on the calling thread with
+no message loop, so the shipped 24 Hz tick can be measured without opening up anything in production.
+State test 97 legs A and B; under M88 the slowest pass took **4387 ms**. Recording them as survivors
+rather than arguing them away as equivalent is what made them findable a round later.
+
+### Gates
+
+The owner's approval of ADR-0053 and of ADR-0036 §26/§27 is recorded where this repository records
+architecture decisions — in the ADRs' own Status blocks, in both gate tables' step-2 rows, and in
+`ADR_INDEX.md`. `ARCHITECTURE_REVIEW_GATE.md` §Procedure step 2 names no medium ("a human reviewer
+with DSP/audio context reviews against the relevant Policy + ADR"), and the word "approv" appears
+**zero** times in `ARCHITECTURE_REVIEW_GATE.md`, `AI_AGENT_POLICY.md`, `ADR_POLICY.md` and
+`DOCUMENTATION_LIFECYCLE_POLICY.md` — counted, not inferred, and not read off the GitHub UI. The
+round-22 passages saying the artifact was an instruction to make the change rather than a review of
+the change as made are marked SUPERSEDED in place rather than deleted, because what they establish
+about the policy is still true. No `APPROVED` GitHub review was manufactured and the PR was not
+self-approved.

@@ -2440,6 +2440,31 @@ struct WriteFromInsideAStoreQuietly final : public juce::AudioProcessorParameter
     }
     void parameterGestureChanged (int, bool) override {}
 };
+// ROUND 23. A HOST WRITE THAT LANDS AT THE GESTURE **CLOSE**, which is a different instant from
+// `WriteOnGestureOpen`'s and is the one that reaches the batch close's live read.
+//
+// WHY THE DISTINCTION IS LOAD-BEARING, and it is what made mutation M93 survive round 22. JUCE
+// dispatches a parameter's listeners in REVERSE registration order
+// (juce_AudioProcessorParameter.cpp:80, :103, :115 all walk `for (int i = listeners.size(); --i >= 0;)`),
+// and a test adds its probe AFTER the processor has registered its own. So a probe armed on the
+// gesture OPEN runs BEFORE `AnamorphAudioProcessor::parameterGestureChanged` seeds the batch, and the
+// host's value becomes the step's `before` -- where the close's live read agrees with it and no
+// endpoint can disagree. Armed on the CLOSE, the probe runs before the processor's close logic and
+// the live read is the first thing to see the host's value, which is the window under test.
+struct WriteOnGestureClose final : public juce::AudioProcessorParameter::Listener
+{
+    juce::RangedAudioParameter* target = nullptr;
+    float to = 0.0f;
+    bool  armed = false, fired = false;
+    void parameterValueChanged (int, float) override {}
+    void parameterGestureChanged (int, bool starting) override
+    {
+        if (! armed || starting || target == nullptr) return;
+        armed = false;
+        fired = true;
+        target->setValue (target->convertTo0to1 (to));   // quiet: the batch must not see a store
+    }
+};
 struct WriteFromInsideAStore final : public juce::AudioProcessorParameter::Listener
 {
     juce::RangedAudioParameter* target = nullptr;
@@ -12457,25 +12482,41 @@ static void testBareStoresDeclareTheirEndpointAndThePollNeverWaits()
 
         if (hx >= 0.0f && loP != nullptr)
         {
-            struct DropBandsAndAutomate final : public juce::AudioProcessorParameter::Listener
+            // ROUND 23: THE TWO WRITES LAND AT DIFFERENT INSTANTS, AND THAT IS THE WHOLE LEG.
+            // Round 22 did both on the gesture OPEN and mutation M93 survived: JUCE dispatches a
+            // parameter's listeners in REVERSE registration order, and this probe is registered
+            // AFTER the processor's own, so an open-time write runs BEFORE
+            // `parameterGestureChanged` seeds the batch -- the host's value becomes the step's
+            // `before`, the close's live read agrees with it, and no endpoint can disagree. The
+            // band drop still belongs on the OPEN (it is what makes `ok = (i < M)` false and voids
+            // the store), but the AUTOMATION belongs on the CLOSE, where the live read is the first
+            // thing to see it. Same reversal, used deliberately in both directions.
+            struct DropBandsThenAutomateAtTheClose final : public juce::AudioProcessorParameter::Listener
             {
                 juce::RangedAudioParameter* bands = nullptr;
                 juce::RangedAudioParameter* split = nullptr;
                 float splitTo = 0.0f;
-                bool  armed = false, fired = false;
+                bool  armed = false, fired = false, automated = false;
                 void parameterValueChanged (int, float) override {}
                 void parameterGestureChanged (int, bool starting) override
                 {
-                    if (! armed || ! starting || bands == nullptr || split == nullptr) return;
-                    armed = false;
-                    fired = true;
-                    bands->setValueNotifyingHost (bands->convertTo0to1 (1.0f));   // voids the reset
-                    split->setValueNotifyingHost (split->convertTo0to1 (splitTo)); // ...and automates it
+                    if (bands == nullptr || split == nullptr) return;
+                    if (starting)
+                    {
+                        if (! armed) return;
+                        armed = false;
+                        fired = true;
+                        bands->setValueNotifyingHost (bands->convertTo0to1 (1.0f));   // voids the reset
+                        return;
+                    }
+                    if (automated) return;
+                    automated = true;
+                    split->setValue (split->convertTo0to1 (splitTo));   // quiet, at the CLOSE
                 }
             };
 
             const float hostHz = 900.0f;
-            DropBandsAndAutomate poke;
+            DropBandsThenAutomateAtTheClose poke;
             poke.bands = bandsP; poke.split = loP; poke.splitTo = hostHz; poke.armed = true;
             loP->addListener (&poke);
             const auto t = juce::Time::getCurrentTime();
@@ -20996,7 +21037,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1921).
+//  baseline", src/PluginProcessor.cpp:1968).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -21229,7 +21270,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1592).
+//  targets", src/PluginProcessor.cpp:1630).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21606,7 +21647,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2106).
+//  mixed sound", src/PluginProcessor.cpp:2153).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -25555,6 +25596,455 @@ static int runSoloAliasProbe (int iterations)
     return aliased == 0 ? 0 : 1;
 }
 
+// ---------------------------------------------------------------------------
+//  State test 96 -- round 23. THE BARE BRACKETS THAT ARE ANAMORPH'S OWN.
+//
+//  Devin's review finding names `src/PluginProcessor.cpp:R1117-1119` -- the batch close's live
+//  read of the parameter -- and describes it as a GENERIC HOST EDITOR bug: the host opens a
+//  gesture, writes A, automation writes B, the close reads B and Redo lands on B.
+//
+//  THE REPORTED SCENARIO IS NOT REACHABLE, AND THE MEASUREMENT SAYS SO. No JUCE plug-in wrapper
+//  calls `beginChangeGesture`/`endChangeGesture` INBOUND on a plug-in's parameters:
+//    grep -rnE '(\.|->)(begin|end)ChangeGesture' build/_deps/juce-src/modules/juce_audio_plugin_client/
+//  returns 0 across VST3, AU, AUv3, AAX, LV2, VST2, Standalone and Unity; all 14 "ChangeGesture"
+//  hits in that tree are the OUTBOUND `audioProcessorParameterChangeGestureBegin/End` overrides
+//  (the plug-in telling the host). LV2 goes further and discards a host touch outright
+//  (`void gesture (LV2_URID, bool) const noexcept {}`). A host cannot open a gesture on us, so the
+//  round-22 comment that justified keeping the live read -- "a host's own generic editor brackets
+//  `setValueNotifyingHost` in a begin/end pair through the wrapper" -- was FALSE, and it
+//  contradicted this very file's own correct statement 79 lines above it.
+//
+//  BUT THE DEFECT IS REAL, AND IT IS OURS. Two first-party paths open a change gesture and declare
+//  nothing, so the live read decides their endpoint -- which is whatever a host lane left in the
+//  parameter during the bracket:
+//    * `AnamorphAudioProcessor::applyAutoGain` -- the editor's "Apply Gain" button. A bare
+//      begin/setValueNotifyingHost/end on Output Gain, and another on Level Match. It is the one
+//      bare store round 21 never brought under `storeOwned`'s read-back shape, because it does not
+//      live in the imager. Legs A and B.
+//    * `Knob`'s Alt-click and double-click resets, whose ADR-0052 guard `resetWouldMove()` compares
+//      the SLIDER's value to the default rather than the PARAMETER's. The two can disagree -- a
+//      parameter written without notifying its listeners leaves the slider stale -- and then the
+//      reset opens a gesture, JUCE drops the write because the parameter already holds the value,
+//      and nothing is declared. Leg C.
+//
+//  ADR-0008: a user Undo/Redo step may contain only values that user action actually produced.
+// ---------------------------------------------------------------------------
+static void testAnamorphsOwnBareBracketsDeclareTheirEndpoint()
+{
+    std::printf ("State test 96: Anamorph's own bare brackets declare their endpoint (R1117-1119, ADR-0008)\n");
+
+    auto plainOf = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto near    = [] (float a, float b) { return std::abs (a - b) < 1.0e-3f; };
+
+    // ---- LEG A: Apply Gain answered re-entrantly by a host lane -----------------------
+    //  The host writes the SAME parameter from inside Apply's own `setValueNotifyingHost`. Before
+    //  round 23 the close read the parameter live and found the host sitting in it, so the host's
+    //  value became the user's `after` and therefore the destination of the user's Redo.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto& apvts = proc.getAPVTS();
+        auto* ogP = apvts.getParameter (pid::outputGain);
+        check (ogP != nullptr, "leg A: Output Gain exists");
+        if (ogP != nullptr)
+        {
+            ogP->setValueNotifyingHost (ogP->convertTo0to1 (6.0f));
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+
+            const float userStart = plainOf (ogP);
+            const float hostTo    = -11.5f;
+            check (! near (userStart, hostTo), "leg A: the two values the leg distinguishes are distinct");
+
+            WriteFromInsideAStoreQuietly poke;
+            poke.target = ogP;
+            poke.to     = hostTo;
+            poke.armed  = true;
+            ogP->addListener (&poke);
+            proc.applyAutoGain();
+            ogP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg A: non-vacuity -- the host answered Apply's own write, re-entrantly");
+            check (near (plainOf (ogP), hostTo), "leg A: ...and the host's value is what is live afterwards");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                const float afterUndo = plainOf (ogP);
+                proc.redo();
+                const float afterRedo = plainOf (ogP);
+                std::printf ("  [leg A] a step was recorded: Undo -> %.4f, Redo -> %.4f"
+                             " (the user started at %.4f, the host wrote %.4f)\n",
+                             (double) afterUndo, (double) afterRedo,
+                             (double) userStart, (double) hostTo);
+                check (! near (afterRedo, hostTo),
+                       "leg A: the host's re-entrant answer is NOT the user's Redo destination");
+            }
+            else
+            {
+                std::printf ("  [leg A] the refused Apply recorded no step, so the host's %.4f is in none\n",
+                             (double) hostTo);
+                check (true, "leg A: an Apply whose store did not stand records no user step");
+            }
+        }
+    }
+
+    // ---- LEG B: the control -- an uninterrupted Apply is still one undoable user step ----
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto& apvts = proc.getAPVTS();
+        auto* ogP = apvts.getParameter (pid::outputGain);
+        if (ogP != nullptr)
+        {
+            ogP->setValueNotifyingHost (ogP->convertTo0to1 (6.0f));
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+
+            const float userStart = plainOf (ogP);
+            proc.applyAutoGain();
+            proc.pollUndoCoalesce();
+            const float applied = plainOf (ogP);
+
+            check (! near (applied, userStart), "leg B: non-vacuity -- Apply moved Output Gain");
+            check (proc.canUndo(), "leg B: an uninterrupted Apply is one undoable user step");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                check (near (plainOf (ogP), userStart), "leg B: Undo returns the value the user had");
+                proc.redo();
+                check (near (plainOf (ogP), applied),
+                       "leg B: Redo restores the value Apply produced, not a live read");
+            }
+        }
+    }
+
+    // ---- LEG C: a Knob reset whose guard answered on a stale slider ---------------------
+    //  `resetWouldMove()` asks the SLIDER. A parameter written without notifying leaves the slider
+    //  stale, so the guard says "this reset moves something" while the parameter is already sitting
+    //  on the default. The gesture opens, JUCE's attachment drops the write (the parameter holds
+    //  that value already), and nothing is declared -- the `ep == 1` state. A host lane writing at
+    //  the gesture's CLOSE is then the only value the close can see.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto& apvts = proc.getAPVTS();
+        auto* raw = proc.createEditor();
+        auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        check (ed != nullptr, "leg C: the editor constructs");
+        if (ed == nullptr) { delete raw; return; }
+
+        std::vector<juce::Slider*> sliders;
+        std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+        {
+            for (int i = 0; i < c->getNumChildComponents(); ++i)
+            {
+                auto* k = c->getChildComponent (i);
+                if (auto* s = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+                walk (k);
+            }
+        };
+        walk (ed);
+
+        auto* driveP = apvts.getParameter (pid::drive);
+        juce::Slider* driveK = nullptr;
+        if (driveP != nullptr)
+        {
+            const float was = driveP->getValue();
+            std::vector<double> before;
+            before.reserve (sliders.size());
+            for (auto* s : sliders) before.push_back (s->getValue());
+            driveP->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+            int hits = 0;
+            for (size_t i = 0; i < sliders.size(); ++i)
+                if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { driveK = sliders[i]; ++hits; }
+            driveP->setValueNotifyingHost (was);
+            if (hits != 1) driveK = nullptr;
+        }
+        check (driveP != nullptr && driveK != nullptr, "leg C: the Drive knob is findable");
+
+        if (driveP != nullptr && driveK != nullptr)
+        {
+            // Put the SLIDER well off the default, then move the PARAMETER onto the default
+            // WITHOUT notifying: the attachment never hears it, so the slider stays where it is.
+            driveP->setValueNotifyingHost (driveP->convertTo0to1 (9.0f));
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float sliderShows = (float) driveK->getValue();
+            driveP->setValue (driveP->getDefaultValue());          // quiet: the slider does not follow
+            const float deflt = driveP->convertFrom0to1 (driveP->getDefaultValue());
+            check (! near (sliderShows, deflt),
+                   "leg C: non-vacuity -- the slider and the parameter really do disagree");
+
+            const float hostTo = 4.25f;
+            check (! near (hostTo, deflt) && ! near (hostTo, sliderShows),
+                   "leg C: the three values the leg distinguishes are distinct");
+
+            WriteOnGestureClose poke;
+            poke.target = driveP;
+            poke.to     = hostTo;
+            poke.armed  = true;
+            driveP->addListener (&poke);
+            const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+            const auto  t  = juce::Time::getCurrentTime();
+            const juce::MouseEvent alt (juce::Desktop::getInstance().getMainMouseSource(), { cx, cy },
+                                        juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                                            | juce::ModifierKeys::altModifier),
+                                        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                        t, { cx, cy }, t, 1, false);
+            driveK->mouseDown (alt);
+            driveK->mouseUp (alt);
+            driveP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg C: non-vacuity -- the reset really did bracket a gesture");
+            if (poke.fired)
+            {
+                check (near (plainOf (driveP), hostTo), "leg C: the host's value is what is live");
+                if (proc.canUndo())
+                {
+                    proc.undo();
+                    proc.redo();
+                    check (! near (plainOf (driveP), hostTo),
+                           "leg C: the host's value is NOT the user's Redo destination");
+                }
+                else
+                {
+                    check (true, "leg C: the reset that moved nothing records no step");
+                }
+            }
+        }
+
+        proc.editorBeingDeleted (ed);
+        delete ed;
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 97 -- round 23. THE TWO SURVIVORS ROUND 22 LEFT UNCLAIMED
+//  (M87 and M88), each killed by the leg it never had.
+//
+//  Round 22 recorded both as unkilled rather than as equivalent, and gave the
+//  reason in each case: "no pair of seams in this suite can place a thread in
+//  that window" (M87) and "the suite drives the poll directly, so no leg
+//  observes which door the editor picks" (M88). Both reasons were about the
+//  HARNESS, not about the code, and both turn out to be wrong -- which is why
+//  they were kept as open survivors instead of being argued away.
+//
+//  LEG A -- the deferred baseline (M87). `syncCommitted (mayBlock = false)`
+//  may fail its try on `soundReplacement` and leave `committed` describing the
+//  session the adoption has just REPLACED; it raises `committedNeedsResync`
+//  instead, and the repair is the FIRST line of `pollUndoCoalesceAdopted`,
+//  ahead of every branch that pushes. Nothing else repairs it. An undo entry
+//  carries `committed.name / .baseline / .selection` as its `before` end
+//  (`applyUndoEntry`), so without that repair the next ordinary gesture pushes
+//  a step whose `before` names the PRE-restore session, and one Undo moves the
+//  preset identity to a session the user never left.
+//
+//  The window round 22 could not reach is reached through
+//  `seams.afterRestoreTake`, which fires AFTER the take's own acquisition has
+//  been released and BEFORE the tail that snapshots -- so a NON-ANNOUNCING
+//  holder parked from there (the durable capture behind a host save, §25) is
+//  still holding when `syncCommitted` makes its try, and the take it could not
+//  have blocked has already succeeded. Parking it BEFORE the door instead is a
+//  different test: there the take fails and nothing is adopted at all, which
+//  is State test 95's own subject.
+//
+//  LEG B -- the door the shipped editor picks (M88). ADR-0036 §26 made both
+//  TIMER doors non-blocking because a timer runs as a MESSAGE-QUEUE CONSUMER
+//  and can therefore be inside a host's pump with a parameter's `listenerLock`
+//  held (RISK-009). The editor's 24 Hz tick is one of those consumers, and
+//  round 22 could only assert by inspection that it goes through
+//  `pollUndoCoalesceFromTimer`. It can be driven for real:
+//  `juce::Timer::callPendingTimersSynchronously()` runs every DUE timer on
+//  this thread with no message loop, and the editor's tick is one of them.
+//  With a non-announcing capture parked, the correct door reaches neither the
+//  drain's acquisition nor the poll body; the blocking door waits for both.
+//  `seams.insidePollBody` distinguishes them without a stopwatch -- the
+//  processor's OWN 20 Hz timer only drains and never polls, so a poll-body
+//  entry during these calls can have come from nowhere but the editor.
+// ---------------------------------------------------------------------------
+static void testTheDeferredBaselineAndTheDoorTheEditorPicks()
+{
+    std::printf ("State test 97: a deferred baseline is repaired before any entry is built from it, and the editor's tick never waits (M87, M88)\n");
+
+    const auto ownerThread = std::this_thread::get_id();
+
+    // ---- LEG A: the repair at the top of the poll body (M87) -------------------------
+    {
+        const auto R = d2::author ("D2-R23-A", 0.31f, 0.31f, 0, 1);
+
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "width", 0.62f);
+        p.pollUndoCoalesce();
+
+        const auto beforeName = p.getPresets().currentName();
+        check (beforeName != R.name, "leg A: non-vacuity -- the session the restore replaces is a DIFFERENT one");
+
+        // The restore is handed over from a host thread and left in the cell.
+        std::thread restoring ([&] { p.setStateInformation (R.blob.getData(), (int) R.blob.getSize()); });
+        restoring.join();
+        check (p.getPresets().currentName() == beforeName, "leg A: the restore is pending, not adopted");
+
+        // A non-announcing holder, armed from between the take and the tail.
+        std::atomic<bool> parked { false }, releaseSave { false };
+        std::atomic<int>  saveWaited { -1 };
+        std::unique_ptr<std::thread> saver;
+        juce::MemoryBlock hostSave;
+        p.seams.insideDurableCapture = [&]
+        {
+            if (std::this_thread::get_id() == ownerThread) return;   // the owner's own captures pass through
+            parked.store (true);
+            int waited = 0;
+            for (; waited < 4000 && ! releaseSave.load(); ++waited)
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            saveWaited.store (waited);
+        };
+        p.seams.afterRestoreTake = [&]
+        {
+            if (saver != nullptr) return;                            // once: the drain runs to a fixed point
+            saver = std::make_unique<std::thread> ([&] { hostSave = d2::saveOf (p); });
+            for (int i = 0; i < 4000 && ! parked.load(); ++i)
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        };
+
+        p.pollUndoCoalesceFromTimer();
+        p.seams.afterRestoreTake = nullptr;
+        check (parked.load(), "leg A: the capture is open across the adoption's baseline snapshot");
+        releaseSave.store (true);
+        if (saver != nullptr) saver->join();
+        p.seams.insideDurableCapture = nullptr;
+        check (saveWaited.load() > 0, "leg A: non-vacuity -- the snapshot really met a held lock");
+
+        // The restore itself is whole: only the BASELINE was deferred, never the session.
+        check (p.getPresets().currentName() == R.name, "leg A: the restore was adopted whole");
+        checkNear ((double) rawOf (p, "width"), 0.31, 1.0e-6, "leg A: ...with its own sound");
+
+        // One ordinary gesture, and the Undo that reads the entry's `before` end.
+        if (auto* drive = p.getAPVTS().getParameter ("drive"))
+        {
+            drive->beginChangeGesture();
+            drive->setValueNotifyingHost (0.61f);
+            drive->endChangeGesture();
+        }
+        p.pollUndoCoalesce();
+        check (p.canUndo(), "leg A: the gesture after the deferred adoption is undoable");
+        p.undo();
+        check (p.getPresets().currentName() == R.name,
+               "leg A: undoing it stays inside the restored session -- the deferred baseline was repaired first");
+        checkNear ((double) rawOf (p, "width"), 0.31, 1.0e-6,
+                   "leg A: ...and the sound it undoes into is the restore's, not the session before it");
+    }
+
+    // ---- LEG B: the shipped editor tick takes the non-blocking door (M88) ------------
+    {
+        const auto R = d2::author ("D2-R23-B", 0.37f, 0.37f, 0, 1);
+
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "width", 0.62f);
+        p.pollUndoCoalesce();
+
+        auto* raw = p.createEditor();
+        auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        check (ed != nullptr, "leg B: the editor constructs, and its 24 Hz tick with it");
+        if (ed == nullptr) { delete raw; return; }
+
+        // WHY A WITNESS TIMER AND NOT A SLEEP. `callPendingTimersSynchronously` runs the timers
+        // that are DUE, and due-ness is decided by the TimerThread, which -- with no message loop
+        // consuming its `CallTimersMessage` -- re-posts on a 300 ms wait and so advances the
+        // countdowns in coarse steps. A fixed sleep therefore fires the editor's tick only
+        // sometimes: measured, a 100 ms sleep missed it entirely and the leg passed vacuously
+        // under the mutation it exists for. This timer is started immediately after the editor's,
+        // at the same rate, so the two are due in the same pass and its count is an exact witness
+        // that a 24 Hz pass RAN -- and the pass is what the measurement below is about.
+        struct TickWitness final : public juce::Timer
+        {
+            std::atomic<int> n { 0 };
+            void timerCallback() override { n.fetch_add (1); }
+        };
+        TickWitness witness;
+        witness.startTimerHz (24);
+
+        std::thread restoring ([&] { p.setStateInformation (R.blob.getData(), (int) R.blob.getSize()); });
+        restoring.join();
+        check (p.getPresets().currentName() != R.name, "leg B: the restore is pending, not adopted");
+
+        std::atomic<bool> parked { false }, releaseSave { false };
+        std::atomic<int>  saveWaited { -1 };
+        std::atomic<int>  pollBodies { 0 };
+        juce::MemoryBlock hostSave;
+        p.seams.insideDurableCapture = [&]
+        {
+            if (std::this_thread::get_id() == ownerThread) return;
+            parked.store (true);
+            int waited = 0;
+            for (; waited < 4000 && ! releaseSave.load(); ++waited)
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            saveWaited.store (waited);
+        };
+        // Only `pollUndoCoalesceAdopted` fires this, and of the two timers the processor owns here
+        // only the EDITOR's reaches it -- `AnamorphAudioProcessor::timerCallback` drains and never
+        // polls. So a poll-body entry on this thread can have come from nowhere but the editor.
+        p.seams.insidePollBody = [&] { if (std::this_thread::get_id() == ownerThread) pollBodies.fetch_add (1); };
+
+        std::thread saver ([&] { hostSave = d2::saveOf (p); });
+        for (int i = 0; i < 4000 && ! parked.load(); ++i)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        check (parked.load(), "leg B: a host save is parked inside the durable capture, holding the lock");
+
+        // WHY THE TICK HAS WORK TO DO, which is not automatic and is the other half of the leg. A
+        // parked replacement alone proves nothing: `pollUndoCoalesceAdopted` early-returns when the
+        // sound generation has not moved and no gesture commit is pending, and in THAT state neither
+        // door reaches a lock, so both builds measure 0 ms. Here the work is the PENDING RESTORE
+        // put in the cell above -- the blocking door's drain takes `soundReplacement` for the take
+        // itself, so the contention is on the very first thing the tick does.
+
+        // Drive passes until one actually runs, and time each pass rather than the waiting.
+        int worstPassMs = 0;
+        for (int spins = 0; spins < 400 && witness.n.load() == 0; ++spins)
+        {
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            const auto c0 = std::chrono::steady_clock::now();
+            juce::Timer::callPendingTimersSynchronously();
+            worstPassMs = juce::jmax (worstPassMs, (int) std::chrono::duration_cast<std::chrono::milliseconds> (
+                                                       std::chrono::steady_clock::now() - c0).count());
+        }
+        std::printf ("  [test 97] the slowest 24 Hz pass with a restore pending and the capture open took %d ms\n", worstPassMs);
+        check (witness.n.load() > 0, "leg B: non-vacuity -- a 24 Hz pass really ran while the capture was open");
+        check (worstPassMs < 1000, "leg B: the editor's tick did not wait for the durable capture (ADR-0036 §26)");
+        check (pollBodies.load() == 0, "leg B: ...and reached no poll body behind the held lock");
+        check (p.getPresets().currentName() != R.name, "leg B: ...and consumed nothing (§27)");
+
+        releaseSave.store (true);
+        saver.join();
+        p.seams.insideDurableCapture = nullptr;
+        check (saveWaited.load() > 0, "leg B: non-vacuity -- the capture really was open across the pass");
+
+        // ...and the same tick, with nothing held, is what adopts it: the door is reached.
+        witness.n.store (0);
+        for (int spins = 0; spins < 400 && (witness.n.load() == 0 || pollBodies.load() == 0); ++spins)
+        {
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            juce::Timer::callPendingTimersSynchronously();
+        }
+        p.seams.insidePollBody = nullptr;
+        check (pollBodies.load() > 0, "leg B: non-vacuity -- the editor's tick does reach the poll body");
+        check (p.getPresets().currentName() == R.name, "leg B: ...and adopts the restore once the lock is free");
+        checkNear ((double) rawOf (p, "width"), 0.37, 1.0e-6, "leg B: ...whole, with its own sound");
+
+        witness.stopTimer();
+        p.editorBeingDeleted (ed);
+        delete ed;
+    }
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -25724,6 +26214,8 @@ int main (int argc, char* argv[])
     testThePlanAndTheProofAreOneReading();
     testTheAddTargetAnswersUnderOneTopology();
     testACancellationClosesEachGestureOnce();
+    testAnamorphsOwnBareBracketsDeclareTheirEndpoint();
+    testTheDeferredBaselineAndTheDoorTheEditorPicks();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

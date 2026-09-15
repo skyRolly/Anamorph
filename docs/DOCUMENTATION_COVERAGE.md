@@ -1486,7 +1486,7 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 declared, and `--fix` moved all three from `src/PluginEditor.h:435` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:808`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:835`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1496,7 +1496,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:808`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:835`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1506,7 +1506,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:808"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:835"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1592`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1630`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2106`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2153`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1921`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1968`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -9948,7 +9948,7 @@ probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers
 overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
 proof for the hour it took to write, and the wrong thing to leave standing.
 
-**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:682`: `pid::viewParams`
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:710`: `pid::viewParams`
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
@@ -10772,7 +10772,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:969-1126`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:997-1173`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -10949,7 +10949,7 @@ in the ADR. The probe is the coverage.
 GUI-side snapshot); held-audition guard unchanged (`tick()` still returns at `isShowing()`, no
 production seam added); wheel gesture closure unchanged (ADR-0041, State test 80); U4 unchanged; the
 TSan suppression verified harness-scoped by grep — `WriteFromInsideAGestureOpen` exists only at
-`tests/state_tests.cpp:2796` — with the match-count assertion green in CI on `03a6e39`; both
+`tests/state_tests.cpp:2821` — with the match-count assertion green in CI on `03a6e39`; both
 informational items unchanged.
 
 **Documentation.** `ADR-0047` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
@@ -11959,6 +11959,68 @@ M57–M60); `docs/procedures/CI_CD.md` (the re-measured stack figures);
 `CHANGELOG.md` `[0.9.8]` (two Fixed entries);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §73. [Verified]
 
+### Forty-first pass — the endpoint a first-party bare bracket never stated, and the two survivors (2026-09-15)
+
+**Trigger.** Five items on PR #144 at head `647c3ae`: `src/PluginProcessor.cpp:R1117-1119` (a generic
+host control's Redo destination), RISK-012 still open, the documentary architecture review for
+ADR-0036 §26/§27 and ADR-0053, the M93 mutation survivor, and full re-validation.
+
+**Root cause, R1117-1119 — the headline is right and the mechanism named in it does not exist.** The
+finding described a generic HOST editor opening a change gesture. No JUCE wrapper makes an inbound
+`beginChangeGesture` call at all: measured across the pinned tree, all 14 "ChangeGesture" hits under
+`juce_audio_plugin_client/` are the OUTBOUND `audioProcessorParameterChangeGestureBegin/End`
+overrides, and LV2 discards host touches explicitly. What actually reached the batch close's
+`ep == 1` arm was **Anamorph's own bare brackets**: `applyAutoGain` (the Apply Gain button) declared
+neither a write nor a refusal, and `Knob`'s Alt-click and double-click resets could open a gesture
+whose write JUCE's attachment then dropped, because their ADR-0052 guard asks the SLIDER and the
+slider can lag the parameter. Measured before the fix, State test 96 leg A: `Undo -> 6.0000,
+Redo -> -11.5000`.
+
+**Fix.** Declare at the SITE, with round 15's read-back shape and round 19's refusal bit — no new
+bit, no new vector, no parallel attribution framework. A write-time hook in `parameterValueChanged`
+was considered and rejected on evidence: it is audio-thread reachable through VST3
+`processParameterChanges`, the batch vectors are non-atomic message-thread state,
+`MessageManager::existsAndIsCurrentThread()` takes a `std::mutex`, and the hook carries no
+provenance anyway. The close's live read is KEPT — deleting it still fails 42 assertions, and those
+42 are harness brackets plus `applyAutoGain`, so removing it is a decision about what the harness
+encodes rather than a defect fix.
+
+**Classification.** Implementation corrections against already-decided ADRs (ADR-0008, ADR-0052) —
+**no new ADR, no new architecture gate**. The owner's approval of ADR-0053 and of ADR-0036 §26/§27
+is recorded in the ADRs' Status blocks, both gate tables' step-2 rows and `ADR_INDEX.md`; no
+`APPROVED` GitHub review was manufactured and the PR was not self-approved.
+
+**RISK-012 is disposed, not narrowed.** A twelve-row attribution matrix covers every gesture class
+this tree can produce; the two host rows are EMPTY in every shipped format, by measurement.
+
+**Three mutation survivors are killed, and two of them were round 22's.** M93 was not equivalent —
+leg L's probe fired on the gesture OPEN and JUCE dispatches listeners in REVERSE registration order,
+so the host's value became the step's `before` instead of contending with its `after`; moving the
+write to the CLOSE kills it. M87 and M88 were left standing with a harness reason each, and both
+reasons were wrong: M87's window is reached through `seams.afterRestoreTake` (which fires between the
+take's lock release and the tail's snapshot), and M88's door is driven through
+`juce::Timer::callPendingTimersSynchronously()` without opening anything up in production. Measured:
+the deferral branch M87 attacks executes **exactly once across 3 505 checks**, inside the new leg —
+it was dead code under the suite before it; and under M88 the slowest 24 Hz pass takes **4387 ms**.
+
+**Validation.** State 3 505 / 0, DSP 396 / 0. ThreadSanitizer: exit 0, zero warnings, both suppression
+entries matched (3 x `deadlock:HostSeat`, 1 x `deadlock:WriteFromInsideAGestureOpen`) — the CI
+assertion that the matched-entry count equals the file's entry count still holds at 2. Windows-parity
+stack guard (`ulimit -s 1024`) green on both suites. Mutations M93 re-run and M94, M95, M87, M88 —
+all killed, each by its own leg. `check-realtime` 47 files / 0 violations, `check-portability` 57
+files / 0, `check-docs` 141 files clean, `check-citations` 450 anchors re-verified against `647c3ae`
+after 45 re-anchorings.
+
+**Documentation.** `ADR-0008` (a round-23 correction section); `ADR-0036` (the §26 evidence block
+gains the two legs its sentences lacked; the Status block and both gate tables carry the owner's
+approval); `ADR-0052` (the guard asks the Slider and that is right — the gap it leaves is ADR-0008's);
+`ADR-0053` (the approval, and the round-22 "missing artifact" paragraphs marked SUPERSEDED in place);
+`ADR_INDEX.md`; `docs/FUTURE_RISKS.md` RISK-012 (the attribution matrix and the definitive
+disposition); `docs/procedures/TESTING.md` (State tests 96 and 97, leg L rewritten, M87/M88 rows,
+mutations M93–M95); `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §80, and §79's RISK-012 paragraph
+corrected in place. [Verified]
+
 ### Fortieth pass — the restore that was taken but could not be finished, and the presses that spoke for nobody (2026-09-15)
 
 **Trigger.** Four items on PR #144 at head `06adf01`: `src/PluginProcessor.cpp:R1792-1795` (restore
@@ -11980,8 +12042,10 @@ of three verifiers and is recorded as refuted rather than quietly asserted.
 
 **Root cause, RISK-012.** `ep == 1` at the batch close — a gesture opened, nothing declared, nothing
 refused — still fell back to a live read. Deleting that read was measured and **fails 42 assertions**,
-because a gesture the editor did not open reaches the close in the same state and IS a user edit. The
-discriminator moved to the editor instead.
+~~because a gesture the editor did not open reaches the close in the same state and IS a user edit~~. The
+discriminator moved to the editor instead. *(Struck in the forty-first pass: the 42 are the HARNESS's
+own bare brackets plus `applyAutoGain`, not host generic editors — no host can open a gesture at all.
+The measurement stands; its explanation did not.)*
 
 **Classification.** §27 is a **Thread Model change** and an architecture-gate item in its own right,
 audited in ADR-0036 §27; R853 and RISK-012 are implementation corrections against already-decided

@@ -108,6 +108,24 @@ are now answered by asking the write path's own question before anything is esta
   (`resetWouldMove()`) is now asked before the gesture opens and again inside `doReset`, which is the
   double-click path's half of it.
 
+**THE GUARD ASKS THE SLIDER, AND ROUND 23 CONFIRMED THAT IS RIGHT -- while finding what it costs.**
+`Knob::resetWouldMove()` compares `getValue()` (the SLIDER's value) to `resetValue`, not the
+PARAMETER's, and the comment beside it has always said so: *"Asked in VALUE space, which is the space
+`setValue` compares in."* That is the correct question for this ADR's rule, because the rule is about
+what the INTERACTION costs -- the sweep, the `vpos` seed, the gesture -- and all three are the
+control's, not the parameter's.
+
+The two can disagree, which round 23 measured rather than assumed. A parameter written without
+notifying its listeners never reaches `ParameterAttachment` at all, and an off-message-thread write
+reaches it only through `triggerAsyncUpdate`, so the slider lags the parameter by up to one
+message-loop turn. In that window the guard correctly says "this interaction moves something" while
+the parameter is already sitting on the reset value -- so the gesture opens, JUCE's attachment then
+DROPS the write (`setValueAsPartOfGesture` -> `callIfParameterValueChanged`), and the bracket closes
+having declared nothing. That is not an ADR-0052 violation: the interaction really did have something
+to do. It is an ADR-0008 attribution gap, and round 23 closes it there -- both reset paths now state a
+refusal before their close, so the batch cannot invent an endpoint from the live parameter. The guard
+is unchanged. State test 96 leg C.
+
 **A SIXTH SITE, 2026-09-15 (round 22): the multiband display's own reset** —
 `SpectrumImager::resetParam`, which the width line's double-click and Alt-click both call. It is the
 one reset that was never given this rule: it ran `onSweep` and bracketed a `setValueNotifyingHost` in

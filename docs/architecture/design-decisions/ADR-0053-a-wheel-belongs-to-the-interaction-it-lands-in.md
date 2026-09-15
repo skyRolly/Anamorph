@@ -18,6 +18,22 @@ serialization field changes; no DSP node, stage order or reported latency; no th
 path or atomic ordering (every line of this is message-thread state, as the undo coalescer already
 was); no plug-in format and no build change.
 
+**Architecture Review Gate: APPROVED by the owner, 2026-09-15 (round 23).** This is an approval of
+the IMPLEMENTED DIRECTION, not a restatement of the 2026-09-12 instruction that opened the work, and
+the distinction is the reason this block exists separately from the Status line above. The owner
+reviewed the product direction as built -- a wheel notch belongs to the interaction it lands in; a
+notch during a press modifies that interaction's own anchor; this ADR supersedes the relevant
+wheel-during-drag Consequences line of Accepted ADR-0041 -- and approved it, with the direction
+recorded as accepted and not to be reopened. Put to human review rather than decided by a green
+build, exactly as `docs/policies/ARCHITECTURE_REVIEW_GATE.md` §Procedure step 2 requires; the
+reasoning it was approved on is the *Architecture Review Gate* section below and the Decision it
+introduces. Recorded in the form this repository has always used for a gate approval --
+[ADR-0052](ADR-0052-an-input-that-performs-no-edit-has-no-side-effects.md)'s
+*"Architecture Review Gate: APPROVED by the maintainer, 2026-09-09"* -- because step 2 names no
+medium and the word *approval* appears nowhere in `ARCHITECTURE_REVIEW_GATE.md`,
+`AI_AGENT_POLICY.md`, `ADR_POLICY.md` or `DOCUMENTATION_LIFECYCLE_POLICY.md` (re-measured 2026-09-15:
+zero occurrences in all four).
+
 **Gate compliance, audited 2026-09-14 (round 19) against `ARCHITECTURE_REVIEW_GATE.md` §Procedure,
 step by step, because "cleared" above is a claim and this is its evidence.**
 
@@ -48,17 +64,19 @@ choice.** The session's GitHub principal is `skyRolly` — this PR's own author 
 self-approval. Submitting one would in any case be the agent approving its own work, which is the
 thing an architecture gate exists to prevent. It was therefore not attempted.
 
-**The exact missing artifact, for the owner:** an `APPROVED` review on PR #144 referencing ADR-0053,
-submitted by a maintainer account that is not the PR author. The alternative, if the documentary
-form is intended to be sufficient, is one sentence in `ARCHITECTURE_REVIEW_GATE.md` saying which
-medium step 2 takes — which would close the ambiguity permanently instead of once.
+**~~The exact missing artifact, for the owner~~ SUPERSEDED 2026-09-15 by the approval block at the
+top of this ADR.** The two paragraphs that stood here asked for an `APPROVED` review on PR #144 and
+recorded that none existed. The owner has since approved the implemented direction, and that approval
+is recorded above in the repository's own documentary form. They are left in place rather than deleted
+because what they establish is still true and still load-bearing: `ARCHITECTURE_REVIEW_GATE.md` names
+no medium for step 2, a GitHub review state was never what the gate required, and no `APPROVED` review
+was manufactured from this session -- the principal here is the PR's own author and GitHub refuses
+self-approval, which is the outcome the gate exists to produce.
 
-**What does NOT exist, stated plainly rather than counted as satisfied:** there is no *approving
-review* on PR #144. Every review on it is `COMMENTED` — one from the code-scanning bot and four
-disposition replies from the owner account. Nothing in `ARCHITECTURE_REVIEW_GATE.md` names a medium
-for step 2, so the maintainer instruction satisfies it; but the PR itself carries no artifact of the
-decision, and a reader auditing the merge from GitHub alone would not find one. Recommended, and not
-done here because it is the owner's to give: an approving review on PR #144 referencing this ADR.
+The standing RECOMMENDATION they carried is also unchanged and is still the owner's to take if wanted:
+one sentence in `ARCHITECTURE_REVIEW_GATE.md` saying which medium step 2 takes would close the
+ambiguity permanently instead of once per round. Three rounds have now re-derived the same answer from
+the same four files.
 
 **Re-checked 2026-09-15 (round 21): unchanged in every particular.** The PR still carries five
 reviews and all five are still `COMMENTED`; no round-21 change touches this ADR's scope (the wheel

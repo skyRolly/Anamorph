@@ -619,6 +619,7 @@ private:
                 if (! resetWouldMove()) return;
                 if (resetParam != nullptr) resetParam->beginChangeGesture();
                 doReset();
+                noteResetProducedNothing();   // round 23, see below
                 if (resetParam != nullptr) resetParam->endChangeGesture();
                 return;
             }
@@ -629,7 +630,33 @@ private:
             if (e.getNumberOfClicks() != 2 || ! resetWouldMove()) return;
             if (resetParam != nullptr) resetParam->beginChangeGesture();
             doReset();
+            noteResetProducedNothing();   // round 23, see below
             if (resetParam != nullptr) resetParam->endChangeGesture();
+        }
+
+        // ADR-0008, ROUND 23 (Devin R1117-1119). A RESET THAT REACHES ITS CLOSE WITH NOTHING
+        // DECLARED SAYS SO, and the two lines above are the reason it can.
+        //
+        // `resetWouldMove()` asks the SLIDER, because that is the space `Slider::setValue` compares
+        // in and ADR-0052's rule is about what the interaction costs. The PARAMETER can already be
+        // sitting on the reset value while the slider is not: a parameter written without notifying
+        // its listeners never reaches `ParameterAttachment`, and an off-message-thread write reaches
+        // it only through `triggerAsyncUpdate`, so the control lags by up to one message-loop turn.
+        // In that window the guard says "this moves something", the gesture opens, and JUCE's
+        // attachment then DROPS the write because the parameter already holds that value
+        // (`ParameterAttachment::setValueAsPartOfGesture` -> `callIfParameterValueChanged`). The
+        // witness's AFTER hook declares nothing for a parameter that did not move, no store was
+        // refused, and the batch close was left with a live read of whatever a host lane had put
+        // there -- the host's value as the user's Redo destination. State test 96 leg C measured it.
+        //
+        // Stated UNCONDITIONALLY, exactly as `SpectrumImager::endGesture` states it since round 22
+        // and for the same reason: it carries no value, and the close skips a parameter whose store
+        // DECLARED an endpoint (bit 2) before it ever consults the refusal bit -- so a reset that
+        // really did move the parameter keeps the endpoint the witness stated for it.
+        void noteResetProducedNothing() noexcept
+        {
+            if (resetParam != nullptr && owner != nullptr)
+                owner->noteOwnedParamRefused (resetParam);
         }
         // ADR-0053, ROUND 14: THE NOTCH TOTAL IS FOLDED IN BEFORE THE DRAG WRITES, NOT AFTER IT.
         // JUCE asks this immediately before its own drag store --

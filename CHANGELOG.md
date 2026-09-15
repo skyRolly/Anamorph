@@ -65,6 +65,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **Applying the matched gain, or resetting a knob, can no longer hand your DAW's automation to your
+  Undo.** Two places still told the plug-in "a user edit happened here" without saying what the edit
+  produced, so the value recorded as the result was read back from the control at the end — and if
+  your DAW wrote that same control in the meantime, its value was what Redo restored. **Apply Gain**
+  was one: the button sets Output Gain to the measured match, and automation arriving during that
+  write became the destination of your Redo instead of the applied value. A **knob reset** was the
+  other, in the narrow case where your DAW had already moved the parameter to its default while the
+  knob on screen had not caught up yet. Both now record what the action itself produced, or record
+  nothing when it produced nothing. Applying, resetting and undoing are otherwise unchanged.
+  Decision: ADR-0008. Regression coverage: State test 96 legs A, B and C. Evidence: PR #144. [Verified]
 - **Double-clicking a Multiband band's width line when it is already at its default no longer tells
   your DAW you touched it.** The same defect the Option/Alt-click entry below describes, on the one
   reset that had not been given the rule: the reset played its sweep animation and bracketed the

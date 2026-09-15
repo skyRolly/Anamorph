@@ -57,14 +57,25 @@ repository builds.
 > with a computation from the values already being written. No thread, no lock, no wait, no
 > allocation on any audio path, no new cross-thread reader, no serialization-format change, no
 > parameter or latency change. There is no architectural delta to review.
-> **Round 21 (§26) is NOT inside the boundary, and round 22 (§27) is not either.** Every round
-> listed above is covered because it adds no thread, no cross-thread path and no blocking
-> mechanism. §26 changes when the message thread may BLOCK on `soundReplacement` — a
-> synchronisation-behaviour change, which `ARCHITECTURE_REVIEW_GATE.md` classes as a Thread Model
-> change and `AI_AGENT_POLICY.md` as an agent hard stop — and §27 changes which statements one
-> acquisition of that lock spans. Both are gated in their own right, both carry their own
-> gate-compliance table, and neither is covered by the 2026-09-03 approval above. The artifact
-> that would close them is named at the end of §27 and does not exist.
+> **Round 21 (§26) is NOT inside the 2026-09-03 boundary, and round 22 (§27) is not either — so
+> each has its own approval, granted 2026-09-15.** Every round listed above is covered by the
+> original approval because it adds no thread, no cross-thread path and no blocking mechanism. §26
+> changes when the message thread may BLOCK on `soundReplacement` — a synchronisation-behaviour
+> change, which `ARCHITECTURE_REVIEW_GATE.md` classes as a Thread Model change and
+> `AI_AGENT_POLICY.md` as an agent hard stop — and §27 changes which statements one acquisition of
+> that lock spans. Both are gated in their own right and both carry their own gate-compliance table.
+>
+> **Architecture Review Gate: §26 and §27 APPROVED by the owner, 2026-09-15 (round 23).** This is an
+> approval of the IMPLEMENTED architecture, not a restatement of the instructions that opened rounds
+> 21 and 22 — the distinction §26 and §27 each recorded as the one thing genuinely outstanding. The
+> owner reviewed the completed changes: the round-21 threading-model correction for the confirmed
+> RISK-009 deadlock, the round-22 restore-coherence correction, and the minimal architecture those
+> two fixes establish. Approved as final for this review round. Put to human review rather than
+> decided by a green build, which is `ARCHITECTURE_REVIEW_GATE.md` §Procedure step 2; recorded in the
+> documentary form this repository has always used for a gate approval (ADR-0052's *"Architecture
+> Review Gate: APPROVED by the maintainer, 2026-09-09"*), because step 2 names no medium and the word
+> *approval* appears nowhere in `ARCHITECTURE_REVIEW_GATE.md`, `AI_AGENT_POLICY.md`, `ADR_POLICY.md`
+> or `DOCUMENTATION_LIFECYCLE_POLICY.md` — re-measured 2026-09-15, zero occurrences in all four.
 
 **Resolves decision D-2** (`worklogs/engineering-review/ENGINEERING_REVIEW_PROGRAMME.md`, deferred in
 round 4) and **closes RISK-007** (`docs/FUTURE_RISKS.md`). **Amends `THREADING_POLICY.md`** §Host state
@@ -1020,7 +1031,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:1921`).
+    (`src/PluginProcessor.cpp:1968`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1089,7 +1100,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     the one-pass reassert makes exact by construction.
 
 23. **A relative operation acts on the session it observed (round 16).** Review finding *"relative
-    navigation uses stale targets"* (`src/PluginProcessor.cpp:1592`).
+    navigation uses stale targets"* (`src/PluginProcessor.cpp:1630`).
 
     **What a relative operation is.** One whose target is a function of the current state rather than
     of the user's input: *the other slot* (`abToggle`), *the next/previous preset*
@@ -1195,7 +1206,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     derived program-state target there to go stale.
 
 24. **One whole-sound replacement at a time (round 17).** Review finding *"overlapping restores
-    expose mixed sound"* (`src/PluginProcessor.cpp:2106`).
+    expose mixed sound"* (`src/PluginProcessor.cpp:2153`).
 
     **What a whole-sound replacement is.** An operation that installs an ENTIRE sound over the live
     parameter set, as opposed to moving one parameter: a host restore's install
@@ -1643,6 +1654,18 @@ turn late) and leaves a save issued on the host thread right after its restore d
     baseline acquisition (M86) each measure ~4360 ms on leg G. The seam's wait is bounded so a
     build carrying the cycle reports a long poll instead of hanging the suite.
 
+    **ROUND 23 — the two sentences above that had no leg now have one.** The
+    `committedNeedsResync` repair and the question of which door the EDITOR picks were carried by
+    rounds 21 and 22 as mutations M87 and M88, recorded as survivors rather than claimed equivalent.
+    State test 97 kills both. Leg A reaches the deferral through `seams.afterRestoreTake` — which
+    fires between the take's lock release and the tail's snapshot, so a non-announcing holder parked
+    there is still holding when `syncCommitted` tries — and then shows an ordinary gesture's Undo
+    leaving the restored session when the repair is removed. Leg B drives the SHIPPED 24 Hz tick with
+    `juce::Timer::callPendingTimersSynchronously()`, which needs no message loop and no access to
+    `timerCallback` (it is private, and `juce::Timer` is a private base — nothing in production was
+    opened up for it); under M88 the slowest pass measures **4387 ms**, enters the poll body and
+    consumes the restore, against **0 ms** and neither on the shipped door.
+
     **THE TSAN REPORT DOES NOT GO AWAY, AND READING IT CORRECTED ROUND 20.** `deadlock:HostSeat`
     still matches on the fixed tree. Running the suite with the suppressions off and reading the
     four reports shows why, and shows that round 20 named the wrong pair: in the `HostSeat` report
@@ -1661,7 +1684,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     | Step | Requirement | Evidence |
     |---|---|---|
     | 1 | the author flags the change as gated | this section's opening paragraph, and the PR #144 body |
-    | 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | the owner's round-21 instruction, which names the risk (RISK-009), rules that it *"must not remain as an accepted residual"*, directs *"the smallest safe threading-model change"*, and states the constraints the fix had to obey — no audio-thread mutex, no waits, no timer used as a synchronisation device, no suppression dressed up as a fix |
+    | 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **SATISFIED TWICE.** (a) The owner's round-21 instruction, which names the risk (RISK-009), rules that it *"must not remain as an accepted residual"*, directs *"the smallest safe threading-model change"*, and states the constraints the fix had to obey — no audio-thread mutex, no waits, no timer used as a synchronisation device, no suppression dressed up as a fix. That is an instruction to MAKE the change. (b) **The owner's approval of the change AS MADE, 2026-09-15 (round 23)** — recorded in the Status block above. Rounds 21 and 22 recorded (a) alone as the one thing genuinely outstanding; (b) closes it. |
     | 3 | if the change is a decision, an ADR is added/updated | this section; `THREADING_POLICY.md` and `THREAD_MODEL.md` carry the restated rule |
     | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes |
 
@@ -1670,13 +1693,15 @@ turn late) and leaves a save issued on the host thread right after its restore d
     names no medium for step 2; the word *approval* appears nowhere in it, in `AI_AGENT_POLICY.md`
     or in `ADR_POLICY.md`.
 
-    **What does NOT exist, stated rather than counted as satisfied:** there is no approving review on
-    PR #144. All five reviews on it are `COMMENTED` — one from the code-scanning bot, four
-    disposition replies from the owner account (re-checked 2026-09-15). It cannot be produced from
-    here either: the session's GitHub principal is `skyRolly`, this PR's own author, and GitHub
-    refuses self-approval — and an agent approving its own threading change is the thing this gate
-    exists to prevent. The exact missing artifact, for the owner: an `APPROVED` review on PR #144
-    referencing **this section** as well as ADR-0053.
+    **~~What does NOT exist~~ SUPERSEDED 2026-09-15 (round 23): the owner has approved this section,
+    and the approval is recorded in the Status block above.** The paragraph that stood here said
+    there was no approving review on PR #144, that none could be produced from this session (the
+    GitHub principal is the PR's own author and GitHub refuses self-approval), and that the missing
+    artifact was an `APPROVED` review. All of that is still factually true of the PR, and none of it
+    was ever what the gate required: `ARCHITECTURE_REVIEW_GATE.md` §Procedure names no medium for
+    step 2, and the repository's own precedents (ADR-0041, ADR-0052, `THREADING_POLICY.md`'s KI-027
+    note, `procedures/TESTING.md`) record maintainer approval in DOCUMENTATION. No `APPROVED` review
+    was manufactured, and none is needed.
 
 27. **A RESTORE IS TAKEN OUT OF THE CELL ONLY WHEN ITS SOUND CAN GO WITH IT (round 22).** Review
     finding *"restore coherence"* (`src/PluginProcessor.cpp:R1792-1795`). This corrects §26 rather
@@ -1743,19 +1768,21 @@ turn late) and leaves a save issued on the host thread right after its restore d
     | Step | Requirement | Evidence |
     |---|---|---|
     | 1 | the author flags the change as gated | this section, and the round-22 comment on PR #144 (`#issuecomment-5676428562`), which says so in as many words. NOT the PR body: that body is 108 KB and is not rewritable through the tooling available here, so the round's flag is a comment rather than a body section — recorded as a difference from earlier rounds rather than described as one |
-    | 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | the owner's round-22 instruction, which states the invariant this section implements — *"A restore operation must publish one coherent state"*, *"metadata from restore A + sound from restore B"* must never occur — and directs the fix shape: *"If sound coherence cannot be established: do not consume the restore tail; defer the complete restore; retry later"*, with *"Do not redesign restore architecture unless required by evidence"* |
+    | 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **SATISFIED TWICE.** (a) The owner's round-22 instruction, which states the invariant this section implements — *"A restore operation must publish one coherent state"*, *"metadata from restore A + sound from restore B"* must never occur — and directs the fix shape: *"If sound coherence cannot be established: do not consume the restore tail; defer the complete restore; retry later"*, with *"Do not redesign restore architecture unless required by evidence"*. That is an instruction to MAKE the change. (b) **The owner's approval of the change AS MADE, 2026-09-15 (round 23)** — recorded in the Status block above, covering §26 and §27 together as the minimal architecture those two fixes establish. |
     | 3 | if the change is a decision, an ADR is added/updated | this section; `THREADING_POLICY.md` and `THREAD_MODEL.md` carry the restated rule |
     | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes |
 
-    **What step 2 is and is not.** It is an instruction that names the invariant and the fix
-    direction, written before the change existed — which is the same form `ARCHITECTURE_REVIEW_GATE.md`
-    has always been satisfied in here (ADR-0041 is *"Accepted (maintainer instruction …)"*, ADR-0052
-    was entered the same way, and the policy names no medium for step 2; the word *approval* appears
-    nowhere in it, in `AI_AGENT_POLICY.md` or in `ADR_POLICY.md`). It is NOT a review of the change as
-    made. For §26 that gap was recorded and is unchanged; for §27 it is the same gap, and the same
-    missing artifact closes both: an `APPROVED` review on PR #144 naming §26, §27 and ADR-0053. There
-    is still no approving review on PR #144 and none can be produced from here — the session's GitHub
-    principal is this PR's own author and GitHub refuses self-approval, which is the outcome this gate
+    **What step 2 is and is not — CLOSED 2026-09-15 (round 23).** Rounds 21 and 22 could cite only an
+    instruction that names the invariant and the fix direction, written BEFORE the change existed.
+    That is the form `ARCHITECTURE_REVIEW_GATE.md` has always been satisfied in here (ADR-0041 is
+    *"Accepted (maintainer instruction …)"*, ADR-0052 was entered the same way, and the policy names
+    no medium for step 2; the word *approval* appears nowhere in it, in `AI_AGENT_POLICY.md`, in
+    `ADR_POLICY.md` or in `DOCUMENTATION_LIFECYCLE_POLICY.md` — re-measured 2026-09-15, zero
+    occurrences in all four). What it was NOT is a review of the change AS MADE, and both sections
+    recorded that gap rather than counting it as satisfied. **The owner has now approved the
+    implemented architecture — §26, §27 and ADR-0053 — and the approval is recorded in the Status
+    block above and in ADR-0053's own gate block.** Nothing was manufactured on GitHub: no `APPROVED`
+    review exists on PR #144 and none was submitted from this session, which is the outcome the gate
     exists to produce rather than a problem to route around.
 
 ## Consequences

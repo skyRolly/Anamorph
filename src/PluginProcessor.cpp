@@ -408,22 +408,50 @@ void AnamorphAudioProcessor::applyAutoGain()
     // (Override, not add -- otherwise repeated Apply presses keep dropping it.)
     const float matchDb = engine.getMatchGainDb();
 
-    if (auto* og = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (pid::outputGain)))
+    // ADR-0008, ROUND 23. THESE TWO STORES SAY WHAT THEY PRODUCED (Devin R1117-1119).
+    // Apply is a USER ACTION with its own change gesture, and until this round it was the last bare
+    // bracket in the tree: it opened a gesture, wrote, and declared NOTHING, so the batch close fell
+    // back to a live read of the parameter -- and `setValueNotifyingHost` dispatches to every
+    // listener synchronously from inside itself, so a host answering this very write is sitting in
+    // that live value when the close reads it. The host's value became the user's `after` and
+    // therefore the destination of the user's Redo, which ADR-0008 forbids: a step may contain only
+    // values the user's own action produced. Measured before the fix, State test 96 leg A:
+    // "Undo -> 6.0000, Redo -> -11.5000" with the user's own value recoverable from neither end.
+    //
+    // The shape is `SpectrumImager::storeOwned`'s, unchanged since round 15 and applied to the three
+    // imager stores in round 21 -- capture what was there, compute what the parameter will render,
+    // write, then compare the read-back. What is there afterwards either is what this store
+    // installed, or it is somebody else's; those are different facts and the batch must be told
+    // which. `expect` is computed by the same two conversions the parameter itself performs, so with
+    // nothing else writing it is bit-identical to the read-back.
+    //
+    // ONE ORDERING DECISION: `was` is read BEFORE the gesture opens, not after. `storeOwned` has no
+    // gesture of its own -- it runs inside one already open -- so the question does not arise there.
+    // Here it does, and the pre-open value is the right `before`: the open IS the start of this user
+    // action, so anything a host writes while the open is dispatching arrives AFTER the action
+    // began and is not part of what the user had. It costs nothing when the parameter is already
+    // owned: `noteOwnedParamWrite` forwards to `noteFirstOwnership`, which keeps the `before` the
+    // first owner brought (round 17) -- a drag on Output Gain followed by Apply in the same 24 Hz
+    // window is still one step starting where the drag started.
+    const auto storeApplied = [this] (juce::RangedAudioParameter* p, float norm)
     {
-        const float target = juce::jlimit (-24.0f, 24.0f, matchDb);
-        og->beginChangeGesture();
-        og->setValueNotifyingHost (og->convertTo0to1 (target));
-        og->endChangeGesture();
-    }
+        if (p == nullptr) return;
+        const float expect = p->convertTo0to1 (p->convertFrom0to1 (norm));
+        const float was    = p->getValue();
+        p->beginChangeGesture();
+        p->setValueNotifyingHost (norm);
+        if (! juce::exactlyEqual (p->getValue(), expect)) noteOwnedParamRefused (p);
+        else                                              noteOwnedParamWrite (p, was, expect);
+        p->endChangeGesture();
+    };
 
-    // Level Match is a custom RangedAudioParameter subclass now; the gesture/notify calls below are
+    if (auto* og = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (pid::outputGain)))
+        storeApplied (og, og->convertTo0to1 (juce::jlimit (-24.0f, 24.0f, matchDb)));
+
+    // Level Match is a custom RangedAudioParameter subclass now; the gesture/notify calls above are
     // AudioProcessorParameter methods, so take the base pointer instead of a concrete-type cast.
     if (auto* match = apvts.getParameter (pid::autoGainMatch))
-    {
-        match->beginChangeGesture();
-        match->setValueNotifyingHost (0.0f);
-        match->endChangeGesture();
-    }
+        storeApplied (match, 0.0f);
 }
 
 // ----------------------------------------------------------------------------
@@ -1082,23 +1110,42 @@ void AnamorphAudioProcessor::parameterGestureChanged (int parameterIndex, bool g
         // it installed, and a live read here could only disagree with it by picking up somebody
         // else's write. The declaration wins.
         //
-        // ROUND 22, RISK-012: WHY THIS READ IS STILL HERE, AND WHAT NOW KEEPS IT HONEST. `ep == 1`
-        // exactly -- a gesture opened, no store declared an endpoint, none was refused -- is the
-        // state the risk names, and the obvious repair is to delete the read: `noteFirstOwnership`
-        // already seeds `after` to `before`, so an episode that produced nothing would read as
-        // `before == after` and record no step. MEASURED, and it is wrong: 42 assertions across the
-        // suite fail, because a gesture THE EDITOR DID NOT OPEN reaches the close in exactly this
-        // state too. A host's own generic editor brackets `setValueNotifyingHost` in a begin/end
-        // pair through the wrapper and declares nothing, and that IS a user edit with an endpoint --
-        // the live value is the only place it is written down.
+        // WHY THIS READ IS STILL HERE -- ROUND 22'S ANSWER WAS FALSE AND ROUND 23 REPLACES IT.
         //
-        // So the discriminator cannot live here; it lives where the difference exists, which is the
-        // EDITOR. Every one of this plug-in's own controls that can open a gesture and produce
-        // nothing now says so -- `AttachmentWitness` for a slider or value-box press that never
-        // moves the parameter (PluginEditor.h), and the imager's own gesture-opening paths through
-        // `onOwnedRefused` -- and a refusal is bit 4, which the test above already skips. What
-        // remains reachable here is the gesture Anamorph's UI never opened, and FUTURE_RISKS
-        // RISK-012 records that residual rather than this line pretending to close it.
+        // `ep == 1` exactly -- a gesture opened, no store declared an endpoint, none was refused --
+        // is the state RISK-012 names, and the obvious repair is to delete the read:
+        // `noteFirstOwnership` already seeds `after` to `before`, so an episode that produced
+        // nothing would read as `before == after` and record no step. Deleting it fails 42
+        // assertions, which is true and was measured. What round 22 wrote NEXT is the false part:
+        // that those 42 are "a gesture THE EDITOR DID NOT OPEN ... a host's own generic editor
+        // brackets `setValueNotifyingHost` in a begin/end pair through the wrapper". No host can do
+        // that. MEASURED across the pinned JUCE tree:
+        //     grep -rnE '(\.|->)(begin|end)ChangeGesture' build/_deps/juce-src/modules/juce_audio_plugin_client/
+        // returns ZERO. All 14 "ChangeGesture" hits in that directory are the OUTBOUND
+        // `audioProcessorParameterChangeGestureBegin/End` overrides -- the plug-in telling the HOST.
+        // VST3, AU, AUv3, AAX, LV2, VST2, Standalone and Unity all agree, and LV2 says so out loud:
+        // `void gesture (LV2_URID, bool) const noexcept {}`, "The host probably shouldn't send us
+        // 'touched' messages." The sentence also contradicted this file's own correct statement 79
+        // lines above, which has said since round 17 that no host calls begin/endChangeGesture on a
+        // plug-in's parameters.
+        //
+        // WHAT ACTUALLY REACHED THIS LINE, found by enumerating every gesture opener in the tree
+        // rather than by reasoning about hosts: Anamorph's OWN bare brackets. `applyAutoGain` (the
+        // editor's Apply Gain button) opened gestures on Output Gain and Level Match and declared
+        // nothing; `Knob`'s Alt-click and double-click resets could open one whose write JUCE then
+        // dropped, because their ADR-0052 guard asks the SLIDER and the slider can lag the
+        // parameter. Both are fixed at the site in round 23 -- they declare (bit 2) or refuse
+        // (bit 4), which is what every other store in this tree has done since round 19 -- and
+        // State test 96 measured the defect before the fix: "Undo -> 6.0000, Redo -> -11.5000",
+        // the host's re-entrant answer standing as the user's Redo destination.
+        //
+        // SO WHAT IS LEFT HERE. Every gesture Anamorph's UI opens now declares or refuses, and no
+        // host can open one. The `ep == 1` arm below is therefore unreachable in any shipped
+        // format, and its only remaining consumers are the harness legs that bracket a bare
+        // `setValueNotifyingHost` to stand in for a user edit. It is kept rather than deleted
+        // because removing it is a decision about what the HARNESS should encode, not a defect fix,
+        // and doing it in the same round as the attribution fixes would confound the evidence for
+        // both. `FUTURE_RISKS.md` RISK-012 carries the disposition and the measurement.
         {
             const auto& ps = getParameters();
             for (int i = 0; i < ps.size() && i < (int) batchEpisodeParam.size(); ++i)

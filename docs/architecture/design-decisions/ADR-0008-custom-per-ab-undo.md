@@ -556,6 +556,65 @@ removes that refusal, measures no undo step either. Something older than round 2
 one, and this round did not isolate which rule; the refusal is kept because it makes the property
 local rather than dependent on a mechanism two subsystems away, and M93 is recorded as a survivor.
 
+## Decision — correction, 2026-09-15 (round 23)
+
+**EVERY GESTURE THIS PLUG-IN OPENS DECLARES WHAT IT PRODUCED, AND THE LAST TWO THAT DID NOT ARE
+FIXED.** Review finding `src/PluginProcessor.cpp:R1117-1119` — the batch close's live read of the
+parameter — reported as a generic-host-editor defect: the host opens a gesture, writes A, automation
+writes B, and Redo lands on B.
+
+**The reported path does not exist, and saying so is half the correction.** No JUCE plug-in wrapper
+calls `beginChangeGesture`/`endChangeGesture` INBOUND on a plug-in's parameters. Measured:
+`grep -rnE '(\.|->)(begin|end)ChangeGesture' build/_deps/juce-src/modules/juce_audio_plugin_client/`
+returns zero across VST3, AU, AUv3, AAX, LV2, VST2, Standalone and Unity; all 14 "ChangeGesture" hits
+there are the outbound `audioProcessorParameterChangeGestureBegin/End` overrides, and LV2 discards a
+host touch outright. A host write arrives as a VALUE, never as a bracket. The round-22 comment that
+justified keeping the live read — *"a host's own generic editor brackets `setValueNotifyingHost` in a
+begin/end pair through the wrapper"* — was therefore false, and it contradicted `PluginProcessor.cpp`'s
+own correct statement 79 lines above it. Corrected in place.
+
+**The defect is real, and it is ours.** Enumerating every gesture opener in the tree turned up two
+first-party paths that opened a change gesture and declared nothing:
+
+- **`AnamorphAudioProcessor::applyAutoGain`** — the editor's *Apply Gain* button. A bare
+  begin/`setValueNotifyingHost`/end on Output Gain, and another on Level Match. It is the last bare
+  bracket in the tree, and round 21 never reached it because that round's scope was the imager's three
+  bare stores. `setValueNotifyingHost` dispatches to every listener synchronously from inside itself,
+  so a host answering this very write is sitting in the live value when the close reads it. Both
+  stores now use `storeOwned`'s read-back shape, unchanged since round 15: capture `was`, compute what
+  the parameter will render, write, compare the read-back, then `noteOwnedParamWrite` if it stood or
+  `noteOwnedParamRefused` if it did not.
+- **`Knob`'s Alt-click and double-click resets.** Their ADR-0052 guard `resetWouldMove()` asks the
+  SLIDER — deliberately, because that is the space `Slider::setValue` compares in — while the
+  PARAMETER can already be sitting on the reset value. A parameter written without notifying its
+  listeners never reaches `ParameterAttachment`, and an off-message-thread write reaches it only
+  through `triggerAsyncUpdate`, so the control lags by up to one message-loop turn. In that window the
+  guard says "this moves something", the gesture opens, JUCE's attachment drops the write because the
+  parameter already holds that value, and nothing is declared. Both paths now state a refusal
+  unconditionally before their close, exactly as `SpectrumImager::endGesture` has since round 22 — the
+  close skips a parameter whose store DECLARED an endpoint before it consults the refusal bit, so a
+  reset that really moved the parameter keeps the endpoint its witness stated.
+
+**No new machinery.** Bits 2 and 4 are rounds 15 and 19; `noteOwnedParamWrite` and
+`noteOwnedParamRefused` are the same API every other store in the tree calls. Round 23 adds no
+episode bit, no vector, no hook in `parameterValueChanged` and no write-time attribution framework.
+A write-time hook was considered and rejected on evidence: `parameterValueChanged` is audio-thread
+reachable (VST3 `process` → `processParameterChanges` → `setValueNotifyingHost`), the batch vectors
+are non-atomic message-thread-owned state, and a message-thread guard would not help anyway — the hook
+receives no provenance, and a message-thread `parameterValueChanged` also fires for undo, redo, A/B
+and preset loads through `reassertParameters`.
+
+**What this leaves.** Every gesture Anamorph's UI opens now declares or refuses, and no host can open
+one, so the close's `ep == 1` arm is unreachable in any shipped format. Its only remaining consumers
+are the 42 harness assertions that bracket a bare `setValueNotifyingHost` to stand in for a user edit
+— a shape no wrapper produces. `FUTURE_RISKS.md` RISK-012 carries the full twelve-row attribution
+matrix and the disposition.
+
+**Regression coverage.** State test 96: leg A (Apply Gain answered re-entrantly — before the fix,
+`Undo -> 6.0000, Redo -> -11.5000`), leg B (the control: an uninterrupted Apply is still one undoable
+step whose Redo restores what Apply produced), leg C (a Knob reset whose guard answered on a stale
+slider, with the host write landing at the gesture CLOSE).
+
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
   not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots
@@ -592,5 +651,5 @@ local rather than dependent on a mechanism two subsystems away, and M93 is recor
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:430-569, :340-520
+- Source: src/PluginProcessor.cpp:458-597, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")
