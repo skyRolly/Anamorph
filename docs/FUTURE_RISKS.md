@@ -518,7 +518,7 @@ mitigation. Do not invent risks to fill the template.
   prefers that request to its live read. Mutations M76-M82.
 - **STATUS AFTER ROUND 20: STILL OPEN, and deliberately NOT reclassified as an accepted residual.**
   What remains is the imager's gesture-bracketed bare stores (`resetParam`, `setBands`,
-  `setSoloMask`; `src/gui/SpectrumImager.cpp:897-912` is the shape), which declare no endpoint at
+  `setSoloMask`; `src/gui/SpectrumImager.cpp:898-913` is the shape), which declare no endpoint at
   all, so a host write landing inside their own `setValueNotifyingHost` is still live-read as the
   user's `after`. That violates the stated product rule -- host automation must never become a
   user's endpoint -- so it does not meet the bar for an accepted residual and is recorded as an open
@@ -559,16 +559,29 @@ mitigation. Do not invent risks to fill the template.
     and the witness's BEFORE hook is registered ahead of JUCE's attachment, so the refusal is recorded
     before `endChangeGesture` runs. That covers every knob, slider and value box: a press that never
     moves the control, and a host push that arrives during one.
-  - `SpectrumImager::endGesture` states the same refusal for every gesture the display opens — the
-    one place all of them close. That covers `writeCrossovers`' early exits (topology moved, or the
-    plan inside `kSplitMovedPx`), `resetCrossover` and `commitFreqEditor` skipping their store when
-    the handle is no longer live, the wheel's split and width branches declining at a rail, and a
-    width press inside the 3 px dead zone whose own comment has claimed since ADR-0046 that it makes
+  - `SpectrumImager::endGesture` states the same refusal for every gesture opened through it — the
+    one place those close. That covers `writeCrossovers`' early exits (topology moved, or the plan
+    inside `kSplitMovedPx`), the wheel's split and width branches declining at a rail, and a width
+    press inside the 3 px dead zone whose own comment has claimed since ADR-0046 that it makes
     "no automation/undo step". It is stated unconditionally rather than only when nothing was stored,
     because it carries no value and the close already skips a parameter whose store DECLARED an
     endpoint (bit 2) before it consults the refusal bit.
-  - Neither is a new mechanism: bit 4 is round 19's refusal, and it has suppressed the close's live
-    read since then. What round 22 adds is the missing sentence at the two places that never said it.
+  - `resetCrossover` and `commitFreqEditor` do NOT go through that pair — they bracket their own
+    gestures with `beginChangeGesture` / `endChangeGesture` directly — and their `ok = (i < M)` arm
+    leaves the gesture open around no store at all when the handle is no longer live (`M` is re-read
+    AFTER `beginChangeGesture`, which dispatches, so a host lane can drop Bands inside the open).
+    Each therefore states its refusal at its own site, as `resetParam`, `setBands` and `setSoloMask`
+    have since round 21. Recorded rather than glossed: this round's first draft put the refusal only
+    in `endGesture` and wrote a comment there claiming coverage it did not have.
+  - **And that pair's refusal is UNOBSERVABLE on the current head, which is stated rather than
+    claimed away.** State test 94 leg L builds the window — the probe drops Bands and automates the
+    split from inside the reset's own gesture open — and measures no undo step; mutation **M93**,
+    which removes the refusal, measures no undo step either. So something older than round 22 already
+    shuts this one, and this round did not isolate which rule. The refusal stays because it makes the
+    property local to the two functions rather than dependent on a mechanism two subsystems away, and
+    M93 is recorded as a SURVIVOR.
+  - None of it is a new mechanism: bit 4 is round 19's refusal, and it has suppressed the close's live
+    read since then. What round 22 adds is the missing sentence at the places that never said it.
   - **Evidence.** State test 88 leg O (a knob pressed and released with host automation landing inside
     the press: one gesture bracketed, the host's value live, and NO step recorded — plus a control leg
     where a press that does move the knob is still one undoable step whose Redo restores the user's own

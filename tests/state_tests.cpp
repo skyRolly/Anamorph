@@ -12416,6 +12416,102 @@ static void testBareStoresDeclareTheirEndpointAndThePollNeverWaits()
         }
     }
 
+    // ---- LEG L: the two resets that bracket their OWN gesture (RISK-012, round 22) ----
+    //  `resetCrossover` and `commitFreqEditor` do not go through `beginGesture`/`endGesture`, so the
+    //  blanket refusal added there this round does not reach them -- which the first draft of the fix
+    //  got wrong, and its own comment claimed otherwise. Their `ok = (i < M)` arm leaves the gesture
+    //  open around NO store at all: `M` is re-read AFTER `beginChangeGesture`, which dispatches, so a
+    //  host lane that drops Bands inside the gesture open makes the reset skip its store entirely.
+    //  The batch close then had nothing declared and live-read whatever that same host lane left in
+    //  the split -- the RISK-012 shape, on a control family leg K does not reach.
+    //
+    //  The probe writes BOTH from inside the gesture open, which is what makes the window: the band
+    //  count that voids the reset, and the automation value that must not become the user's endpoint.
+    //
+    //  WHAT THIS LEG ACTUALLY MEASURES, and it is a NEGATIVE RESULT worth keeping. Mutation M93
+    //  removes the refusal this leg was written for, and the leg still passes: no step is recorded
+    //  EITHER WAY. So the window is already shut on the current head by something older than round
+    //  22's refusal -- and this round did not isolate which rule, which is stated rather than
+    //  guessed at. The refusal stays because it makes the property local to the two functions
+    //  instead of resting on a mechanism two subsystems away, and M93 is recorded as SURVIVED in
+    //  `TESTING.md` rather than dressed up. The leg is kept because what it asserts is real and
+    //  non-vacuous -- the probe fires, the reset is voided, the host's value is live, and no step
+    //  carries it -- so it fails if that stops being true, whichever rule is holding it.
+    {
+        setPlain (bandsP, 3.0f);   // two splits, so `i < M` is true before the drop
+        settle();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+
+        auto* loP = apvts.getParameter (pid::mbFreqLow);
+        check (loP != nullptr, "leg L: the first split's parameter exists");
+
+        // The handle lane, found the way every other leg finds a target: by its tooltip.
+        float hx = -1.0f, hy = -1.0f;
+        for (float y = 4.0f; y < H - 4.0f && hx < 0.0f; y += 3.0f)
+        {
+            const float x = findX ("Drag to change the split frequency", y);
+            if (x >= 0.0f) { hx = x; hy = y; }
+        }
+        check (hx >= 0.0f, "leg L: a split handle is findable");
+
+        if (hx >= 0.0f && loP != nullptr)
+        {
+            struct DropBandsAndAutomate final : public juce::AudioProcessorParameter::Listener
+            {
+                juce::RangedAudioParameter* bands = nullptr;
+                juce::RangedAudioParameter* split = nullptr;
+                float splitTo = 0.0f;
+                bool  armed = false, fired = false;
+                void parameterValueChanged (int, float) override {}
+                void parameterGestureChanged (int, bool starting) override
+                {
+                    if (! armed || ! starting || bands == nullptr || split == nullptr) return;
+                    armed = false;
+                    fired = true;
+                    bands->setValueNotifyingHost (bands->convertTo0to1 (1.0f));   // voids the reset
+                    split->setValueNotifyingHost (split->convertTo0to1 (splitTo)); // ...and automates it
+                }
+            };
+
+            const float hostHz = 900.0f;
+            DropBandsAndAutomate poke;
+            poke.bands = bandsP; poke.split = loP; poke.splitTo = hostHz; poke.armed = true;
+            loP->addListener (&poke);
+            const auto t = juce::Time::getCurrentTime();
+            const juce::MouseEvent alt (source, { hx, hy },
+                                        juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                                            | juce::ModifierKeys::altModifier),
+                                        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                        t, { hx, hy }, t, 1, false);
+            im->mouseDown (alt);
+            im->mouseUp (alt);
+            loP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg L: non-vacuity -- the probe ran inside the reset's gesture open");
+            std::printf ("  [leg L] probe fired=%d, bands=%d, split=%.1f Hz, a step was recorded: %s\n",
+                         (int) poke.fired, (int) std::lround (plainOf (bandsP)),
+                         (double) plainOf (loP), proc.canUndo() ? "yes" : "no");
+            if (poke.fired)
+            {
+                check (near (plainOf (loP), hostHz),
+                       "leg L: the host's value is what is live after the voided reset");
+                if (proc.canUndo())
+                {
+                    proc.undo();
+                    proc.redo();
+                    check (! near (plainOf (loP), hostHz),
+                           "leg L: the host's value is NOT the user's Redo destination");
+                }
+                else
+                {
+                    check (true, "leg L: the voided reset recorded no step, so the host's value is in none");
+                }
+            }
+        }
+    }
+
     proc.editorBeingDeleted (ed);
     delete ed;
 }

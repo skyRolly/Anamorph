@@ -1571,6 +1571,18 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   The leg asserts it anyway rather than dropping it: it is what the ADR's Decision says, and a check
   that is true for a reason elsewhere in the code is still a check that fails if that reason goes.
 
+  **State test 94 leg L** covers the two resets that bracket their own gesture (`resetCrossover`,
+  `commitFreqEditor`), whose `ok = (i < M)` arm leaves the gesture open around no store at all when a
+  host lane drops Bands inside the gesture open — `M` is re-read after `beginChangeGesture`, which
+  dispatches. **It is a NEGATIVE result and is kept as one.** The leg measures no undo step, and
+  mutation **M93** — which removes the refusal the leg was written for — measures no undo step
+  either. Something older than round 22 already shuts that window and this round did not isolate
+  which rule, which is said here rather than guessed at. The refusal stays because it makes the
+  property local to the two functions instead of resting on a mechanism two subsystems away; M93 is
+  recorded as a SURVIVOR beside M87 and M88, not quietly dropped. The leg is kept because what it
+  asserts is real and non-vacuous — the probe fires, the reset is voided, the host's value is live,
+  and no step carries it — so it fails if that stops being true, whichever rule is holding it.
+
   **State test 94 leg K and State test 88 leg O** (RISK-012's empty press) are the same measurement on
   the imager's width line and on a knob: press, host automation moves that parameter INSIDE the press,
   release. Exactly one gesture is bracketed, the host's value is live afterwards, and NO step is
@@ -1941,6 +1953,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | M90 | `resetParam` runs its sweep and opens its gesture before asking whether the reset would move anything | KILLED — 94 leg J (3 of its 4 checks: gesture opens/closes, the host is told of a write, the sweep runs) |
   | M91 | `AttachmentWitness` states no refusal when a press produced nothing | KILLED — 88 leg O |
   | M92 | `SpectrumImager::endGesture` states no refusal | KILLED — 94 leg K |
+  | M93 | `resetCrossover` states no refusal on its unstored arm | **SURVIVED — 94 leg L passes either way; measured, see below** |
 
   **M34 is the row that proves the sweep is worth running twice.** Against the FIRST version of
   leg R it SURVIVED -- the leg pressed at the lane's middle, where no width drag is latched, so

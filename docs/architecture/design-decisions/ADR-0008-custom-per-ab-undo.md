@@ -527,11 +527,13 @@ the difference exists.
   BEFORE hook is registered ahead of JUCE's attachment, so the refusal lands before `endChangeGesture`.
   ComboBox and Button need nothing: their attachments write only on a real change, and the round-20
   request already covers the endpoint their close cannot see.
-- `SpectrumImager::endGesture` states the same refusal for every gesture the display opens — the one
-  place all of them close, which makes the property true by construction rather than at the six sites
-  someone remembered. It is unconditional: it carries no value, and the close skips a parameter whose
-  store declared an endpoint (bit 2) before it consults the refusal bit, so a drag that DID store keeps
-  the value its last `storeOwned` installed.
+- `SpectrumImager::endGesture` states the same refusal for every gesture opened through it, which is
+  most of the display's — the drags, the wheel branches and the width press — and is the one place
+  those close. The five that bracket their own gestures directly (`resetCrossover` and
+  `commitFreqEditor` this round; `resetParam`, `setBands` and `setSoloMask` since round 21) state it at
+  their own site. It is unconditional: it carries no value, and the close skips a parameter whose store
+  declared an endpoint (bit 2) before it consults the refusal bit, so a drag that DID store keeps the
+  value its last `storeOwned` installed.
 
 **No new bookkeeping.** Bit 4 is round 19's refusal and has suppressed the close's live read since
 then. Round 22 adds the sentence at the two places that never said it, and adds no bit, no vector and
@@ -546,6 +548,13 @@ parameter during the bracket. `FUTURE_RISKS.md` RISK-012 carries it, still OPEN.
 leg where a press that moves the knob is still one undoable step with the user's own Redo destination)
 and State test 94 leg K (the same on the imager's width line). Mutations M91 and M92 each fail exactly
 their own leg.
+
+State test 94 **leg L** covers the two resets that bracket their own gesture, and it is a NEGATIVE
+result: it builds the window (a host lane drops Bands and automates the split from inside the reset's
+gesture open, so the reset skips its store entirely) and measures no undo step — and **M93**, which
+removes that refusal, measures no undo step either. Something older than round 22 already shuts that
+one, and this round did not isolate which rule; the refusal is kept because it makes the property
+local rather than dependent on a mechanism two subsystems away, and M93 is recorded as a survivor.
 
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),

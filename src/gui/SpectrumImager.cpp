@@ -769,11 +769,12 @@ bool SpectrumImager::bandAddTarget (int b, float x, float& outX, int n, const fl
 // ----------------------------------------------------------------------------
 void SpectrumImager::beginGesture (juce::RangedAudioParameter* p) { if (p) p->beginChangeGesture(); }
 // ...AND THE IMAGER'S GESTURE NEVER LEAVES ITS ENDPOINT TO A LIVE READ (round 22, RISK-012).
-// Every gesture this display opens goes through the pair above, and several of them can close
-// having stored NOTHING: `writeCrossovers` returns early when the topology moved or the plan is
-// inside `kSplitMovedPx`; `resetCrossover` and `commitFreqEditor` skip their store when the handle
-// is no longer live; the wheel's split and width branches decline at a rail; a width press inside
-// the 3 px dead zone opens on `mouseDown` and never reaches a store. In every one of those the
+// Every gesture that goes through the pair above can close having stored NOTHING: `writeCrossovers`
+// returns early when the topology moved or the plan is inside `kSplitMovedPx`; the wheel's split and
+// width branches decline at a rail; a width press inside the 3 px dead zone opens on `mouseDown` and
+// never reaches a store. (`resetCrossover`, `commitFreqEditor`, `resetParam`, `setBands` and
+// `setSoloMask` bracket their own gestures with `beginChangeGesture` / `endChangeGesture` directly
+// rather than through this pair, and each states its own refusal at the site.) In every one of those the
 // batch close used to fall back to a live read of the parameter -- which, during the press, is
 // whatever HOST AUTOMATION left there, and ADR-0008 forbids a value the user never produced from
 // becoming that action's Undo/Redo endpoint.
@@ -1244,6 +1245,13 @@ void SpectrumImager::resetCrossover (int i)
         projectGaps (xs, M, i);
         ok = storeOwned (p, juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i])), owned);
     }
+    // ROUND 22, RISK-012: this gesture states an endpoint or it states a refusal, never nothing.
+    // `ok` is false without `storeOwned` having run at all when the handle is no longer live, and
+    // the batch close then fell back to a live read of whatever host automation left in the
+    // parameter during the press. Stated unconditionally, as `endGesture` does and for the same
+    // reason: it carries no value, and the close skips a parameter whose store DECLARED an
+    // endpoint before it looks at the refusal bit, so a reset that stood keeps what it installed.
+    if (onOwnedRefused) onOwnedRefused (p);
     p->endChangeGesture();
     if (! ok || ! juce::exactlyEqual (p->getValue(), owned)) return;
     (void) spreadSplits (xs, was, M, i, owned);
@@ -1700,6 +1708,7 @@ void SpectrumImager::commitFreqEditor()
         projectGaps (xs, M, i);
         ok = storeOwned (p, juce::jlimit (kFreqLo, kFreqHi, xToFreq (xs[i])), owned);
     }
+    if (onOwnedRefused) onOwnedRefused (p);   // ROUND 22, RISK-012 -- see `resetCrossover`
     p->endChangeGesture();
     if (ok && juce::exactlyEqual (p->getValue(), owned))
         (void) spreadSplits (xs, was, M, i, owned);

@@ -1742,7 +1742,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
     | Step | Requirement | Evidence |
     |---|---|---|
-    | 1 | the author flags the change as gated | this section, and the PR #144 body |
+    | 1 | the author flags the change as gated | this section, and the round-22 comment on PR #144 (`#issuecomment-5676428562`), which says so in as many words. NOT the PR body: that body is 108 KB and is not rewritable through the tooling available here, so the round's flag is a comment rather than a body section — recorded as a difference from earlier rounds rather than described as one |
     | 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | the owner's round-22 instruction, which states the invariant this section implements — *"A restore operation must publish one coherent state"*, *"metadata from restore A + sound from restore B"* must never occur — and directs the fix shape: *"If sound coherence cannot be established: do not consume the restore tail; defer the complete restore; retry later"*, with *"Do not redesign restore architecture unless required by evidence"* |
     | 3 | if the change is a decision, an ADR is added/updated | this section; `THREADING_POLICY.md` and `THREAD_MODEL.md` carry the restated rule |
     | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes |
