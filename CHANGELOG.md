@@ -65,6 +65,18 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **Pressing Undo, Redo, A/B or a preset button at the exact moment a band is being added no longer
+  leaves a broken layout.** Adding or removing a band takes several steps internally, and some DAWs
+  run their own housekeeping in the middle of it. If one of your clicks arrived in that gap, the
+  plug-in acted on it immediately — halfway through the change — and the two got tangled: the Undo
+  history ended up holding a layout you had never made, most visibly a soloed band that silently went
+  quiet. Those commands now wait the few microseconds until the band change has finished, and then
+  run in the order you pressed them. Nothing is ignored or lost: press Undo twice while a band is
+  appearing and you get two Undos; press Undo and then switch preset and you get both. The same
+  applies to saving a preset, which previously could make the band change itself un-undoable.
+  The same gap could also be filled by your DAW restoring the session from one of its own threads:
+  that too now waits for the band change rather than tearing it in half, and is applied a fraction of
+  a second later instead of being lost.
 - **Adding or removing a Multiband band is one Undo step again, never half of one.** A band split is
   not a single change: adding or removing one renumbers the solo bits, moves the widths, shifts the
   neighbouring splits and finally changes the band count — and in between, some DAWs run their own

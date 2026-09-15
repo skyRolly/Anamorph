@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1658`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1757`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2181`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2321`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:1996`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2136`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -9948,7 +9948,7 @@ probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers
 overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
 proof for the hour it took to write, and the wrong thing to leave standing.
 
-**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:731`: `pid::viewParams`
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:826`: `pid::viewParams`
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
@@ -10772,7 +10772,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:1018-1194`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:1113-1289`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -11958,6 +11958,119 @@ Flow, Latency, Plugin Format, Build System: untouched.
 M57–M60); `docs/procedures/CI_CD.md` (the re-measured stack figures);
 `CHANGELOG.md` `[0.9.8]` (two Fixed entries);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §73. [Verified]
+
+### Forty-fourth pass — the coverage found a door the report did not name (2026-09-15)
+
+**Trigger.** Not a review item. Writing State test 99 **leg I** — the leg that was to finish round
+25's §3 audit by showing that the one state replacement NOT deferred, the host-restore adoption,
+truncates a burst coherently. The leg FAILED.
+
+**Root cause.** `pollUndoCoalesceFromTimer`'s first line is `adoptPendingHostState (false)`, ahead of
+round 24's guard, which stops only the poll BODY. A host pump inside a topology burst runs the 20 Hz
+tick re-entrantly; the drain adopts; `adoptRestoreTail` → `syncCommitted()` clears
+`pendingGestureCommit` and calls `resetBatchOwnership()` under the open transaction — the same
+ownership wipe R1279-1283 names, through the adoption instead of through `undo()`. Measured:
+`bands 3, solo 0x4` after the click and `undo step 1 left bands 2 with solo 0x4`. **The per-store
+guards could not catch it** because ADR-0036 §12 makes `reinstallRestoredSound` deliberately skip the
+sound half when `soundSetGen` has not moved since the decode, so the adoption changed no parameter
+`addBandAt` re-proves and ran its tail regardless. A metadata-only replacement is invisible to a
+value-based abort test.
+
+**Fix.** The non-blocking (timer) arm of `adoptPendingHostState` returns while
+`userTransactionDepth > 0`, **consuming nothing** — the same answer, and the same sentence, as the
+failed try-lock below it. A refusal rather than a queue, because a restore cannot be lost by
+refusing: the cell keeps it whole and the next door adopts it. Scoped to that arm because the
+blocking arm's callers need a drain to a fixed point for session coherence (§15).
+
+**Two further corrections to round 25's own implementation.** (a) The flush walked its queue once, so
+a command deferred into a transaction that a deferred command itself started stayed queued until some
+later user transaction happened to close — possibly never. It now drains, and cannot spin because
+every iteration needs a fresh user action. (b) `endUserTransaction()` was still `noexcept` while
+running `pollUndoCoalesce()` and arbitrary `std::function` bodies, both of which allocate; the
+marking is dropped (the exposure is unchanged — both callers are destructors). The boundary poll's
+RISK-009 paragraph also now covers the `listenerLock` held ABOVE it, rather than resting on door
+classification.
+
+**Classification.** ADR-0036 §28, recorded as an **extension** of the owner's round-25 ruling — *a
+state replacement does not execute re-entrantly while a user transaction is active* — applied to a
+site that ruling's text does not enumerate, **not** as a separately approved decision. No
+thread-model change: the adoption still happens on the message thread, at a door, deferred by one
+timer period exactly as §26's try-lock already can. ADR-0008's command matrix gains its ninth row and
+records that the row corrects this same round's own first draft.
+
+**Validation.** State 3 639 / 0, DSP all passed, TSan 3 639 / 0 with the same five suppressions as
+round 24 — no new cycle and **no suppression added**. Mutations M108 (the drain guard, killed by two
+independent oracles in leg I) and M109 (the flush drain loop, killed by leg J); M101–M107 and M105b
+re-run on the final code and all still killed.
+
+**A harness deadlock, measured and recorded rather than worked around.** Leg I's first construction
+joined a host-thread restore from inside the gesture-end callback and hung. Under gdb: message thread
+in `std::thread::join()` holding mbSolo's `listenerLock` (JUCE takes it across the whole listener
+call, `juce_AudioProcessorParameter.cpp:101-108`), restoring thread blocked on that same lock inside
+`apvts.replaceState`. A real cycle and a harness-only one — no host blocks its own pump on a thread
+writing the same parameter — so the leg was rebuilt around the production shape, which is also the
+one that isolates the adoption as the mutator.
+
+**Documentation.** `ADR-0036` §28; `ADR-0008` (the ninth matrix row and its correction note, ordering
+points 8 and 9, the examined residuals, coverage for legs I and J);
+`docs/FUTURE_RISKS.md` RISK-011 (a third door, and a sharpened residual);
+`docs/procedures/TESTING.md` (legs I and J, mutations M108/M109, the leg-I failure and the harness
+deadlock); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §82b–§82d. [Verified]
+
+### Forty-third pass — the poll was not the only thing the pump could deliver (2026-09-15)
+
+**Trigger.** One item on PR #144 at head `74041f9`: `src/PluginProcessor.cpp:R1279-1283`, the
+round-24 poll guard, reported as *"reentrant Undo corrupts topology transactions"*.
+
+**Root cause.** Round 24 stopped the undo POLL from committing half a topology; it said nothing about
+a whole COMMAND. The window is the same: a topology burst's stores dispatch synchronously to the
+host, a host that pumps its message loop from one of those callbacks dispatches whatever UI events
+are queued, and the Undo, Redo, A/B and preset buttons are ordinary message-thread `onClick`s.
+`undo()` then installs an entry's `before` end, retakes `committed` from the half-applied sound,
+clears `pendingGestureCommit` and calls `resetBatchOwnership()` — and **the ownership wipe is the
+corruption**: the burst's already-issued stores lose their declarations and the committed step
+describes only the tail. Measured before the fix (State test 99 leg B): `bands 3, solo 0x4`, then one
+Undo giving `bands 2 and solo 0x4 disagree`.
+
+**Fix.** `deferWhileUserTransactionActive` queues the command and the caller returns; at the
+outermost `1 → 0` transition the transaction's own step is committed WHOLE and only then do the
+commands run, in the order the user gave them. Nine entry points ask it — Undo, Redo, `abToggle`,
+`abSwitchTo`, `abCopyToOther`, and `PresetManager`'s `load` / `loadAdopted` / `loadFile` / `step` /
+`saveUser` — the last of which writes no parameter but whose `onSaved` hook calls `syncCommitted()`,
+so a save inside a transaction used to DELETE that transaction's undo step. Nothing is dropped, no
+timer or sleep is involved, and the nested dispatch is not suppressed.
+
+**Why the commit comes first.** `undo()`/`redo()` flush on the way in, so for them either order looks
+the same — but `abToggle` and `abCopyToOther` have no such flush and `abSwitchToAdopted` calls
+`syncCommitted()`. Left to each command's internals the ordering would depend on which command
+arrived, and on the A/B and preset paths it would delete the step rather than reorder it.
+
+**Classification.** Implementation correction under ADR-0008's own invariant — **no new ADR, no new
+undo model, no thread-model change** (one message-thread queue beside two message-thread ints; no new
+lock, no new thread). The owner's already-given approval is recorded in ADR-0008's round-25 section
+and its step-2 row. ADR-0036 and ADR-0053 were not reopened.
+
+**RISK-011 — which named this exact mechanism on 2026-09-08 and recorded a deliberate no-fix — is
+RESOLVED**, in two halves: round 24's poll guard and round 25's deferral. Its old "mitigation until
+then" paragraph is marked superseded in place rather than deleted, because its reasoning is why the
+fix took the shape it did. The residual is stated: a future command that replaces state and does not
+ask the guard re-opens it, and nothing in the build enforces that.
+
+**Validation.** State 3 624 / 0 (3 620 / 2 on the unfixed tree), DSP 396 / 0, TSan exit 0 with zero
+warnings and all suppression entries matched, valgrind `ERROR SUMMARY: 0 errors`, Windows-parity
+stack guard green, realtime 47/0, portability 57/0, check-docs 141 clean, ABI within the declared
+floor, citation gate re-verified. Mutations M101–M107 plus M105b all killed; **M103 and M104 survived
+their first spelling and were re-spelled rather than called equivalent**, and legs D and E were
+strengthened in the same pass because each had been unable to see the transaction's step being
+deleted.
+
+**Documentation.** `ADR-0008` (a round-25 correction section with the nine-row command matrix, the
+seven-step ordering invariant and the gate table carrying the owner's approval; `Related code`
+extended with `deferWhileUserTransactionActive` and the `PresetManager` hook);
+`docs/FUTURE_RISKS.md` RISK-011 (RESOLVED in two halves, with the residual);
+`docs/procedures/TESTING.md` (State test 99's nine legs, the leg table, mutations M101–M107 and the
+two re-spellings); `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §82. [Verified]
 
 ### Forty-second pass — the transaction that had a beginning and an end but never said so (2026-09-15)
 

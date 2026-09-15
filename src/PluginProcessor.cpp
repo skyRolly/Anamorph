@@ -107,6 +107,11 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     presets.onMetaChanged = [this] { publishProgram(); };
     presets.onAboutToSave = [this] { adoptPendingHostState(); };
     presets.adoptPending  = [this] { adoptPendingHostState(); }; // load/loadFile/step drain through this (§18, §23)
+    // ADR-0008 round 25 (Devin R1279-1283): ...and every one of those commands asks FIRST whether a
+    // multi-store user transaction is running, so a preset load, step, file load or save dispatched
+    // by a host's pumped message loop cannot replace the sound under a half-applied topology.
+    presets.deferIfBusy   = [this] (std::function<void()> c)
+                            { return deferWhileUserTransactionActive (std::move (c)); };
     presets.soundReplacementLock = &soundReplacement;   // a preset load is a whole-sound replacement too (§24)
     presets.insideReplacement     = [this] { if (seams.insideSoundReplacement) seams.insideSoundReplacement(); };
     presets.noteReplaced          = [this] { noteWholeSoundReplaced(); };   // published under the §24 lock
@@ -573,9 +578,99 @@ void AnamorphAudioProcessor::beginUserTransaction() noexcept
     ++userTransactionDepth;
 }
 
-void AnamorphAudioProcessor::endUserTransaction() noexcept
+void AnamorphAudioProcessor::endUserTransaction()
 {
     if (userTransactionDepth > 0) --userTransactionDepth;
+
+    // ADR-0008 ROUND 25 (Devin R1279-1283): THE OUTERMOST 1 -> 0 TRANSITION IS WHERE A COMMAND
+    // THAT HAD TO WAIT FINALLY RUNS. Nested transactions do nothing here -- only the boundary at
+    // which the state is once again one a completed user action produced.
+    if (userTransactionDepth != 0 || deferredCommands.empty() || runningDeferredCommands)
+        return;
+
+    // THE ORDER IS THE WHOLE DECISION, so it is written out rather than implied.
+    //
+    // 1. THE TRANSACTION'S OWN STEP IS COMMITTED FIRST, WHOLE. `pendingGestureCommit` is standing
+    //    and the batch describes the entire topology action, which is exactly what round 24 built;
+    //    committing it here is that invariant being honoured, not replaced. Running the command
+    //    first would leave the deferred `undo()` to flush it through its own `pollUndoCoalesce()`
+    //    anyway -- that call exists so an edit finished just before the click is not jumped past --
+    //    but `abToggle` and `abCopyToOther` have no such flush, so relying on each command's
+    //    internals would make the ordering depend on which command happened to arrive. It is
+    //    stated here once instead.
+    //
+    // 2. ...AND ONLY THEN THE COMMANDS, in the order the user gave them. A user who pressed Undo
+    //    twice inside one pumped burst gets two Undos; a user who pressed Undo and then switched
+    //    preset gets both, in that order. Coalescing to the last one would be dropping a command,
+    //    which is the thing this must not do.
+    //
+    // 3. THE BLOCKING DOOR IS THE RIGHT ONE HERE. `pollUndoCoalesce` is the user-action door, and
+    //    every transaction this runs under is a user action on the message thread -- a band added
+    //    or removed from `mouseDown`, a crossover reset, a typed frequency, the Apply Gain button.
+    //    RISK-009's rule is about the TIMER doors, which must not wait on a replacement; this is
+    //    not one of them (ADR-0036 section 26). The try-lock door would be the WRONG one here for
+    //    a reason of its own: `pollUndoCoalesceFromTimer` returns WITHOUT COMMITTING when a
+    //    replacement is in flight, which at this one boundary would silently drop the step point 1
+    //    exists to record.
+    //
+    //    AND THE DOOR IS NOT THE WHOLE QUESTION -- THE LOCK ALREADY HELD ABOVE US IS. JUCE holds
+    //    the parameter's `listenerLock` across BOTH the plug-in's listeners and the `finalListener`
+    //    (juce_AudioProcessorParameter.cpp:101-108 for a gesture end, :113-120 for a value), so a
+    //    transaction entered from a host's pump -- knob write -> host pumps from the callback ->
+    //    imager `mouseDown` -> `addBandAt` -> this close -- reaches the poll with that lock held and
+    //    takes the APVTS lock under it. That is the R1204 edge round 21 fixed for the timer doors,
+    //    and it is NOT a round-25 regression: before this round the same scenario ran `undo()`'s own
+    //    blocking `pollUndoCoalesce` at a strictly deeper point under exactly the same held lock, so
+    //    deferral can only reduce the exposure -- the command no longer polls under it at all, and
+    //    this boundary poll happens only when a command was deferred, i.e. only when a poll was
+    //    going to happen there anyway. Stated rather than left to the door classification, because
+    //    the door classification does not cover it.
+    //
+    // 4. NOTHING HERE RUNS WHEN NOTHING WAS DEFERRED. The early return above is what keeps the
+    //    no-command case byte-identical to round 24: an ordinary Add still leaves its commit for
+    //    the poll that follows the press, so click-to-add-and-drag stays ONE step instead of being
+    //    split by an eager commit at the end of `addBandAt`.
+    //
+    // 5. AND IT DRAINS, rather than flushing once. A command runs with the depth back at zero, so a
+    //    transaction it starts -- its own stores dispatch to the host, the host pumps, the user's
+    //    queued Add-band click arrives -- is an ORDINARY transaction that can itself have a command
+    //    deferred into it; that inner 1 -> 0 close then finds `runningDeferredCommands` raised and
+    //    returns without flushing. Flushing once would leave that command sitting in the queue
+    //    until some LATER user transaction happened to close, which for a user who performs no
+    //    further multi-store action is never. "Nothing is dropped" has to mean bounded, not merely
+    //    not-erased, so the outer loop re-tests. It cannot spin: every further iteration needs a
+    //    fresh command, and a command is only ever queued by a real user action the host pumped in.
+    runningDeferredCommands = true;
+    while (! deferredCommands.empty())
+    {
+        auto queued = std::move (deferredCommands);
+        deferredCommands.clear();             // `queued` owns them now; a moved-from vector is
+                                              // valid but unspecified, so this is stated. It also
+                                              // makes the iterated container a LOCAL, so a nested
+                                              // `push_back` cannot reallocate under the loop below.
+        pollUndoCoalesce();                   // ...and each round commits what the transaction that
+                                              // queued THAT round left pending, for the same reason
+                                              // point 1 gives.
+        for (auto& command : queued)
+            if (command) command();
+    }
+    runningDeferredCommands = false;
+}
+
+// ADR-0008 ROUND 25 (Devin R1279-1283). See the declaration for the whole argument.
+//
+// RE-ENTRANCY OF THE FLUSH ITSELF is what `runningDeferredCommands` is for, and it is not
+// theoretical: a deferred command runs with the depth already at zero, so anything IT does --
+// opening a gesture, polling, even starting a transaction of its own -- takes the ordinary path,
+// and a transaction started from inside a command would otherwise re-enter this flush while
+// `queued` was still being walked. With the depth at zero this function also refuses to queue, so
+// a command cannot defer itself into the list it is being run from.
+bool AnamorphAudioProcessor::deferWhileUserTransactionActive (std::function<void()> command)
+{
+    if (userTransactionDepth <= 0)
+        return false;
+    deferredCommands.push_back (std::move (command));
+    return true;
 }
 
 // ADR-0008, ROUND 20. The request, armed. Deliberately weaker than every `note*` above it: no
@@ -1561,6 +1656,8 @@ void AnamorphAudioProcessor::applyUndoEntry (const UndoEntry& e, bool toAfter)
 
 void AnamorphAudioProcessor::undo()
 {
+    // ADR-0008 round 25 (R1279-1283): not inside a user transaction. See the declaration.
+    if (deferWhileUserTransactionActive ([this] { undo(); })) return;
     // Flush any settled-but-unpolled gesture into its own undo step first (the
     // editor timer polls at 24 Hz, so a commit can be pending for up to ~42 ms),
     // exactly like PresetManager::onAboutToLoad does before a preset switch.
@@ -1594,6 +1691,8 @@ void AnamorphAudioProcessor::undo()
 
 void AnamorphAudioProcessor::redo()
 {
+    // ADR-0008 round 25 (R1279-1283): the same rule as undo(), for the same reason.
+    if (deferWhileUserTransactionActive ([this] { redo(); })) return;
     pollUndoCoalesce(); // same settled-gesture flush as undo()
     auto& st = abUndo[abActive];
     if (st.redo.empty()) return;
@@ -1656,6 +1755,9 @@ void AnamorphAudioProcessor::abApplySlot (int slot)
 
 void AnamorphAudioProcessor::abSwitchTo (int slot)
 {
+    // ADR-0008 round 25 (R1279-1283): the explicit-target primitive behind `abToggle`, covered
+    // for the same reason and separately, because `abToggle` does not route through it.
+    if (deferWhileUserTransactionActive ([this, slot] { abSwitchTo (slot); })) return;
     adoptPendingHostState(); // message thread: a pending host restore lands BEFORE this switch (D-2)
     abSwitchToAdopted (slot);
 }
@@ -1679,6 +1781,10 @@ void AnamorphAudioProcessor::abSwitchToAdopted (int slot)
 
 void AnamorphAudioProcessor::abToggle()
 {
+    // ADR-0008 round 25 (R1279-1283): an A/B switch replaces the whole live sound, so it waits
+    // for the transaction exactly as Undo does. Deferred BEFORE the drain, because the drain is
+    // part of the operation (section 23) and must happen at the instant the switch does.
+    if (deferWhileUserTransactionActive ([this] { abToggle(); })) return;
     // Drain FIRST, then decide: the target is the other slot of the session that is
     // authoritative once every arrived restore has been adopted (§15), never of the one a
     // caller happened to observe earlier.
@@ -1699,6 +1805,10 @@ void AnamorphAudioProcessor::abToggle()
 
 void AnamorphAudioProcessor::abCopyToOther()
 {
+    // ADR-0008 round 25 (R1279-1283): a Copy reads the LIVE state into the other slot and pushes
+    // a whole-state undo entry for it, so run mid-burst it would photograph a half-applied
+    // topology and store that as a slot the user could later switch to.
+    if (deferWhileUserTransactionActive ([this] { abCopyToOther(); })) return;
     adoptPendingHostState(); // message thread: a pending host restore lands BEFORE this copy (D-2)
     abEnsureInit();
     abSlot[abActive] = currentStateSet();
@@ -1809,6 +1919,36 @@ void AnamorphAudioProcessor::adoptPendingHostState (bool mayBlock)
     // common case (every in-spec VST3 host restores on this very thread and never uses
     // the cell at all). A restore that lands after the last check is adopted at the next
     // entry point, or by the 20 Hz timer.
+    // ADR-0008 / ADR-0036 ROUND 25 (Devin R1279-1283), AND IT IS THE NINTH ENTRY IN THAT FINDING'S
+    // COMMAND MATRIX RATHER THAN A SEPARATE ONE. A drain is a whole-state replacement like any
+    // other, and the TIMER doors reach it re-entrantly inside a user transaction: a topology
+    // burst's store dispatches to the host, the host pumps, a 20 Hz tick runs, and this drain is
+    // the FIRST line of `pollUndoCoalesceFromTimer` -- ahead of round 24's guard, which only stops
+    // the poll BODY. The tail then runs `syncCommitted()` under the open transaction, clearing
+    // `pendingGestureCommit` and calling `resetBatchOwnership()`, and the burst's remaining stores
+    // re-declare into an empty batch: exactly the ownership wipe R1279-1283 names, through the
+    // adoption instead of through `undo()`. Measured before this guard (State test 99 leg I): an
+    // Add-band click interrupted this way left `bands 3, solo 0x4`, and one Undo of the step the
+    // next poll recorded gave `bands 2 with solo 0x4`.
+    //
+    // NOT DEFERRED, REFUSED -- and the difference is the cell. A deferred user command must be
+    // queued because dropping it loses something the user asked for. A restore cannot be lost by
+    // refusing: nothing is consumed here, the cell keeps it whole, and the very next door adopts
+    // it -- this timer again in 50 ms, or the user action that follows. That is the same answer,
+    // and the same sentence, as the failed try-lock below.
+    //
+    // SCOPED TO THE NON-BLOCKING ARM ON PURPOSE. `mayBlock == false` is exactly the timer class
+    // (`timerCallback` and `pollUndoCoalesceFromTimer`), which is the class already contracted to
+    // come back later. The blocking arm belongs to message-thread entry points whose contract is a
+    // drain to a FIXED POINT -- `getStateInformation` and `setStateInformation`'s inline arm above
+    // all depend on "nothing is pending any more" for session coherence (§15), and an older restore
+    // left unadopted there would stamp its metadata over a newer session later. Those doors are
+    // reachable inside a transaction only if a host delivers a state call from inside a parameter
+    // callback during a click; that shape is recorded as an examined residual in ADR-0008 rather
+    // than closed by weakening a contract this finding produced no evidence against.
+    if (! mayBlock && userTransactionDepth > 0)
+        return;
+
     while (! pendingRestore.empty())
     {
         // THE TAKE AND THE SOUND RE-INSTALL ARE ONE STEP (round 22, ADR-0036 §27). Round 21 put

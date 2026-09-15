@@ -479,6 +479,8 @@ juce::String PresetManager::soundSignatureForSavedTree (const juce::AudioProcess
 
 void PresetManager::load (int index)
 {
+    // ADR-0008 round 25 (R1279-1283): not inside a user transaction. See `deferIfBusy`.
+    if (deferIfBusy && deferIfBusy ([this, index] { load (index); })) return;
     // The drain that used to sit inside `onAboutToLoad`, hoisted here in round 16 (§23) so it
     // runs BEFORE anything is derived rather than after. It is unchanged for this absolute
     // caller -- the row is the one the user named -- and it is what `step` no longer repeats.
@@ -488,6 +490,9 @@ void PresetManager::load (int index)
 
 void PresetManager::loadAdopted (int index)
 {
+    // ADR-0008 round 25 (R1279-1283): guarded separately because it is public and `step` reaches
+    // the row through it; when `load`/`step` deferred, this runs with nothing to defer.
+    if (deferIfBusy && deferIfBusy ([this, index] { loadAdopted (index); })) return;
     if (index < 0 || index >= list.size()) return;
     const auto& e = list.getReference (index);
 
@@ -573,6 +578,10 @@ void PresetManager::loadAdopted (int index)
 
 bool PresetManager::loadFile (const juce::File& f)
 {
+    // ADR-0008 round 25 (R1279-1283): the OS-chooser load is the same command by another door.
+    // It returns `true` when deferred: the command was accepted, and reporting failure would
+    // make the editor say the file could not be read when it simply has not been read YET.
+    if (deferIfBusy && deferIfBusy ([this, f] { (void) loadFile (f); })) return true;
     if (adoptPending) adoptPending();   // as `load`: the drain `onAboutToLoad` used to carry (§23)
 
     // Unparsable OR foreign-rooted -> false, and nothing is touched: the chooser
@@ -596,6 +605,10 @@ bool PresetManager::loadFile (const juce::File& f)
 
 void PresetManager::step (int delta)
 {
+    // ADR-0008 round 25 (R1279-1283): deferred at the OUTERMOST entry point on purpose -- a step
+    // is relative, so re-running `step` later re-derives the row from the state it lands on,
+    // while deferring the absolute load it computes would carry a mid-transaction row forward.
+    if (deferIfBusy && deferIfBusy ([this, delta] { step (delta); })) return;
     if (list.isEmpty()) return;
     // The step is RELATIVE to the current row, so the current row must be the authoritative
     // one: a pending host restore that moves the selection is adopted before it is read (D-2
@@ -620,6 +633,11 @@ void PresetManager::step (int delta)
 
 bool PresetManager::saveUser (const juce::String& rawName)
 {
+    // ADR-0008 round 25 (R1279-1283): a save writes no parameter, but the processor's `onSaved`
+    // hook calls `syncCommitted`, which clears `pendingGestureCommit` -- so a save arriving
+    // inside a transaction silently deletes that transaction's undo step. Deferred like the
+    // loads, and for the better outcome too: the file then records the COMPLETED action.
+    if (deferIfBusy && deferIfBusy ([this, rawName] { (void) saveUser (rawName); })) return true;
     const juce::String name = juce::File::createLegalFileName (rawName.trim());
     if (name.isEmpty()) return false;
 

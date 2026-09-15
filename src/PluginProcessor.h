@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <functional>
+#include <vector>
 
 // ============================================================================
 //  AnamorphAudioProcessor
@@ -186,8 +187,45 @@ public:
     // produced. It is not a delay, not an inactivity timer and not a dependence on the host
     // behaving: the scope is the transaction's own lifetime, closed by RAII on every exit including
     // the ten early returns `addBandAt` alone has.
+    //
+    // ROUND 25 DROPPED `noexcept` FROM THE CLOSE, and the removal is the honest half of this
+    // round's change rather than a stylistic one. Round 24's body was one clamped decrement and
+    // could not throw; the close now runs `pollUndoCoalesce()` -- which copies the whole parameter
+    // tree and formats a signature -- and then arbitrary `std::function` bodies. Both allocate.
+    // The exposure itself is unchanged, because both callers are destructors (`ScopedUserTransaction`
+    // below and the imager's own scope) and a destructor is implicitly `noexcept`, so a throw
+    // terminates either way; what changes is that the declaration no longer claims otherwise.
     void beginUserTransaction() noexcept;
-    void endUserTransaction()   noexcept;
+    void endUserTransaction();
+
+    // ADR-0008, ROUND 25 (Devin R1279-1283). A STATE-REPLACING COMMAND DOES NOT RUN INSIDE A USER
+    // TRANSACTION -- IT WAITS FOR ONE, AND IT IS NEVER DROPPED.
+    //
+    // Round 24 stopped the undo POLL from committing half a topology. It did not stop a whole
+    // COMMAND from replacing the state underneath one. The window is the same window: a topology
+    // burst's stores dispatch synchronously to the host, a host that pumps its message loop from
+    // one of those callbacks dispatches whatever UI events are queued, and the editor's Undo,
+    // Redo, A/B and preset buttons are among them. `undo()` then runs RE-ENTRANTLY on the message
+    // thread with a half-applied topology in the parameters, and it does not merely read: it
+    // installs an entry's `before` end, retakes `committed` from the LIVE (half-applied) sound,
+    // clears `openGestures` and `pendingGestureCommit`, and calls `resetBatchOwnership()`.
+    //
+    // THE OWNERSHIP WIPE IS THE CORRUPTION, not the value restore. The stores the burst has
+    // already issued lose their declarations; the ones still to come declare into a fresh batch;
+    // `setBands` closes its gesture and the step the next poll commits describes only the TAIL of
+    // the action. Measured before this round (State test 99 leg B): after an Add-band click
+    // interrupted this way, `bands 3, solo 0x4`, and one Undo of the recorded step gave
+    // `bands 2 and solo 0x4 disagree` -- R1092's mixed topology, through the door round 24 left
+    // open.
+    //
+    // THE CONTRACT. Every entry point that replaces a whole sound/state snapshot calls this FIRST.
+    // While a transaction is running the command is queued and `true` is returned, so the caller
+    // returns without touching anything; with no transaction running it returns `false` and the
+    // caller proceeds exactly as it always has. Nothing is dropped, nothing is coalesced away, no
+    // timer and no sleep is involved, and the nested dispatch that delivered the command is not
+    // suppressed -- the command simply happens at the next instant where the state it replaces is
+    // a state a completed user action produced.
+    bool deferWhileUserTransactionActive (std::function<void()> command);
 
     // RAII over the pair, for the transactions that live inside this class. The imager reaches the
     // same counter through its `onUserTransaction` callback and has a scope of its own, because it
@@ -632,6 +670,14 @@ private:
     // plain int because a transaction is a synchronous burst on one thread and nesting is only
     // possible through re-entrancy this counter is what makes safe.
     int  userTransactionDepth = 0;
+    // ADR-0008 round 25: the commands that arrived while it was non-zero, in the order the user
+    // gave them, and the guard that stops the flush re-entering itself. Message-thread-owned, like
+    // the depth above. A vector of `std::function` rather than an enum because a preset load
+    // carries an argument and a hand-rolled variant would be a command model this repository does
+    // not otherwise have; the allocation is on the message thread, in a user-action path, and
+    // happens only when a host actually interrupts a transaction.
+    std::vector<std::function<void()>> deferredCommands;
+    bool runningDeferredCommands = false;
     // ADR-0053, the three halves of "a scroll is one undo step". `wheelStepKey` is the control a
     // wheel edit currently in flight names; `pendingStepWheelKey` is that name LATCHED at the
     // instant the gesture closed, because the poll that acts on it runs up to a timer period later,

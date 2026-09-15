@@ -1644,6 +1644,97 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   than by where the test reads; a probe on the OPEN and a probe on the CLOSE measure different
   windows, and round 22 used the wrong one.
 
+* **Round 25 — State test 99, and the door round 24 left open.**
+
+  Round 24 stopped the undo POLL from committing half a topology. A poll is not the only thing a
+  pumped message loop can deliver. **State test 99 (`a state-replacing command does not run inside a
+  user transaction`, R1279-1283, ADR-0008)** arms the same host seat with a COMMAND instead — Undo,
+  Redo, a preset step, an A/B switch, an A/B Copy — and every one of them reaches the message thread
+  the ordinary way, as a button's `onClick`.
+
+  **Measured before the fix, leg B:** after an Add-band click interrupted by a re-entrant Undo,
+  `bands 3, solo 0x4, Drive 3.00`; one Undo of the recorded step gave
+  `bands 2 and solo 0x4 disagree`. The corruption is not the value restore — it is
+  `resetBatchOwnership()`: the stores the burst had already issued lost their declarations, the ones
+  still to come declared into a fresh batch, and the step that was committed described only the tail
+  of the action. R1092's mixed topology, by another door.
+
+  **THE PROBE IS COMMAND-PARAMETERISED ON PURPOSE.** `CommandFromGestureEnd` holds a
+  `std::function`, because the question is never about one command: it is about what a state
+  replacement does to a transaction. `toFire` is a count rather than a flag so one leg can dispatch
+  TWO commands from a single pumped close, which is the only way to see what a queue does with more
+  than one.
+
+  **The legs, and what each one alone can see.**
+
+  | Leg | Shape | The thing only this leg measures |
+  |---|---|---|
+  | A | the same Undo with no transaction running | the command itself is not the defect and still works |
+  | ordering | one Undo, deferred | the transaction's step is committed BEFORE the command, so the Undo pops the Add and the user's earlier edit is untouched — the reverse order would have popped the earlier edit and left the Add standing |
+  | B | Undo | every state Undo can reach is a whole topology |
+  | C | Redo | a deferred Redo finds an empty stack — the Add cleared it, as any new user action does — which is EXECUTION, not a drop |
+  | D | preset step | the Add is still a step of its own BENEATH the preset switch; `onAboutToLoad`'s flush skips during a transaction, so a load allowed to run inside one deletes that step rather than reordering it |
+  | E | A/B switch and Copy | `abSwitchToAdopted` calls `syncCommitted()`, which clears `pendingGestureCommit` — the only command that DELETES the step outright, and therefore the only leg that can see a wrong commit order |
+  | F | nested transactions | only the outermost `1 → 0` releases |
+  | G | two commands from one close | both run, in order, neither coalesced away |
+  | H | nothing deferred | round 24's timing is byte-identical — the press still leaves its commit to the poll that follows it |
+  | I | a HOST RESTORE adopted through the timer door | the ninth entry in the command matrix, and the only one this round FOUND rather than inherited |
+  | J | a command stranded in a transaction a COMMAND started | the flush DRAINS rather than flushing once, so a nested deferral is bounded and not merely not-erased |
+
+  **Legs D and E were each strengthened after a mutation survived them**, and that is the useful
+  part of this round's record. The first version of leg E asked only "is the topology whole and was
+  the switch honoured" — both true under a wrong commit order, because an A/B switch replaces
+  everything either way. What it could not see was that the Add's undo step had been DELETED. Leg D
+  had the same hole for the preset path. Both now assert that the transaction's own step survived
+  and undoes to the whole topology, which is what kills M104, M105b and M106.
+
+  | Mutation | What it changes | Result |
+  |---|---|---|
+  | M101 | `undo()` executes immediately during a transaction | **KILLED** — 7 checks |
+  | M102 | deferred commands are DISCARDED instead of queued | **KILLED** — 5 checks, including the "HONOURED, not dropped" ones |
+  | M103 | released at the INNER boundary (with the depth forced to zero so it really runs) | **KILLED** — leg F |
+  | M104 | the commit before the commands is removed | **KILLED** — leg E |
+  | M105 | only Undo protected; Redo, A/B and preset left bare | **KILLED** — legs C, D, E |
+  | M105b | the PRESET guards alone removed | **KILLED** — leg D |
+  | M106 | the commit is performed AFTER the commands | **KILLED** — leg E |
+  | M107 | nothing is ever deferred (the pre-round-25 tree) | **KILLED** — 13 checks |
+  | M108 | the non-blocking drain no longer refuses inside a transaction | **KILLED** — leg I, by two independent oracles |
+  | M109 | the flush walks its queue ONCE instead of draining | **KILLED** — leg J |
+
+  **Two mutations survived their first run and neither was called equivalent.** M103's first spelling
+  dropped only the outermost-depth test in `endUserTransaction`, and the command re-deferred itself
+  through the depth check inside `deferWhileUserTransactionActive` — so the mutant never produced the
+  behaviour it was written to produce. M104's first spelling was masked by `undo()`'s own
+  `pollUndoCoalesce()`, which commits the step on the way in. Both were re-spelled to produce the
+  forbidden behaviour for real (M103 forces the depth to zero around the flush; M104 is measured on
+  the A/B path, which has no such flush), and both then died. A mutant that cannot express its own
+  defect is a bad mutant, not an equivalent one.
+
+  **LEG I FAILED WHEN IT WAS FIRST WRITTEN, AND THAT IS WHY IT EXISTS.** It was written to assert
+  that a host-restore adoption reached re-entrantly through `pollUndoCoalesceFromTimer` would
+  truncate the burst coherently — the drain is the FIRST line of that door, ahead of round 24's
+  guard. It reported instead `bands 3, solo 0x4` after the click and
+  `undo step 1 left bands 2 with solo 0x4`: R1092's mixed topology, through the adoption. The burst
+  did not abort because ADR-0036 §12 makes `reinstallRestoredSound` deliberately SKIP the sound half
+  when `soundSetGen` has not moved since the decode, so the adoption changed no parameter the burst's
+  guards test and ran its TAIL anyway, wiping `pendingGestureCommit` and the batch ownership. The fix
+  is a refusal rather than a queue — a restore cannot be lost by refusing, because nothing is
+  consumed and the cell keeps it whole for the next door. The leg now measures all three halves: that
+  nothing was adopted inside the transaction, that the restore was adopted at the very next door
+  anyway, and that the add completed as one coherent topology.
+
+  **AND LEG I FIRST DEADLOCKED THE HARNESS, which is a fact about the harness and not the product.**
+  Its first construction handed the restore over from inside the gesture-end callback and joined the
+  thread there. Measured under gdb: the message thread in `std::thread::join()` at `setSoloMask`'s
+  close, holding mbSolo's `listenerLock` — JUCE takes it across the whole listener call
+  (`juce_AudioProcessorParameter.cpp:101-108`) — and the restoring thread in
+  `sendValueChangedMessageToListeners` waiting on that same lock, because `apvts.replaceState` has to
+  write mbSolo. No host produces that shape: one that pumps from a gesture end does not also block
+  the pump on a thread of its own that is writing the same parameter. The leg was rebuilt around the
+  PRODUCTION shape instead — the restore arrives earlier, on its own thread, and is still in the cell
+  when the message thread reaches a door re-entrantly — which is also the shape that isolates the
+  adoption as the thing that mutates state.
+
 * **Round 24 — State test 98, and the class the finding named only two members of.**
 
   **State test 98 (`a multiband topology change is one user action, so it is one undo step`, R1092,

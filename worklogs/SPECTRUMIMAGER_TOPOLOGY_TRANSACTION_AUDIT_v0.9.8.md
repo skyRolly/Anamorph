@@ -4528,3 +4528,163 @@ Had a host thread held it, the try would have failed and the poll would never ha
 lock. `deadlock:PumpFromGestureEnd` names a test type that cannot appear in a shipped build, so a
 real host-vs-host inversion on these locks is still reported. Three entries, three matched.
 
+## §82. Round 25 — the poll was not the only thing the pump could deliver
+
+**Trigger.** One item on PR #144 at head `74041f9`: `src/PluginProcessor.cpp:R1279-1283` — the
+round-24 poll guard — reported as *"reentrant Undo corrupts topology transactions"*.
+
+### R1279-1283 — round 24 closed one door of two
+
+The window is round 24's window. A topology burst's stores dispatch synchronously to the host; a host
+that pumps its message loop from one of those callbacks dispatches whatever UI events are queued; the
+editor's Undo, Redo, A/B and preset buttons are ordinary `onClick`s on the message thread. Round 24
+made the POLL refuse to commit inside a transaction. It said nothing about a COMMAND.
+
+**The corruption is the ownership wipe, not the value restore.** `undo()` installs an entry's
+`before` end, retakes `committed` from the LIVE — half-applied — sound, clears `openGestures` and
+`pendingGestureCommit`, and calls `resetBatchOwnership()`. The stores the burst has already issued
+lose their declarations; the ones still to come declare into a fresh batch; `setBands` closes its
+gesture and the step the next poll commits describes only the TAIL of the action.
+
+**Measured before the fix (State test 99 leg B):** after an Add-band click interrupted this way,
+`bands 3, solo 0x4, Drive 3.00`; one Undo of the recorded step gave
+`bands 2 and solo 0x4 disagree` — R1092's mixed topology, by another door.
+
+### The class is nine entry points, and one of them is not a state replacement at all
+
+Undo, Redo, `abToggle`, `abSwitchTo`, `abCopyToOther`, `PresetManager::load`, `::loadAdopted`,
+`::loadFile`, `::step` — and `::saveUser`, which writes no parameter but whose `onSaved` hook calls
+`syncCommitted()`, so a save arriving inside a transaction does not corrupt the step, it DELETES it:
+the user's Add silently stops being undoable. A host `setStateInformation` is explicitly NOT in this
+class — it arrives on the host's own thread through `pendingRestore` and is adopted at a door, which
+ADR-0036 §25/§27 already govern.
+
+### The ordering was the decision, and the A/B path is what settles it
+
+At the outermost `1 → 0` transition: nothing at an inner boundary; nothing when nothing was deferred
+(so round 24's timing is byte-identical and click-to-add-then-drag stays one step); **the
+transaction's own step committed first, whole**; then the commands, in the order the user gave them.
+
+Committing first is not belt-and-braces. `undo()` and `redo()` flush on the way in, so for them
+either order looks the same — but `abToggle` and `abCopyToOther` have no such flush, and
+`abSwitchToAdopted` calls `syncCommitted()`, which clears `pendingGestureCommit` outright. Left to
+each command's internals the ordering would depend on which command happened to arrive, and on the
+A/B and preset paths it would delete the step rather than reorder it.
+
+A deferred Redo that finds an empty stack has still EXECUTED: the Add cleared the redo stack, as any
+new user action does (`abUndo[abActive].redo.clear()`, *"a new user action invalidates the redo
+stack"*). Undo, make a new edit, press Redo — nothing happens today either.
+
+### Coverage, and the two mutants that had to be re-spelled
+
+State test 99: A (control), ordering, B (Undo), C (Redo), D (preset), E (A/B switch and Copy), F
+(nested), G (two commands), H (nothing deferred). Mutations M101–M107 plus M105b.
+
+**M103 and M104 survived their first spelling and neither was called equivalent.** M103's first
+version dropped only the outermost-depth test, and the command re-deferred itself through the depth
+check inside `deferWhileUserTransactionActive` — the mutant never produced the behaviour it was
+written for. M104's first version was masked by `undo()`'s own flush. Both were re-spelled to produce
+the forbidden behaviour for real, and both then died. **Legs D and E were strengthened in the same
+pass**: each had asked only whether the topology was whole and the command honoured, which is true
+under a wrong commit order too, because those commands replace everything either way. What neither
+could see was the transaction's step being deleted. Both now assert it survived.
+
+### Gates
+
+An implementation correction under ADR-0008's own invariant; no hard-stop class is touched (no
+parameter ID, no serialization field, no thread-model change — one message-thread queue beside two
+message-thread ints, no new lock and no new thread, no DSP signal order, no latency). The owner's
+already-given approval is recorded in ADR-0008's round-25 section and its step-2 row. ADR-0036 and
+ADR-0053 were not reopened and keep the approvals already recorded in them. **RISK-011 — which named
+this exact mechanism in 2026-09-08 and recorded a deliberate no-fix — is RESOLVED in two halves,
+round 24's poll guard and round 25's deferral**, with the residual stated: a future command that
+replaces state and does not ask the guard re-opens it, and nothing in the build enforces that.
+
+### Validation
+
+State 3 624 / 0 (3 620 / 2 on the unfixed tree, the two being leg B's mixed-topology assertions).
+
+DSP all passed. TSan 3 624 / 0 with the three round-24 suppressions matched and no new cycle.
+Mutations M101–M107 plus M105b, each killed by its own leg.
+
+### §82b. The ninth row: the coverage found a door the report did not name
+
+Leg I was written to finish the §3 audit — to show that the one state replacement NOT deferred, the
+host-restore adoption, truncates a burst coherently under ADR-0036 §25. **It failed, and the failure
+is this round's second finding.**
+
+**What it measured.** `pollUndoCoalesceFromTimer`'s FIRST line is `adoptPendingHostState (false)`,
+ahead of the round-24 guard, which stops only the poll BODY. A host restore handed over from another
+thread sits in `pendingRestore`; the user clicks Add Band; a store dispatches to the host; the host
+pumps; the 20 Hz tick runs re-entrantly; the drain adopts; `adoptRestoreTail` → `syncCommitted()`
+clears `pendingGestureCommit` and calls `resetBatchOwnership()` **inside the transaction**. Printed:
+
+```
+[leg I] inside the burst: bands 2 -> 2, preset 'Default' -> 'r25-restore';
+        after the press: bands 3, solo 0x4, splits 36/2000/12000, preset 'r25-restore'
+[leg I] undo step 1 left bands 2 with solo 0x4
+```
+
+**Why the per-store guards did not catch it**, which is the part worth keeping. ADR-0036 §12 makes
+`reinstallRestoredSound` SKIP the sound half when `soundSetGen` has not moved since the decode — the
+user edited the restored session rather than replacing it, and re-installing would erase the edit.
+So the adoption changed no parameter `addBandAt` re-proves (`bandCount`, `soloMask`, `bandWidth(i)`,
+`crossover(i)`) and ran its tail regardless. ADR-0040's guards are sound; there was nothing for them
+to see. A metadata-only replacement is invisible to a value-based abort test — that is the general
+lesson, and it is why the guard had to go on the drain and not on the burst.
+
+**The fix, and why it is a refusal rather than a queue.** `adoptPendingHostState` with
+`mayBlock == false` now returns while `userTransactionDepth > 0`, consuming nothing. A user COMMAND
+must be queued because dropping it loses something the user asked for; a restore cannot be lost by
+refusing — the cell keeps it whole and the next door adopts it, which is the same answer the failed
+try-lock two lines below already gives. Scoped to the non-blocking (timer) arm: the blocking arm's
+callers need a drain to a FIXED POINT for session coherence (§15), and weakening that was not done
+on evidence this round did not produce (recorded as an examined residual in ADR-0008).
+
+### §82c. Two more things this round's own implementation got wrong
+
+**The flush walked its queue once.** A deferred command runs at depth zero, so a transaction IT
+starts is ordinary and can have a command deferred into it — and that inner `1 → 0` close finds
+`runningDeferredCommands` raised and returns. The command then sat in the queue until some later
+user transaction happened to close, which for a user who performs no further multi-store action is
+never. *Nothing is dropped* has to mean bounded, not merely not-erased. The flush now drains
+(`while (! deferredCommands.empty())`); it cannot spin, because every further iteration needs a
+fresh command and a command is only queued by a real user action the host pumped in. Leg J is that
+loop's only coverage; mutation M109 is its proof.
+
+**`endUserTransaction()` was still `noexcept`.** Round 24's body was one clamped decrement. It now
+runs `pollUndoCoalesce()` — whole-tree copy plus ~36 String formats — and arbitrary `std::function`
+bodies, both of which allocate. The exposure is unchanged (both callers are destructors, implicitly
+`noexcept`, so a throw terminates either way); the declaration simply no longer claims otherwise.
+
+**And the lock paragraph classified the door, not the held lock.** JUCE holds a parameter's
+`listenerLock` across both the plug-in listeners and the `finalListener`
+(`juce_AudioProcessorParameter.cpp:101-108`, `:113-120`), so a transaction entered from a host's
+pump reaches the boundary poll with that lock held and takes the APVTS lock under it — the R1204
+edge. Not a round-25 regression: pre-round-25 the same scenario ran `undo()`'s own blocking poll at
+a strictly deeper point under the same lock, so deferral strictly reduces the exposure, and the
+boundary poll happens only when a command was deferred, i.e. only where a poll was going to happen
+anyway. Now said in the source instead of left to the door classification.
+
+### §82d. The harness deadlock, measured rather than guessed
+
+Leg I's first construction handed the restore over from inside the gesture-end callback and joined
+the thread there. It hung. Under gdb:
+
+* **Thread 1** (message thread): `SpectrumImager::setSoloMask` → `endChangeGesture` → JUCE takes
+  mbSolo's `listenerLock` → the probe → `std::thread::join()`.
+* **Thread 2** (the authored host thread): `setStateInformation` → `installRestoredSound` →
+  `apvts.replaceState` → `setValueNotifyingHost` → blocked on **the same** mbSolo `listenerLock`.
+
+A real cycle, and a harness-only one: a host that pumps from a gesture end does not also block that
+pump on a thread of its own writing the same parameter. The leg was rebuilt around the production
+shape — the restore arrives earlier, on its own thread, and is still in the cell when the message
+thread reaches a door re-entrantly — which is also the construction that isolates the ADOPTION as
+the thing that mutates state. Recorded rather than worked around silently, because the next person
+to write a cross-thread probe inside a gesture callback will hit it too.
+
+### Validation, round 25 final
+
+State 3 639 / 0. DSP all passed. TSan 3 639 / 0 with the same five suppressions matched as round 24
+— **no new lock cycle, and no suppression added**. Mutations M101–M109 plus M105b, each killed by
+its own leg; M108 by two independent oracles in leg I.

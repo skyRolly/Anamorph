@@ -708,6 +708,171 @@ Accepted ADR: ADR-0040's re-validated burst, ADR-0044's mask proofs, ADR-0052's 
 ADR-0053's wheel rules are all untouched, and the step's CONTENT is decided exactly as rounds 17-23
 left it. What changed is that the poll now knows when an action is still running.
 
+## Decision — correction, 2026-09-15 (round 25)
+
+**A STATE-REPLACING COMMAND DOES NOT RUN INSIDE A USER TRANSACTION — IT WAITS FOR ONE, AND IT IS
+NEVER DROPPED.** Review finding `src/PluginProcessor.cpp:R1279-1283` — the round-24 poll guard —
+reported that a re-entrant Undo corrupts a topology transaction. Reproduced, and the report is right.
+
+**Round 24 closed one door and not the other.** It stopped the undo POLL from committing half a
+topology. It did not stop a whole COMMAND from replacing the state underneath one, and the window is
+the same window: a topology burst's stores dispatch synchronously to the host
+(`setValueNotifyingHost` → every `AudioProcessorParameter::Listener`, then the `finalListener`, then
+every `AudioProcessorListener`), a host that pumps its message loop from one of those callbacks
+dispatches whatever UI events are queued, and the editor's Undo, Redo, A/B and preset buttons are
+ordinary `onClick`s on the message thread.
+
+**THE OWNERSHIP WIPE IS THE CORRUPTION, not the value restore.** `undo()` does not merely read: it
+installs an entry's `before` end, retakes `committed` from the LIVE — half-applied — sound, clears
+`openGestures` and `pendingGestureCommit`, and calls `resetBatchOwnership()`. The stores the burst
+has already issued lose their declarations; the ones still to come declare into a fresh batch;
+`setBands` closes its gesture and the step the next poll commits describes only the TAIL of the
+action. Measured before the fix, State test 99 leg B: after an Add-band click interrupted this way,
+`bands 3, solo 0x4, Drive 3.00`, and one Undo of the recorded step gave
+`bands 2 and solo 0x4 disagree` — a solo word naming band 2 in a two-band layout, which
+`SoloMonitor::process` masks away to nothing. R1092's mixed topology, through a door round 24 left
+open.
+
+**THE COMMAND MATRIX**, from the source rather than from the report. "Reachable" means: reachable
+re-entrantly, on the message thread, with `userTransactionDepth > 0`.
+
+| Command | Entry point | Reachable | Mutates immediately | What it does to a transaction |
+|---|---|---|---|---|
+| Undo | `undoButton.onClick` → `AnamorphAudioProcessor::undo` | yes | yes | restores values, retakes `committed` from a half-applied sound, clears `pendingGestureCommit`, wipes batch ownership |
+| Redo | `redoButton.onClick` → `::redo` | yes | yes | identical shape to Undo |
+| A/B switch | `abControl.onToggle` → `::abToggle` → `abSwitchToAdopted` | yes | yes | replaces the whole live sound AND calls `syncCommitted()`, which clears `pendingGestureCommit` — so the transaction's step is not reordered, it is DELETED |
+| A/B switch (explicit) | `::abSwitchTo(int)` | yes (public primitive) | yes | as above; `abToggle` does not route through it, so it is guarded separately |
+| A/B Copy | `copyButton.onClick` → `::abCopyToOther` | yes | yes | photographs the LIVE half-applied topology into the other slot and pushes a whole-state undo entry for it |
+| Preset step | `presetPrev/Next.onClick` → `PresetManager::step` | yes | yes | relative: re-deriving the row later is required (ADR-0036 §23), so it is deferred at the OUTERMOST entry point, not at the absolute load it computes |
+| Preset load / file load | `PresetManager::load` / `::loadAdopted` / `::loadFile` | yes | yes | whole-sound replacement; `onAboutToLoad`'s flush SKIPS during a transaction, so the interrupted step is deleted |
+| Preset save | `PresetManager::saveUser` | yes | no parameter, yes bookkeeping | writes no parameter, but the processor's `onSaved` hook calls `syncCommitted()` — the transaction's undo step disappears and the user's Add silently stops being undoable |
+| Host `setStateInformation` (the write itself) | the host's own thread | **not this class** | — | arrives through `pendingRestore`; the sound is installed on that thread under ADR-0036 §25/§27 and never on this one |
+| **Host-restore ADOPTION** | `AnamorphAudioProcessor::adoptPendingHostState`, reached from `pollUndoCoalesceFromTimer` and `timerCallback` | **yes — the ninth row, and it was found by writing leg I, not by the report** | yes | the drain is the FIRST line of the timer door, ahead of round 24's guard, so `adoptRestoreTail` → `syncCommitted()` clears `pendingGestureCommit` and calls `resetBatchOwnership()` under the open transaction — the same ownership wipe, through the adoption |
+
+**THE NINTH ROW IS A CORRECTION OF THIS SECTION'S OWN FIRST DRAFT, and it is recorded as one.** The
+row above it originally read *"it is not a message-thread command"* and stopped there, which is true
+of the host's WRITE and false of its ADOPTION. State test 99 leg I was written to assert that an
+adoption reached re-entrantly would truncate the burst coherently; it FAILED, and the failure is the
+finding: `bands 3, solo 0x4` after the click and `bands 2 with solo 0x4` after one Undo of the
+recorded step — R1092's mixed topology again. The burst did not abort because ADR-0036 §12 makes
+`reinstallRestoredSound` deliberately SKIP the sound half when `soundSetGen` has not moved since the
+decode (the user edited the restored session rather than replacing it), so the adoption changed no
+parameter the burst's guards test, ran its tail anyway, and wiped the bookkeeping from under it.
+
+**Decision for the ninth row: REFUSED, not queued — and the difference is the cell.** A deferred user
+command must be queued because dropping it loses something the user asked for. A restore cannot be
+lost by refusing: `adoptPendingHostState` consumes nothing, the cell keeps the restore whole, and the
+next door adopts it — the same timer 50 ms later, or the user action that follows. That is the same
+answer, and deliberately the same sentence, as the failed try-lock immediately below it. It is scoped
+to the NON-BLOCKING arm (`mayBlock == false`), which is exactly the timer class already contracted to
+come back later; the blocking arm's callers (`getStateInformation`, `setStateInformation`'s inline
+arm, `applyAutoGain`) depend on a drain to a FIXED POINT for session coherence (ADR-0036 §15), and
+weakening that was not done on evidence this finding did not produce. See *Examined residuals* below.
+
+**This row is an EXTENSION of the owner's approved direction, not a separate approval.** The ruling
+of 2026-09-15 is written about *commands*; the invariant it states — a state replacement does not
+execute re-entrantly while a user transaction is active — is what the ninth row applies, at a site the
+ruling's text does not enumerate. It is recorded here as such rather than counted as separately
+approved. It changes no threading model: the adoption still happens on the message thread, at a door,
+exactly as the existing try-lock refusal already defers one by a timer period.
+
+**Decision.** Every one of those entry points asks first. `deferWhileUserTransactionActive` queues
+the command and returns `true` while a transaction is running, and the caller returns having touched
+nothing; with no transaction it returns `false` and the caller proceeds exactly as before. The
+`PresetManager` reaches the same queue through a `deferIfBusy` hook the processor sets, in the style
+of the `adoptPending` / `onAboutToLoad` hooks it already has.
+
+**THE ORDERING INVARIANT, at the outermost `1 → 0` transition, in this order and for these reasons:**
+
+1. **Nothing happens at an inner boundary.** Only the depth reaching zero means the state is once
+   again one a completed user action produced. (State test 99 leg F; mutation M103.)
+2. **Nothing happens when nothing was deferred.** The flush is gated on a non-empty queue precisely
+   so round 24's timing is untouched: an ordinary Add still leaves its commit to the poll that
+   follows the press, and click-to-add-then-drag stays ONE step instead of being split by an eager
+   commit at the end of `addBandAt`. (Leg H.)
+3. **The transaction's own step is committed FIRST, whole,** by `pollUndoCoalesce()`. This is round
+   24's invariant being honoured, not replaced: `pendingGestureCommit` is standing and the batch
+   describes the entire action. Running the command first would leave `undo()`/`redo()` to flush it
+   through their own `pollUndoCoalesce()` — that call exists so an edit finished just before the
+   click is not jumped past — but **`abToggle` and `abCopyToOther` have no such flush, and
+   `abSwitchToAdopted` calls `syncCommitted()`**, which clears `pendingGestureCommit` outright. So
+   relying on each command's internals would make the ordering depend on which command happened to
+   arrive, and for the A/B and preset paths it would DELETE the step rather than reorder it. The
+   order is stated once, here. (Legs D and E; mutations M104 and M106.)
+4. **Then the commands, in the order the user gave them.** Two Undos inside one pumped burst are two
+   Undos; an Undo then a preset switch is both, in that order. Coalescing to the last would be
+   dropping a command. (Leg G; mutation M102.)
+5. **A command that finds nothing to do has still executed.** A deferred Redo after the transaction
+   commits finds an empty redo stack, because `pollUndoCoalesceAdopted` clears it when it pushes a
+   step ("a new user action invalidates the redo stack"). That is the model's existing answer — undo,
+   make a new edit, press Redo, and nothing happens today either — not a silent drop. (Leg C.)
+6. **The blocking door is the right one here.** `pollUndoCoalesce` is the user-action door, and every
+   transaction this runs under is a user action on the message thread. RISK-009's rule is about the
+   TIMER doors (ADR-0036 §26); this is not one of them.
+7. **The flush cannot re-enter itself.** `runningDeferredCommands` guards the loop, and with the
+   depth already at zero a command cannot queue itself into the list it is being run from. The queue
+   is also DETACHED by `std::move` before it is walked, so a `push_back` from a nested transaction
+   lands in the fresh vector and cannot reallocate under the loop.
+8. **And the flush DRAINS rather than flushing once.** A command runs at depth zero, so a transaction
+   it starts is an ordinary one that can itself have a command deferred into it — and that inner
+   `1 → 0` close finds `runningDeferredCommands` raised and returns. Walking the queue once would
+   leave such a command sitting in the list until some LATER user transaction happened to close,
+   which for a user who performs no further multi-store action is never. *Nothing is dropped* has to
+   mean bounded, not merely not-erased. The loop cannot spin: every further iteration needs a fresh
+   command, and a command is only queued by a real user action the host pumped in. (Leg J; mutation
+   M109.)
+9. **`endUserTransaction()` is no longer `noexcept`.** Round 24's body was one clamped decrement and
+   could not throw; it now runs `pollUndoCoalesce()` — which copies the whole parameter tree and
+   formats a signature — and then arbitrary `std::function` bodies, both of which allocate. The
+   exposure is unchanged, because both callers are destructors and a destructor is implicitly
+   `noexcept`, so a throw terminates either way; what changed is that the declaration no longer
+   claims otherwise.
+
+**What this deliberately does NOT do.** No command is dropped or coalesced away. No timer, no sleep,
+no polling delay is used as the synchronisation mechanism — the scope is the transaction's own stack
+lifetime. The nested event dispatch that delivered the command is not suppressed. The undo/redo model
+is unchanged: nothing about endpoints, ownership bits, wheel-step naming or what a step contains
+moves. Round 24's guard is preserved exactly — both invariants are required, and mutation M107
+(nothing ever deferred) and the round-24 mutations M96–M100 each still fail on their own legs.
+
+**Coverage.** State test 99: leg A (the control — the same command with no transaction running), leg
+B (Undo), an explicit ordering leg, C (Redo), D (preset step, with the Add still a step of its own
+beneath it), E (A/B switch and Copy, with the switch's `syncCommitted` as the discriminator), F
+(nested transactions), G (two commands from one close), H (nothing deferred → round-24 timing
+unchanged), **I (the host-restore adoption reached through the timer door)**, **J (a command stranded
+in a transaction a command itself started)**. Mutations M101–M109 plus M105b, each killed by its own
+leg.
+
+**Examined residuals, stated rather than closed.**
+
+* **The blocking arm of `adoptPendingHostState` inside a transaction.** `applyAutoGain`,
+  `getStateInformation` and `setStateInformation`'s inline arm all drain before they act, and all
+  three are message-thread entry points a host could in principle deliver from inside a parameter
+  callback during a click. The refusal is not extended to them because their contract is a drain to a
+  FIXED POINT (ADR-0036 §15): an older restore left unadopted there would later stamp its metadata
+  over a newer session, which is a worse failure than the one being closed. No evidence of that shape
+  was produced this round; it is recorded, not fixed.
+* **A deferred `loadFile` / `saveUser` returns `true`.** Reporting failure would make the editor say
+  the file could not be read when it simply has not been read YET, so the deferred return is success.
+  The consequence, stated: the Save panel closes before the file exists, and a genuine failure inside
+  the deferred run is reported nowhere. UI convergence itself is fine — `refreshPresetDisplay()` runs
+  on the editor's 24 Hz tick, so the caller's immediate reads are corrected within one period.
+
+**Architecture Review Gate: APPROVED by the owner, 2026-09-15 (round 25).** The approval covers
+preventing state-replacing commands from executing re-entrantly inside `userTransactionDepth`,
+deferring them until the outermost transaction completes, and preserving one coherent topology Undo
+step.
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | this section, and the PR #144 body |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's ruling of 2026-09-15**, which states the invariant (*"state-replacing commands must not execute re-entrantly while a user transaction is active"*), names the mechanism (*"defer the command; allow the current user transaction to finish; on the transition from outermost transaction depth 1 → 0, execute the deferred state-replacement command(s)"*), and states the prohibitions (do not drop commands, no sleeps, no arbitrary timers, no polling delays, do not rely on the host not pumping, do not suppress the nested dispatch, do not redesign the Undo/Redo model), and states that the direction is already approved and is not to be asked again |
+| 3 | if the change is a decision, an ADR is added/updated | this section of ADR-0008; no new ADR — the invariant is ADR-0008's own and this is its enforcement |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes |
+
+ADR-0036 and ADR-0053 are untouched by this round and keep the owner approvals already recorded in
+them; neither was reopened.
+
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
   not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots
@@ -733,17 +898,21 @@ left it. What changed is that the poll now knows when an action is still running
 - `src/PluginProcessor.cpp` — `soundSignature`, `pollUndoCoalesceAdopted`, `applyUndoEntry`,
   `undo`/`redo`, `commitPresetSwitchUndoStep`, `abCopyToOther`, `pushCapped`,
   `parameterGestureChanged`, `noteFirstOwnership`, `noteOwnedParamWrite`, `noteOwnedParamEndpoint`,
-  `noteOwnedParamRefused`, `resetBatchOwnership`, `beginUserTransaction` / `endUserTransaction`
-  (`snapshotSoundValues` was deleted in round 17 — both of its call sites were the defect)
+  `noteOwnedParamRefused`, `resetBatchOwnership`, `beginUserTransaction` / `endUserTransaction`,
+  `deferWhileUserTransactionActive`, `adoptPendingHostState` (its round-25 non-blocking refusal —
+  ADR-0036 §28) (`snapshotSoundValues` was deleted in round 17 — both of its
+  call sites were the defect)
 - `src/PluginProcessor.h` — `StateSet`, `ParamEdit`, `UndoEntry`, `UndoStacks`, `kUndoDepth`,
   `batchOpenValue` / `batchCloseValue` / `batchOwnedParam` / `batchEpisodeParam`, the A/B members
 - `src/PluginEditor.h` / `src/PluginEditor.cpp` — `AttachmentWitness`, `makeWitness`, and the three
   attachment sites that straddle it (`attachSlider`, `setupCombo`, `setupToggle`)
+- `src/PresetManager.h` / `.cpp` — `deferIfBusy`, and the five entry points that ask it (`load`,
+  `loadAdopted`, `loadFile`, `step`, `saveUser`)
 - `src/gui/SpectrumImager.h` / `.cpp` — `onOwnedWrite`, `onOwnedRefused`, `onUserTransaction`,
   `ScopedUserTransaction`, `storeOwned`, `setParam`, `addBandAt`, `removeBand`, `resetCrossover`,
   `commitFreqEditor`, `spreadSplits`
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:464-618, :340-520
+- Source: src/PluginProcessor.cpp:469-713, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")

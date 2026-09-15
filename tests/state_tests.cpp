@@ -21037,7 +21037,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1996).
+//  baseline", src/PluginProcessor.cpp:2136).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -21270,7 +21270,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1658).
+//  targets", src/PluginProcessor.cpp:1757).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21647,7 +21647,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2181).
+//  mixed sound", src/PluginProcessor.cpp:2321).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -26486,6 +26486,719 @@ static void testATopologyChangeIsOneUndoStep()
     delete ed;
 }
 
+// ---------------------------------------------------------------------------
+//  State test 99 -- round 25, Devin R1279-1283. A STATE-REPLACING COMMAND MUST NOT
+//  RUN INSIDE A USER TRANSACTION.
+//
+//  Round 24 stopped the undo POLL from committing half a topology. It did not stop a
+//  whole COMMAND from replacing the state underneath one. The window is the same
+//  window: a topology burst's stores dispatch synchronously to the host, a host that
+//  pumps its message loop from one of those callbacks dispatches whatever UI events
+//  are queued, and the editor's Undo button is one of them. `undo()` then runs on the
+//  message thread, RE-ENTRANTLY, with `userTransactionDepth > 0` and a half-applied
+//  topology in the parameters -- and it does not merely read: it installs an entry's
+//  `before` end, retakes `committed` from the LIVE (half-applied) sound, clears
+//  `openGestures` and `pendingGestureCommit`, and calls `resetBatchOwnership()`.
+//
+//  THE CORRUPTION IS THE OWNERSHIP WIPE, not the value restore. When the burst
+//  resumes, the stores it has ALREADY issued have had their declarations erased, and
+//  the ones still to come declare into a fresh batch. `setBands` then closes its
+//  gesture, and the step the next poll commits describes only the tail of the action.
+//  One Undo of THAT step restores a layout no completed action ever produced -- which
+//  is R1092's defect exactly, reached through the door round 24 did not close.
+// ---------------------------------------------------------------------------
+namespace {
+// The host seat, with the COMMAND left open. Every leg below arms it with a different user command
+// -- Undo, Redo, a preset step, an A/B switch, an A/B Copy -- because the question is never about
+// one command: it is about what a state replacement does to a transaction. `toFire` is a count
+// rather than a flag so one leg can dispatch TWO commands from a single pumped close, which is the
+// only way to see what a queue does with more than one.
+struct CommandFromGestureEnd final : public juce::AudioProcessorListener
+{
+    std::function<void()> command;
+    int  index  = -1;         // only this parameter's close is the host's cue
+    int  toFire = 0;
+    int  fired  = 0;
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
+    {
+        if (toFire <= 0 || i != index || ! command) return;
+        const int n = toFire; toFire = 0;            // cleared FIRST: the command may itself close
+        for (int k = 0; k < n; ++k) { ++fired; command(); }   // a gesture and re-enter this
+    }
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
+    void audioProcessorChanged (juce::AudioProcessor*,
+                                const juce::AudioProcessorListener::ChangeDetails&) override {}
+};
+} // namespace
+
+static void testAStateReplacingCommandWaitsForTheTransaction()
+{
+    std::printf ("State test 99: a state-replacing command does not run inside a user transaction (R1279-1283)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the re-entrant-command probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        { auto* k = c->getChildComponent (i);
+          if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+          walk (k); }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "the imager is laid out");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* driveP = apvts.getParameter (pid::drive);
+    check (bandsP && soloP && loP && midP && hiP && driveP, "the probe's parameters exist");
+    if (! (bandsP && soloP && loP && midP && hiP && driveP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto near     = [] (float a, float b) { return std::abs (a - b) < 1.0e-3f; };
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    const float W = (float) im->getWidth(), H = (float) im->getHeight();
+    auto hover = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseMove (juce::MouseEvent (src, { x, y }, juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto pressAt = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseDown (juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto findAddX = [&] (float y) -> float
+    {
+        for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+        { hover (x, y);
+          if (im->getTooltip() == juce::String ("Click to add a band split")) return x; }
+        return -1.0f;
+    };
+    // A real user edit, so the undo stack has something for the nested Undo to pop. A bare
+    // begin/write/end is the harness's own stand-in for a user edit (ADR-0008 round 23: no host
+    // wrapper opens a gesture, so this shape is the suite's, not a format's).
+    auto userEditDrive = [&] (float to)
+    {
+        driveP->beginChangeGesture();
+        setPlain (driveP, to);
+        driveP->endChangeGesture();
+        proc.pollUndoCoalesce();
+    };
+
+    const float addY = 0.25f * H;
+
+    CommandFromGestureEnd host;
+    host.index   = soloP->getParameterIndex();   // the transaction's FIRST store is the solo word
+    host.command = [&proc] { proc.undo(); };     // legs A-B, G: the user's Undo
+    proc.addListener (&host);
+
+    // Two bands with band 1 SOLOED, exactly as State test 98: the insertion is to the LEFT of the
+    // only split, so `addBandAt` renumbers band 1's bit from 0x2 to 0x4 and the burst's first store
+    // is a real move whose gesture really closes.
+    auto arm = [&] (float driveStart, float driveEdit)
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 2.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 6000.0f); setPlain (hiP, 12000.0f);
+        setPlain (soloP, 2.0f);                     // band 1
+        setPlain (driveP, driveStart);
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        userEditDrive (driveEdit);                  // ...and ONE undoable user edit on the stack
+        check (proc.canUndo(), "the probe starts with exactly one undoable edit");
+    };
+
+    // A WHOLE OTHER SESSION, for leg I: four bands, its own splits, a solo word only four bands
+    // can carry (0x8), and its own preset identity, so every field of it is distinguishable from
+    // anything the two-band add could produce.
+    juce::MemoryBlock restoreBlob;
+    {
+        const auto authored = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        auto& a  = *authored;
+        a.prepareToPlay (48000.0, 512);
+        auto& ap = a.getAPVTS();
+        auto set = [&ap] (const char* id, float v)
+                   { if (auto* p = ap.getParameter (id)) p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+        set (pid::advancedMode, 1.0f);
+        set (pid::mbEnable,     1.0f);
+        set (pid::mbFreqLow,  300.0f); set (pid::mbFreqMid, 1500.0f); set (pid::mbFreqHigh, 9000.0f);
+        set (pid::mbBands,      4.0f);
+        set (pid::mbSolo,       8.0f);                                      // band 3 only
+        a.getPresets().setMeta ("r25-restore", "r25-restore-id",
+                                anamorph::PresetManager::Selection());
+        restoreBlob = d2::saveOf (a);
+    }
+
+    // ---- LEG A: the control -- the same Undo, with no transaction running --------------
+    //  The command itself is not the defect and must keep working exactly as it does today.
+    {
+        arm (3.0f, 9.0f);
+        check (near (plainOf (driveP), 9.0f), "leg A: the user edit stands");
+        host.toFire = 0;
+        proc.undo();
+        check (near (plainOf (driveP), 3.0f), "leg A: an ordinary Undo restores the value before it");
+        check (! proc.canUndo(), "leg A: ...and that was the only step");
+        proc.redo();
+        check (near (plainOf (driveP), 9.0f), "leg A: Redo puts it back");
+    }
+
+    // ---- LEG B: the Undo arrives from inside the transaction ---------------------------
+    {
+        arm (3.0f, 9.0f);
+        const float b0 = plainOf (bandsP), s0 = plainOf (soloP);
+        const float l0 = plainOf (loP), m0 = plainOf (midP), h0 = plainOf (hiP);
+
+        const float ax = findAddX (addY);
+        check (ax >= 0.0f, "leg B: the add affordance is findable");
+        if (ax >= 0.0f)
+        {
+            host.fired = 0; host.toFire = 1;
+            pressAt (ax, addY);                     // the shipped Add-band click
+            im->cancelActiveDrag();
+            host.toFire = 0;
+            proc.pollUndoCoalesce();
+
+            check (host.fired > 0, "leg B: non-vacuity -- the Undo really fired from inside the burst");
+            std::printf ("  [leg B] after the interrupted Add: bands %.0f (started %.0f),"
+                         " solo 0x%X (started 0x%X), Drive %.2f, undo depth %s\n",
+                         (double) plainOf (bandsP), (double) b0,
+                         (unsigned) juce::roundToInt (plainOf (soloP)),
+                         (unsigned) juce::roundToInt (s0),
+                         (double) plainOf (driveP), proc.canUndo() ? "non-empty" : "empty");
+
+            // THE INVARIANT. Whatever order the two user actions are resolved in, every state the
+            // user can reach by pressing Undo must be one a completed action produced. The add is
+            // all-or-nothing: the count and the solo word move together or neither moves.
+            auto topologyIsCoherent = [&] (const char* whenSaid)
+            {
+                const int    bands = juce::roundToInt (plainOf (bandsP));
+                const int    mask  = juce::roundToInt (plainOf (soloP));
+                const bool   added = bands != juce::roundToInt (b0);
+                const bool   maskMoved = mask != juce::roundToInt (s0);
+                const bool   ok = (added == maskMoved);
+                if (! ok)
+                    std::printf ("  [leg B] %s: bands %d and solo 0x%X disagree"
+                                 " (started bands %d, solo 0x%X)\n",
+                                 whenSaid, bands, (unsigned) mask,
+                                 juce::roundToInt (b0), (unsigned) juce::roundToInt (s0));
+                return ok;
+            };
+
+            check (topologyIsCoherent ("immediately after the click"),
+                   "leg B: the state the click leaves is a whole topology, not half of one");
+
+            // ...and every state on the way back out of the history is whole too.
+            int steps = 0;
+            bool everyStepCoherent = true;
+            while (proc.canUndo() && steps < 8)
+            {
+                proc.undo(); ++steps;
+                if (! topologyIsCoherent ("after an Undo")) everyStepCoherent = false;
+            }
+            std::printf ("  [leg B] %d Undo step(s) unwound; Drive ended at %.2f\n",
+                         steps, (double) plainOf (driveP));
+            check (everyStepCoherent,
+                   "leg B: every state Undo can reach is a whole topology, never a mixed one");
+            check (juce::exactlyEqual (plainOf (loP), l0) && juce::exactlyEqual (plainOf (midP), m0)
+                   && juce::exactlyEqual (plainOf (hiP), h0),
+                   "leg B: unwinding the history returns every split to where it started");
+            check (near (plainOf (driveP), 3.0f),
+                   "leg B: ...and Drive to the value before the user's own edit -- the Undo the"
+                   " host dispatched was honoured, not dropped");
+        }
+    }
+
+    // ---- THE ORDERING, stated as its own check ------------------------------------------
+    //  Leg B's numbers already contain the answer, but the answer is the whole design decision
+    //  and an accident would read the same, so it is asserted rather than inferred. Two orders
+    //  were possible at the transaction's end:
+    //
+    //    (a) commit the transaction's step, THEN run the command  -- Drive stays at the user's
+    //        own 9.00 and the Undo pops the Add;
+    //    (b) run the command, THEN commit                         -- the Undo pops the DRIVE step
+    //        (Drive 3.00) and the Add's step is left standing on top of it (bands 3).
+    //
+    //  (a) is what this implements, and (b) is what the check below refuses: a step whose `before`
+    //  endpoints were recorded before a state replacement must never be pushed after one.
+    {
+        arm (3.0f, 9.0f);
+        const float ax0 = findAddX (addY);
+        check (ax0 >= 0.0f, "ordering: the add affordance is findable");
+        if (ax0 >= 0.0f)
+        {
+            host.command = [&proc] { proc.undo(); };
+            host.fired = 0; host.toFire = 1;
+            pressAt (ax0, addY);
+            im->cancelActiveDrag();
+            host.toFire = 0;
+            proc.pollUndoCoalesce();
+            check (host.fired > 0, "ordering: non-vacuity -- the command fired inside the burst");
+            check (near (plainOf (driveP), 9.0f),
+                   "ordering: the transaction's own step is committed BEFORE the deferred command,"
+                   " so the Undo pops the Add and the user's own earlier edit is untouched");
+            check (juce::roundToInt (plainOf (bandsP)) == 2,
+                   "ordering: ...and the Add it popped is gone, not left standing on top");
+            check (proc.canUndo(),
+                   "ordering: ...with the earlier edit still there to undo next");
+        }
+    }
+
+    // ---- LEG C: the transaction + a re-entrant REDO ---------------------------------------
+    //  A Redo needs a redo stack, so the leg undoes its own edit first. The outcome is the one
+    //  the model already gives without any re-entrancy at all: the Add is a NEW user action, and
+    //  `pollUndoCoalesceAdopted` clears the redo stack when it pushes one
+    //  (`abUndo[abActive].redo.clear()`, "a new user action invalidates the redo stack"). So the
+    //  deferred Redo runs and finds nothing -- which is EXECUTION, not a drop: press Undo, make a
+    //  new edit, press Redo, and nothing happens today either. What must not happen is the Redo
+    //  reaching into the middle of the Add.
+    {
+        arm (3.0f, 9.0f);
+        proc.undo();
+        check (near (plainOf (driveP), 3.0f), "leg C: the leg starts with a redoable step");
+        const float bC = plainOf (bandsP), sC = plainOf (soloP);
+        const float ax1 = findAddX (addY);
+        check (ax1 >= 0.0f, "leg C: the add affordance is findable");
+        if (ax1 >= 0.0f)
+        {
+            host.command = [&proc] { proc.redo(); };
+            host.fired = 0; host.toFire = 1;
+            pressAt (ax1, addY);
+            im->cancelActiveDrag();
+            host.toFire = 0;
+            proc.pollUndoCoalesce();
+            check (host.fired > 0, "leg C: non-vacuity -- the Redo really fired inside the burst");
+            const bool added = juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bC);
+            const bool maskMoved = juce::roundToInt (plainOf (soloP)) != juce::roundToInt (sC);
+            check (added == maskMoved, "leg C: the Add is whole -- the Redo did not land inside it");
+            std::printf ("  [leg C] after the interrupted Add with a Redo pending:"
+                         " bands %.0f, solo 0x%X, Drive %.2f\n",
+                         (double) plainOf (bandsP),
+                         (unsigned) juce::roundToInt (plainOf (soloP)), (double) plainOf (driveP));
+            proc.undo();
+            const bool added2 = juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bC);
+            const bool maskMoved2 = juce::roundToInt (plainOf (soloP)) != juce::roundToInt (sC);
+            check (added2 == maskMoved2, "leg C: ...and the state one Undo reaches is whole too");
+        }
+    }
+
+    // ---- LEG D: the transaction + a re-entrant PRESET STEP ---------------------------------
+    //  A preset load replaces the whole sound. It reaches the message thread the same way: the
+    //  editor's prev/next buttons are ordinary `onClick`s.
+    if (proc.getPresets().entries().size() >= 2)
+    {
+        arm (3.0f, 9.0f);
+        const juce::String name0 = proc.getPresets().currentName();
+        const float bD = plainOf (bandsP), sD = plainOf (soloP);
+        const float ax2 = findAddX (addY);
+        check (ax2 >= 0.0f, "leg D: the add affordance is findable");
+        if (ax2 >= 0.0f)
+        {
+            host.command = [&proc] { proc.getPresets().step (+1); };
+            host.fired = 0; host.toFire = 1;
+            pressAt (ax2, addY);
+            im->cancelActiveDrag();
+            host.toFire = 0;
+            proc.pollUndoCoalesce();
+            check (host.fired > 0, "leg D: non-vacuity -- the preset step fired inside the burst");
+            std::printf ("  [leg D] preset \"%s\" -> \"%s\"; bands %.0f, solo 0x%X\n",
+                         name0.toRawUTF8(), proc.getPresets().currentName().toRawUTF8(),
+                         (double) plainOf (bandsP),
+                         (unsigned) juce::roundToInt (plainOf (soloP)));
+            check (proc.getPresets().currentName() != name0,
+                   "leg D: the preset command was HONOURED, not dropped");
+            // ...AND THE ADD IS STILL A STEP OF ITS OWN UNDERNEATH IT. This is the preset half of
+            // the ordering, and it is the same mechanism leg E measures for A/B: the load's
+            // `onAboutToLoad` hook calls `pollUndoCoalesceAdopted()` to flush a settled edit
+            // before the jump, and while a transaction is running that flush SKIPS (round 24) --
+            // so a load allowed to run inside one does not reorder the Add's step, it deletes it.
+            // The history after this leg must read [Drive edit][Add][preset switch].
+            check (proc.canUndo(), "leg D: the preset switch is undoable");
+            if (proc.canUndo())
+            {
+                proc.undo();                       // ...back out of the preset
+                const bool added1 = juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bD);
+                const bool maskMoved1 = juce::roundToInt (plainOf (soloP)) != juce::roundToInt (sD);
+                check (added1 == maskMoved1,
+                       "leg D: undoing back out of the preset reaches a whole topology, not a mixed one");
+                check (added1, "leg D: ...which is the one the completed Add produced");
+                check (proc.canUndo(), "leg D: ...and the Add is a step of its own beneath it");
+                if (proc.canUndo())
+                {
+                    proc.undo();                   // ...and back out of the Add
+                    check (juce::roundToInt (plainOf (bandsP)) == juce::roundToInt (bD)
+                           && juce::roundToInt (plainOf (soloP)) == juce::roundToInt (sD),
+                           "leg D: ...whose Undo returns the WHOLE topology it changed");
+                }
+            }
+        }
+    }
+    else
+    {
+        check (true, "leg D: skipped -- fewer than two presets are available in this environment");
+    }
+
+    // ---- LEG E: the transaction + a re-entrant A/B SWITCH and COPY --------------------------
+    {
+        for (int variant = 0; variant < 2; ++variant)
+        {
+            arm (3.0f, 9.0f);
+            const float bE = plainOf (bandsP), sE = plainOf (soloP);
+            const int   slot0 = proc.abActiveSlot();
+            const float ax3 = findAddX (addY);
+            check (ax3 >= 0.0f, "leg E: the add affordance is findable");
+            if (ax3 < 0.0f) continue;
+            host.command = (variant == 0) ? std::function<void()> ([&proc] { proc.abToggle(); })
+                                          : std::function<void()> ([&proc] { proc.abCopyToOther(); });
+            host.fired = 0; host.toFire = 1;
+            pressAt (ax3, addY);
+            im->cancelActiveDrag();
+            host.toFire = 0;
+            proc.pollUndoCoalesce();
+            check (host.fired > 0, "leg E: non-vacuity -- the A/B command fired inside the burst");
+            const bool added = juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bE);
+            const bool maskMoved = juce::roundToInt (plainOf (soloP)) != juce::roundToInt (sE);
+            check (added == maskMoved,
+                   variant == 0 ? "leg E: an A/B switch leaves a whole topology, never half of one"
+                                : "leg E: an A/B Copy leaves a whole topology, never half of one");
+            if (variant == 0)
+            {
+                check (proc.abActiveSlot() != slot0, "leg E: ...and the switch was HONOURED, not dropped");
+                // AND THE TRANSACTION'S OWN STEP SURVIVED IT, which is the half of the ordering
+                // that only an A/B switch can test. `abSwitchToAdopted` calls `syncCommitted()`
+                // ("the switch itself isn't undoable"), and `syncCommitted` clears
+                // `pendingGestureCommit` -- so a switch allowed to run BEFORE the transaction's
+                // commit does not merely reorder the two, it DELETES the step: the user's Add
+                // stops being undoable at all. Undo and Redo hide this, because their own
+                // `pollUndoCoalesce()` commits the step on the way in; the A/B paths have no such
+                // flush, which is exactly why the order is stated in `endUserTransaction` rather
+                // than left to each command.
+                proc.abToggle();                       // back to the slot the Add happened on
+                check (proc.abActiveSlot() == slot0, "leg E: ...and back again");
+                check (proc.canUndo(), "leg E: the Add is still undoable after the switch and back");
+                if (proc.canUndo())
+                {
+                    proc.undo();
+                    check (juce::roundToInt (plainOf (bandsP)) == juce::roundToInt (bE)
+                           && juce::roundToInt (plainOf (soloP)) == juce::roundToInt (sE),
+                           "leg E: ...and undoing it returns the WHOLE topology the Add changed");
+                }
+            }
+            else
+                check (proc.abActiveSlot() == slot0, "leg E: ...and a Copy does not move the active slot");
+        }
+        // Put the A/B state back where the rest of the test expects it.
+        while (proc.abActiveSlot() != 0) proc.abToggle();
+    }
+
+    // ---- LEG F: NESTED transactions -- only the outermost boundary releases ------------------
+    //  The imager's add raises the depth to 2 inside the processor's own scope. A command
+    //  dispatched from the inner burst must wait for the OUTER scope, not for the add's.
+    {
+        arm (3.0f, 9.0f);
+        const float bF = plainOf (bandsP), sF = plainOf (soloP);
+        const float ax4 = findAddX (addY);
+        check (ax4 >= 0.0f, "leg F: the add affordance is findable");
+        if (ax4 >= 0.0f)
+        {
+            bool sawInsideOuter = false;
+            {
+                const AnamorphAudioProcessor::ScopedUserTransaction outer (proc);
+                host.command = [&proc] { proc.undo(); };
+                host.fired = 0; host.toFire = 1;
+                pressAt (ax4, addY);          // depth 2 inside `addBandAt`, 1 when it returns
+                im->cancelActiveDrag();
+                host.toFire = 0;
+                // The inner transaction has ended. If the release were keyed on ANY 
+                // transaction ending rather than the outermost, the Undo would already have run.
+                sawInsideOuter = near (plainOf (driveP), 9.0f)
+                                 && juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bF);
+            }
+            proc.pollUndoCoalesce();
+            check (host.fired > 0, "leg F: non-vacuity -- the command fired inside the inner burst");
+            check (sawInsideOuter,
+                   "leg F: the inner transaction's end released NOTHING -- the add still stands and"
+                   " the command has not run");
+            const bool added = juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bF);
+            const bool maskMoved = juce::roundToInt (plainOf (soloP)) != juce::roundToInt (sF);
+            check (added == maskMoved, "leg F: ...and once the OUTER scope closes the state is whole");
+            check (near (plainOf (driveP), 9.0f),
+                   "leg F: ...with the deferred Undo having popped the Add, not the earlier edit");
+        }
+    }
+
+    // ---- LEG G: TWO commands from one pumped close -----------------------------------------
+    //  Both must run, in the order the user gave them. Two Undos: the first pops the Add, the
+    //  second pops the earlier Drive edit.
+    {
+        arm (3.0f, 9.0f);
+        const float bG = plainOf (bandsP), sG = plainOf (soloP);
+        const float ax5 = findAddX (addY);
+        check (ax5 >= 0.0f, "leg G: the add affordance is findable");
+        if (ax5 >= 0.0f)
+        {
+            host.command = [&proc] { proc.undo(); };
+            host.fired = 0; host.toFire = 2;      // the user clicked Undo twice inside the pump
+            pressAt (ax5, addY);
+            im->cancelActiveDrag();
+            host.toFire = 0;
+            proc.pollUndoCoalesce();
+            check (host.fired == 2, "leg G: non-vacuity -- BOTH Undos fired inside the burst");
+            std::printf ("  [leg G] after two deferred Undos: bands %.0f, solo 0x%X, Drive %.2f,"
+                         " more undo: %s\n",
+                         (double) plainOf (bandsP),
+                         (unsigned) juce::roundToInt (plainOf (soloP)),
+                         (double) plainOf (driveP), proc.canUndo() ? "yes" : "no");
+            const bool added = juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bG);
+            const bool maskMoved = juce::roundToInt (plainOf (soloP)) != juce::roundToInt (sG);
+            check (added == maskMoved, "leg G: the topology is whole");
+            check (juce::roundToInt (plainOf (bandsP)) == juce::roundToInt (bG),
+                   "leg G: the first Undo popped the Add");
+            check (near (plainOf (driveP), 3.0f),
+                   "leg G: ...and the SECOND ran too, popping the earlier edit -- neither was"
+                   " coalesced away");
+        }
+    }
+
+    // ---- LEG H: with NOTHING deferred, round 24's timing is unchanged ------------------------
+    //  The flush is gated on the queue being non-empty precisely so an ordinary Add still leaves
+    //  its commit to the poll that follows the press. If it committed eagerly at the end of
+    //  `addBandAt`, click-to-add-and-then-drag would stop being one undo step.
+    {
+        arm (3.0f, 9.0f);
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        check (! proc.canUndo(), "leg H: the leg starts with an empty history");
+        const float ax6 = findAddX (addY);
+        check (ax6 >= 0.0f, "leg H: the add affordance is findable");
+        if (ax6 >= 0.0f)
+        {
+            host.fired = 0; host.toFire = 0;       // nothing deferred
+            pressAt (ax6, addY);
+            check (! proc.canUndo(),
+                   "leg H: with nothing deferred the transaction's end commits NOTHING by itself");
+            im->cancelActiveDrag();
+            proc.pollUndoCoalesce();
+            check (proc.canUndo(), "leg H: ...the poll after the press is still what records it");
+            proc.undo();
+            check (! proc.canUndo(), "leg H: ...as exactly one step");
+        }
+    }
+
+
+    // ---- LEG I: the one re-entrant state replacement that is NOT deferred --------------------
+    //  The round-25 sweep found a ninth entry in the command matrix that the eight legs above do
+    //  not cover: `adoptPendingHostState`. It is reachable inside a transaction exactly as the
+    //  user commands are -- the host pumps from inside a burst's store, a 20 Hz tick runs, and
+    //  `pollUndoCoalesceFromTimer` DRAINS THE CELL BEFORE it reaches round 24's guard -- but it is
+    //  deliberately NOT queued behind `deferWhileUserTransactionActive`, and this leg is the
+    //  evidence for that decision rather than a gap in it.
+    //
+    //  IT IS REFUSED RATHER THAN QUEUED, and this leg is the measurement that settled which.
+    //  Written first as an assertion that the truncation would be coherent, it FAILED, and the
+    //  failure is the finding: `bands 3, solo 0x4` after the click and `bands 2 with solo 0x4`
+    //  after one Undo of the recorded step -- R1092's mixed topology, reached through the
+    //  adoption. The reason the burst did not abort is ADR-0036 section 12: `reinstallRestoredSound`
+    //  deliberately SKIPS the sound half when `soundSetGen` has not moved since the decode (the
+    //  user edited the restored session rather than replacing it), so the adoption changed no
+    //  parameter the burst's guards test, ran its TAIL anyway, and `syncCommitted()` wiped the
+    //  transaction's `pendingGestureCommit` and batch ownership from under it.
+    //
+    //  A RESTORE CANNOT BE LOST BY REFUSING, which is why it needs no queue: the cell keeps it
+    //  whole, nothing is consumed, and the next door adopts it -- this same timer 50 ms later, or
+    //  the user action that follows. A deferred user COMMAND has to be queued because dropping it
+    //  loses something the user asked for; a refused drain drops nothing. The refusal is scoped to
+    //  the non-blocking (timer) arm, the class already contracted to come back later.
+    {
+        arm (3.0f, 9.0f);
+        const juce::String nameBefore = proc.getPresets().currentName();
+
+        int          bandsBeforeAdopt = -1, bandsAfterAdopt = -1;
+        juce::String nameBeforeAdopt, nameAfterAdopt;
+
+        // THE HANDOVER HAPPENS FIRST, AND OFF THE MESSAGE THREAD -- but NOT from inside the
+        // burst. A host-thread `setStateInformation` installs the restored sound on that
+        // thread and leaves only the decoded TAIL in the cell, so joining it from inside a
+        // gesture-end callback deadlocks the harness rather than the product: JUCE holds the
+        // parameter's `listenerLock` across the listener call
+        // (juce_AudioProcessorParameter.cpp:100-108), and the restoring thread's
+        // `apvts.replaceState` needs that same lock to write mbSolo. Measured under gdb:
+        // message thread in `std::thread::join()` at `setSoloMask`'s close, host thread in
+        // `sendValueChangedMessageToListeners` waiting on mbSolo. No host produces that shape
+        // -- one that pumps from a gesture end does not also block the pump on a thread of its
+        // own that is writing the same parameter -- so the leg reproduces the PRODUCTION shape
+        // instead: the restore arrived earlier, on its own thread, and is still sitting in the
+        // cell when the message thread reaches a door RE-ENTRANTLY.
+        d2::offMessageThread ([&] { d2::restoreFrom (proc, restoreBlob); });
+
+        // The install above put the restored sound live. Put the two-band layout the click
+        // needs back WITHOUT polling -- every poll drains the cell -- so the press below runs
+        // against the same topology every other leg uses while the restore waits, unadopted.
+        // ADR-0036 section 27's `reinstallRestoredSound` exists for exactly this interleaving:
+        // the adoption re-installs the decode's own sound rather than stamping its metadata
+        // over whatever the message thread did in between.
+        setPlain (bandsP, 2.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 6000.0f); setPlain (hiP, 12000.0f);
+        setPlain (soloP, 2.0f);
+
+        const float ax7 = findAddX (addY);
+        check (ax7 >= 0.0f, "leg I: the add affordance is findable");
+        if (ax7 >= 0.0f)
+        {
+            host.fired = 0; host.toFire = 1;
+            host.command = [&]
+            {
+                bandsBeforeAdopt = juce::roundToInt (plainOf (bandsP));
+                nameBeforeAdopt  = proc.getPresets().currentName();
+                // The pump the host is running dispatches the editor's 20 Hz tick, whose FIRST
+                // line is the drain. Re-entrant, inside the burst, ahead of round 24's guard.
+                proc.pollUndoCoalesceFromTimer();
+                bandsAfterAdopt  = juce::roundToInt (plainOf (bandsP));
+                nameAfterAdopt   = proc.getPresets().currentName();
+            };
+            pressAt (ax7, addY);                    // the shipped Add-band click
+            im->cancelActiveDrag();
+            host.toFire  = 0;
+            host.command = [&proc] { proc.undo(); };   // back to the legs' default command
+            proc.pollUndoCoalesce();
+
+            check (host.fired > 0, "leg I: non-vacuity -- the pumped tick really ran from inside the burst");
+            std::printf ("  [leg I] inside the burst: bands %d -> %d, preset '%s' ->"
+                         " '%s'; after the press: bands %.0f, solo 0x%X, splits %.0f/%.0f/%.0f,"
+                         " preset '%s'\n",
+                         bandsBeforeAdopt, bandsAfterAdopt,
+                         nameBeforeAdopt.toRawUTF8(), nameAfterAdopt.toRawUTF8(),
+                         (double) plainOf (bandsP),
+                         (unsigned) juce::roundToInt (plainOf (soloP)),
+                         (double) plainOf (loP), (double) plainOf (midP), (double) plainOf (hiP),
+                         proc.getPresets().currentName().toRawUTF8());
+
+            // THE INVARIANT, in three parts.
+            //
+            // 1. NOTHING WAS ADOPTED INSIDE THE TRANSACTION. Neither half: not the sound the
+            //    section-12 guard would have skipped anyway, and -- the part that mattered -- not
+            //    the TAIL, whose `syncCommitted()` is what wiped the burst's bookkeeping.
+            check (bandsBeforeAdopt == 2 && bandsAfterAdopt == 2,
+                   "leg I: the re-entrant tick changed no parameter under the open transaction");
+            check (nameBeforeAdopt == nameBefore && nameAfterAdopt == nameBefore,
+                   "leg I: ...and did not run the restore's TAIL either -- nothing was consumed");
+
+            // 2. THE RESTORE WAS NOT DROPPED. Refusing costs it one door, not its existence: the
+            //    poll after the press is that door, and the session it names is live.
+            check (proc.getPresets().currentName() == juce::String ("r25-restore"),
+                   "leg I: the refused restore was adopted at the very next door, whole");
+
+            // 3. THE ADD IS ONE WHOLE ACTION. Three bands and the remapped 0x4 go together; the
+            //    pre-guard measurement recorded a step that named only the count.
+            check (juce::roundToInt (plainOf (bandsP)) == 3
+                       && juce::roundToInt (plainOf (soloP)) == 4,
+                   "leg I: the burst completed as one coherent topology under the pumped tick");
+
+            // ...and no state on the way out of the history is a mixed topology. This is the
+            // oracle that FAILED before the guard: it reported `undo step 1 left bands 2 with
+            // solo 0x4`, a word naming band 2 in a two-band layout.
+            int steps = 0;
+            bool everyStepWhole = true;
+            while (proc.canUndo() && steps < 8)
+            {
+                proc.undo(); ++steps;
+                const int bands = juce::roundToInt (plainOf (bandsP));
+                const int mask  = juce::roundToInt (plainOf (soloP));
+                if (mask != 0 && mask >= (1 << bands))     // a bit no band of this count can own
+                {
+                    everyStepWhole = false;
+                    std::printf ("  [leg I] undo step %d left bands %d with solo 0x%X\n",
+                                 steps, bands, (unsigned) mask);
+                }
+            }
+            std::printf ("  [leg I] %d undo step(s) unwound after the truncated transaction\n", steps);
+            check (everyStepWhole,
+                   "leg I: every state on the way out of the history is a whole topology");
+        }
+    }
+
+    // ---- LEG J: a command deferred by a transaction a COMMAND itself started ------------------
+    //  The flush runs each command with the depth back at zero, so a command is free to open a
+    //  transaction of its own -- its stores dispatch to the host, the host pumps, and the user's
+    //  next click is an ordinary multi-store action. A command deferred INTO that inner
+    //  transaction cannot be run by it: the inner 1 -> 0 close finds `runningDeferredCommands`
+    //  raised and returns. If the outer flush walked its queue once and returned, that command
+    //  would sit in the list until some LATER user transaction happened to close -- which, for a
+    //  user who performs no further multi-store action, is never. "Nothing is dropped" has to
+    //  mean bounded, so the flush drains instead of flushing once. This leg is that loop's only
+    //  coverage, and it is deliberately built out of the same pieces the shipped path uses.
+    {
+        arm (3.0f, 9.0f);                      // history: [ the Drive edit ]
+        const float ax8 = findAddX (addY);
+        check (ax8 >= 0.0f, "leg J: the add affordance is findable");
+        if (ax8 >= 0.0f)
+        {
+            bool queuedOuter = false, queuedInner = false;
+            host.fired = 0; host.toFire = 1;
+            host.command = [&]
+            {
+                // Queued by the BURST, so the outer flush is what walks it.
+                queuedOuter = proc.deferWhileUserTransactionActive ([&]
+                {
+                    // ...and this runs at depth 0, so the scope below is an ordinary transaction.
+                    AnamorphAudioProcessor::ScopedUserTransaction inner (proc);
+                    queuedInner = proc.deferWhileUserTransactionActive ([&proc] { proc.undo(); });
+                });
+            };
+            pressAt (ax8, addY);               // the shipped Add-band click
+            im->cancelActiveDrag();
+            host.toFire  = 0;
+            host.command = [&proc] { proc.undo(); };   // back to the legs' default command
+            proc.pollUndoCoalesce();
+
+            check (host.fired > 0 && queuedOuter,
+                   "leg J: non-vacuity -- the burst queued the probe's command");
+            check (queuedInner,
+                   "leg J: ...and the transaction that command started queued one of its own");
+            std::printf ("  [leg J] after the nested deferral: bands %.0f, solo 0x%X, Drive %.2f\n",
+                         (double) plainOf (bandsP),
+                         (unsigned) juce::roundToInt (plainOf (soloP)),
+                         (double) plainOf (driveP));
+
+            // THE INVARIANT. The stranded Undo ran, at this boundary, without a further user
+            // action: it popped the Add -- the newest step, committed first by the same flush --
+            // so the topology is back to two bands with its own solo word, and the Drive edit
+            // underneath it is untouched and still undoable.
+            check (juce::roundToInt (plainOf (bandsP)) == 2
+                       && juce::roundToInt (plainOf (soloP)) == 2,
+                   "leg J: the command stranded in the inner transaction still ran, whole");
+            check (near (plainOf (driveP), 9.0f),
+                   "leg J: ...exactly one step, so the edit under the Add stands");
+            check (proc.canUndo(), "leg J: ...and that edit is still undoable");
+        }
+    }
+    proc.removeListener (&host);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -26658,6 +27371,7 @@ int main (int argc, char* argv[])
     testAnamorphsOwnBareBracketsDeclareTheirEndpoint();
     testTheDeferredBaselineAndTheDoorTheEditorPicks();
     testATopologyChangeIsOneUndoStep();
+    testAStateReplacingCommandWaitsForTheTransaction();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

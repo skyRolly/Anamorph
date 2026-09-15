@@ -244,6 +244,21 @@ public:
     // restore, saveUser, or construction. Empty when no processor is bracketing (safe to skip).
     std::function<void()> onAboutToLoad, onLoaded;
 
+    // ADR-0008, ROUND 25 (Devin R1279-1283). A LOAD, A STEP AND A SAVE ARE STATE-REPLACING USER
+    // COMMANDS, and one of them arriving from inside a multi-store user transaction is the same
+    // defect Undo has. The host pumps its message loop from a parameter dispatch, the preset
+    // buttons' `onClick` runs on the message thread, and a load then replaces the sound underneath
+    // a half-applied topology; a SAVE is in the class too, less obviously -- it changes no
+    // parameter, but the processor's `onSaved` hook calls `syncCommitted`, which clears
+    // `pendingGestureCommit`, and the interrupted transaction's undo step is simply gone.
+    //
+    // The processor supplies this; it returns true when it has QUEUED the command to run at the
+    // end of the transaction, in which case the caller returns having done nothing. Empty (or
+    // false) means proceed exactly as before. The lambda re-enters the PUBLIC entry point, so a
+    // relative `step` recomputes its row from the state it will actually act on rather than from
+    // the mid-transaction one -- which is ADR-0036 section 23's rule, kept.
+    std::function<bool(std::function<void()>)> deferIfBusy;
+
     // Fired by saveUser() after the new name/identity/baseline are in place. A save changes no
     // parameter value, so the processor's gesture-gated coalescer never notices it and its
     // `committed` snapshot would keep the PRE-save name, baseline and identity forever -- the

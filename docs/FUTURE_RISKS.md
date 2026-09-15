@@ -224,9 +224,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood (evidence-based):** **Low.** It requires the HOST to write cross-parameter from
   inside a dispatch, on two threads, in opposite orders, overlapping. **No listener in this
   plug-in creates the nesting at all:** `AnamorphAudioProcessor::parameterValueChanged`
-  (`src/PluginProcessor.h:410-413`) is a single relaxed `fetch_add`,
-  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:615`) the same, and
-  `parameterGestureChanged` (`src/PluginProcessor.cpp:1018-1195`) touches two ints — the last
+  (`src/PluginProcessor.h:448-451`) is a single relaxed `fetch_add`,
+  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:653`) the same, and
+  `parameterGestureChanged` (`src/PluginProcessor.cpp:1113-1290`) touches two ints — the last
   deliberately, its comment recording that `--d2-stress-probe` once reported this same detector
   for an APVTS/`listenerLock` inversion, closed by **removing** the nesting.
 - **How it surfaced:** ThreadSanitizer's deadlock detector, on `AnamorphStateTests` at
@@ -323,7 +323,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   change with no defect behind it.
 
   **Residual, stated rather than claimed away.** `PresetManager::saveUser`
-  (`src/PresetManager.cpp:687`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
+  (`src/PresetManager.cpp:705`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
   `soundReplacement`, the only durable reader in the tree that does. It cannot join this cycle: it
   only reads, so it never waits for a `listenerLock`, and it always releases. It is recorded here
   because the rule the paragraphs above rest on — every APVTS acquisition that can happen with a
@@ -389,9 +389,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   tearing window on the reader side, so none of them is evidence about this risk in either
   direction.
 
-## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps
+## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps — **RESOLVED (rounds 24 and 25, three doors)**
 - **Risk:** `AnamorphAudioProcessor::parameterGestureChanged` counts open gestures and sets
-  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:1018-1194`), and
+  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:1113-1289`), and
   `pollUndoCoalesce` turns that into an undo entry. A `SpectrumImager` topology transaction is a
   burst of stores, several of which open and close their own gesture (`setBands`, `setSoloMask`,
   `resetParam`), so the open count returns to zero **inside** the burst. A poll that runs there —
@@ -403,15 +403,54 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   DSP, as RISK-010 describes — but it is a state-correctness one.
 - **Likelihood:** Low as observed (no reported occurrence, and no test in the suite reaches it),
   **structural** as a mechanism: nothing in the current code prevents it.
-- **Evidence [Verified]:** `src/PluginProcessor.cpp:1018-1194` (the counter), `:827-834`
+- **Evidence [Verified]:** `src/PluginProcessor.cpp:1113-1289` (the counter), `:827-834`
   (`pollUndoCoalesce`), `src/gui/SpectrumImager.cpp` `addBandAt` / `removeBand` (the multi-gesture
   bursts). Carried through the v0.9.8 review rounds as residuals **U1–U3** with a deliberate
   no-fix decision; recorded here on 2026-09-08 because a decision carried only in a worklog is a
   decision that gets lost.
-- **Mitigation until then:** none in code. A fix means either suppressing the poll for the duration
+- **~~Mitigation until then:~~ SUPERSEDED — the entry is RESOLVED, in two halves, by rounds 24 and
+  25.** The paragraph below is kept because its reasoning is why the fix took the shape it did: it
+  said a fix means *"either suppressing the poll for the duration of a burst or giving a transaction
+  one outer gesture, both of which change the undo model"*. The first of those is what round 24
+  built, and it did NOT change the undo model — suppressing the poll turned out to mean SKIPPING it,
+  leaving `pendingGestureCommit` standing so the action commits whole a moment later, which is the
+  model's own behaviour rather than a new one. The second was never needed.
+  ~~none in code. A fix means either suppressing the poll for the duration
   of a burst or giving a transaction one outer gesture, both of which change the undo model and so
   are `ARCHITECTURE_REVIEW_GATE` items in their own right. Deliberately **not** attempted inside a
-  GUI review round.
+  GUI review round.~~
+- **RESOLVED, 2026-09-15. The mechanism had TWO doors and both are now closed**, each with an
+  owner-approved architecture decision recorded in ADR-0008:
+  - **The poll (round 24, Devin R1092).** `userTransactionDepth` counts multi-store user actions —
+    `addBandAt`, `removeBand`, `resetCrossover`, `commitFreqEditor`, `applyAutoGain` — and
+    `pollUndoCoalesceAdopted` skips while it is non-zero, so no poll landing inside a burst can
+    commit half of one. Measured before the fix: one Add-band click, one Undo,
+    `bands 2 (started 2), solo 0x4 (started 0x2)`. State test 98; mutations M96–M100.
+  - **The command (round 25, Devin R1279-1283).** A poll is not the only thing a pumped message loop
+    can deliver. Undo, Redo, the A/B switch and Copy, a preset step, load, file load or save are all
+    ordinary message-thread commands, and every one of them replaces state or clears
+    `pendingGestureCommit` — `undo()` additionally wipes batch ownership, which is what turned the
+    interrupted burst's tail into a partial undo step. They are now queued by
+    `deferWhileUserTransactionActive` and run at the outermost `1 → 0` transition, AFTER the
+    transaction's own step is committed whole. Nothing is dropped. Measured before the fix, State
+    test 99 leg B: `bands 2 and solo 0x4 disagree`. Mutations M101–M107.
+  - **The DRAIN (round 25, found by writing the coverage rather than reported).** The third door is
+    not a command at all: `pollUndoCoalesceFromTimer`'s first line is `adoptPendingHostState`, which
+    sits AHEAD of round 24's guard, so a host-restore adoption reached re-entrantly ran
+    `adoptRestoreTail` → `syncCommitted()` under the open transaction and wiped the same bookkeeping.
+    The burst did not abort by itself because ADR-0036 §12 makes the sound half deliberately skip
+    when `soundSetGen` has not moved — so the per-store guards had nothing to see. The non-blocking
+    (timer) arm now returns consuming NOTHING while a transaction is open; the cell keeps the restore
+    whole and the next door adopts it. Measured before the guard, State test 99 leg I: `bands 3,
+    solo 0x4` and `undo step 1 left bands 2 with solo 0x4`. ADR-0036 §28; mutation M108.
+- **What would re-open it:** a NEW command that replaces a whole sound/state snapshot, or that
+  clears `pendingGestureCommit` / calls `syncCommitted()`, and does not ask
+  `deferWhileUserTransactionActive` first — or a NEW non-command path to a whole-state replacement
+  that does not test `userTransactionDepth`, which is what the third door was. The enumeration in
+  ADR-0008's round-25 command matrix is the list this closure rests on; adding to it without adding
+  the guard re-opens the entry. Nothing in the build enforces that today, which is the honest
+  residual of this closure — and the third door is the measured proof that the enumeration is the
+  weak part: it was written in this same round, and it was one row short.
 
 ---
 
@@ -762,7 +801,7 @@ mitigation. Do not invent risks to fill the template.
   inside that window is ordered after the restore.
 - **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:2437-2536 read
+  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:2577-2676 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -840,7 +879,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:2437`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:2577`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -849,8 +888,8 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:1973`, against `canUndo()`; the `abUndo` vector's internals twice, via
-  `UndoStacks::operator=` (`src/PluginProcessor.h:525`) against the reader's iteration; and the
+  `src/PluginProcessor.cpp:2113`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `UndoStacks::operator=` (`src/PluginProcessor.h:563`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture
   change.

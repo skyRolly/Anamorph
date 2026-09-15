@@ -1031,7 +1031,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:1996`).
+    (`src/PluginProcessor.cpp:2136`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1100,7 +1100,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     the one-pass reassert makes exact by construction.
 
 23. **A relative operation acts on the session it observed (round 16).** Review finding *"relative
-    navigation uses stale targets"* (`src/PluginProcessor.cpp:1658`).
+    navigation uses stale targets"* (`src/PluginProcessor.cpp:1757`).
 
     **What a relative operation is.** One whose target is a function of the current state rather than
     of the user's input: *the other slot* (`abToggle`), *the next/previous preset*
@@ -1206,7 +1206,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     derived program-state target there to go stale.
 
 24. **One whole-sound replacement at a time (round 17).** Review finding *"overlapping restores
-    expose mixed sound"* (`src/PluginProcessor.cpp:2181`).
+    expose mixed sound"* (`src/PluginProcessor.cpp:2321`).
 
     **What a whole-sound replacement is.** An operation that installs an ENTIRE sound over the live
     parameter set, as opposed to moving one parameter: a host restore's install
@@ -1784,6 +1784,51 @@ turn late) and leaves a save issued on the host thread right after its restore d
     block above and in ADR-0053's own gate block.** Nothing was manufactured on GitHub: no `APPROVED`
     review exists on PR #144 and none was submitted from this session, which is the outcome the gate
     exists to produce rather than a problem to route around.
+
+28. **AND IT IS NOT TAKEN OUT OF THE CELL AT ALL WHILE A USER TRANSACTION IS OPEN (round 25).**
+    Review finding `src/PluginProcessor.cpp:R1279-1283` is written about re-entrant *commands*
+    (ADR-0008's round-25 section owns that half). Writing its coverage found a ninth door that is
+    this ADR's: **the drain itself**.
+
+    **The defect.** `pollUndoCoalesceFromTimer`'s FIRST line is `adoptPendingHostState(false)` —
+    ahead of the round-24 guard, which stops only the poll BODY. A topology burst's store dispatches
+    synchronously to the host; a host that pumps its message loop from that callback runs the 20 Hz
+    tick; the drain adopts, and `adoptRestoreTail` → `syncCommitted()` clears `pendingGestureCommit`
+    and calls `resetBatchOwnership()` **under the open transaction**. The burst's remaining stores
+    then declare into an empty batch and the step the next poll records names only the tail of the
+    action. Measured (State test 99 leg I, before the guard): `bands 3, solo 0x4` after an Add-band
+    click, and `undo step 1 left bands 2 with solo 0x4`.
+
+    **Why the burst did not abort by itself**, which is the part that makes this §12's business
+    rather than ADR-0040's: `reinstallRestoredSound` deliberately SKIPS the sound half when
+    `soundSetGen` has not moved since the decode — the user EDITED the restored session rather than
+    replacing it — so the adoption changed no parameter the burst's per-store guards test, and ran
+    its tail anyway. The guards are sound; there was simply nothing for them to see.
+
+    **The rule.** `adoptPendingHostState` with `mayBlock == false` returns immediately, **consuming
+    nothing**, while `userTransactionDepth > 0`. That is the same answer, and deliberately the same
+    sentence, as the failed try-lock two lines below it: the restore stays whole in the cell and the
+    next door adopts it — this timer again in 50 ms, or the user action that follows. A restore
+    cannot be lost by refusing, which is why it needs no queue, unlike the user commands ADR-0008
+    defers.
+
+    **Scoped to the non-blocking arm on purpose.** That arm is exactly the timer class
+    (`timerCallback`, `pollUndoCoalesceFromTimer`), already contracted to come back later. The
+    blocking arm's callers — `getStateInformation`, `setStateInformation`'s inline arm,
+    `applyAutoGain` — depend on a drain to a FIXED POINT for session coherence (§15), and an older
+    restore left unadopted there would later stamp its metadata over a newer session: a worse failure
+    than the one being closed. Those doors are reachable inside a transaction only if a host delivers
+    a state call from inside a parameter callback during a click; that shape is recorded as an
+    examined residual in ADR-0008 rather than closed by weakening §15 on evidence this round did not
+    produce.
+
+    **Gate.** No threading-model change: the adoption still happens on the message thread, at a door,
+    and the refusal defers it by one timer period exactly as §26's try-lock already can. It is
+    recorded as an EXTENSION of the owner's round-25 ruling — *a state replacement does not execute
+    re-entrantly while a user transaction is active* — applied to a site that ruling's text does not
+    enumerate, not as a separately approved decision. §26 and §27 keep the approvals already recorded
+    above; neither was reopened.
+
 
 ## Consequences
 
