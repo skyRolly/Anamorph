@@ -224,9 +224,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood (evidence-based):** **Low.** It requires the HOST to write cross-parameter from
   inside a dispatch, on two threads, in opposite orders, overlapping. **No listener in this
   plug-in creates the nesting at all:** `AnamorphAudioProcessor::parameterValueChanged`
-  (`src/PluginProcessor.h:448-451`) is a single relaxed `fetch_add`,
-  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:653`) the same, and
-  `parameterGestureChanged` (`src/PluginProcessor.cpp:1113-1290`) touches two ints — the last
+  (`src/PluginProcessor.h:456-459`) is a single relaxed `fetch_add`,
+  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:661`) the same, and
+  `parameterGestureChanged` (`src/PluginProcessor.cpp:1188-1365`) touches two ints — the last
   deliberately, its comment recording that `--d2-stress-probe` once reported this same detector
   for an APVTS/`listenerLock` inversion, closed by **removing** the nesting.
 - **How it surfaced:** ThreadSanitizer's deadlock detector, on `AnamorphStateTests` at
@@ -262,6 +262,33 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   this is not an artefact of a harness double. It is not caused by the round-20 endpoint fix (which
   changes no locking) and is not closed by it; it was SURFACED by that round's test, the first to
   exercise a nested poll at all.
+- **ROUND 26 (2026-09-15) — THE ROUND-20 EDGE WAS REACHED BY A DOOR THIS PROJECT ADDED, AND THAT
+  DOOR IS CLOSED.** Review finding `src/PluginProcessor.cpp:R651`, *"deferred command flush
+  deadlocks"*. The cycle is the round-20 one above, unchanged; what is new is the door. Round 25
+  put the BLOCKING poll at the user transaction's outermost `1 -> 0` boundary, and that boundary is
+  reachable from inside a parameter listener's dynamic extent, because a host that pumps its
+  message loop from a listener callback dispatches whatever UI events are queued — including the
+  Add-band click that opens and closes a whole transaction.
+  **Reproduced with real threads, deterministically** (State test 100 leg B): with a non-announcing
+  holder of `soundReplacement` parked inside `copyStateWithRawValues`, the pumped transaction's
+  close took **412.4 ms** on the round-25 tree — it waited until the harness released the holder —
+  while the message thread sat in `endChangeGesture` holding mbDrive's `listenerLock`. On the fixed
+  tree the same measurement is **0.0 ms** with the holder still parked.
+  **Closed by ADR-0036 §29:** `flushDeferredCommands` takes `soundReplacement` with a **try**, never
+  a wait, so the message thread can never be the waiting half of the cycle — a proof by
+  construction rather than a reachability argument. A refusal consumes nothing (the transaction's
+  step still pends, the commands stay queued) and both polls retry it. Mutations M110–M115.
+- **What round 26 does NOT close, and it is the honest half of this entry.** The same cycle stays
+  reachable through any OTHER user-action door a pumped click can deliver: an Undo button press
+  with no transaction running goes straight to `undo()` -> `pollUndoCoalesce` -> the blocking
+  capture, and then to `applyStatePreservingView`'s own blocking acquisition. That surface predates
+  round 25 and is not what R651 names. Closing it needs a first-class notion of *"dynamically
+  inside a parameter listener dispatch"*, which this codebase does not have — JUCE dispatches to
+  the `finalListener` AFTER the plug-in's own listener has returned, so a depth counter kept around
+  our callback reads zero at exactly the moment it would need to read one (the same fact round 21
+  recorded for the timer doors) — and building one means marking every first-party parameter write
+  site. That is a threading-model change and an owner decision, exactly as the round-20 entry
+  above says. **This risk therefore stays OPEN.**
 - **Disposition: suppressed in the REPORT, recorded as the risk, and referred upward.** A second
   `tests/tsan-suppressions.txt` entry names the harness type (`HostSeat`), so the suite stays
   meaningful and a real host-vs-host inversion on these two locks — with no harness frame in either
@@ -391,7 +418,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 
 ## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps — **RESOLVED (rounds 24 and 25, three doors)**
 - **Risk:** `AnamorphAudioProcessor::parameterGestureChanged` counts open gestures and sets
-  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:1113-1289`), and
+  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:1188-1364`), and
   `pollUndoCoalesce` turns that into an undo entry. A `SpectrumImager` topology transaction is a
   burst of stores, several of which open and close their own gesture (`setBands`, `setSoloMask`,
   `resetParam`), so the open count returns to zero **inside** the burst. A poll that runs there —
@@ -403,7 +430,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   DSP, as RISK-010 describes — but it is a state-correctness one.
 - **Likelihood:** Low as observed (no reported occurrence, and no test in the suite reaches it),
   **structural** as a mechanism: nothing in the current code prevents it.
-- **Evidence [Verified]:** `src/PluginProcessor.cpp:1113-1289` (the counter), `:827-834`
+- **Evidence [Verified]:** `src/PluginProcessor.cpp:1188-1364` (the counter), `:827-834`
   (`pollUndoCoalesce`), `src/gui/SpectrumImager.cpp` `addBandAt` / `removeBand` (the multi-gesture
   bursts). Carried through the v0.9.8 review rounds as residuals **U1–U3** with a deliberate
   no-fix decision; recorded here on 2026-09-08 because a decision carried only in a worklog is a
@@ -801,7 +828,7 @@ mitigation. Do not invent risks to fill the template.
   inside that window is ordered after the restore.
 - **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:2577-2676 read
+  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:2664-2763 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -879,7 +906,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:2577`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:2664`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -888,8 +915,8 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:2113`, against `canUndo()`; the `abUndo` vector's internals twice, via
-  `UndoStacks::operator=` (`src/PluginProcessor.h:563`) against the reader's iteration; and the
+  `src/PluginProcessor.cpp:2200`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `UndoStacks::operator=` (`src/PluginProcessor.h:571`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture
   change.

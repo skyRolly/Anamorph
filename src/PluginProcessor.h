@@ -227,6 +227,14 @@ public:
     // a state a completed user action produced.
     bool deferWhileUserTransactionActive (std::function<void()> command);
 
+    // ADR-0036, ROUND 26 (Devin R651). THE FLUSH IS A NON-BLOCKING DOOR. See the definition for the
+    // lock cycle it closes; the rule it enforces is the one `copyStateWithRawValues` has carried
+    // since round 18 -- nothing that takes `soundReplacement` may run from a parameter listener
+    // callback -- made true by construction rather than by a reachability argument, because the
+    // door never waits. Called from the transaction's outermost close and from BOTH polls, so a
+    // refused flush is retried at the user's next action or the next 20/24 Hz tick.
+    void flushDeferredCommands();
+
     // RAII over the pair, for the transactions that live inside this class. The imager reaches the
     // same counter through its `onUserTransaction` callback and has a scope of its own, because it
     // holds no processor pointer by design.

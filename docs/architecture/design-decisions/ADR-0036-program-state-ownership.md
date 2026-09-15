@@ -1031,7 +1031,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:2136`).
+    (`src/PluginProcessor.cpp:2223`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1100,7 +1100,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     the one-pass reassert makes exact by construction.
 
 23. **A relative operation acts on the session it observed (round 16).** Review finding *"relative
-    navigation uses stale targets"* (`src/PluginProcessor.cpp:1757`).
+    navigation uses stale targets"* (`src/PluginProcessor.cpp:1844`).
 
     **What a relative operation is.** One whose target is a function of the current state rather than
     of the user's input: *the other slot* (`abToggle`), *the next/previous preset*
@@ -1206,7 +1206,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     derived program-state target there to go stale.
 
 24. **One whole-sound replacement at a time (round 17).** Review finding *"overlapping restores
-    expose mixed sound"* (`src/PluginProcessor.cpp:2321`).
+    expose mixed sound"* (`src/PluginProcessor.cpp:2408`).
 
     **What a whole-sound replacement is.** An operation that installs an ENTIRE sound over the live
     parameter set, as opposed to moving one parameter: a host restore's install
@@ -1828,6 +1828,89 @@ turn late) and leaves a save issued on the host thread right after its restore d
     re-entrantly while a user transaction is active* — applied to a site that ruling's text does not
     enumerate, not as a separately approved decision. §26 and §27 keep the approvals already recorded
     above; neither was reopened.
+
+
+29. **AND THE DEFERRED-COMMAND FLUSH IS A DOOR, SO IT MAY NOT WAIT (round 26).** Review finding
+    `src/PluginProcessor.cpp:R651`, *"deferred command flush deadlocks"*. Confirmed, reproduced with
+    real threads, and fixed with the mechanism §26 already owns.
+
+    **The cycle, both halves from source.**
+
+    | thread | holds | wants |
+    |---|---|---|
+    | message | `listenerLock(P)` — JUCE holds it across the WHOLE dispatch, the plug-in's listeners and the `finalListener` alike (`juce_AudioProcessorParameter.cpp:101-108` for a gesture end, `:113-120` for a value) | `soundReplacement`, via flush → `pollUndoCoalesce` → `currentStateSet` → `copyStateWithRawValues` |
+    | host | `soundReplacement`, via `setStateInformation` → `installRestoredSound` → `applySoundTree` | `listenerLock(P)`, via `apvts.replaceState` → `setValueNotifyingHost` → `sendValueChangedMessageToListeners` |
+
+    The message thread gets there because a host that pumps its message loop from a listener
+    callback dispatches whatever UI events are queued — and one of them is the Add-band click that
+    opens **and closes** a whole user transaction. Round 25 put the BLOCKING door at that close.
+
+    **THIS IS NOT A NEW MECHANISM, AND THAT IS THE POINT.** `syncCommitted` names it exactly:
+    *"an adoption reached from a TIMER may not wait for that lock — the timer can be running inside
+    a host's pump with a parameter's `listenerLock` held, which is the RISK-009 cycle"*.
+    `copyStateWithRawValues` states the obligation it creates: *"nothing that takes this lock may
+    run from a parameter listener callback … none is reached from a listener today, and none may be
+    in future."* Round 25's flush was reached from one. Its justification — *"every transaction this
+    runs under is a user action on the message thread"* — is about **who started** the action; the
+    cycle is about **what is on the stack**. That sentence is withdrawn.
+
+    **The rule.** `flushDeferredCommands` takes `soundReplacement` with a **try**, never a wait. A
+    try that succeeds is itself the evidence that no holder exists at that instant; a try that fails
+    means one may, and the answer is §26's own sentence: consume nothing and come back. The refusal
+    happens **before** the queue is moved and **before** `pollUndoCoalesceAdopted` runs, so
+    `pendingGestureCommit` is left standing and the commands are left queued — exactly the round-24
+    state — and both polls retry it, so the next user action or the next 20/24 Hz tick does the
+    work. Round 25's ordering is untouched: within one iteration the transaction's own step is
+    committed first and only then do the commands run, and a refusal skips **both** rather than half.
+
+    **The commands run with the lock RELEASED.** `undo()` reaches `applyStatePreservingView` and a
+    preset load reaches `applySoundTree`, both of which take `soundReplacement` themselves and call
+    out to the host from inside it; running them under a lock this function held would be the
+    inversion pointing the other way — the one State test 27 hangs on (measured, round 21).
+
+    **Measured.** State test 100 leg B, on the round-25 tree, with a non-announcing holder parked
+    inside `copyStateWithRawValues`: the pumped transaction's close took **412.4 ms** — it waited
+    until the harness released the holder — while the message thread sat in `endChangeGesture`
+    holding mbDrive's `listenerLock`. On this tree: **0.0 ms**, holder still parked.
+
+    **Gate: APPROVED by the owner, 2026-09-15 (round 26), as a DISTINCT approval.** The §26 and §27
+    approvals recorded above cover the try-lock doors and the take-with-the-sound rule; they do not
+    reach a door that did not exist when they were given, and this section does not claim they do.
+    The owner's round-26 ruling covers exactly four things and is recorded as covering them:
+
+    | Step | Requirement | Evidence |
+    |---|---|---|
+    | 1 | the author flags the change as gated | this section, and the round-26 comment on PR #144 |
+    | 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's ruling of 2026-09-15 (round 26)**, which states the prohibition (*"a deferred command flush must not perform blocking durable whole-sound/state capture while execution is dynamically inside parameter-listener dispatch"*), the accepted direction (finish the transaction, preserve its Undo step, do not capture inside the listener's dynamic extent, defer to a safe boundary, then execute the commands in order), and that the direction is already approved and is not to be asked again |
+    | 3 | if the change is a decision, an ADR is added/updated | this section — §29, an extension of §26's mechanism to a new door, recorded separately from it |
+    | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes |
+
+    Nothing was manufactured on GitHub: no `APPROVED` review exists on PR #144 and none was submitted
+    from this session. ADR-0053 was not reopened and is unchanged. §26, §27 and §28 keep the
+    approvals already recorded in them.
+
+    **AND THE TIMER DOOR NOW RUNS COMMANDS, WHICH IS A WIDENING AND IS RECORDED AS ONE.** The retry
+    had to go somewhere: leaving it to the user's next action alone would strand a command the user
+    asked for until they acted again, and round 25 established that *nothing is dropped* has to mean
+    bounded. So `pollUndoCoalesceFromTimer` calls the flush too — and a command's **own** blocking
+    acquisitions (`undo()` → `applyStatePreservingView`, a preset load → `applySoundTree`) are not
+    changed by this round. A timer tick reached from a host's pump can therefore still block, which
+    is exactly what §26 forbids its timer doors. This is not a new CLASS of exposure — the same
+    command blocks today when a pumped click reaches `undo()` directly, with no transaction involved
+    — but it is a rarer instance of one, and it needs four things to coincide where the existing
+    path needs two: a refusal at the transaction close, a later tick where the poll's try succeeds,
+    a replacement starting between that poll and the command's own acquisition, and that tick being
+    inside a pumped extent. Kept, because the alternative is a user's Undo waiting indefinitely;
+    recorded under RISK-009 with the surface below rather than claimed away.
+
+    **The residual this round does NOT close, stated rather than implied.** The same cycle is
+    reachable through any *other* user-action door that a pumped click can deliver — an Undo button
+    press with no transaction running goes straight to `undo()` → `pollUndoCoalesce` → the blocking
+    capture, and then to `applyStatePreservingView`'s own blocking acquisition. That surface predates
+    round 25 and is not what R651 names; it is recorded in RISK-009 and reported as a newly
+    discovered finding rather than closed here, because closing it needs a notion of "dynamically
+    inside a listener dispatch" that this codebase does not yet have and that the owner has not
+    ruled on.
 
 
 ## Consequences

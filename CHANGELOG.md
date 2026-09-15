@@ -76,7 +76,10 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   applies to saving a preset, which previously could make the band change itself un-undoable.
   The same gap could also be filled by your DAW restoring the session from one of its own threads:
   that too now waits for the band change rather than tearing it in half, and is applied a fraction of
-  a second later instead of being lost.
+  a second later instead of being lost. And the waiting itself can no longer stall the plug-in: if
+  your DAW happens to be saving or restoring the session at that exact moment, the postponed command
+  now steps aside and runs a fraction of a second later instead of holding the interface until the
+  save finishes.
 - **Adding or removing a Multiband band is one Undo step again, never half of one.** A band split is
   not a single change: adding or removing one renumbers the solo bits, moves the widths, shifts the
   neighbouring splits and finally changes the band count — and in between, some DAWs run their own

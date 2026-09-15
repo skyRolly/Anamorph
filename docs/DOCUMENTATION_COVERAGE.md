@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1757`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:1844`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2321`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2408`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2136`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2223`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -9948,7 +9948,7 @@ probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers
 overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
 proof for the hour it took to write, and the wrong thing to leave standing.
 
-**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:826`: `pid::viewParams`
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:901`: `pid::viewParams`
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
@@ -10772,7 +10772,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:1113-1289`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:1188-1364`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -11958,6 +11958,58 @@ Flow, Latency, Plugin Format, Build System: untouched.
 M57–M60); `docs/procedures/CI_CD.md` (the re-measured stack figures);
 `CHANGELOG.md` `[0.9.8]` (two Fixed entries);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §73. [Verified]
+
+### Forty-fifth pass — a door that may not wait (2026-09-15)
+
+**Trigger.** One item on PR #144 at head `4c7dcd0`: `src/PluginProcessor.cpp:R651`, *"deferred
+command flush deadlocks"*.
+
+**Root cause.** Round 25 put the BLOCKING poll at the user transaction's outermost `1 -> 0`
+boundary, which is reachable from inside a parameter listener's dynamic extent — a host that pumps
+its message loop from a listener callback dispatches whatever UI events are queued, including the
+click that opens and closes a whole transaction. JUCE holds that parameter's `listenerLock` across
+the entire dispatch, so the message thread waits for `soundReplacement` while holding a lock the
+restore thread — which holds `soundReplacement` — is waiting for. **Not a new mechanism:**
+`syncCommitted` already calls it *"the RISK-009 cycle"* and `copyStateWithRawValues` already states
+the obligation round 25's door broke. Round 25's justification, *"every transaction this runs under
+is a user action on the message thread"*, is about who STARTED the action; the cycle is about what
+is ON THE STACK. That sentence is withdrawn.
+
+**Reproduced with real threads, deterministically and without hanging.** State test 100 leg B parks
+a non-announcing holder of `soundReplacement` (an off-thread `getStateInformation`, which needs no
+`listenerLock`, so the cycle is never closed): on the round-25 tree the pumped transaction's close
+took **412.4 ms** — it waited for the harness watchdog to release the holder — against **0.0 ms**
+on the fixed tree with the holder still parked.
+
+**Fix.** `flushDeferredCommands` takes the lock with a **try**, never a wait: a proof by
+construction rather than a reachability argument. The refusal consumes nothing — the transaction's
+step still pends, the commands stay queued — and both polls retry it, so the next user action or
+the next 20/24 Hz tick does the work. Round 25's ordering is untouched: within one iteration the
+step commits first and only then do the commands run, and a refusal skips both. The commands run
+with the lock released, because holding it across their host callouts is the inversion State test
+27 hangs on.
+
+**Classification.** ADR-0036 **§29**, recorded with its own gate table and its own owner approval,
+explicitly NOT claimed as covered by the §26/§27 approvals — those were given for doors that
+existed then. ADR-0053 untouched; §26, §27 and §28 keep their approvals.
+
+**RISK-009 EXTENDED, NOT CLOSED, and not duplicated into a new entry.** Its round-20 escalation
+already describes this exact cycle; round 26 records that the edge was reached by a door this
+project added and that the door is closed. The entry stays OPEN because the same cycle remains
+reachable through any other user-action door a pumped click can deliver — reported as a newly
+discovered finding rather than closed, because closing it needs a notion of "dynamically inside a
+listener dispatch" that this codebase does not have and that the owner has not ruled on.
+
+**Validation.** State 3 666 / 0, DSP all passed. Mutations M110–M115. **M114 and M115 survived
+their first run** because both rules were written twice — once in `flushDeferredCommands`, once at
+each of its three call sites — so the caller's copy answered before the callee's could be wrong;
+the guards now live in one place and the call sites call it bare. Round 25's M103 lesson repeating.
+
+**Documentation.** `ADR-0036` §29 (with the distinct approval);
+`docs/FUTURE_RISKS.md` RISK-009 (the round-26 entry and the stated residual);
+`docs/procedures/TESTING.md` (State test 100's four legs, the watchdog, mutations M110–M115);
+`CHANGELOG.md` `[0.9.8]`; `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §83.
+[Verified]
 
 ### Forty-fourth pass — the coverage found a door the report did not name (2026-09-15)
 

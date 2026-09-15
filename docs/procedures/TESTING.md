@@ -1644,6 +1644,63 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   than by where the test reads; a probe on the OPEN and a probe on the CLOSE measure different
   windows, and round 22 used the wrong one.
 
+* **Round 26 — State test 100, and a door that may not wait.**
+
+  Round 25 put the BLOCKING poll at the user transaction's outermost `1 -> 0` boundary. **State
+  test 100** (`the deferred-command flush never waits for a whole-sound replacement`, R651,
+  ADR-0036 §29) builds the nesting that makes that a deadlock and measures it.
+
+  **THE NESTING IS THE TEST.** Round 25's probe had the transaction as the OUTER thing and the
+  pumped command as the inner one; R651 needs the opposite. `PumpFromGestureEndOf` is a host seat
+  that delivers a whole USER INTERACTION: a bare knob gesture closes, the host pumps from that
+  `endChangeGesture`, and the pump dispatches the Add-band click — so the entire transaction, its
+  deferred command and its close all run with JUCE holding mbDrive's `listenerLock`.
+
+  **Measured, on the round-25 tree** (leg B, with a non-announcing holder of `soundReplacement`
+  parked inside `copyStateWithRawValues`):
+
+  ```
+  [leg B] with the replacement lock HELD, the pumped transaction took 412.4 ms (holder still parked: no)
+  ```
+
+  It waited until the harness released the holder. On the fixed tree the same line reads
+  `0.0 ms (holder still parked: yes)`.
+
+  **THE HOLDER IS NON-ANNOUNCING, AND THAT IS DELIBERATE.** It is an off-message-thread
+  `getStateInformation`, which reaches `copyStateWithRawValues` (ADR-0036 §25) and never wants a
+  `listenerLock` of its own — so the cycle is never actually CLOSED and a mutation of the fix FAILS
+  the leg instead of hanging the suite. The other half is not in doubt and is not re-measured here:
+  `applySoundTree` holds the lock across `apvts.replaceState`, and round 25 captured a thread under
+  gdb doing exactly that, blocked in `sendValueChangedMessageToListeners`.
+
+  **THE WATCHDOG IS THE HARNESS'S, NOT THE PRODUCT'S.** A second thread releases the holder after
+  400 ms. On the fixed tree it is tidy-up; on a tree where the flush waits, it is the only thing
+  that can wake a message thread stuck holding a `listenerLock`, which is what turns a hang into a
+  failing assertion.
+
+  | Leg | Shape | The thing only this leg measures |
+  |---|---|---|
+  | A | the pumped transaction, nothing holding the lock | the control: the nesting is really built, and with no contention the flush completes at the boundary exactly as round 25 left it |
+  | B | the same, with `soundReplacement` HELD | the defect: the message thread must not WAIT from inside the dispatch — and nothing is dropped, the next door does both in order |
+  | C | a refusal, then no user action at all | the TIMER door retries it, so a refused flush cannot strand its queue |
+  | D | two commands and a NESTED transaction, across a refusal | the inner close releases nothing, the outer close releases nothing while the lock is held, and the retry runs BOTH in the order the user gave them |
+
+  | Mutation | What it changes | Result |
+  |---|---|---|
+  | M110 | the round-25 BLOCKING door restored at the flush | **KILLED** — leg B measures 412.4 ms, 3 checks |
+  | M111 | the refusal consumes the queue anyway (moved before the try) | **KILLED** — legs C and D: the commands are dropped |
+  | M112 | the transaction's history is committed AFTER the commands | **KILLED** — State test 99 leg E |
+  | M113 | the retry doors removed | **KILLED** — legs C and D: the queue strands |
+  | M114 | the flush becomes eligible at an INNER transaction boundary | see below |
+  | M115 | the flush's re-entrancy guard removed | see below |
+
+  **M114 AND M115 SURVIVED THEIR FIRST RUN, AND THE REASON WAS A DUPLICATED GUARD.** Both rules
+  were written twice — once in `flushDeferredCommands` and once at each of its three call sites —
+  so the caller's copy answered before the callee's could be wrong, and the mutant never produced
+  the behaviour it was written to produce. This is round 25's M103 lesson repeating: a mutant that
+  cannot express its own defect is a bad mutant, not an equivalent one. The guards now live in ONE
+  place, the function whose rule they are, and the call sites call it bare.
+
 * **Round 25 — State test 99, and the door round 24 left open.**
 
   Round 24 stopped the undo POLL from committing half a topology. A poll is not the only thing a

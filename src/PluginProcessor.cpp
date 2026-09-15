@@ -585,8 +585,10 @@ void AnamorphAudioProcessor::endUserTransaction()
     // ADR-0008 ROUND 25 (Devin R1279-1283): THE OUTERMOST 1 -> 0 TRANSITION IS WHERE A COMMAND
     // THAT HAD TO WAIT FINALLY RUNS. Nested transactions do nothing here -- only the boundary at
     // which the state is once again one a completed user action produced.
-    if (userTransactionDepth != 0 || deferredCommands.empty() || runningDeferredCommands)
-        return;
+    // THE GUARDS LIVE IN `flushDeferredCommands`, NOT HERE (round 26). They used to be duplicated
+    // at this early return and at both retry doors, and a duplicated guard is one a mutation cannot
+    // reach: M114 and M115 SURVIVED their first run for exactly that reason -- the caller's copy
+    // answered before the callee's could be wrong. One copy, in the function whose rule it is.
 
     // THE ORDER IS THE WHOLE DECISION, so it is written out rather than implied.
     //
@@ -640,21 +642,94 @@ void AnamorphAudioProcessor::endUserTransaction()
     //    further multi-store action is never. "Nothing is dropped" has to mean bounded, not merely
     //    not-erased, so the outer loop re-tests. It cannot spin: every further iteration needs a
     //    fresh command, and a command is only ever queued by a real user action the host pumped in.
-    runningDeferredCommands = true;
+    flushDeferredCommands();
+}
+
+// ADR-0036 ROUND 26 (Devin R651), AND THE WHOLE OF THIS ROUND'S CHANGE IS THE WORD `Try`.
+//
+// THE CYCLE. Round 25 put `pollUndoCoalesce()` -- the BLOCKING door -- at the transaction's
+// `1 -> 0` boundary. That boundary is reachable from inside a parameter listener's dynamic extent,
+// because a host that pumps its message loop from a listener callback dispatches whatever UI
+// events are queued, and one of them is the Add-band click that opens and closes a whole user
+// transaction. JUCE holds that parameter's `listenerLock` across the entire dispatch
+// (juce_AudioProcessorParameter.cpp:101-108 for a gesture end, :113-120 for a value), so:
+//
+//   message thread:  holds listenerLock(P)  ->  flush  ->  pollUndoCoalesce
+//                    ->  currentStateSet  ->  copyStateWithRawValues  ->  WAITS for soundReplacement
+//   host thread:     setStateInformation  ->  installRestoredSound  ->  applySoundTree
+//                    ->  HOLDS soundReplacement  ->  apvts.replaceState
+//                    ->  setValueNotifyingHost  ->  WAITS for listenerLock(P)
+//
+// A real two-thread cycle. It is NOT a new mechanism: `syncCommitted` names it in as many words --
+// *"an adoption reached from a TIMER may not wait for that lock -- the timer can be running inside
+// a host's pump with a parameter's `listenerLock` held, which is the RISK-009 cycle"* -- and round
+// 21 closed the timer doors with a try. What round 25 did was open a NEW door onto the same cycle
+// and give it the blocking arm, on the argument that "every transaction this runs under is a user
+// action on the message thread". That argument is about WHO STARTED the action, and the cycle is
+// about WHAT IS ON THE STACK. Corrected here.
+//
+// THE RULE, stated once and enforced by construction: NOTHING THAT CAN BLOCK ON `soundReplacement`
+// RUNS FROM THIS DOOR. The try never waits, so the message thread can never be the waiting half of
+// the cycle, whether or not it happens to be inside a listener's extent -- which is what makes this
+// a proof rather than a reachability argument. A try that SUCCEEDS is itself the evidence that no
+// holder exists at that instant; a try that FAILS means one may, and the answer is the same
+// sentence ADR-0036 section 26 already gives its timer doors: consume nothing and come back.
+//
+// WHAT "COME BACK" MEANS HERE, and why nothing is dropped. The refusal happens BEFORE the queue is
+// moved and BEFORE `pollUndoCoalesceAdopted` runs, so `pendingGestureCommit` is left standing and
+// the commands are left queued -- exactly the round-24 state. Both doors below call this, so the
+// retry is the next poll: the user's next action, or the 20/24 Hz tick, whichever comes first.
+// The ORDER round 25 established is untouched, because it is enforced inside one iteration: the
+// transaction's own step is committed by `pollUndoCoalesceAdopted` and only then do the commands
+// run, and a refusal skips BOTH rather than half.
+//
+// THE COMMANDS RUN WITH THE LOCK RELEASED, not under it. `undo()` reaches `applyStatePreservingView`
+// and a preset load reaches `applySoundTree`, both of which take `soundReplacement` themselves and
+// call out to the host from inside it; running them under a lock this function held would be the
+// inversion pointing the other way -- the one State test 27 hangs on (measured, round 21).
+//
+// WHAT THIS DOES NOT FIX, SAID HERE RATHER THAN LEFT TO BE FOUND. Those acquisitions of the
+// commands' own are still BLOCKING, and `pollUndoCoalesceFromTimer` is now one of the two doors
+// that runs them -- so a tick reached from a host's pump can still block, which is what section 26
+// forbids its timer doors. The retry had to go somewhere: leaving it to the user's next action
+// alone would strand a command the user asked for. It is a rarer instance of a surface that
+// already exists (a pumped click reaching `undo()` directly blocks today, with no transaction
+// involved), not a new class of one, and RISK-009 carries it OPEN with the count of coincidences
+// each path needs. ADR-0036 section 29.
+void AnamorphAudioProcessor::flushDeferredCommands()
+{
+    // ONLY AT THE OUTERMOST BOUNDARY (round 24/25's rule, and now stated only here): an inner
+    // close still sees a half-applied outer topology. ONLY ONCE AT A TIME: a command runs with the
+    // depth back at zero, so a transaction it starts is an ordinary one whose own close -- and the
+    // poll inside `undo()`/`redo()` -- would otherwise re-enter this loop while `queued` is being
+    // walked, running commands out of the order the user gave them.
+    if (userTransactionDepth != 0 || deferredCommands.empty() || runningDeferredCommands)
+        return;
+
+    const juce::ScopedValueSetter<bool> running (runningDeferredCommands, true);
+
     while (! deferredCommands.empty())
     {
+        // The drain first and OUTSIDE the try below, exactly as `pollUndoCoalesceFromTimer` does
+        // it: the adoption calls out to the host from inside itself. Its own non-blocking arm is
+        // round 25's, and it refuses while a transaction is open -- the depth is zero here.
+        adoptPendingHostState (/*mayBlock*/ false);
+
+        {
+            const juce::ScopedTryLock notWhileReplacing (soundReplacement);
+            if (! notWhileReplacing.isLocked())
+                return;   // nothing consumed: the step still pends and the commands are still queued
+            pollUndoCoalesceAdopted();
+        }
+
         auto queued = std::move (deferredCommands);
         deferredCommands.clear();             // `queued` owns them now; a moved-from vector is
                                               // valid but unspecified, so this is stated. It also
                                               // makes the iterated container a LOCAL, so a nested
                                               // `push_back` cannot reallocate under the loop below.
-        pollUndoCoalesce();                   // ...and each round commits what the transaction that
-                                              // queued THAT round left pending, for the same reason
-                                              // point 1 gives.
         for (auto& command : queued)
             if (command) command();
     }
-    runningDeferredCommands = false;
 }
 
 // ADR-0008 ROUND 25 (Devin R1279-1283). See the declaration for the whole argument.
@@ -1303,9 +1378,16 @@ void AnamorphAudioProcessor::pollUndoCoalesceFromTimer()
     // ...then the poll body, which reaches `currentStateSet`'s acquisition. Held across the whole
     // body on purpose: the body calls out to nothing, so every acquisition inside it becomes a free
     // recursive re-entry, and one try answers for all of them.
-    const juce::ScopedTryLock notWhileReplacing (soundReplacement);
-    if (! notWhileReplacing.isLocked()) return;   // a replacement is in flight: the next tick does it
-    pollUndoCoalesceAdopted();
+    {
+        const juce::ScopedTryLock notWhileReplacing (soundReplacement);
+        if (! notWhileReplacing.isLocked()) return;   // a replacement is in flight: the next tick does it
+        pollUndoCoalesceAdopted();
+    }
+
+    // ROUND 26 (Devin R651): ...and this is one of the two doors a refused flush comes back
+    // through, so a command the transaction boundary could not run is never stranded. It is a
+    // no-op with an empty queue, which is every tick but the ones that follow a refusal.
+    flushDeferredCommands();
 }
 
 void AnamorphAudioProcessor::pollUndoCoalesce()
@@ -1316,6 +1398,11 @@ void AnamorphAudioProcessor::pollUndoCoalesce()
     // bookkeeping). One relaxed load when nothing is pending.
     adoptPendingHostState();
     pollUndoCoalesceAdopted();
+
+    // ROUND 26 (Devin R651): the OTHER retry door -- the user's next action. Same guard, same
+    // no-op with an empty queue. `flushDeferredCommands` re-polls for itself, which is how the
+    // transaction's own step stays ordered before the commands even on this path.
+    flushDeferredCommands();
 }
 
 // The poll itself, with the drain already done. A preset load reaches this through

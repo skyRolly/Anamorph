@@ -4,7 +4,7 @@ How session state is saved and restored. The field-level ledger is in
 `SERIALIZATION_REGISTRY.md`; binding rules are in
 `docs/policies/SESSION_COMPATIBILITY_POLICY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:2244-2330 (`getStateInformation`), :1226-1485
+Evidence [Verified]: src/PluginProcessor.cpp:2331-2417 (`getStateInformation`), :1226-1485
 (`decodeRestore` + `setStateInformation`), :980-999 (the `writeSelection` / `readSelection` helpers);
 src/PresetManager.cpp:738-791 (`encodeSelection` / `decodeSelection`).
 
@@ -59,7 +59,7 @@ a factory id removed by a later version, a user preset deleted, renamed or moved
 rather than falling back to a same-named row. The field-level ledger, including the file-name vs
 absolute-path encoding rule, is in `SERIALIZATION_REGISTRY.md`.
 
-Evidence [Verified]: src/PluginProcessor.cpp:2244-2330 (`getStateInformation`).
+Evidence [Verified]: src/PluginProcessor.cpp:2331-2417 (`getStateInformation`).
 
 ## Which thread (D-2 / ADR-0036)
 
@@ -171,7 +171,7 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 
 `applyStatePreservingView` restores a snapshot but **keeps the current** shared view params
 (`pid::viewParams` = `bypass`) so an A/B / undo / preset apply never flips the view state.
-Evidence [Verified]: src/PluginProcessor.cpp:777-833 (`applyStatePreservingView`).
+Evidence [Verified]: src/PluginProcessor.cpp:852-908 (`applyStatePreservingView`).
 
 ## Invariants
 

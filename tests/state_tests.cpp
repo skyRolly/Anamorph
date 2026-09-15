@@ -21037,7 +21037,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:2136).
+//  baseline", src/PluginProcessor.cpp:2223).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -21270,7 +21270,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1757).
+//  targets", src/PluginProcessor.cpp:1844).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21647,7 +21647,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2321).
+//  mixed sound", src/PluginProcessor.cpp:2408).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -27199,6 +27199,413 @@ static void testAStateReplacingCommandWaitsForTheTransaction()
     delete ed;
 }
 
+// ---------------------------------------------------------------------------
+//  State test 100 -- round 26, Devin R651. THE DEFERRED FLUSH IS A DOOR, AND A
+//  DOOR MAY NOT WAIT FOR A WHOLE-SOUND REPLACEMENT.
+//
+//  Round 25 put `pollUndoCoalesce()` -- the BLOCKING door -- at the transaction's outermost
+//  `1 -> 0` boundary, on the argument that "every transaction this runs under is a user action on
+//  the message thread". That argument is about who STARTED the action. The cycle is about what is
+//  ON THE STACK:
+//
+//    message thread   holds listenerLock(P)   -> host pumps -> Add-band click -> transaction
+//                     -> transaction closes   -> flush -> pollUndoCoalesce -> currentStateSet
+//                     -> copyStateWithRawValues -> WAITS for soundReplacement
+//    another thread   HOLDS soundReplacement  -> apvts.replaceState -> setValueNotifyingHost
+//                     -> WAITS for listenerLock(P)
+//
+//  JUCE holds the parameter's `listenerLock` across the WHOLE dispatch -- the plug-in's listeners
+//  and the `finalListener` alike (juce_AudioProcessorParameter.cpp:101-108 for a gesture end) --
+//  so a host that pumps from that callback runs everything the pump delivers with the lock held.
+//  `copyStateWithRawValues` has carried the matching rule since round 18: *nothing that takes this
+//  lock may run from a parameter listener callback*. The flush broke it.
+//
+//  WHAT THIS TEST CLOSES, AND WHAT IT DELIBERATELY DOES NOT. It closes the half that is this
+//  plug-in's to fix: the message thread must never WAIT for `soundReplacement` from this door. The
+//  holder it parks is a non-announcing one -- an off-thread `getStateInformation`, which reaches
+//  `copyStateWithRawValues` (ADR-0036 section 25) and needs no `listenerLock` of its own -- so the
+//  cycle is never actually CLOSED here and no mutation of the fix can hang the suite. The other
+//  half is not in doubt and is not re-measured: `applySoundTree` holds the lock across
+//  `apvts.replaceState`, and round 25 captured that thread under gdb doing exactly this, blocked
+//  in `sendValueChangedMessageToListeners` on a parameter's `listenerLock`.
+// ---------------------------------------------------------------------------
+namespace {
+// The host seat for round 26: a pump that delivers a WHOLE user interaction, not a command. This
+// is the nesting R651 needs and round 25's probe did not have -- there the transaction was the
+// outer thing and the pumped command was inner; here the listener dispatch is the outer thing and
+// the entire transaction runs inside it.
+struct PumpFromGestureEndOf final : public juce::AudioProcessorListener
+{
+    std::function<void()> pumped;
+    int    index    = -1;
+    int    toFire   = 0;
+    int    fired    = 0;
+    double elapsedMs = 0.0;
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
+    {
+        if (toFire <= 0 || i != index || ! pumped) return;
+        toFire = 0; ++fired;                       // cleared FIRST: the pump re-enters this
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        pumped();
+        elapsedMs = juce::Time::getMillisecondCounterHiRes() - t0;
+    }
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
+    void audioProcessorChanged (juce::AudioProcessor*,
+                                const juce::AudioProcessorListener::ChangeDetails&) override {}
+};
+} // namespace
+
+static void testTheDeferredFlushNeverWaitsForAReplacement()
+{
+    std::printf ("State test 100: the deferred-command flush never waits for a whole-sound replacement (R651)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the R651 probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        { auto* k = c->getChildComponent (i);
+          if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+          walk (k); }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "the imager is laid out");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* driveP = apvts.getParameter (pid::drive);
+    check (bandsP && soloP && loP && midP && hiP && driveP, "the probe's parameters exist");
+    if (! (bandsP && soloP && loP && midP && hiP && driveP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto near     = [] (float a, float b) { return std::abs (a - b) < 1.0e-3f; };
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    const float W = (float) im->getWidth(), H = (float) im->getHeight();
+    auto hover = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseMove (juce::MouseEvent (src, { x, y }, juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto pressAt = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseDown (juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto findAddX = [&] (float y) -> float
+    {
+        for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+        { hover (x, y);
+          if (im->getTooltip() == juce::String ("Click to add a band split")) return x; }
+        return -1.0f;
+    };
+    const float addY = 0.25f * H;
+
+    // THE TWO SEATS. `outer` is the host pumping from a knob's gesture-end -- the dispatch whose
+    // `listenerLock` is held for everything below it. `inner` is the same seat State test 99 uses,
+    // one level down: the Add burst's own solo store, from which the queued Undo click arrives.
+    PumpFromGestureEndOf outer, inner;
+    outer.index = driveP->getParameterIndex();
+    inner.index = soloP->getParameterIndex();
+    inner.pumped = [&proc] { proc.undo(); };          // deferred: the transaction is open
+    proc.addListener (&outer);
+    proc.addListener (&inner);
+
+    auto arm = [&] (float driveStart, float driveEdit)
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 2.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 6000.0f); setPlain (hiP, 12000.0f);
+        setPlain (soloP, 2.0f);                     // band 1
+        setPlain (driveP, driveStart);
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        driveP->beginChangeGesture();               // ...and ONE undoable user edit on the stack
+        setPlain (driveP, driveEdit);
+        driveP->endChangeGesture();
+        proc.pollUndoCoalesce();
+        check (proc.canUndo(), "the probe starts with exactly one undoable edit");
+    };
+
+    // The OUTER trigger: a bare knob gesture whose CLOSE is where the host pumps. Nothing about it
+    // is special -- it is the shape every slider release has.
+    auto driveTheOuterGesture = [&] (float to)
+    {
+        driveP->beginChangeGesture();
+        setPlain (driveP, to);
+        driveP->endChangeGesture();                 // <- `outer` fires from inside this
+    };
+
+    // ---- LEG A: the pumped transaction, with NOTHING holding the replacement lock ----------
+    //  The control. The nesting R651 needs is built here and measured; with no contention the
+    //  flush completes at the boundary exactly as round 25 left it.
+    {
+        arm (3.0f, 9.0f);
+        const float ax = findAddX (addY);
+        check (ax >= 0.0f, "leg A: the add affordance is findable");
+        if (ax >= 0.0f)
+        {
+            outer.pumped = [&] { inner.fired = 0; inner.toFire = 1; pressAt (ax, addY);
+                                 im->cancelActiveDrag(); inner.toFire = 0; };
+            outer.fired = 0; outer.toFire = 1;
+            driveTheOuterGesture (11.0f);
+            proc.pollUndoCoalesce();
+
+            check (outer.fired > 0 && inner.fired > 0,
+                   "leg A: non-vacuity -- the whole transaction really ran inside the knob's dispatch");
+            std::printf ("  [leg A] pumped transaction took %.1f ms; bands %.0f, solo 0x%X, Drive %.2f\n",
+                         outer.elapsedMs, (double) plainOf (bandsP),
+                         (unsigned) juce::roundToInt (plainOf (soloP)), (double) plainOf (driveP));
+            const int bandsA = juce::roundToInt (plainOf (bandsP));
+            const int maskA  = juce::roundToInt (plainOf (soloP));
+            check (maskA == 0 || maskA < (1 << bandsA),
+                   "leg A: the state the pumped transaction leaves is a whole topology");
+        }
+    }
+
+    // ---- LEG B: THE DEFECT. The same, with another thread HOLDING soundReplacement -----------
+    //  The holder is an off-message-thread `getStateInformation`, parked inside
+    //  `copyStateWithRawValues` with the section-24 lock held (ADR-0036 section 25, and the seam's
+    //  own documented contract: it is the ONLY way to park a NON-ANNOUNCING holder). It never
+    //  wants a `listenerLock`, so the cycle is not closed and a mutation of the fix FAILS this leg
+    //  instead of hanging the suite.
+    {
+        arm (3.0f, 9.0f);
+        const float ax = findAddX (addY);
+        check (ax >= 0.0f, "leg B: the add affordance is findable");
+        if (ax >= 0.0f)
+        {
+            std::atomic<bool> holderParked { false }, releaseHolder { false }, holderDone { false };
+            proc.seams.insideDurableCapture = [&]
+            {
+                if (juce::MessageManager::existsAndIsCurrentThread()) return;  // ours pass through
+                if (holderParked.exchange (true)) return;                      // park exactly once
+                while (! releaseHolder.load (std::memory_order_acquire))
+                    std::this_thread::sleep_for (std::chrono::milliseconds (2));
+            };
+            std::thread holder ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb);
+                                      holderDone.store (true, std::memory_order_release); });
+
+            for (int waited = 0; waited < 2000 && ! holderParked.load(); waited += 2)
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+            check (holderParked.load(),
+                   "leg B: non-vacuity -- a NON-ANNOUNCING holder really owns soundReplacement");
+
+            // THE WATCHDOG, AND IT IS WHAT MAKES THIS LEG A TEST RATHER THAN A HANG. On the fixed
+            // tree the flush refuses and returns in microseconds, and this thread's release is
+            // simply the tidy-up. On a tree where the flush WAITS, the message thread is stuck
+            // holding mbDrive's `listenerLock` with no one to wake it -- so the release is put on a
+            // timer of the HARNESS's, not the product's: the wait ends at `kWatchdogMs`, the leg
+            // FAILS on the elapsed-time assertion below, and the suite goes on. Measured on the
+            // pre-fix tree: the pumped transaction took the full watchdog period.
+            constexpr int kWatchdogMs = 400;
+            std::thread watchdog ([&]
+            {
+                for (int waited = 0; waited < kWatchdogMs; waited += 5)
+                    std::this_thread::sleep_for (std::chrono::milliseconds (5));
+                releaseHolder.store (true, std::memory_order_release);
+            });
+
+            outer.pumped = [&] { inner.fired = 0; inner.toFire = 1; pressAt (ax, addY);
+                                 im->cancelActiveDrag(); inner.toFire = 0; };
+            outer.fired = 0; outer.toFire = 1; outer.elapsedMs = 0.0;
+            driveTheOuterGesture (11.0f);           // the whole scenario, under contention
+
+            const double blockedMs = outer.elapsedMs;
+            std::printf ("  [leg B] with the replacement lock HELD, the pumped transaction took"
+                         " %.1f ms (holder still parked: %s)\n",
+                         blockedMs, holderDone.load() ? "no" : "yes");
+
+            check (outer.fired > 0 && inner.fired > 0,
+                   "leg B: non-vacuity -- the transaction and its deferred command really ran");
+            check (! holderDone.load (std::memory_order_acquire),
+                   "leg B: non-vacuity -- the holder was STILL holding the lock throughout");
+
+            // THE INVARIANT. The message thread is inside `endChangeGesture`, so JUCE holds
+            // mbDrive's `listenerLock`. It must not be the waiting half of anything. 250 ms is a
+            // hundred times the whole scenario's uncontended cost and a fiftieth of the smallest
+            // real wait the unfixed tree produces (it waits until the holder is released below).
+            check (blockedMs < 250.0,
+                   "leg B: the flush did NOT wait for the replacement lock from inside the dispatch");
+
+            releaseHolder.store (true, std::memory_order_release);
+            watchdog.join();
+            holder.join();
+            proc.seams.insideDurableCapture = nullptr;   // cleared AFTER the join
+
+            // ...AND NOTHING WAS DROPPED. The refusal left the transaction's step pending and the
+            // command queued; the very next door does both, in round 25's order.
+            proc.pollUndoCoalesce();
+            const int bandsB = juce::roundToInt (plainOf (bandsP));
+            const int maskB  = juce::roundToInt (plainOf (soloP));
+            std::printf ("  [leg B] after the next door: bands %d, solo 0x%X, Drive %.2f, more undo: %s\n",
+                         bandsB, (unsigned) maskB, (double) plainOf (driveP),
+                         proc.canUndo() ? "yes" : "no");
+            check (maskB == 0 || maskB < (1 << bandsB),
+                   "leg B: ...and the state it lands on is a whole topology, never half of one");
+            check (near (plainOf (loP), 2000.0f) || bandsB != 2,
+                   "leg B: ...with the splits the completed action produced");
+        }
+    }
+
+    // ---- LEG C: a refused flush is retried by the TIMER door too, not only by a user action ---
+    //  Without this the queue would strand whenever the user's next action never comes.
+    {
+        arm (3.0f, 9.0f);
+        std::atomic<bool> holderParked { false }, releaseHolder { false };
+        proc.seams.insideDurableCapture = [&]
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread()) return;
+            if (holderParked.exchange (true)) return;
+            while (! releaseHolder.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        std::thread holder ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb); });
+        for (int waited = 0; waited < 2000 && ! holderParked.load(); waited += 2)
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        std::thread watchdog ([&]                       // same harness watchdog as leg B
+        {
+            for (int waited = 0; waited < 400; waited += 5)
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            releaseHolder.store (true, std::memory_order_release);
+        });
+
+        bool queued = false;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            queued = proc.deferWhileUserTransactionActive ([&proc] { proc.undo(); });
+        }                                            // <- the flush, refused by the held lock
+        check (queued, "leg C: the command was queued by the open transaction");
+        check (near (plainOf (driveP), 9.0f),
+               "leg C: ...and the refused flush ran NOTHING while the lock was held");
+
+        releaseHolder.store (true, std::memory_order_release);
+        watchdog.join();
+        holder.join();
+        proc.seams.insideDurableCapture = nullptr;
+
+        proc.pollUndoCoalesceFromTimer();            // the 20/24 Hz door, and it is the retry
+        check (near (plainOf (driveP), 3.0f),
+               "leg C: the TIMER door retried the refused flush -- the Undo ran, unprompted");
+    }
+
+    // ---- LEG D: MORE THAN ONE command, and a NESTED transaction, across a refusal -------------
+    //  The refusal happens before the queue is touched, so it is command-agnostic by construction
+    //  -- but "by construction" is what a mutation deletes. This leg holds the lock, queues a Redo
+    //  and an A/B switch from one open transaction with an inner transaction nested inside it, and
+    //  asserts that the inner close released nothing, the outer close released nothing either
+    //  while the lock was held, and the retry then ran BOTH in the order they were given.
+    {
+        arm (3.0f, 9.0f);
+        proc.undo();                                  // ...so there is a Redo to do
+        check (near (plainOf (driveP), 3.0f) && proc.canRedo(), "leg D: a Redo is available");
+
+        std::atomic<bool> holderParked { false }, releaseHolder { false };
+        proc.seams.insideDurableCapture = [&]
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread()) return;
+            if (holderParked.exchange (true)) return;
+            while (! releaseHolder.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        std::thread holder ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb); });
+        for (int waited = 0; waited < 2000 && ! holderParked.load(); waited += 2)
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        std::thread watchdog ([&]
+        {
+            for (int waited = 0; waited < 400; waited += 5)
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            releaseHolder.store (true, std::memory_order_release);
+        });
+
+        std::vector<int> ran;                         // the ORDER, recorded by the commands themselves
+        int slotBefore = proc.abActiveSlot();
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction outerTx (proc);
+            const bool q1 = proc.deferWhileUserTransactionActive ([&] { ran.push_back (1); proc.redo(); });
+            {
+                AnamorphAudioProcessor::ScopedUserTransaction innerTx (proc);
+                const bool q2 = proc.deferWhileUserTransactionActive ([&] { ran.push_back (2); proc.abToggle(); });
+                check (q1 && q2, "leg D: both commands were queued by the open transactions");
+            }                                          // <- the INNER close: releases nothing, ever
+            check (ran.empty(), "leg D: the inner transaction's close released nothing");
+        }                                              // <- the OUTER close: refused by the held lock
+        check (ran.empty(), "leg D: ...and the outer close released nothing either, the lock being held");
+        check (near (plainOf (driveP), 3.0f) && proc.abActiveSlot() == slotBefore,
+               "leg D: nothing was applied while the lock was held");
+
+        releaseHolder.store (true, std::memory_order_release);
+        watchdog.join();
+        holder.join();
+        proc.seams.insideDurableCapture = nullptr;
+
+        proc.pollUndoCoalesce();                       // the retry door
+        std::printf ("  [leg D] after the retry: %d command(s) ran, order %s; Drive %.2f, slot %d -> %d\n",
+                     (int) ran.size(), (ran.size() == 2 && ran[0] == 1 && ran[1] == 2) ? "preserved" : "WRONG",
+                     (double) plainOf (driveP), slotBefore, proc.abActiveSlot());
+        check (ran.size() == 2 && ran[0] == 1 && ran[1] == 2,
+               "leg D: both commands ran at the retry, in the order the user gave them");
+        check (proc.abActiveSlot() != slotBefore,
+               "leg D: ...and the A/B switch really happened, so neither was dropped");
+    }
+
+    // ---- LEG E: a command queued by a command must not JUMP THE QUEUE --------------------------
+    //  The re-entrancy guard's only observable job. The flush moves its queue into a local before
+    //  running anything, so a re-entrant flush that finds the list empty is invisible -- which is
+    //  why M115 survived its first run with only ONE command in flight. With TWO already queued and
+    //  a THIRD queued by the first one's own transaction, the difference is an ordering violation
+    //  you can read off the list: guarded gives 1, 2, 3; unguarded runs the third at the inner
+    //  close and gives 1, 3, 2.
+    {
+        arm (3.0f, 9.0f);
+        std::vector<int> ran;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction outerTx (proc);
+            const bool q1 = proc.deferWhileUserTransactionActive ([&]
+            {
+                ran.push_back (1);
+                AnamorphAudioProcessor::ScopedUserTransaction fromCommand (proc);
+                proc.deferWhileUserTransactionActive ([&] { ran.push_back (3); });
+            });                                    // <- this one opens a transaction of its own
+            const bool q2 = proc.deferWhileUserTransactionActive ([&] { ran.push_back (2); });
+            check (q1 && q2, "leg E: both of the transaction's own commands were queued");
+        }                                          // <- the flush
+
+        std::printf ("  [leg E] order: ");
+        for (int v : ran) std::printf ("%d ", v);
+        std::printf ("(expected 1 2 3)\n");
+        check (ran.size() == 3 && ran[0] == 1 && ran[1] == 2 && ran[2] == 3,
+               "leg E: the command a command queued runs AFTER the ones already in front of it");
+    }
+
+    proc.removeListener (&inner);
+    proc.removeListener (&outer);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -27372,6 +27779,7 @@ int main (int argc, char* argv[])
     testTheDeferredBaselineAndTheDoorTheEditorPicks();
     testATopologyChangeIsOneUndoStep();
     testAStateReplacingCommandWaitsForTheTransaction();
+    testTheDeferredFlushNeverWaitsForAReplacement();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

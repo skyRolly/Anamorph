@@ -417,13 +417,13 @@ DELIBERATE_REAIMS = {
     # settled fails here rather than going quiet.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:246-249",
-     "src/PluginProcessor.h:448-451"): "parameterValueChanged",
+     "src/PluginProcessor.h:456-459"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:390",
-     "src/PluginProcessor.h:653"): "parameterValueChanged",
+     "src/PluginProcessor.h:661"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:325",
-     "src/PluginProcessor.h:563"): "UndoStacks",
+     "src/PluginProcessor.h:571"): "UndoStacks",
 
     # 2026-09-13 (round 14, ADR-0008 as amended): THREE ENTRIES, all for spans this change EDITED
     # rather than moved, which is exactly the case a declaration is for -- the line map returns
@@ -438,25 +438,25 @@ DELIBERATE_REAIMS = {
     # check actually sees, and the check runs against `origin/main`.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:1113-1289"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1188-1364"): "parameterGestureChanged",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:1113-1289"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1188-1364"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-826",
-     "src/PluginProcessor.cpp:1113-1290"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1188-1365"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:250",
-     "src/PluginProcessor.h:563"): "UndoStacks",
+     "src/PluginProcessor.h:571"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     "src/PluginProcessor.cpp:2577-2676"): "setStateInformation",
+     "src/PluginProcessor.cpp:2664-2763"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     "src/PluginProcessor.cpp:2577"): "setStateInformation",
+     "src/PluginProcessor.cpp:2664"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     "src/PluginProcessor.cpp:2113"): "abActive",
+     "src/PluginProcessor.cpp:2200"): "abActive",
 
     # 2026-09-15 (round 21, ADR-0036 §26): ONE ENTRY, for a span this change EDITED rather than
     # moved. ADR-0008's "Source:" line brackets the whole custom-undo block, from its banner comment
@@ -476,7 +476,7 @@ DELIBERATE_REAIMS = {
     # the same anchor is a plain move that came along with it.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:922, 1251-1254",
-     "src/PluginProcessor.cpp:1038, 1374-1378"): "openGestures",
+     "src/PluginProcessor.cpp:1113, 1461-1465"): "openGestures",
     # ...and the SAME transition declared from the branch's OTHER base. `preflight.sh` runs the gate
     # against `origin/main`, the merge base and `HEAD~1`, and a declaration is keyed on the
     # TRANSITION, so the entry above answers only for the `HEAD~1` base this round pushes from. The
@@ -485,7 +485,7 @@ DELIBERATE_REAIMS = {
     # while another did not, and the green one was the one that got read.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:737, 870-873",
-     "src/PluginProcessor.cpp:1038, 1374-1378"): "openGestures",
+     "src/PluginProcessor.cpp:1113, 1461-1465"): "openGestures",
     ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
      "src/PluginProcessor.cpp:426-565",
      "src/PluginProcessor.cpp:469-713"): "syncCommitted",

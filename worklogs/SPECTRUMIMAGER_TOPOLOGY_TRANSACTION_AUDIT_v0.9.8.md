@@ -4688,3 +4688,78 @@ to write a cross-thread probe inside a gesture callback will hit it too.
 State 3 639 / 0. DSP all passed. TSan 3 639 / 0 with the same five suppressions matched as round 24
 — **no new lock cycle, and no suppression added**. Mutations M101–M109 plus M105b, each killed by
 its own leg; M108 by two independent oracles in leg I.
+
+## §83. Round 26 — the flush was a door, and a door may not wait
+
+Devin `src/PluginProcessor.cpp:R651`, *"deferred command flush deadlocks"*. **Confirmed.**
+
+### The cycle, and the sentence that was wrong
+
+Round 25's own comment said the blocking door was the right one at the transaction boundary
+because *"every transaction this runs under is a user action on the message thread"*. That
+sentence is about **who started** the action. The cycle is about **what is on the stack**:
+
+| thread | holds | wants |
+|---|---|---|
+| message | `listenerLock(P)`, held by JUCE across the whole dispatch | `soundReplacement`, via flush → `pollUndoCoalesce` → `currentStateSet` → `copyStateWithRawValues` |
+| host | `soundReplacement`, via `installRestoredSound` → `applySoundTree` | `listenerLock(P)`, via `apvts.replaceState` → `setValueNotifyingHost` |
+
+The message thread gets there because a host that pumps its message loop from a listener callback
+dispatches whatever UI events are queued, and one of them opens **and closes** a whole transaction.
+
+**This is not a new mechanism.** `syncCommitted` names it in as many words — *"an adoption reached
+from a TIMER may not wait for that lock … which is the RISK-009 cycle"* — and
+`copyStateWithRawValues` states the obligation round 18 created: *"nothing that takes this lock may
+run from a parameter listener callback … none is reached from a listener today, and none may be in
+future."* Round 25 opened a new door onto the same cycle and gave it the blocking arm.
+
+### Reproduced, with real threads, without hanging
+
+State test 100 leg B parks a NON-ANNOUNCING holder of `soundReplacement` — an off-message-thread
+`getStateInformation`, which reaches `copyStateWithRawValues` (ADR-0036 §25) and never wants a
+`listenerLock` — and then drives the pumped transaction. On the round-25 tree:
+
+```
+[leg B] with the replacement lock HELD, the pumped transaction took 412.4 ms (holder still parked: no)
+```
+
+412.4 ms is the harness watchdog's period: the flush waited until the holder was released, while
+the message thread sat in `endChangeGesture` holding mbDrive's `listenerLock`. On the fixed tree the
+same line reads `0.0 ms (holder still parked: yes)`. The cycle is deliberately NOT closed by the
+test — the holder needs no `listenerLock` — so a mutation of the fix fails the leg instead of
+hanging the suite. The other half was captured under gdb in round 25 and is not re-measured.
+
+### The fix, and why it is `Try` and not a new mechanism
+
+`flushDeferredCommands` takes `soundReplacement` with a try, never a wait. A try that succeeds is
+itself the evidence that no holder exists at that instant; a try that fails means one may, and the
+answer is §26's own sentence: consume nothing and come back. The refusal happens BEFORE the queue
+is moved and BEFORE `pollUndoCoalesceAdopted` runs, so round 24's `pendingGestureCommit` is left
+standing and round 25's ordering is untouched — within one iteration the transaction's step is
+committed first and only then do the commands run, and a refusal skips BOTH. Both polls retry it,
+so the next user action or the next 20/24 Hz tick does the work; nothing strands.
+
+The commands run with the lock RELEASED, not under it: `undo()` reaches `applyStatePreservingView`
+and a preset load reaches `applySoundTree`, both of which take `soundReplacement` themselves and
+call out to the host from inside it, and holding a replacement lock across a host callback is the
+inversion State test 27 hangs on (measured, round 21).
+
+### What this round's own implementation got wrong, twice
+
+**M114 and M115 survived their first run.** Both rules — *only at the outermost boundary* and *only
+once at a time* — were written twice, in `flushDeferredCommands` and again at each of its three
+call sites. The caller's copy answered before the callee's could be wrong, so neither mutant could
+produce the behaviour it was written to produce. Round 25's M103 lesson, repeating. The guards now
+live in one place and the call sites call the function bare.
+
+### The residual, stated rather than implied
+
+The same cycle stays reachable through any OTHER user-action door a pumped click can deliver: an
+Undo button press with no transaction running goes straight to `undo()` → `pollUndoCoalesce` → the
+blocking capture. That surface predates round 25 and is not what R651 names. Closing it needs a
+first-class notion of *"dynamically inside a parameter listener dispatch"*, which this codebase
+does not have — JUCE dispatches to the `finalListener` AFTER the plug-in's own listener returns, so
+a depth counter kept around our callback reads zero at exactly the moment it would need to read one
+— and building one means marking every first-party parameter write site (43 raw calls across 15
+functions in the imager alone, plus the editor's attachments, `applyAutoGain` and `PresetManager`).
+That is a threading-model change and an owner decision. RISK-009 stays OPEN and now says so.

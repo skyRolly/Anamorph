@@ -141,6 +141,27 @@ acquisition. ADR-0036 §26 carries the decision and the three acquisitions it co
 lesson for future edits: a rule of the form "nothing reaches X from a listener" has to be checked
 against what a HOST may run inside the callback, not only against what this code calls there.
 
+**ROUND 26 (2026-09-15) — AND THE CLAUSE ABOUT USER-ACTION DOORS WAS FALSE IN ITS TURN.** Round 21
+wrote *"the user-action doors, which a host cannot reach from inside a dispatch, keep their blocking
+acquisition."* A host reaches them exactly as it reaches the timers: it pumps its message loop from
+the listener callback and the pump delivers a queued UI event. Round 25 then put the blocking poll
+at the user transaction's outermost `1 -> 0` boundary — a boundary the pump can reach, because the
+event it delivers is the click that opens **and closes** the transaction. Review finding
+`src/PluginProcessor.cpp:R651`; measured at 412.4 ms in State test 100 leg B against the pre-fix
+code, with a non-announcing holder of `soundReplacement` parked and the message thread sitting in
+`endChangeGesture` holding a parameter's `listenerLock`.
+
+**The rule, restated once more and now without the exemption:** nothing that takes
+`soundReplacement` may WAIT for it from a parameter listener callback or from anything a host can
+pump from inside one — and *which door it is* does not enter into it. `flushDeferredCommands`
+(ADR-0036 §29) takes the lock with a `ScopedTryLock` and refuses without consuming anything; both
+polls retry it. **The remaining blocking acquisitions are a known open item, not a cleared one:**
+`undo()`, `redo()`, the A/B paths and the preset loads still block when reached directly by a pumped
+click with no transaction running, and RISK-009 records that as OPEN. The general lesson, now twice
+learned: a rule of the form *"nothing reaches X from a listener"* must be checked against what a
+HOST may run inside the callback — and an exemption of the form *"…except this class of caller"*
+must be checked the same way, because the pump does not know the classes.
+
 **GIVING THE TICK UP IS NOT FREE, AND ROUND 22 PAID THE DIFFERENCE (ADR-0036 §27).** "Take the lock
 without waiting" answers the deadlock and says nothing about what the caller has already CONSUMED by
 the time it tries. The restore drain had taken the decode out of `pendingRestore` before its try, so
