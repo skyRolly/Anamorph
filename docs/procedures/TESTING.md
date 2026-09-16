@@ -1644,6 +1644,51 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   than by where the test reads; a probe on the OPEN and a probe on the CLOSE measure different
   windows, and round 22 used the wrong one.
 
+* **Round 29 — State test 105: the wheel reads both axes, and it belongs to the press rather than
+  to the pointer.**
+
+  Twelve legs against the real editor, driven through the real handlers. Three fixture rules make
+  the legs mean what they say, and each of them was learned by a leg failing for the wrong reason:
+
+  - **Every event gets its own instant.** Both JUCE's wheel handler and this repository's in-drag
+    one dedupe on `eventTime`, so a fixture that stamped one instant would land exactly one notch
+    of any burst and prove nothing. `stamp()` advances 7 ms per event.
+  - **The cursor TRAVELS; it is never teleported.** A held press receives every mouse move, inside
+    its own bounds and outside them, and the multiband display anchors in CURSOR space
+    (`dragGrabDY`, `dragGrabDX`, `bandAnchorX`). Moving the pointer by writing a wheel event at a
+    far-away position, without the intervening `mouseDrag`, leaves that anchor describing a
+    position the press was never told about — which looks exactly like a product defect and is not
+    one. Legs C, D and K drag the cursor out.
+  - **The hit-test is spelled out.** `juce::Component::getComponentAt` answers `nullptr` for a
+    component that has never been made visible, and an editor built for a test has no peer to make
+    its ROOT one, so the legs walk the tree by the rule the real one uses (descend where clicks
+    pass to children, answer where they are accepted) and fall back to the editor, which is where a
+    scroll over bare background really does arrive.
+
+  | Leg | What it does | What it proves |
+  |---|---|---|
+  | A | Drive held and dragged, pointer over the multiband display, vertical notch | the notch reaches Drive; the display does not move at all; the drag continues from the notched value; ONE undo step |
+  | B | the mono-maker slider held, pointer over Drive | the same on an ABSOLUTE linear mapping, and Drive is untouched |
+  | C | a Bandwidth drag carried out of the display onto Drive, **horizontal** notch | a sideways trackpad gesture steers the Bandwidth it is holding; Drive does not move; the drag carries on |
+  | D | a split-frequency drag carried just outside the frame, **horizontal** notch, pointer over something that is neither a `juce::Slider` nor the display | the same for the split, and the notch can only have arrived through the EDITOR backstop |
+  | E | three notches over Width while Drive holds the press | Width does not move and no host change gesture opens on it |
+  | F | knob: drag to half, wheel to the bottom in-press, then a full further range | the top is reachable — the reported "sticks around 50 %" is gone |
+  | G | the same on the absolute linear slider | ditto |
+  | H | **verification, not a fix**: the same sequence on the multiband Bandwidth | the 2.000 rail is reached unaided; the defect is absent there, and nothing in that code is changed |
+  | I | vertical, horizontal-only and mixed notches on both control families | dominant-axis, on knobs and on the display alike |
+  | J | zero/zero, sub-threshold, a null notch posted to a held press, and a scroll after the release | ADR-0052 no-op semantics preserved, and the register does not strand |
+  | K | a split dragged past the merge margin, then a notch | a FROZEN split owns the notch and adds nothing; nothing under the pointer moves; the drag recovers from the cursor on return |
+  | L | knob and slider: drag, notch, then the cursor returns to the PRESS POINT | the notch moved the drag's ANCHOR — the discriminator legs F and G cannot be, because a full further range saturates whether the notch was banked or discarded |
+
+  **Mutation coverage (M145–M155).** M145 the register never claims (the pointer retargets);
+  M146 a knob's notch moves the value but not the anchor; M147 a notch inside a display press ends
+  the press (ADR-0041's superseded consequence); M148 the dominant-axis rule reverts to `deltaY`
+  alone everywhere; M149 the display's IN-PRESS notch ignores `deltaX`; M150 the display's
+  STANDALONE notch ignores `deltaX`; M151 the notch is posted to the press AND left for the pointed
+  control; M152 a notch inside a knob's own press is treated as a standalone scroll; M153 the wheel
+  offset is folded in `snapValue` again, outside JUCE's clamp; M154 the editor backstop is removed;
+  M155 a frozen split accepts the notch and re-anchors.
+
 * **Round 28b — State test 103 legs L and M, and State test 104: the two defects the admission's
   own first cut carried.**
 

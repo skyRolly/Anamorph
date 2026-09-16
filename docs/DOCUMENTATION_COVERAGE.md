@@ -11959,6 +11959,76 @@ M57–M60); `docs/procedures/CI_CD.md` (the re-measured stack figures);
 `CHANGELOG.md` `[0.9.8]` (two Fixed entries);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §73. [Verified]
 
+### Forty-ninth pass — the wheel that read one axis, and the press that did not own it (2026-09-16)
+
+**Trigger.** One review item on PR #144 — `src/gui/SpectrumImager.cpp:R3293`, *"horizontal scrolling
+differs by control"* — and two owner rulings attached to it that are settled rather than open:
+Multiband **Bandwidth** and **split frequency** must respond to horizontal trackpad scrolling, and
+during an active drag the wheel must keep steering the drag's own target however far the cursor has
+wandered. Plus a reported boundary defect: hold a knob, drag to 50 %, wheel back to 0 without
+releasing, keep dragging up, and the control sticks around 50 %.
+
+**Root cause (the axis).** The display's handler read `wheel.deltaY` alone and said so in its own
+comment; a trackpad's sideways two-finger gesture arrives as `deltaX` with `deltaY` at zero, so that
+gesture moved every knob in the editor and did nothing over the display. The knobs had the right
+rule already, because round 11 copied `juce::Slider::Pimpl::mouseWheelMove`'s expression into
+`wheelTargetValue` — it just lived in one place and the display was never given it.
+
+**Root cause (the ownership).** `MouseInputSourceImpl::handleWheel` takes its target from
+`getTargetForGesture`, which ends in a bare `getComponentAt (pos)`: JUCE routes a wheel event by
+POINTER and never consults the drag, and its slider handler is additionally gated on
+`! isAnyMouseButtonDown()`. Round 14 answered that by making the POINTED control act, which is the
+opposite of what the owner has now ruled.
+
+**Root cause (the boundary).** Round 14's fold lives in `Knob::snapValue`, and
+`juce::Slider::Pimpl::handleAbsoluteDrag` ends `newPos = jlimit (0, 1, …)` BEFORE calling it — so
+the notch was subtracted from an already-saturated position. On Drive with 0.5 banked downwards, a
+full further range gives JUCE `jlimit(0,1, 375/250) = 1.000` and the fold takes 0.5 straight back.
+The symptom is exact.
+
+**Fix.** One spelling of the axis rule (`anamorph::gui::wheelDominantDelta`, JUCE's own, with
+`-deltaX` kept because Windows negates the axis at the peer and macOS does not); one application
+register (`claimDragWheel` / `releaseDragWheel` / `wheelTakenByOwningPress`) asked at the top of
+every wheel handler and, for everything that overrides none, at the editor; and the fold moved from
+`snapValue` into `mouseDrag`, expressed in PIXELS of drag travel so that it shifts the EVENT and
+lands inside JUCE's clamp. One `setValue` per drag event, still.
+
+**Two things this round found for itself.** The editor backstop was missing from the first cut — a
+notch over a caption or the panel background was dropped, because those components override no wheel
+handler and the event arrives at the editor. And a split drag FROZEN for the merge-on-release
+affordance could now be reached by a notch for the first time: it owns the notch and adds nothing,
+because creeping it would move a split the release is about to merge away.
+
+**Not changed, and verified rather than assumed.** No line of the multiband width, split or
+band-move arithmetic. They anchor in CURSOR space and clamp once, at the end, so the boundary defect
+is structurally absent there; State test 105 leg H drives the reported sequence against Bandwidth and
+reaches the 2.000 rail unaided.
+
+**Classification.** **GATED, and cleared.** The ownership rule reverses a Consequences line of
+Accepted ADR-0053 itself (round 14's *"a notch delivered to a control other than the one being
+dragged edits THAT control"*), which `ARCHITECTURE_REVIEW_GATE.md` makes a hard stop. Cleared by the
+owner instruction quoted in the ADR's gate block, which states the new behaviour and rules on the
+conflict; the reversed line is superseded in place, not deleted. No other gate item moves: no
+parameter ID, range, default, automation flag or serialization field; no DSP node, stage order or
+reported latency; no thread or cross-thread path (the register is one message-thread `SafePointer`);
+no format and no build change. `RELEASE_COMPATIBILITY_CHECKLIST.md` not triggered.
+**RISK-012 and RISK-013 are unaffected and were re-read rather than re-asserted**: this round adds
+no store, no gesture bracket and no endpoint source, so neither entry's open window changes.
+
+**Validation.** State **3 976 / 0** including State test 105 legs A–L; DSP **396 / 0**;
+ThreadSanitizer exit 0 with 0 data-race reports and all three suppression entries credited exactly
+once; eleven mutants M145–M155, **all killed**; `check-docs` 141 clean; citation gate clean against
+all three bases; `preflight.sh` exit 0.
+
+**Documentation.** `ADR-0053` (a round-29 gate-approval block, the *"What a seventh review round
+changed"* section with the platform axis evidence and the boundary table, the reversed Consequences
+line, the corrected one-write bullet and a rewritten *Related code*); `docs/procedures/TESTING.md`
+(the round-29 block: the three fixture rules, the twelve legs, M145–M155);
+`docs/user/USER_MANUAL.md` (§3 and the Multiband gesture table);
+`CHANGELOG.md` `[0.9.8]` (the pointer sentence corrected in place, and a new Changed entry for
+horizontal trackpad scrolling);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §87. [Verified]
+
 ### Forty-eighth pass — the queue that could not tell two deferrals apart, and the pointer that answered the wrong question (2026-09-16)
 
 **Trigger.** Two items on PR #144 against the round-28 tree: `src/PluginProcessor.cpp:R834-835`,

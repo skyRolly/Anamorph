@@ -30,10 +30,11 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   notches keep adding, and the whole thing — drag and scrolling together — is a single Undo step
   recorded when you let go. Pressing Undo once takes you back to the value from before you pressed
   the mouse. Scrolling past the end of a control's travel no longer banks movement you then have to
-  drag back through. A notch always goes to whatever is under the **pointer**: if the drag has
-  carried the cursor off the control you grabbed, the wheel adjusts what you are pointing at — which
-  previously did nothing at all on a knob, a slider or a value box — and that edit joins the same
-  single Undo step. One notch is worth the same travel with a button held as without one, down to
+  drag back through, and the drag keeps its whole remaining travel: scroll a knob down to its
+  minimum mid-drag and you can still drag it all the way up to the maximum. **While a button is
+  held, a notch goes to the control you are holding** — wherever the cursor has wandered to, and
+  whatever it is sitting on — and nothing else moves until you let go.
+  One notch is worth the same travel with a button held as without one, down to
   the smallest notch a trackpad can send: a fine scroll during a drag moves the control by one step
   of its range rather than being rounded away to nothing.
   Decision: ADR-0053. Regression coverage: State tests 80 and 88. Evidence: PR #144. [Verified]
@@ -50,6 +51,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   intact. Automation arriving from your DAW between one notch and the next ends the run too: a
   scroll never merges across it, and it is never added to a step you had already finished.
   Decision: ADR-0053. Regression coverage: State test 86. Evidence: PR #144. [Verified]
+- **Sideways two-finger trackpad scrolling now works over the Multiband display, the same as it
+  already did over the knobs.** The display only read vertical scrolling, so a horizontal swipe did
+  nothing there while moving whatever knob you were over. Both directions are now read everywhere in
+  the editor, by the same rule: whichever way you move more is the one that counts, so a diagonal
+  flick does one thing rather than two. Multiband **Bandwidth** and **split frequency** respond to a
+  sideways swipe exactly as they do to the wheel, including while you are dragging them.
+  Decision: ADR-0053. Regression coverage: State test 105. Evidence: PR #144. [Verified]
 - **Holding a band's solo button and scrolling now moves the band instead of changing its width.**
   It does what dragging that button sideways does: the whole band segment slides, both of its
   crossovers together, and scrolling adds to whatever the drag has already done. Scrolling over the

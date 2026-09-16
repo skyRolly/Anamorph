@@ -25370,6 +25370,67 @@ static void testTheWheelBelongsToThePressItLandsIn()
                "leg I: ...and a HORIZONTAL-only trackpad notch moves it too, which it never did before");
     }
 
+    // ---- LEG L: the notch moves the drag's ANCHOR, not merely its value -------------------------
+    //      THE DISCRIMINATOR LEGS F AND G CANNOT BE. A full further range of drag saturates at the
+    //      rail whether or not the notch was banked, so both of them pass just as well against an
+    //      implementation that DISCARDS the notch as against one that carries it. Here the cursor
+    //      comes back to the exact point it was pressed at, so the drag's own contribution is zero
+    //      by construction and everything left over is the notch's: the press value plus what the
+    //      wheel moved, or -- if the anchor never moved with it -- the press value alone.
+    {
+        clearHistory();
+        setPlain (driveP, (float) driveP->convertFrom0to1 (0.0f));
+        proc.pollUndoCoalesce();
+        const double sens = (double) driveK->getMouseDragSensitivity();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, true));
+        const double atPress = driveK->valueToProportionOfLength (driveK->getValue());
+        driveK->mouseDrag (mev (driveK, dkx, dky - (float) (sens * 0.25), dkx, dky, true, true));
+        const double v1 = driveK->valueToProportionOfLength (driveK->getValue());
+        for (int i = 0; i < 3; ++i)
+            driveK->mouseWheelMove (mev (driveK, dkx, dky - (float) (sens * 0.25), dkx, dky, false, true),
+                                    wheelOf (0.0f, 1.0f));
+        const double v2 = driveK->valueToProportionOfLength (driveK->getValue());
+        driveK->mouseDrag (mev (driveK, dkx, dky, dkx, dky, true, true));   // back to the press point
+        const double back = driveK->valueToProportionOfLength (driveK->getValue());
+        driveK->mouseUp   (mev (driveK, dkx, dky, dkx, dky, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg L] knob: press %.3f, drag %.3f, wheel %.3f, back at the press point %.3f"
+                     " (the notch's own %.3f, never the bare press's %.3f)\n",
+                     atPress, v1, v2, back, atPress + (v2 - v1), atPress);
+        check (v2 > v1 + 0.05, "leg L: the notches really did raise the knob");
+        check (std::abs (back - (atPress + (v2 - v1))) < 0.01,
+               "leg L: the round trip leaves exactly the notch behind -- the anchor moved with it");
+
+        // ...and the same on the ABSOLUTE linear mapping, where the anchor is a cursor position
+        // rather than a press value: `prop (x0 + wheelDragPx)` must be `prop (x0) + (v2 - v1)`.
+        const float mh = 0.5f * (float) monoK->getHeight();
+        const double span = std::abs ((double) monoK->getPositionOfValue (monoK->getMaximum())
+                                      - (double) monoK->getPositionOfValue (monoK->getMinimum()));
+        // INSIDE THE SLIDER REGION, not at the component's edge: an absolute drag clamps its
+        // proportion to [0, 1], so a press left of the region records a value whose proportion has
+        // already been clamped, and the round trip below would then be measured from a position the
+        // arithmetic never had. `getPositionOfValue` names the region's own ends.
+        const float x0 = (float) monoK->getPositionOfValue (monoK->getMinimum())
+                       + 0.05f * (float) span;
+        monoK->mouseDown (mev (monoK, x0, mh, x0, mh, false, true));
+        const double sPress = monoK->valueToProportionOfLength (monoK->getValue());
+        monoK->mouseDrag (mev (monoK, x0 + 0.25f * (float) span, mh, x0, mh, true, true));
+        const double s1 = monoK->valueToProportionOfLength (monoK->getValue());
+        for (int i = 0; i < 3; ++i)
+            monoK->mouseWheelMove (mev (monoK, x0 + 0.25f * (float) span, mh, x0, mh, false, true),
+                                   wheelOf (0.0f, 1.0f));
+        const double s2 = monoK->valueToProportionOfLength (monoK->getValue());
+        monoK->mouseDrag (mev (monoK, x0, mh, x0, mh, true, true));
+        const double sBack = monoK->valueToProportionOfLength (monoK->getValue());
+        monoK->mouseUp   (mev (monoK, x0, mh, x0, mh, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg L] slider: press %.3f, drag %.3f, wheel %.3f, back at the press point %.3f"
+                     " (the notch's own %.3f)\n", sPress, s1, s2, sBack, sPress + (s2 - s1));
+        check (s2 > s1 + 0.05, "leg L: the notches really did raise the slider");
+        check (std::abs (sBack - (sPress + (s2 - s1))) < 0.01,
+               "leg L: ...and the absolute mapping keeps the notch through the round trip too");
+    }
+
     // ---- LEG J: no-op inputs have no side effects (ADR-0052, preserved) --------------------------
     {
         clearHistory();

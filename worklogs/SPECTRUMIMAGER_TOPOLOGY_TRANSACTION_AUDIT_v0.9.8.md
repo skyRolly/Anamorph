@@ -5319,3 +5319,124 @@ command. **No Anamorph-owned blocking acquisition remains on the `StateCommandGa
 stays OPEN on the JUCE-internal residual — APVTS's own 10 Hz timer taking `valueTreeChanging`
 blocking from a pumped callback, with no Anamorph lock on the waiting side — and no suppression was
 added for it.
+
+## §87. Round 29 — Devin `src/gui/SpectrumImager.cpp:R3293`, and two behaviours the owner had already ruled on
+
+### §87a. The finding is one sentence and the brief is three tasks
+
+Devin's finding is that horizontal scrolling differs by control: the display's `mouseWheelMove`
+consumed `wheel.deltaY` alone, so a trackpad's sideways two-finger gesture did nothing over the
+multiband display while moving every knob in the editor. The brief attaches two owner rulings that
+are NOT open questions — Bandwidth and the split frequency must respond to horizontal scrolling, and
+during an active drag the wheel must keep steering the drag's own target however far the cursor has
+wandered — plus a reported boundary defect: hold a knob, drag to 50 %, wheel back to 0 without
+releasing, keep dragging up, and the control sticks around 50 %.
+
+### §87b. What the axis question actually turned on
+
+Not "should `deltaX` be added". `juce::MouseWheelDetails` is a five-field POD, and the three peers
+fill `deltaX` differently: macOS passes Cocoa's `scrollingDeltaX` sign through
+(`juce_NSViewComponentPeer_mac.mm`), Windows NEGATES it (`juce_Windowing_windows.cpp`,
+`deltaX = amount / -256.0f` against `deltaY = amount / 256.0f`), and Linux/X11 hard-wires it to zero
+and drops buttons 6 and 7 (`juce_XWindowSystem_linux.cpp`). So a locally invented sign convention is
+correct on at most two platforms by construction. `juce::Slider::Pimpl::mouseWheelMove` already
+normalises this — `(|dx| > |dy| ? -dx : dy) * (reversed ? -1 : 1)` — and the knobs already obeyed it,
+because round 11 copied that expression into `wheelTargetValue`. Round 29 gives the expression one
+name, `anamorph::gui::wheelDominantDelta`, and the display consumes it. Nothing downstream of the
+scalar changes, which is why `kWheelSplitPx`, `kWheelWidthPer`, the band move, the sub-threshold
+no-op test and the undo grouping are all untouched.
+
+Dominant-axis was kept rather than replaced with a sum: a sum would change eleven knobs' response to
+a diagonal trackpad flick, which nothing asked for, and it would create exactly the control-dependent
+behaviour the brief said not to create.
+
+### §87c. JUCE cannot express "the press owns the wheel", so the application has to
+
+Traced rather than assumed. `MouseInputSourceImpl::handleWheel` asks `getTargetForGesture`, which is
+`peer.getComponent().getComponentAt (pos)`: a bare hit-test that never looks at the drag.
+`lastNonInertialWheelTarget` is the only stickiness JUCE has and it is for the inertial phase of a
+gesture, not for a held button. `juce::Slider::Pimpl::mouseWheelMove` is additionally gated on
+`! e.mods.isAnyMouseButtonDown()`, which is why a notch during a drag used to be silently dropped by
+JUCE before this repository started claiming it.
+
+So the routing is one application-level register, in `LookAndFeel.cpp`: a `SafePointer` to the
+component holding the press and a `WheelDragOwner*` to ask. `claimDragWheel` at every `mouseDown`
+that starts one, `releaseDragWheel` at every `mouseUp` and every cancel, and
+`wheelTakenByOwningPress` as the FIRST line of every wheel handler. `WheelDragOwner::takeWheelNotch`
+is the one hook, split out of the `DragGestureOwner` the value box already implemented, so the same
+body serves a notch delivered by the pointer and one posted by the register — which is what makes
+this one rule for `Knob`, `ValueBox` and `SpectrumImager` rather than three.
+
+**The editor is the backstop, and it was missing from the first cut.** Three controls asking the
+register covers a pointer over another CONTROL. Most of the editor is not a control, and a caption,
+a toggle or the background overrides no wheel handler at all — so `juce::Component::mouseWheelMove`
+walks the event up to the nearest enabled ancestor and it lands on the editor, which dropped it.
+Found by State test 105 leg D, which could not find a `juce::Slider` within the split drag's merge
+margin and therefore had to go through whatever really is there. The editor now asks the register
+first. `PopupShield` is the one component that still consumes a wheel event without asking, and
+correctly: a raised shield means a pop-up menu owns the mouse, so no drag of ours is in flight.
+
+### §87d. The boundary defect is a clamp that is not ours
+
+Round 14 moved the notch fold into `Knob::snapValue` to make a scrolled drag write once instead of
+twice, and that is still the right property. The mistake is WHERE `snapValue` runs:
+`juce::Slider::Pimpl::handleAbsoluteDrag` computes
+`newPos = jlimit (0, 1, valueOnMouseDown + mouseDiff / pixelsForFullDragExtent)` and calls
+`snapValue` afterwards, so the fold was subtracted from an already-saturated position. On Drive
+(250 px per whole range) with 0.5 banked downwards: a drag of a full further range gives JUCE
+`jlimit(0,1, 375/250) = 1.000`, the fold takes 0.5 back, and the control sits at 0.500 no matter how
+far the cursor goes. That is the reported symptom, exactly.
+
+The fix keeps the fold and moves it INSIDE the clamp by changing its units: the notch's effect is
+banked in PIXELS OF DRAG TRAVEL (`wheelDragPx`) and applied to the EVENT, so JUCE maps and clamps a
+cursor position that already includes it. `pixelsPerWholeRange()` is `getMouseDragSensitivity()` for
+the relative styles and `|getPositionOfValue(max) − getPositionOfValue(min)|` for the absolute linear
+one — JUCE's own `sliderRegionSize`, measured from outside because `Pimpl` is private. The same row
+now reads `jlimit(0,1, (375 − 125)/250) = 1.000` and the whole remaining travel survives. One write
+per drag event, still, and now structurally rather than by arrangement: the shift happens before
+JUCE computes anything.
+
+### §87e. The multiband parameters were measured, not assumed, and are not touched
+
+The brief reports that Bandwidth and the split do not have the defect and asks for that to be
+verified. They do not. Every multiband drag anchors in CURSOR space and clamps ONCE, to the final
+target: `yToWidth (cursorY − dragGrabDY)`, `dragCrossoverTo (cursorX − dragGrabDX)`,
+`jlimit (bandTmin, bandTmax, cursorX − bandAnchorX)`. A notch that moves the anchor therefore moves
+the whole remaining travel with it, and nothing is ever banked outside a clamp. State test 105 leg H
+runs the reported sequence against the Bandwidth line and reaches the 2.000 rail unaided. No line of
+the width, split or band-move branches is modified.
+
+### §87f. One new rule the pointer used to hide
+
+A split drag carried more than 70 px sideways or 50 px vertically outside the frame arms the
+merge-on-release affordance and FREEZES — `mouseDrag` writes nothing, deliberately, so that the split
+is recomputed purely from the cursor when it comes back. Before the register a notch could not reach
+that state, because a cursor that far outside is over somebody else and JUCE routes by hit-test. It
+can now. A notch that crept the frozen split would move one the release is about to merge away, and
+re-anchoring `dragGrabDX` is exactly what the freeze exists to prevent — so the press owns the notch
+and adds nothing to it, which is what a pending DELETE click has always done one branch above.
+State test 105 leg K.
+
+### §87g. Two fixture errors this round's own tests made, and what they looked like
+
+**The teleported cursor.** Legs C and D first moved the pointer out of the display by writing a wheel
+event at the Drive knob's position, with no intervening `mouseDrag`. The display's anchors are in
+cursor space, so the notch re-anchored against a position the press had never been told about and
+the next real drag produced nonsense — `width 1.375 → 1.195 → 0.000`, `split 195.7 → 5330 → 211.8`.
+That reads exactly like a product defect and is a fixture one: a held press receives every mouse
+move, so the honest way to put the pointer somewhere is to drag it there.
+
+**The invisible root.** `Component::getComponentAt` returns `nullptr` unless `flags.visibleFlag` is
+set, and an editor constructed for a test has no peer to set it on the ROOT, so the first version of
+legs D and K found nothing under the pointer and delivered no event at all — while passing the
+assertions that said nothing had moved. The legs now walk the tree by the same rule and fall back to
+the editor.
+
+### §87h. What this round did NOT change
+
+No parameter ID, range, default, automation flag or serialization field. No DSP node, stage order or
+reported latency. No thread and no cross-thread path: the register is one message-thread
+`SafePointer` and one message-thread pointer, written and read only from mouse and wheel handlers.
+No multiband width, split or band-move arithmetic. No plug-in format and no build change. The
+ADR-0052 no-op semantics and the ADR-0053 undo grouping are preserved and are held by State test 105
+legs J and A and by State tests 86, 87 and 88, which are unchanged.

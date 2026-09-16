@@ -189,12 +189,15 @@ Controls respond to some universal gestures:
 - **Value boxes** (the number under a knob): **drag vertically** to change, double-click
   to type. Typed entry is forgiving: `%` is optional, `2k` or `2kHz` means 2000 Hz, and
   balance fields accept `C`, `L30`, `R30` (or `M`/`S` letters in M/S mode).
-- **Mouse wheel**: scroll over any knob, slider or value box to nudge it. A whole scroll is
+- **Mouse wheel**: scroll over any knob, slider or value box to nudge it, with the wheel or with a
+  **sideways two-finger trackpad swipe** — whichever way you move more decides. A whole scroll is
   **one** Undo step, and scrolling the same control again continues that step (anything else you
   do to it starts a new one). You can scroll **during a drag** too: the notch adds to what the
-  drag has produced and the drag carries on from the new value, all as one Undo step. The notch
-  always goes to whatever is **under the pointer** — if the drag has taken the cursor off the
-  control you grabbed, the wheel adjusts what you are pointing at instead. A notch is worth the
+  drag has produced and the drag carries on from the new value, all as one Undo step. **While a
+  button is held, the notch goes to the control you grabbed** — wherever the cursor has wandered
+  to, and whatever it is sitting on. Nothing else moves while you are holding a control, and the
+  drag keeps its full remaining travel afterwards: scroll a knob down to its minimum mid-drag and
+  you can still drag it all the way back to the top. A notch is worth the
   same amount with a button held as without one, down to the finest scroll a trackpad sends; a
   notch that cannot move the control — because it is already at the end of its travel — does
   nothing at all, and your DAW is told nothing.
@@ -376,8 +379,8 @@ Turning it on or off crossfades, so it is click-free either way.
 | Press the **×** box of a band | Removes that band. |
 | Drag a width line up/down | Sets that band's Width (0–200 %). A 3-pixel threshold means a bare click never changes the value. |
 | Double-click | On a number chip: type the frequency (accepts `2k`). On a split handle: reset that crossover. On a width line: reset that band's width. |
-| Mouse wheel | Over a handle: nudge the split. Over a band: nudge its width. A whole scroll is **one** Undo step, and carrying on scrolling the same control extends it. |
-| Mouse wheel **while dragging** | Adds to what the drag has produced; the drag carries on from the new value, and the whole interaction is one Undo step. The notch goes to whatever is under the **pointer**, so if the drag has carried the cursor onto another control, that is what it adjusts. |
+| Mouse wheel | Over a handle: nudge the split. Over a band: nudge its width. Sideways trackpad swipes count, the same as anywhere else in the editor. A whole scroll is **one** Undo step, and carrying on scrolling the same control extends it. |
+| Mouse wheel **while dragging** | Adds to what the drag has produced; the drag carries on from the new value, and the whole interaction is one Undo step. **The notch goes to what you are holding**, not to what the cursor has wandered onto — so a split or a bandwidth keeps responding to the wheel with the pointer anywhere in the editor. (One exception, and it is the merge affordance, not the wheel: a split dragged right out of the display is waiting to merge its band on release, and holds still until the cursor comes back.) |
 | **Solo (headphone) — quick click** | Latches that band's solo on/off. Multiple bands can be soloed together (it's a mask). |
 | **Solo — press and hold (>0.2 s)** | Momentary audition of just that band; releasing restores exactly what was soloed before. |
 | **Solo — Alt/Option-click** | On an unsoloed band: solo it **exclusively**. On a soloed band: **clear all solos**. |
