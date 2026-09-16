@@ -499,6 +499,33 @@ DELIBERATE_REAIMS = {
     ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
      "src/PluginProcessor.cpp:426-565",
      "src/PluginProcessor.cpp:513-902"): "syncCommitted",
+
+    # ROUND 28, SECOND PUSH (71d3614), and the entries below exist because a re-anchor is
+    # INDISTINGUISHABLE FROM DRIFT when the SOURCE did not move. `a6773cd` shipped the round-28
+    # source with eight document anchors still aimed at the pre-round-28 lines; CI's push-predecessor
+    # check caught them and they were re-derived in `71d3614`, which touches documents ONLY. From
+    # `a6773cd` as the base the source is byte-identical, so every one of those re-derivations reads
+    # as a document that moved its anchor for no reason -- which is exactly what this table is for.
+    # Each target below is checked against the CURRENT file by `verify_reaim_targets` on every run,
+    # so a number that was wrong when it was written fails here rather than going quiet.
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/PluginEditor.cpp:2373-2398",
+     "src/PluginEditor.cpp:2381-2406"): "oversampleBox",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/PluginEditor.cpp:2175",
+     "src/PluginEditor.cpp:2183"): "createDirectory",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1247-1424",
+     "src/PluginProcessor.cpp:1321-1498"): "parameterGestureChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1247-1423",
+     "src/PluginProcessor.cpp:1321-1497"): "parameterGestureChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PresetManager.cpp:776",
+     "src/PresetManager.cpp:844"): "copyState",
+    ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
+     "src/PluginProcessor.cpp:470-847",
+     "src/PluginProcessor.cpp:513-902"): "syncCommitted",
     #
     # 2026-09-13 (round 13) declared a re-aim of RISK-012's poll citation, `:963-1035` ->
     # `:980-1039`, onto the `sig != committedSig` gate. ROUND 14 DELETED IT, because round 14
