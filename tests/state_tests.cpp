@@ -25765,6 +25765,327 @@ static void testANotchInsideAVelocityDrag()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 107 -- an active press owns the wheel even when it has nothing to
+//  add it to (round 30, Devin `src/gui/SpectrumImager.cpp:R3302-3304`,
+//  "ownerless presses retarget their wheel").
+//
+//  THE TWO STATES ROUND 29 TREATED AS ONE:
+//
+//      no active press owns this event                      -> the pointer decides
+//      an active press owns it and has NO editable target   -> the press decides, and decides nothing
+//
+//  An Alt-click reset held down, a press on the display's blank area, an add the band
+//  count refused, a click that started no drag: each of them OWNS the interaction and
+//  none of them holds a value a notch can be added to. Round 29 let all of them fall
+//  through to the pointer -- `standaloneWheel`, or JUCE's own handler with the held
+//  button laundered out by `sendWheelToJuce` -- so the control under the cursor moved
+//  while the user was holding something else.
+//
+//  EVERY LEG HERE IS "NOTHING MOVED", which is the hardest kind of assertion to trust,
+//  so each one also carries a POSITIVE control: the same gesture with the button
+//  released does move the thing the leg says did not move. Without that a leg would
+//  pass against a fixture that had simply stopped delivering events.
+// ---------------------------------------------------------------------------
+static void testAPressWithNoTargetStillOwnsTheWheel()
+{
+    std::printf ("State test 107: an ownerless press still owns the wheel (R3302-3304)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the ownerless-press probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s  = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* widP   = apvts.getParameter (pid::width);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* driveK = findSliderFor (driveP);
+    auto* widK   = findSliderFor (widP);
+    check (im != nullptr && im->getWidth() > 300 && driveP && driveK && widP && widK && wLoP && bandsP,
+           "the display, the Drive and Width knobs and the multiband parameters are findable");
+    if (! (im != nullptr && im->getWidth() > 300 && driveP && driveK && widP && widK && wLoP && bandsP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    int seq = 0;
+    auto stamp = [&] { return juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 7); };
+    auto mev = [&] (juce::Component* c, float x, float y, float dx, float dy,
+                    bool dragged, juce::ModifierKeys m)
+    {
+        const auto t = stamp();
+        return juce::MouseEvent (src, { x, y }, m, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 c, c, t, { dx, dy }, t, 1, dragged);
+    };
+    auto wheelOf = [] (float dx, float dy)
+    {
+        juce::MouseWheelDetails w;
+        w.deltaX = dx; w.deltaY = dy;
+        w.isReversed = false; w.isSmooth = false; w.isInertial = false;
+        return w;
+    };
+    const auto none  = juce::ModifierKeys();
+    const auto held  = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
+    const auto altHeld = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                           | juce::ModifierKeys::altModifier);
+    auto plainOf = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+
+    const float dkx = 0.5f * (float) driveK->getWidth(), dky = 0.5f * (float) driveK->getHeight();
+    const float wkx = 0.5f * (float) widK->getWidth(),   wky = 0.5f * (float) widK->getHeight();
+    const float imx = 0.5f * (float) im->getWidth(),     imy = 0.5f * (float) im->getHeight();
+    auto clearHistory = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
+    auto mbState = [&] { return std::array<float, 3> { plainOf (wLoP), plainOf (bandsP),
+                                                       plainOf (apvts.getParameter (pid::mbSolo)) }; };
+
+    // An IDLE point of the display: one the component itself reports no affordance for, which is
+    // what "blank area" means to the press that lands on it.
+    float blankY = -1.0f;
+    for (float y = 4.0f; y < (float) im->getHeight() - 4.0f; y += 1.0f)
+    {
+        im->mouseMove (mev (im, 6.0f, y, 6.0f, y, false, none));
+        if (im->getTooltip().isEmpty()) { blankY = y; break; }
+    }
+
+    // ---- LEG A: an Alt-click RESET, held, with the pointer on another control -------------------
+    {
+        clearHistory();
+        setPlain (driveP, 3.0f);
+        setPlain (widP, 1.4f);
+        proc.pollUndoCoalesce();
+        CountGestures g;
+        widP->addListener (&g);
+        const float wid0 = plainOf (widP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, altHeld));   // reset fires here
+        const float driveAfterReset = plainOf (driveP);
+        for (int i = 0; i < 3; ++i)
+            widK->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, altHeld), wheelOf (0.0f, 0.6f));
+        const float widDuring = plainOf (widP);
+        // ...and over the RESET KNOB ITSELF, which is the case round 29 left open: the register
+        // answered "not somebody else's press" and the knob's own tail then handed it to JUCE.
+        for (int i = 0; i < 3; ++i)
+            driveK->mouseWheelMove (mev (driveK, dkx, dky, dkx, dky, false, altHeld), wheelOf (0.0f, 0.6f));
+        const float driveDuring = plainOf (driveP);
+        driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, altHeld));
+        widP->removeListener (&g);
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg A] Alt-reset held: Drive %.3f -> %.3f (reset) -> %.3f (3 notches),"
+                     " Width %.4f -> %.4f, gestures on Width %d\n",
+                     3.0, (double) driveAfterReset, (double) driveDuring,
+                     (double) wid0, (double) widDuring, g.opens);
+        check (juce::exactlyEqual (plainOf (widP), wid0),
+               "leg A: the control the pointer is over is untouched while the reset press is held");
+        check (g.opens == 0 && g.closes == 0, "leg A: ...and no host change gesture opens on it");
+        check (juce::exactlyEqual (driveDuring, driveAfterReset),
+               "leg A: ...and the reset press's OWN knob is untouched too -- it has no drag to add to");
+        // THE POSITIVE CONTROL: with the button up, the same gesture moves Width.
+        const float widBefore = plainOf (widP);
+        widK->mouseWheelMove (mev (widK, wkx, wky, wkx, wky, false, none), wheelOf (0.0f, 0.6f));
+        proc.pollUndoCoalesce();
+        check (! juce::exactlyEqual (plainOf (widP), widBefore),
+               "leg A: control -- with no press held, the same notch does move it");
+    }
+
+    // ---- LEG B: a press that claimed NOTHING at all ---------------------------------------------
+    //      A button held over something that owns no wheel press -- a caption, a toggle, the panel
+    //      background. The register is empty and a button is down, which is the state round 29
+    //      answered with "the pointer decides".
+    {
+        clearHistory();
+        setPlain (widP, 1.2f);
+        setPlain (wLoP, 1.0f);
+        setPlain (bandsP, 1.0f);
+        proc.pollUndoCoalesce();
+        const float wid0 = plainOf (widP);
+        const auto  mb0  = mbState();
+        for (int i = 0; i < 3; ++i)
+            widK->mouseWheelMove (mev (widK, wkx, wky, wkx, wky, false, held), wheelOf (0.0f, 0.6f));
+        im->mouseWheelMove (mev (im, imx, imy, imx, imy, false, held), wheelOf (0.0f, -0.6f));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg B] a held button with nothing claimed: Width %.4f -> %.4f, display %s\n",
+                     (double) wid0, (double) plainOf (widP), mbState() == mb0 ? "still" : "MOVED");
+        check (juce::exactlyEqual (plainOf (widP), wid0),
+               "leg B: a knob under the pointer does not move for a press that claimed nothing");
+        check (mbState() == mb0, "leg B: ...and neither does the multiband display");
+        check (! proc.canUndo(), "leg B: ...and nothing became undoable");
+    }
+
+    // ---- LEG C: a MultiBand press on the display's blank area ------------------------------------
+    {
+        clearHistory();
+        setPlain (bandsP, 1.0f);
+        setPlain (wLoP, 1.0f);
+        proc.pollUndoCoalesce();
+        check (blankY > 0.0f, "leg C: an idle point of the display is findable");
+        const auto mb0   = mbState();
+        const float wid0 = plainOf (widP);
+        // ALT, AND THE POINT MATTERS LESS THAN THE BRANCH. `SpectrumImager::mouseDown` claims the
+        // wheel at the top for every press and then takes the Alt branch, which resets a split or a
+        // width if the cursor is on one and otherwise returns having latched NO identifier at all
+        // -- `dragBand`, `dragHandle`, `soloPressBand` and `pressDeleteBand` all stay -1. That is
+        // the press this leg is about: it owns the interaction and holds nothing to add a notch to.
+        // A plain press on the same point would latch the band under the cursor and be a width
+        // drag, which is leg D's case, not this one.
+        im->mouseDown (mev (im, 6.0f, blankY, 6.0f, blankY, false, altHeld));
+        for (int i = 0; i < 3; ++i)   // ...over the display itself
+            im->mouseWheelMove (mev (im, imx, imy, 6.0f, blankY, false, altHeld), wheelOf (0.0f, -0.6f));
+        const auto mbDuring = mbState();
+        for (int i = 0; i < 3; ++i)   // ...and over a knob
+            widK->mouseWheelMove (mev (widK, wkx, wky, 6.0f, blankY, false, altHeld), wheelOf (0.0f, 0.6f));
+        const float widDuring = plainOf (widP);
+        im->mouseUp (mev (im, 6.0f, blankY, 6.0f, blankY, false, altHeld));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg C] blank-area press held: display %s, Width %.4f -> %.4f\n",
+                     mbDuring == mb0 ? "still" : "MOVED", (double) wid0, (double) widDuring);
+        check (mbDuring == mb0,
+               "leg C: a press that latched no identifier does not let the pointer edit the display");
+        check (juce::exactlyEqual (widDuring, wid0), "leg C: ...nor a knob elsewhere");
+        // THE POSITIVE CONTROL, and it is also §3's leg E: after the release the pointer decides again.
+        const auto mbBefore = mbState();
+        im->mouseWheelMove (mev (im, imx, imy, imx, imy, false, none), wheelOf (0.0f, -0.6f));
+        proc.pollUndoCoalesce();
+        check (! (mbState() == mbBefore),
+               "leg C: control -- once the press is released, a standalone scroll edits the display again");
+    }
+
+    // ---- LEG D: a press that DOES own an editable target keeps the wheel ------------------------
+    //      The other half of the rule, restated here so the matrix is complete in one place.
+    {
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        setPlain (widP, 1.2f);
+        proc.pollUndoCoalesce();
+        const float wid0 = plainOf (widP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        const float held0 = plainOf (driveP);
+        widK->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, held), wheelOf (0.0f, 0.6f));
+        const float driveAfter = plainOf (driveP);
+        driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg D] a real drag keeps the wheel: Drive %.3f -> %.3f, Width %.4f -> %.4f\n",
+                     (double) held0, (double) driveAfter, (double) wid0, (double) plainOf (widP));
+        check (! juce::exactlyEqual (driveAfter, held0),
+               "leg D: the notch reaches the knob that owns the press");
+        check (juce::exactlyEqual (plainOf (widP), wid0), "leg D: ...and not the one under the pointer");
+    }
+
+    // ---- LEG E: the §8 matrix, on the VELOCITY mapping -------------------------------------------
+    //      Vertical and horizontal notches, pointer inside the control and over another one, with
+    //      the velocity modifier held. `commandModifier` is the portable one -- see State test 106.
+    {
+        const auto veloc  = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                              | juce::ModifierKeys::commandModifier);
+        for (int axis = 0; axis < 2; ++axis)
+        {
+            const auto w = axis == 0 ? wheelOf (0.0f, 1.0f) : wheelOf (-1.0f, 0.0f);
+            for (int where = 0; where < 2; ++where)   // 0 = pointer on the knob, 1 = on another one
+            {
+                clearHistory();
+                setPlain (driveP, 2.0f);
+                setPlain (widP, 1.2f);
+                proc.pollUndoCoalesce();
+                const float wid0 = plainOf (widP);
+                driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, veloc));
+                driveK->mouseDrag (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, veloc));
+                const float before = plainOf (driveP);
+                if (where == 0) driveK->mouseWheelMove (mev (driveK, dkx, dky - 40.0f, dkx, dky, false, veloc), w);
+                else            widK  ->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, veloc), w);
+                const float afterNotch = plainOf (driveP);
+                driveK->mouseDrag (mev (driveK, dkx, dky - 80.0f, dkx, dky, true, veloc));
+                const float afterMore = plainOf (driveP);
+                driveK->mouseUp (mev (driveK, dkx, dky - 80.0f, dkx, dky, true, veloc));
+                proc.pollUndoCoalesce();
+                check (! juce::exactlyEqual (afterNotch, before),
+                       "leg E: a velocity drag takes the notch on both axes, pointer inside or out");
+                check (! juce::exactlyEqual (afterMore, afterNotch),
+                       "leg E: ...and the drag carries on from the value the notch produced");
+                check (juce::exactlyEqual (plainOf (widP), wid0),
+                       "leg E: ...and the control under the pointer never moves");
+            }
+        }
+        std::printf ("  [leg E] velocity x {vertical, horizontal} x {pointer inside, pointer elsewhere}:"
+                     " four runs, the press took every notch\n");
+    }
+
+    // ---- LEG F: the Persistence reveal still arms, and only on a standalone scroll ---------------
+    //      Round 30 replaced the editor's `MouseListener` on that bar with a callback the knob
+    //      raises, because a listener is offered the same event a second time. The observable is
+    //      the reveal's own arming, which the editor exposes through nothing -- so this leg checks
+    //      the property that matters instead: the bar is a knob with no APVTS parameter, so a
+    //      scroll of it records no undo step, and a notch during another control's press must not
+    //      reach it at all.
+    {
+        clearHistory();
+        juce::Slider* bar = nullptr;
+        for (auto* s : sliders)
+            if (s != driveK && s != widK
+                && juce::exactlyEqual (s->getMinimum(), 0.0) && juce::exactlyEqual (s->getMaximum(), 1.0)
+                && juce::exactlyEqual (s->getInterval(), 0.001))
+                bar = s;
+        check (bar != nullptr, "leg F: the Settings Persistence bar is findable");
+        if (bar != nullptr)
+        {
+            const double b0 = bar->getValue();
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+            driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            for (int i = 0; i < 3; ++i)
+                bar->mouseWheelMove (mev (bar, 4.0f, 4.0f, dkx, dky, false, held), wheelOf (0.0f, 0.6f));
+            const double bDuring = bar->getValue();
+            driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            bar->mouseWheelMove (mev (bar, 4.0f, 4.0f, 4.0f, 4.0f, false, none), wheelOf (0.0f, 0.6f));
+            const double bAfter = bar->getValue();
+            proc.pollUndoCoalesce();
+            std::printf ("  [leg F] Persistence bar: %.4f -> %.4f while a press is held -> %.4f after it\n",
+                         b0, bDuring, bAfter);
+            check (juce::exactlyEqual (bDuring, b0),
+                   "leg F: the Persistence bar does not move for a notch that belongs to another press");
+            check (! juce::exactlyEqual (bAfter, bDuring),
+                   "leg F: ...and a standalone scroll of it still works");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 //  State test 104 -- a save completion may only touch the dialog it BELONGS TO
 //  (round 28b, Devin `src/PluginEditor.cpp:R405-406`, "canceled save closes
 //  newer dialog").
@@ -30536,6 +30857,7 @@ int main (int argc, char* argv[])
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();
     testANotchInsideAVelocityDrag();
+    testAPressWithNoTargetStillOwnsTheWheel();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();
