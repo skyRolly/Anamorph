@@ -40,14 +40,17 @@ void releaseDragWheel (const juce::Component& c)
 
 juce::Component* dragWheelHolder() noexcept { return dragWheelHolderPtr.getComponent(); }
 
-bool wheelTakenByOwningPress (juce::Component& self, const juce::MouseEvent& e,
-                              const juce::MouseWheelDetails& w)
+bool wheelTakenByAnyPress (juce::Component& self, WheelDragOwner* selfOwner,
+                           const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
     // A WHEEL WITH NO BUTTON DOWN CAN NEVER BELONG TO A PRESS, so this is also where a stranded
     // claim dies: a release that never arrived (KI-028's class) would otherwise leave the register
     // pointing at a control that is no longer holding anything, and every later scroll would be
     // posted to it. The first ordinary scroll clears it, which is the same self-healing shape the
     // editor's stuck-drag reconcile has -- without needing a tick to run.
+    //
+    // ...AND IT IS THE ONLY `false` THIS FUNCTION HAS (round 30). Everything below returns true:
+    // while a button is down the press decides, and a press that decides nothing has still decided.
     if (! e.mods.isAnyMouseButtonDown())
     {
         if (dragWheelHolderPtr != nullptr) { dragWheelHolderPtr = nullptr; dragWheelOwnerPtr = nullptr; }
@@ -55,17 +58,30 @@ bool wheelTakenByOwningPress (juce::Component& self, const juce::MouseEvent& e,
     }
 
     auto* holder = dragWheelHolderPtr.getComponent();
-    if (holder == nullptr || holder == &self) return false;
+    auto* owner  = (holder == &self) ? selfOwner : (holder != nullptr ? dragWheelOwnerPtr : nullptr);
 
     // THE HOLDER'S OWN COORDINATES, because its anchor arithmetic is in them: every drag in this
     // editor reconstructs its value from `e.position` and an offset captured at the press, and the
     // cursor being outside the control is exactly the case this exists for -- an out-of-bounds
     // position is what an ordinary `mouseDrag` already carries once the cursor has left.
-    if (dragWheelOwnerPtr != nullptr)
-        dragWheelOwnerPtr->takeWheelNotch (e.getEventRelativeTo (holder), w);
+    // `holder == &self` needs no translation; it is already in them.
+    //
+    // NO DUPLICATE FILTER HERE, and that is a decision rather than an omission. Round 30 tried one,
+    // keyed on `eventTime` the way JUCE's own is (`Slider::Pimpl::mouseWheelMove`,
+    // `lastMouseWheelTime`), and it swallowed real bursts: `juce::Time::getCurrentTime()` has
+    // millisecond resolution and a smooth trackpad delivers several notches inside one, so a
+    // register-wide filter refuses the second, third and fourth of them. State tests 80 legs F and
+    // G measured exactly that. The owners that need the filter (the knob and the value box, whose
+    // one-interval floor makes a repeat move FURTHER than a standalone notch would) keep their own,
+    // where it guards a floor rather than a delivery -- and the double DELIVERY it would otherwise
+    // have had to answer for is removed at its source instead: the editor no longer listens to
+    // `scopePersistK`'s wheel events (see `Knob::onStandaloneWheel`).
+    if (owner != nullptr)
+        owner->takeWheelNotch (holder == &self ? e : e.getEventRelativeTo (holder), w);
 
-    // SWALLOWED EITHER WAY. `false` from the holder means it had nothing to add the notch to, not
-    // that the pointed control may have it: while the button is held, no other control changes.
+    // SWALLOWED EITHER WAY, and that is the round-30 rule. `false` from an owner means it had
+    // nothing to add the notch to; a null owner means the press claimed nothing at all. Neither
+    // makes the event free: while the button is held, no control moves but the one being held.
     return true;
 }
 
@@ -934,8 +950,10 @@ namespace
         // under it are ONE control for Undo, which is what they are for the user.
         void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
         {
-            if (wheelTakenByOwningPress (*this, e, w)) return;   // ADR-0053 round 29
-            if (takeWheelNotch (e, w)) return;
+            // ADR-0053 round 30: ONE question, and it answers for this box's own press as well as
+            // for somebody else's. Past it there is no press in flight anywhere, which is the only
+            // state in which the pointer decides.
+            if (wheelTakenByAnyPress (*this, this, e, w)) return;
             juce::Label::mouseWheelMove (e, w);
         }
 

@@ -2945,6 +2945,20 @@ static void testTheCheckIsAdjacentToEveryStore()
                                  imager, imager, juce::Time::getCurrentTime(),
                                  { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
     };
+    // A STANDALONE SCROLL CARRIES NO BUTTON (round 30). The `mev` above declares a held left button
+    // for every event it builds, which is right for the press sequences this test drives and wrong
+    // for the wheel probes: those issue no `mouseDown` at all, so the button they claim belongs to
+    // no press. Round 30 made that difference load-bearing -- while a button is held the press
+    // decides, and a held button with nothing claimed means nobody may have the notch (Devin
+    // `src/gui/SpectrumImager.cpp:R3302-3304`) -- so a probe that means "scrolled with the hand off
+    // the mouse" now has to say so.
+    auto wheelEv = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
     const float W     = (float) imager->getWidth();
     const float H     = (float) imager->getHeight();
     const float laneY = 0.5f * H;
@@ -3036,7 +3050,7 @@ static void testTheCheckIsAdjacentToEveryStore()
             juce::MouseWheelDetails wheel;
             wheel.deltaX = 0.0f; wheel.deltaY = 0.05f; wheel.isReversed = false;
             wheel.isSmooth = false; wheel.isInertial = false;
-            imager->mouseWheelMove (mev (hx, laneY, hx, laneY, false), wheel);
+            imager->mouseWheelMove (wheelEv (hx, laneY), wheel);
             imager->mouseDrag (mev (hx - 40.0f, laneY, hx, laneY, true));
             imager->mouseUp   (mev (hx - 40.0f, laneY, hx, laneY, true));
             if (! juce::exactlyEqual (installed, plainOf (hiP)))
@@ -3067,7 +3081,7 @@ static void testTheCheckIsAdjacentToEveryStore()
             juce::MouseWheelDetails wheel;
             wheel.deltaX = 0.0f; wheel.deltaY = 0.20f; wheel.isReversed = false;
             wheel.isSmooth = false; wheel.isInertial = false;
-            imager->mouseWheelMove (mev (hx, laneY, hx, laneY, false), wheel);
+            imager->mouseWheelMove (wheelEv (hx, laneY), wheel);
             check (! juce::exactlyEqual (before, plainOf (loP)),
                    "leg E: the wheel still moves a split when no gesture is in flight");
         }
@@ -4047,6 +4061,20 @@ static void testACommitWithNoIntentWritesNothing()
                                  imager, imager, juce::Time::getCurrentTime(),
                                  { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
     };
+    // A STANDALONE SCROLL CARRIES NO BUTTON (round 30). The `mev` above declares a held left button
+    // for every event it builds, which is right for the press sequences this test drives and wrong
+    // for the wheel probes: those issue no `mouseDown` at all, so the button they claim belongs to
+    // no press. Round 30 made that difference load-bearing -- while a button is held the press
+    // decides, and a held button with nothing claimed means nobody may have the notch (Devin
+    // `src/gui/SpectrumImager.cpp:R3302-3304`) -- so a probe that means "scrolled with the hand off
+    // the mouse" now has to say so.
+    auto wheelEv = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
     const float W     = (float) imager->getWidth();
     const float H     = (float) imager->getHeight();
     const float laneY = 0.5f * H;
@@ -4367,7 +4395,7 @@ static void testACommitWithNoIntentWritesNothing()
             poke.to     = 5000.0f;
             loP->addListener (&poke);
             poke.armed = true;
-            imager->mouseWheelMove (mev (hx, laneY, hx, laneY, false), wheel);
+            imager->mouseWheelMove (wheelEv (hx, laneY), wheel);
             const bool landed = poke.fired;
             loP->removeListener (&poke);
 
@@ -6128,6 +6156,20 @@ static void testAPositionalLatchIsVoidOnceItsTopologyMoves()
                                  imager, imager, juce::Time::getCurrentTime(),
                                  { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
     };
+    // A STANDALONE SCROLL CARRIES NO BUTTON (round 30). The `mev` above declares a held left button
+    // for every event it builds, which is right for the press sequences this test drives and wrong
+    // for the wheel probes: those issue no `mouseDown` at all, so the button they claim belongs to
+    // no press. Round 30 made that difference load-bearing -- while a button is held the press
+    // decides, and a held button with nothing claimed means nobody may have the notch (Devin
+    // `src/gui/SpectrumImager.cpp:R3302-3304`) -- so a probe that means "scrolled with the hand off
+    // the mouse" now has to say so.
+    auto wheelEv = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
     auto mevAlt = [&] (float x, float y)
     {
         const auto mods = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
@@ -6154,7 +6196,7 @@ static void testAPositionalLatchIsVoidOnceItsTopologyMoves()
         juce::MouseWheelDetails wheel;
         wheel.deltaX = 0.0f; wheel.deltaY = delta; wheel.isReversed = false;
         wheel.isSmooth = false; wheel.isInertial = false;
-        imager->mouseWheelMove (mev (x, y, x, y, false), wheel);
+        imager->mouseWheelMove (wheelEv (x, y), wheel);
     };
     auto resetWorld = [&] ()
     {
@@ -6471,6 +6513,20 @@ static void testADerivationAnswersUnderTheTopologyItWasGiven()
                                  imager, imager, juce::Time::getCurrentTime(),
                                  { x, y }, juce::Time::getCurrentTime(), 1, false);
     };
+    // A STANDALONE SCROLL CARRIES NO BUTTON (round 30). The `mev` above declares a held left button
+    // for every event it builds, which is right for the press sequences this test drives and wrong
+    // for the wheel probes: those issue no `mouseDown` at all, so the button they claim belongs to
+    // no press. Round 30 made that difference load-bearing -- while a button is held the press
+    // decides, and a held button with nothing claimed means nobody may have the notch (Devin
+    // `src/gui/SpectrumImager.cpp:R3302-3304`) -- so a probe that means "scrolled with the hand off
+    // the mouse" now has to say so.
+    auto wheelEv = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
     auto mevAlt = [&] (float x, float y)
     {
         const auto mods = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
@@ -6497,7 +6553,7 @@ static void testADerivationAnswersUnderTheTopologyItWasGiven()
         juce::MouseWheelDetails wheel;
         wheel.deltaX = 0.0f; wheel.deltaY = delta; wheel.isReversed = false;
         wheel.isSmooth = false; wheel.isInertial = false;
-        imager->mouseWheelMove (mev (x, y), wheel);
+        imager->mouseWheelMove (wheelEv (x, y), wheel);
     };
     // The wheel's latch survives between ticks by design (ADR-0045); every probe here is a fresh
     // burst, so the latch is dropped explicitly rather than relying on the >3 px move rule.
@@ -25474,6 +25530,241 @@ static void testTheWheelBelongsToThePressItLandsIn()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 106 -- a notch inside a VELOCITY drag (round 30, Devin
+//  `src/PluginEditor.h:R822-828`, "velocity drags distort wheel offsets").
+//
+//  JUCE HAS TWO DRAG MAPPINGS AND THEY ARE NOT THE SAME SHAPE. `handleAbsoluteDrag`
+//  is affine in the cursor -- `prop (valueOnMouseDown) + mouseDiff / pixelsForFullDragExtent`
+//  -- which is what round 29's pixel offset relies on. `handleVelocityDrag` is an
+//  INTEGRATOR: it adds `speed` to `prop (valueWhenLastDragged)` on every event, where
+//  `speed` is a sine curve of `|e.position - mousePosWhenLastDragged|`
+//  (juce_Slider.cpp:815-852). Two consequences, and this test measures both:
+//
+//    1. `Pimpl::setValue` NEVER writes `valueWhenLastDragged` -- every write to it is
+//       at juce_Slider.cpp:762, :812, :843/846, :887 and :941, and not one of them is
+//       reachable from `Slider::setValue`. So a notch that writes the value leaves the
+//       integrator behind, and the next drag event recomputes from the STALE base:
+//       the notch is not distorted, it is DISCARDED.
+//    2. `mousePosWhenLastDragged = e.position` (juce_Slider.cpp:969) stores whatever
+//       position was handed in, so round 29's shift is banked into JUCE's own
+//       reference -- and the FIRST event after a notch sees a spurious `mouseDiff` of
+//       the whole offset, pushed through the velocity curve.
+//
+//  REACHING VELOCITY MODE IS NOT EXOTIC. `isAbsoluteDragMode` is
+//  `isVelocityBased == (userKeyOverridesVelocity && mods.testFlags (modifierToSwapModes))`
+//  (juce_Slider.cpp:1184) and Anamorph never changes the defaults -- `isVelocityBased`
+//  false, `userKeyOverridesVelocity` true, `modifierToSwapModes`
+//  `ctrlAltCommandModifiers` -- so ANY of ctrl/alt/command held during a drag switches
+//  the mapping. This test uses `commandModifier` because it is the one that is portable:
+//  on macOS `popupMenuClickModifier` is `rightButtonModifier | ctrlModifier`, so a
+//  ctrl-drag there opens the popup menu instead, while `commandModifier` IS
+//  `ctrlModifier` on Windows and Linux and the Command flag on macOS.
+// ---------------------------------------------------------------------------
+static void testANotchInsideAVelocityDrag()
+{
+    std::printf ("State test 106: a notch inside a velocity drag (R822-828)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the velocity-drag probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* monoP  = apvts.getParameter (pid::monoMakerFreq);
+    auto* driveK = findSliderFor (driveP);
+    auto* monoK  = findSliderFor (monoP);
+    check (driveP && driveK && monoP && monoK, "the Drive knob and the Mono-Maker slider are findable");
+    if (! (driveP && driveK && monoP && monoK)) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    int seq = 0;
+    auto stamp = [&] { return juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 7); };
+    auto mev = [&] (juce::Component* c, float x, float y, float dx, float dy,
+                    bool dragged, juce::ModifierKeys m)
+    {
+        const auto t = stamp();
+        return juce::MouseEvent (src, { x, y }, m, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 c, c, t, { dx, dy }, t, 1, dragged);
+    };
+    auto wheelOf = [] (float dx, float dy)
+    {
+        juce::MouseWheelDetails w;
+        w.deltaX = dx; w.deltaY = dy;
+        w.isReversed = false; w.isSmooth = false; w.isInertial = false;
+        return w;
+    };
+    const auto plainHeld = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
+    // THE PORTABLE VELOCITY MODIFIER -- see the header. `commandModifier` is inside
+    // `ctrlAltCommandModifiers` on every platform and inside `popupMenuClickModifier` on none.
+    const auto velocHeld = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                             | juce::ModifierKeys::commandModifier);
+
+    const float dkx = 0.5f * (float) driveK->getWidth(), dky = 0.5f * (float) driveK->getHeight();
+    auto propOf = [&] (juce::Slider* s) { return s->valueToProportionOfLength (s->getValue()); };
+    auto clearHistory = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
+    auto zero = [&] (juce::Slider* s, juce::RangedAudioParameter* p)
+    { p->setValueNotifyingHost (0.0f); proc.pollUndoCoalesce(); (void) s; };
+
+    // ---- LEG A: the velocity branch really is the one the modifier reaches -------------------
+    //      Proved by DIFFERENCE rather than by reading a private flag: the same cursor travel
+    //      produces a different value with the modifier held than without it.
+    double plainReached = 0.0, velocReached = 0.0;
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, plainHeld));
+        for (int i = 1; i <= 4; ++i)
+            driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f * (float) i, dkx, dky, true, plainHeld));
+        plainReached = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, plainHeld));
+        proc.pollUndoCoalesce();
+
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, velocHeld));
+        for (int i = 1; i <= 4; ++i)
+            driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f * (float) i, dkx, dky, true, velocHeld));
+        velocReached = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+
+        std::printf ("  [leg A] same 40 px of travel: absolute %.4f, with the velocity modifier %.4f\n",
+                     plainReached, velocReached);
+        check (plainReached > 0.0, "leg A: the absolute drag moved the knob");
+        check (! juce::approximatelyEqual (plainReached, velocReached),
+               "leg A: ...and the modifier really does select a DIFFERENT mapping (velocity)");
+    }
+
+    // ---- LEG B: the clean velocity run, which supplies the expectation for leg C --------------
+    //      Velocity is an integrator, so the increment a given cursor delta produces depends only
+    //      on that delta -- the same four events give the same four increments whatever the value
+    //      they start from. Leg C reuses them as the arithmetic it must satisfy.
+    double stepAfter3 = 0.0, propAfter2 = 0.0, propAfter3 = 0.0;
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, velocHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, velocHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, velocHeld));
+        propAfter2 = propOf (driveK);
+        driveK->mouseDrag (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, velocHeld));
+        propAfter3 = propOf (driveK);
+        stepAfter3 = propAfter3 - propAfter2;
+        driveK->mouseUp (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg B] clean velocity run: after 2 events %.4f, after 3 %.4f"
+                     " (the third event is worth %.4f)\n", propAfter2, propAfter3, stepAfter3);
+        check (stepAfter3 > 1.0e-4, "leg B: a velocity event with a constant cursor delta moves the knob");
+    }
+
+    // ---- LEG C: THE REPRODUCTION -- the same run with one notch in the middle -----------------
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, velocHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, velocHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, velocHeld));
+        const double beforeNotch = propOf (driveK);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky - 20.0f, dkx, dky, false, velocHeld),
+                                wheelOf (0.0f, 1.0f));
+        const double afterNotch = propOf (driveK);
+        driveK->mouseDrag (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, velocHeld));
+        const double afterMore = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+
+        // THE EXPECTATION, stated as arithmetic rather than as a constant: the drag must carry on
+        // from the value the WHEEL produced, so the third event is worth what it was worth in the
+        // clean run of leg B and nothing else.
+        const double expected = juce::jlimit (0.0, 1.0, afterNotch + stepAfter3);
+        std::printf ("  [leg C] velocity + notch: %.4f -> notch -> %.4f -> next drag %.4f"
+                     " (expected %.4f, error %+.4f)\n",
+                     beforeNotch, afterNotch, afterMore, expected, afterMore - expected);
+        check (juce::approximatelyEqual (beforeNotch, propAfter2),
+               "leg C: the run really is leg B's up to the notch");
+        check (afterNotch > beforeNotch + 1.0e-4, "leg C: the notch itself moved the knob");
+        check (std::abs (afterMore - expected) < 5.0e-4,
+               "leg C: ...and the next drag event continued from the value the notch produced");
+    }
+
+    // ---- LEG D: the boundary, on the velocity path ---------------------------------------------
+    //      The round-29 rule for the absolute path -- drag out, wheel back to a rail, and the
+    //      remaining travel still reaches the far end -- asked of the integrator.
+    //
+    //      THE CURSOR DELTAS ARE BIG ON PURPOSE. `handleVelocityDrag` clamps the speed to
+    //      `maxSpeed = jmax (200, sliderRegionSize)` and its sine curve saturates at
+    //      `0.2 * velocityModeSensitivity` per event, so at 10 px an event is worth ~0.0019 of the
+    //      range and a boundary this leg could read would take five hundred of them. At 200 px it
+    //      is worth ~0.2, which is what makes "one more event after the notch" a number this leg
+    //      can compare against.
+    {
+        const float step = 200.0f;
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, velocHeld));
+        for (int i = 1; i <= 4; ++i)
+            driveK->mouseDrag (mev (driveK, dkx, dky - step * (float) i, dkx, dky, true, velocHeld));
+        const double climbed = propOf (driveK);
+        for (int i = 0; i < 24 && propOf (driveK) > 0.0; ++i)
+            driveK->mouseWheelMove (mev (driveK, dkx, dky - step * 4.0f, dkx, dky, false, velocHeld),
+                                    wheelOf (0.0f, -1.0f));
+        const double atBottom = propOf (driveK);
+        // ONE more event. This is the discriminator: it must be worth ONE event's travel measured
+        // from the value the WHEEL left behind, not from the height the drag had reached before it.
+        driveK->mouseDrag (mev (driveK, dkx, dky - step * 5.0f, dkx, dky, true, velocHeld));
+        const double oneMore = propOf (driveK);
+        for (int i = 6; i <= 16; ++i)
+            driveK->mouseDrag (mev (driveK, dkx, dky - step * (float) i, dkx, dky, true, velocHeld));
+        const double reached = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - step * 16.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg D] velocity boundary: climbed to %.4f, wheeled to %.4f,"
+                     " one more event gives %.4f, then a long climb reaches %.4f\n",
+                     climbed, atBottom, oneMore, reached);
+        check (climbed > 0.5, "leg D: the velocity drag really did climb");
+        check (atBottom < 1.0e-6, "leg D: ...and the wheel really did take it to the bottom");
+        check (oneMore < 0.5,
+               "leg D: ...and the next event resumes from the BOTTOM, not from the height the drag had");
+        check (reached > 0.999, "leg D: ...and the remaining travel still reaches the TOP");
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 //  State test 104 -- a save completion may only touch the dialog it BELONGS TO
 //  (round 28b, Devin `src/PluginEditor.cpp:R405-406`, "canceled save closes
 //  newer dialog").
@@ -30244,6 +30535,7 @@ int main (int argc, char* argv[])
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();
+    testANotchInsideAVelocityDrag();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

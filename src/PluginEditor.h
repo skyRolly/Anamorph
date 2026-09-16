@@ -616,6 +616,24 @@ private:
     // position travel when a RESET happens (but not on a drag).
     struct Knob : public juce::Slider, public anamorph::gui::WheelDragOwner
     {
+        // THE VELOCITY-SWAP MODIFIER, PINNED (round 30, Devin `src/PluginEditor.h:R822-828`).
+        // JUCE decides which of its TWO drag mappings an event takes with
+        //     isVelocityBased == (userKeyOverridesVelocity && mods.testFlags (modifierToSwapModes))
+        // (`Slider::Pimpl::isAbsoluteDragMode`, juce_Slider.cpp) and exposes getters for the first
+        // two and NONE for `modifierToSwapModes`. `dragIsVelocity` below has to answer the same
+        // question this class answers the notch with, so the modifier is set rather than assumed.
+        //
+        // THE VALUES ARE JUCE'S OWN DEFAULTS, so nothing about the feel changes: the member
+        // initialisers are `velocityModeSensitivity = 1.0, velocityModeOffset = 0`,
+        // `velocityModeThreshold = 1`, `userKeyOverridesVelocity = true` and
+        // `modifierToSwapModes = ModifierKeys::ctrlAltCommandModifiers` (juce_Slider.cpp). This
+        // states them where the predicate can be read against them.
+        Knob()
+        {
+            setVelocityModeParameters (1.0, 1, 0.0, true,
+                                       juce::ModifierKeys::ctrlAltCommandModifiers);
+        }
+
         double resetValue = 0.0;
         // The attached parameter (null for host-hidden InternalState knobs): the
         // ALT-CLICK reset must open its own host change gesture. Our mouseDown
@@ -682,6 +700,11 @@ private:
         // Before the floor, a duplicate asked for the same sub-interval nothing twice; with the
         // floor it asks for two whole intervals, which would make the in-drag notch move FURTHER
         // than the standalone one and break the same contract from the other side.
+        //
+        // IT STAYS PER-OWNER (round 30). A register-wide filter looks tidier and is wrong: it would
+        // refuse the second and later notches of a smooth-trackpad burst, which share a millisecond
+        // because `juce::Time::getCurrentTime()` has no finer resolution. It guards this floor, not
+        // a delivery.
         juce::Time lastNotchTime;
         // The processor, for the wheel's undo grouping (ADR-0053). Null for a knob with no APVTS
         // parameter behind it -- which is the Settings Persistence bar, and exactly the control whose
@@ -713,6 +736,9 @@ private:
         void mouseDown (const juce::MouseEvent& e) override
         {
             wheelDragPx = 0.0;      // a new press starts with no notch in it (ADR-0053)
+            velocityInject = 0.0;   // ...in either of the two mappings (round 30)
+            injectingVelocity = false;
+            lastDragMode = juce::Slider::notDragging;
             // ADR-0053 round 29: this press owns the wheel until it is released, wherever the
             // cursor travels. Claimed for EVERY press, not only one that starts a drag: the rule
             // the owner approved is that no other control may be moved by the wheel while a button
@@ -819,6 +845,83 @@ private:
             return false;   // `Rotary` steers by ANGLE; see `wheelDragShift`
         }
 
+        // ---- THE VELOCITY MAPPING (round 30, Devin `src/PluginEditor.h:R822-828`) --------------
+        //
+        // JUCE HAS TWO DRAG MAPPINGS AND ONLY ONE OF THEM IS AFFINE IN THE CURSOR.
+        // `handleAbsoluteDrag` is `prop (valueOnMouseDown) + mouseDiff / pixelsForFullDragExtent`,
+        // which is what `wheelDragPx` above relies on: a constant pixel shift is a constant value
+        // shift. `handleVelocityDrag` is an INTEGRATOR --
+        //     speed  = a sine curve of |e.position - mousePosWhenLastDragged|
+        //     newPos = prop (valueWhenLastDragged) + speed
+        // (juce_Slider.cpp) -- and a pixel shift there is neither constant nor a shift: it enters
+        // through `mouseDiff`, is bent by the curve, and lands as one spurious kick.
+        //
+        // WORSE, THE NOTCH ITSELF IS DISCARDED. `Pimpl::setValue` never writes
+        // `valueWhenLastDragged` -- every write to it is in `handleRotaryDrag`,
+        // `handleAbsoluteDrag`, `handleVelocityDrag`, `mouseDown` and the clamp in `mouseDrag`, and
+        // none of them is reachable from `Slider::setValue` -- so a notch that writes the value
+        // leaves the integrator behind and the NEXT event recomputes from the stale base. Measured
+        // on Drive with the modifier held: `0.0042 -> notch -> 0.1542 -> next drag 0.0550`, where
+        // the drag should have continued from 0.1542.
+        //
+        // SO THE NOTCH IS BANKED IN THE INTEGRATOR'S OWN SPACE, as a PROPORTION, and injected into
+        // the one place the integrator reads: `owner.valueToProportionOfLength (valueWhenLastDragged)`.
+        // That is a public virtual, so this class can add the banked proportion to exactly that
+        // call and nothing else -- the flag is armed for the duration of one
+        // `juce::Slider::mouseDrag` and disarms itself on the FIRST call, which is provably
+        // `handleVelocityDrag`'s: nothing earlier in `Pimpl::mouseDrag` calls it (the
+        // `useDragEvents` test, the `Rotary` branch, the `IncDecButtons` threshold and
+        // `isAbsoluteDragMode` read no proportion). The injection therefore lands INSIDE the
+        // `jlimit (0, 1, ...)` two lines below it, so the whole remaining range stays reachable,
+        // it is applied exactly once, and it never passes through the velocity curve.
+        double velocityInject    = 0.0;    // proportion a notch banked for the integrator
+        bool   injectingVelocity = false;  // armed only around one juce::Slider::mouseDrag call
+
+        // JUCE's own branch test, from `Slider::Pimpl::mouseDrag` and `::isAbsoluteDragMode`
+        // (juce_Slider.cpp), negated. The swap modifier is pinned in this class's constructor
+        // because JUCE exposes no getter for it; everything else it reads has one.
+        [[nodiscard]] bool dragIsVelocity (const juce::ModifierKeys& mods) const
+        {
+            if (getSliderStyle() == juce::Slider::Rotary) return false;   // `handleRotaryDrag`, neither branch
+            if (getVelocityBasedMode() == (getVelocityModeIsSwappable()
+                                            && mods.testFlags (juce::ModifierKeys::ctrlAltCommandModifiers)))
+                return false;   // `isAbsoluteDragMode` said absolute
+            // ...and the second disjunct, which forces absolute mode for a range too coarse to
+            // steer: `(normRange.end - normRange.start) / sliderRegionSize < normRange.interval`.
+            // `sliderRegionSize` is private and is 0 for every rotary style, which makes JUCE's
+            // division `+inf` and the test false; measured from outside it is the span
+            // `getPositionOfValue` maps a whole range across, which is 0 for a rotary by the same
+            // arithmetic. So a zero region takes the velocity branch, exactly as JUCE's does.
+            const double region = std::abs ((double) getPositionOfValue (getMaximum())
+                                          - (double) getPositionOfValue (getMinimum()));
+            if (region > 0.0 && (getMaximum() - getMinimum()) / region < getInterval())
+                return false;
+            return true;
+        }
+
+        // THE INJECTION POINT. Everything outside the one armed call is JUCE's own answer.
+        double valueToProportionOfLength (double v) override
+        {
+            const double p = juce::Slider::valueToProportionOfLength (v);
+            if (! injectingVelocity) return p;
+            injectingVelocity = false;          // exactly ONE call sees it -- handleVelocityDrag's
+            const double inject = velocityInject;
+            velocityInject = 0.0;               // ...and it is banked exactly once
+            return juce::jlimit (0.0, 1.0, p + inject);
+        }
+
+        // WHICH BRANCH JUCE ACTUALLY TOOK, recorded rather than predicted. `Pimpl::mouseDrag`
+        // passes the mode it chose to `owner.snapValue`, so this is JUCE's own answer to the
+        // question `dragIsVelocity` predicts -- and State test 107 asserts the two never disagree.
+        // The value is returned untouched: round 29 moved the wheel fold OUT of here and into
+        // `mouseDrag`, and nothing has moved back.
+        double snapValue (double attempted, juce::Slider::DragMode m) override
+        {
+            lastDragMode = m;
+            return juce::Slider::snapValue (attempted, m);
+        }
+        juce::Slider::DragMode lastDragMode = juce::Slider::notDragging;
+
         [[nodiscard]] double pixelsPerWholeRange() const
         {
             if (dragIsRelativeToPress())
@@ -861,6 +964,16 @@ private:
         // outside it, so the drag keeps its whole remaining travel in both directions.
         void mouseDrag (const juce::MouseEvent& e) override
         {
+            // THE VELOCITY BRANCH TAKES THE OTHER MECHANISM (round 30). A pixel shift means nothing
+            // to an integrator that reads a per-event cursor DELTA, so the notch goes in through
+            // `valueToProportionOfLength` instead and the event is handed over untouched.
+            if (dragIsVelocity (e.mods))
+            {
+                const juce::ScopedValueSetter<bool> arm (injectingVelocity,
+                                                        ! juce::exactlyEqual (velocityInject, 0.0));
+                juce::Slider::mouseDrag (e);
+                return;
+            }
             const auto shift = wheelDragShift();
             if (shift.isOrigin()) { juce::Slider::mouseDrag (e); return; }
             juce::Slider::mouseDrag ({ e.source, e.position + shift, e.mods,
@@ -873,17 +986,18 @@ private:
         {
             juce::Slider::mouseUp (e);
             wheelDragPx = 0.0;
+            velocityInject = 0.0;
+            injectingVelocity = false;
             anamorph::gui::releaseDragWheel (*this);
         }
         void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
         {
-            // THE PRESS DECIDES, NOT THE POINTER (ADR-0053 round 29, owner decision). If some other
-            // control is holding a press, this notch is ITS notch however far its cursor has
-            // wandered onto this knob -- and this knob must not move. Asked first, so nothing below
-            // can act on an event that was never addressed to it.
-            if (anamorph::gui::wheelTakenByOwningPress (*this, e, w)) return;
-
-            if (takeWheelNotch (e, w)) return;   // ...or this knob's own press, below
+            // THE PRESS DECIDES, NOT THE POINTER (ADR-0053, owner decision). If some other control
+            // is holding a press, this notch is ITS notch however far its cursor has wandered onto
+            // this knob; if THIS knob holds the press, the notch is offered to it here; and if a
+            // button is down with nothing claimed, nobody may have it (round 30). All three are
+            // the same question, so there is one call and nothing below it to get wrong.
+            if (anamorph::gui::wheelTakenByAnyPress (*this, this, e, w)) return;
             mouseWheelMoveTail (e, w);
         }
 
@@ -897,7 +1011,9 @@ private:
         // somewhere else entirely. `false` means this press has nothing to add the notch to.
         bool takeWheelNotch (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
         {
-            if (isScrollWheelEnabled() && e.mods.isAnyMouseButtonDown() && getThumbBeingDragged() >= 0)
+            // `e.mods.isAnyMouseButtonDown()` is the register's precondition, not this hook's:
+            // round 30 made `wheelTakenByAnyPress` the only caller and it asks first.
+            if (isScrollWheelEnabled() && getThumbBeingDragged() >= 0)
             {
                 // What JUCE's own handler would move this slider to for this event -- direction,
                 // scale, rails AND its one-interval floor, from the single source in LookAndFeel.h
@@ -909,7 +1025,7 @@ private:
                 const double v0     = getValue();
                 const double target = anamorph::gui::wheelTargetValue (*this, w, v0);
                 if (juce::exactlyEqual (target, v0)) return true;  // ADR-0052: no edit, no side effects
-                const double base = valueToProportionOfLength (v0);
+                const double base = juce::Slider::valueToProportionOfLength (v0);
                 setValue (target, juce::sendNotificationSync);
                 // BANK WHAT ACTUALLY MOVED, read back from the slider rather than from the request:
                 // the write is clamped to the range and snapped to the interval grid, and banking
@@ -919,14 +1035,35 @@ private:
                 //
                 // IN PIXELS (round 29): the proportion that actually moved, times the travel JUCE
                 // itself maps a whole range across. See `wheelDragPx`.
-                wheelDragPx += (valueToProportionOfLength (getValue()) - base) * pixelsPerWholeRange();
+                // ...IN THE SPACE THE ACTIVE MAPPING READS. An absolute drag recomputes from the
+                // cursor, so the notch is banked as the pixels that would have moved it there; a
+                // velocity drag integrates a proportion, so it is banked as that proportion.
+                // `lastDragMode` is what JUCE told us the last event took (`snapValue`), which for
+                // a press that has had at least one event -- and `Pimpl::mouseDown` ends with one
+                // -- is the branch the next event takes too unless the modifier changes under the
+                // user's finger, and `mouseDrag` asks the CURRENT event's modifiers for that.
+                const double moved = juce::Slider::valueToProportionOfLength (getValue()) - base;
+                if (lastDragMode == juce::Slider::velocityDrag) velocityInject += moved;
+                else                                            wheelDragPx    += moved * pixelsPerWholeRange();
                 return true;
             }
             return false;
         }
 
+        // A STANDALONE SCROLL OF THIS KNOB HAPPENED (round 30). The Settings Persistence bar reveals
+        // its window on a sustained scroll, and until this round the editor learned about that by
+        // registering itself as a `MouseListener` on the bar. That worked, and it also made
+        // `Component::internalMouseWheel` offer the SAME notch to the wheel register twice -- once
+        // when it called the bar's own handler and once when it called the bar's listeners
+        // (juce_Component.cpp) -- so a press held elsewhere had its notch posted to the holder
+        // twice. The knob and the value box filtered the repeat on `eventTime`; the multiband
+        // display had no filter and would have applied it twice. A callback the knob raises where
+        // the scroll actually is says the same thing once.
+        std::function<void()> onStandaloneWheel;
+
         void mouseWheelMoveTail (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
         {
+            if (onStandaloneWheel) onStandaloneWheel();
             // (The value box under this knob no longer has to be asked from here. It claims the
             // wheel for itself at its own `mouseDown`, so a notch delivered to this knob during the
             // box's drag is routed by the register above -- one rule for every control instead of
@@ -953,31 +1090,19 @@ private:
         // `! e.mods.isAnyMouseButtonDown()`: a notch the user makes and never sees.
         //
         // ROUND 29 NARROWED WHAT REACHES HERE, and this comment used to describe the case that no
-        // longer does. "A press held on one knob and a pointer that has travelled onto another" is
-        // now the REGISTER's case: `wheelTakenByOwningPress` claims the notch for the press at the
-        // top of `mouseWheelMove` and these lines are never reached for it. What still reaches
-        // them is a button held over something that is NOT one of this editor's wheel-owning
-        // controls -- a caption, a toggle, the background -- with the pointer over this knob. The
-        // pointed control acts, exactly as it does with no button down: the event is handed to
-        // JUCE with the MOUSE BUTTONS CLEARED and nothing else changed, which keeps JUCE's own
-        // wheel amount, interval, snapping, duplicate-event filter and `ScopedDragNotification`
-        // bracketing rather than restating any of them here.
+        // longer does, and round 30 REMOVED the branch that served it. The case this laundering
+        // existed for -- "a button is held somewhere that owns no wheel press, and the pointer is
+        // over this knob, so let JUCE act as if no button were down" -- is exactly the case the
+        // owner reversed: while any button is held, no control moves but the one being held, and
+        // `wheelTakenByAnyPress` now returns true for it at the top of `mouseWheelMove`. Nothing
+        // reaches here with a button down any more, so the laundered event has no reader, and the
+        // one line left is what a standalone scroll always did.
         //
-        // Gated on what JUCE itself would need to act, so a disabled slider or one with the wheel
-        // turned off still reaches `Component::mouseWheelMove` with the UNTOUCHED event and its
-        // ancestors see what they always saw.
+        // KEPT AS A FUNCTION rather than inlined: `mouseWheelMoveTail` names the undo grouping and
+        // this names the delivery, and the two are separate decisions.
         void sendWheelToJuce (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
         {
-            if (isEnabled() && isScrollWheelEnabled() && e.mods.isAnyMouseButtonDown())
-            {
-                juce::Slider::mouseWheelMove ({ e.source, e.position, e.mods.withoutMouseButtons(),
-                                                e.pressure, e.orientation, e.rotation, e.tiltX, e.tiltY,
-                                                e.eventComponent, e.originalComponent, e.eventTime,
-                                                e.mouseDownPosition, e.mouseDownTime,
-                                                e.getNumberOfClicks(), e.mouseWasDraggedSinceMouseDown() },
-                                              w);
-                return;
-            }
+            jassert (! e.mods.isAnyMouseButtonDown());   // round 30: the register consumed those
             juce::Slider::mouseWheelMove (e, w);
         }
     };

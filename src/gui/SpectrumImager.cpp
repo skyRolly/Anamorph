@@ -3299,8 +3299,10 @@ void SpectrumImager::mouseDoubleClick (const juce::MouseEvent& e)
 // holding a press, the notch is posted to THEM and nothing happens here.
 void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
-    if (anamorph::gui::wheelTakenByOwningPress (*this, e, wheel)) return;
-    if (takeWheelNotch (e, wheel)) return;
+    // ROUND 30: ONE question. It covers a press this display is holding, a press somebody else is
+    // holding, and a press that claimed nothing at all -- and past it there is no press in flight
+    // anywhere, which is the only state in which `standaloneWheel` may act on the pointer.
+    if (anamorph::gui::wheelTakenByAnyPress (*this, this, e, wheel)) return;
     standaloneWheel (e, wheel);
 }
 
@@ -3529,19 +3531,21 @@ void SpectrumImager::standaloneWheel (const juce::MouseEvent& e, const juce::Mou
     if (std::abs (dy) < 1.0e-4f) return;
     const float sgn = dy > 0.0f ? 1.0f : -1.0f;
 
-    // NOTHING OF THIS CLASS'S IS IN FLIGHT, so this is a STANDALONE scroll -- the case every rule
-    // from here down is about.
+    // NO PRESS IS IN FLIGHT ANYWHERE, so this is a STANDALONE scroll -- the case every rule from
+    // here down is about.
     //
-    // AND IT IS NOT GATED ON THE MOUSE BUTTON, deliberately, though the branches above make that
-    // possible for the first time. JUCE routes a wheel event to whatever is under the POINTER, not
-    // to whatever captured the press, so a knob drag that has carried the cursor over this display
-    // delivers its notches here -- and a `! e.mods.isAnyMouseButtonDown()` gate would make them
-    // inert. That is a BEHAVIOUR CHANGE this task did not ask for (today such a notch edits the
-    // multiband control under the pointer, and it still does), and it would also silence a notch
-    // during a press of this class's own that latched no identifier at all -- an Alt-click reset, an
-    // add the count refused. The branches above own every press this class actually has, so what
-    // reaches here is a scroll with nothing of ours in flight, whatever some other component's
-    // button is doing.
+    // AND IT IS GATED ON THE MOUSE BUTTON SINCE ROUND 30, which REVERSES what this comment used to
+    // say. It recorded that the gate was deliberately absent, on two grounds. The first was that a
+    // knob drag whose cursor had wandered here should edit what it points at; the owner has since
+    // ruled the opposite and round 29's register implements it. The second was that a gate "would
+    // also silence a notch during a press of this class's own that latched no identifier at all --
+    // an Alt-click reset, an add the count refused", and that is exactly Devin
+    // `src/gui/SpectrumImager.cpp:R3302-3304`: silencing it is the requirement now, not the
+    // objection. Such a press OWNS the interaction and simply has nothing to add a notch to, and
+    // letting it reach this function moved whichever band the cursor happened to be over --
+    // a control the user was not touching, while they held one they were.
+    // `wheelTakenByAnyPress` consumes every button-down event, so what reaches here is a scroll
+    // with no press anywhere.
     //
     // ...and this next line is the one thing `cancelActiveDrag()` still did on this path, which is all it did:
     // with no identifier latched its whole body is this store and a cheap exit. `mouseDown` stamps

@@ -335,6 +335,12 @@ struct WheelDragOwner
     // to add it to" -- the press exists but holds no value, like the multiband's pending delete
     // click -- and an implementation must never forward the event onward from here, or the ask
     // would come straight back.
+    //
+    // ROUND 30: `false` no longer means the event is free. It means only that this press had
+    // nothing to add the notch to; the press still owns the event, and `wheelTakenByAnyPress`
+    // consumes it either way. The return value is now read by nobody but the tests, and is kept
+    // because "did this press take it" is the question each implementation answers and a silent
+    // `void` would make every one of them look like it had.
     virtual bool takeWheelNotch (const juce::MouseEvent&, const juce::MouseWheelDetails&)
     { return false; }
 };
@@ -365,12 +371,33 @@ struct DragGestureOwner : WheelDragOwner
 //  control destroyed mid-press cannot be reached through it, and it self-clears the moment a wheel
 //  arrives with no button down, so a lost `mouseUp` cannot strand it.
 // ----------------------------------------------------------------------------
+//  A PRESS THAT DECLINES THE NOTCH STILL OWNS IT (round 30, Devin
+//  `src/gui/SpectrumImager.cpp:R3302-3304` -- owner decision). Round 29 asked only "does some OTHER
+//  control hold the press", which left two answers identical that are not the same question:
+//
+//      no active press owns this event                      -> the pointer decides, as it always has
+//      an active press owns it and has NO editable target    -> the press decides, and decides nothing
+//
+//  The second is an Alt-click reset held down, a press on the multiband display's blank area, an add
+//  the band count refused, a click that started no drag. Each of those OWNS the interaction; none of
+//  them holds a value a notch can be added to. Round 29 let every one of them fall through to the
+//  pointer-targeted path -- `standaloneWheel`, or JUCE's own handler with the held button laundered
+//  out -- so the control under the cursor moved while the user was holding something else. The rule
+//  the owner approved is that the press decides until the button comes up, whether or not it has
+//  anything to do with the notch, so this function answers the whole question in one place and the
+//  callers have nothing left to decide.
 void claimDragWheel (juce::Component&, WheelDragOwner&);
 void releaseDragWheel (const juce::Component&);
 juce::Component* dragWheelHolder() noexcept;
 
-// True when the press belongs to some OTHER control: the notch has already been offered to it and
-// the caller must do nothing whatsoever with this event -- not act on it, and not pass it on.
-bool wheelTakenByOwningPress (juce::Component& self, const juce::MouseEvent&, const juce::MouseWheelDetails&);
+// True when this event has been dealt with and the caller must do nothing whatsoever with it --
+// not act on it, and not pass it on. That is every case in which a mouse button is down:
+//   * the press belongs to some other control  -> the notch is posted to that control;
+//   * the press belongs to THIS control        -> `selfOwner` is offered the notch here;
+//   * a button is down but nothing claimed     -> nobody is offered it, and nobody may have it.
+// `selfOwner` may be null for a component that holds no presses of its own (the editor's backstop).
+// False means no button is down, which is the only state in which the pointer decides.
+bool wheelTakenByAnyPress (juce::Component& self, WheelDragOwner* selfOwner,
+                           const juce::MouseEvent&, const juce::MouseWheelDetails&);
 
 } // namespace anamorph::gui

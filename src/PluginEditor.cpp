@@ -709,10 +709,22 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // reset animates like every other Knob (#7).
     scopePersistK.onSweep = [this] { if (uiAnimOn) { knobSweepTime = 0.45; scopePersistK.getProperties().set ("resetSweep", true); } };
     scopePersistK.onValueChange = [this] { applyScopePersist(); };
-    // Listen for the mouse wheel ON the Persistence bar so a sustained scroll reveals the
-    // window (handled in mouseWheelMove, the single source of truth, so a single
-    // notch never triggers it) (#1).
-    scopePersistK.addMouseListener (this, false);
+    // A sustained scroll of the Persistence bar reveals the window: the first notch arms a short
+    // window, a SECOND notch inside it reveals (so a single notch never does), and a ~0.5 s dwell
+    // holds it after the last notch. Drag is handled separately and is unchanged (#1).
+    //
+    // Round 30: a callback the knob raises on a standalone scroll, NOT a mouse listener. A
+    // listener is called after the component's own handler for the same event
+    // (`Component::internalMouseWheel`), which made the wheel register see one notch twice.
+    scopePersistK.onStandaloneWheel = [this]
+    {
+        // `persistDragging` cannot be true here -- a scroll during any press is consumed by the
+        // register before it reaches the knob's standalone tail -- and the test is kept because it
+        // is what this rule MEANS, not because the routing happens to guarantee it today.
+        if (persistDragging) return;
+        if (persistScrollWindow > 0.0) persistRevealTimer = 0.5; // sustained -> reveal + dwell
+        persistScrollWindow = 0.30;                              // (re)arm the recent-change window
+    };
     // While dragging Persistence, fade the Settings overlay so the live vectorscope
     // behind it is visible (#9).
     scopePersistK.onDragStart = [this] { persistDragging = true; };
@@ -1102,17 +1114,14 @@ void AnamorphAudioProcessorEditor::mouseWheelMove (const juce::MouseEvent& e, co
     // THE ONE COMPONENT THAT DOES NOT ARRIVE is `PopupShield`, whose `mouseWheelMove` is
     // deliberately empty because consuming the gesture IS its behaviour -- and a raised shield
     // means a pop-up menu owns the mouse, so there is no drag of ours for a notch to belong to.
-    if (anamorph::gui::wheelTakenByOwningPress (*this, e, w)) return;
-
-    // Sustained scroll of the Persistence bar reveals the window: the first notch arms a
-    // short window, a SECOND notch inside it reveals (so a single notch doesn't),
-    // and a ~0.5 s dwell holds it after the last notch. Drag is handled separately
-    // and is unchanged (#1).
-    if (e.eventComponent == &scopePersistK && ! persistDragging)
-    {
-        if (persistScrollWindow > 0.0) persistRevealTimer = 0.5; // sustained -> reveal + dwell
-        persistScrollWindow = 0.30;                              // (re)arm the recent-change window
-    }
+    // ...AND `nullptr` FOR THE OWNER, because the editor holds no presses of its own: it is here
+    // only to answer for the events that reach it, never to take a notch.
+    // ...AND THAT IS ALL THIS HANDLER DOES SINCE ROUND 30. The Persistence-reveal branch that used
+    // to sit here has moved to `scopePersistK.onStandaloneWheel`, because reaching it required the
+    // editor to be a `MouseListener` on that bar -- and a listener is offered the event a SECOND
+    // time, after the bar's own handler has already offered it to the register. See
+    // `Knob::onStandaloneWheel`.
+    (void) anamorph::gui::wheelTakenByAnyPress (*this, nullptr, e, w);
 }
 
 // A PopupMenu window has just been constructed through one of our look-and-feels. Track it and
