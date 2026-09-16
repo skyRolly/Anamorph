@@ -2768,6 +2768,12 @@ void SpectrumImager::mouseExit (const juce::MouseEvent&)
 }
 void SpectrumImager::mouseDown (const juce::MouseEvent& e)
 {
+    // ADR-0053 round 29: this press owns the wheel until it is released, wherever the cursor goes.
+    // Claimed for EVERY press, before any branch decides what kind of press it is: the approved
+    // rule is that no OTHER control may be moved by the wheel while a button is held, and a press
+    // that latches no identifier simply has nothing to add a notch to (`takeWheelNotch` says so by
+    // returning false, and the notch is then dropped rather than handed to whatever is pointed at).
+    anamorph::gui::claimDragWheel (*this, *this);
     if (editingHandle >= 0) commitFreqEditor();
     // ADR-0038: the topology this gesture is about to be defined against, and (ADR-0039) the
     // sound with it. Taken once, at the top, so every branch below -- solo press, delete press,
@@ -2989,6 +2995,7 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
 }
 void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 {
+    anamorph::gui::releaseDragWheel (*this);   // ADR-0053 round 29: the press is over
     // ADR-0038, and it matters most here: mouseUp is where the ON-RELEASE ACTIONS live --
     // remove a band, toggle a solo bit, commit a band move. A gesture whose topology moved
     // must fire none of them, exactly as a release lost outside the window fires none.
@@ -3202,6 +3209,7 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 // parameter's endChangeGesture can never fire twice.
 void SpectrumImager::cancelActiveDrag()
 {
+    anamorph::gui::releaseDragWheel (*this);   // ADR-0053 round 29: whatever ends the press, ends this
     // BEFORE EVERYTHING ELSE (ADR-0050, applied to this function). A release action that has already
     // taken its identifiers into locals owns the record until it finishes, and re-entering here
     // while it runs must change NOTHING -- not the identifiers, which are already gone, and not
@@ -3284,14 +3292,41 @@ void SpectrumImager::mouseDoubleClick (const juce::MouseEvent& e)
     else { const int b = bandAtX (p.x, N, fx);
            if (b >= 0 && b < N && nearWidthLine (p, b)) resetParam (widthP[b], N); }
 }
+// ADR-0053 round 29. THE PRESS DECIDES, NOT THE POINTER (owner decision). JUCE hit-tests the
+// pointer for every wheel event and never consults the drag, so this display used to act on the
+// notches of a knob drag whose cursor had wandered over it -- and said so in its own comment. The
+// register in `LookAndFeel.cpp` answers the question once for every control: if somebody else is
+// holding a press, the notch is posted to THEM and nothing happens here.
 void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
+    if (anamorph::gui::wheelTakenByOwningPress (*this, e, wheel)) return;
+    if (takeWheelNotch (e, wheel)) return;
+    standaloneWheel (e, wheel);
+}
+
+// The in-press half. Reached from the handler above with the pointer over this display, and from
+// the register when this display holds the press and the cursor is somewhere else -- in the
+// holder's own coordinates either way, which is what every anchor below is expressed in.
+bool SpectrumImager::takeWheelNotch (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
     // AN EVENT THAT PERFORMS NO EDIT IS NOT A WHEEL EDIT (ADR-0052), and it is still the first
-    // question this handler asks. `deltaX` is read nowhere below, so a horizontal-only trackpad
-    // scroll, a sub-threshold delta or a host that delivers a zero-delta wheel event has nothing to
-    // contribute -- and so must cost nothing: no press change, no gesture, no undo step.
-    const float dy  = (wheel.isReversed ? -1.0f : 1.0f) * wheel.deltaY;
-    if (std::abs (dy) < 1.0e-4f) return;
+    // question this handler asks. A sub-threshold delta, or a host that delivers a zero-delta wheel
+    // event, has nothing to contribute -- and so must cost nothing: no press change, no gesture, no
+    // undo step.
+    //
+    // ...AND BOTH AXES ARE READ NOW (ADR-0053 round 29, Devin `src/gui/SpectrumImager.cpp:3293`).
+    // This line used to be `wheel.deltaY` alone, with a comment saying so, which meant a horizontal
+    // two-finger trackpad gesture -- the whole of a trackpad's sideways scroll, delivered in
+    // `deltaX` with `deltaY` at zero -- moved every knob in the editor and did NOTHING over this
+    // display. `anamorph::gui::wheelDominantDelta` is the single spelling of the dominant-axis rule
+    // the knobs already had, which is JUCE's own (`juce::Slider::Pimpl::mouseWheelMove`): the
+    // larger-magnitude axis decides, with `deltaX` negated so a rightward gesture reads as the same
+    // direction a downward vertical one does. Nothing else about this handler changes: `dy` is the
+    // same scalar every branch below already consumed, so the split's `kWheelSplitPx`, the width's
+    // `kWheelWidthPer`, the band move's translation, the no-op tests and the undo grouping are all
+    // untouched -- the gesture simply has a second way of producing the number.
+    const float dy  = (float) anamorph::gui::wheelDominantDelta (wheel);
+    if (std::abs (dy) < 1.0e-4f) return false;
     const float sgn = dy > 0.0f ? 1.0f : -1.0f;
 
     // =============================================================================================
@@ -3338,7 +3373,7 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
     // no anchor. The old handler cancelled it, swallowing the click (ADR-0041's "a pending click is
     // a press"); ADR-0053 keeps presses alive, and with nothing to add the notch to the honest
     // answer is to do nothing at all, so the click still fires on release as the user intended.
-    if (pressDeleteBand >= 0) return;
+    if (pressDeleteBand >= 0) return true;
 
     if (soloPressBand >= 0 || dragHandle >= 0 || dragBand >= 0)
     {
@@ -3347,7 +3382,7 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
         // one. This is also what keeps State test 73 leg A green under the new rule -- the width an
         // outside hand installed makes the record stale, so the press ends here instead of writing
         // over it.
-        if (gestureIsStale()) { cancelActiveDrag(); return; }
+        if (gestureIsStale()) { cancelActiveDrag(); return true; }
         const auto r = plot();
 
         if (soloPressBand >= 0)
@@ -3367,7 +3402,7 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
             // click would be silently swallowed, with nothing whatsoever gained. Found by this
             // round's own adversarial pass, against a one-band layout -- which is the configuration
             // State test 80 leg A itself uses.
-            if (gestureBands < 2) return;
+            if (gestureBands < 2) return true;
             // ...AND ONLY IF THE BAND CAN ACTUALLY GO ANYWHERE (ADR-0052, round 11). The count
             // test above answers the case where there is no split to move; this one answers the
             // case where there is one and it is already against the end of its travel. The clamp
@@ -3396,7 +3431,7 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
                 bool moves = false;
                 for (int k = 0; ! moves && k < gestureBands - 1; ++k)
                     moves = std::abs (out[k] - orig[k]) > kSplitMovedPx;
-                if (! moves) return;
+                if (! moves) return true;
                 soloMovedBand = true;
                 beginBandMove (soloPressBand, gestureBands);
             }
@@ -3409,7 +3444,7 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
             const float t = juce::jlimit (bandTmin, bandTmax,
                                           ((float) e.position.x - bandAnchorX) + dy * kWheelSplitPx);
             bandAnchorX = (float) e.position.x - t;
-            if (! moveBand ((float) e.position.x, gestureBands)) { cancelActiveDrag(); return; }
+            if (! moveBand ((float) e.position.x, gestureBands)) { cancelActiveDrag(); return true; }
         }
         else if (dragHandle >= 0)
         {
@@ -3433,7 +3468,7 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
             const float want = juce::jlimit (lo, hi,
                                              ((float) e.position.x - dragGrabDX) + dy * kWheelSplitPx);
             float landed = want;
-            if (! dragCrossoverTo (dragHandle, want, gestureBands, &landed)) { cancelActiveDrag(); return; }
+            if (! dragCrossoverTo (dragHandle, want, gestureBands, &landed)) { cancelActiveDrag(); return true; }
             dragGrabDX = (float) e.position.x - landed;
         }
         else if (dragBand >= 0 && dragBand < (int) std::size (gestureW))
@@ -3442,7 +3477,7 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
             // notch adds to and the anchor it leaves behind are the same measurement, so a foreign
             // write cannot pass the proof and then be carried into the plan.
             const float wNorm = (widthP[dragBand] != nullptr) ? widthP[dragBand]->getValue() : 0.0f;
-            if (! ownsWidth (dragBand, wNorm)) { cancelActiveDrag(); return; }
+            if (! ownsWidth (dragBand, wNorm)) { cancelActiveDrag(); return true; }
             const float base = (widthP[dragBand] != nullptr)
                              ? widthP[dragBand]->convertFrom0to1 (wNorm) : 1.0f;
             const float want = juce::jlimit (0.0f, 2.0f,
@@ -3455,7 +3490,7 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
             // yet, so every later sub-threshold mouse move would start writing widths, and
             // `dragGrabDY` re-anchors the drag around a value that never moved. Same shape as the
             // solo branch above, one rail further along.
-            if (juce::exactlyEqual (want, base)) return;
+            if (juce::exactlyEqual (want, base)) return true;
             // The width drag computes `yToWidth (cursorY - dragGrabDY)`, so anchoring from the
             // notch's own target is what makes the drag continue from it -- and this is the exact
             // form the 3 px engage itself uses. It also ENGAGES the drag: a press that has not
@@ -3463,11 +3498,22 @@ void SpectrumImager::mouseWheelMove (const juce::MouseEvent& e, const juce::Mous
             // asked for.
             widthHoldActive = true;
             dragGrabDY = (float) e.position.y - widthToY (want);
-            if (! storeOwned (widthP[dragBand], want, gestureW[dragBand])) { cancelActiveDrag(); return; }
+            if (! storeOwned (widthP[dragBand], want, gestureW[dragBand])) { cancelActiveDrag(); return true; }
         }
         repaint();
-        return;
+        return true;
     }
+
+    return false;   // nothing of this class's is in flight
+}
+
+void SpectrumImager::standaloneWheel (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    // AN EVENT THAT PERFORMS NO EDIT IS NOT A WHEEL EDIT (ADR-0052): both axes at zero, or a
+    // sub-threshold delta, contributes nothing and must cost nothing.
+    const float dy  = (float) anamorph::gui::wheelDominantDelta (wheel);
+    if (std::abs (dy) < 1.0e-4f) return;
+    const float sgn = dy > 0.0f ? 1.0f : -1.0f;
 
     // NOTHING OF THIS CLASS'S IS IN FLIGHT, so this is a STANDALONE scroll -- the case every rule
     // from here down is about.

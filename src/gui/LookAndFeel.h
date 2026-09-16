@@ -279,10 +279,32 @@ public:
 // state and nothing dispatching between the two, so a second read could not misbehave today -- but
 // "the reading that plans is the reading that proves" is the rule this repository applies to every
 // other pass, and an idiom that merely cannot misbehave yet is one refactor from being one that can.
+// ----------------------------------------------------------------------------
+//  THE WHEEL'S ONE AXIS RULE, IN ONE PLACE (ADR-0053, round 29).
+//
+//  A wheel event carries TWO axes, and a trackpad delivers a horizontal two-finger gesture in
+//  `deltaX` alone. The rule for turning the pair into the single "more or less" a one-dimensional
+//  control needs is **the dominant axis**: whichever of the two has the larger magnitude decides,
+//  with `deltaX` negated so a rightward gesture reads as the same direction a downward vertical one
+//  does. This is not invented here -- it is JUCE's own rule, spelled exactly this way in
+//  `juce::Slider::Pimpl::mouseWheelMove` (juce_Slider.cpp), which is the behaviour every knob and
+//  slider in this editor has always had by inheriting it.
+//
+//  IT IS A FUNCTION RATHER THAN A LINE COPIED TWICE, and that is the whole of Devin's
+//  `src/gui/SpectrumImager.cpp:3293` finding. The imager's handler opened with
+//  `wheel.deltaY * (isReversed ? -1 : 1)` and read `deltaX` NOWHERE, so a horizontal trackpad
+//  gesture moved every knob in the editor and did nothing at all over the MultiBand display -- the
+//  same physical gesture, two answers, because the rule lived in two places and only one of them
+//  was ever extended. One spelling, two callers, and a third caller cannot drift from it.
+inline double wheelDominantDelta (const juce::MouseWheelDetails& w) noexcept
+{
+    return (std::abs (w.deltaX) > std::abs (w.deltaY) ? -w.deltaX : w.deltaY)
+         * (w.isReversed ? -1.0 : 1.0);
+}
+
 inline double wheelTargetValue (juce::Slider& s, const juce::MouseWheelDetails& w, double v0)
 {
-    const double amount = (std::abs (w.deltaX) > std::abs (w.deltaY) ? -w.deltaX : w.deltaY)
-                        * (w.isReversed ? -1.0 : 1.0);
+    const double amount = wheelDominantDelta (w);
     const double base  = s.valueToProportionOfLength (v0);
     const double want  = juce::jlimit (0.0, 1.0, base + amount * 0.15);
     const double delta = s.proportionOfLengthToValue (want) - v0;
@@ -290,25 +312,65 @@ inline double wheelTargetValue (juce::Slider& s, const juce::MouseWheelDetails& 
     return v0 + juce::jmax (s.getInterval(), std::abs (delta)) * (delta < 0.0 ? -1.0 : 1.0);
 }
 
-struct DragGestureOwner
+// ----------------------------------------------------------------------------
+//  A CONTROL THAT CAN TAKE A WHEEL NOTCH ON BEHALF OF A PRESS IT IS HOLDING (ADR-0053).
+//
+//  Split out of `DragGestureOwner` in round 29 so that the three control families that hold
+//  presses -- the knob, the value box under it, and the multiband display -- can all be wheel
+//  targets without every one of them also having to be an abortable gesture holder. The abort half
+//  is a reconcile for a release that never arrived (KI-028) and has exactly the implementers it
+//  always had; this half is about routing.
+// ----------------------------------------------------------------------------
+struct WheelDragOwner
 {
-    virtual ~DragGestureOwner() = default;
-
-    // Close any gesture this control is holding, as if the release had arrived.
-    // Must be idempotent: the reconcile calls it on every candidate, every tick.
-    virtual void abortDragGesture() = 0;
+    virtual ~WheelDragOwner() = default;
 
     // ADR-0053. Take one wheel notch on behalf of a drag this control is HOLDING, and say whether
-    // it was taken. The parent asks before handling a notch itself, because JUCE routes a wheel
-    // event to the component under the POINTER and a value-box drag maps 180 px of travel across a
-    // box under 20 px tall -- so the cursor leaves the box almost immediately and the rest of that
-    // drag's notches are delivered to the parent. Writing the value there is not enough: a control
-    // that steers an anchor of its own recomputes from it on the next drag event and erases
-    // anything written behind its back, so the notch has to reach the anchor. Returning false means
-    // "not mine" and the caller handles the event as it otherwise would; an implementation must
-    // never forward the event onward from here, or the parent's ask would come straight back.
+    // it was taken. JUCE routes a wheel event to the component under the POINTER and never to the
+    // one holding the press (`MouseInputSourceImpl::getTargetForGesture` is a bare
+    // `getComponentAt`), so the notches of any drag that has carried the cursor off its own control
+    // are delivered somewhere else entirely. Writing the value there is not enough: a control that
+    // steers an anchor of its own recomputes from it on the next drag event and erases anything
+    // written behind its back, so the notch has to reach the anchor. Returning false means "nothing
+    // to add it to" -- the press exists but holds no value, like the multiband's pending delete
+    // click -- and an implementation must never forward the event onward from here, or the ask
+    // would come straight back.
     virtual bool takeWheelNotch (const juce::MouseEvent&, const juce::MouseWheelDetails&)
     { return false; }
 };
+
+struct DragGestureOwner : WheelDragOwner
+{
+    // Close any gesture this control is holding, as if the release had arrived.
+    // Must be idempotent: the reconcile calls it on every candidate, every tick.
+    virtual void abortDragGesture() = 0;
+};
+
+// ----------------------------------------------------------------------------
+//  THE WHEEL BELONGS TO THE PRESS, NOT TO THE POINTER (ADR-0053, round 29 -- owner decision).
+//
+//  JUCE hit-tests the pointer for every wheel event, with no regard for a drag in flight:
+//  `handleWheel` takes its target from `getTargetForGesture`, which ends in
+//  `peer.getComponent().getComponentAt (pos)` (juce_MouseInputSourceImpl.h). So a knob drag that
+//  has carried the cursor onto a neighbour delivers its notches to the NEIGHBOUR -- and until this
+//  round the neighbour acted on them, deliberately (the knob laundered the held button out of the
+//  event so JUCE's own `! isAnyMouseButtonDown()` gate would pass). The approved behaviour is the
+//  opposite one: while a button is held, the wheel steers the control that owns the press and no
+//  other control may be touched by it.
+//
+//  ONE REGISTER, CONSULTED BY EVERY WHEEL HANDLER, rather than a rule restated per class: there is
+//  no ancestor every wheel event passes through (the editor's own handler only sees what a child
+//  declined), so a per-class rule is a rule three classes can drift on. The register is a single
+//  message-thread cell because a mouse has one press at a time; it is held as a `SafePointer` so a
+//  control destroyed mid-press cannot be reached through it, and it self-clears the moment a wheel
+//  arrives with no button down, so a lost `mouseUp` cannot strand it.
+// ----------------------------------------------------------------------------
+void claimDragWheel (juce::Component&, WheelDragOwner&);
+void releaseDragWheel (const juce::Component&);
+juce::Component* dragWheelHolder() noexcept;
+
+// True when the press belongs to some OTHER control: the notch has already been offered to it and
+// the caller must do nothing whatsoever with this event -- not act on it, and not pass it on.
+bool wheelTakenByOwningPress (juce::Component& self, const juce::MouseEvent&, const juce::MouseWheelDetails&);
 
 } // namespace anamorph::gui

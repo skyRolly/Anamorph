@@ -5173,8 +5173,17 @@ static void testAWheelNotchInsideAPressBelongsToIt()
     //      ADR-0041's rule is that two gestures cannot own the same state at once. An
     //      event that writes nothing is not a second owner, so it has nothing to claim
     //      and nothing to end. Both halves below are the SAME cases legs A and C
-    //      measure, with the only change being that the wheel event carries no vertical
-    //      delta -- so together they say the rule is about the edit, not the event.
+    //      measure, with the only change being that the wheel event carries no delta at
+    //      all -- so together they say the rule is about the edit, not the event.
+    //
+    //      RE-BASED IN ROUND 29 (ADR-0053, Devin `src/gui/SpectrumImager.cpp:3293`), and the
+    //      paragraph above is left standing because it is the history. This leg used to spell
+    //      "an event this handler ignores" as a HORIZONTAL-ONLY trackpad scroll, on the stated
+    //      grounds that `deltaX` was read nowhere in the handler. That is no longer true and is
+    //      no longer wanted: a horizontal two-finger gesture is now a real notch, by the same
+    //      dominant-axis rule the knobs have always had. So the ignored event is now a genuinely
+    //      EMPTY one -- both axes zero, which is what a host that delivers a spurious wheel event
+    //      sends -- and the sideways event gets the opposite assertions, immediately below D1.
     {
         AnamorphAudioProcessor proc4;
         proc4.prepareToPlay (48000.0, 512);
@@ -5222,9 +5231,15 @@ static void testAWheelNotchInsideAPressBelongsToIt()
                 { return p2->convertFrom0to1 (p2->getValue()); };
                 auto mask4  = [&] { return juce::roundToInt (plain4 (solo4)); };
 
-                // A wheel event with no VERTICAL delta at all. `isSmooth`/`isInertial` are
-                // irrelevant to the handler; `deltaX` is what a horizontal trackpad gesture
-                // carries, and this class never reads it.
+                // A wheel event with no delta on EITHER axis -- the one shape that still performs
+                // no edit now that both axes are read. `isSmooth`/`isInertial` are irrelevant to
+                // the handler.
+                juce::MouseWheelDetails ignored;
+                ignored.deltaX = 0.0f; ignored.deltaY = 0.0f;
+                ignored.isReversed = false; ignored.isSmooth = false; ignored.isInertial = false;
+                // ...and the horizontal gesture that used to BE the ignored one, which round 29
+                // turned into a real notch. Kept here, beside the case it was split from, so the
+                // two spellings are read together and neither can quietly become the other again.
                 juce::MouseWheelDetails sideways;
                 sideways.deltaX = 0.6f; sideways.deltaY = 0.0f;
                 sideways.isReversed = false; sideways.isSmooth = false; sideways.isInertial = false;
@@ -5250,7 +5265,7 @@ static void testAWheelNotchInsideAPressBelongsToIt()
                     im4->mouseDrag (mev4 (bx4, wy4 - 10.0f, bx4, wy4, true));
                     im4->mouseDrag (mev4 (bx4, wy4 - 25.0f, bx4, wy4, true));
                     const float beforeTick  = plain4 (w4);
-                    im4->mouseWheelMove (mev4 (bx4, wy4 - 25.0f, bx4, wy4, true), sideways);
+                    im4->mouseWheelMove (mev4 (bx4, wy4 - 25.0f, bx4, wy4, true), ignored);
                     // ADDED FOR ADR-0053, and only meaningful under it: the press now SURVIVES a
                     // real notch, so "the press is still alive afterwards" no longer discriminates
                     // on its own. What still does is that the ignored event made no EDIT. The
@@ -5274,6 +5289,37 @@ static void testAWheelNotchInsideAPressBelongsToIt()
                            "leg D: ...and does not end a held drag");
                     check (closesAtTick == 0,
                            "leg D: ...and does not close its host gesture at the event");
+
+                    // ...AND THE SIDEWAYS GESTURE IS THE OPPOSITE CASE NOW (round 29). Same held
+                    // width drag, same press, a horizontal-only event -- and it must MOVE the
+                    // width, inside the press's own gesture, without closing it. This is the
+                    // assertion that would have caught the finding: on the round-28 tree the
+                    // handler returned at the delta threshold and the width did not move.
+                    im4->cancelActiveDrag();
+                    set4 (w4, 1.0f);
+                    proc4.pollUndoCoalesce();
+                    GestureLog gSide; w4->addListener (&gSide);
+                    im4->mouseDown (mev4 (bx4, wy4, bx4, wy4, false));
+                    im4->mouseDrag (mev4 (bx4, wy4 - 10.0f, bx4, wy4, true));
+                    im4->mouseDrag (mev4 (bx4, wy4 - 25.0f, bx4, wy4, true));
+                    const float beforeSideways = plain4 (w4);
+                    im4->mouseWheelMove (mev4 (bx4, wy4 - 25.0f, bx4, wy4, true), sideways);
+                    const float atSideways   = plain4 (w4);
+                    const int   closesSide   = gSide.closes;
+                    im4->mouseDrag (mev4 (bx4, wy4 - 60.0f, bx4, wy4, true));
+                    const float afterSideways = plain4 (w4);
+                    im4->mouseUp   (mev4 (bx4, wy4 - 60.0f, bx4, wy4, true));
+                    w4->removeListener (&gSide);
+                    std::printf ("  [leg D] sideways notch inside the press: width %.3f -> %.3f,"
+                                 " then %.3f after 35 px more drag (gesture closes %d)\n",
+                                 (double) beforeSideways, (double) atSideways,
+                                 (double) afterSideways, closesSide);
+                    check (! juce::exactlyEqual (atSideways, beforeSideways),
+                           "leg D: a HORIZONTAL trackpad notch inside the press moves the width");
+                    check (closesSide == 0,
+                           "leg D: ...inside the press's own gesture, which it does not close");
+                    check (! juce::exactlyEqual (afterSideways, atSideways),
+                           "leg D: ...and the drag carries on from the value it produced");
                 }
 
                 // D2 -- and a PENDING CLICK survives it, where leg C's real tick swallows it.
@@ -5299,7 +5345,7 @@ static void testAWheelNotchInsideAPressBelongsToIt()
 
                     set4 (solo4, 0.0f);
                     im4->mouseDown (mev4 (sx4, soloY4, sx4, soloY4, false));
-                    im4->mouseWheelMove (mev4 (sx4, soloY4, sx4, soloY4, false), sideways);
+                    im4->mouseWheelMove (mev4 (sx4, soloY4, sx4, soloY4, false), ignored);
                     im4->mouseUp   (mev4 (sx4, soloY4, sx4, soloY4, false));
                     const int afterIgnored = mask4();
 
@@ -9476,14 +9522,20 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
         }
     }
 
-    // ---- LEG F: a notch lands on the control UNDER THE POINTER, press or no press ------
+    // ---- LEG F: a notch lands on the control HOLDING THE PRESS, wherever the pointer is ----
     //      JUCE routes a wheel event by POINTER and not by capture: `getTargetForGesture`
     //      hit-tests the peer at the event position whether or not a drag is in flight
     //      (`juce_MouseInputSourceImpl.h`). So a press held on one knob and a pointer that has
     //      travelled onto another delivers the notch to the SECOND one, with the button still
     //      down -- and JUCE's own handler drops it there, because its whole body sits behind
-    //      `! e.mods.isAnyMouseButtonDown()`. That was a notch the user makes and never sees,
-    //      while the same gesture over the multiband display edited what it pointed at.
+    //      `! e.mods.isAnyMouseButtonDown()`. That was a notch the user makes and never sees.
+    //
+    //      REVERSED IN ROUND 29 BY OWNER DECISION, and the paragraph above is kept because it is
+    //      the mechanism, not the verdict. Until this round the POINTED control acted -- this leg
+    //      asserted exactly that, and that is what has changed. The approved rule is that while a
+    //      button is held the wheel steers the control that owns the press, however far its cursor
+    //      has travelled, and no other control may be moved by it. The register in
+    //      `LookAndFeel.cpp` posts the notch to the holder; the pointed control does nothing.
     {
         auto* widP = apvts.getParameter (pid::width);
         auto* widK = findSliderFor (widP);
@@ -9516,25 +9568,31 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
             driveK->mouseUp (onDrive (cy - 30.0f, true));
             proc.pollUndoCoalesce();
 
-            if (juce::exactlyEqual (widAfter, wid0))
-                std::printf ("  [leg F] the notch was dropped: Width stayed at %.4f while another"
-                             " control held the press\n", (double) wid0);
-            check (! juce::exactlyEqual (widAfter, wid0),
-                   "leg F: a notch over a control another press owns still edits the pointed control");
-            check (juce::exactlyEqual (driveAfter, driveDragged),
-                   "leg F: ...and does not also move the knob holding the press");
+            std::printf ("  [leg F] pointer over Width, press held on Drive: Width %.4f -> %.4f,"
+                         " Drive %.4f -> %.4f, then %.4f after 10 px more drag\n",
+                         (double) wid0, (double) widAfter,
+                         (double) driveDragged, (double) driveAfter, (double) driveMore);
+            check (juce::exactlyEqual (widAfter, wid0),
+                   "leg F: a notch over a control another press owns does NOT edit the pointed control");
+            check (! juce::exactlyEqual (driveAfter, driveDragged),
+                   "leg F: ...it edits the knob holding the press instead");
             check (! juce::exactlyEqual (driveMore, driveAfter),
                    "leg F: ...which carries on dragging, uncancelled");
             check (proc.canUndo(), "leg F: the interaction is undoable");
             proc.undo();
             check (juce::exactlyEqual (plainOf (driveP), drive0)
                    && juce::exactlyEqual (plainOf (widP), wid0),
-                   "leg F: one Undo takes back both -- the notch landed inside the open press");
+                   "leg F: one Undo takes back the whole interaction -- the notch was inside the press");
             check (! proc.canUndo(), "leg F: ...ONE step, not two");
         }
     }
 
-    // ---- LEG G: the same for the Settings bar, which still records nothing -------------
+    // ---- LEG G: the same for the Settings bar, which is not the press's owner either ----
+    //      Round 29: this leg used to assert that a pointed notch moved the Settings bar while
+    //      another knob held the press. It must not now -- the bar is not the control the press
+    //      belongs to -- and the notch must reach that control instead. What has NOT changed is
+    //      the bar's exclusion from Undo: it is host-hidden, so it never records a step whichever
+    //      way the routing goes, and that is still asserted below.
     {
         juce::Slider* persist = nullptr;
         for (auto* s : sliders)
@@ -9560,18 +9618,25 @@ static void testAWheelNotchInsideAKnobPressBelongsToIt()
                                                 t, { cx, cy }, t, 1, false);
             driveK->mouseDown (onDrive (cy, false));
             driveK->mouseDrag (onDrive (cy - 20.0f, true));
+            const float driveHeld = plainOf (driveP);
             persist->mouseWheelMove (overPersist, wheel);
             const double persist1 = persist->getValue();
+            const float driveAfterNotch = plainOf (driveP);
             driveK->mouseUp (onDrive (cy - 20.0f, true));
             proc.pollUndoCoalesce();
 
-            check (! juce::exactlyEqual (persist1, persist0),
-                   "leg G: a pointed notch moves the Settings bar too");
+            std::printf ("  [leg G] pointer over the Settings bar, press held on Drive:"
+                         " bar %.4f -> %.4f, Drive %.4f -> %.4f\n",
+                         persist0, persist1, (double) driveHeld, (double) driveAfterNotch);
+            check (juce::exactlyEqual (persist1, persist0),
+                   "leg G: a notch over the Settings bar does NOT move it while another press is held");
+            check (! juce::exactlyEqual (driveAfterNotch, driveHeld),
+                   "leg G: ...it reaches the knob holding the press instead");
             check (proc.canUndo(), "leg G: the knob's own press is undoable");
             proc.undo();
             check (! proc.canUndo(), "leg G: ...and it is the ONLY step -- the Settings bar added none");
             check (juce::exactlyEqual (persist->getValue(), persist1),
-                   "leg G: ...so Undo does not move the Settings bar back either");
+                   "leg G: ...and the Settings bar is where it started, having taken no part");
         }
     }
 

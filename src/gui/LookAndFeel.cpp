@@ -3,6 +3,72 @@
 namespace anamorph::gui
 {
 
+// ============================================================================================
+//  THE WHEEL-OWNERSHIP REGISTER (ADR-0053, round 29). See the declaration in LookAndFeel.h for
+//  why it exists and why it is one cell.
+//
+//  MESSAGE-THREAD ONLY, like every mouse handler that touches it, and a file-local static rather
+//  than a member of anything: a mouse has ONE press at a time across every editor this process
+//  has open, so an owner per editor would be a set of cells only one of which could ever be
+//  non-empty -- and the one that mattered would be whichever editor the press landed in, which is
+//  exactly what a single cell names.
+// ============================================================================================
+namespace
+{
+    juce::Component::SafePointer<juce::Component> dragWheelHolderPtr;
+    WheelDragOwner* dragWheelOwnerPtr = nullptr;
+}
+
+void claimDragWheel (juce::Component& c, WheelDragOwner& o)
+{
+    dragWheelHolderPtr = &c;
+    dragWheelOwnerPtr  = &o;
+}
+
+void releaseDragWheel (const juce::Component& c)
+{
+    // ...only by the control that claimed it. A release from anything else would let a press that
+    // never owned the wheel hand it back on behalf of the one that does -- and the two overlap in
+    // the ordinary case, because a value box's press and its parent knob's are the same click to
+    // everything except JUCE's routing.
+    if (dragWheelHolderPtr.getComponent() == &c)
+    {
+        dragWheelHolderPtr = nullptr;
+        dragWheelOwnerPtr  = nullptr;
+    }
+}
+
+juce::Component* dragWheelHolder() noexcept { return dragWheelHolderPtr.getComponent(); }
+
+bool wheelTakenByOwningPress (juce::Component& self, const juce::MouseEvent& e,
+                              const juce::MouseWheelDetails& w)
+{
+    // A WHEEL WITH NO BUTTON DOWN CAN NEVER BELONG TO A PRESS, so this is also where a stranded
+    // claim dies: a release that never arrived (KI-028's class) would otherwise leave the register
+    // pointing at a control that is no longer holding anything, and every later scroll would be
+    // posted to it. The first ordinary scroll clears it, which is the same self-healing shape the
+    // editor's stuck-drag reconcile has -- without needing a tick to run.
+    if (! e.mods.isAnyMouseButtonDown())
+    {
+        if (dragWheelHolderPtr != nullptr) { dragWheelHolderPtr = nullptr; dragWheelOwnerPtr = nullptr; }
+        return false;
+    }
+
+    auto* holder = dragWheelHolderPtr.getComponent();
+    if (holder == nullptr || holder == &self) return false;
+
+    // THE HOLDER'S OWN COORDINATES, because its anchor arithmetic is in them: every drag in this
+    // editor reconstructs its value from `e.position` and an offset captured at the press, and the
+    // cursor being outside the control is exactly the case this exists for -- an out-of-bounds
+    // position is what an ordinary `mouseDrag` already carries once the cursor has left.
+    if (dragWheelOwnerPtr != nullptr)
+        dragWheelOwnerPtr->takeWheelNotch (e.getEventRelativeTo (holder), w);
+
+    // SWALLOWED EITHER WAY. `false` from the holder means it had nothing to add the notch to, not
+    // that the pointed control may have it: while the button is held, no other control changes.
+    return true;
+}
+
 AnamorphLookAndFeel::AnamorphLookAndFeel()
 {
     setColour (juce::ResizableWindow::backgroundColourId, colours::bg);
@@ -810,6 +876,11 @@ namespace
                 dragGesture = std::make_unique<juce::Slider::ScopedDragNotification> (*s);
                 s->getProperties().set ("dragging", true); // knob shows press feedback (#10)
                 s->repaint();
+                // ADR-0053 round 29: this press owns the wheel until it is released, wherever the
+                // cursor goes. Claimed HERE rather than for every press, because a press this
+                // branch declines -- a double click, one on a non-rotary parent -- takes over no
+                // drag and has no anchor to add a notch to.
+                claimDragWheel (*this, *this);
             }
             juce::Label::mouseDown (e); // double-click still opens the editor
         }
@@ -826,6 +897,7 @@ namespace
         // so the editor's reconcile may call this on every tick.
         void abortDragGesture() override
         {
+            releaseDragWheel (*this);   // ADR-0053 round 29: the press is over, wherever it ended
             dragGesture.reset();
             if (auto* s = dynamic_cast<juce::Slider*> (getParentComponent()))
             {
@@ -862,6 +934,7 @@ namespace
         // under it are ONE control for Undo, which is what they are for the user.
         void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
         {
+            if (wheelTakenByOwningPress (*this, e, w)) return;   // ADR-0053 round 29
             if (takeWheelNotch (e, w)) return;
             juce::Label::mouseWheelMove (e, w);
         }

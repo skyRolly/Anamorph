@@ -614,7 +614,7 @@ private:
     // Knob: a slider that resets to its default on a clean double-click OR an
     // Option/Alt-click (#6 / 0.6.7 #21). onSweep lets the editor play the eased
     // position travel when a RESET happens (but not on a drag).
-    struct Knob : public juce::Slider
+    struct Knob : public juce::Slider, public anamorph::gui::WheelDragOwner
     {
         double resetValue = 0.0;
         // The attached parameter (null for host-hidden InternalState knobs): the
@@ -651,7 +651,28 @@ private:
         //
         // Zero for a press with no notch in it, and every line that reads it returns immediately on
         // zero, so an ordinary drag makes exactly the parameter writes it always did.
-        double wheelDragProp = 0.0;
+        //
+        // IN PIXELS SINCE ROUND 29, AND THAT IS THE FIX RATHER THAN A TIDY-UP. It was a PROPORTION,
+        // added to whatever the drag computed, in a `snapValue` override -- and `snapValue` is
+        // called by JUCE AFTER it has already clamped its own mapping to [0, 1]
+        // (`handleAbsoluteDrag` ends `newPos = jlimit (0.0, 1.0, ...)`, juce_Slider.cpp, and
+        // `mouseDrag` clamps again to the range before it calls `snapValue`). So the offset sat
+        // OUTSIDE the clamp: after a notch that took the value DOWN by half the range, the drag's
+        // own proportion saturated at 1.0 while the returned proportion was `1.0 + offset` = 0.5,
+        // and the knob could not be dragged to its maximum for the rest of that press. That is the
+        // reported "stuck around 50%".
+        //
+        // A pixel offset is applied where the ANCHOR is instead: `mouseDrag` below hands JUCE an
+        // event whose position is shifted by this many pixels, so the shift is inside
+        // `mouseDiff` -- i.e. inside what JUCE clamps -- and the remaining physical travel maps
+        // exactly as it would have if the press had started at the value the notch produced. It is
+        // the same shape the multiband display and the value box have always used (both anchor in
+        // CURSOR space and clamp once, at the end), which is why neither of them has this defect.
+        //
+        // Positive means "the value the drag computes is raised", whichever axis and whichever
+        // direction the style reads the cursor in; `wheelDragShift()` turns it into the offset for
+        // this slider's own style.
+        double wheelDragPx = 0.0;
         // ADR-0053, round 11. JUCE's DUPLICATE-EVENT FILTER, restated for the in-drag path -- and it
         // is restated because the floor above made it load-bearing. JUCE's own reason
         // (`juce_Slider.cpp`) is exactly that: "sometimes duplicate wheel events seem to be sent, so
@@ -691,7 +712,12 @@ private:
         }
         void mouseDown (const juce::MouseEvent& e) override
         {
-            wheelDragProp = 0.0;    // a new press starts with no notch in it (ADR-0053)
+            wheelDragPx = 0.0;      // a new press starts with no notch in it (ADR-0053)
+            // ADR-0053 round 29: this press owns the wheel until it is released, wherever the
+            // cursor travels. Claimed for EVERY press, not only one that starts a drag: the rule
+            // the owner approved is that no other control may be moved by the wheel while a button
+            // is held, and a press that holds no value simply has nothing to add a notch to.
+            anamorph::gui::claimDragWheel (*this, *this);
             if (e.mods.isAltDown()) // Option/Alt-click reset, as ONE undoable user gesture
             {
                 // ...and the gesture is part of what an edit costs, so the same question is asked
@@ -771,29 +797,106 @@ private:
         // min/max thumbs as well (`setMinValue`/`setMaxValue` call this with a live `dragMode`).
         // There is no such slider here -- every one is single-value -- and this is recorded rather
         // than guarded, because a guard with no caller cannot be tested.
-        double snapValue (double attempted, DragMode mode) override
+        // HOW MANY PIXELS OF CURSOR TRAVEL ARE ONE WHOLE RANGE, asked of JUCE rather than restated
+        // here, because a scale of our own would be a second sensitivity to keep in step. The two
+        // families this editor uses answer differently and both answers are public:
+        //   * the relative styles -- every `RotaryVerticalDrag` knob here -- map
+        //     `mouseDiff / pixelsForFullDragExtent`, which is `getMouseDragSensitivity()`;
+        //   * an absolute linear style -- the two `LinearHorizontal` knobs, which keep JUCE's
+        //     default `snapsToMousePos` -- maps `(mousePos - sliderRegionStart) / sliderRegionSize`,
+        //     and `sliderRegionSize` is exactly the distance between the positions of the two ends.
+        // The condition is JUCE's own (`handleAbsoluteDrag`, juce_Slider.cpp), spelled the same way
+        // round, so a style that changes there changes here with it.
+        [[nodiscard]] bool dragIsRelativeToPress() const
         {
-            if (juce::exactlyEqual (wheelDragProp, 0.0)) return juce::Slider::snapValue (attempted, mode);
-            const double base = valueToProportionOfLength (getNormalisableRange().snapToLegalValue (attempted));
-            const double want = juce::jlimit (0.0, 1.0, base + wheelDragProp);
-            // NO DEAD TRAVEL: keep only what actually fitted, so a press that has been scrolled past
-            // a rail leaves that rail the instant the drag moves away from it instead of first
-            // unwinding travel nobody can see. Only ever reached once a notch has been made, so an
-            // ordinary drag's clamping behaviour is untouched.
-            wheelDragProp = want - base;
-            return proportionOfLengthToValue (want);
+            const auto st = getSliderStyle();
+            if (st == juce::Slider::RotaryHorizontalDrag || st == juce::Slider::RotaryVerticalDrag
+                || st == juce::Slider::RotaryHorizontalVerticalDrag || st == juce::Slider::IncDecButtons)
+                return true;
+            if (st == juce::Slider::LinearHorizontal || st == juce::Slider::LinearVertical
+                || st == juce::Slider::LinearBar || st == juce::Slider::LinearBarVertical)
+                return ! getSliderSnapsToMousePosition();
+            return false;   // `Rotary` steers by ANGLE; see `wheelDragShift`
+        }
+
+        [[nodiscard]] double pixelsPerWholeRange() const
+        {
+            if (dragIsRelativeToPress())
+                return (double) juce::jmax (1, getMouseDragSensitivity());
+            const double a = (double) getPositionOfValue (getMinimum());
+            const double b = (double) getPositionOfValue (getMaximum());
+            return juce::jmax (1.0, std::abs (b - a));
+        }
+
+        // The offset to add to an event's position so that JUCE's own mapping comes out `wheelDragPx`
+        // higher in VALUE. Every style this editor uses reads exactly one axis, and reads it in the
+        // direction recorded here: `x` rises with the value, `y` falls with it (JUCE's vertical
+        // forms are `mouseDragStartPos.y - e.position.y` and `1.0 - (y - start) / size`).
+        //
+        // `Rotary` -- the angle-steered style -- is NOT one of them: its mapping is not affine in
+        // the cursor, so a constant pixel shift is not a constant value shift and this returns a
+        // zero offset for it. That is recorded rather than guarded because it is unreachable in this
+        // editor: `setSliderStyle` is called three times in `src/` (`src/PluginEditor.cpp:541`,
+        // `:687`, `:812`) and none of them names `Rotary`. The assertion is what would notice if a
+        // fourth call ever did.
+        [[nodiscard]] juce::Point<float> wheelDragShift() const
+        {
+            if (juce::exactlyEqual (wheelDragPx, 0.0)) return {};
+            const auto st = getSliderStyle();
+            jassert (st != juce::Slider::Rotary);
+            if (st == juce::Slider::RotaryHorizontalDrag || st == juce::Slider::LinearHorizontal
+                || st == juce::Slider::LinearBar)
+                return { (float) wheelDragPx, 0.0f };
+            if (st == juce::Slider::Rotary)
+                return {};
+            return { 0.0f, (float) -wheelDragPx };   // every vertical form, and the H+V rotary
+        }
+
+        // THE ONE PLACE THE OFFSET IS APPLIED. JUCE recomputes the drag's value from its own anchor
+        // and the cursor on every move and never reads the live value back, so a notch that only
+        // wrote the value would be erased by the next move (ADR-0053's original finding). Shifting
+        // the position it is handed moves the ANCHOR instead -- `mouseDiff` is `e.position` minus a
+        // start point JUCE captured at the press, so a constant shift is a constant value offset --
+        // and, unlike the `snapValue` override this replaces, it is inside the clamp rather than
+        // outside it, so the drag keeps its whole remaining travel in both directions.
+        void mouseDrag (const juce::MouseEvent& e) override
+        {
+            const auto shift = wheelDragShift();
+            if (shift.isOrigin()) { juce::Slider::mouseDrag (e); return; }
+            juce::Slider::mouseDrag ({ e.source, e.position + shift, e.mods,
+                                       e.pressure, e.orientation, e.rotation, e.tiltX, e.tiltY,
+                                       e.eventComponent, e.originalComponent, e.eventTime,
+                                       e.mouseDownPosition, e.mouseDownTime,
+                                       e.getNumberOfClicks(), e.mouseWasDraggedSinceMouseDown() });
         }
         void mouseUp (const juce::MouseEvent& e) override
         {
             juce::Slider::mouseUp (e);
-            wheelDragProp = 0.0;
+            wheelDragPx = 0.0;
+            anamorph::gui::releaseDragWheel (*this);
         }
         void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
         {
-            // A NOTCH INSIDE THIS KNOB'S OWN DRAG (ADR-0053). `getThumbBeingDragged()` is >= 0 only
-            // between the mouseDown that actually STARTED a drag and the drag-end notification, so a
-            // press that started none -- a pop-up-menu click, a single-click reset -- does not
-            // qualify and a notch can never write outside a change gesture.
+            // THE PRESS DECIDES, NOT THE POINTER (ADR-0053 round 29, owner decision). If some other
+            // control is holding a press, this notch is ITS notch however far its cursor has
+            // wandered onto this knob -- and this knob must not move. Asked first, so nothing below
+            // can act on an event that was never addressed to it.
+            if (anamorph::gui::wheelTakenByOwningPress (*this, e, w)) return;
+
+            if (takeWheelNotch (e, w)) return;   // ...or this knob's own press, below
+            mouseWheelMoveTail (e, w);
+        }
+
+        // A NOTCH INSIDE THIS KNOB'S OWN DRAG (ADR-0053). `getThumbBeingDragged()` is >= 0 only
+        // between the mouseDown that actually STARTED a drag and the drag-end notification, so a
+        // press that started none -- a pop-up-menu click, a single-click reset -- does not qualify
+        // and a notch can never write outside a change gesture.
+        //
+        // ...AND IT IS THE `WheelDragOwner` HOOK (round 29), so the same body serves a notch
+        // delivered here by the pointer and one posted here by the register while the cursor is
+        // somewhere else entirely. `false` means this press has nothing to add the notch to.
+        bool takeWheelNotch (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
             if (isScrollWheelEnabled() && e.mods.isAnyMouseButtonDown() && getThumbBeingDragged() >= 0)
             {
                 // What JUCE's own handler would move this slider to for this event -- direction,
@@ -801,11 +904,11 @@ private:
                 // -- so one notch means the same travel whether or not a button is held. It said
                 // that here before and did not deliver it: without the floor a sub-interval notch
                 // was snapped straight back by `setValue` and the press ate it (round 11).
-                if (e.eventTime == lastNotchTime) return;   // ...the duplicate, before anything (ADR-0052)
+                if (e.eventTime == lastNotchTime) return true;   // ...the duplicate, before anything (ADR-0052)
                 lastNotchTime = e.eventTime;
                 const double v0     = getValue();
                 const double target = anamorph::gui::wheelTargetValue (*this, w, v0);
-                if (juce::exactlyEqual (target, v0)) return;  // ADR-0052: no edit, no side effects
+                if (juce::exactlyEqual (target, v0)) return true;  // ADR-0052: no edit, no side effects
                 const double base = valueToProportionOfLength (v0);
                 setValue (target, juce::sendNotificationSync);
                 // BANK WHAT ACTUALLY MOVED, read back from the slider rather than from the request:
@@ -813,24 +916,21 @@ private:
                 // the request instead would leave the drag carrying travel the control never took
                 // -- dead travel the next mouse move would then apply as a jump (ADR-0052's latch
                 // half). ...and the drag carries on from the value the notch left behind.
-                wheelDragProp += valueToProportionOfLength (getValue()) - base;
-                return;
+                //
+                // IN PIXELS (round 29): the proportion that actually moved, times the travel JUCE
+                // itself maps a whole range across. See `wheelDragPx`.
+                wheelDragPx += (valueToProportionOfLength (getValue()) - base) * pixelsPerWholeRange();
+                return true;
             }
-            // A NOTCH DELIVERED HERE DURING A CHILD'S OWN DRAG BELONGS TO THAT CHILD (ADR-0053).
-            // The value box under this knob drags by steering `downProp`, an anchor of its own, and
-            // it maps 180 px of travel across a box under 20 px tall -- so the cursor leaves the box
-            // almost at once and JUCE, which routes by pointer, delivers the rest of that drag's
-            // notches HERE. Writing the value on the slider would be erased by the box's very next
-            // drag event, so the box takes the notch and moves its anchor instead. It never forwards
-            // the event back, so this cannot recurse.
-            if (e.mods.isAnyMouseButtonDown() && getThumbBeingDragged() < 0)
-                for (int i = 0; i < getNumChildComponents(); ++i)
-                {
-                    auto* child = getChildComponent (i);
-                    if (auto* holder = dynamic_cast<anamorph::gui::DragGestureOwner*> (child);
-                        holder != nullptr && holder->takeWheelNotch (e, w))
-                        return;
-                }
+            return false;
+        }
+
+        void mouseWheelMoveTail (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+        {
+            // (The value box under this knob no longer has to be asked from here. It claims the
+            // wheel for itself at its own `mouseDown`, so a notch delivered to this knob during the
+            // box's drag is routed by the register above -- one rule for every control instead of
+            // one parent knowing about one child.)
 
             // A STANDALONE SCROLL NAMES THE CONTROL IT EDITS, so the processor can keep the whole
             // scroll -- however many notches, and however many pauses between them -- as ONE undo

@@ -4,6 +4,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "../dsp/ScopeBuffer.h"
 #include "FrameClock.h"
+#include "LookAndFeel.h"   // anamorph::gui::WheelDragOwner (ADR-0053 round 29)
 
 namespace anamorph::gui
 {
@@ -18,6 +19,7 @@ namespace anamorph::gui
 //  auditioned at once (0.6.9 #7).
 // ============================================================================
 class SpectrumImager : public juce::Component,
+                       public anamorph::gui::WheelDragOwner,
                        public juce::SettableTooltipClient
 {
 public:
@@ -37,6 +39,11 @@ public:
     void mouseUp        (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+    // ADR-0053 round 29. The in-press half of `mouseWheelMove`, reachable by the wheel register
+    // when this display holds the press and the cursor has travelled off it. `false` means this
+    // press has nothing to add a notch to -- a pending delete click holds no value and no anchor.
+    bool takeWheelNotch (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
     // Release-outside safety net (v0.8.12): called by the editor's 24 Hz reconcile when the
     // physical mouse button is up but a drag is still active (a mouseUp lost outside the plugin
@@ -126,6 +133,10 @@ private:
     juce::Rectangle<float> plot() const noexcept;
     float freqToX (float hz) const noexcept;
     float xToFreq (float x)  const noexcept;
+    // ADR-0053 round 29: the OTHER half of `mouseWheelMove` -- a scroll with nothing of this
+    // class's in flight. Split out so the in-press half can be reached by the wheel register.
+    void standaloneWheel (const juce::MouseEvent&, const juce::MouseWheelDetails&);
+
     float widthToY (float w) const noexcept;
     float yToWidth (float y) const noexcept;
     float rulerY()  const noexcept;
