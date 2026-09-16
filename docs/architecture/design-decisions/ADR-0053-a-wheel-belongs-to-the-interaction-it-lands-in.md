@@ -34,6 +34,20 @@ medium and the word *approval* appears nowhere in `ARCHITECTURE_REVIEW_GATE.md`,
 `AI_AGENT_POLICY.md`, `ADR_POLICY.md` or `DOCUMENTATION_LIFECYCLE_POLICY.md` (re-measured 2026-09-15:
 zero occurrences in all four).
 
+**Architecture Review Gate: APPROVED by the owner, 2026-09-16 (round 30), for the two behaviours
+round 30 changes.** The round-30 brief states both as settled and instructs that neither be put back
+to the owner: *"Once a mouse press owns the interaction, every wheel event arriving before mouse-up
+belongs to that active press, even when that press has no editable parameter target… Do not ask the
+owner to approve this again"*, and *"A wheel adjustment during an active velocity drag must change
+the parameter without corrupting the remaining mouse-drag mapping… Do not ask the owner to approve
+this again"*. The first **reverses half of round 29's own reasoning** — that a press which latched no
+identifier leaves the notch to the pointer — so the gate is triggered for the same reason it was in
+rounds 23 and 29, and cleared the same way. **No other gate item is touched**, re-checked line by
+line against the round-30 diff: no parameter ID, range, default, automation flag or serialization
+field; no DSP node, stage order or reported latency; no thread, cross-thread path or atomic ordering
+— the register gains a device key and a vector of cells, all of it message-thread-only and read and
+written only from wheel and mouse handlers, exactly as before.
+
 **Architecture Review Gate: APPROVED by the owner, 2026-09-16 (round 29), for the two behaviours
 round 29 changes.** The round-29 brief states both as settled and instructs that neither be put back
 to the owner: *"Multiband `Bandwidth` and `split frequency` must respond to horizontal trackpad
@@ -644,7 +658,7 @@ not the same sentence, and that one of the two ways a notch reaches a drag's anc
 the wrong side of JUCE's clamp.
 
 **1. BOTH AXES ARE READ, and the rule is JUCE's own, for a reason that is not stylistic.** Devin
-`src/gui/SpectrumImager.cpp:3293` observed that the multiband display read `wheel.deltaY` alone. A
+`src/gui/SpectrumImager.cpp:R3293` observed that the multiband display read `wheel.deltaY` alone. A
 trackpad's sideways two-finger scroll arrives as `deltaX` with `deltaY` at zero, so that gesture moved
 every knob in the editor and did nothing at all over the display — the inconsistency the finding
 names. The fix is one shared spelling, `anamorph::gui::wheelDominantDelta`, which is the expression
@@ -684,17 +698,18 @@ gesture, not to a held button. So the routing this decision needs does not exist
 has to be expressed by the application, once, in a form every control consults:
 
 ```cpp
-void  claimDragWheel   (juce::Component&, WheelDragOwner&);   // at mouseDown
-void  releaseDragWheel (const juce::Component&);              // at mouseUp / cancel
-bool  wheelTakenByOwningPress (juce::Component& self, const juce::MouseEvent&,
-                               const juce::MouseWheelDetails&);
+// as round 29 shipped it; round 30 renamed the question and keyed the register by device
+void  claimDragWheel   (juce::Component&, WheelDragOwner&, WheelPointer);   // at mouseDown
+void  releaseDragWheel (const juce::Component&);                            // at mouseUp / cancel
+bool  wheelTakenByAnyPress (juce::Component& self, WheelDragOwner* selfOwner,
+                            const juce::MouseEvent&, const juce::MouseWheelDetails&);
 ```
 
 `WheelDragOwner::takeWheelNotch` is the hook — split out of `DragGestureOwner`, which the value box
 already implemented, so the *same body* serves a notch delivered by the pointer and one posted by the
 register while the cursor is elsewhere. That is the answer to *"do not implement this only for one
 control class if the same interaction abstraction is shared"*: `Knob`, `ValueBox` and `SpectrumImager`
-each claim at their own `mouseDown`, each ask `wheelTakenByOwningPress` as the first line of their own
+each claim at their own `mouseDown`, each ask `wheelTakenByAnyPress` as the first line of their own
 `mouseWheelMove`, and each implement the one hook. The holder is a `juce::Component::SafePointer`, so
 an editor torn down mid-press cannot leave a dangling owner, and a wheel event with no button down
 clears the register on its way past — the lifetime is the press's, with a second way out.
@@ -771,6 +786,105 @@ now. Creeping the frozen split would move one the release is about to merge away
 nothing to it, which is what a pending delete click has always done one branch above. State test 105
 leg K holds the freeze, the ownership and the recovery on return.
 
+### What an eighth review round changed: who owns a notch, and which hand is holding the button
+
+Round 29 asked *"does some other control hold the press"*. Round 30 found that this leaves two
+different states answering the same way, and that "the press" was never singular to begin with.
+
+**1. A PRESS THAT DECLINES THE NOTCH STILL OWNS IT.** Devin `src/gui/SpectrumImager.cpp:R3302-3304`
+named the sequence: a press starts, no editable parameter identifier is available, a wheel arrives,
+the owning-press lookup says *no target*, and the standalone path then edits whatever the pointer is
+over. Three presses reach that state — an Alt-click reset held down, a press on the display's blank
+area, an add the band count refused — and each of them owns the interaction while holding nothing a
+notch can be added to. The two states are not the same question:
+
+| state | round 29 | round 30 |
+| --- | --- | --- |
+| no active press owns this event | the pointer decides | the pointer decides |
+| an active press owns it and has **no** editable target | the pointer decides | **the press decides, and decides nothing** |
+
+The owner ruled the second line: *"Once a mouse press owns the interaction, every wheel event arriving
+before mouse-up belongs to that active press, even when that press has no editable parameter
+target."* So `wheelTakenByAnyPress` — the rename records the change of question — returns `true` for
+**every** event that arrives with a button down on the sending device, and the only `false` it has is
+the one that says no button is down. `WheelDragOwner::takeWheelNotch`'s `false` no longer frees the
+event; it now says only that this press had nothing to add it to. No caller reads it but the tests.
+State test 107 legs A–H cover the six presses, the four-run velocity matrix of §8, the Settings
+Persistence bar, and the value box whose own branch declines the drag — each leg carrying a positive
+control, because *"nothing moved"* is the easiest assertion in the world to pass by accident.
+
+**2. A NOTCH INSIDE A VELOCITY DRAG WAS DISCARDED, NOT MERELY DISTORTED.** Devin `src/PluginEditor.h:R822-828`
+observed that `wheelDragPx` is converted through the normal drag-span model while JUCE's velocity mode
+maps differently, and asked for the mapping to be established from source before any fix. It is worse
+than a distortion. `Slider::Pimpl::handleVelocityDrag` is an **integrator**: it reads
+`owner.valueToProportionOfLength (valueWhenLastDragged)`, adds a speed term derived from the per-event
+cursor delta, and writes `valueWhenLastDragged` back (juce_Slider.cpp:815-852). `Pimpl::setValue`
+never writes `valueWhenLastDragged` — the five writes are at :762, :812, :843-846, :887 and :941 —
+so a notch that writes the VALUE is erased by the next drag event, which recomputes from the stale
+base. Measured on Drive with the modifier held: `0.0042 -> notch -> 0.1542 -> next drag 0.0550`,
+where the drag should have continued from `0.1542`. Round 29's pixel shift is worse still in that
+branch: `mousePosWhenLastDragged = e.position` (:969) banks the shifted position into JUCE's own
+reference, so the *next* event reads a delta that includes it and the integrator takes a spurious
+one-shot kick.
+
+No public API can write `valueWhenLastDragged`, so the notch is banked **in the integrator's own
+space, as a proportion**, and injected into the one expression the integrator reads:
+`valueToProportionOfLength` is a public virtual, and `Knob` arms an override for exactly one call
+around one `juce::Slider::mouseDrag`. That call is provably `handleVelocityDrag`'s — nothing earlier
+in `Pimpl::mouseDrag` reads a proportion (the `useDragEvents` test, the `Rotary` branch, the
+`IncDecButtons` threshold and `isAbsoluteDragMode` read none) — and the injection therefore lands
+*inside* JUCE's own `jlimit (0, 1, …)` two lines below, so the whole remaining range stays reachable,
+it is applied exactly once, and it never passes through the velocity curve. Which branch is live is
+**recorded, not predicted**: `snapValue` receives the `DragMode` JUCE chose, and `dragIsVelocity`
+restates JUCE's own predicate for the one place that has to decide before the call. State test 106
+leg A proves the modifier really selects a different mapping, leg B supplies the clean expectation,
+leg C is the numerical reproduction (`0.0042 -> notch -> 0.1542 -> next drag 0.1558`, expected
+`0.1558`, error `+0.0000`), and leg D is the boundary: climb to 0.8, wheel back to 0.0, and the
+remaining travel still reaches 1.0.
+
+**3. THE REGISTER IS ONE CELL PER POINTING DEVICE, not one per process.** Devin
+`src/gui/LookAndFeel.cpp:R16` observed that the register assumes one pointer. It does, and JUCE does
+not: `MouseInputSourceList` holds an **array** of sources, each `MouseInputSourceImpl` owns its own
+`buttonState`, and `getCurrentModifiers()` is the global modifiers with the mouse buttons stripped and
+only *that* device's buttons put back (juce_MouseInputSourceImpl.h:59-64). The reachability envelope
+was established per platform rather than asserted:
+
+| platform | second source | concurrent presses | verdict |
+| --- | --- | --- | --- |
+| macOS | never — `canUseTouch()` is `false` and `addSource()` refuses every index past 0 (juce_NSViewComponentPeer_mac.mm:2986-2999) | — | **unreachable** |
+| Linux / BSD | `canUseMultiTouch()` is true whenever XI2 sets up (juce_XWindowSystem_linux.cpp:2299-2306; `JUCE_USE_XINPUT` defaults to 1), every window masks XI_TouchBegin/Update/End unconditionally (:676-678), and a touch dispatches as `InputSourceType::touch` with a per-finger index (:4176-4189) | yes, with **no plug-in-side opt-out** | **reachable** |
+| Windows | yes — a synthesised touch or pen message is still typed from `GetMessageExtraInfo()` and `doMouseDown`'s early return is gated on `canUseMultiTouch()` (juce_Windowing_windows.cpp:2606-2613) | not established: `AudioProcessorEditor::usesWindowsMultiTouch()` returns false (juce_AudioProcessorEditor.cpp:260-263) and nothing here overrides it, so `RegisterTouchWindow` is never called and the OS synthesises one cursor | correct by construction, not needed |
+
+So a finger landing on the display would evict the claim the mouse's own drag had made, and the
+mouse's next notch would steer whatever the finger was on. The cells are keyed by `WheelPointer` —
+the `(type, index)` pair that **is** the identity `getOrCreateMouseInputSource` matches on
+(juce_MouseInputSourceList.h:67-89) — so a device can neither take nor clear another device's press.
+**The release stays keyed on the CONTROL**, because two of the four release sites are the
+lost-release safety nets (`SpectrumImager::cancelActiveDrag`, `ValueBox::abortDragGesture`), which run
+from the editor's 24 Hz reconcile with no event and so no device to name; it clears *every* cell that
+names the control, since one control can be under two devices at once and has one release to give.
+The key is named as a value rather than read out of `e.source` inside the register precisely so the
+routing can be tested: nothing public creates a second `MouseInputSource`, so State test 108 drives
+the `WheelPointer` overloads directly and only `wheelPointerOf`, two lines, is left to leg G.
+
+**4. WHAT ROUND 30 INVESTIGATED AND DISPROVED.** The Alt-click reset branch returns without calling
+`juce::Slider::mouseDown`, which is the only call that clears `Pimpl::useDragEvents`, so
+`Pimpl::mouseDrag` really does run its body on the next drag with the anchors of the press before
+last. It writes nothing: `~ScopedDragNotification` has already set `sliderBeingDragged = -1`
+(`sendDragEnd`, juce_Slider.cpp:396-399) and all three of that function's stores are behind a test on
+it, and `Pimpl::mouseDown` re-seeds `valueWhenLastDragged` and `valueOnMouseDown` from the live value
+on the next real press (:887-890). A guard was written for it and then **removed**: it changed no
+observable behaviour, so nothing could cover it. State test 107 leg G keeps the measurement, because
+the answer is JUCE's and an upgrade could take it away.
+
+Two in-source claims were corrected rather than defended. `sliderRegionSize` is **1** for a rotary,
+not 0 — it is initialised to 1 and `Pimpl::resized` assigns it only for the horizontal and vertical
+styles (:1266-1274, :1324) — so the second disjunct of the drag-mode test reads `range < interval`
+rather than dividing by zero; the conclusion it supports, that the velocity branch is taken, is
+unchanged. And the pop-up-menu click and single-click reset that a `takeWheelNotch` comment named as
+the thumb-less presses are **unreachable here**: they need `menuEnabled` and `singleClickModifiers`,
+and this editor sets neither.
+
 ## Consequences
 
 - **A notch during any drag now adds to it**, and the drag continues from the combined value. What a
@@ -819,12 +933,14 @@ leg K holds the freeze, the ownership and the recovery on return.
   control may change while the button is held — so the line is **superseded, not deleted**, in the
   form this ADR uses for ADR-0041's. The reasoning the old line gave for not doing it was that *"it
   would need a cross-component registry JUCE does not provide"*: that is accurate, and the registry
-  is now `claimDragWheel` / `releaseDragWheel` / `wheelTakenByOwningPress` in `LookAndFeel.cpp` —
+  is now `claimDragWheel` / `releaseDragWheel` / `wheelTakenByAnyPress` in `LookAndFeel.cpp` —
   one message-thread `SafePointer`, asked at the top of every wheel handler and, for everything that
   owns no wheel handler at all, at the editor. The second half of the old line's objection — that a
   mouse-button gate *"would silence a notch during one of the multiband display's own presses that
-  latched no identifier"* — is answered by asking the REGISTER rather than the button: a press that
-  latched no identifier claims nothing, so a notch during it still reaches the control it points at.
+  latched no identifier"* — was answered in round 29 by asking the REGISTER rather than the button, so
+  that a notch during an identifier-less press still reached the control it pointed at. **Round 30
+  reversed that half too**, by owner instruction: silencing such a notch is now the requirement, not
+  the objection. See the eighth round below.
   **A control whose own child holds the press stops being an exception**: the value box claims for
   itself at its own `mouseDown`, so the knob no longer has to know about its child.
 - **A frozen split drag owns its notches and adds nothing to them** (round 29). Carried far enough
@@ -869,10 +985,11 @@ leg K holds the freeze, the ownership and the recovery on return.
   `SpectrumImager::onWheelStep`; `AnamorphAudioProcessorEditor::mouseWheelMove` is the register's
   backstop for everything that overrides no wheel handler of its own.
 * `src/gui/LookAndFeel.cpp` — the wheel register (`claimDragWheel`, `releaseDragWheel`,
-  `dragWheelHolder`, `wheelTakenByOwningPress`); `ValueBox::mouseDown` / `abortDragGesture` /
+  `dragWheelHolder`, `wheelTakenByAnyPress`, `WheelClaim`); `ValueBox::mouseDown` / `abortDragGesture` /
   `mouseWheelMove` / `takeWheelNotch`.
 * `src/gui/LookAndFeel.h` — `wheelDominantDelta` (the one spelling of the axis rule),
-  `wheelTargetValue`, `WheelDragOwner::takeWheelNotch`, `DragGestureOwner`.
+  `wheelTargetValue`, `WheelDragOwner::takeWheelNotch`, `DragGestureOwner`, `WheelPointer` /
+  `wheelPointerOf` (round 30).
 * `src/gui/SpectrumImager.cpp` — `mouseWheelMove` (the register, the in-press half and the standalone
   half), `takeWheelNotch` (the press branches, including the frozen-split rule),
   `standaloneWheel` (the named, bracketed burst), `mouseDown` / `mouseUp` / `cancelActiveDrag`

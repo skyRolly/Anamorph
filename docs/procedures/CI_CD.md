@@ -454,7 +454,7 @@ toolchain, so the move took the macOS compiler with it — **AppleClang
 `20260728.0273.1`. `CMAKE_OSX_DEPLOYMENT_TARGET=10.13` is still accepted and both slices still
 build. One measured consequence: AppleClang 21 raised
 **`-Wimplicit-int-float-conversion` at four pre-existing sites** — `src/PluginEditor.cpp:246, 247`,
-`src/gui/LookAndFeel.cpp:328` and `src/dsp/VelvetNoise.cpp:30`, each an `int` widened inside a
+`src/gui/LookAndFeel.cpp:402` and `src/dsp/VelvetNoise.cpp:30`, each an `int` widened inside a
 float expression (108 → 126 warning instances on that first job). No warning disappeared and no
 other category appeared. **All four were then fixed** in the follow-up change: each `int` operand
 now carries the explicit `(float)` cast that spells out the conversion the compiler was already

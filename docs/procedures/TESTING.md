@@ -1644,6 +1644,55 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   than by where the test reads; a probe on the OPEN and a probe on the CLOSE measure different
   windows, and round 22 used the wrong one.
 
+* **Round 30 — State tests 106, 107 and 108: the mapping a notch lands in, the press that owns it,
+  and the hand that is holding the button.**
+
+  **State test 106 — a notch inside a velocity drag** (`src/PluginEditor.h:R822-828`). Four legs,
+  each one of them arithmetic rather than "the wheel changed something":
+
+  | Leg | What it does | What it proves |
+  |---|---|---|
+  | A | the same drag with and without the swap modifier | the modifier really selects a DIFFERENT mapping, so the rest of the test is about the branch it claims to be about |
+  | B | a clean velocity run with no wheel at all | the expectation the reproduction is compared against, measured rather than assumed |
+  | C | the reported sequence: velocity drag to a known value, one notch, one more drag event | `0.0042 -> notch -> 0.1542 -> next drag 0.1558`, expected `0.1558`, error `+0.0000` — the drag resumes from the WHEEL-PRODUCED value |
+  | D | climb to 0.8, wheel back to 0.0, then a long climb | no ceiling and no stale baseline: one more event gives 0.2000 and the travel reaches 1.0000 |
+
+  **State test 107 — an ownerless press still owns the wheel** (`src/gui/SpectrumImager.cpp:R3302-3304`).
+  Eight legs, and **every one carries a positive control**, because *"nothing moved"* is the easiest
+  assertion in the world to pass against a fixture that has quietly stopped delivering events.
+
+  | Leg | The press | What it proves |
+  |---|---|---|
+  | A | an Alt-click reset, held, pointer on ANOTHER knob and then on the reset knob itself | neither moves, and no host change gesture opens on the pointed parameter |
+  | B | a held button with nothing claimed at all | no knob and no display movement, and nothing became undoable |
+  | C | an **Alt** press on the display's blank area (a plain one latches `dragBand` and IS a width drag) | the display does not move and the pointed knob does not either |
+  | D | a real drag | the wheel still reaches the press that owns it — the rule did not silence the case it exists to serve |
+  | E | the §8 velocity matrix: {vertical, horizontal} × {pointer inside, pointer elsewhere} | four runs, the press takes every notch |
+  | F | the Settings Persistence bar under a foreign press | a `juce::Slider` that is not a `Knob` obeys the same rule |
+  | G | an Alt-click reset, then a drag | **a disproof kept as a regression**: the drag writes nothing, because `~ScopedDragNotification` has set `sliderBeingDragged = -1` and every store in `Pimpl::mouseDrag` is behind a test on it |
+  | H | a value-box press the rotary-parent branch DECLINES (two clicks) | the second press that claims nothing is silenced too |
+
+  **State test 108 — one press per pointing device** (`src/gui/LookAndFeel.cpp:R16`). Driven through
+  the register's own `WheelPointer` overloads rather than through the editor, and that is forced
+  rather than chosen: nothing public creates a second `juce::MouseInputSource`
+  (`MouseInputSourceList::addSource` is private and reached only from a peer, which a test-built
+  editor does not have), so the device cannot be varied through a `MouseEvent`. Legs A–F drive the
+  routing matrix with three distinct keys; leg G pins `wheelPointerOf` against the real source, which
+  is the one inch the other legs cannot reach.
+
+  **Mutation coverage (M156–M167).** M156 an ownerless press falls through again; M157 the pointer
+  retargets an active press; M158 a declining press frees the wheel; M159 the notch goes through the
+  normal drag span in the velocity branch too; M160 the velocity baseline is never updated; M161 the
+  notch is applied on every later event; M162 the wheel ends the velocity drag; M163 the injection
+  lands outside JUCE's own clamp; M164 the register is process-wide again; M165 an idle device clears
+  every claim; M166 a release only reaches one device; M167 a press JUCE never saw still drags.
+  **Eleven killed. M163 is EQUIVALENT and is recorded as such rather than as covered**:
+  `handleVelocityDrag`'s next line clamps the same expression (juce_Slider.cpp:843-845) and
+  `stopAtEnd` is true for every slider here, so no test can distinguish it; the `jlimit` is kept
+  because the wrap branch two characters away would be distinguishable. **M167 survived its first
+  run and that is how the round's own hypothesis was disproved** — the guard it removed changed no
+  observable behaviour, so the guard was removed too, and leg G above is what stayed.
+
 * **Round 29 — State test 105: the wheel reads both axes, and it belongs to the press rather than
   to the pointer.**
 

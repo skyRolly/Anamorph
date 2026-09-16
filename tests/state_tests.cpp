@@ -5204,7 +5204,7 @@ static void testAWheelNotchInsideAPressBelongsToIt()
     //      measure, with the only change being that the wheel event carries no delta at
     //      all -- so together they say the rule is about the edit, not the event.
     //
-    //      RE-BASED IN ROUND 29 (ADR-0053, Devin `src/gui/SpectrumImager.cpp:3293`), and the
+    //      RE-BASED IN ROUND 29 (ADR-0053, Devin `src/gui/SpectrumImager.cpp:R3293`), and the
     //      paragraph above is left standing because it is the history. This leg used to spell
     //      "an event this handler ignores" as a HORIZONTAL-ONLY trackpad scroll, on the stated
     //      grounds that `deltaX` was read nowhere in the handler. That is no longer true and is
@@ -6946,7 +6946,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2567),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2576),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -12067,7 +12067,7 @@ static void testACompleteGestureEndpointPrecedesThePoll()
 //  State test 94 -- round 21. Two review findings whose fixes meet in one place:
 //  what a user action is allowed to claim it produced.
 //
-//  R1078-1081 (legs A-C, H). `SpectrumImager::resetParam`, `setBands` and
+//  R1078-1081 (legs A, C, H -- there is no leg B; round 30 corrected the count). `SpectrumImager::resetParam`, `setBands` and
 //  `setSoloMask` wrote their parameter inside a change gesture and DECLARED
 //  NOTHING, so the gesture close fell back to a live read of the parameter to
 //  learn the endpoint (PluginProcessor.cpp, the batch close). The write is
@@ -24902,7 +24902,7 @@ static void testNoStateCommandWaitsForAReplacement()
 
 // ---------------------------------------------------------------------------
 //  State test 105 -- THE WHEEL READS BOTH AXES, AND IT BELONGS TO THE PRESS
-//  (round 29: Devin `src/gui/SpectrumImager.cpp:3293`, plus the owner's two
+//  (round 29: Devin `src/gui/SpectrumImager.cpp:R3293`, plus the owner's two
 //  approved interaction rules and the drag+wheel boundary defect).
 //
 //  Three separate claims, measured here rather than argued:

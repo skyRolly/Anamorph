@@ -33,11 +33,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   drag back through, and the drag keeps its whole remaining travel: scroll a knob down to its
   minimum mid-drag and you can still drag it all the way up to the maximum. **While a button is
   held, a notch goes to the control you are holding** — wherever the cursor has wandered to, and
-  whatever it is sitting on — and nothing else moves until you let go.
+  whatever it is sitting on — and nothing else moves until you let go. That now holds for a press
+  that has nothing to scroll, too: hold Alt over a knob to reset it, press the blank part of the
+  Multiband display, or double-click a numeric readout, and scrolling moves **nothing at all** until
+  you release the button, rather than quietly editing whatever the pointer had drifted over.
   One notch is worth the same travel with a button held as without one, down to
   the smallest notch a trackpad can send: a fine scroll during a drag moves the control by one step
-  of its range rather than being rounded away to nothing.
-  Decision: ADR-0053. Regression coverage: State tests 80 and 88. Evidence: PR #144. [Verified]
+  of its range rather than being rounded away to nothing. And a notch during a drag taken with the
+  velocity modifier held (Ctrl/Cmd/Alt, where a small movement covers a lot of range) now lands
+  where it should: the drag carries on from the value the notch produced, with the whole remaining
+  travel still reachable in both directions — scroll a knob to its minimum in the middle of such a
+  drag and you can still drag it up to the maximum.
+  Decision: ADR-0053. Regression coverage: State tests 80, 88, 106 and 107. Evidence: PR #144.
+  [Verified]
 - **A whole scroll is now one Undo step, and carrying on scrolling the same control extends it.**
   Scrolling a knob used to record one Undo step per notch, so walking back a ten-notch adjustment
   took ten presses of Undo. One scroll is now one step, and if you come back to the same control and
@@ -73,6 +81,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **On a touchscreen, a finger resting on one control no longer steals the mouse wheel from
+  another.** Anamorph kept a single note of *"which control is being held"*, so on Linux — where a
+  touch is a genuinely separate pointer alongside the mouse — a finger landing anywhere in the
+  editor replaced whatever the mouse was holding, and the mouse's next scroll steered the control
+  under the finger instead. Each pointing device now has its own note, so a finger and a mouse can
+  hold two different controls and each one's scroll goes where it belongs. macOS was never
+  affected. Regression coverage: State test 108. Evidence: PR #144. [Verified]
 - **Pressing Undo, Redo, A/B or a preset button at the exact moment a band is being added no longer
   leaves a broken layout.** Adding or removing a band takes several steps internally, and some DAWs
   run their own housekeeping in the middle of it. If one of your clicks arrived in that gap, the

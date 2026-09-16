@@ -5440,3 +5440,97 @@ reported latency. No thread and no cross-thread path: the register is one messag
 No multiband width, split or band-move arithmetic. No plug-in format and no build change. The
 ADR-0052 no-op semantics and the ADR-0053 undo grouping are preserved and are held by State test 105
 legs J and A and by State tests 86, 87 and 88, which are unchanged.
+
+## §88. Round 30 — Devin `src/gui/SpectrumImager.cpp:R3302-3304`, `src/PluginEditor.h:R822-828`, `src/gui/LookAndFeel.cpp:R16`
+
+Three findings, two of which round 29 created and one of which it inherited from the framework.
+
+### R3302-3304 — an ownerless press retargets its wheel
+
+Round 29 asked one question, *"does some OTHER control hold the press"*, and two different states
+answered it the same way:
+
+    no active press owns this event                     -> the pointer decides
+    an active press owns it and has NO editable target  -> the pointer decides   <- wrong
+
+Three presses reach the second state: an Alt-click reset held down (`Knob::mouseDown` returns before
+`juce::Slider::mouseDown`), a press on the multiband display's Alt branch (which latches no
+identifier at all), and a `ValueBox` press the rotary-parent branch declines (a double click, a
+non-rotary parent, or an open editor). Each owns the interaction; none holds a value.
+
+The owner had already ruled: *"Once a mouse press owns the interaction, every wheel event arriving
+before mouse-up belongs to that active press, even when that press has no editable parameter
+target."* So the register's question changed name with its meaning — `wheelTakenByOwningPress`
+became `wheelTakenByAnyPress` — and it now returns `true` for every event that arrives with a button
+down on the sending device. The only `false` left is the one that says no button is down, which is
+also where a stranded claim dies. `WheelDragOwner::takeWheelNotch`'s `false` no longer frees the
+event and is read by nobody but the tests; it is kept because *"did this press take it"* is the
+question each implementation answers, and a silent `void` would make every one of them look as if it
+had.
+
+`Knob::sendWheelToJuce` lost its buttons-cleared branch and gained a `jassert` instead: the register
+consumes those now, so the laundering round 14 did is dead code with an assertion in its place.
+
+### R822-828 — a notch inside a velocity drag
+
+The finding says the notch is distorted. It is **discarded**, and the proof is the write set of
+`valueWhenLastDragged`: juce_Slider.cpp:762, :812, :843-846, :887, :941 — `handleRotaryDrag`,
+`handleAbsoluteDrag`, `handleVelocityDrag`, `mouseDown` and `mouseDrag`'s clamp. `Pimpl::setValue` is
+not among them. `handleVelocityDrag` is an integrator over `valueWhenLastDragged`, so a notch that
+writes only the VALUE is erased by the next drag event. Measured on Drive with the modifier held:
+
+    0.0042 -> notch -> 0.1542 -> next drag 0.0550      (the drag should have continued from 0.1542)
+
+Round 29's own pixel shift makes it worse in that branch, because `Pimpl::mouseDrag` ends with
+`mousePosWhenLastDragged = e.position` (:969): the shifted position is banked into JUCE's reference
+and the next event reads a delta that includes it — a one-shot spurious kick.
+
+No public API writes `valueWhenLastDragged`. `valueToProportionOfLength` is a public virtual and is
+the one expression the integrator reads, so the notch is banked as a PROPORTION and injected there
+for exactly one call, armed around one `juce::Slider::mouseDrag`. That call is provably
+`handleVelocityDrag`'s: nothing earlier in `Pimpl::mouseDrag` reads a proportion. The injection lands
+inside JUCE's own `jlimit` two lines below, so the whole remaining range stays reachable and the
+notch never passes through the velocity curve. Which branch is live is RECORDED rather than
+predicted — `snapValue` receives JUCE's chosen `DragMode` — and `dragIsVelocity` restates JUCE's
+predicate only for the one place that must decide before the call.
+
+After: `0.0042 -> notch -> 0.1542 -> next drag 0.1558`, expected `0.1558`, error `+0.0000`. The
+boundary: climbed to 0.8000, wheeled to 0.0000, one more event gives 0.2000, and a long climb still
+reaches 1.0000.
+
+### R16 — the register assumed one pointer
+
+It did, and JUCE does not. `MouseInputSourceList` is an array; each `MouseInputSourceImpl` owns its
+own `buttonState`; `getCurrentModifiers()` is the global modifiers with the mouse buttons stripped
+and only that device's buttons put back (juce_MouseInputSourceImpl.h:59-64) — so the button test was
+already per-device and only the register was not. The envelope, established per platform rather than
+asserted, is tabulated in ADR-0053's eighth-round section: unreachable on macOS, reachable with no
+opt-out on Linux, a second source but no established concurrency on Windows.
+
+The cells are now keyed by `WheelPointer`, the `(type, index)` pair `getOrCreateMouseInputSource`
+itself matches on. The release stays keyed on the CONTROL and clears every cell that names it,
+because `SpectrumImager::cancelActiveDrag` and `ValueBox::abortDragGesture` run from the reconcile
+with no event, and because one control can be under two devices at once.
+
+### What the round disproved, and what it corrected about itself
+
+The Alt-click reset branch leaves `Pimpl::useDragEvents` set from the previous press, so the next
+drag really does run `Pimpl::mouseDrag`'s body from stale anchors. It writes nothing:
+`~ScopedDragNotification` has already set `sliderBeingDragged = -1` (`sendDragEnd`,
+juce_Slider.cpp:396-399) and all three of that function's stores are behind a test on it; and
+`Pimpl::mouseDown` re-seeds `valueWhenLastDragged` and `valueOnMouseDown` from the live value on the
+next real press (:887-890). A guard was written and then removed. M167 surviving is what exposed the
+error — the guard changed nothing observable, so nothing could cover it. State test 107 leg G keeps
+the measurement, because the answer is JUCE's.
+
+Corrected: `sliderRegionSize` is **1** for a rotary, not 0 (initialised at :1324, assigned only for
+linear styles at :1266-1274) — the conclusion it supported is unchanged; the pop-up-menu click and
+single-click reset a `takeWheelNotch` comment named are unreachable here (`menuEnabled` and
+`singleClickModifiers` are never set); and State test 94's header claimed a leg B it does not have.
+
+### Coverage
+
+State tests 106 (four legs), 107 (eight, each with a positive control) and 108 (seven, driven through
+the register's own `WheelPointer` overloads because nothing public creates a second
+`MouseInputSource`). Mutations M156-M167: eleven killed, M163 equivalent and recorded as such.
+State 4040 / 0, DSP 396 / 0.

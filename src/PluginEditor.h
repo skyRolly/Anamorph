@@ -1033,9 +1033,15 @@ private:
         }
 
         // A NOTCH INSIDE THIS KNOB'S OWN DRAG (ADR-0053). `getThumbBeingDragged()` is >= 0 only
-        // between the mouseDown that actually STARTED a drag and the drag-end notification, so a
-        // press that started none -- a pop-up-menu click, a single-click reset -- does not qualify
-        // and a notch can never write outside a change gesture.
+        // between the mouseDown that actually STARTED a drag and the drag-end notification
+        // (`Pimpl::mouseDown` assigns it, `sendDragEnd` puts it back to -1 -- juce_Slider.cpp:878,
+        // :396-399), so a press that started none does not qualify and a notch can never write
+        // outside a change gesture. Round 30 named the presses that means, since the two this
+        // comment used to name are not among them: a pop-up-menu click needs `menuEnabled` and a
+        // single-click reset needs `singleClickModifiers`, and this editor sets neither, so JUCE's
+        // own branches for them are unreachable. What IS reachable is the Alt-click reset above,
+        // which returns before `juce::Slider::mouseDown`, and any press made while the value box
+        // under this knob has taken the drag instead.
         //
         // ...AND IT IS THE `WheelDragOwner` HOOK (round 29), so the same body serves a notch
         // delivered here by the pointer and one posted here by the register while the cursor is

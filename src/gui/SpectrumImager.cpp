@@ -2771,8 +2771,10 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     // ADR-0053 round 29: this press owns the wheel until it is released, wherever the cursor goes.
     // Claimed for EVERY press, before any branch decides what kind of press it is: the approved
     // rule is that no OTHER control may be moved by the wheel while a button is held, and a press
-    // that latches no identifier simply has nothing to add a notch to (`takeWheelNotch` says so by
-    // returning false, and the notch is then dropped rather than handed to whatever is pointed at).
+    // that latches no identifier simply has nothing to add a notch to. ROUND 30 moved WHERE that is
+    // decided: `takeWheelNotch` still answers false, but the drop is no longer a consequence of the
+    // return value -- `wheelTakenByAnyPress` consumes the event either way, so a press that declines
+    // the notch and a press that takes it both end the event here.
     anamorph::gui::claimDragWheel (*this, *this, anamorph::gui::wheelPointerOf (e.source));
     if (editingHandle >= 0) commitFreqEditor();
     // ADR-0038: the topology this gesture is about to be defined against, and (ADR-0039) the
@@ -3316,7 +3318,7 @@ bool SpectrumImager::takeWheelNotch (const juce::MouseEvent& e, const juce::Mous
     // event, has nothing to contribute -- and so must cost nothing: no press change, no gesture, no
     // undo step.
     //
-    // ...AND BOTH AXES ARE READ NOW (ADR-0053 round 29, Devin `src/gui/SpectrumImager.cpp:3293`).
+    // ...AND BOTH AXES ARE READ NOW (ADR-0053 round 29, Devin `src/gui/SpectrumImager.cpp:R3293`).
     // This line used to be `wheel.deltaY` alone, with a comment saying so, which meant a horizontal
     // two-finger trackpad gesture -- the whole of a trackpad's sideways scroll, delivered in
     // `deltaX` with `deltaY` at zero -- moved every knob in the editor and did NOTHING over this
