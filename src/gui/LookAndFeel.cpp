@@ -23,6 +23,35 @@ namespace anamorph::gui
 //  multiband display would evict the claim the mouse's own drag had made, and the mouse's next
 //  notch would steer whatever the finger was on. The cells are keyed by the device that claimed
 //  them, so a device can neither take nor clear another device's press.
+//
+//  ROUND 31, AND THE TWO QUESTIONS THE SHARED TABLE RAISES, BOTH ANSWERED FROM SOURCE:
+//
+//  * ACROSS PLUG-IN INSTANCES (Devin `src/gui/LookAndFeel.cpp:36`). Two instances in one host share
+//    this static -- one process, one copy -- and they share `juce::Desktop`'s source list with it,
+//    so a device has the SAME identity in both. That is the reason the sharing is harmless rather
+//    than a defect: the key is the device, and a device has exactly one press at a time. Its button
+//    state lives in its own `MouseInputSourceImpl` and JUCE routes every event during a drag to the
+//    component that press captured, so a second press by the same device cannot begin in another
+//    editor before the first ends. If one ever did, the later claim would replace the earlier --
+//    which is the live press, and the right answer. Neither instance can touch a cell it did not
+//    claim: `releaseDragWheel` checks the component, and `claimDragWheel` only ever writes this
+//    device's own. An editor destroyed mid-press leaves a `SafePointer` that reads back null, and
+//    the cell is reused by the next press or emptied by the next button-up scroll. State test 108
+//    legs F and K.
+//
+//  * WITHOUT BOUND (Devin `src/gui/LookAndFeel.cpp:36`, the registry-lifetime question). Cells are
+//    emptied and never erased, so the question is whether the KEYS are bounded -- and they are, by
+//    JUCE's own identity model rather than by anything here. `getOrCreateMouseInputSource` keeps
+//    exactly one `mouse` source and one `pen` source, matched on TYPE alone, so replugging a mouse
+//    or adding a second one mints no new key; touch sources are matched on (type, finger slot) under
+//    JUCE's own `jassert (0 <= touchIndex && touchIndex < 100)`
+//    (juce_MouseInputSourceList.h:67-89). The slot itself is RECYCLED: `MultiTouchMapper` hands out
+//    the lowest free index and `clearTouch` frees it at TouchEnd (juce_MultiTouchMapper.h:46-62,
+//    juce_XWindowSystem_linux.cpp:4176, :4207), so the high-water mark is the number of SIMULTANEOUS
+//    fingers, not the number of touches in the session. The table's hard ceiling is therefore 102
+//    rows in a process that cannot exist, and two or three in one that can -- allocated once, on the
+//    message thread, and reused for the rest of the session. It is not a leak, and it is not worth a
+//    lifecycle mechanism that would have to run somewhere.
 // ============================================================================================
 namespace
 {
@@ -60,20 +89,32 @@ void claimDragWheel (juce::Component& c, WheelDragOwner& o, WheelPointer p)
     dragWheelClaims.push_back ({ p, juce::Component::SafePointer<juce::Component> (&c), &o });
 }
 
-void releaseDragWheel (const juce::Component& c)
+void releaseDragWheel (const juce::Component& c, WheelPointer p)
 {
-    // ...only by the control that claimed it. A release from anything else would let a press that
-    // never owned the wheel hand it back on behalf of the one that does -- and the two overlap in
-    // the ordinary case, because a value box's press and its parent knob's are the same click to
-    // everything except JUCE's routing.
+    // ...only by the control that claimed it, and only for the device that is releasing (round 31,
+    // Devin `src/gui/LookAndFeel.cpp:R77-82`). BOTH halves of that are load-bearing:
     //
-    // KEYED ON THE COMPONENT AND NOT ON THE DEVICE, which is what lets the lost-release safety nets
-    // work at all: `SpectrumImager::cancelActiveDrag` and `ValueBox::abortDragGesture` are called
-    // from the editor's 24 Hz reconcile with no event, so there is no device to name -- but the
-    // control knows its own press is over. Whichever device made the claim, it named this
-    // component, and a component cannot be held by two devices at once in any way that outlives
-    // this call: the second claim on it would have replaced nothing here, and the first release
-    // ends both. Scanning every cell rather than one is also what makes that true.
+    //   * THE COMPONENT TEST. A release from anything else would let a press that never owned the
+    //     wheel hand it back on behalf of the one that does -- and the two overlap in the ordinary
+    //     case, because a value box's press and its parent knob's are the same click to everything
+    //     except JUCE's routing.
+    //   * THE DEVICE KEY. Round 30 had this function clear every cell naming the component, which
+    //     meant one device's `mouseUp` disowned every other device still holding that control.
+    //     Reachable wherever two sources exist at once -- X11 creates a `touch` source per finger
+    //     beside the live `mouse` source with no plug-in-side opt-out -- and the surviving press
+    //     then lost its notches to whatever the pointer was over. State test 108 legs H and I.
+    if (auto* cell = findClaim (p); cell != nullptr && cell->holder.getComponent() == &c)
+    {
+        cell->holder = nullptr;
+        cell->owner  = nullptr;
+    }
+}
+
+void releaseAllDragWheelClaims (const juce::Component& c)
+{
+    // THE EVENT-LESS PATH ONLY -- see the declaration for who is entitled to it and why. This is
+    // the one place a broad clear is right, and it is still narrow in the way that matters: it
+    // touches no cell that names a different component.
     for (auto& cell : dragWheelClaims)
         if (cell.holder.getComponent() == &c)
         {
@@ -960,7 +1001,7 @@ namespace
         }
         void mouseUp (const juce::MouseEvent& e) override
         {
-            abortDragGesture(); // close the host gesture before anything else reacts
+            endPress (&e);      // close the host gesture before anything else reacts
             juce::Label::mouseUp (e);
         }
 
@@ -969,9 +1010,17 @@ namespace
         // ONE body, so an abandoned press and a real one cannot diverge. Idempotent:
         // resetting a null unique_ptr is a no-op and the property write is a store,
         // so the editor's reconcile may call this on every tick.
-        void abortDragGesture() override
+        void abortDragGesture() override { endPress (nullptr); }
+
+        // STILL ONE BODY (round 31). The only thing the two entries disagree about is WHICH device
+        // is releasing: a `mouseUp` knows, and the reconcile has no event to ask. Everything after
+        // that line is identical, which is what keeps an abandoned press and a real one from
+        // diverging.
+        void endPress (const juce::MouseEvent* e)
         {
-            releaseDragWheel (*this);   // ADR-0053 round 29: the press is over, wherever it ended
+            // ADR-0053 round 29: the press is over, wherever it ended.
+            if (e != nullptr) releaseDragWheel (*this, wheelPointerOf (e->source));
+            else              releaseAllDragWheelClaims (*this);
             dragGesture.reset();
             if (auto* s = dynamic_cast<juce::Slider*> (getParentComponent()))
             {

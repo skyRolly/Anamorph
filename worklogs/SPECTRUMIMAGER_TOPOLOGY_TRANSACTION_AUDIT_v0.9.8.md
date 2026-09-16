@@ -5561,3 +5561,100 @@ a second section in `scripts/ubsan-ignorelist.txt`: one sub-check, one FILE rath
 verified in both directions as that file requires — with the entry in place the JUCE report is gone
 and the suite runs clean, and with a `1.0 / 0.0` seeded into `tests/state_tests.cpp` the run still
 fails on it.
+
+## §89. Round 31 — Devin `src/PluginEditor.h:R1045-1047`, `src/gui/LookAndFeel.cpp:R77-82`, `:36` (x2), `src/PluginEditor.h:R909`
+
+Two confirmed defects, both in round 30's own work; three investigations that changed no production
+code; and one CI failure that was not a code defect at all.
+
+### The bank was chosen one event too early
+
+Round 30 gave a notch inside a knob drag two banks — pixels for JUCE's absolute mapping, a proportion
+for its velocity integrator — and chose between them at the notch, from `lastDragMode`: the mode JUCE
+had reported for the PREVIOUS event through the `snapValue` override. That is a prediction about the
+next event, and `Pimpl::mouseDrag` does not consult it: it asks that event's own modifiers
+(`isAbsoluteDragMode (e.mods)`, juce_Slider.cpp:928). ctrl, alt and command each swap the mapping
+(`testFlags` is ANY of them), and any of the three can go down or come up between the notch and the
+next mouse move with the cursor perfectly still.
+
+Measured on Drive, State test 106 before the fix:
+
+| Sequence | Expected | Got |
+|---|---|---|
+| absolute → notch → velocity modifier down → drag | 0.1917 | **0.0421** |
+| velocity → notch → modifier up → drag back to the press point | 0.1500 | **0.0000** |
+| modifier down BEFORE the notch, then drag | 0.1917 | **0.0421** |
+| absolute → notch → absolute → velocity (10 px of travel) | 0.2317 | **0.2129** |
+
+The first three are one mechanism: the contribution went into the bank the next event does not read,
+while the other bank kept it to be spent later if the user changed the modifier back. The fourth is a
+different one that the matrix found rather than the finding: the absolute branch hands JUCE a SHIFTED
+position and `mousePosWhenLastDragged = e.position` (juce_Slider.cpp:969) stores whatever it was
+handed, so the whole pixel offset was banked into the integrator's own reference and the first
+velocity event read it as physical travel — the notch arriving a second time, bent through the speed
+curve and with the sign inverted.
+
+**The fix fills both banks at every notch and reconciles them where the mapping is known.**
+`wheelDragPx` is the persistent anchor shift, re-applied on every absolute event because
+`handleAbsoluteDrag` re-anchors at the press each time. `velocityDebt` is how far JUCE's integrator
+base has fallen behind the live value: a notch always incurs it (`Pimpl::setValue` never writes
+`valueWhenLastDragged`), an absolute event always discharges it (`handleAbsoluteDrag` writes that
+member from the shifted position), and a velocity event discharges it through the one injection.
+A velocity event carries the shift the PREVIOUS event carried, so the difference JUCE reads is the
+physical travel and nothing else. No new sensitivity scale: both banks are the same measured
+proportion, one of them times the `pixelsPerWholeRange()` that was already there. `lastDragMode` lost
+its only reader and went, along with the `snapValue` override that recorded it.
+
+**What was deliberately NOT changed.** Switching velocity → absolute mid-drag discards the velocity
+travel, because `handleAbsoluteDrag` recomputes from `valueOnMouseDown` and the offset from the press
+point. That is JUCE's, it happens with or without a notch, and altering it would be a new mapping
+rather than a fix. What the round guarantees is that the WHEEL's contribution survives every
+transition, which leg F measures at the press point and then drags to the top to show the remaining
+range intact.
+
+### A release spoke for every device
+
+`releaseDragWheel` was keyed on the component alone and cleared every cell naming it. The premise
+recorded for that — a component cannot be held by two devices at once in a way that outlives the call
+— is false on the platform round 30 added the per-device cells FOR: X11 dispatches a `touch` source
+per finger alongside the live `mouse` source (juce_XWindowSystem_linux.cpp:4176-4189). So the first
+`mouseUp` disowned every other device still holding that control, and the survivor's notches fell
+through to whatever the pointer was over. It now takes the releasing `WheelPointer` and clears that
+cell only; the two event-less safety nets keep a broad clear under the separate name
+`releaseAllDragWheelClaims`, which says something different and true — this control has abandoned its
+gesture, and it holds one anchor, so it has nothing to offer any device.
+
+The regression's discriminator is the DELIVERY, not the consumption: a lost claim still consumes the
+event under round 30's rule, so a leg that only asked "was it consumed?" would have passed against
+the defect.
+
+### The two investigations, and why neither changed code
+
+**Across instances.** Two Anamorph instances in one host share this file-local static — one process,
+one copy — and share `juce::Desktop`'s source list with it, so a device has the same identity in
+both. That is what makes the sharing correct: the key is the device, a device has one press at a
+time (its button state lives in its own `MouseInputSourceImpl`, and JUCE routes every event during a
+drag to the component that press captured), and neither instance can touch a cell it did not claim.
+
+**Registry lifetime.** Cells are emptied and never erased, so the question is the key space, and
+JUCE bounds it: one `mouse` and one `pen` source matched on TYPE alone — replugging a mouse or adding
+a second mints no new key — and touch sources matched on a finger slot that `MultiTouchMapper`
+recycles at TouchEnd (juce_MultiTouchMapper.h:46-62), under JUCE's own
+`jassert (0 <= touchIndex && touchIndex < 100)`. 102 rows is the ceiling of a process that cannot
+exist; two or three is the real one.
+
+### The sanitizer failure that was not a code defect
+
+Round 30's `[float-divide-by-zero]` section for `juce_Slider.cpp` was correct, was verified in both
+directions, and had no effect on CI. ccache 4.9.1 — the runner image's — has special handling only
+for the older `-fsanitize-blacklist=` spelling and hashes `-fsanitize-ignorelist=` as a plain
+argument string, so the same path with edited content is a cache HIT and the objects are the ones
+compiled under the previous list. Reproduced directly with ccache 4.9.1 on a unity TU of JUCE's own
+shape: section absent → compile, section added → **HIT**, and the stale object still traps; with
+`CCACHE_EXTRAFILES` naming the file, the same sequence MISSES and the rebuilt object is silent.
+
+The job now sets `CCACHE_EXTRAFILES`, the ignorelist's header warns the next person to edit it, and
+the disposition itself is unchanged and unwidened. Re-verified on this head with a local clang-18
+UBSan build of the state suite: **0 runtime errors with the section, exactly 1 without it**, at
+`juce_Slider.cpp:929`. State test 106 leg A now also pins the dependency from outside — a rotary must
+still report a linear region of zero — so a JUCE upgrade that changes it fails there.

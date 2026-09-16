@@ -1702,6 +1702,71 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   run and that is how the round's own hypothesis was disproved** — the guard it removed changed no
   observable behaviour, so the guard was removed too, and leg G above is what stayed.
 
+* **Round 31 — the modifier-transition matrix, and a release that names its device.**
+
+  **State test 106 legs E–J** (`src/PluginEditor.h:R1045-1047`). Which of JUCE's two drag mappings
+  an event takes is that event's own question — `isAbsoluteDragMode (e.mods)`, juce_Slider.cpp:928 —
+  so ctrl, alt or command can change between a notch and the next mouse move with the cursor
+  perfectly still. Six legs, one per transition §1 of the round named:
+
+  | Leg | The transition | What it measures |
+  |---|---|---|
+  | E | absolute → notch → the modifier goes DOWN → drag | the first VELOCITY event continues from the value the notch produced (pre-fix 0.0421 against 0.1917) |
+  | F | velocity → notch → the modifier comes UP → drag back to the press point | the ABSOLUTE mapping carries the notch across the transition (pre-fix 0.0000 against 0.1500), and a full range of travel still reaches the top |
+  | G | ctrl, alt and command, one run each | `testFlags` is ANY of the three, and alt mid-drag is not the reset (that is `mouseDown` only) |
+  | H | the modifier goes down BEFORE the notch | the notch is worth the same on either side of the modifier — the asymmetry `lastDragMode` introduced |
+  | I | the pointer outside the control and the notch delivered to ANOTHER control | the press still owns it, the pointed-at control never moves, and the transition still continues from the notch |
+  | J | absolute → notch → absolute → velocity | 10 px of travel is worth ONE event, not one event plus the pixel offset banked into `mousePosWhenLastDragged` (pre-fix −0.0188, sign inverted) |
+
+  **The tolerance is the interval grid, computed rather than chosen**: `Slider::setValue` snaps to
+  `getInterval()`, so a value read back can sit one step from the arithmetic — 4.2e-4 of Drive's
+  range. Two steps of that is the tolerance, and the error the legs exist to catch is 0.15.
+
+  **State test 106 leg A also gained the R909 upgrade tripwire**: the rotary must still report a
+  linear region of ZERO through `getPositionOfValue`, which is the outside-visible witness of the
+  private `sliderRegionSize` that makes JUCE's own divisor 0. A future JUCE that gives a rotary a
+  region fails there, next to the behaviour that depends on it.
+
+  **State test 108 legs H–K** (`src/gui/LookAndFeel.cpp:R77-82` and `:36`). H and I are §2's required
+  regression in both release orders: two devices press the same control, one releases, the other is
+  still held and scrolls. **The discriminator is the DELIVERY, not the consumption** — a lost claim
+  still consumes the event (round 30's rule: a held button moves nothing else), so a leg that only
+  asked "was it consumed?" would pass against the defect. J is the older half of the rule, that only
+  the control which claimed the wheel may hand it back. K is the cross-instance and registry-lifetime
+  disposition: one device holds one control at a time, and `claimDragWheel` reuses that device's row
+  rather than appending one per press.
+
+  **Mutation coverage (M168–M178). All eleven killed; no survivors.** M168 bank from the mapping the
+  notch itself sees (round 30's shape, restated); M169 choose the branch from the bank instead of the
+  modifiers; M170 spend no pixel offset in the absolute branch; M171 fill only the velocity bank;
+  M172 never discharge the debt, so it is applied twice; M173 hand the velocity branch an unshifted
+  event; M174 release every claim on the component; M175 release without checking the component;
+  M176 release every claim EXCEPT the releasing device's; M177 treat a zero region as absolute rather
+  than as JUCE's `+inf`; M178 remove the `[float-divide-by-zero]` section — the triggering-path half
+  of the ignorelist's both-directions check, which reports exactly one runtime error at
+  `juce_Slider.cpp:929` and none with the section present. **M163 keeps its round-30 disposition:
+  EQUIVALENT, not distinguishable, and not re-attempted** — the `jlimit` it removes is unchanged by
+  this round.
+
+  **One thing this round measured and did NOT fix, because it is neither new nor this round's.**
+  A local ASan+UBSan build of the state suite with **clang-18** dies in `main`'s prologue:
+  `AddressSanitizer: stack-overflow`, with `bp - sp` about 14 MB against an 8 MB `ulimit -s`. Every
+  test function is `static` with one call site, so `-O2` inlines all 147 of them into `main` and
+  their locals become one frame — the same large-test-frame shape PREfast's C6262 findings name.
+  **It is pre-existing**: the identical overflow reproduces on `b4744b0` with round 31's changes
+  stashed, at `main` in the same way. It is also **local to that toolchain** — CI's `sanitizers` job
+  is clang-22 and its ASan build runs the suite (on `b4744b0` it reached State test 106 before the
+  UBSan report stopped it). So ASan coverage for this suite is CI's, and a clang-18 ASan run of it is
+  not available without raising the stack limit. Recorded here rather than acted on: nothing in this
+  round caused it, and making 147 test entry points `noinline` to suit one local toolchain is a
+  change to the harness that no gate is asking for.
+
+  **One test-harness defect this round found in its own tooling, recorded because it invalidated a
+  first pass:** restoring a mutated file from a backup gives it the BACKUP's mtime, which is older
+  than the object built from the mutant — so ninja kept that object and the next mutant's run was
+  contaminated by the previous one's. The driver now stamps the restored file, and every verdict
+  above is from the re-run.
+
 * **Round 29 — State test 105: the wheel reads both axes, and it belongs to the press rather than
   to the pointer.**
 

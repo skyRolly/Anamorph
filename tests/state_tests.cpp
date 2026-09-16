@@ -25665,6 +25665,21 @@ static void testANotchInsideAVelocityDrag()
         check (plainReached > 0.0, "leg A: the absolute drag moved the knob");
         check (! juce::approximatelyEqual (plainReached, velocReached),
                "leg A: ...and the modifier really does select a DIFFERENT mapping (velocity)");
+
+        // THE UPGRADE TRIPWIRE for the `float-divide-by-zero` disposition (round 31, Devin
+        // `src/PluginEditor.h:R909`). Reaching the velocity branch at all depends on JUCE's
+        // second disjunct being false, and it is false because `sliderRegionSize` is 0 for a
+        // rotary and `(end - start) / 0` is `+inf`. The member is private; what IS visible is
+        // the same span through `getPositionOfValue`, which `dragIsVelocity` reads for exactly
+        // this reason. If a future JUCE gives a rotary a linear region, this check fails HERE --
+        // next to the behaviour that depends on it -- instead of the division quietly starting
+        // to return a finite number and flipping coarse-interval knobs into absolute mode.
+        const double region = std::abs ((double) driveK->getPositionOfValue (driveK->getMaximum())
+                                      - (double) driveK->getPositionOfValue (driveK->getMinimum()));
+        std::printf ("  [leg A] the rotary reports a linear region of %.1f px"
+                     " (0 is what makes JUCE's own divisor 0)\n", region);
+        check (juce::exactlyEqual (region, 0.0),
+               "leg A: a rotary still has no linear region -- the +inf branch is still the live one");
     }
 
     // ---- LEG B: the clean velocity run, which supplies the expectation for leg C --------------
@@ -25760,6 +25775,202 @@ static void testANotchInsideAVelocityDrag()
         check (reached > 0.999, "leg D: ...and the remaining travel still reaches the TOP");
     }
 
+
+    // ---- THE MODIFIER-TRANSITION MATRIX (round 31, Devin `src/PluginEditor.h:R1045-1047`) -------
+    //
+    //  WHICH MAPPING THE NEXT EVENT TAKES IS NOT KNOWN WHEN THE NOTCH ARRIVES. `Pimpl::mouseDrag`
+    //  asks THAT event's own modifiers (`isAbsoluteDragMode (e.mods)`, juce_Slider.cpp:928), and
+    //  the user can press or release ctrl/alt/command between the notch and the next move without
+    //  moving the mouse at all. Round 30 chose the bank from `lastDragMode` -- the mapping the
+    //  PREVIOUS event took -- so a transition put the notch in the bank the next event does not
+    //  read, and the contribution was silently dropped (and the other bank kept it, to be spent
+    //  later if the user changed the modifier back). Legs E-J are the six transitions §1 names.
+    //
+    //  THE ARITHMETIC THEY ALL USE. `handleVelocityDrag`'s `speed` is a function of `|mouseDiff|`
+    //  ALONE (juce_Slider.cpp:822-834), so one event with a 10 px delta is worth leg B's
+    //  `stepAfter3` wherever in the range it happens -- which is what makes "continued from the
+    //  value the notch produced" an equation rather than an inequality.
+    //
+    //  AND THE TOLERANCE IS THE INTERVAL GRID rather than a round number: `Slider::setValue`
+    //  snaps to `getInterval()`, so a value read back may sit up to one step away from the
+    //  arithmetic. Two steps of it is still three orders of magnitude smaller than the error
+    //  these legs exist to catch (a whole notch, 0.15 of Drive's range).
+    const double grain = driveK->getInterval() / (driveK->getMaximum() - driveK->getMinimum());
+    const double tol   = 2.0 * grain;
+    std::printf ("  [legs E-J] the interval grid is %.6f of the range; tolerance %.6f\n", grain, tol);
+
+    // ---- LEG E: absolute -> notch -> the modifier goes DOWN -> drag (transition A) --------------
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, plainHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, plainHeld));
+        const double beforeNotch = propOf (driveK);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky - 10.0f, dkx, dky, false, plainHeld),
+                                wheelOf (0.0f, 1.0f));
+        const double afterNotch = propOf (driveK);
+        // ...the modifier goes down HERE, with the cursor where the notch left it.
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, velocHeld));
+        const double afterMore = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+        const double expected = juce::jlimit (0.0, 1.0, afterNotch + stepAfter3);
+        std::printf ("  [leg E] absolute -> notch -> velocity modifier: %.4f -> %.4f -> %.4f"
+                     " (expected %.4f, error %+.4f)\n",
+                     beforeNotch, afterNotch, afterMore, expected, afterMore - expected);
+        check (afterNotch > beforeNotch + 1.0e-4, "leg E: the notch moved the knob");
+        check (std::abs (afterMore - expected) < tol,
+               "leg E: ...and the first VELOCITY event continued from the value the notch produced");
+    }
+
+    // ---- LEG F: velocity -> notch -> the modifier comes UP -> drag (transition B) ---------------
+    //      The absolute mapping re-anchors at the press (`prop (valueOnMouseDown) + mouseDiff /
+    //      pixelsForFullDragExtent`, juce_Slider.cpp:790-806), so the invariant with a cursor back
+    //      at the press point is exact: the knob must read the press value PLUS the notch, and the
+    //      whole remaining travel must still be there. Round 29 measured the same thing on a drag
+    //      that never left the absolute mapping (State test 105 leg L).
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, velocHeld));
+        const double atPress = propOf (driveK);
+        driveK->mouseDrag (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, velocHeld));
+        const double beforeNotch = propOf (driveK);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky - 40.0f, dkx, dky, false, velocHeld),
+                                wheelOf (0.0f, 1.0f));
+        const double afterNotch = propOf (driveK);
+        const double notchWorth = afterNotch - beforeNotch;
+        // ...the modifier comes up HERE, and the cursor goes back to where the press was.
+        driveK->mouseDrag (mev (driveK, dkx, dky, dkx, dky, true, plainHeld));
+        const double backAtPress = propOf (driveK);
+        for (int i = 1; i <= 8; ++i)
+            driveK->mouseDrag (mev (driveK, dkx, dky - 40.0f * (float) i, dkx, dky, true, plainHeld));
+        const double reached = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 320.0f, dkx, dky, true, plainHeld));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg F] velocity -> notch -> absolute: press %.4f, drag %.4f, notch %.4f,"
+                     " back at the press point %.4f (expected %.4f), then a full range reaches %.4f\n",
+                     atPress, beforeNotch, afterNotch, backAtPress, atPress + notchWorth, reached);
+        check (notchWorth > 1.0e-4, "leg F: the notch moved the knob");
+        check (std::abs (backAtPress - (atPress + notchWorth)) < tol,
+               "leg F: ...and the ABSOLUTE mapping still carries it after the transition");
+        check (reached > 0.999, "leg F: ...and the remaining travel still reaches the top");
+    }
+
+    // ---- LEG G: every modifier the swap reads (transition C) ------------------------------------
+    //      `isAbsoluteDragMode` tests `mods.testFlags (modifierToSwapModes)` and `testFlags` is ANY
+    //      of the flags, so ctrl, alt and command each swap the mapping on their own. Alt is the
+    //      interesting one: on a KNOB it is also the reset modifier -- but only at `mouseDown`, and
+    //      this leg presses it in the middle of a drag, which is exactly §1's transition.
+    {
+        const int flags[3] = { juce::ModifierKeys::ctrlModifier,
+                               juce::ModifierKeys::altModifier,
+                               juce::ModifierKeys::commandModifier };
+        const char* names[3] = { "ctrl", "alt", "command" };
+        for (int i = 0; i < 3; ++i)
+        {
+            const auto swapped = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier | flags[i]);
+            clearHistory();
+            zero (driveK, driveP);
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, plainHeld));
+            driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, plainHeld));
+            driveK->mouseWheelMove (mev (driveK, dkx, dky - 10.0f, dkx, dky, false, plainHeld),
+                                    wheelOf (0.0f, 1.0f));
+            const double afterNotch = propOf (driveK);
+            driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, swapped));
+            const double afterMore = propOf (driveK);
+            driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, swapped));
+            proc.pollUndoCoalesce();
+            const double expected = juce::jlimit (0.0, 1.0, afterNotch + stepAfter3);
+            std::printf ("  [leg G] %s: notch %.4f -> next drag %.4f (expected %.4f)\n",
+                         names[i], afterNotch, afterMore, expected);
+            check (std::abs (afterMore - expected) < tol,
+                   "leg G: every swap modifier continues from the value the notch produced");
+        }
+    }
+
+    // ---- LEG H: the modifier changed BEFORE the notch, not after (transition D) -----------------
+    //      The mirror of leg E. The notch is worth the same either way -- `wheelTargetValue` reads
+    //      the range and the wheel, not the mapping -- and the event after it continues from it in
+    //      both orders. Round 30 passed this order and failed leg E's, which is the asymmetry
+    //      `lastDragMode` introduced.
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, plainHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, plainHeld));
+        const double beforeNotch = propOf (driveK);
+        // ...the modifier goes down BEFORE the notch, and the notch is delivered with it held.
+        driveK->mouseWheelMove (mev (driveK, dkx, dky - 10.0f, dkx, dky, false, velocHeld),
+                                wheelOf (0.0f, 1.0f));
+        const double afterNotch = propOf (driveK);
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, velocHeld));
+        const double afterMore = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+        const double expected = juce::jlimit (0.0, 1.0, afterNotch + stepAfter3);
+        std::printf ("  [leg H] modifier down BEFORE the notch: %.4f -> %.4f -> %.4f (expected %.4f)\n",
+                     beforeNotch, afterNotch, afterMore, expected);
+        check (std::abs (afterMore - expected) < tol,
+               "leg H: the notch is worth the same whichever side of it the modifier moves");
+    }
+
+    // ---- LEG I: the pointer is somewhere else entirely (transitions E and F) --------------------
+    //      The press owns the notch wherever the cursor is (ADR-0053), so the transition must
+    //      behave identically when the notch is delivered to ANOTHER control and when the drag
+    //      events carry positions outside this knob. Both at once here, which is the harder case.
+    {
+        const float outX = (float) driveK->getWidth() + 60.0f, outY = -45.0f;
+        const float wkx = 0.5f * (float) monoK->getWidth(), wky = 0.5f * (float) monoK->getHeight();
+        const double mono0 = monoK->getValue();
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, plainHeld));
+        driveK->mouseDrag (mev (driveK, outX, outY, dkx, dky, true, plainHeld));
+        const double beforeNotch = propOf (driveK);
+        monoK->mouseWheelMove (mev (monoK, wkx, wky, dkx, dky, false, plainHeld), wheelOf (0.0f, 1.0f));
+        const double afterNotch = propOf (driveK);
+        driveK->mouseDrag (mev (driveK, outX, outY - 10.0f, dkx, dky, true, velocHeld));
+        const double afterMore = propOf (driveK);
+        driveK->mouseUp (mev (driveK, outX, outY - 10.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+        const double expected = juce::jlimit (0.0, 1.0, afterNotch + stepAfter3);
+        std::printf ("  [leg I] pointer outside, notch delivered to the Mono slider:"
+                     " %.4f -> %.4f -> %.4f (expected %.4f); Mono %.1f -> %.1f\n",
+                     beforeNotch, afterNotch, afterMore, expected, mono0, monoK->getValue());
+        check (afterNotch > beforeNotch + 1.0e-4, "leg I: the press took the notch from another control");
+        check (juce::exactlyEqual (monoK->getValue(), mono0), "leg I: ...and the pointed-at control never moved");
+        check (std::abs (afterMore - expected) < tol,
+               "leg I: ...and the transition still continued from the value the notch produced");
+    }
+
+    // ---- LEG J: the notch is applied ONCE, not once per mapping ---------------------------------
+    //      The absolute branch hands JUCE a SHIFTED position, and `mousePosWhenLastDragged =
+    //      e.position` (juce_Slider.cpp:969) stores whatever it was handed -- so an absolute event
+    //      after a notch banks the whole pixel offset into the integrator's own reference. The
+    //      first velocity event then reads a `mouseDiff` of (physical travel + the offset) and
+    //      bends it through the speed curve: the notch, already applied, arrives a second time as
+    //      a kick. One event of physical travel must be worth ONE event.
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, plainHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, plainHeld));
+        driveK->mouseWheelMove (mev (driveK, dkx, dky - 10.0f, dkx, dky, false, plainHeld),
+                                wheelOf (0.0f, 1.0f));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, plainHeld));   // absolute, shifted
+        const double beforeSwap = propOf (driveK);
+        driveK->mouseDrag (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, velocHeld));   // 10 px of travel
+        const double afterSwap = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+        const double expected = juce::jlimit (0.0, 1.0, beforeSwap + stepAfter3);
+        std::printf ("  [leg J] absolute -> notch -> absolute -> velocity: %.4f -> %.4f"
+                     " (expected %.4f, error %+.4f)\n",
+                     beforeSwap, afterSwap, expected, afterSwap - expected);
+        check (std::abs (afterSwap - expected) < tol,
+               "leg J: 10 px of travel is worth one event, not one event plus the banked notch");
+    }
     proc.editorBeingDeleted (ed);
     delete ed;
 }
@@ -26196,6 +26407,7 @@ static void testOnePressPerPointingDevice()
     using anamorph::gui::WheelPointer;
     using anamorph::gui::claimDragWheel;
     using anamorph::gui::releaseDragWheel;
+    using anamorph::gui::releaseAllDragWheelClaims;
     using anamorph::gui::dragWheelHolder;
     using anamorph::gui::wheelTakenByAnyPress;
 
@@ -26283,21 +26495,26 @@ static void testOnePressPerPointingDevice()
                "leg C: ...and the other device's live press survives it (KI-028's self-heal)");
     }
 
-    // ---- LEG D: release is keyed on the CONTROL, because the safety nets have no event ---------
+    // ---- LEG D: the EVENT-LESS cleanup is keyed on the control alone ---------------------------
+    //      `SpectrumImager::cancelActiveDrag` and `ValueBox::abortDragGesture` run from the
+    //      editor's 24 Hz reconcile with no event and so no device to name. What they say is that
+    //      the CONTROL has abandoned its gesture -- it holds one anchor, so once that is gone it
+    //      has nothing to add a notch to for any device -- and that is the one place a broad clear
+    //      is right. Legs H and I are the ordinary release, which is not this.
     {
-        releaseDragWheel (cB);   // what `cancelActiveDrag` / `abortDragGesture` call, event-less
-        std::printf ("  [leg D] after the control released itself, finger holds %s\n",
+        releaseAllDragWheelClaims (cB);
+        std::printf ("  [leg D] after the control abandoned its gesture, finger holds %s\n",
                      dragWheelHolder (fingerA) == nullptr ? "nothing" : "??");
         check (dragWheelHolder (fingerA) == nullptr,
-               "leg D: a control's own release ends the claim whichever device made it");
+               "leg D: the event-less cleanup ends the claim whichever device made it");
 
-        // ...AND ENDS EVERY DEVICE'S, which is the case a single-cell release would miss: one
-        // control can be under two devices at once (a finger on the knob the mouse is already
-        // holding), and the control has exactly one release to give.
+        // ...AND EVERY DEVICE'S, in one call: one control can be under two devices at once (a
+        // finger on the knob the mouse is already holding), and the reconcile has exactly one
+        // abandonment to report.
         claimDragWheel (cB, ownerB, fingerA);
         claimDragWheel (cB, ownerB, fingerB);
         claimDragWheel (cB, ownerB, mouse);
-        releaseDragWheel (cB);
+        releaseAllDragWheelClaims (cB);
         std::printf ("  [leg D] three devices on one control, released once: %s / %s / %s\n",
                      dragWheelHolder (fingerA) == nullptr ? "clear" : "STILL HELD",
                      dragWheelHolder (fingerB) == nullptr ? "clear" : "STILL HELD",
@@ -26344,6 +26561,94 @@ static void testOnePressPerPointingDevice()
         std::printf ("  [leg G] the main mouse source keys as (type %d, index %d)\n", p.type, p.index);
         check (p == mouse, "leg G: the main mouse source is the (mouse, 0) key the legs used");
         check (p != fingerA && p != fingerB, "leg G: ...and is not any touch key");
+    }
+
+    // ---- LEGS H AND I: TWO DEVICES ON ONE CONTROL, AND ONLY THE RELEASING ONE LOSES IT ---------
+    //      Round 31, Devin `src/gui/LookAndFeel.cpp:R77-82`, and §2's required regression exactly:
+    //      A presses the control, B presses the SAME control, one of them releases, the other is
+    //      still held, and the still-held one scrolls. Both release orders, because a scan that
+    //      stops at the first matching cell and a scan that clears them all fail different ones.
+    //
+    //      THE DISCRIMINATOR IS `ownerB.notches`. If the release took the survivor's claim with it,
+    //      `wheelTakenByAnyPress` finds no holder: it still CONSUMES the event (round 30's rule
+    //      -- a held button moves nothing else), so a test that only asked "was it consumed?"
+    //      would pass against the defect. What is lost is the delivery, so that is what is counted.
+    for (int order = 0; order < 2; ++order)
+    {
+        const auto releasing = order == 0 ? fingerA : mouse;   // leg H: B lets go.  leg I: A does.
+        const auto surviving = order == 0 ? mouse   : fingerA;
+        const char* leg = order == 0 ? "H" : "I";
+
+        claimDragWheel (cB, ownerB, mouse);      // A's press on the control
+        claimDragWheel (cB, ownerB, fingerA);    // B's press on the SAME control
+        releaseDragWheel (cB, releasing);
+
+        ownerA.notches = ownerB.notches = 0;
+        // The surviving device scrolls with the pointer over the OTHER control, which is the case
+        // the claim exists for.
+        const bool took = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, surviving);
+        std::printf ("  [leg %s] one of two devices released: survivor holds %s, releaser holds %s;"
+                     " consumed=%d, delivered A x%d B x%d\n", leg,
+                     dragWheelHolder (surviving) == &cB ? "the control" : "NOTHING",
+                     dragWheelHolder (releasing) == nullptr ? "nothing" : "STILL HELD",
+                     (int) took, ownerA.notches, ownerB.notches);
+        check (dragWheelHolder (surviving) == &cB,
+               "legs H/I: the device that did not release keeps its claim");
+        check (dragWheelHolder (releasing) == nullptr,
+               "legs H/I: ...and the device that did release loses its own");
+        check (took && ownerB.notches == 1 && ownerA.notches == 0,
+               "legs H/I: ...and the surviving press still gets the notch, not the pointed-at control");
+
+        releaseDragWheel (cB, surviving);
+        check (dragWheelHolder (surviving) == nullptr, "legs H/I: ...and then its own release ends it");
+    }
+
+    // ---- LEG K: ONE DEVICE IS ONE CELL, WHICHEVER EDITOR THE CONTROL IS IN ---------------------
+    //      §3 and §4 of round 31, both answered by the same measurement. The register is a
+    //      file-local static, so two Anamorph instances in one host share it -- and that is the
+    //      design, not an oversight: the table is keyed by the DEVICE, and a device has exactly one
+    //      press at a time whatever window it is in. `cA` and `cB` stand in for two editors here.
+    //
+    //      §3: the second instance's press REPLACES this device's claim rather than coexisting
+    //      with it, and the first instance's control becomes unreachable through the table. That is
+    //      what "the live press" means; there is no cell for the other instance to corrupt.
+    //      §4: and it is the same cell, reused. `claimDragWheel` looks the key up first and only
+    //      appends when it is new, so presses do not accumulate rows -- the row count is bounded by
+    //      the DEVICE IDENTITIES JUCE can mint, which is one `mouse`, one `pen` and one `touch` per
+    //      simultaneous finger with the slot freed at TouchEnd and the lowest free slot reused
+    //      (juce_MultiTouchMapper.h:46-62), under JUCE's own `touchIndex < 100` assertion
+    //      (juce_MouseInputSourceList.h:67-89).
+    {
+        claimDragWheel (cA, ownerA, mouse);          // "instance 1" takes the mouse's press
+        claimDragWheel (cB, ownerB, mouse);          // "instance 2" takes the same device's next one
+        ownerA.notches = ownerB.notches = 0;
+        const bool took = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, mouse);
+        std::printf ("  [leg K] the same device pressed a second editor's control: it holds %s;"
+                     " delivered A x%d B x%d\n",
+                     dragWheelHolder (mouse) == &cB ? "the second" : "the FIRST",
+                     ownerA.notches, ownerB.notches);
+        check (dragWheelHolder (mouse) == &cB, "leg K: one device holds exactly one control at a time");
+        check (took && ownerB.notches == 1 && ownerA.notches == 0,
+               "leg K: ...the live press, and the other editor's control is unreachable through it");
+        releaseDragWheel (cB, mouse);
+        check (dragWheelHolder (mouse) == nullptr && dragWheelHolder (fingerA) == nullptr
+                 && dragWheelHolder (fingerB) == nullptr,
+               "leg K: ...and one release per device leaves the table empty again");
+    }
+
+    // ---- LEG J: a release names the control as well as the device ------------------------------
+    //      The component test is the older half of the rule (a value box's press and its parent
+    //      knob's are one click to everything but JUCE's routing), and it still holds with the
+    //      device key beside it: the wrong control cannot hand back a claim it never made.
+    {
+        claimDragWheel (cB, ownerB, mouse);
+        releaseDragWheel (cA, mouse);            // the control that did NOT claim it
+        std::printf ("  [leg J] a foreign control released the mouse: it still holds %s\n",
+                     dragWheelHolder (mouse) == &cB ? "the claimant" : "NOTHING");
+        check (dragWheelHolder (mouse) == &cB,
+               "leg J: only the control that claimed the wheel can hand it back");
+        releaseDragWheel (cB, mouse);
+        check (dragWheelHolder (mouse) == nullptr, "leg J: ...and the claimant's own release does");
     }
 }
 

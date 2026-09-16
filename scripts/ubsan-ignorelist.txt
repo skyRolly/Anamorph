@@ -78,5 +78,17 @@ src:*juce-src/*
 # THE SCOPE IS ONE FILE, not the tree: every other vendored source still has
 # `float-divide-by-zero` instrumented, and `src/` and `tests/` cannot be reached by
 # this pattern at all.
+#
+# IF YOU EDIT THIS FILE, ccache WILL NOT NOTICE (round 31). `-fsanitize-ignorelist=`
+# changes what the compiler emits, but ccache 4.9.1 -- the runner image's version --
+# has special handling only for the older `-fsanitize-blacklist=` spelling and hashes
+# the new one as a plain argument string. Same path, edited content, cache HIT: the
+# next build reuses objects compiled under the PREVIOUS list, and a section you just
+# added does nothing. That is what happened to this section on its first push (CI run
+# 35136379451 failed on the very check named below, hours after the same section was
+# verified in both directions locally without ccache). `CCACHE_EXTRAFILES` in the
+# sanitizers job now names this file, which is ccache's own mechanism for an input
+# that affects the output without appearing in the preprocessed source -- and the
+# same variable is what a local ccache build of the sanitized targets needs.
 [float-divide-by-zero]
 src:*juce_Slider.cpp

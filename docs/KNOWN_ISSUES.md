@@ -172,7 +172,7 @@ consequences, both still open:
   *System Settings → Privacy & Security → Open Anyway*.
 
 Notarization (RH-PR-3) closes both.
-- **Evidence [Verified]:** .github/workflows/build.yml:2158-2160 (`codesign --force --deep --sign -`,
+- **Evidence [Verified]:** .github/workflows/build.yml:2177-2179 (`codesign --force --deep --sign -`,
   no notarization); packaging/macos/INSTALL.txt:4-10 (ad-hoc, not notarized), :34-41 (the
   Gatekeeper approval for the .pkg), :61-65 (the zip-route `xattr` step).
   See `docs/procedures/PACKAGING.md`.
@@ -206,7 +206,7 @@ session state, and is fully isolated from the pluginval state-restoration work.
 - **Mechanism:** on platforms **without per-pixel window alpha** (Linux/X11 with no compositor),
   `juce::TooltipWindow` cannot be semi-transparent, so the area **outside** the rounded capsule
   renders the window's opaque (black) fill. This is the same class of artefact already documented for
-  the popup menu, which is kept square for exactly this reason (src/gui/LookAndFeel.cpp:697-700).
+  the popup menu, which is kept square for exactly this reason (src/gui/LookAndFeel.cpp:738-741).
 - **Fix [code Verified; Linux visual re-test pending]:** `AnamorphLookAndFeel::drawTooltip`
   (src/gui/LookAndFeel.cpp) now pre-fills the full tooltip bounds with the capsule colour when
   `juce::Desktop::canUseSemiTransparentWindows()` is `false`, so the corners match the capsule rather

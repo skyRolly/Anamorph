@@ -6,6 +6,18 @@
 #include <juce_core/juce_core.h>
 
 // ============================================================================
+//  ARCHITECTURE REVIEW GATE: APPROVED (human architecture review, 2026-09-16).
+//  This file is a Thread Model change under `docs/policies/ARCHITECTURE_REVIEW_GATE.md`,
+//  which forbids merging one on a green build and which `AI_AGENT_POLICY.md` makes an
+//  agent Hard Stop. Its §Procedure was completed and the record is in ADR-0036: step 1
+//  (flagged as gated) and step 3 (the ADR section) in §31, step 2 (human review) as the
+//  owner's ruling of 2026-09-16 -- *"The `StateCommandGate` architecture is APPROVED and
+//  is not to be redesigned"* -- in §32's gate-compliance table, and step 4 (the release
+//  compatibility checklist) not reached, because no serialized field, parameter ID or
+//  reported latency moves. This banner is the same in-source form `src/PluginProcessor.h`
+//  carries for the same gate; round 31 added it here because the ADR held the record and
+//  the file did not, which read as an outstanding requirement.
+//
 //  ADR-0036 ROUND 28 (Devin R802-807, RISK-009). THE ADMISSION EVERY
 //  STATE-REPLACING COMMAND PASSES THROUGH.
 //

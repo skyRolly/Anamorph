@@ -952,7 +952,7 @@ such.** What is established is that the rewrite happens at a position that is no
 What is not established is the exact macOS event sequence that makes that position land one row up;
 that would need a trace on macOS, which was not available here. What supports it is arithmetic that
 accounts for all four observed controls. The box is placed `h + 8` above the cursor
-(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1081-1090`), so its top edge is a
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1130-1139`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
 `animToggle` 455–481 (`src/PluginEditor.cpp:2425-2450`). Taking each control's centre and
@@ -1486,7 +1486,7 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 declared, and `--fix` moved all three from `src/PluginEditor.h:518` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:1188`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:1226`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1496,7 +1496,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:1188`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:1226`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1506,7 +1506,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:1188"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:1226"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -1546,7 +1546,7 @@ editor rather than from the registration list: **43 of 45** controls carry the s
 two that do not are `titleButton` and `aboutLink`, and neither can produce the reported symptom:
 
   * **`titleButton` — the review's named example — has a DEAD fallback.** It carries componentID
-    `"ghost"`, and `drawButtonBackground` returns at `src/gui/LookAndFeel.cpp:509` — *before* the
+    `"ghost"`, and `drawButtonBackground` returns at `src/gui/LookAndFeel.cpp:550` — *before* the
     `animOr (b, "hovA", highlighted)` on `:373` is reached. Its text path ends at
     `LookAndFeel_V4::drawButtonText (g, b, false, false)`, which passes `highlighted` as a literal
     `false`. So the control has no hover visual at all, registered or not; the argument the review
@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3387` and `.github/workflows/build.yml:3472`, this round being
+`.github/workflows/build.yml:3406` and `.github/workflows/build.yml:3491`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -4174,7 +4174,7 @@ spells out the conversion the compiler was already performing:
 |---|---|---|
 | `src/PluginEditor.cpp:246` | `roundToInt (inner.getWidth() * 0.40f)` | `roundToInt ((float) inner.getWidth() * 0.40f)` |
 | `src/PluginEditor.cpp:247` | `roundToInt (getWidth() * 0.40f)` | `roundToInt ((float) getWidth() * 0.40f)` |
-| `src/gui/LookAndFeel.cpp:402` | `x0 + k * (barW + gap)` | `x0 + (float) k * (barW + gap)` |
+| `src/gui/LookAndFeel.cpp:443` | `x0 + k * (barW + gap)` | `x0 + (float) k * (barW + gap)` |
 | `src/dsp/VelvetNoise.cpp:30` | `std::round (m * cell + …)` | `std::round ((float) m * cell + …)` |
 
 **Nothing is suppressed.** No `#pragma`, no `-Wno-…`, no change to
@@ -4255,7 +4255,7 @@ macOS job, not assumed. Linux and Windows were unaffected and green in the same 
 the two runs, normalised, gives 15 → 19 distinct sites and 108 → 126 instances: nothing
 disappeared, no category changed, and the whole delta is
 **`-Wimplicit-int-float-conversion` at four pre-existing sites** —
-`src/PluginEditor.cpp:246, 247` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:402`
+`src/PluginEditor.cpp:246, 247` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:443`
 (`k * (barW + gap)`) and `src/dsp/VelvetNoise.cpp:30` (`m * cell`), each an `int` widened inside a
 float expression. **Recorded, not fixed here** — the source was unchanged by this change, so these
 were new diagnostics on old code, and Level 1 is not part of the `TESTING_POLICY` hard release
@@ -11958,6 +11958,52 @@ Flow, Latency, Plugin Format, Build System: untouched.
 M57–M60); `docs/procedures/CI_CD.md` (the re-measured stack figures);
 `CHANGELOG.md` `[0.9.8]` (two Fixed entries);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §73. [Verified]
+
+### Fifty-first pass — the bank chosen a beat too early, and the release that spoke for everyone (2026-09-16)
+
+**Trigger.** Five review items on PR #144, all of them against round 30's own work:
+`src/PluginEditor.h:R1045-1047` (*"modifier changes erase wheel adjustments"*),
+`src/gui/LookAndFeel.cpp:R77-82` (*"shared controls lose live wheel claims"*), two investigations at
+`src/gui/LookAndFeel.cpp:36` (cross-instance ownership, device-registry lifetime) and
+`src/PluginEditor.h:R909` (the velocity path's dependency on infinity).
+
+**What the round found.** R1045 is real: round 30 chose the notch's bank from `lastDragMode`, the
+mapping the PREVIOUS event took, while `Pimpl::mouseDrag` chooses from the NEXT event's own
+modifiers — so a ctrl/alt/command change between the notch and the next move put the contribution in
+the bank nothing reads. Measured at 0.1496 of Drive's range in one direction and a whole notch
+(0.1500) in the other, plus a third face the finding did not name: an absolute event after a notch
+banks the pixel offset into `mousePosWhenLastDragged`, and the first velocity event then reads it as
+physical travel and bends it through the speed curve (−0.0188, sign inverted). R77-82 is real for the
+same reason round 30 added the per-device cells at all: one device's `mouseUp` cleared every device's
+claim on that control.
+
+**Fix.** Both banks are filled at every notch and reconciled where the mapping is known — the pixel
+anchor shift the absolute mapping re-applies on every event, and a `velocityDebt` that says how far
+JUCE's integrator has fallen behind the live value, discharged by whichever mapping runs next. A
+velocity event carries the previous event's shift so the integrator sees only physical travel.
+`releaseDragWheel` takes the releasing `WheelPointer`; the event-less safety nets keep a broad clear
+under the separate name `releaseAllDragWheelClaims`. `lastDragMode` and the `snapValue` override that
+recorded it are gone, having lost their only reader.
+
+**What the two investigations disposed without touching production code.** The process-wide table is
+shared by two instances in one host and that is correct: the key is the device, a device has one
+press at a time, and JUCE routes every event during a drag to the component that press captured. The
+keys are bounded — one `mouse` and one `pen` matched on type alone, touch matched on a finger slot
+that `MultiTouchMapper` recycles at TouchEnd under JUCE's own `touchIndex < 100` assertion — so the
+table cannot grow without bound and no lifecycle mechanism was added.
+
+**The one that was not a code defect at all.** R909's ignorelist section was correct when round 30
+wrote it and had no effect, because ccache 4.9.1 recognises only the older `-fsanitize-blacklist=`
+spelling and hashes the new one as an argument string: same path, edited content, cache hit, stale
+instrumented objects. Reproduced directly; fixed with `CCACHE_EXTRAFILES` in the sanitizers job, and
+recorded in the ignorelist's own header so the next person to edit it is not caught by it.
+
+**Documents touched.** `ADR-0053` (ninth-round section), `procedures/TESTING.md` (round-31 block,
+State test 106 legs E–J, State test 108 legs H–K, M168–M178), `scripts/ubsan-ignorelist.txt`,
+`.github/workflows/build.yml`, `src/StateCommandGate.h` (the gate banner the ADR carried and the file
+did not), `CHANGELOG.md`, this file and the worklog §89.
+
+[Verified]
 
 ### Fiftieth pass — the press that owns a notch it cannot use, and the hand holding the button (2026-09-16)
 

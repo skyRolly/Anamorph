@@ -81,6 +81,22 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **Holding Ctrl, Alt or Command part-way through a drag no longer wipes out a scroll you made
+  during it.** Those keys switch a knob to fine, velocity-based dragging, and Anamorph decided where
+  to keep a mid-drag scroll adjustment the moment you made it — from the mapping the drag was using
+  at that instant. If you pressed or released one of the keys before the next mouse movement, the
+  drag switched mapping and the scroll was left in the wrong place: the knob jumped back to where it
+  had been before the scroll, and the adjustment reappeared later if you changed the key back. On
+  Drive that was worth about 15% of the knob's travel. The adjustment is now kept in a form both
+  mappings can spend, so the next movement always continues from the value the scroll produced,
+  whichever key you are holding, and it is applied exactly once. Regression coverage: State test 106
+  legs E-J. Evidence: PR #144. [Verified]
+- **On a touchscreen, one finger lifting no longer takes the mouse wheel away from the other hand.**
+  Each pointing device gets its own note of what it is holding (below), but releasing ANY of them
+  cleared them all — so with a finger and the mouse each holding a control, the first release left
+  the other one's scrolls falling through to whatever the pointer happened to be over. A release now
+  ends only the press that made it. Regression coverage: State test 108 legs H-K. Evidence: PR #144.
+  [Verified]
 - **On a touchscreen, a finger resting on one control no longer steals the mouse wheel from
   another.** Anamorph kept a single note of *"which control is being held"*, so on Linux — where a
   touch is a genuinely separate pointer alongside the mouse — a finger landing anywhere in the

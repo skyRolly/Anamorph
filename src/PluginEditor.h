@@ -736,9 +736,9 @@ private:
         void mouseDown (const juce::MouseEvent& e) override
         {
             wheelDragPx = 0.0;      // a new press starts with no notch in it (ADR-0053)
-            velocityInject = 0.0;   // ...in either of the two mappings (round 30)
+            velocityDebt = 0.0;     // ...in either of the two mappings (round 30)
             injectingVelocity = false;
-            lastDragMode = juce::Slider::notDragging;
+            lastPassedShift = {};   // ...and JUCE's own cursor reference is the press's (round 31)
             // ADR-0053 round 29: this press owns the wheel until it is released, wherever the
             // cursor travels. Claimed for EVERY press, not only one that starts a drag: the rule
             // the owner approved is that no other control may be moved by the wheel while a button
@@ -892,8 +892,25 @@ private:
         // `isAbsoluteDragMode` read no proportion). The injection therefore lands INSIDE the
         // `jlimit (0, 1, ...)` two lines below it, so the whole remaining range stays reachable,
         // it is applied exactly once, and it never passes through the velocity curve.
-        double velocityInject    = 0.0;    // proportion a notch banked for the integrator
+        // HOW FAR JUCE'S INTEGRATOR IS BEHIND THE LIVE VALUE, as a proportion (round 31: round 30
+        // called this `velocityInject` and only ever added to it when the notch's PREDICTED mapping
+        // was the velocity one). A notch always leaves the integrator behind, whichever mapping is
+        // active, because `Pimpl::setValue` never writes `valueWhenLastDragged`; an ABSOLUTE drag
+        // event always catches it up, because `handleAbsoluteDrag` writes that member outright from
+        // a position this class has already shifted. So the debt is incurred at every notch and
+        // discharged by whichever of the two mappings the next event turns out to take -- by the
+        // injection below, or by the absolute branch of `mouseDrag` clearing it. Exactly once.
+        double velocityDebt      = 0.0;
         bool   injectingVelocity = false;  // armed only around one juce::Slider::mouseDrag call
+        // THE SHIFT THE LAST EVENT HANDED TO JUCE. `Pimpl::mouseDrag` ends with
+        // `mousePosWhenLastDragged = e.position` (juce_Slider.cpp:969) -- whatever it was HANDED,
+        // shift included -- and `handleVelocityDrag` reads a DIFFERENCE against that member. So a
+        // velocity event must carry the same shift the previous event carried, or the change in
+        // the shift is read as physical travel and bent through the speed curve: the notch, already
+        // applied, arriving a second time as a kick (State test 106 leg J measured -0.0188 with the
+        // sign inverted). Carrying the previous shift makes the difference exactly the physical
+        // travel, which is all the integrator is entitled to.
+        juce::Point<float> lastPassedShift {};
 
         // JUCE's own branch test, from `Slider::Pimpl::mouseDrag` and `::isAbsoluteDragMode`
         // (juce_Slider.cpp), negated. The swap modifier is pinned in this class's constructor
@@ -932,8 +949,8 @@ private:
             const double p = juce::Slider::valueToProportionOfLength (v);
             if (! injectingVelocity) return p;
             injectingVelocity = false;          // exactly ONE call sees it -- handleVelocityDrag's
-            const double inject = velocityInject;
-            velocityInject = 0.0;               // ...and it is banked exactly once
+            const double inject = velocityDebt;
+            velocityDebt = 0.0;                 // ...and the debt is discharged exactly once
             // CLAMPED HERE TOO, though the only caller that can see the injection clamps
             // immediately afterwards: `handleVelocityDrag`'s next line is
             // `newPos = (isRotary() && ! rotaryParams.stopAtEnd) ? newPos - floor (newPos)
@@ -946,17 +963,12 @@ private:
             return juce::jlimit (0.0, 1.0, p + inject);
         }
 
-        // WHICH BRANCH JUCE ACTUALLY TOOK, recorded rather than predicted. `Pimpl::mouseDrag`
-        // passes the mode it chose to `owner.snapValue`, so this is JUCE's own answer to the
-        // question `dragIsVelocity` predicts -- and State test 107 asserts the two never disagree.
-        // The value is returned untouched: round 29 moved the wheel fold OUT of here and into
-        // `mouseDrag`, and nothing has moved back.
-        double snapValue (double attempted, juce::Slider::DragMode m) override
-        {
-            lastDragMode = m;
-            return juce::Slider::snapValue (attempted, m);
-        }
-        juce::Slider::DragMode lastDragMode = juce::Slider::notDragging;
+        // (WHICH BRANCH JUCE ACTUALLY TOOK used to be recorded here, in a `snapValue` override
+        // that returned its argument untouched and stored the `DragMode` JUCE passed it. Round 30
+        // banked the notch from that record; round 31 stopped, because the mapping the notch must
+        // be banked for is the NEXT event's and not the last one's -- see `takeWheelNotch`. With
+        // its one reader gone the override recorded state nothing read, so it is gone too. Round 29
+        // had already moved the wheel fold out of it, and nothing has moved back.)
 
         [[nodiscard]] double pixelsPerWholeRange() const
         {
@@ -1002,29 +1014,47 @@ private:
         {
             // THE VELOCITY BRANCH TAKES THE OTHER MECHANISM (round 30). A pixel shift means nothing
             // to an integrator that reads a per-event cursor DELTA, so the notch goes in through
-            // `valueToProportionOfLength` instead and the event is handed over untouched.
+            // `valueToProportionOfLength` instead -- and the event carries the shift the PREVIOUS
+            // event carried, not this press's current one, so that the delta JUCE reads against
+            // `mousePosWhenLastDragged` is the physical travel and nothing else (round 31).
             if (dragIsVelocity (e.mods))
             {
                 const juce::ScopedValueSetter<bool> arm (injectingVelocity,
-                                                        ! juce::exactlyEqual (velocityInject, 0.0));
-                juce::Slider::mouseDrag (e);
+                                                        ! juce::exactlyEqual (velocityDebt, 0.0));
+                juce::Slider::mouseDrag (lastPassedShift.isOrigin() ? e : shifted (e, lastPassedShift));
                 return;
             }
             const auto shift = wheelDragShift();
-            if (shift.isOrigin()) { juce::Slider::mouseDrag (e); return; }
-            juce::Slider::mouseDrag ({ e.source, e.position + shift, e.mods,
-                                       e.pressure, e.orientation, e.rotation, e.tiltX, e.tiltY,
-                                       e.eventComponent, e.originalComponent, e.eventTime,
-                                       e.mouseDownPosition, e.mouseDownTime,
-                                       e.getNumberOfClicks(), e.mouseWasDraggedSinceMouseDown() });
+            lastPassedShift = shift;
+            juce::Slider::mouseDrag (shift.isOrigin() ? e : shifted (e, shift));
+            // AND THE INTEGRATOR IS NOW CAUGHT UP, whatever it was owed: `handleAbsoluteDrag` has
+            // just written `valueWhenLastDragged` from the shifted position, so the notch is inside
+            // it. Clearing unconditionally is the same statement -- a press that banked nothing
+            // owes nothing, and a press whose `useDragEvents` is false (the Alt-click reset's) can
+            // never have banked, because `takeWheelNotch` refuses while `getThumbBeingDragged()`
+            // is negative.
+            velocityDebt = 0.0;
+        }
+
+        // ONE SHIFTED COPY OF AN EVENT. `mouseDownPosition` is deliberately NOT shifted: JUCE's own
+        // absolute anchor is `mouseDragStartPos`, captured in `Pimpl::mouseDown` from the press, and
+        // this member is not it.
+        [[nodiscard]] static juce::MouseEvent shifted (const juce::MouseEvent& e, juce::Point<float> by)
+        {
+            return { e.source, e.position + by, e.mods,
+                     e.pressure, e.orientation, e.rotation, e.tiltX, e.tiltY,
+                     e.eventComponent, e.originalComponent, e.eventTime,
+                     e.mouseDownPosition, e.mouseDownTime,
+                     e.getNumberOfClicks(), e.mouseWasDraggedSinceMouseDown() };
         }
         void mouseUp (const juce::MouseEvent& e) override
         {
             juce::Slider::mouseUp (e);
             wheelDragPx = 0.0;
-            velocityInject = 0.0;
+            velocityDebt = 0.0;
             injectingVelocity = false;
-            anamorph::gui::releaseDragWheel (*this);
+            lastPassedShift = {};
+            anamorph::gui::releaseDragWheel (*this, anamorph::gui::wheelPointerOf (e.source));
         }
         void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
         {
@@ -1077,16 +1107,24 @@ private:
                 //
                 // IN PIXELS (round 29): the proportion that actually moved, times the travel JUCE
                 // itself maps a whole range across. See `wheelDragPx`.
-                // ...IN THE SPACE THE ACTIVE MAPPING READS. An absolute drag recomputes from the
-                // cursor, so the notch is banked as the pixels that would have moved it there; a
-                // velocity drag integrates a proportion, so it is banked as that proportion.
-                // `lastDragMode` is what JUCE told us the last event took (`snapValue`), which for
-                // a press that has had at least one event -- and `Pimpl::mouseDown` ends with one
-                // -- is the branch the next event takes too unless the modifier changes under the
-                // user's finger, and `mouseDrag` asks the CURRENT event's modifiers for that.
+                //
+                // ...AND IN BOTH MAPPINGS' SPACES, BECAUSE THIS IS NOT WHERE THE MAPPING IS CHOSEN
+                // (round 31, Devin `src/PluginEditor.h:R1045-1047`). Round 30 picked one bank here
+                // from `lastDragMode` -- the mapping the PREVIOUS event took -- and that is a
+                // prediction, not a fact: `Pimpl::mouseDrag` asks the NEXT event's own modifiers
+                // (`isAbsoluteDragMode (e.mods)`, juce_Slider.cpp:928), and ctrl/alt/command can go
+                // down or come up between this notch and that event without the mouse moving at
+                // all. A wrong prediction put the notch in the bank the next event does not read
+                // and the contribution vanished, while the other bank kept it to be spent later if
+                // the user changed the modifier back -- measured at 0.15 of the range on Drive,
+                // State test 106 legs E-J.
+                //
+                // Both banks are cheap and neither is a scale of its own: `wheelDragPx` is this
+                // same proportion in the pixels the absolute mapping reads, and the two are
+                // reconciled where they are SPENT, which is the only place that knows the mapping.
                 const double moved = juce::Slider::valueToProportionOfLength (getValue()) - base;
-                if (lastDragMode == juce::Slider::velocityDrag) velocityInject += moved;
-                else                                            wheelDragPx    += moved * pixelsPerWholeRange();
+                wheelDragPx  += moved * pixelsPerWholeRange();
+                velocityDebt += moved;
                 return true;
             }
             return false;

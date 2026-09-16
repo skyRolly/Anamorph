@@ -432,9 +432,26 @@ inline WheelPointer wheelPointerOf (const juce::MouseInputSource& s) noexcept
 }
 
 void claimDragWheel (juce::Component&, WheelDragOwner&, WheelPointer);
-// NOT pointer-keyed, and deliberately: two of the four release sites are the lost-release safety
-// nets, which run from the editor's reconcile with no event and so no device to name.
-void releaseDragWheel (const juce::Component&);
+
+// THE ORDINARY RELEASE, AND IT NAMES A DEVICE (round 31, Devin `src/gui/LookAndFeel.cpp:R77-82`).
+// Round 30 keyed the release on the component alone and cleared EVERY cell that named it, on the
+// premise that a component cannot be held by two devices at once in a way that outlives the call.
+// That premise is false on the very platform round 30 added the cells for: X11 dispatches a `touch`
+// source per finger alongside the live `mouse` source (juce_XWindowSystem_linux.cpp:4176-4189), so
+// a finger and the mouse really can be holding the same control, and the first `mouseUp` took the
+// other one's ownership away with it -- after which its notches fell through to whatever the
+// pointer happened to be over. A release knows which device released; it says so.
+void releaseDragWheel (const juce::Component&, WheelPointer);
+
+// THE EVENT-LESS CLEANUP, and the only caller that is entitled to it: the lost-release safety nets
+// (`SpectrumImager::cancelActiveDrag`, `ValueBox::abortDragGesture`) run from the editor's 24 Hz
+// reconcile with no event, and so with no device to name. It is correct there and nowhere else,
+// because what it says is "this control has abandoned its gesture": a control holds ONE anchor
+// (`downProp`, `dragBand`, JUCE's own `valueOnMouseDown`), so once that is gone it has nothing to
+// add a notch to for ANY device. The separate name is the point -- an ordinary release cannot
+// reach this by forgetting an argument.
+void releaseAllDragWheelClaims (const juce::Component&);
+
 juce::Component* dragWheelHolder (WheelPointer) noexcept;
 
 // True when this event has been dealt with and the caller must do nothing whatsoever with it --

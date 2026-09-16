@@ -2997,7 +2997,10 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
 }
 void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 {
-    anamorph::gui::releaseDragWheel (*this);   // ADR-0053 round 29: the press is over
+    // ADR-0053 round 29: the press is over -- and round 31: the press of THIS DEVICE is over.
+    // A broad clear here would disown a second finger that is still holding this display
+    // (`releaseAllDragWheelClaims` and the declaration in LookAndFeel.h say who may do that).
+    anamorph::gui::releaseDragWheel (*this, anamorph::gui::wheelPointerOf (e.source));
     // ADR-0038, and it matters most here: mouseUp is where the ON-RELEASE ACTIONS live --
     // remove a band, toggle a solo bit, commit a band move. A gesture whose topology moved
     // must fire none of them, exactly as a release lost outside the window fires none.
@@ -3211,7 +3214,10 @@ void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 // parameter's endChangeGesture can never fire twice.
 void SpectrumImager::cancelActiveDrag()
 {
-    anamorph::gui::releaseDragWheel (*this);   // ADR-0053 round 29: whatever ends the press, ends this
+    // ADR-0053 round 29: whatever ends the press, ends this. The EVENT-LESS entry -- this runs from
+    // the editor's reconcile as well as from `mouseUp`'s stale path, so there is no device to name
+    // and the gesture is being abandoned for all of them (round 31).
+    anamorph::gui::releaseAllDragWheelClaims (*this);
     // BEFORE EVERYTHING ELSE (ADR-0050, applied to this function). A release action that has already
     // taken its identifiers into locals owns the record until it finishes, and re-entering here
     // while it runs must change NOTHING -- not the identifiers, which are already gone, and not

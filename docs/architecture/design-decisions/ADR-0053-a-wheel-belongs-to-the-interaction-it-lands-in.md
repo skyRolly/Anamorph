@@ -899,6 +899,98 @@ One more in-source claim was corrected: the pop-up-menu click and single-click r
 `takeWheelNotch` comment named as the thumb-less presses are **unreachable here**: they need
 `menuEnabled` and `singleClickModifiers`, and this editor sets neither.
 
+### What a ninth review round changed: when the mapping is chosen, and who may hand a claim back
+
+Round 31 (2026-09-16). Two confirmed defects, both of them in round 30's own work, and three
+investigations that changed no production code.
+
+**1. THE BANK IS CHOSEN WHERE IT IS SPENT, NOT WHERE IT IS FILLED** (Devin
+`src/PluginEditor.h:R1045-1047`, *"modifier changes erase wheel adjustments"*). Round 30 gave the
+notch two banks — pixels for the absolute mapping, a proportion for the velocity integrator — and
+picked between them at the notch, from `lastDragMode`: the mapping JUCE reported for the PREVIOUS
+event. That is a prediction. `Pimpl::mouseDrag` asks the NEXT event's own modifiers
+(`isAbsoluteDragMode (e.mods)`, juce_Slider.cpp:928), and ctrl, alt or command can go down or come
+up between the notch and that event with the mouse perfectly still. When the prediction was wrong
+the contribution went into the bank the next event does not read and vanished — while the other bank
+kept it, to be spent later if the user changed the modifier back. Measured on Drive: press, drag to
+0.0400, notch to 0.1900, press the velocity modifier, drag — and the knob reads **0.0421**, the
+integrator having resumed from the pre-notch value, an error of 0.1496 of the range. The mirror
+(velocity, notch, release the modifier, drag back to the press point) read **0.0000** where the
+notch's own value was 0.1500.
+
+The fix is to fill BOTH banks at every notch and reconcile them where the mapping is known:
+`wheelDragPx` is the persistent anchor shift the absolute mapping needs on every event, and
+`velocityDebt` is how far JUCE's integrator base has fallen behind the live value — incurred by any
+notch (`Pimpl::setValue` never writes `valueWhenLastDragged`) and discharged by whichever mapping
+runs next, the injection or the absolute branch's own write. No new scale is introduced: both
+numbers are the same measured proportion, one of them multiplied by the travel
+`pixelsPerWholeRange()` already defined. `lastDragMode` had no other reader, so the `snapValue`
+override that recorded it is gone rather than left recording something nothing reads.
+
+**A third face of the same finding, which the matrix found and the report did not have to be told
+about:** the absolute branch hands JUCE a SHIFTED position, and `mousePosWhenLastDragged = e.position`
+(juce_Slider.cpp:969) stores whatever it was handed. So one absolute event after a notch banked the
+whole pixel offset into the integrator's own reference, and the first velocity event then read a
+`mouseDiff` of (physical travel + the offset) and bent it through the speed curve — the notch,
+already applied, arriving a second time as a kick, measured at −0.0188 with the sign inverted. A
+velocity event now carries the shift the PREVIOUS event carried (`lastPassedShift`), which makes the
+difference JUCE reads exactly the physical travel.
+
+**What was NOT changed, and is JUCE's own:** switching from velocity to absolute mid-drag discards
+the velocity travel, because `handleAbsoluteDrag` recomputes from `valueOnMouseDown` and the cursor
+offset from the press point. That happens with or without a notch and is not this ADR's to alter;
+what this round guarantees is that the WHEEL's contribution survives the transition, which State
+test 106 leg F measures at the press point and then drags to the top to show the range intact.
+
+**2. A RELEASE NAMES A DEVICE** (Devin `src/gui/LookAndFeel.cpp:R77-82`, *"shared controls lose live
+wheel claims"*). Round 30 keyed the claims per device and the RELEASE on the component alone,
+clearing every cell that named it — on the premise that a component cannot be held by two devices at
+once in a way that outlives the call. The premise is false on the platform round 30 added the cells
+for: X11 dispatches a `touch` source per finger alongside the live `mouse` source
+(juce_XWindowSystem_linux.cpp:4176-4189), so the first `mouseUp` disowned every other device still
+holding that control, and the survivor's notches fell through to whatever the pointer was over.
+`releaseDragWheel` now takes the releasing `WheelPointer` and clears that cell only, still subject to
+the older half of the rule (the component must be the one that claimed it). The event-less safety
+nets keep a broad clear under a separate name, `releaseAllDragWheelClaims`, because they say
+something different — *this control has abandoned its gesture*, which is true for every device, since
+a control holds exactly one anchor. The separate name is the point: an ordinary release cannot reach
+the broad path by forgetting an argument.
+
+**3. THE PROCESS-WIDE TABLE ACROSS INSTANCES: reachable, and correctly isolated** (Devin
+`src/gui/LookAndFeel.cpp:36`). Two Anamorph instances in one host share this static — one process,
+one copy — and share `juce::Desktop`'s source list with it, so a device has the same identity in
+both. That is what makes the sharing right rather than dangerous: the key is the DEVICE, and a device
+has one press at a time. Its button state lives in its own `MouseInputSourceImpl` and JUCE routes
+every event during a drag to the component that press captured, so the same device cannot begin a
+second press in another editor before the first ends; if it somehow did, the later claim would
+replace the earlier, which is the live press. An editor destroyed mid-press leaves a `SafePointer`
+that reads back null. No production change; State test 108 legs F and K.
+
+**4. THE DEVICE KEYS ARE BOUNDED, so the table cannot grow without bound** (Devin
+`src/gui/LookAndFeel.cpp:36`, the registry-lifetime question). Cells are emptied and never erased, so
+the question is the key space, and JUCE fixes it: `getOrCreateMouseInputSource` keeps exactly one
+`mouse` and one `pen` source matched on TYPE alone — replugging a mouse or adding a second mints no
+new key — and touch sources are matched on (type, finger slot) under JUCE's own
+`jassert (0 <= touchIndex && touchIndex < 100)` (juce_MouseInputSourceList.h:67-89). The slot is
+RECYCLED: `MultiTouchMapper` hands out the lowest free index and `clearTouch` frees it at TouchEnd
+(juce_MultiTouchMapper.h:46-62). The ceiling is therefore 102 rows in a process that cannot exist and
+two or three in one that can. Not a leak; no lifecycle mechanism added, and no mutation manufactured
+for it.
+
+**5. THE `float-divide-by-zero` DISPOSITION WAS CORRECT AND HAD NO EFFECT, because ccache did not
+know the ignorelist is an input** (Devin `src/PluginEditor.h:R909`). The section round 30 added is
+right — verified again this round on the current head and the current tests, in both directions: with
+it the UBSan build of the state suite reports zero runtime errors, without it exactly one, at
+`juce_Slider.cpp:929`. The `sanitizers` job nevertheless failed on that same check, because ccache
+4.9.1 has special handling only for the older `-fsanitize-blacklist=` spelling and hashes
+`-fsanitize-ignorelist=` as a plain argument string: same path, edited content, cache HIT, and the
+objects were the ones compiled under the previous list. Reproduced directly with ccache 4.9.1. The
+fix is `CCACHE_EXTRAFILES` in that job — ccache's own mechanism for an input that affects the output
+without appearing in the preprocessed source — and not a widening of the suppression. State test 106
+leg A now also asserts, next to the behaviour that depends on it, that a rotary still reports a
+linear region of zero, so a future JUCE that gives it one fails there rather than silently flipping
+coarse-interval knobs into absolute mode.
+
 ## Consequences
 
 - **A notch during any drag now adds to it**, and the drag continues from the combined value. What a
