@@ -130,8 +130,20 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
                                               adoptPendingHostState (/*mayBlock*/ false);
                                               return pendingRestore.empty();
                                           };
+    // ROUND 28b (Devin R834-835): into the flush's sink while one is open, and the depth decides
+    // what this deferral MEANS. See `deferredSink` in the header and `flushDeferredCommands`.
     stateCommandHooks.enqueue          = [this] (std::function<void()> c)
-                                         { deferredCommands.push_back (std::move (c)); };
+                                         {
+                                             if (deferredSink == nullptr)
+                                             {
+                                                 deferredCommands.push_back (std::move (c));
+                                                 return;
+                                             }
+                                             if (stateCommandDepth == deferredSinkDepth
+                                                     && userTransactionDepth == 0)
+                                                 deferredSinkRefused = true;   // no progress: a refusal
+                                             deferredSink->push_back (std::move (c));
+                                         };
     stateCommandHooks.nesting          = &stateCommandDepth;
     presets.stateCommand  = &stateCommandHooks;
     presets.soundReplacementLock = &soundReplacement;   // a preset load is a whole-sound replacement too (§24)
@@ -810,6 +822,8 @@ void AnamorphAudioProcessor::flushDeferredCommands()
 
     const juce::ScopedValueSetter<bool> running (runningDeferredCommands, true);
 
+    using CommandList = std::vector<std::function<void()>>;
+
     while (! deferredCommands.empty())
     {
         // The drain first and OUTSIDE the try below, exactly as `pollUndoCoalesceFromTimer` does
@@ -824,25 +838,77 @@ void AnamorphAudioProcessor::flushDeferredCommands()
             pollUndoCoalesceAdopted();
         }
 
-        const auto before = deferredCommands.size();
-
         auto queued = std::move (deferredCommands);
         deferredCommands.clear();             // `queued` owns them now; a moved-from vector is
                                               // valid but unspecified, so this is stated. It also
                                               // makes the iterated container a LOCAL, so a nested
                                               // `push_back` cannot reallocate under the loop below.
-        for (auto& command : queued)
-            if (command) command();
 
-        // ROUND 28, AND IT IS A LIVELOCK GUARD RATHER THAN A CORRECTNESS ONE. Since the commands
-        // carry their own admission (`admitStateCommand`), a command whose gate refuses RE-QUEUES
-        // itself instead of running -- so the queue can come back the same size it went in. Walking
-        // it again here would spin this loop against whatever holds the replacement lock, on the
-        // message thread, for as long as that thread holds it. No progress means the next door does
-        // it: the transaction close, the user's next action, or the next 20/24 Hz tick, exactly as a
-        // failed try above already behaves. Order is untouched -- the re-queued commands are still
-        // in front of anything queued after them.
-        if (deferredCommands.size() >= before)
+        CommandList spawned;    // what the commands that RAN asked for, in the order they asked
+        CommandList produced;   // what the ONE command in hand asked for, cleared before each
+        size_t index    = 0;
+        bool   refused  = false;
+        int    admitted = 0;
+
+        for (; index < queued.size(); ++index)
+        {
+            if (! queued[index]) continue;
+
+            // ROUND 28b (Devin R834-835). WHETHER THE COMMAND MADE ANY PROGRESS IS WHAT MAKES THE
+            // TWO KINDS OF DEFERRAL TELLABLE APART -- see `deferredSink` in the header for the two
+            // witnesses and why each one is sound. Not the queue's SIZE: a command that RUNS may
+            // legitimately queue work (State test 100 leg E, State test 101 leg H), so a queue that
+            // comes back the same size says nothing about which of the two happened, which is
+            // precisely the defect the finding names.
+            produced.clear();
+            {
+                const juce::ScopedValueSetter<CommandList*> sink    (deferredSink, &produced);
+                const juce::ScopedValueSetter<int>          atDepth (deferredSinkDepth, stateCommandDepth);
+                const juce::ScopedValueSetter<bool>         mark    (deferredSinkRefused, false);
+
+                queued[index]();
+
+                refused = deferredSinkRefused;
+            }
+
+            if (refused)
+                break;      // ...and the batch stops HERE: see the rebuild below
+
+            ++admitted;
+            for (auto& c : produced)
+                spawned.push_back (std::move (c));
+        }
+
+        // NOTHING IS DROPPED, NOTHING IS DUPLICATED, NOTHING CHANGES PLACES. The refused command
+        // goes back at the HEAD -- it is still the oldest thing the user asked for -- followed by
+        // every command that was behind it, in its own order, and then by the work the commands
+        // that did run asked for, which is where round 25's rule puts it (behind everything that
+        // was already in front of it). The round-28 version walked the whole batch and compared
+        // sizes afterwards, so a refused command at the front was overtaken by the ones behind it
+        // and only re-run on a later pass -- the defect R834-835 reports, in this repository's own
+        // code.
+        CommandList rebuilt;
+        rebuilt.reserve (produced.size() + (queued.size() - index) + spawned.size() + deferredCommands.size());
+        if (refused)
+        {
+            for (auto& c : produced)                    // the retry its admission queued, first
+                rebuilt.push_back (std::move (c));
+            ++index;                                    // ...so its slot in the batch is consumed
+        }
+        for (size_t j = index; j < queued.size(); ++j)  // everything that was behind it
+            rebuilt.push_back (std::move (queued[j]));
+        for (auto& c : spawned)                         // then what the commands that ran asked for
+            rebuilt.push_back (std::move (c));
+        for (auto& c : deferredCommands)                // then anything queued with no sink open
+            rebuilt.push_back (std::move (c));
+        deferredCommands = std::move (rebuilt);
+
+        // NO PROGRESS MEANS THE NEXT DOOR DOES IT, and "progress" is a command that actually ran
+        // rather than a queue that got shorter. Walking the same batch again here would spin this
+        // loop on the message thread against whatever holds the replacement lock, for as long as
+        // that thread holds it -- and the doors that come back are the ones that always did: the
+        // transaction close, the user's next action, and the 20/24 Hz ticks.
+        if (refused || admitted == 0)
             return;
     }
 }

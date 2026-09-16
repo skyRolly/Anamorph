@@ -103,6 +103,15 @@ public:
     // physical buttons through anamorph::gui::anyPhysicalMouseButtonDown().
     void abortAbandonedDragGestures();
 
+    // The Save-preset overlay, opened from the preset menu and closed by Cancel, Escape, a click
+    // on the backdrop or a completed save. PUBLIC for the same reason `abortAbandonedDragGestures`
+    // above is: the round-28b regression for Devin R405-406 has to open a dialog, cancel it and
+    // open another one, and the production route to it is a `juce::PopupMenu` item -- an
+    // asynchronous, windowed thing a headless suite cannot drive. Nothing else changes: the
+    // function is the same one the menu item calls, and every rule about save-attempt identity
+    // lives inside it (see `saveAttempt` below).
+    void showSavePreset (bool);
+
 private:
     using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;
@@ -466,7 +475,6 @@ private:
     void applyUiScale();                 // whole-window XS..XL transform scale (F4)
     void refreshPresetDisplay();         // preset name + dirty mark (F2)
     void showPresetMenu();
-    void showSavePreset (bool);
     void focusSaveNameField (int attemptsLeft); // deferred, verified grab (Space-vs-host fix)
     // ADR-0036 round 27 (R640): the Save dialog's PENDING state. A save that could not run
     // synchronously -- one issued from inside a multi-store user transaction -- is queued to a
@@ -922,6 +930,29 @@ private:
     juce::Label      saveTitle;
     juce::TextEditor saveNameEditor;
     juce::TextButton saveOkButton { "Save" }, saveCancelButton { "Cancel" };
+    // ADR-0036 ROUND 28b (Devin R405-406). WHICH SAVE ATTEMPT THE DIALOG IN FRONT OF THE USER
+    // BELONGS TO, and it is not the same question as "does the editor still exist".
+    //
+    // Round 27 made the save's completion asynchronous (R640): a save issued from inside a user
+    // transaction is queued, and the dialog waits for the answer. The completion captured a
+    // `SafePointer`, which answers EDITOR LIFETIME and nothing else -- so a user who cancels the
+    // dialog, opens it again and starts a second save has the FIRST save's completion land on the
+    // SECOND save's dialog: closing it, or painting "SAVE FAILED" on it, or taking its focus, for
+    // a file operation that has nothing to do with what is on screen.
+    //
+    // The owner's ruling is that cancelling the dialog cancels the UI ASSOCIATION and not the file
+    // operation: a write already queued may still complete and its result must still be processed
+    // internally (the preset list and the dirty mark really did change). So identity is carried
+    // explicitly. `nextSaveAttempt` only ever increases; `saveAttempt` is the attempt the dialog
+    // currently belongs to, and it is cleared to 0 by EVERY show and EVERY hide -- cancel, Escape,
+    // the backdrop dismiss and a successful close all go through `showSavePreset`. A completion
+    // whose captured id is not `saveAttempt` touches no part of the dialog.
+    //
+    // A counter rather than a token object because the whole question is "is this still the one",
+    // and a `uint32` answers it with no allocation, no lifetime and nothing to keep in step. It is
+    // message-thread-only: both the click and the completion run there.
+    juce::uint32 saveAttempt     = 0;
+    juce::uint32 nextSaveAttempt = 0;
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     juce::OwnedArray<AttachmentWitness>  writeWitnesses;   // ADR-0008 round 18, see the class above

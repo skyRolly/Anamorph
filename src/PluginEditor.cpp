@@ -399,18 +399,39 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     //
     // `SafePointer` because the wait can outlive the editor: the deferred save runs at the next
     // safe boundary, and a host can close the plug-in window before that boundary arrives.
+    //
+    // ROUND 28b (Devin R405-406): ...AND THE COMPLETION HAS TO KNOW WHICH SAVE IT IS THE ANSWER TO.
+    // `SafePointer` answers editor lifetime; `attempt` answers dialog identity, which is the
+    // question a cancelled-then-reopened dialog asks (see `saveAttempt` in the header). The split
+    // below is the owner's ruling made literal: the FILE half of the result is processed whatever
+    // happened to the dialog -- the preset list and the dirty mark really did change, and hiding
+    // that would be a second bug -- while every line that touches the dialog is inside the
+    // identity check.
     saveOkButton.onClick = [this]
     {
+        const auto attempt = ++nextSaveAttempt;
+        saveAttempt = attempt;
         setSavePending (true);
         processor.getPresets().saveUser (saveNameEditor.getText(),
-            [safeThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)] (bool ok)
+            [safeThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this), attempt] (bool ok)
             {
                 if (safeThis == nullptr) return;   // the editor went away while the save waited
+
+                // THE INTERNAL HALF, unconditional: the write happened (or did not) regardless of
+                // what the user has since done to the dialog, and the preset display describes the
+                // session rather than the attempt.
+                if (ok) safeThis->refreshPresetDisplay();
+
+                // THE DIALOG HALF, only for the attempt that is still on screen. A completion from
+                // a cancelled attempt must not close a newer dialog, clear its pending state,
+                // overwrite its title or take its focus.
+                if (safeThis->saveAttempt != attempt)
+                    return;
+
                 safeThis->setSavePending (false);
                 if (ok)
                 {
                     safeThis->showSavePreset (false);
-                    safeThis->refreshPresetDisplay();
                 }
                 else
                 {
@@ -2218,6 +2239,12 @@ void AnamorphAudioProcessorEditor::showLoadPreset()
 
 void AnamorphAudioProcessorEditor::showSavePreset (bool show)
 {
+    // ROUND 28b (R405-406): EVERY show and EVERY hide ends the UI association with whatever save
+    // was in flight. Cancel, Escape, the backdrop dismiss and the successful close all arrive
+    // here, so this one line covers them without any of them having to remember to. The queued
+    // write is NOT cancelled -- that is the owner's ruling, and the completion still runs; it
+    // simply no longer owns the dialog.
+    saveAttempt = 0;
     savePresetBackdrop.setVisible (show);
     if (show)
     {

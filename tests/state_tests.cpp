@@ -6844,7 +6844,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2523),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2550),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -21125,7 +21125,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:2455).
+//  baseline", src/PluginProcessor.cpp:2521).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -21358,7 +21358,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:2082).
+//  targets", src/PluginProcessor.cpp:2148).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21735,7 +21735,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2640).
+//  mixed sound", src/PluginProcessor.cpp:2706).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -24676,7 +24676,355 @@ static void testNoStateCommandWaitsForAReplacement()
         file.deleteFile();
     }
 
+    // ---- LEG L (ROUND 28b, Devin R834-835): A REFUSED COMMAND IS NOT OVERTAKEN -----------------
+    //  Two commands queued in the order the user gave them, and then the FIRST one's admission is
+    //  made to fail after the flush has already begun walking the batch. That is the one moment
+    //  round 28's flush got wrong: it ran the rest of the batch anyway and compared queue sizes
+    //  afterwards, so the second command executed first and the first came back on a later pass.
+    //  `seams.atRelativeDecision` is `abToggle`'s `afterDrain` hook -- the single point inside an
+    //  admission that is after its drain and still OUTSIDE the replacement lock -- so a holder
+    //  parked from there makes exactly that command's `tryEnter` fail and no other's.
+    {
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        settle ("leg L: the queue is empty before the leg starts");
+
+        std::vector<int> ran;
+        const int slotBefore = proc.abActiveSlot();
+
+        {
+            HeldReplacement held (proc);
+            check (held.parked.load(), "leg L: non-vacuity -- the replacement really is held");
+            proc.abToggle();                                                  // A, queued first
+            (void) proc.admitStateCommand ([&] { ran.push_back (proc.abActiveSlot()); })
+                       .admitted();                                           // B, queued behind it
+        }
+        check (proc.deferredCommandCount() == 2, "leg L: both are queued, A in front of B");
+        check (proc.abActiveSlot() == slotBefore, "leg L: ...and neither has run");
+
+        // The flush now starts with the lock FREE -- so its own try succeeds and it really does
+        // walk the batch -- and A's own admission is the thing that fails.
+        std::unique_ptr<HeldReplacement> duringA;
+        bool armed = true;
+        proc.seams.atRelativeDecision = [&]
+        {
+            if (! armed) return;
+            armed = false;
+            duringA = std::make_unique<HeldReplacement> (proc);
+        };
+        proc.flushDeferredCommands();
+        proc.seams.atRelativeDecision = nullptr;
+
+        std::printf ("  [leg L] after the refused pass: %d queued, B ran %d time(s), slot %d -> %d\n",
+                     (int) proc.deferredCommandCount(), (int) ran.size(),
+                     slotBefore, proc.abActiveSlot());
+        check (ran.empty(), "leg L: B did NOT overtake the command that refused in front of it");
+        check (proc.abActiveSlot() == slotBefore, "leg L: ...and A did not run either");
+        check (proc.deferredCommandCount() == 2,
+               "leg L: ...both are still queued, neither dropped nor duplicated");
+
+        duringA.reset();                                   // the contention clears
+        settle ("leg L: the queue drained once the replacement was free");
+        std::printf ("  [leg L] after the retry: slot %d, B saw slot %d (expected %d)\n",
+                     proc.abActiveSlot(), ran.empty() ? -1 : ran[0], 1 - slotBefore);
+        check (proc.abActiveSlot() != slotBefore, "leg L: A ran at the next door");
+        check (ran.size() == 1 && ran[0] == 1 - slotBefore,
+               "leg L: ...and B ran AFTER it, seeing the slot A had already switched to");
+    }
+
+    // ---- LEG M (ROUND 28b): A COMMAND THAT RUNS MAY QUEUE MORE, AND IT GOES BEHIND -------------
+    //  The other half of the finding, and the reason the flush cannot decide anything from the
+    //  queue's SIZE: a command that was admitted and DID run may legitimately queue work, so a
+    //  queue that comes back the same size it went in says nothing about which of the two
+    //  happened. A runs, queues C from inside a transaction of its own, and C must run behind B --
+    //  which was already in front of it when A asked (round 25's ordering rule).
+    {
+        settle ("leg M: the queue is empty before the leg starts");
+
+        std::vector<int> ran;
+        std::function<void()> A, B;
+        const std::function<void()> C = [&ran] { ran.push_back (3); };
+        A = [&]
+        {
+            const auto admit = proc.admitStateCommand (A);   // re-queues ITSELF, as every command does
+            if (! admit.admitted()) return;
+            ran.push_back (1);
+            AnamorphAudioProcessor::ScopedUserTransaction fromCommand (proc);
+            (void) proc.admitStateCommand (C).admitted();    // ...queued, not run: a transaction is open
+        };
+        B = [&]
+        {
+            const auto admit = proc.admitStateCommand (B);
+            if (! admit.admitted()) return;
+            ran.push_back (2);
+        };
+
+        {
+            HeldReplacement held (proc);
+            check (held.parked.load(), "leg M: non-vacuity -- the replacement really is held");
+            A(); B();                                        // both refuse and queue themselves
+        }
+        check (proc.deferredCommandCount() == 2, "leg M: both are queued, A in front of B");
+        check (ran.empty(), "leg M: ...and neither has run");
+
+        settle ("leg M: the queue drained once the replacement was free");
+        std::printf ("  [leg M] order: ");
+        for (int v : ran) std::printf ("%d ", v);
+        std::printf ("(expected 1 2 3)\n");
+        check (ran.size() == 3 && ran[0] == 1 && ran[1] == 2 && ran[2] == 3,
+               "leg M: the work a running command queued ran behind what was already in front of it");
+        check (proc.deferredCommandCount() == 0, "leg M: nothing is left queued");
+    }
+
     proc.removeListener (&seat);
+}
+
+// ---------------------------------------------------------------------------
+//  State test 104 -- a save completion may only touch the dialog it BELONGS TO
+//  (round 28b, Devin `src/PluginEditor.cpp:R405-406`, "canceled save closes
+//  newer dialog").
+//
+//  Round 27 made the save's answer asynchronous: a save issued from inside a user
+//  transaction is queued and the dialog waits for the completion. That completion
+//  captured a `SafePointer`, which answers EDITOR LIFETIME -- and the question a
+//  cancelled-then-reopened dialog asks is a different one. Cancel the dialog, open
+//  it again, and the FIRST save's completion lands on the SECOND save's dialog:
+//  closing it, or painting "SAVE FAILED" across it, or taking its focus, for a file
+//  operation the user has already dismissed.
+//
+//  THE OWNER'S RULING, and the shape of the fix: cancelling the dialog cancels the
+//  UI ASSOCIATION, not the file operation. A write already queued still runs and its
+//  result is still processed internally -- the preset list and the dirty mark really
+//  did change -- while nothing about a dialog that belongs to a LATER attempt may be
+//  touched. Identity is a `uint32` attempt counter (`saveAttempt`), cleared by every
+//  show and every hide, which is the smallest thing that answers "is this still the
+//  one".
+//
+//  THE DIALOG IS DRIVEN THE WAY A USER DRIVES IT: the panel is found by walking the
+//  editor for the text field whose own panel also carries a Save and a Cancel button,
+//  and the buttons are invoked through their `onClick`. The deferral is the production
+//  one -- a save issued inside a `ScopedUserTransaction` is queued by the admission and
+//  runs when the transaction closes -- so no seam and no timing is involved anywhere.
+//  A failing write is produced portably by leaving a DIRECTORY where the file must go:
+//  `replaceWithText` cannot move a file onto a directory on any supported platform.
+// ---------------------------------------------------------------------------
+static void testSaveCompletionBelongsToItsOwnAttempt()
+{
+    std::printf ("State test 104: a save completion only touches the dialog it belongs to (R405-406)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the save-dialog probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    // The dialog's parts, by shape rather than by name: the panel that owns a text field AND a
+    // "Save" button AND a "Cancel" button is the Save overlay and nothing else in this editor is.
+    juce::Component*  panel     = nullptr;
+    juce::TextEditor* nameEd    = nullptr;
+    juce::Label*      title     = nullptr;
+    juce::TextButton* okBtn     = nullptr;
+    juce::TextButton* cancelBtn = nullptr;
+    juce::TextButton* presetBtn = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        juce::TextEditor* te = nullptr;
+        juce::TextButton* ok = nullptr; juce::TextButton* cancel = nullptr;
+        juce::Label*      lb = nullptr;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* t = dynamic_cast<juce::TextEditor*> (kid)) te = t;
+            if (auto* l = dynamic_cast<juce::Label*> (kid))      lb = l;
+            if (auto* b = dynamic_cast<juce::TextButton*> (kid))
+            {
+                if (b->getButtonText() == "Save")   ok = b;
+                if (b->getButtonText() == "Cancel") cancel = b;
+                if (b->getComponentID() == "presetname") presetBtn = b;
+            }
+        }
+        if (panel == nullptr && te != nullptr && ok != nullptr && cancel != nullptr)
+        { panel = c; nameEd = te; title = lb; okBtn = ok; cancelBtn = cancel; }
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+            walk (c->getChildComponent (i));
+    };
+    walk (ed);
+    check (panel != nullptr && nameEd != nullptr && title != nullptr
+               && okBtn != nullptr && cancelBtn != nullptr,
+           "the Save overlay and its four parts were found");
+    check (presetBtn != nullptr, "the preset-name display was found (the internal half's observable)");
+    if (panel == nullptr || nameEd == nullptr || title == nullptr
+        || okBtn == nullptr || cancelBtn == nullptr || presetBtn == nullptr)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    const auto dir    = anamorph::PresetManager::presetDirectory();
+    const auto suffix = anamorph::PresetManager::fileSuffix();
+    auto fileFor = [&] (const juce::String& n) { return dir.getChildFile (n + suffix); };
+
+    const juce::String nameA  = "__AnamorphR405A__";
+    const juce::String nameB  = "__AnamorphR405B__";
+    const juce::String nameC  = "__AnamorphR405C__";
+    const juce::String nameD1 = "__AnamorphR405D1__", nameD2 = "__AnamorphR405D2__";
+    const juce::String nameE1 = "__AnamorphR405E1__", nameE2 = "__AnamorphR405E2__";
+    const juce::String nameF  = "__AnamorphR405F__";
+    for (const auto& n : { nameA, nameB, nameC, nameD1, nameD2, nameE1, nameE2, nameF })
+        fileFor (n).deleteRecursively();
+
+    // ---- LEG A: the ordinary deferred save, whose completion DOES own the dialog ---------------
+    {
+        ed->showSavePreset (true);
+        nameEd->setText (nameA, false);
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            okBtn->onClick();
+            check (title->getText() == "SAVING...", "leg A: the dialog says SAVING... while it waits");
+            check (panel->isVisible(), "leg A: ...and stays open");
+            check (! fileFor (nameA).existsAsFile(), "leg A: ...and nothing is written yet");
+        }   // <- the transaction closes: the flush runs the queued save
+        std::printf ("  [leg A] after the boundary: dialog %s, file %s\n",
+                     panel->isVisible() ? "open" : "closed",
+                     fileFor (nameA).existsAsFile() ? "written" : "absent");
+        check (! panel->isVisible(), "leg A: its own completion closed it");
+        check (fileFor (nameA).existsAsFile(), "leg A: ...and the preset really was written");
+    }
+
+    // ---- LEG B: a deferred save that FAILS, whose completion also owns the dialog --------------
+    {
+        auto blocked = fileFor (nameB);
+        blocked.deleteRecursively();
+        check (blocked.createDirectory(), "leg B: a directory stands where the file must go");
+        // NOT EMPTY, and that is the whole of it: `replaceWithText` deletes the target before it
+        // moves the temporary in, and JUCE's delete removes an empty directory quite happily -- so
+        // an empty one is not an obstacle at all. A directory with a file in it cannot be removed
+        // and cannot be replaced, on every platform this ships to.
+        check (blocked.getChildFile ("occupied").create().wasOk(),
+               "leg B: ...and it is not empty, so it cannot simply be deleted");
+        ed->showSavePreset (true);
+        nameEd->setText (nameB, false);
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            okBtn->onClick();
+        }
+        std::printf ("  [leg B] after the boundary: dialog %s, title \"%s\"\n",
+                     panel->isVisible() ? "open" : "closed", title->getText().toRawUTF8());
+        check (panel->isVisible(), "leg B: a failed save leaves its own dialog open");
+        check (title->getText() == "SAVE FAILED", "leg B: ...and says so, in the approved wording");
+        check (nameEd->getText() == nameB, "leg B: ...with the name still there to correct");
+        ed->showSavePreset (false);
+        blocked.deleteRecursively();
+    }
+
+    // ---- LEG C: cancelled while queued -- the WRITE is not cancelled, the DIALOG is ------------
+    {
+        ed->showSavePreset (true);
+        nameEd->setText (nameC, false);
+        const auto displayBefore = presetBtn->getButtonText();
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            okBtn->onClick();
+            cancelBtn->onClick();                       // the UI association ends here
+            check (! panel->isVisible(), "leg C: the dialog is closed");
+        }   // <- ...and the queued write still runs
+        std::printf ("  [leg C] file %s, preset display \"%s\" (was \"%s\")\n",
+                     fileFor (nameC).existsAsFile() ? "written" : "absent",
+                     presetBtn->getButtonText().toRawUTF8(), displayBefore.toRawUTF8());
+        check (fileFor (nameC).existsAsFile(),
+               "leg C: cancelling the dialog did NOT cancel the file operation");
+        check (! panel->isVisible(), "leg C: ...and the completion re-opened nothing");
+        check (proc.getPresets().currentName() == nameC, "leg C: ...the save selected what it wrote");
+        // The display ABBREVIATES anything too wide for the bar (consonant skeleton, then a hard
+        // clip), so the assertion is that it MOVED and still names this preset -- not that it is
+        // the raw string, which for a harness-length name it never is.
+        check (presetBtn->getButtonText() != displayBefore && presetBtn->getButtonText().contains ("R405C"),
+               "leg C: ...and the result was still processed internally: the display followed it");
+    }
+
+    // ---- LEG D: a cancelled attempt's SUCCESS must not close a newer dialog --------------------
+    {
+        ed->showSavePreset (true);
+        nameEd->setText (nameD1, false);
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            okBtn->onClick();                 // attempt 1, queued
+            cancelBtn->onClick();             // ...cancelled
+            ed->showSavePreset (true);        // ...and a NEW dialog opened
+            nameEd->setText (nameD2, false);
+        }   // <- attempt 1 completes HERE, against a dialog that is not its own
+        std::printf ("  [leg D] newer dialog %s, title \"%s\", name \"%s\"; old file %s\n",
+                     panel->isVisible() ? "open" : "CLOSED", title->getText().toRawUTF8(),
+                     nameEd->getText().toRawUTF8(),
+                     fileFor (nameD1).existsAsFile() ? "written" : "absent");
+        check (panel->isVisible(), "leg D: the newer dialog is still open");
+        check (title->getText() == "SAVE PRESET", "leg D: ...wearing its own title, not an outcome");
+        check (nameEd->getText() == nameD2, "leg D: ...and its own name");
+        check (fileFor (nameD1).existsAsFile(), "leg D: the cancelled attempt's file was still written");
+        check (! fileFor (nameD2).existsAsFile(), "leg D: the newer attempt has not been asked for yet");
+
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            okBtn->onClick();                 // attempt 2, which DOES own the dialog
+        }
+        check (! panel->isVisible(), "leg D: the newer attempt's own completion closes it");
+        check (fileFor (nameD2).existsAsFile(), "leg D: ...and writes its file");
+    }
+
+    // ---- LEG E: a cancelled attempt's FAILURE must not mark a newer dialog ---------------------
+    {
+        auto blocked = fileFor (nameE1);
+        blocked.deleteRecursively();
+        check (blocked.createDirectory(), "leg E: a directory stands where the older file must go");
+        check (blocked.getChildFile ("occupied").create().wasOk(),
+               "leg E: ...and it is not empty, so the write cannot replace it");
+
+        ed->showSavePreset (true);
+        nameEd->setText (nameE1, false);
+        const auto freshOutline = nameEd->findColour (juce::TextEditor::outlineColourId);
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            okBtn->onClick();                 // attempt 1, queued, and doomed
+            cancelBtn->onClick();
+            ed->showSavePreset (true);
+            nameEd->setText (nameE2, false);
+        }   // <- attempt 1 FAILS here, against a dialog that is not its own
+        std::printf ("  [leg E] newer dialog %s, title \"%s\", outline %s\n",
+                     panel->isVisible() ? "open" : "CLOSED", title->getText().toRawUTF8(),
+                     nameEd->findColour (juce::TextEditor::outlineColourId) == freshOutline
+                         ? "untouched" : "REPAINTED");
+        check (panel->isVisible(), "leg E: the newer dialog is still open");
+        check (title->getText() == "SAVE PRESET",
+               "leg E: ...and is not wearing the older attempt's SAVE FAILED");
+        check (nameEd->findColour (juce::TextEditor::outlineColourId) == freshOutline,
+               "leg E: ...nor its warning outline");
+        check (nameEd->getText() == nameE2, "leg E: ...and its name is untouched");
+        ed->showSavePreset (false);
+        blocked.deleteRecursively();
+    }
+
+    // ---- LEG F: the editor goes away while the save is queued ---------------------------------
+    //  The `SafePointer` half, which the identity check must not have weakened: the write still
+    //  happens and the completion touches nothing. LAST, because it destroys the editor.
+    {
+        AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+        ed->showSavePreset (true);
+        nameEd->setText (nameF, false);
+        okBtn->onClick();
+        proc.editorBeingDeleted (ed);
+        delete ed;
+        ed = nullptr; panel = nullptr; nameEd = nullptr; title = nullptr;
+        okBtn = nullptr; cancelBtn = nullptr; presetBtn = nullptr;
+    }   // <- the queued write runs with no editor at all
+    check (fileFor (nameF).existsAsFile(),
+           "leg F: the queued write completed after the editor went away");
+
+    for (const auto& n : { nameA, nameB, nameC, nameD1, nameD2, nameE1, nameE2, nameF })
+        fileFor (n).deleteRecursively();
+    // A failed `replaceWithText` leaves its temporary sibling behind; sweep the harness's own.
+    for (const auto& leftover : dir.findChildFiles (juce::File::findFilesAndDirectories, false,
+                                                    "__AnamorphR405*"))
+        leftover.deleteRecursively();
 }
 
 static void testABandMoveDerivesItsOriginsFromTheRecord()
@@ -29200,6 +29548,7 @@ int main (int argc, char* argv[])
     testATimerRetryNeverRunsACommandInsideADispatch();
     testADeferredPresetOperationReportsItsRealResult();
     testNoStateCommandWaitsForAReplacement();
+    testSaveCompletionBelongsToItsOwnAttempt();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

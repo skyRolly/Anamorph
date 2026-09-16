@@ -1031,7 +1031,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:2455`).
+    (`src/PluginProcessor.cpp:2521`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1100,7 +1100,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     the one-pass reassert makes exact by construction.
 
 23. **A relative operation acts on the session it observed (round 16).** Review finding *"relative
-    navigation uses stale targets"* (`src/PluginProcessor.cpp:2082`).
+    navigation uses stale targets"* (`src/PluginProcessor.cpp:2148`).
 
     **What a relative operation is.** One whose target is a function of the current state rather than
     of the user's input: *the other slot* (`abToggle`), *the next/previous preset*
@@ -1206,7 +1206,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     derived program-state target there to go stale.
 
 24. **One whole-sound replacement at a time (round 17).** Review finding *"overlapping restores
-    expose mixed sound"* (`src/PluginProcessor.cpp:2640`).
+    expose mixed sound"* (`src/PluginProcessor.cpp:2706`).
 
     **What a whole-sound replacement is.** An operation that installs an ENTIRE sound over the live
     parameter set, as opposed to moving one parameter: a host restore's install
@@ -2182,6 +2182,89 @@ turn late) and leaves a save issued on the host thread right after its restore d
     already recorded in them, and §24's lock keeps exactly the owner, the scope and the order it had:
     the change is entirely on the *caller* side of it, which is the smaller boundary the ruling
     requires be taken when one exists.
+
+32. **ROUND 28b (2026-09-16) — the two defects the admission's own first cut carried, and the
+    identity a `SafePointer` does not answer.** Devin `src/PluginProcessor.cpp:R834-835`
+    (*"deferred commands execute out of order"*) and `src/PluginEditor.cpp:R405-406`
+    (*"canceled save closes newer dialog"*). Both confirmed; both fixed; neither reopens §31.
+
+    **R834-835 — a refused command was overtaken by the ones behind it.** §31's flush moved the
+    queue into a local batch, ran the WHOLE batch, and then compared the queue's size before and
+    after as a livelock guard. A command whose admission refuses re-queues its own retry through
+    the same hook a running command queues new work through, so the size distinguishes neither —
+    and the batch walked on regardless. With A queued before B: A refuses and re-queues, B runs,
+    A runs at a later door. **B overtook A**, which is precisely the ordering round 25 exists to
+    guarantee.
+
+    The flush now stops at the refusal. The refused command's retry goes back at the HEAD, every
+    command that was behind it keeps its place, and work that the commands which DID run asked for
+    goes behind all of it — round 25's rule, unchanged. Telling the two kinds of deferral apart is
+    done by asking whether the invoked command had made any PROGRESS when the deferral happened,
+    and there are exactly two witnesses, both observable and both sound:
+
+    | witness | why it means the command had begun |
+    |---|---|
+    | `stateCommandDepth > ` the depth the flush invoked at | the deferral came from underneath an admission this command was GRANTED — `StateCommandGate::defer` runs before any `++*nesting`, so its own refusal is seen at exactly the invoke depth |
+    | `userTransactionDepth > 0` | the command opened a transaction, which it can only do after it has begun; the flush invokes every command with the depth at zero (its own entry guard, and nothing between commands opens one) |
+
+    Neither witness present means the command did nothing and its admission refused. The livelock
+    guard is now *"a pass in which no command was admitted makes no progress"* rather than
+    *"the queue did not get shorter"* — same conservatism, and it no longer confuses the two cases.
+    No new lock, no new door, no delay: State test 103 legs L and M.
+
+    **R405-406 — a completion landed on a dialog that was not its own.** §29/round 27 (R640) made
+    the save's answer asynchronous, and the completion captured a `juce::Component::SafePointer`.
+    That answers EDITOR LIFETIME and nothing else. A user who cancels the Save dialog, opens it
+    again and starts a second save has the FIRST save's completion close the SECOND save's dialog —
+    or paint `SAVE FAILED` across it, or take its focus — for a file operation already dismissed.
+
+    **The owner's ruling of 2026-09-16, recorded here as the decision:** *cancelling the save dialog
+    cancels the UI association with that save attempt, but does not cancel a file operation that has
+    already been queued.* The queued write may still complete; its result must still be processed
+    internally; and an old completion must not mutate or close a newer dialog, or overwrite its
+    title, focus or pending state. The fix is the smallest identity that answers it: a `uint32`
+    attempt counter (`AnamorphAudioProcessorEditor::saveAttempt`), assigned at the click and cleared
+    by every show and every hide of the dialog, so Cancel, Escape, the backdrop dismiss and a
+    successful close all end the association through the one function they already share. The
+    completion splits in two — the internal half (`refreshPresetDisplay`, because the preset list
+    and the dirty mark really did change) runs unconditionally, and every line that touches the
+    dialog is inside the identity check. Editor lifetime is still the `SafePointer`'s job; the two
+    questions are asked separately because they are different questions. State test 104 legs A–F.
+
+    **THE USER-VISIBLE WORDING IS APPROVED AS IT STANDS**, and is recorded here because this
+    repository has no separate register for user-visible text: the Save dialog says exactly
+    `SAVING...` while a save is queued and exactly `SAVE FAILED` when one fails (owner, 2026-09-16).
+    Neither string is to be substituted, softened or re-cased, and the approval is not to be asked
+    for again. State test 104 legs A and B assert both spellings, so a silent replacement is a
+    failing test rather than a review question.
+
+    ### Architecture-review gate (round 28b)
+
+    | Step | Requirement | Evidence |
+    |---|---|---|
+    | 1 | the author flags the change as gated | **NOT GATED, and stated rather than assumed.** Neither change moves a boundary `ARCHITECTURE_REVIEW_GATE.md` names. R834-835 is a defect in §31's own bookkeeping — the same commands, the same doors, the same lock discipline, executed in the order §31 already specifies; nothing acquires, waits or defers that did not before. R405-406 is editor-side bookkeeping with no lock, no thread and no parameter in it. No parameter ID, range, default, automation flag, serialization field or reported-latency value changes, and the Simple/Advanced surface is untouched |
+    | 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The `StateCommandGate` architecture is APPROVED and is not to be redesigned** (owner, 2026-09-16) — §31's ruling stands unchanged and is not reopened by either fix. The save-cancellation semantics above are the owner's ruling of the same date, quoted in full rather than paraphrased |
+    | 3 | if the change is a decision, an ADR is added/updated | this section — §32, recorded separately from §31 so that what was approved when stays legible |
+    | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** |
+
+    Nothing was manufactured on GitHub for this round either: no `APPROVED` review exists on PR #144,
+    none was submitted from this session, and no self-approval of any kind was performed.
+
+    **RISK-009, re-audited against the tree these two fixes leave.** The command path was walked
+    again for any acquisition Anamorph owns that can WAIT. Every `ScopedLock (soundReplacement)` a
+    command can reach — `applyStatePreservingView`, `copyStateWithRawValues`, `applySoundTree`,
+    `PresetManager::applyDefaults` / `applySoundTree` / the factory half of `loadAdopted` — runs
+    underneath the gate's own held lock and is therefore a free recursive re-entry on the same
+    thread (`juce::CriticalSection` is `PTHREAD_MUTEX_RECURSIVE`), and every drain a command makes
+    is the non-blocking arm. The two remaining BLOCKING `adoptPendingHostState()` calls are in
+    `getStateInformation` and `setStateInformation` — the host-serialization path, not a command —
+    and are unchanged by this round. Neither fix adds an acquisition: R834-835 reorders a queue and
+    R405-406 compares two integers. **No Anamorph-owned blocking acquisition remains on the
+    `StateCommandGate` path.** What RISK-009 stays OPEN on is unchanged and is not Anamorph's to
+    close: `AudioProcessorValueTreeState`'s own 10 Hz `private Timer`, which takes
+    `valueTreeChanging` blocking on the message thread from a callback a host's pump delivers, with
+    no Anamorph lock on the waiting side and no Anamorph code on either edge of the wait. No
+    suppression was added for it, and it is not described as an Anamorph defect.
 
 ## Consequences
 

@@ -1644,6 +1644,58 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   than by where the test reads; a probe on the OPEN and a probe on the CLOSE measure different
   windows, and round 22 used the wrong one.
 
+* **Round 28b — State test 103 legs L and M, and State test 104: the two defects the admission's
+  own first cut carried.**
+
+  **Leg L (`R834-835`, "deferred commands execute out of order") makes a command's admission fail
+  AFTER the flush has begun walking the batch**, which is the one moment the round-28 flush got
+  wrong: it ran the rest of the batch anyway and compared queue sizes afterwards, so the command
+  behind the refused one executed first. Two commands are queued in the order the user gave them
+  with the replacement lock held; the lock is then released, so the flush's own try succeeds and it
+  really does walk the batch; and `seams.atRelativeDecision` — `abToggle`'s `afterDrain` hook, the
+  single point inside an admission that is after its drain and still outside the lock — parks a
+  holder from there, so exactly THAT command's `tryEnter` fails and no other's. The leg asserts the
+  negative first (B did not run, A did not run, both are still queued, neither duplicated) and then
+  the positive after the contention clears: A runs, and B, which records the A/B slot it sees,
+  reports the slot A had already switched to.
+
+  **Leg M is the other half, and it is why the flush cannot decide anything from the queue's
+  SIZE**: a command that was admitted and DID run may legitimately queue work, so a queue that
+  comes back the same size says nothing about which of the two happened. A runs, queues C from
+  inside a transaction of its own, and C runs behind B. The implementation tells the two apart by
+  asking whether the invoked command had made any PROGRESS when the deferral happened — a
+  deferral underneath a GRANTED admission, or with a transaction the command itself opened — which
+  is ADR-0036 §32's table.
+
+  **State test 104 (`R405-406`, "canceled save closes newer dialog") drives the real Save overlay.**
+  The panel is found by SHAPE rather than by name — the one panel in the editor that owns a text
+  field and a "Save" and a "Cancel" button — and the buttons are invoked through their `onClick`,
+  so nothing about the test depends on a private member or a menu. The deferral is the production
+  one: a save issued inside a `ScopedUserTransaction` is queued by the admission and runs when the
+  transaction closes. No seam, no timer, no sleep.
+
+  | Leg | What it does | What it proves |
+  |---|---|---|
+  | A | a deferred save that completes with its own dialog still open | `SAVING...` while it waits, nothing written yet, then the dialog closes and the file is there |
+  | B | a deferred save that FAILS with its own dialog still open | the dialog stays open, says exactly `SAVE FAILED`, and keeps the name for correction |
+  | C | the dialog is cancelled while the save is queued | the WRITE is not cancelled — the file is written, the save selects it, and the preset display follows it — while nothing re-opens or touches a dialog |
+  | D | cancelled, a NEW dialog opened, the OLD save SUCCEEDS | the newer dialog stays open with its own title and its own name; the older attempt's file is still written; the newer attempt then closes it normally |
+  | E | the same, but the OLD save FAILS | the newer dialog is not wearing `SAVE FAILED` and its outline colour is untouched |
+  | F | the editor is destroyed while the save is queued | the queued write still completes and the completion touches nothing (the `SafePointer` half, unweakened) |
+
+  **A FAILING WRITE IS PRODUCED PORTABLY, and the first attempt at it did not work.** Leaving an
+  EMPTY directory where the file must go is not an obstacle: `replaceWithText` deletes the target
+  before moving its temporary in, and JUCE's delete removes an empty directory quite happily — the
+  save succeeded and legs B and E passed for the wrong reason until the run showed it. The
+  directory now has a file in it, which cannot be removed and cannot be replaced on any platform
+  this ships to.
+
+  **Mutation coverage (MB1–MB6), all killed.** MB1 never recognises a refusal (leg L, 3 checks);
+  MB2 puts the refused command behind the rest (leg L); MB3 walks the batch to the end regardless
+  (leg L, 3); MB4 deletes the save-attempt identity check (legs D and E, 3); MB5 stops
+  `showSavePreset` ending the association (legs D and E, 3); MB6 skips the unconditional internal
+  half of the completion (leg C).
+
 * **Round 28 — State test 103: the admission that does not need to know who started the dispatch.**
 
   Round 27 gave the invariant a predicate and round 27's own entry above says what the predicate

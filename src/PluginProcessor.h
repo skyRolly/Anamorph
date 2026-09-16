@@ -724,6 +724,32 @@ private:
     // happens only when a host actually interrupts a transaction.
     std::vector<std::function<void()>> deferredCommands;
     bool runningDeferredCommands = false;
+    // ADR-0036 ROUND 28b (Devin R834-835). WHERE A DEFERRAL GOES WHILE THE FLUSH IS WALKING A
+    // BATCH, AND WHICH OF THE TWO KINDS IT IS. The flush moves the queue into a local batch and
+    // runs it; a command that REFUSES admission queues its retry through the same hook a running
+    // command queues new work through, and the two need opposite treatment -- the refusal keeps the
+    // HEAD of the queue, new work goes BEHIND everything already in front of it. The queue's SIZE
+    // answers neither question, which is the defect the finding names: a running command may
+    // legitimately queue work, so a queue that comes back the same size says nothing.
+    //
+    // They are told apart by asking whether the invoked command had made any PROGRESS when the
+    // deferral happened, and there are exactly two witnesses of progress, both observable:
+    //   * `stateCommandDepth > deferredSinkDepth` -- the deferral came from underneath an admission
+    //     this command was GRANTED (`StateCommandGate::defer` runs before any `++*nesting`, so its
+    //     own refusal is seen at exactly the depth the flush invoked it at);
+    //   * `userTransactionDepth > 0` -- the command opened a transaction, which it can only do
+    //     after it has begun. The flush invokes every command with the depth at zero (its own entry
+    //     guard, and nothing between commands opens one), so a non-zero depth here is this
+    //     command's own doing. State test 100 leg E and State test 101 leg H are built on this shape: a
+    //     queued command that runs, opens a transaction of its own and queues a third command from
+    //     inside it, which must run THIRD.
+    // Neither witness present => the command did nothing and its admission refused.
+    //
+    // `deferredSink` collects everything the command queued, in order; the flag says which kind the
+    // first one was. Message-thread-owned, like the queue itself, and null outside a flush.
+    std::vector<std::function<void()>>* deferredSink = nullptr;
+    int  deferredSinkDepth = 0;
+    bool deferredSinkRefused = false;
     // ADR-0053, the three halves of "a scroll is one undo step". `wheelStepKey` is the control a
     // wheel edit currently in flight names; `pendingStepWheelKey` is that name LATCHED at the
     // instant the gesture closed, because the poll that acts on it runs up to a timer period later,

@@ -5236,3 +5236,86 @@ of its walk already used: each contended edit now settles before the next one is
 it always has". Since the admission no door blocks: `undo`, `redo`, `pollUndoCoalesce` and the
 save's re-baseline all arrive holding the lock their gate *tried* for, so the `committedNeedsResync`
 repair is a free recursive re-entry on every path.
+
+## §86. Round 28b — Devin `src/PluginProcessor.cpp:R834-835` and `src/PluginEditor.cpp:R405-406`
+
+### §86a. Both findings are against code this branch wrote, and one of them is mine from last round
+
+`R834-835` is a defect in §85's own flush. `R405-406` is a defect in round 27's completion contract.
+Neither has shipped; both are real, and both are reported accurately.
+
+### §86b. R834-835 — the size comparison could never have answered the question it was asked
+
+The round-28 flush moved the queue into a local batch, ran the WHOLE batch, and compared the
+queue's size before and after as a livelock guard. Two different things push onto that queue through
+the same hook: a command whose admission REFUSES pushes its own retry, and a command that RUNS may
+push work of its own (State test 100 leg E and State test 101 leg H are built on the second). A size
+that comes back unchanged is consistent with either, so the guard identified neither — and the batch
+walked on past the refusal regardless. With A queued in front of B, A refused, B ran, and A ran at a
+later door: **B overtook A**, which is exactly the ordering round 25 exists to provide.
+
+The replacement stops the batch at the refusal, puts the refused command's retry back at the HEAD,
+keeps every command behind it in place, and appends the work that admitted commands asked for behind
+all of it. The two kinds of deferral are told apart by asking whether the invoked command had made
+any PROGRESS at the moment of the deferral, and there are exactly two witnesses: a deferral seen
+deeper than the depth the flush invoked at (it came from underneath an admission that was GRANTED,
+because `StateCommandGate::defer` runs before any `++*nesting`), or a non-zero
+`userTransactionDepth` (the command opened a transaction, which it can only do after it has begun;
+the flush invokes every command with that depth at zero). Neither witness present means the command
+did nothing.
+
+The first cut used the depth witness alone and broke both of the existing legs — State test 100 leg
+E printed `1 3 2` — because those legs queue BARE lambdas rather than gated commands, so the lambda
+runs at the invoke depth and its nested admission defers there too. The transaction witness is what
+covers that shape, and it is sound rather than a patch: the flush's own entry guard means a non-zero
+transaction depth inside a command is that command's own doing.
+
+The livelock guard is now "a pass in which no command was admitted makes no progress", which is the
+same conservatism without the conflation.
+
+### §86c. R405-406 — `SafePointer` answers the wrong question
+
+The save's completion captured a `juce::Component::SafePointer`, which answers EDITOR LIFETIME. The
+question a cancelled-then-reopened dialog asks is whether the dialog on screen is still the one this
+completion is the answer to, and nothing answered it: cancel, reopen, start a second save, and the
+first save's completion closes the second save's dialog — or paints `SAVE FAILED` across it, or
+takes its focus.
+
+The owner's ruling is that cancelling the dialog cancels the UI ASSOCIATION and not the file
+operation. So the completion splits: `refreshPresetDisplay()` runs unconditionally, because the
+preset list and the dirty mark really did change and hiding that would be a second bug, and every
+line that touches the dialog sits behind a `uint32` attempt identity that `showSavePreset` clears on
+every show and every hide. Cancel, Escape, the backdrop dismiss and a successful close all go
+through that one function, so none of them has to remember to.
+
+`showSavePreset` became public for the regression, with the same justification
+`abortAbandonedDragGestures` carries: the production route to the dialog is a `juce::PopupMenu`
+item, which a headless suite cannot drive.
+
+### §86d. What the tests measure, and one thing that did not work first time
+
+State test 103 grows legs L and M; State test 104 is new, with legs A–F, and drives the real overlay
+by finding the one panel that owns a text field and a Save and a Cancel button. Leg L makes ONE
+command's admission fail mid-batch through `seams.atRelativeDecision`, the single point inside an
+admission that is after its drain and outside the lock.
+
+A failing write is produced by leaving a directory where the file must go — and an EMPTY directory
+is no obstacle at all: `replaceWithText` deletes the target before moving its temporary in, and
+JUCE's delete removes an empty directory. Legs B and E passed for the wrong reason until the run
+said so. The directory now contains a file.
+
+Six mutants, MB1–MB6, all killed: the refusal never recognised; the refused command placed behind
+the rest; the batch walked to the end regardless; the identity check deleted; `showSavePreset` no
+longer ending the association; and the unconditional internal half made conditional.
+
+### §86e. RISK-009 after these two fixes
+
+Neither fix adds an acquisition — one reorders a queue, the other compares two integers — and the
+command path was walked again anyway. Every `ScopedLock (soundReplacement)` a command can reach runs
+underneath the gate's own held lock and is a free recursive re-entry; every drain a command makes is
+the non-blocking arm; the two blocking `adoptPendingHostState()` calls that remain are in
+`getStateInformation` and `setStateInformation`, which are the host-serialization path and not a
+command. **No Anamorph-owned blocking acquisition remains on the `StateCommandGate` path.** RISK-009
+stays OPEN on the JUCE-internal residual — APVTS's own 10 Hz timer taking `valueTreeChanging`
+blocking from a pumped callback, with no Anamorph lock on the waiting side — and no suppression was
+added for it.
