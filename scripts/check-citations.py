@@ -417,13 +417,13 @@ DELIBERATE_REAIMS = {
     # settled fails here rather than going quiet.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:246-249",
-     "src/PluginProcessor.h:456-459"): "parameterValueChanged",
+     "src/PluginProcessor.h:494-497"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:390",
-     "src/PluginProcessor.h:661"): "parameterValueChanged",
+     "src/PluginProcessor.h:699"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:325",
-     "src/PluginProcessor.h:571"): "UndoStacks",
+     "src/PluginProcessor.h:609"): "UndoStacks",
 
     # 2026-09-13 (round 14, ADR-0008 as amended): THREE ENTRIES, all for spans this change EDITED
     # rather than moved, which is exactly the case a declaration is for -- the line map returns
@@ -447,16 +447,16 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.cpp:1247-1424"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:250",
-     "src/PluginProcessor.h:571"): "UndoStacks",
+     "src/PluginProcessor.h:609"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     "src/PluginProcessor.cpp:2747-2846"): "setStateInformation",
+     "src/PluginProcessor.cpp:2892-2991"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     "src/PluginProcessor.cpp:2747"): "setStateInformation",
+     "src/PluginProcessor.cpp:2892"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     "src/PluginProcessor.cpp:2283"): "abActive",
+     "src/PluginProcessor.cpp:2428"): "abActive",
 
     # 2026-09-15 (round 21, ADR-0036 §26): ONE ENTRY, for a span this change EDITED rather than
     # moved. ADR-0008's "Source:" line brackets the whole custom-undo block, from its banner comment
@@ -476,7 +476,7 @@ DELIBERATE_REAIMS = {
     # the same anchor is a plain move that came along with it.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:922, 1251-1254",
-     "src/PluginProcessor.cpp:1172, 1544-1548"): "openGestures",
+     "src/PluginProcessor.cpp:1246, 1673-1677"): "openGestures",
     # ...and the SAME transition declared from the branch's OTHER base. `preflight.sh` runs the gate
     # against `origin/main`, the merge base and `HEAD~1`, and a declaration is keyed on the
     # TRANSITION, so the entry above answers only for the `HEAD~1` base this round pushes from. The
@@ -485,7 +485,7 @@ DELIBERATE_REAIMS = {
     # while another did not, and the green one was the one that got read.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:737, 870-873",
-     "src/PluginProcessor.cpp:1172, 1544-1548"): "openGestures",
+     "src/PluginProcessor.cpp:1246, 1673-1677"): "openGestures",
     # 2026-09-15 (round 26): THE SAME ENTRY, RE-AIMED, not a second one. Round 26 inserted comment
     # lines above `syncCommitted` in `PluginProcessor.cpp`, so the ADR's span end moved 713 -> 810
     # while its two ends kept naming the same banner and the same function. That is ordinary drift
@@ -529,7 +529,7 @@ DELIBERATE_REAIMS = {
     # the file settled fails here rather than going quiet.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginProcessor.cpp:923",
-     "src/PluginProcessor.cpp:960"): "viewParams",
+     "src/PluginProcessor.cpp:1034"): "viewParams",
     # ...and the SAME transition from the branch's OTHER two bases, which both carry `:526`. A
     # declaration is keyed on the PAIR, so the entry above answers only for the base that carries
     # `:923`; leaving the older spelling undeclared is what let an anchor ship stale once already
@@ -538,7 +538,7 @@ DELIBERATE_REAIMS = {
     # entry covers both.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginProcessor.cpp:526",
-     "src/PluginProcessor.cpp:960"): "viewParams",
+     "src/PluginProcessor.cpp:1034"): "viewParams",
     ("docs/FUTURE_RISKS.md",
      "src/gui/SpectrumImager.cpp:898-913",
      "src/gui/SpectrumImager.cpp:899-914"): "beginChangeGesture",
@@ -550,7 +550,7 @@ DELIBERATE_REAIMS = {
     # first commit.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:1135, 1483-1487",
-     "src/PluginProcessor.cpp:1172, 1544-1548"): "openGestures",
+     "src/PluginProcessor.cpp:1246, 1673-1677"): "openGestures",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

@@ -4,6 +4,7 @@
 #include "PluginParameters.h"
 #include "PresetManager.h"
 #include "InternalState.h"
+#include "StateCommandGate.h"  // anamorph::StateCommandGate (ADR-0036 section 31)
 #include "AbSlotIndex.h"          // anamorph::kNumAbSlots (single source of truth for A/B sizing)
 #include "dsp/AnamorphEngine.h"
 
@@ -225,7 +226,40 @@ public:
     // timer and no sleep is involved, and the nested dispatch that delivered the command is not
     // suppressed -- the command simply happens at the next instant where the state it replaces is
     // a state a completed user action produced.
-    bool deferWhileUserTransactionActive (std::function<void()> command);
+    // ROUND 28 REPLACED THE PREDICATE WITH AN ADMISSION (Devin R802-807, RISK-009), and the reason
+    // is that round 25's question was the wrong one to ask ALONE. `userTransactionDepth > 0` is
+    // "is a multi-store user action in flight"; it is silent about the extent R1390 named, so a
+    // pumped Undo click with NO transaction running went straight through it into
+    // `pollUndoCoalesce`'s blocking capture and `applyStatePreservingView`'s blocking replacement.
+    // That is R802 exactly, and round 27's `insideDispatch()` cannot close it either: it answers
+    // for a dispatch this plug-in started and a host's dispatch raises no depth of ours.
+    //
+    // `admitStateCommand` asks all three questions at the one door -- transaction open, own
+    // dispatch, replacement in flight -- and the third is a TRY that is HELD for the whole body, so
+    // the guarantee does not depend on being able to see the host at all. See
+    // `src/StateCommandGate.h` for the argument; `deferWhileUserTransactionActive` is gone rather
+    // than kept alongside it, so there is one door and no second spelling to forget.
+    //
+    // Use it as a scope object and check it:
+    //     const auto admit = admitStateCommand ([this] { undo(); });
+    //     if (! admit.admitted()) return;      // queued; touch nothing
+    [[nodiscard]] anamorph::StateCommandGate admitStateCommand (std::function<void()> retry,
+                                                                bool drainFirst = true,
+                                                                const std::function<void()>& afterDrain = {});
+
+    // The four answers a gate is built from, wired once in the constructor. `PresetManager` holds a
+    // pointer to this so a preset command and an Undo pass through the same door.
+    anamorph::StateCommandHooks stateCommandHooks;
+
+    // How deep in admitted commands this thread is. Message-thread only, exactly like
+    // `userTransactionDepth`; see `StateCommandHooks::nesting` for why an inner gate must not
+    // repeat the outer one's drain.
+    int stateCommandDepth = 0;
+
+    // How many commands are waiting on the FIFO. Test-facing: the regression matrix for round 28
+    // asserts both that a refused command IS queued and that a retry door empties it, and neither
+    // is observable from the outside otherwise.
+    [[nodiscard]] size_t deferredCommandCount() const noexcept { return deferredCommands.size(); }
 
     // ADR-0036, ROUND 26 (Devin R651). THE FLUSH IS A NON-BLOCKING DOOR. See the definition for the
     // lock cycle it closes; the rule it enforces is the one `copyStateWithRawValues` has carried
@@ -375,6 +409,10 @@ public:
     // inside a parameter notification.
     void abSwitchToAdopted (int slot);        // the switch, with the drain already done
     void pollUndoCoalesceAdopted();           // the poll, with the drain already done
+    // ADR-0036 round 28 (R802-807): `PresetManager::onSaved`'s hook. The same three steps as
+    // `pollUndoCoalesce` with the one acquisition made a try, because a save is reachable from a
+    // pumped click and must not wait for `soundReplacement`. See the definition.
+    void rebaselineAfterSave();
 
     // Test seams (D-2): EMPTY in production, so each costs one null check on a
     // non-audio path. A harness installs one to run code at an ownership boundary

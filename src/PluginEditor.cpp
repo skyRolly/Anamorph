@@ -2045,7 +2045,15 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     // the 20 Hz adopt cannot rebuild it. Display only (the row the user clicks is an
     // ABSOLUTE index into `list`, which no adoption reorders), but wrong on screen, and
     // one call removes the exception rather than documenting it.
-    processor.adoptPendingHostState();
+    // ROUND 28 (Devin R802-807): the NON-BLOCKING arm, and the reason is that this line is
+    // reachable from a pumped click exactly as Undo is. The blocking arm waits for
+    // `soundReplacement`, which a host thread can be holding while it waits for a parameter's
+    // `listenerLock` this thread holds -- the cycle the state commands now refuse to supply. A
+    // menu cannot be deferred (it is opened synchronously and modally), so it takes the other
+    // answer: a refused drain leaves the tick on the outgoing row for the life of THIS popup and
+    // the 20 Hz adopt repairs it before the next one. Display only, bounded to one opening, and
+    // strictly better than the wait.
+    processor.adoptPendingHostState (/*mayBlock*/ false);
 
     auto& pm = processor.getPresets();
     pm.refresh();

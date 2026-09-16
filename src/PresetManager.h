@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <functional>
 #include "PluginParameters.h"
+#include "StateCommandGate.h"   // anamorph::StateCommandGate (ADR-0036 section 31)
 
 namespace anamorph
 {
@@ -292,7 +293,31 @@ public:
     // false) means proceed exactly as before. The lambda re-enters the PUBLIC entry point, so a
     // relative `step` recomputes its row from the state it will actually act on rather than from
     // the mid-transaction one -- which is ADR-0036 section 23's rule, kept.
-    std::function<bool(std::function<void()>)> deferIfBusy;
+    // ROUND 28 (Devin R802-807) REPLACED THE PREDICATE WITH THE PROCESSOR'S OWN ADMISSION, and the
+    // paragraph above is still the reason the DEFERRAL exists -- what changed is that a transaction
+    // is no longer the only thing a preset command must wait for. A preset load is a whole-sound
+    // replacement (section 24): it blocks on the replacement lock through `applySoundTree` and
+    // `applyDefaults`, and a host that pumps its message loop from a parameter dispatch can deliver
+    // the click that starts it while a host thread holds that lock and waits for the parameter's
+    // `listenerLock`. `StateCommandGate` is the one door for that -- see `src/StateCommandGate.h` --
+    // and it also carries the DRAIN this class used to ask for separately through `adoptPending`,
+    // which is why that hook is gone: the drain must happen before the lock and never underneath it.
+    //
+    // Non-owning; the processor outlives this manager. Null in a manager no processor wired up, in
+    // which case every command runs synchronously exactly as it did before round 25.
+    const anamorph::StateCommandHooks* stateCommand = nullptr;
+
+    // Build the gate for a preset command. `retry` re-enters the PUBLIC entry point, so a relative
+    // `step` recomputes its row from the state it will actually act on rather than from the
+    // mid-transaction one -- ADR-0036 section 23's rule, kept.
+    [[nodiscard]] anamorph::StateCommandGate stateCommandAdmission (std::function<void()> retry,
+                                                                    bool drainFirst = true,
+                                                                    const std::function<void()>& afterDrain = {}) const
+    {
+        static const anamorph::StateCommandHooks unwired {};   // no processor: admit everything
+        return anamorph::StateCommandGate { stateCommand != nullptr ? *stateCommand : unwired,
+                                            std::move (retry), drainFirst, afterDrain };
+    }
 
     // Fired by saveUser() after the new name/identity/baseline are in place. A save changes no
     // parameter value, so the processor's gesture-gated coalescer never notices it and its
@@ -308,9 +333,15 @@ public:
     // as the A/B toggle's: a relative target computed from a selection a pending restore
     // is about to replace is a decision about the wrong session, and load()'s own drain
     // (through onAboutToLoad) comes AFTER the index has been chosen, too late to help.
-    // onAboutToSave below is the save path's instance of the same rule. Empty when no
-    // processor wires it up (safe to skip: the manager then has no restores to adopt).
-    std::function<void()> adoptPending;
+    // onAboutToSave below is the save path's instance of the same rule.
+    //
+    // ROUND 28: the hook is GONE and the rule is not. `admit` above drains -- with the
+    // non-blocking arm, outside any lock, and refusing the whole command if the cell is not empty
+    // afterwards -- at the top of `load`, `loadFile` and `step`, which is where `adoptPending` was
+    // called and one statement earlier than the deferral it followed. `loadAdopted` passes
+    // `drainFirst == false` for the same reason it was never given the hook: `step` derived its row
+    // from the session the first drain established, and a second drain would move the selection
+    // under a chosen row (section 23).
 
     // Test seam: fires inside `step`, at its LAST OBSERVATION POINT -- after the drain that
     // makes the selection authoritative and before the target row is derived from it. A test
@@ -390,6 +421,17 @@ private:
     // one run the SAME code and cannot drift apart.
     void applyParsedFile (const juce::File&, const juce::ValueTree& sound);
     bool writeUserPreset (const juce::String& legalName);
+
+    // ROUND 28 (R802-807): the DEFERRED halves of the two above, each re-taking the admission its
+    // public entry point took. A deferred command is replayed by the processor's flush, which holds
+    // nothing and has already released its own try -- so a retry that ran the body directly would
+    // reach `applySoundTree`'s blocking acquisition unguarded, which is the finding by a second
+    // entrance. `drainFirst` is true on both: by the time a deferred command runs, the restore its
+    // first attempt could not adopt may well have arrived.
+    void applyParsedFileAdmitted (const juce::File&, const juce::ValueTree& sound,
+                                  const std::function<void (bool)>& completion);
+    void writeUserPresetAdmitted (const juce::String& legalName,
+                                  const std::function<void (bool)>& completion);
 
     // Stands in when no processor wired one up, so the ScopedLock always has an object to take.
     // Never contended in that case: without a processor there is no host restore thread.

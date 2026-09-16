@@ -1031,7 +1031,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:2306`).
+    (`src/PluginProcessor.cpp:2451`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1100,7 +1100,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     the one-pass reassert makes exact by construction.
 
 23. **A relative operation acts on the session it observed (round 16).** Review finding *"relative
-    navigation uses stale targets"* (`src/PluginProcessor.cpp:1927`).
+    navigation uses stale targets"* (`src/PluginProcessor.cpp:2078`).
 
     **What a relative operation is.** One whose target is a function of the current state rather than
     of the user's input: *the other slot* (`abToggle`), *the next/previous preset*
@@ -1206,7 +1206,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     derived program-state target there to go stale.
 
 24. **One whole-sound replacement at a time (round 17).** Review finding *"overlapping restores
-    expose mixed sound"* (`src/PluginProcessor.cpp:2491`).
+    expose mixed sound"* (`src/PluginProcessor.cpp:2636`).
 
     **What a whole-sound replacement is.** An operation that installs an ENTIRE sound over the live
     parameter set, as opposed to moving one parameter: a host restore's install
@@ -2044,6 +2044,131 @@ turn late) and leaves a save issued on the host thread right after its restore d
     no smaller boundary existed. A smaller one did: the lock keeps exactly the owner, the scope and
     the order it had, and the change is entirely on the *caller* side of it.
 
+
+31. **A STATE-REPLACING COMMAND NEVER WAITS FOR A WHOLE-SOUND REPLACEMENT, WHOEVER STARTED THE
+    DISPATCH IT IS NESTED IN (round 28).** Review finding `src/PluginProcessor.cpp:R802-807`,
+    *"direct program commands can deadlock"*. Confirmed from source and reproduced with real
+    threads, and it is the door §30's own closing paragraph left open in writing: *"a pumped Undo
+    click with no transaction open reaches `undo()` directly, never through the flush."*
+
+    **The finding.** `deferWhileUserTransactionActive` asked exactly one question —
+    `userTransactionDepth <= 0` — and at depth zero answered `false` and let the command run inline.
+    Ten commands went through that one door: `undo`, `redo`, `abSwitchTo`, `abToggle`,
+    `abCopyToOther`, and `PresetManager::load` / `loadAdopted` / `loadFile` / `step` / `saveUser`.
+    Every one of them is wired to a `juce::Button::onClick`, a `PopupMenu` or a `FileChooser`
+    callback in `src/PluginEditor.cpp`, so every one of them is delivered by whatever the host's
+    pump delivers. With no transaction running the command reached a **blocking** acquisition:
+
+    | thread | holds | wants |
+    |---|---|---|
+    | message | `listenerLock(P)` — JUCE holds it across the whole dispatch including `finalListener` (`juce_AudioProcessorParameter.cpp:78-86, :101-109, :113-121`) — reached by: host pumps its loop from that callback → a queued UI click → `undo()` → `pollUndoCoalesce` → `adoptPendingHostState()`'s blocking arm, then `currentStateSet` → `copyStateWithRawValues`, then `applyStatePreservingView` | `soundReplacement` |
+    | host | `soundReplacement`, via `setStateInformation` → `installRestoredSound` → `applySoundTree` | `listenerLock(P)`, via `anamorph::param::replaceState` → APVTS `valueTreeRedirected` → `setNewState` → `setDenormalisedValue` → `setValueNotifyingHost` |
+
+    **§30's PREDICATE CANNOT CLOSE IT, AND THAT IS A FACT ABOUT JUCE RATHER THAN A GAP IN THE
+    IMPLEMENTATION.** `anamorph::param::insideDispatch()` answers for a dispatch **this plug-in**
+    started. A host-started one is indistinguishable from inside the plug-in, established from the
+    pinned JUCE source this round:
+
+    * the host's write enters through the **same** non-virtual `AudioProcessorParameter::
+      setValueNotifyingHost` the plug-in uses — `juce_audio_plugin_client_VST3.cpp:833` (from
+      `Param::setNormalized`:976 and `processParameterChanges`:3537), `AU_1.mm:1186`, `VST2:1328`,
+      `LV2:188`; AAX calls `sendValueChangedMessageToListeners` directly (`AAX:994`);
+    * the `Listener` signatures carry only an index and a value
+      (`juce_AudioProcessorParameter.h:321, :336), so no observation point can tell them apart;
+    * the flag that *would* answer exists and is out of reach: `static thread_local bool
+      inParameterChangedCallback` at `juce_audio_plugin_client_VST3.cpp:825`, set by a file-local
+      `InParameterChangedCallbackSetter` (`:342-350`) and read at `:1472` — inside the wrapper
+      translation unit;
+    * **no plug-in callback brackets the host's.** JUCE calls `finalListener` LAST and returns, so
+      every candidate is a prefix (the plug-in's own parameter `Listener`; APVTS's
+      `Listener::parameterChanged`, the closest), a non-participant (a `ValueTree::Listener` on
+      `apvts.state` — the adapter only raises `needsUpdate`, and the tree write happens on APVTS's
+      own 10 Hz timer), or a **victim** the pump delivers (a `Timer`, an `AsyncUpdater`);
+    * `juce::MessageManager` exposes no nesting or dispatch-depth query at all, and a host's pump is
+      the host's own loop, not JUCE's.
+
+    The closest structural near-miss was examined and rejected on evidence rather than on taste: a
+    self-registered `AudioProcessorListener` really would be called AFTER the wrapper's, because
+    `AudioProcessor::addListener` appends and `ParameterChangeForwarder` walks the array in reverse
+    (`juce_AudioProcessor.cpp:338-348`, `:1467-1489`). It is unusable anyway — `listeners` and
+    `getListenerLocked` are private (`juce_AudioProcessor.h:1592, :1646, :1685`) so the relative
+    index cannot be verified, `addIfNotAlreadyThere` cannot reposition an existing entry, hosts
+    register several listeners and may remove and re-add them, and the forwarder walks the array
+    unlocked.
+
+    **SO THE GUARANTEE IS BY CONSTRUCTION, NOT BY DETECTION**, and that is the whole of the
+    decision. The message thread's edge is the only one this plug-in owns. A command that never
+    **waits** for `soundReplacement` cannot supply that edge, whoever started the dispatch it is
+    nested in and whether or not anything can tell. `src/StateCommandGate.h` is that: one
+    `tryEnter` at the **command boundary**, **held for the whole body**, and a deferral when it
+    fails. `deferWhileUserTransactionActive` is deleted rather than kept alongside it, so there is
+    one door and no second spelling to forget.
+
+    **`admitStateCommand` asks four questions, in this order, and the order is load-bearing:**
+
+    | # | question | on yes | why here |
+    |---|---|---|---|
+    | 0 | is this thread already inside an admitted command? | admit at once, count the nesting | the lock is already this thread's and the drain has already run; repeating either is what the rest of this table exists to avoid |
+    | 1 | `userTransactionDepth > 0`, or `insideDispatch()`? | queue the retry | round 25's rule and round 30's predicate, unchanged in meaning. Incomplete on its own — that is the finding — but it makes the OBSERVABLE cases defer rather than merely not-deadlock |
+    | 2 | did `adoptPendingHostState (/*mayBlock*/ false)` reach its fixed point? | queue the retry | the blocking drain the direct commands used to make **is** one of the acquisitions the finding cites. Taken with the non-blocking arm and **outside** any lock of ours, because the adoption calls out to the host from inside itself and holding a replacement lock across a host callback is the inversion State test 27 (ER-STATE-14) hangs on — measured, round 21. A command that cannot see the newest session is not a command that should replace it (§15) |
+    | 3 | did `soundReplacement.tryEnter()` succeed? | queue the retry | the by-construction half. Held across the body, so `copyStateWithRawValues`, `applyStatePreservingView`, `PresetManager::applySoundTree` and `applyDefaults` are free recursive re-entries (`juce::CriticalSection` is `PTHREAD_MUTEX_RECURSIVE`) and **one try answers for all of them** |
+
+    **AT THE BOUNDARY AND HELD — both halves are load-bearing, and §29 is why.** §29's try-lock was
+    taken and *released* before the commands ran, which proves nothing about their own acquisitions;
+    §30 recorded that. A probe-then-release here would be worse than nothing: between the probe and
+    the first inner acquisition a host thread can take `soundReplacement` and begin waiting for the
+    `listenerLock` this thread holds, and the inner acquisition then closes the cycle the probe said
+    was open.
+
+    **WHAT IT COSTS, stated rather than buried.** A command refused at step 2 or 3 does not run
+    *now*; it runs at the next door, in the order the user gave it. The doors are the ones that
+    already exist — the transaction close, the user's next action, and the ticks — plus one this
+    round adds, because the queue's timer door was not in fact unconditional: `pollUndoCoalesce-
+    FromTimer` is called from `PluginEditor::timerCallback` and **nowhere else**, so with no editor
+    open there was no timer retry at all, and §30's table claiming *"20 Hz tick →
+    `flushDeferredCommands`"* was describing something the source did not do.
+    `AnamorphAudioProcessor::timerCallback` now calls `flushDeferredCommands()` — the flush alone,
+    not the whole poll, so no gesture step is committed at 20 Hz that is not committed today.
+
+    **PRESET SAVE TAKES THE LOCK TOO, AND FOR THE OTHER LOCK.** `saveUser` replaces no sound, so §24
+    is not what it needs the lock for; `writeUserPreset`'s capture calls `apvts.copyState()`, which
+    opens `ScopedLock (valueTreeChanging)`, and that is the **one** bare acquisition of the APVTS
+    lock in this tree. Reached from a pumped click it is the same cycle by the other lock. Holding
+    `soundReplacement` closes it because **every thread that can hold `valueTreeChanging` while
+    waiting for a `listenerLock` must take `soundReplacement` first** — both `replaceState` sites are
+    inside it (`applyStatePreservingView`, `applySoundTree`) and so is the host-thread `copyState` in
+    `copyStateWithRawValues`. That is now a rule of this ADR rather than an accident of the call
+    sites, and `PresetManager::saveUser` depends on it. The cost is a file write under the lock: a
+    host thread's `setStateInformation` waits for as long as the save takes. A user preset is a few
+    kilobytes of XML and the lock is already held across every preset **load**.
+
+    **WHAT IS NOT CLOSED, and it is not this plug-in's to close.** `AudioProcessorValueTreeState` is
+    itself a `private Timer` at 10 Hz (`juce_AudioProcessorValueTreeState.h:119`, `.cpp:274`) whose
+    `timerCallback` reaches `flushParameterValuesToValueTree` and takes `valueTreeChanging`
+    **blocking**, on the message thread, from a callback a host's pump can deliver
+    (`.cpp:460-462, :472-474`). Against a host thread inside `replaceState` that is the same cycle
+    with no Anamorph lock on the waiting side and no Anamorph code on either edge of the wait. It
+    cannot be converted to a try, deferred, or refused from here. RISK-009 carries it, named, and
+    **stays OPEN** on it.
+
+    ### Architecture-review gate (`docs/policies/ARCHITECTURE_REVIEW_GATE.md`)
+
+    This is a **Thread Model** change: it converts ten command entry points from "blocks until the
+    replacement lock is free" to "runs now or at the next door", and it adds a nesting counter to
+    the message thread's state. Gated, ADR mandatory.
+
+    | Step | Requirement | Evidence |
+    |---|---|---|
+    | 1 | the author flags the change as gated | this section, and the round-28 comment on PR #144 |
+    | 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's ruling of 2026-09-16 (round 28)**: *"No state-replacing command may execute a blocking whole-sound/state operation while execution is dynamically inside parameter-listener dispatch"* — applying to Undo, Redo, A/B switching, A/B copy, preset state-replacement operations and any equivalent future program-state command, with the required handling (do not execute the blocking operation immediately; preserve the command and its required completion semantics; defer it to a known-safe message-thread boundary after the parameter-listener dispatch has completely returned; preserve transaction ordering; preserve user command order; do not silently drop the command) and the prohibitions (no arbitrary timers or sleeps; no correctness depending on timing luck; do not invent a host-gesture detector without evidence that the API can distinguish the required states). The ruling states the direction is already approved and is not to be asked again |
+    | 3 | if the change is a decision, an ADR is added/updated | this section — §31, distinct from §26/§27 and from §29/§30, recorded separately as the approved extension addressing R802-807 and RISK-009 |
+    | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes |
+
+    Nothing was manufactured on GitHub: no `APPROVED` review exists on PR #144 and none was submitted
+    from this session. ADR-0008, ADR-0052 and ADR-0053 were not reopened. §26–§30 keep the approvals
+    already recorded in them, and §24's lock keeps exactly the owner, the scope and the order it had:
+    the change is entirely on the *caller* side of it, which is the smaller boundary the ruling
+    requires be taken when one exists.
 
 ## Consequences
 

@@ -186,11 +186,37 @@ straddle and regression-tested by State test 101 leg J.
 | a JUCE attachment's own write raises it too | `AttachmentWitness`'s before/after straddle; State test 101 leg J |
 | a refusal consumes nothing and is retried | unchanged from §26/§29 — both polls call the flush |
 
-**Still OPEN, and not narrowed by the above:** `undo()`, `redo()`, the A/B paths and the preset loads
-block when a pumped click reaches them **directly**, with no transaction running and therefore no
-flush involved. The predicate now exists to close that too, but doing so means deciding what a
-refused *direct* user action should do — there is no queue holding it — and that is a product
-decision the owner has not been asked for. RISK-009 records it.
+**ROUND 28 (2026-09-16) — AND THE PREDICATE IS NOT THE ANSWER, BECAUSE THERE IS NO PREDICATE TO
+HAVE.** Round 27's paragraph above ended with the direct-command door open and the reason given as a
+product decision. The owner made that decision, and establishing what the decision could *be* came
+first: the plug-in **cannot observe a host-started dispatch at all**. A host's parameter write enters
+through the same non-virtual `setValueNotifyingHost`; the `Listener` signatures carry only an index
+and a value; the flag JUCE itself uses is a file-static `thread_local` inside the wrapper translation
+unit; no plug-in callback brackets the host's, because `finalListener` is called LAST and returns;
+and `juce::MessageManager` publishes no dispatch depth. `insideDispatch()` is therefore correct and
+permanently incomplete, and no amount of care makes it complete.
+
+So the rule gains a clause that does not depend on knowing: **a state-replacing command never WAITS
+for `soundReplacement` — it takes it with a try at its own boundary and holds it for the whole body,
+or it is queued.** `src/StateCommandGate.h` (ADR-0036 §31) is the one door, and
+`deferWhileUserTransactionActive` is deleted rather than kept beside it. The ten commands that go
+through it are `undo`, `redo`, `abSwitchTo`, `abToggle`, `abCopyToOther` and `PresetManager`'s
+`load` / `loadAdopted` / `loadFile` / `step` / `saveUser`; `applyAutoGain` and `pollUndoCoalesce`
+join them because their own drains were blocking acquisitions by the same route.
+
+| clause (round 28) | enforced by |
+|---|---|
+| no state-replacing command waits for `soundReplacement`, whoever started the dispatch | `StateCommandGate`'s `tryEnter` at the command boundary, held across the body; State test 103 legs A–K |
+| the drain a command needs is taken with the NON-BLOCKING arm and OUTSIDE that lock | `StateCommandHooks::drainToFixedPoint`; the command is refused if the cell is not empty, so §15's fixed point still holds |
+| a refused command is queued on round 25's FIFO, never dropped and never reordered | State test 103 legs I and J; `deferredCommandCount()` |
+| the queue's retry door is unconditional, editor or no editor | `AnamorphAudioProcessor::timerCallback` now calls `flushDeferredCommands()` — round 27's claim that it already did was not true of the source |
+| a nested command does not re-drain under the held lock | `StateCommandHooks::nesting`; the round-21 inversion State test 27 measures is the reason |
+
+**Still OPEN, and now for a reason outside this project.** What is left of RISK-009 contains no
+Anamorph lock on the waiting side: `juce::AudioProcessorValueTreeState` is itself a 10 Hz `Timer`
+whose `timerCallback` blocks on `valueTreeChanging` on the message thread, from a callback a host's
+pump delivers like any other message. Against a host thread inside `replaceState` that is the same
+cycle, and nothing in `src/` is on either edge of the wait. RISK-009 records it.
 
 **GIVING THE TICK UP IS NOT FREE, AND ROUND 22 PAID THE DIFFERENCE (ADR-0036 §27).** "Take the lock
 without waiting" answers the deadlock and says nothing about what the caller has already CONSUMED by
@@ -289,7 +315,7 @@ relies on.
 
 Evidence [Verified]:
 - Source: src/dsp/ScopeBuffer.h:28-80; src/dsp/LevelMeters.h:125-198; src/dsp/Correlation.h:50-190;
-  src/PluginProcessor.cpp:130-152, 347; src/InternalState.h:175, 548-571
+  src/PluginProcessor.cpp:151-173, 384; src/InternalState.h:175, 548-571
 - D-2: src/PluginProcessor.h (the ownership boundary comment, `ExchangeCell`, the cells and
   generations); src/PluginProcessor.cpp (`adoptPendingHostState`, `setStateInformation`,
   `getStateInformation`); ADR-0036; State tests 37–41; the `tsan` job in

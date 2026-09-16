@@ -268,3 +268,43 @@ deadlock:WriteFromInsideAGestureOpen
 # `PumpFromGestureEndOf`, was absorbed by round 24's `PumpFromGestureEnd` entry,
 # and the only symptom was the matched-suppression count moving 5 -> 6.
 deadlock:PumpedUserInteraction
+
+# ---------------------------------------------------------------------------
+# ROUND 28 (Devin R802-807). A FOURTH NAME FOR THE SAME PAIR, and a fourth name
+# rather than a fourth finding.
+#
+# State test 103 delivers each state-replacing command from inside a HOST's own
+# gesture and then pumps the retry door, so the command runs from
+# `AnamorphAudioProcessor::timerCallback` -> `flushDeferredCommands` ->
+# `abSwitchTo` -> ... -> `anamorph::param::replaceState`. That takes the APVTS
+# `valueTreeChanging` lock and, inside it, a parameter's `listenerLock`
+# (juce_AudioProcessorValueTreeState.cpp:398/413/425/457,
+# juce_AudioProcessorParameter.cpp:113) -- the M0 => M1 edge of RISK-009's
+# round-20 pair, reached through a door that did not exist before round 28: the
+# processor's own 20 Hz tick did not call the flush, and ADR-0036 section 31 adds
+# that so the queue has a retry door with no editor open. No frame of either stack
+# names an existing entry, so the report is not absorbed by them.
+#
+# THE CYCLE CANNOT CLOSE ON THIS PAIR, and round 28 strengthens the round-22
+# argument rather than repeating it. Both orders are taken with `soundReplacement`
+# ALREADY held by the acquiring thread: `copyStateWithRawValues` has taken it one
+# line above its `copyState` since round 17, `applyStatePreservingView` and
+# `applySoundTree` take it before their `replaceState`, and since section 31 EVERY
+# state-replacing command holds it across its whole body -- so both ends of this
+# pair are now serialised by one lock two threads cannot hold at once. TSan reports
+# it anyway because its deadlock detector keeps a PAIRWISE lock-order graph and does
+# not model an outer lock that serialises both orders. Both orders here are the MAIN
+# thread at different times, so the suite itself cannot deadlock either.
+#
+# WHAT THIS DOES NOT CLAIM. It does not say RISK-009 is closed. What survives is a
+# DIFFERENT M1 => M0 edge that this pair's outer lock does not cover: JUCE's own
+# `AudioProcessorValueTreeState` is a 10 Hz `Timer` whose `timerCallback` blocks on
+# `valueTreeChanging` from the message thread -- inside a host-pumped dispatch it
+# holds a `listenerLock` and takes NO `soundReplacement`. That edge is in no
+# first-party file and cannot be converted to a try from here. `FUTURE_RISKS.md`
+# RISK-009 carries it and stays OPEN.
+#
+# The entry names the TEST FUNCTION, as the rule above requires: it cannot appear in
+# a shipped build, so a real host-vs-host inversion on these two locks, with no
+# harness frame in either stack, is still REPORTED.
+deadlock:testNoStateCommandWaitsForAReplacement

@@ -96,7 +96,12 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // even though it runs AFTER the save's own mutations, because a save touches no
     // parameter and leaves `committed` alone: the step it records is still the exact
     // pre-edit state set, with the pre-save preset metadata, which is what undo wants.
-    presets.onSaved       = [this] { pollUndoCoalesce(); syncCommitted(); };
+    // ROUND 28: ...and it does that flush WITHOUT WAITING. `pollUndoCoalesce` is the blocking
+    // door -- a blocking drain and then `currentStateSet`'s blocking capture -- and a save is
+    // reachable from a pumped click exactly as Undo is (R802). `rebaselineAfterSave` is the same
+    // three steps with the one acquisition made a try, and `committedNeedsResync` carries the
+    // repair to the next tick on the tick where a replacement is in flight.
+    presets.onSaved       = [this] { rebaselineAfterSave(); };
     presets.soundParamGeneration = [this] { return soundParamGen.load (std::memory_order_relaxed); }; // S10
 
     // D-2 (RISK-007, ADR-0036): the program-state publication. Every mutation of the
@@ -106,13 +111,29 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // is about to rewrite the preset metadata adopts a pending host restore first, so
     // the two land in the order they happened.
     presets.onMetaChanged = [this] { publishProgram(); };
-    presets.onAboutToSave = [this] { adoptPendingHostState(); };
-    presets.adoptPending  = [this] { adoptPendingHostState(); }; // load/loadFile/step drain through this (§18, §23)
-    // ADR-0008 round 25 (Devin R1279-1283): ...and every one of those commands asks FIRST whether a
-    // multi-store user transaction is running, so a preset load, step, file load or save dispatched
-    // by a host's pumped message loop cannot replace the sound under a half-applied topology.
-    presets.deferIfBusy   = [this] (std::function<void()> c)
-                            { return deferWhileUserTransactionActive (std::move (c)); };
+    // ROUND 28: non-blocking, and it costs nothing. `saveUser`'s gate has already drained to a
+    // fixed point on the way in -- refusing the whole save if it could not -- so by the time the
+    // write reaches here the cell is empty and this is a relaxed load. It is a `try` rather than a
+    // wait so that the ONE case the gate cannot pre-empt (a restore arriving in between) comes back
+    // at the next door instead of waiting for `soundReplacement` from a possibly-nested extent.
+    presets.onAboutToSave = [this] { adoptPendingHostState (/*mayBlock*/ false); };
+    // ADR-0008 round 25 (Devin R1279-1283), ROUND 28 (R802-807). Every preset command passes the
+    // SAME admission the processor's own commands do: transaction open, own dispatch, or a
+    // replacement in flight -> queued on the one FIFO; otherwise admitted with the replacement lock
+    // HELD across the body. `deferIfBusy` and `adoptPending` are gone: the gate is the drain and
+    // the deferral both, so there is no second door and no order in which to get them wrong.
+    stateCommandHooks.soundReplacement = &soundReplacement;
+    stateCommandHooks.refuseNow        = [this]
+                                         { return userTransactionDepth > 0 || anamorph::param::insideDispatch(); };
+    stateCommandHooks.drainToFixedPoint = [this]
+                                          {
+                                              adoptPendingHostState (/*mayBlock*/ false);
+                                              return pendingRestore.empty();
+                                          };
+    stateCommandHooks.enqueue          = [this] (std::function<void()> c)
+                                         { deferredCommands.push_back (std::move (c)); };
+    stateCommandHooks.nesting          = &stateCommandDepth;
+    presets.stateCommand  = &stateCommandHooks;
     presets.soundReplacementLock = &soundReplacement;   // a preset load is a whole-sound replacement too (§24)
     presets.insideReplacement     = [this] { if (seams.insideSoundReplacement) seams.insideSoundReplacement(); };
     presets.noteReplaced          = [this] { noteWholeSoundReplaced(); };   // published under the §24 lock
@@ -310,6 +331,22 @@ void AnamorphAudioProcessor::timerCallback()
     // acquisition a try: the restore stays in the cell and this timer comes round again in 50 ms.
     adoptPendingHostState (/*mayBlock*/ false);
 
+    // ROUND 28 (Devin R802-807), AND IT IS A RETRY DOOR THIS TIMER DID NOT HAVE. Since the state
+    // commands carry their own admission, one can be queued because a replacement was in flight at
+    // the instant the user pressed the button -- not only, as before, because a transaction was
+    // open. The doors that replay the queue were the transaction close, the user's next action and
+    // the EDITOR's 24 Hz tick, and that last one is the only unconditional one: `pollUndoCoalesce-
+    // FromTimer` is called from `PluginEditor::timerCallback` and from nowhere else, so with no
+    // editor open there was no unconditional door at all. (The round-27 comment on that function
+    // says it is called from "the processor's 20 Hz tick and the editor's 24 Hz tick"; the first
+    // half was not true, and this line is what makes the sentence true rather than deleting it.)
+    //
+    // The FLUSH alone, not the whole poll. The flush is already non-blocking and already refuses
+    // inside a dispatch, so it adds no acquisition here; polling the coalescer headlessly would
+    // commit gesture steps at 20 Hz that today are committed only when an editor is open, which is
+    // a behaviour change this finding gives no reason to make.
+    flushDeferredCommands();
+
     // exchange() IS the clear for this delivery, so call deliverLatency() rather
     // than updateLatency() -- the latter would clear a SECOND time, and anything
     // stored in the window between the exchange above and that second clear would
@@ -406,7 +443,13 @@ void AnamorphAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 // ----------------------------------------------------------------------------
 void AnamorphAudioProcessor::applyAutoGain()
 {
-    adoptPendingHostState(); // message thread: a pending host restore lands BEFORE this edit (D-2)
+    // ROUND 28 (R802-807). Apply is a pumped-click door like Undo, and its drain was BLOCKING --
+    // `adoptPendingHostState()`'s own acquisition of `soundReplacement`, reachable from inside a
+    // parameter dispatch this plug-in cannot see. It passes the same admission every state
+    // command does. Apply replaces no snapshot, so what the gate buys here is only that the
+    // drain never waits; the lock it holds costs one uncontended `tryEnter`.
+    const auto admit = admitStateCommand ([this] { applyAutoGain(); });
+    if (! admit.admitted()) return;
 
     // "Apply": OVERRIDE Output Gain with the measured loudness compensation as a
     // fixed value (feedback #18). The match gain is measured pre-output-gain, so
@@ -781,6 +824,8 @@ void AnamorphAudioProcessor::flushDeferredCommands()
             pollUndoCoalesceAdopted();
         }
 
+        const auto before = deferredCommands.size();
+
         auto queued = std::move (deferredCommands);
         deferredCommands.clear();             // `queued` owns them now; a moved-from vector is
                                               // valid but unspecified, so this is stated. It also
@@ -788,6 +833,17 @@ void AnamorphAudioProcessor::flushDeferredCommands()
                                               // `push_back` cannot reallocate under the loop below.
         for (auto& command : queued)
             if (command) command();
+
+        // ROUND 28, AND IT IS A LIVELOCK GUARD RATHER THAN A CORRECTNESS ONE. Since the commands
+        // carry their own admission (`admitStateCommand`), a command whose gate refuses RE-QUEUES
+        // itself instead of running -- so the queue can come back the same size it went in. Walking
+        // it again here would spin this loop against whatever holds the replacement lock, on the
+        // message thread, for as long as that thread holds it. No progress means the next door does
+        // it: the transaction close, the user's next action, or the next 20/24 Hz tick, exactly as a
+        // failed try above already behaves. Order is untouched -- the re-queued commands are still
+        // in front of anything queued after them.
+        if (deferredCommands.size() >= before)
+            return;
     }
 }
 
@@ -799,12 +855,11 @@ void AnamorphAudioProcessor::flushDeferredCommands()
 // and a transaction started from inside a command would otherwise re-enter this flush while
 // `queued` was still being walked. With the depth at zero this function also refuses to queue, so
 // a command cannot defer itself into the list it is being run from.
-bool AnamorphAudioProcessor::deferWhileUserTransactionActive (std::function<void()> command)
+anamorph::StateCommandGate AnamorphAudioProcessor::admitStateCommand (std::function<void()> retry,
+                                                                      bool drainFirst,
+                                                                      const std::function<void()>& afterDrain)
 {
-    if (userTransactionDepth <= 0)
-        return false;
-    deferredCommands.push_back (std::move (command));
-    return true;
+    return anamorph::StateCommandGate { stateCommandHooks, std::move (retry), drainFirst, afterDrain };
 }
 
 // ADR-0008, ROUND 20. The request, armed. Deliberately weaker than every `note*` above it: no
@@ -911,7 +966,26 @@ void AnamorphAudioProcessor::applyStateSet (const StateSet& s)
 void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& target)
 {
     // Restore a snapshot but keep the CURRENT shared view/Settings params (#10/#13).
-    float saved[std::size (pid::viewParams)];
+    //
+    // ONE BOUND, NAMED ONCE, AND THAT IS THE WHOLE REASON IT IS A LOCAL (round 28, PREfast C6001
+    // 272/273). The capture loop below and the write-back loop at the end used to spell the bound
+    // `std::size (pid::viewParams)` separately. MSVC `/analyze` does not fold `std::size` on an
+    // `inline constexpr` array, so it kept the bound as a symbol and never correlated the two
+    // occurrences across the `replaceState` / `reassertParameters` calls between them: it explored
+    // {first loop 0 trips} x {second loop >= 1 trip} and reported `saved` read uninitialised at the
+    // write-back. That path does not exist -- `viewParams` has exactly one element
+    // (src/PluginParameters.h:71), both loops are unconditional, and nothing between them can
+    // divert control -- but the analyzer cannot see it while the bound is written twice. Written
+    // once, a flow that assumes it is zero in the first loop must assume it is zero in the second
+    // too, and the read disappears with it.
+    //
+    // NOT AN INITIALISER. `= {}` would be a dummy write: on every feasible path it stores a 0.0f
+    // that the capture loop immediately overwrites, and on the infeasible path it is meant to cover
+    // it would silently restore Bypass to "off" instead of failing loudly. The policy is that
+    // initialization is never weakened and no dummy write is added to quiet a static analyzer.
+    constexpr size_t viewCount = std::size (pid::viewParams);
+    static_assert (viewCount > 0, "applyStatePreservingView's capture loop must run at least once");
+    float saved[viewCount];
 
     // The same three steps as a host restore's sound half (applySoundTree), on the
     // editor's own thread: repair the serialized text on OUR copy, hand that copy to
@@ -942,7 +1016,7 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
     // move Bypass between the read and the write and settle a sound that is the slot's everywhere
     // else and the restore's there -- the mixture this rule forbids, in the one place State test
     // 62's oracle cannot see it (it classifies the preset-carried set, and Bypass is excluded).
-    for (size_t i = 0; i < std::size (pid::viewParams); ++i)
+    for (size_t i = 0; i < viewCount; ++i)
         saved[i] = apvts.getParameter (pid::viewParams[i])->getValue();
 
     auto copy = target.createCopy();
@@ -956,7 +1030,7 @@ void AnamorphAudioProcessor::applyStatePreservingView (const juce::ValueTree& ta
     // the target one store/report pass further from the bytes. The resolver embodies the repair.
     reassertParameters (target, /*notifyHost*/ true); // undo/redo/A-B is editor-initiated: notify host+editor
 
-    for (size_t i = 0; i < std::size (pid::viewParams); ++i)
+    for (size_t i = 0; i < viewCount; ++i)
         anamorph::param::setValueNotifyingHost (apvts.getParameter (pid::viewParams[i]), saved[i]);
 
     // A state set replaced the live sound, and it is finished replacing it: the counter
@@ -1447,7 +1521,10 @@ void AnamorphAudioProcessor::parameterGestureChanged (int parameterIndex, bool g
 // function is a TIMER-DRIVEN RETRY, called only from the processor's 20 Hz tick and the editor's
 // 24 Hz tick, and the owner's round-27 ruling is that such a path stays non-blocking. Inside a
 // dispatch it therefore does NOTHING AT ALL -- not the drain, not the poll, not the flush -- and
-// the next tick, 50 ms later and outside the extent, does all three. Nothing is consumed and
+// the next tick, 50 ms later and outside the extent, does all three. (ROUND 28 CORRECTION: this
+// function is called from the EDITOR's 24 Hz tick and from nowhere else. The processor's own 20 Hz
+// tick reaches the flush directly -- see `timerCallback` -- which is what makes the queue's retry
+// door unconditional with no editor open.) Nothing is consumed and
 // nothing is decided, exactly as a failed try already behaved.
 void AnamorphAudioProcessor::pollUndoCoalesceFromTimer()
 {
@@ -1475,16 +1552,68 @@ void AnamorphAudioProcessor::pollUndoCoalesceFromTimer()
 
 void AnamorphAudioProcessor::pollUndoCoalesce()
 {
-    // D-2: the editor's tick comes through here, so a host restore handed over
-    // from another thread is adopted before this poll reads or writes anything the
-    // adoption replaces (the undo history, the committed baseline, the gesture
-    // bookkeeping). One relaxed load when nothing is pending.
-    adoptPendingHostState();
+    // THE DRAIN IS THE ADMISSION'S SINCE ROUND 28, and that is the R802 fix rather than a tidy-up.
+    // This function used to open with a BLOCKING `adoptPendingHostState()` -- one of the two
+    // acquisitions Devin cites -- and it is the user-action door, so a host's pumped click reaches
+    // it with a parameter's `listenerLock` held. The gate drains with the NON-BLOCKING arm, outside
+    // any lock of ours, refuses the whole poll if the cell is not empty afterwards, and then holds
+    // the replacement lock across the body so `currentStateSet`'s own acquisition is a free
+    // recursive re-entry. The D-2 rule this line has enforced since round 16 is unchanged: nothing
+    // below reads program state a pending restore would replace.
+    //
+    // Reached from `undo()` / `redo()` / the save's re-baseline it is a NESTED admission -- their
+    // gate has already drained and is already holding -- so it costs one integer test and, in
+    // particular, does not drain a second time underneath that lock.
+    const auto admit = admitStateCommand ([this] { pollUndoCoalesce(); });
+    if (! admit.admitted()) return;
+
     pollUndoCoalesceAdopted();
 
     // ROUND 26 (Devin R651): the OTHER retry door -- the user's next action. Same guard, same
     // no-op with an empty queue. `flushDeferredCommands` re-polls for itself, which is how the
     // transaction's own step stays ordered before the commands even on this path.
+    flushDeferredCommands();
+}
+
+// ADR-0036 ROUND 28 (Devin R802-807). THE SAVE'S RE-BASELINE, WITHOUT THE WAIT.
+//
+// A preset save is a state command by the same door as Undo -- the editor's Save button is a
+// message the host's pump can deliver from inside a parameter dispatch -- and `PresetManager::
+// saveUser` passes the same admission every other command does. What this function replaces is the
+// BLOCKING `pollUndoCoalesce()` the `onSaved` hook used to call, whose drain and whose
+// `currentStateSet` are two of the acquisitions R802 names.
+//
+// NO DRAIN HERE, for the reason `pollUndoCoalesce` no longer has one: the save's admission already
+// drained, with the non-blocking arm and OUTSIDE the lock it then took. Draining again from in here
+// would run the adoption's host callout underneath that held lock, which is the inversion State
+// test 27 measured.
+//
+// THE TRY IS NOT REDUNDANT WITH THAT LOCK, it is what makes this function safe for a caller that
+// does NOT hold it. Reached from `saveUser` it is the gate's own lock re-entered on this thread and
+// always succeeds; written as a try, the function carries its own guarantee rather than inheriting
+// one. On failure nothing is consumed and `committedNeedsResync` carries the snapshot forward,
+// which is the repair path `syncCommitted (false)` has used since round 21 and
+// `pollUndoCoalesceAdopted` reads at its first line. The saved BYTES are unaffected either way --
+// they were written before this runs -- so a refused re-baseline costs at most one tick of a stale
+// dirty-star, never a wrong file.
+void AnamorphAudioProcessor::rebaselineAfterSave()
+{
+    {
+        const juce::ScopedTryLock notWhileReplacing (soundReplacement);
+        if (! notWhileReplacing.isLocked())
+        {
+            committedNeedsResync = true;   // the next poll retakes it; nothing else is decided here
+            return;
+        }
+
+        // Held across both on purpose. The flush FIRST, so a settled-but-unpolled gesture becomes
+        // its own undo step before the baseline moves onto the saved preset -- without it
+        // `syncCommitted` clears `pendingGestureCommit` and the edit silently stops being undoable,
+        // which is the rule the round-25 comment on `onSaved` states and this keeps.
+        pollUndoCoalesceAdopted();
+        syncCommitted();
+    }
+
     flushDeferredCommands();
 }
 
@@ -1826,8 +1955,14 @@ void AnamorphAudioProcessor::applyUndoEntry (const UndoEntry& e, bool toAfter)
 
 void AnamorphAudioProcessor::undo()
 {
-    // ADR-0008 round 25 (R1279-1283): not inside a user transaction. See the declaration.
-    if (deferWhileUserTransactionActive ([this] { undo(); })) return;
+    // ADR-0008 round 25 (R1279-1283) and ADR-0036 round 28 (R802-807): not inside a user
+    // transaction, not inside a dispatch of ours, not while a whole-sound replacement is in flight,
+    // and not before every arrived restore has been adopted. Admitted, the replacement lock is HELD
+    // for the whole body below -- the capture, the apply and the re-capture are one replacement --
+    // so `pollUndoCoalesce`'s and `applyStatePreservingView`'s own acquisitions are free recursive
+    // re-entries and this thread never WAITS for it. Refused, the very same `undo()` is queued.
+    const auto admit = admitStateCommand ([this] { undo(); });
+    if (! admit.admitted()) return;
     // Flush any settled-but-unpolled gesture into its own undo step first (the
     // editor timer polls at 24 Hz, so a commit can be pending for up to ~42 ms),
     // exactly like PresetManager::onAboutToLoad does before a preset switch.
@@ -1861,8 +1996,10 @@ void AnamorphAudioProcessor::undo()
 
 void AnamorphAudioProcessor::redo()
 {
-    // ADR-0008 round 25 (R1279-1283): the same rule as undo(), for the same reason.
-    if (deferWhileUserTransactionActive ([this] { redo(); })) return;
+    // ADR-0008 round 25 (R1279-1283), ADR-0036 round 28 (R802-807): the same rule as undo(), for
+    // the same reason and through the same door.
+    const auto admit = admitStateCommand ([this] { redo(); });
+    if (! admit.admitted()) return;
     pollUndoCoalesce(); // same settled-gesture flush as undo()
     auto& st = abUndo[abActive];
     if (st.redo.empty()) return;
@@ -1927,8 +2064,10 @@ void AnamorphAudioProcessor::abSwitchTo (int slot)
 {
     // ADR-0008 round 25 (R1279-1283): the explicit-target primitive behind `abToggle`, covered
     // for the same reason and separately, because `abToggle` does not route through it.
-    if (deferWhileUserTransactionActive ([this, slot] { abSwitchTo (slot); })) return;
-    adoptPendingHostState(); // message thread: a pending host restore lands BEFORE this switch (D-2)
+    // ROUND 28: ...and the drain that used to be the next line is the admission's, taken with the
+    // non-blocking arm before the lock rather than by waiting for it (R802).
+    const auto admit = admitStateCommand ([this, slot] { abSwitchTo (slot); });
+    if (! admit.admitted()) return;
     abSwitchToAdopted (slot);
 }
 
@@ -1954,7 +2093,13 @@ void AnamorphAudioProcessor::abToggle()
     // ADR-0008 round 25 (R1279-1283): an A/B switch replaces the whole live sound, so it waits
     // for the transaction exactly as Undo does. Deferred BEFORE the drain, because the drain is
     // part of the operation (section 23) and must happen at the instant the switch does.
-    if (deferWhileUserTransactionActive ([this] { abToggle(); })) return;
+    // The seam fires from INSIDE the admission, between its drain and its try -- see
+    // `StateCommandGate`'s `afterDrain`. That is where section 23's window now is: after the
+    // fixed point the drain established, before the lock the decision is made under, and
+    // therefore still a point at which a host thread can land a restore and have it stay pending.
+    const auto admit = admitStateCommand ([this] { abToggle(); }, /*drainFirst*/ true,
+                                          [this] { if (seams.atRelativeDecision) seams.atRelativeDecision(); });
+    if (! admit.admitted()) return;
     // Drain FIRST, then decide: the target is the other slot of the session that is
     // authoritative once every arrived restore has been adopted (§15), never of the one a
     // caller happened to observe earlier.
@@ -1968,8 +2113,8 @@ void AnamorphAudioProcessor::abToggle()
     // without switching. The user pressed A/B and NOTHING HAPPENED. The decision window makes
     // the second drain a no-op, so the target and the state it is applied to are the same
     // session by construction.
-    adoptPendingHostState();
-    if (seams.atRelativeDecision) seams.atRelativeDecision();   // test seam: land a restore HERE
+    // ROUND 28: the drain AND the seam are the admission's, one statement above -- the property
+    // section 23 needs is that NOTHING is derived before either, and nothing is.
     abSwitchToAdopted (abActive == 0 ? 1 : 0);                  // ...and NOT abSwitchTo: no second drain
 }
 
@@ -1978,8 +2123,8 @@ void AnamorphAudioProcessor::abCopyToOther()
     // ADR-0008 round 25 (R1279-1283): a Copy reads the LIVE state into the other slot and pushes
     // a whole-state undo entry for it, so run mid-burst it would photograph a half-applied
     // topology and store that as a slot the user could later switch to.
-    if (deferWhileUserTransactionActive ([this] { abCopyToOther(); })) return;
-    adoptPendingHostState(); // message thread: a pending host restore lands BEFORE this copy (D-2)
+    const auto admit = admitStateCommand ([this] { abCopyToOther(); });
+    if (! admit.admitted()) return;   // round 28: the drain above is the admission's (R802)
     abEnsureInit();
     abSlot[abActive] = currentStateSet();
     const int other = abActive == 1 ? 0 : 1;

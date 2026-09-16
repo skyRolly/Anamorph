@@ -71,8 +71,8 @@ configuration**. `docs/policies/COMPATIBILITY_POLICY.md` ("Numerical compatibili
 | Layout | Status | Evidence |
 |---|---|---|
 | stereo → stereo | **Verified** | src/PluginProcessor.cpp:11-12 (bus declaration), :76-86 (`isBusesLayoutSupported`); test `testTransparentDefault` |
-| mono → stereo | **Verified** | src/PluginProcessor.cpp:175-176 (mono input accepted), :120-121 (mono duplicated to both channels) |
-| **mono → mono** | **Not Supported** | Deliberately rejected: output is always stereo. src/PluginProcessor.cpp:172-173 |
+| mono → stereo | **Verified** | src/PluginProcessor.cpp:196-197 (mono input accepted), :120-121 (mono duplicated to both channels) |
+| **mono → mono** | **Not Supported** | Deliberately rejected: output is always stereo. src/PluginProcessor.cpp:193-194 |
 
 ## DAW hosts
 

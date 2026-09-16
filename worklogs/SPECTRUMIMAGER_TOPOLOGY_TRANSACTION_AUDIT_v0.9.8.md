@@ -5079,3 +5079,112 @@ stopped where all five already intended it stopped, so it can only remove false 
 out-of-range write is still counted, and the pre-fix figures those probes record (491/1200,
 40/3600) were taken with the lane deliberately running through the measured window. All six
 CI-gated probes exit 0 on the fixed harness, and the state suite is unchanged at 3782/0.
+
+---
+
+## §85. Round 28 — Devin `src/PluginProcessor.cpp:R802-807`, *"direct program commands can deadlock"*
+
+### §85a. The finding is the sentence round 27 wrote down and did not act on
+
+ADR-0036 §30's last paragraph, and `docs/FUTURE_RISKS.md` RISK-009's round-27 bullet, both say it in
+so many words: *"a pumped Undo click with no transaction open reaches `undo()` directly, never
+through the flush."* Devin reported the same door. Confirmed from source before anything was
+written:
+
+`deferWhileUserTransactionActive` asked one question — `userTransactionDepth <= 0` — and at depth
+zero answered `false`. Ten commands passed through that one door: `undo`, `redo`, `abSwitchTo`,
+`abToggle`, `abCopyToOther`, and `PresetManager::load` / `loadAdopted` / `loadFile` / `step` /
+`saveUser`. All ten are wired to a `juce::Button::onClick`, a `PopupMenu` or a `FileChooser`
+callback in `src/PluginEditor.cpp`, so all ten are delivered by whatever a host's pump delivers.
+`anamorph::param::insideDispatch()` had exactly two readers in `src/` — `flushDeferredCommands` and
+`pollUndoCoalesceFromTimer` — and **no command consulted it**.
+
+### §85b. What was established before choosing a fix: there is no predicate to have
+
+The obvious repair is to widen §30's predicate to the commands. It does not work, and the reason is
+a fact about JUCE rather than a gap in the implementation. From the pinned source:
+
+* a host's parameter write enters through the **same** non-virtual
+  `AudioProcessorParameter::setValueNotifyingHost` the plug-in uses — VST3 `:833` (from
+  `Param::setNormalized` `:976` and `processParameterChanges` `:3537`), AU `:1186`, VST2 `:1328`,
+  LV2 `:188`; AAX calls `sendValueChangedMessageToListeners` directly at `:994`;
+* the `Listener` signatures carry only `(int index, float value)` and `(int index, bool starting)`,
+  so no observation point can tell the two apart;
+* the flag that would answer **exists and is unreachable**: `static thread_local bool
+  inParameterChangedCallback` in the VST3 wrapper translation unit at `:825`;
+* no plug-in callback **brackets** the host's, because JUCE calls `finalListener` LAST and returns.
+  Every candidate is a prefix, a non-participant, or a victim the pump delivers;
+* `juce::MessageManager` publishes no nesting or dispatch-depth query, and a host's pump is the
+  host's own loop.
+
+The closest near-miss — a self-registered `AudioProcessorListener`, which really would be called
+after the wrapper's — was examined and rejected on evidence: `listeners` and `getListenerLocked` are
+private, `addIfNotAlreadyThere` cannot reposition, hosts register several listeners and may remove
+and re-add them, and the forwarder walks the array unlocked.
+
+### §85c. So the guarantee is by construction
+
+`src/StateCommandGate.h`. One `tryEnter` on `soundReplacement` at each command's boundary, **held
+for the whole body**, and a deferral when it fails. A command that never waits cannot supply the
+message thread's edge of the cycle, whoever started the dispatch and whether or not anything can
+tell. `deferWhileUserTransactionActive` is deleted rather than kept beside it.
+
+Four questions, in this order: already nested → refused (transaction open, or our own dispatch) →
+drain to a fixed point with the NON-BLOCKING arm, outside the lock → `tryEnter`. The drain is
+outside the lock because the adoption calls out to the host from inside itself, and holding a
+replacement lock across a host callback is the inversion State test 27 hangs on (measured, round
+21).
+
+### §85d. Four things this round found that the finding did not name
+
+1. **`pollUndoCoalesce` was itself a blocking door** — a blocking drain and then
+   `currentStateSet`'s blocking capture — and it is the user-action door every command goes
+   through. It is now an admission of its own.
+2. **`applyAutoGain`'s drain and the preset menu's drain** were blocking acquisitions by the same
+   route. The first is admitted; the second takes the non-blocking arm, because a modal menu cannot
+   be deferred and a refused drain costs a possibly-stale tick for the life of one popup.
+3. **The queue's timer retry door did not exist with the editor closed.**
+   `pollUndoCoalesceFromTimer` is called from `PluginEditor::timerCallback` and nowhere else, while
+   ADR-0036 §30's table and the comment at `flushDeferredCommands` both claimed the processor's
+   20 Hz tick called it. `AnamorphAudioProcessor::timerCallback` now calls `flushDeferredCommands()`
+   — the flush alone, so no gesture step is committed at 20 Hz that is not committed today.
+4. **`PresetManager::writeUserPreset` takes the APVTS `valueTreeChanging` lock with no
+   `soundReplacement` around it** — the only such site in the tree, and the residual RISK-009
+   recorded in round 27. `saveUser`'s admission now holds `soundReplacement` across it, which closes
+   that cycle because every thread that can hold `valueTreeChanging` while waiting for a
+   `listenerLock` must take `soundReplacement` first. ADR-0036 §31 states that as a rule rather than
+   leaving it an accident of the call sites.
+
+### §85e. What RISK-009 is left with, and why it is not this project's to close
+
+`juce::AudioProcessorValueTreeState` is itself a `private Timer` at 10 Hz whose `timerCallback`
+blocks on `valueTreeChanging`, on the message thread, from a callback a host's pump delivers like
+any other message. Against a host thread inside `replaceState` that is the same cycle with **no
+Anamorph lock on the waiting side and no Anamorph code on either edge of the wait**. It cannot be
+converted to a try, deferred or refused from here. RISK-009 stays **OPEN** on it, and on the
+two-parameter `listenerLock` nesting it has always carried, which contains no Anamorph lock either.
+
+### §85f. Two defects of this round's own, found by its own tests
+
+**The gate asked the nesting question before the refusal question.** `pollUndoCoalesce` is an
+admitted command, so every command its flush runs is nested — and a command that opened a
+transaction of its own and queued work from inside it had that work ADMITTED instead of queued.
+State test 101 leg H printed `1 3 2` where it requires `1 2 3`. Refusal first, nesting second.
+
+**Two seams ended up on the wrong side of the lock.** `seams.atRelativeDecision` and
+`PresetManager::beforeRelativeTarget` land a restore from a host thread and **join** it; fired under
+the held lock that join is a harness deadlock production cannot create. The suite stopped at State
+test 61 and did not come back. The gate grew an `afterDrain` hook — the one point that is after the
+fixed point and still outside the lock — and both seams fire from there, which is exactly where §23
+puts them.
+
+### §85g. PREfast 272/273
+
+`applyStatePreservingView`'s two loops spelled the same bound twice. `/analyze` does not fold
+`std::size` on an `inline constexpr` array and did not correlate the two occurrences across the
+`replaceState` / `reassertParameters` calls between them, so it explored {first loop 0 trips} ×
+{second loop ≥ 1 trip} and reported `saved` read uninitialised. The bound is now one
+`constexpr size_t viewCount` used by both loops, with a `static_assert`: a flow that assumes it is
+zero in the first loop must assume it is zero in the second. **No initialiser was added** — `= {}`
+would be a dummy write that, on the infeasible path it is meant to cover, would silently restore
+Bypass to "off" rather than fail loudly.

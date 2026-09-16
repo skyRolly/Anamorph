@@ -1644,6 +1644,67 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   than by where the test reads; a probe on the OPEN and a probe on the CLOSE measure different
   windows, and round 22 used the wrong one.
 
+* **Round 28 — State test 103: the admission that does not need to know who started the dispatch.**
+
+  Round 27 gave the invariant a predicate and round 27's own entry above says what the predicate
+  does not reach: *"a dispatch the host starts is not seen."* **State test 103**
+  (`no state-replacing command waits for a whole-sound replacement`, R802-807, ADR-0036 §31) is
+  eleven legs against exactly that case.
+
+  **EVERY GESTURE IN THIS TEST IS THE HOST'S, and the seat asserts it.** `HostPumpedCommand` is
+  State test 100's `PumpedUserInteraction` with one field added: it records
+  `anamorph::param::insideDispatch()` at the instant it fires, and every leg checks that the answer
+  is **false**. The carrier gesture is driven with raw `juce::AudioProcessorParameter` calls, which
+  is what a host's own gesture looks like. So whatever protects these commands, the test proves it
+  is not the depth counter — and leg G proves the converse by raising the depth as well and getting
+  the same answer.
+
+  **THE CARRIER IS BYPASS, AND THAT IS NOT A DETAIL.** The seat fires from a gesture END, so the
+  carrier gesture is itself a user edit; on a SOUND parameter it becomes an undo step at the next
+  poll and sits in front of every deferred command the leg then measures — which is round 25's
+  ordering working exactly as designed, and it made the first version of legs A and B assert the
+  wrong thing. `pid::bypass` is a view parameter: never an undo step, never in a sound signature,
+  and it raises the same `listenerLock` and reaches the same `finalListener`.
+
+  | Leg | What it delivers from inside the host's dispatch | What it proves |
+  |---|---|---|
+  | A | a direct `undo()` with NO transaction open | refused in **0.0 ms** against a held replacement, queued exactly once, and run whole at the next door |
+  | B | a direct `redo()` | the same |
+  | C | a direct `abSwitchTo` | the same |
+  | C2 | `abToggle`, which does not route through `abSwitchTo` | the same |
+  | D | `abCopyToOther` | the same |
+  | E | `PresetManager::load` | the same |
+  | F | `PresetManager::step` | the same |
+  | G | `undo()` with the plug-in's OWN dispatch depth also raised | the protection does not depend on plug-in-owned dispatch: refused for the first reason instead of the third, queue still exactly one deep |
+  | H | `undo()` with a real host restore PENDING | **0.2 ms**, and the drain is the admission's: the command waits for no lock and the queue empties at the next door |
+  | I | three commands queued from one dispatch | they run in the order the user gave them |
+  | J | a command issued inside a `ScopedUserTransaction` | the transaction's own Undo step is committed FIRST, and the deferred Undo then undoes THAT step (round 25's ordering, re-asserted against the new door) |
+  | K | `saveUser` refused by the admission | R640's contract intact: `deferred`, nothing said, nothing written — then one completion with the real answer and the file on disk |
+
+  **THE HOLDER IS NON-ANNOUNCING, AND THE WATCHDOG IS THE HARNESS'S.** Each leg parks an
+  off-message-thread `getStateInformation` inside `copyStateWithRawValues` through the
+  `insideDurableCapture` seam — the documented and only way to park a holder of `soundReplacement`
+  that never wants a `listenerLock` (ADR-0036 §25). The cycle is therefore never actually closed,
+  and a regressed tree FAILS the elapsed-time assertion instead of hanging the run; a 400 ms
+  watchdog releases the holder either way. Same rule as State tests 27, 100 and 101.
+
+  **TWO EXISTING SEAMS MOVED, because the admission holds the replacement lock across the whole
+  command and they are on the wrong side of it now.** `seams.atRelativeDecision` (A/B toggle) and
+  `PresetManager::beforeRelativeTarget` (preset step) exist to land a restore *after* the command's
+  drain and *before* its decision (§23). With the drain inside the admission, the only point that is
+  still after the fixed point and outside the lock is inside the admission itself, so the gate grew
+  an `afterDrain` hook and both seams fire from there. Their harnesses spawn a host thread and
+  **join** it; fired under the held lock, that join is a harness deadlock production cannot create —
+  which is exactly the shape §6 of the brief forbids a test from inventing. Found by running it: the
+  suite stopped at State test 61 and did not come back.
+
+  **AND ONE ORDERING BUG IN THE GATE ITSELF, found by an existing leg rather than a new one.** The
+  first version asked the nesting question before the refusal question. `pollUndoCoalesce` is itself
+  an admitted command, so every command its flush runs is nested — and a command that opened a
+  transaction of its own and queued work from inside it had that work ADMITTED instead of queued.
+  State test 101 leg H printed `1 3 2` where it requires `1 2 3`. The order is now refusal first,
+  nesting second, and the comment in `StateCommandGate.h` says why.
+
 * **Round 27 — State tests 101 and 102: the invariant gets a predicate, and `true` stops meaning two things.**
 
   **State test 101** (`a timer retry never runs a blocking command from inside a parameter dispatch`,

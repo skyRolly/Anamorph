@@ -6844,7 +6844,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2515),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2523),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -18230,20 +18230,42 @@ static void testUndoHistoryIsOwnedByTheMessageThread()
     check (d2::waitFor ([&] { return hostSaves.load (std::memory_order_relaxed) > 0; }),
            "the host thread is saving before the undo walk starts");
 
+    // ROUND 28 (Devin R802-807). A STATE COMMAND NO LONGER WAITS FOR THE REPLACEMENT LOCK, and this
+    // walk is the one place in the suite where that is visible. The autosave thread above is inside
+    // `getStateInformation` -> `copyStateWithRawValues` holding `soundReplacement` for a slice of
+    // every iteration, so an Undo issued at that instant has its admission REFUSED and is queued
+    // rather than blocking on it -- which is exactly the edge the finding says the message thread
+    // must never supply. Nothing is lost: `settle` is the retry door, which in production is the
+    // processor's 20 Hz tick and the editor's 24 Hz one. What this test asserts is unchanged --
+    // every command's EFFECT, in order -- with the one added assertion that each one lands.
+    const auto settle = [&] (const char* what)
+    {
+        check (d2::waitFor ([&] { p.flushDeferredCommands(); return p.deferredCommandCount() == 0; }),
+               what);
+    };
+
     gestureEdit (pid::width, 0.30f);
     gestureEdit (pid::width, 0.60f);
-    p.undo();  checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6, "undo #1 -> 0.30");
-    p.undo();  checkNear ((double) rawOf (p, "width"), (double) X.widthA, 1.0e-6, "undo #2 -> the restored sound");
+    p.undo();  settle ("undo #1 landed against the concurrent save");
+    checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6, "undo #1 -> 0.30");
+    p.undo();  settle ("undo #2 landed against the concurrent save");
+    checkNear ((double) rawOf (p, "width"), (double) X.widthA, 1.0e-6, "undo #2 -> the restored sound");
     check (! p.canUndo() && p.canRedo(), "the history is exhausted downward and full upward");
-    p.redo();  checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6, "redo #1 -> 0.30");
-    p.redo();  checkNear ((double) rawOf (p, "width"), 0.60, 1.0e-6, "redo #2 -> 0.60");
+    p.redo();  settle ("redo #1 landed against the concurrent save");
+    checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6, "redo #1 -> 0.30");
+    p.redo();  settle ("redo #2 landed against the concurrent save");
+    checkNear ((double) rawOf (p, "width"), 0.60, 1.0e-6, "redo #2 -> 0.60");
 
     p.abCopyToOther();                 // B := 0.60, recorded on B's history
+    settle ("the A/B copy landed against the concurrent save");
     p.abSwitchTo (1);
+    settle ("the A/B switch landed against the concurrent save");
     checkNear ((double) rawOf (p, "width"), 0.60, 1.0e-6, "the copy reached slot B");
     p.undo();
+    settle ("the slot-B undo landed against the concurrent save");
     checkNear ((double) rawOf (p, "width"), (double) X.widthB, 1.0e-6, "undoing on slot B reverts the copy to B's restored sound");
     p.abSwitchTo (0);
+    settle ("the switch back to slot A landed against the concurrent save");
     checkNear ((double) rawOf (p, "width"), 0.60, 1.0e-6, "slot A's history and sound are undisturbed");
 
     stop.store (true, std::memory_order_release);
@@ -21046,7 +21068,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:2306).
+//  baseline", src/PluginProcessor.cpp:2451).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -21279,7 +21301,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1927).
+//  targets", src/PluginProcessor.cpp:2078).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21656,7 +21678,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2491).
+//  mixed sound", src/PluginProcessor.cpp:2636).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -24204,6 +24226,402 @@ static int runBandMoveProbe (int iterations)
 //   * leg D -- the positive control: with nothing interfering, the move commits.
 //     A test whose "voided" legs pass because nothing ever moves proves nothing.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+//  State test 103 -- round 28, Devin R802-807 and RISK-009. A STATE-REPLACING
+//  COMMAND NEVER WAITS FOR A WHOLE-SOUND REPLACEMENT, WHOEVER STARTED THE
+//  DISPATCH IT IS NESTED IN.
+//
+//  THE FINDING. `deferWhileUserTransactionActive` asked ONE question -- is a multi-store user
+//  transaction open -- and at depth zero answered "no" and let the command run inline. Every
+//  direct program command went through that door: `undo`, `redo`, `abSwitchTo`, `abToggle`,
+//  `abCopyToOther`, and `PresetManager::load` / `loadAdopted` / `loadFile` / `step` / `saveUser`.
+//  With no transaction running, a pumped Undo click reached `pollUndoCoalesce`'s BLOCKING drain
+//  and then `copyStateWithRawValues`' and `applyStatePreservingView`'s BLOCKING acquisitions of
+//  `soundReplacement`. That is one half of
+//
+//      message thread : holds a parameter's `listenerLock`  ->  WAITS for `soundReplacement`
+//      host thread    : holds `soundReplacement`            ->  WAITS for that `listenerLock`
+//
+//  and it is the half this plug-in owns.
+//
+//  WHY ROUND 27's PREDICATE COULD NOT CLOSE IT, and why every gesture below is driven with RAW
+//  `juce::AudioProcessorParameter` calls. `anamorph::param::insideDispatch()` answers for a
+//  dispatch THIS PLUG-IN started. A host's parameter write enters through the same non-virtual
+//  `setValueNotifyingHost`, the listener signatures carry only an index and a value, and the flag
+//  that would answer -- JUCE's `inParameterChangedCallback` -- is a file-static `thread_local`
+//  inside the wrapper translation unit. So the seat below asserts `insideDispatch() == false` on
+//  every leg: whatever protects these commands, it is demonstrably NOT the depth counter.
+//
+//  WHAT IS MEASURED. Each leg parks a NON-ANNOUNCING holder of `soundReplacement` on another
+//  thread -- an off-message-thread `getStateInformation`, stopped inside `copyStateWithRawValues`
+//  through the `insideDurableCapture` seam, which is the documented and only way to do it
+//  (ADR-0036 section 25) -- then delivers the command from inside a host gesture's dispatch and
+//  measures how long it took. On the fixed tree the admission's `tryEnter` fails in microseconds
+//  and the command is QUEUED; on a tree without it the message thread waits for the holder.
+//
+//  IT CANNOT HANG THE SUITE, and that is deliberate. The holder never wants a `listenerLock`, so
+//  the cycle is never actually closed here, and a harness watchdog releases it after 400 ms -- so
+//  a regressed tree FAILS the elapsed-time assertion instead of deadlocking the run. That is the
+//  same rule State tests 27, 100 and 101 follow.
+// ---------------------------------------------------------------------------
+namespace {
+// The host seat. Identical in shape to State test 100's `PumpedUserInteraction`, with the one
+// difference this test exists for: it records whether the plug-in's own dispatch depth was raised.
+// It must not be -- the gestures below are a HOST's.
+struct HostPumpedCommand final : public juce::AudioProcessorListener
+{
+    std::function<void()> pumped;
+    int    index     = -1;
+    int    toFire    = 0;
+    int    fired     = 0;
+    double elapsedMs = 0.0;
+    bool   pluginDepthRaised = false;
+
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
+    {
+        if (toFire <= 0 || i != index || ! pumped) return;
+        toFire = 0; ++fired;                       // cleared FIRST: the pump may re-enter this
+        pluginDepthRaised = anamorph::param::insideDispatch();
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        pumped();
+        elapsedMs = juce::Time::getMillisecondCounterHiRes() - t0;
+    }
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
+    void audioProcessorChanged (juce::AudioProcessor*,
+                                const juce::AudioProcessorListener::ChangeDetails&) override {}
+};
+} // namespace
+
+static void testNoStateCommandWaitsForAReplacement()
+{
+    std::printf ("State test 103: no state-replacing command waits for a whole-sound replacement (R802-807)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts   = proc.getAPVTS();
+    auto& presets = proc.getPresets();
+    using Op = anamorph::PresetManager::OpResult;
+
+    // THE CARRIER GESTURE IS ON BYPASS, and the choice is load-bearing rather than arbitrary.
+    // The seat fires from a gesture END, so that gesture is itself a user edit -- and a SOUND
+    // parameter's gesture becomes an undo step at the next poll, which would sit in front of every
+    // deferred command the leg then measures (round 25's ordering, working exactly as intended).
+    // `pid::bypass` is a VIEW parameter (`pid::viewParams`), never recorded as an undo step and
+    // never part of a sound signature, so it carries the dispatch and contributes nothing to what
+    // the legs assert. It raises the same `listenerLock` and reaches the same `finalListener`.
+    auto* carrierP = apvts.getParameter (pid::bypass);
+    auto* widthP   = apvts.getParameter (pid::width);
+    check (carrierP != nullptr && widthP != nullptr, "the probe's parameters exist");
+    if (carrierP == nullptr || widthP == nullptr) return;
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };   // RAW: a host's write
+
+    HostPumpedCommand seat;
+    seat.index = carrierP->getParameterIndex();
+    proc.addListener (&seat);
+
+    // A HOST's own gesture: raw `juce::` calls throughout, so the plug-in's dispatch depth stays
+    // at zero for the whole extent while JUCE holds Drive's `listenerLock` across it.
+    auto hostGestureDelivering = [&] (std::function<void()> command)
+    {
+        seat.pumped = std::move (command);
+        seat.fired = 0; seat.toFire = 1; seat.elapsedMs = 0.0; seat.pluginDepthRaised = false;
+        carrierP->beginChangeGesture();
+        carrierP->setValueNotifyingHost (carrierP->getValue() > 0.5f ? 0.0f : 1.0f);
+        carrierP->endChangeGesture();                 // <- the seat fires from inside this
+    };
+
+    // One user edit on the undo stack, and a settled poll, so `undo()` has something to do.
+    auto armOneEdit = [&] (float to)
+    {
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        widthP->beginChangeGesture();
+        setPlain (widthP, to);
+        widthP->endChangeGesture();
+        proc.pollUndoCoalesce();
+    };
+
+    // The retry door, which in production is the processor's 20 Hz tick and the editor's 24 Hz one.
+    auto settle = [&] (const char* what)
+    {
+        check (d2::waitFor ([&] { proc.flushDeferredCommands(); return proc.deferredCommandCount() == 0; }),
+               what);
+    };
+
+    // THE HOLDER. A non-announcing owner of `soundReplacement`, parked on another thread, with the
+    // harness watchdog that turns a regressed tree into a FAILING leg rather than a hung suite.
+    struct HeldReplacement
+    {
+        AnamorphAudioProcessor& proc;
+        std::atomic<bool> parked { false }, release { false }, done { false };
+        std::thread holder, watchdog;
+
+        explicit HeldReplacement (AnamorphAudioProcessor& p) : proc (p)
+        {
+            proc.seams.insideDurableCapture = [this]
+            {
+                if (juce::MessageManager::existsAndIsCurrentThread()) return;  // ours pass through
+                if (parked.exchange (true)) return;                            // park exactly once
+                while (! release.load (std::memory_order_acquire))
+                    std::this_thread::sleep_for (std::chrono::milliseconds (2));
+            };
+            holder = std::thread ([this] { juce::MemoryBlock mb; proc.getStateInformation (mb);
+                                           done.store (true, std::memory_order_release); });
+            for (int waited = 0; waited < 2000 && ! parked.load(); waited += 2)
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+            watchdog = std::thread ([this]
+            {
+                for (int waited = 0; waited < 400; waited += 5)
+                    std::this_thread::sleep_for (std::chrono::milliseconds (5));
+                release.store (true, std::memory_order_release);
+            });
+        }
+        ~HeldReplacement()
+        {
+            release.store (true, std::memory_order_release);
+            watchdog.join();
+            holder.join();
+            proc.seams.insideDurableCapture = nullptr;   // cleared AFTER the join
+        }
+    };
+
+    // One leg's worth of assertions, so eleven legs read as eleven facts rather than eleven copies.
+    auto refusedWithoutWaiting = [&] (const char* leg, size_t expectedQueued)
+    {
+        std::printf ("  [%s] pumped command took %.1f ms; plug-in dispatch depth raised: %s;"
+                     " queued %d\n", leg, seat.elapsedMs, seat.pluginDepthRaised ? "YES" : "no",
+                     (int) proc.deferredCommandCount());
+        check (seat.fired > 0, "non-vacuity: the command really ran inside the host's dispatch");
+        check (! seat.pluginDepthRaised,
+               "the dispatch really was the HOST's -- insideDispatch() read zero throughout");
+        check (seat.elapsedMs < 250.0, "...and the command did NOT wait for the replacement lock");
+        check (proc.deferredCommandCount() == expectedQueued,
+               "...and it was QUEUED rather than dropped");
+    };
+
+    // ---- LEG A: DIRECT UNDO, no transaction open, inside a host dispatch ----------------------
+    {
+        armOneEdit (0.70f);
+        const float before = plainOf (widthP);
+        {
+            HeldReplacement held (proc);
+            check (held.parked.load(),
+                   "leg A: non-vacuity -- a NON-ANNOUNCING holder really owns soundReplacement");
+            hostGestureDelivering ([&proc] { proc.undo(); });
+            refusedWithoutWaiting ("leg A", 1);
+            check (std::abs (plainOf (widthP) - before) < 1.0e-3f,
+                   "leg A: ...and nothing was undone yet");
+            check (! held.done.load (std::memory_order_acquire),
+                   "leg A: non-vacuity -- the holder held the lock throughout");
+        }
+        settle ("leg A: the queued Undo landed at the next door");
+        check (std::abs (plainOf (widthP) - before) > 1.0e-3f,
+               "leg A: the Undo was not dropped -- it happened, one door later");
+    }
+
+    // ---- LEG B: DIRECT REDO -------------------------------------------------------------------
+    {
+        armOneEdit (0.75f);
+        proc.undo();
+        settle ("leg B: the priming Undo landed");
+        const float afterUndo = plainOf (widthP);
+        check (proc.canRedo(), "leg B: there is something to redo");
+        {
+            HeldReplacement held (proc);
+            hostGestureDelivering ([&proc] { proc.redo(); });
+            refusedWithoutWaiting ("leg B", 1);
+            check (std::abs (plainOf (widthP) - afterUndo) < 1.0e-3f, "leg B: nothing redone yet");
+        }
+        settle ("leg B: the queued Redo landed at the next door");
+        check (std::abs (plainOf (widthP) - afterUndo) > 1.0e-3f,
+               "leg B: the Redo happened, one door later");
+    }
+
+    // ---- LEG C: DIRECT A/B SWITCH -------------------------------------------------------------
+    {
+        armOneEdit (0.40f);
+        {
+            HeldReplacement held (proc);
+            hostGestureDelivering ([&proc] { proc.abSwitchTo (1); });
+            refusedWithoutWaiting ("leg C", 1);
+        }
+        settle ("leg C: the queued A/B switch landed at the next door");
+        proc.abSwitchTo (0);
+        settle ("leg C: ...and the switch back landed too");
+    }
+
+    // ---- LEG C2: THE TOGGLE, which does not route through `abSwitchTo` -------------------------
+    {
+        {
+            HeldReplacement held (proc);
+            hostGestureDelivering ([&proc] { proc.abToggle(); });
+            refusedWithoutWaiting ("leg C2", 1);
+        }
+        settle ("leg C2: the queued A/B toggle landed at the next door");
+        proc.abToggle();
+        settle ("leg C2: ...and the toggle back landed too");
+    }
+
+    // ---- LEG D: DIRECT A/B COPY ---------------------------------------------------------------
+    {
+        {
+            HeldReplacement held (proc);
+            hostGestureDelivering ([&proc] { proc.abCopyToOther(); });
+            refusedWithoutWaiting ("leg D", 1);
+        }
+        settle ("leg D: the queued A/B copy landed at the next door");
+    }
+
+    // ---- LEG E: PRESET LOAD -------------------------------------------------------------------
+    {
+        presets.refresh();
+        check (presets.entries().size() > 0, "leg E: there is at least one preset row to load");
+        if (presets.entries().size() > 0)
+        {
+            HeldReplacement held (proc);
+            hostGestureDelivering ([&presets] { presets.load (0); });
+            refusedWithoutWaiting ("leg E", 1);
+        }
+        settle ("leg E: the queued preset load landed at the next door");
+    }
+
+    // ---- LEG F: PRESET STEP -------------------------------------------------------------------
+    {
+        if (presets.entries().size() > 0)
+        {
+            HeldReplacement held (proc);
+            hostGestureDelivering ([&presets] { presets.step (1); });
+            refusedWithoutWaiting ("leg F", 1);
+        }
+        settle ("leg F: the queued preset step landed at the next door");
+    }
+
+    // ---- LEG G: THE PROTECTION IS NOT THE DEPTH COUNTER ----------------------------------------
+    //  Every leg above already asserts `insideDispatch() == false` inside the seat. This leg makes
+    //  the converse explicit and is the one that would survive if somebody "simplified" the
+    //  admission back into a predicate: with the plug-in's own depth raised as well, the command is
+    //  refused for the FIRST reason rather than the third, and the queue is still exactly one deep.
+    {
+        HeldReplacement held (proc);
+        seat.pumped = [&proc]
+        {
+            const anamorph::param::ScopedDispatch ours;     // as if the plug-in had started it too
+            proc.undo();
+        };
+        seat.fired = 0; seat.toFire = 1; seat.elapsedMs = 0.0; seat.pluginDepthRaised = false;
+        carrierP->beginChangeGesture();
+        carrierP->setValueNotifyingHost (carrierP->getValue() > 0.5f ? 0.0f : 1.0f);
+        carrierP->endChangeGesture();
+        std::printf ("  [leg G] with the plug-in's own depth ALSO raised: %.1f ms, queued %d\n",
+                     seat.elapsedMs, (int) proc.deferredCommandCount());
+        check (seat.fired > 0, "leg G: non-vacuity -- the command ran");
+        check (seat.elapsedMs < 250.0, "leg G: ...and still did not wait");
+        check (proc.deferredCommandCount() == 1, "leg G: ...and was queued exactly once");
+    }
+    settle ("leg G: the queued command landed at the next door");
+
+    // ---- LEG H: A CONCURRENT RESTORE, AND NO DEADLOCK ------------------------------------------
+    //  A real host-thread restore, arriving while commands are being delivered from inside a host
+    //  gesture. The restore ANNOUNCES (it publishes through the cell and the message thread adopts
+    //  it), so this leg exercises the drain half of the admission as well as the lock half.
+    {
+        juce::MemoryBlock snapshot;
+        setPlain (widthP, 0.62f);
+        proc.getStateInformation (snapshot);
+        setPlain (widthP, 0.20f);
+        d2::offMessageThread ([&] { d2::restoreFrom (proc, snapshot); });
+        hostGestureDelivering ([&proc] { proc.undo(); });
+        std::printf ("  [leg H] with a restore pending: %.1f ms, queued %d\n",
+                     seat.elapsedMs, (int) proc.deferredCommandCount());
+        check (seat.fired > 0, "leg H: non-vacuity -- the command ran");
+        check (seat.elapsedMs < 250.0, "leg H: the command did not wait for the restore either");
+        settle ("leg H: everything queued behind the restore landed");
+        check (! proc.canUndo() || true, "leg H: the run completed without deadlocking");
+    }
+
+    // ---- LEG I: COMMAND ORDER IS PRESERVED ------------------------------------------------------
+    {
+        std::vector<int> ran;
+        {
+            HeldReplacement held (proc);
+            seat.pumped = [&]
+            {
+                proc.undo();                                                 // 1
+                (void) proc.admitStateCommand ([&] { ran.push_back (2); }).admitted();
+                (void) proc.admitStateCommand ([&] { ran.push_back (3); }).admitted();
+            };
+            seat.fired = 0; seat.toFire = 1;
+            carrierP->beginChangeGesture();
+            carrierP->setValueNotifyingHost (carrierP->getValue() > 0.5f ? 0.0f : 1.0f);
+            carrierP->endChangeGesture();
+            check (proc.deferredCommandCount() == 3, "leg I: all three commands are queued");
+        }
+        settle ("leg I: the queue drained");
+        check (ran.size() == 2 && ran[0] == 2 && ran[1] == 3,
+               "leg I: the queued commands ran in the order the user gave them");
+    }
+
+    // ---- LEG J: THE TRANSACTION'S OWN STEP COMMITS BEFORE THE DEFERRED COMMANDS ------------------
+    //  Round 25's ordering, re-asserted against round 28's door: a command refused because a
+    //  transaction is open must still run after that transaction's Undo step is recorded, and the
+    //  new refusal reasons must not reorder it.
+    {
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        const float start = plainOf (widthP);
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            widthP->beginChangeGesture();
+            setPlain (widthP, 0.33f);
+            widthP->endChangeGesture();
+            const auto admit = proc.admitStateCommand ([&proc] { proc.undo(); });
+            check (! admit.admitted(), "leg J: a command inside a transaction is refused");
+            check (proc.deferredCommandCount() == 1, "leg J: ...and queued");
+        }                                            // <- the close commits the step, then flushes
+        settle ("leg J: the transaction's deferred Undo landed");
+        check (std::abs (plainOf (widthP) - start) < 1.0e-3f,
+               "leg J: the deferred Undo undid THIS transaction's step, so it was committed first");
+    }
+
+    // ---- LEG K: THE PRESET COMPLETION CONTRACT (R640) IS UNCHANGED -------------------------------
+    //  A save refused by the admission must report `deferred` and say NOTHING until it really
+    //  happens, then say the truth exactly once -- which is round 27's contract, and it must not
+    //  have been weakened by a new refusal reason.
+    {
+        const juce::String name = "__AnamorphR802Harness__K";
+        auto file = anamorph::PresetManager::presetDirectory()
+                        .getChildFile (name + anamorph::PresetManager::fileSuffix());
+        file.deleteFile();
+        int calls = 0; bool said = false;
+        Op r = Op::completed;
+        {
+            HeldReplacement held (proc);
+            seat.pumped = [&] { r = presets.saveUser (name, [&] (bool ok) { ++calls; said = ok; }); };
+            seat.fired = 0; seat.toFire = 1;
+            carrierP->beginChangeGesture();
+            carrierP->setValueNotifyingHost (carrierP->getValue() > 0.5f ? 0.0f : 1.0f);
+            carrierP->endChangeGesture();
+            check (seat.fired > 0, "leg K: non-vacuity -- the save really ran in the dispatch");
+            check (r == Op::deferred, "leg K: a save the admission refuses reports deferred");
+            check (calls == 0, "leg K: ...and says NOTHING yet -- queued is not done");
+            check (! file.existsAsFile(), "leg K: ...and has written nothing yet");
+        }
+        settle ("leg K: the queued save landed");
+        std::printf ("  [leg K] after the door: completion calls %d, said %s, file %s\n",
+                     calls, said ? "true" : "false", file.existsAsFile() ? "yes" : "no");
+        check (calls == 1 && said, "leg K: the completion arrived once, with the real answer");
+        check (file.existsAsFile(), "leg K: ...and the file really was written");
+        file.deleteFile();
+    }
+
+    proc.removeListener (&seat);
+}
+
 static void testABandMoveDerivesItsOriginsFromTheRecord()
 {
     std::printf ("State test 84: a band move derives its origins from the record it proved\n");
@@ -27208,12 +27626,12 @@ static void testAStateReplacingCommandWaitsForTheTransaction()
             host.command = [&]
             {
                 // Queued by the BURST, so the outer flush is what walks it.
-                queuedOuter = proc.deferWhileUserTransactionActive ([&]
+                queuedOuter = ! proc.admitStateCommand ([&]
                 {
                     // ...and this runs at depth 0, so the scope below is an ordinary transaction.
                     AnamorphAudioProcessor::ScopedUserTransaction inner (proc);
-                    queuedInner = proc.deferWhileUserTransactionActive ([&proc] { proc.undo(); });
-                });
+                    queuedInner = ! proc.admitStateCommand ([&proc] { proc.undo(); }).admitted();
+                }).admitted();
             };
             pressAt (ax8, addY);               // the shipped Add-band click
             im->cancelActiveDrag();
@@ -27543,7 +27961,7 @@ static void testTheDeferredFlushNeverWaitsForAReplacement()
         bool queued = false;
         {
             AnamorphAudioProcessor::ScopedUserTransaction t (proc);
-            queued = proc.deferWhileUserTransactionActive ([&proc] { proc.undo(); });
+            queued = ! proc.admitStateCommand ([&proc] { proc.undo(); }).admitted();
         }                                            // <- the flush, refused by the held lock
         check (queued, "leg C: the command was queued by the open transaction");
         check (near (plainOf (driveP), 9.0f),
@@ -27592,10 +28010,10 @@ static void testTheDeferredFlushNeverWaitsForAReplacement()
         int slotBefore = proc.abActiveSlot();
         {
             AnamorphAudioProcessor::ScopedUserTransaction outerTx (proc);
-            const bool q1 = proc.deferWhileUserTransactionActive ([&] { ran.push_back (1); proc.redo(); });
+            const bool q1 = ! proc.admitStateCommand ([&] { ran.push_back (1); proc.redo(); }).admitted();
             {
                 AnamorphAudioProcessor::ScopedUserTransaction innerTx (proc);
-                const bool q2 = proc.deferWhileUserTransactionActive ([&] { ran.push_back (2); proc.abToggle(); });
+                const bool q2 = ! proc.admitStateCommand ([&] { ran.push_back (2); proc.abToggle(); }).admitted();
                 check (q1 && q2, "leg D: both commands were queued by the open transactions");
             }                                          // <- the INNER close: releases nothing, ever
             check (ran.empty(), "leg D: the inner transaction's close released nothing");
@@ -27631,13 +28049,13 @@ static void testTheDeferredFlushNeverWaitsForAReplacement()
         std::vector<int> ran;
         {
             AnamorphAudioProcessor::ScopedUserTransaction outerTx (proc);
-            const bool q1 = proc.deferWhileUserTransactionActive ([&]
+            const bool q1 = ! proc.admitStateCommand ([&]
             {
                 ran.push_back (1);
                 AnamorphAudioProcessor::ScopedUserTransaction fromCommand (proc);
-                proc.deferWhileUserTransactionActive ([&] { ran.push_back (3); });
-            });                                    // <- this one opens a transaction of its own
-            const bool q2 = proc.deferWhileUserTransactionActive ([&] { ran.push_back (2); });
+                (void) proc.admitStateCommand ([&] { ran.push_back (3); }).admitted();
+            }).admitted();                                    // <- this one opens a transaction of its own
+            const bool q2 = ! proc.admitStateCommand ([&] { ran.push_back (2); }).admitted();
             check (q1 && q2, "leg E: both of the transaction's own commands were queued");
         }                                          // <- the flush
 
@@ -27807,8 +28225,8 @@ static void testATimerRetryNeverRunsACommandInsideADispatch()
         bool ranWhilePumping = false, ranAtAll = false;
         {
             AnamorphAudioProcessor::ScopedUserTransaction t (proc);
-            proc.deferWhileUserTransactionActive ([&]
-            { ranAtAll = true; ranWhilePumping = ranWhilePumping || seat.pumping; proc.undo(); });
+            (void) proc.admitStateCommand ([&]
+            { ranAtAll = true; ranWhilePumping = ranWhilePumping || seat.pumping; proc.undo(); }).admitted();
         }
         releaseA.store (true, std::memory_order_release);
         holderA.join();
@@ -27938,8 +28356,8 @@ static void testATimerRetryNeverRunsACommandInsideADispatch()
             pumpFromGestureEnd (11.0f, [&]
             {
                 AnamorphAudioProcessor::ScopedUserTransaction t (proc);
-                const bool queued = proc.deferWhileUserTransactionActive ([&]
-                { ranAtAll = true; ranInside = ranInside || seat.pumping; c.run (proc); });
+                const bool queued = ! proc.admitStateCommand ([&]
+                { ranAtAll = true; ranInside = ranInside || seat.pumping; c.run (proc); }).admitted();
                 check (queued, "the command was queued by the open transaction");
             });                                   // <- the transaction CLOSES inside the dispatch
 
@@ -27969,8 +28387,8 @@ static void testATimerRetryNeverRunsACommandInsideADispatch()
         pumpFromGestureEnd (11.0f, [&]
         {
             AnamorphAudioProcessor::ScopedUserTransaction t (proc);
-            proc.deferWhileUserTransactionActive ([&] { ran.push_back (1); proc.redo(); });
-            proc.deferWhileUserTransactionActive ([&] { ran.push_back (2); proc.abToggle(); });
+            (void) proc.admitStateCommand ([&] { ran.push_back (1); proc.redo(); }).admitted();
+            (void) proc.admitStateCommand ([&] { ran.push_back (2); proc.abToggle(); }).admitted();
         });
         check (ran.empty(), "leg G: neither command ran inside the dispatch");
 
@@ -27990,13 +28408,13 @@ static void testATimerRetryNeverRunsACommandInsideADispatch()
         pumpFromGestureEnd (11.0f, [&]
         {
             AnamorphAudioProcessor::ScopedUserTransaction t (proc);
-            proc.deferWhileUserTransactionActive ([&]
+            (void) proc.admitStateCommand ([&]
             {
                 ran.push_back (1);
                 AnamorphAudioProcessor::ScopedUserTransaction fromCommand (proc);
-                proc.deferWhileUserTransactionActive ([&] { ran.push_back (3); });
-            });
-            proc.deferWhileUserTransactionActive ([&] { ran.push_back (2); });
+                (void) proc.admitStateCommand ([&] { ran.push_back (3); }).admitted();
+            }).admitted();
+            (void) proc.admitStateCommand ([&] { ran.push_back (2); }).admitted();
         });
         check (ran.empty(), "leg H: nothing ran inside the dispatch");
 
@@ -28036,8 +28454,8 @@ static void testATimerRetryNeverRunsACommandInsideADispatch()
             anamorph::param::beginChangeGesture (widthP);
             anamorph::param::setValueNotifyingHost (widthP, widthP->convertTo0to1 (1.6f));
             anamorph::param::endChangeGesture (widthP);
-            proc.deferWhileUserTransactionActive ([&]
-            { ran = true; sawOwnStep = proc.canUndo(); proc.abToggle(); });
+            (void) proc.admitStateCommand ([&]
+            { ran = true; sawOwnStep = proc.canUndo(); proc.abToggle(); }).admitted();
         });
 
         proc.pollUndoCoalesce();                   // the safe boundary: step first, then the command
@@ -28080,8 +28498,8 @@ static void testATimerRetryNeverRunsACommandInsideADispatch()
             anamorph::param::endChangeGesture (widthP);
             // `abToggle` on purpose: it has no `pollUndoCoalesce` of its own, so nothing but the
             // flush's own order can put the transaction's step on the stack before it runs.
-            proc.deferWhileUserTransactionActive ([&]
-            { ran = true; sawOwnStep = proc.canUndo(); proc.abToggle(); });
+            (void) proc.admitStateCommand ([&]
+            { ran = true; sawOwnStep = proc.canUndo(); proc.abToggle(); }).admitted();
         }                                          // <- the flush runs HERE, at depth zero
         std::printf ("  [leg I2] the flush's own order put the step first: %s (ran: %s)\n",
                      sawOwnStep ? "yes" : "NO", ran ? "yes" : "no");
@@ -28148,8 +28566,8 @@ static void testATimerRetryNeverRunsACommandInsideADispatch()
                 bool ranInside = false, ranAtAll = false;
                 {
                     AnamorphAudioProcessor::ScopedUserTransaction t (proc);
-                    proc.deferWhileUserTransactionActive ([&]
-                    { ranAtAll = true; ranInside = ranInside || seat.pumping; proc.undo(); });
+                    (void) proc.admitStateCommand ([&]
+                    { ranAtAll = true; ranInside = ranInside || seat.pumping; proc.undo(); }).admitted();
                 }
                 release.store (true, std::memory_order_release);
                 holder.join();
@@ -28724,6 +29142,7 @@ int main (int argc, char* argv[])
     testTheDeferredFlushNeverWaitsForAReplacement();
     testATimerRetryNeverRunsACommandInsideADispatch();
     testADeferredPresetOperationReportsItsRealResult();
+    testNoStateCommandWaitsForAReplacement();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

@@ -480,20 +480,27 @@ juce::String PresetManager::soundSignatureForSavedTree (const juce::AudioProcess
 
 void PresetManager::load (int index)
 {
-    // ADR-0008 round 25 (R1279-1283): not inside a user transaction. See `deferIfBusy`.
-    if (deferIfBusy && deferIfBusy ([this, index] { load (index); })) return;
-    // The drain that used to sit inside `onAboutToLoad`, hoisted here in round 16 (§23) so it
-    // runs BEFORE anything is derived rather than after. It is unchanged for this absolute
-    // caller -- the row is the one the user named -- and it is what `step` no longer repeats.
-    if (adoptPending) adoptPending();
+    // ADR-0008 round 25 (R1279-1283), ADR-0036 round 28 (R802-807): not inside a user transaction,
+    // not inside a dispatch of ours, and not while a whole-sound replacement is in flight. The gate
+    // also carries the drain that used to be the next statement -- hoisted into `load` in round 16
+    // (§23) so it runs BEFORE anything is derived rather than after -- with the non-blocking arm.
+    // The replacement lock is HELD from here to the end of the load, which is what makes
+    // `applyDefaults`' and `applySoundTree`'s own acquisitions free recursive re-entries.
+    const auto admit = stateCommandAdmission ([this, index] { load (index); });
+    if (! admit.admitted()) return;
     loadAdopted (index);
 }
 
 void PresetManager::loadAdopted (int index)
 {
-    // ADR-0008 round 25 (R1279-1283): guarded separately because it is public and `step` reaches
-    // the row through it; when `load`/`step` deferred, this runs with nothing to defer.
-    if (deferIfBusy && deferIfBusy ([this, index] { loadAdopted (index); })) return;
+    // ADR-0008 round 25 (R1279-1283), round 28: guarded separately because it is public and both
+    // `load` and `step` reach the row through it; when they deferred, this runs with nothing to
+    // defer, and when they did not, its acquisition is their lock re-entered on the same thread.
+    // NO DRAIN (`drainFirst == false`), which is the whole of what "Adopted" names: `step` derived
+    // its row from the session the outer drain established, and draining again here would adopt a
+    // restore AFTER that row was chosen and load it onto the wrong session (§23).
+    const auto admit = stateCommandAdmission ([this, index] { loadAdopted (index); }, /*drainFirst*/ false);
+    if (! admit.admitted()) return;
     if (index < 0 || index >= list.size()) return;
     const auto& e = list.getReference (index);
 
@@ -614,9 +621,13 @@ PresetManager::OpResult PresetManager::loadFile (const juce::File& f,
     // regardless of what it answers -- so `cb = std::move (onComplete)` emptied `onComplete` even
     // on the path that then ran synchronously, and the synchronous caller was told nothing at all.
     // A `std::function` copy is cheap and cannot do that.
-    if (deferIfBusy && deferIfBusy ([this, f, sound, cb = onComplete]
-                                    { applyParsedFile (f, sound); if (cb) cb (true); }))
-        return OpResult::deferred;
+    // ROUND 28: the retry re-enters `applyParsedFileAdmitted`, NOT `applyParsedFile` directly. A
+    // deferred command is run by the processor's flush, which holds nothing -- so a retry that
+    // called the body straight would reach `applySoundTree`'s blocking acquisition with no
+    // admission of its own, which is the R802 door by a second entrance.
+    const auto admit = stateCommandAdmission ([this, f, sound, cb = onComplete]
+                                              { applyParsedFileAdmitted (f, sound, cb); });
+    if (! admit.admitted()) return OpResult::deferred;
 
     applyParsedFile (f, sound);
     if (onComplete) onComplete (true);
@@ -625,9 +636,39 @@ PresetManager::OpResult PresetManager::loadFile (const juce::File& f,
 
 // Everything `loadFile` used to do once the bytes had proved themselves. One body, so the deferred
 // path and the synchronous one cannot drift.
+// ROUND 28 (R802-807). The deferred half of `loadFile`, and the admission is retaken rather than
+// assumed: a queued command runs from `flushDeferredCommands`, which holds no replacement lock of
+// its own by the time it calls out. Refused again, this re-queues itself through the gate and the
+// completion is NOT called -- the operation is still pending, and R640's contract is that the
+// completion reports the FINAL result exactly once, not once per attempt.
+void PresetManager::applyParsedFileAdmitted (const juce::File& f, const juce::ValueTree& sound,
+                                             const std::function<void (bool)>& completion)
+{
+    const auto admit = stateCommandAdmission ([this, f, sound, completion]
+                                              { applyParsedFileAdmitted (f, sound, completion); });
+    if (! admit.admitted()) return;
+
+    applyParsedFile (f, sound);
+    if (completion) completion (true);
+}
+
+// The same for the deferred save, with the same admission `saveUser` takes -- the bare APVTS
+// acquisition inside `writeUserPreset` is there whichever door reaches it.
+void PresetManager::writeUserPresetAdmitted (const juce::String& legalName,
+                                             const std::function<void (bool)>& completion)
+{
+    const auto admit = stateCommandAdmission ([this, legalName, completion]
+                                              { writeUserPresetAdmitted (legalName, completion); });
+    if (! admit.admitted()) return;
+
+    const bool ok = writeUserPreset (legalName);
+    if (completion) completion (ok);
+}
+
 void PresetManager::applyParsedFile (const juce::File& f, const juce::ValueTree& sound)
 {
-    if (adoptPending) adoptPending();   // as `load`: the drain `onAboutToLoad` used to carry (§23)
+    // ROUND 28: the drain that was here is the admission's, taken at `loadFile`'s top (or at the
+    // top of the deferred retry) -- before the lock, never underneath it.
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
     applySoundTree (sound);
     if (beforeStateCapture) beforeStateCapture();   // test seam: after the apply, before the baseline
@@ -646,14 +687,20 @@ void PresetManager::step (int delta)
     // ADR-0008 round 25 (R1279-1283): deferred at the OUTERMOST entry point on purpose -- a step
     // is relative, so re-running `step` later re-derives the row from the state it lands on,
     // while deferring the absolute load it computes would carry a mid-transaction row forward.
-    if (deferIfBusy && deferIfBusy ([this, delta] { step (delta); })) return;
+    // The seam fires from INSIDE the admission, between its drain and its try (§23): that is the
+    // window this test seam exists for -- a restore arriving after the fixed point, which the step
+    // must therefore NOT act on.
+    const auto admit = stateCommandAdmission ([this, delta] { step (delta); }, /*drainFirst*/ true,
+                                              [this] { if (beforeRelativeTarget) beforeRelativeTarget(); });
+    if (! admit.admitted()) return;
     if (list.isEmpty()) return;
     // The step is RELATIVE to the current row, so the current row must be the authoritative
     // one: a pending host restore that moves the selection is adopted before it is read (D-2
     // round 10, §18). Without this, "next" from a session that had just been replaced landed
     // on the row after the OLD selection -- the same stale-derivation shape as the A/B toggle.
-    if (adoptPending) adoptPending();
-    if (beforeRelativeTarget) beforeRelativeTarget();   // test seam: land a restore HERE
+    // ROUND 28: that drain -- and the seam that used to be the next line -- are the admission's,
+    // two statements above and still the FIRST thing this command does, which is the only property
+    // §18 needs of them.
 
     // ...AND THE SELECTION MUST STILL BE THAT ONE WHEN THE ROW IS LOADED (§23, round 16). The
     // drain above was not enough on its own while `load` drained again on the way in, and the
@@ -698,9 +745,30 @@ PresetManager::OpResult PresetManager::saveUser (const juce::String& rawName,
     // loads, and for the better outcome too: the file then records the COMPLETED action.
     // Copied, not moved: see the note in `loadFile`. Moving here emptied the completion on the
     // synchronous path too, because the capture is evaluated before `deferIfBusy` answers.
-    if (deferIfBusy && deferIfBusy ([this, name, cb = onComplete]
-                                    { const bool ok = writeUserPreset (name); if (cb) cb (ok); }))
-        return OpResult::deferred;
+    // ROUND 28 (R802-807), AND THE LOCK IS TAKEN EVEN THOUGH A SAVE REPLACES NOTHING. `saveUser`
+    // writes no parameter, so §24's mutual exclusion is not what it needs it for -- what it needs
+    // is the APVTS lock underneath it. `writeUserPreset`'s capture calls `apvts.copyState()`, which
+    // opens `ScopedLock lock (valueTreeChanging)`, and that is the ONE bare acquisition of the APVTS
+    // lock in this tree: every other one sits inside `soundReplacement` already. Reached from a
+    // pumped click it is the same cycle by the other lock -- this thread holds a parameter's
+    // `listenerLock` and waits for `valueTreeChanging`, while a host thread inside
+    // `AudioProcessorValueTreeState::replaceState` holds `valueTreeChanging` and waits for that
+    // `listenerLock`. Holding `soundReplacement` closes it because every thread that can hold
+    // `valueTreeChanging` while waiting for a `listenerLock` must take `soundReplacement` FIRST:
+    // both of this plug-in's `replaceState` sites are inside it (PluginProcessor.cpp
+    // `applyStatePreservingView`, `applySoundTree`) and so is the host-thread `copyState` in
+    // `copyStateWithRawValues`. That invariant is now a rule rather than an accident -- ADR-0036
+    // §31 states it, and it is what this line depends on.
+    //
+    // THE COST IS A FILE WRITE UNDER THE LOCK, and it is stated rather than hidden: a host thread's
+    // `setStateInformation` waits for as long as this save takes. A user preset is a few kilobytes
+    // of XML and the lock is already held across every preset LOAD; the alternative is a residual
+    // deadlock on a door the user presses by hand.
+    //
+    // The retry re-enters `writeUserPresetAdmitted` so a deferred save is admitted like any other.
+    const auto admit = stateCommandAdmission ([this, name, cb = onComplete]
+                                              { writeUserPresetAdmitted (name, cb); });
+    if (! admit.admitted()) return OpResult::deferred;
 
     const bool ok = writeUserPreset (name);
     if (onComplete) onComplete (ok);
