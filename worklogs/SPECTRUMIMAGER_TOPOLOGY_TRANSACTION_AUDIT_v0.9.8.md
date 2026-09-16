@@ -5188,3 +5188,51 @@ puts them.
 zero in the first loop must assume it is zero in the second. **No initialiser was added** — `= {}`
 would be a dummy write that, on the infeasible path it is meant to cover, would silently restore
 Bypass to "off" rather than fail loudly.
+
+### §85h. Round-28 closeout: the surviving mutant and the one CI job that disagreed
+
+**M137 — `PresetManager::load`'s admission deleted — SURVIVED, and the reason is structural rather
+than accidental.** `load` is an admission followed by `loadAdopted`, and `loadAdopted` carries an
+admission of its own (`drainFirst == false`, §23). Delete the outer one and the mutant still refuses
+inside a user transaction, still refuses inside a dispatch of ours, and still holds the replacement
+lock across the body — every property the other twelve mutants are killed on. The single property it
+loses is the **drain**, which `loadAdopted` is contractually forbidden to make: the pending restore
+stays in the cell, the preset is applied over the session the restore has already superseded, and
+the next drain adopts the restore on top of the preset the user just chose. Verdict: **inadequate
+coverage**, not equivalence — nothing in the suite loaded a preset with a restore pending and then
+asked whether the preset was still what is playing. State test 50, whose subject is exactly "the
+drain reaches a fixed point before the caller acts", grew that second entry point; M137 now fails
+`the load's admission drained the pending restore before resolving its row` and `a restore that was
+already pending cannot replace the preset the user then chose`.
+
+Final tally, all thirteen against the isolated worktree's own 3859/0 baseline: **M132–M144 killed,
+none surviving.**
+
+**`macos-intel` on `44c8cde` — State test 41, and it is this round's change rather than a flake.**
+Twelve of fourteen jobs green, `merge-check` skipped, `macos-intel` red at "DSP + state self-tests,
+native Intel" with exactly two failures: `undo #1 -> 0.30: got 0.150000006` and
+`redo #1 -> 0.30: got 0.600000024`. That pair is one signature: the two gesture edits the walk makes
+against a concurrently-saving host thread committed as ONE undo step, so the first undo went to the
+restored sound and the first redo to the far end.
+
+The mechanism is the admission. `gestureEdit` closes its gesture and calls `pollUndoCoalesce` to
+commit the step; since round 28 that poll is an admitted command, and with the autosave thread
+inside `copyStateWithRawValues` holding `soundReplacement` it is refused and queued.
+`pendingGestureCommit` is left standing — which is the correct deferral, nothing is dropped — and
+the next gesture end re-sets it, so the retry commits one step covering both edits.
+
+**This is the existing coalescing window widened, not a new behaviour, and the distinction is
+evidence-backed rather than asserted.** `pollUndoCoalesceAdopted`'s gesture branch has always
+committed whatever `pendingGestureCommit` names at the moment the poll runs, and the poll runs on a
+20/24 Hz tick — so two gesture ends inside one tick period have merged into one step since the
+custom undo stack existed. A refusal adds the duration of a contended window (a whole-tree copy plus
+~36 string formats on another thread) to that period. Nothing is lost, nothing is reordered, and the
+merged step is internally coherent: the walk's remaining nine assertions passed on the same run. The
+repair is in the test, which asserts a step COUNT and therefore needs the same retry door the rest
+of its walk already used: each contended edit now settles before the next one is made.
+
+**One in-source claim went stale with the same change and is corrected here.**
+`pollUndoCoalesceAdopted`'s first-line comment ended "and a user-action door blocks on it exactly as
+it always has". Since the admission no door blocks: `undo`, `redo`, `pollUndoCoalesce` and the
+save's re-baseline all arrive holding the lock their gate *tried* for, so the `committedNeedsResync`
+repair is a free recursive re-entry on every path.

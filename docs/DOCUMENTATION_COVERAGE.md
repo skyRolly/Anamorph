@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2078`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2082`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2636`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2640`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2451`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2455`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -12025,7 +12025,7 @@ Gated, ADR mandatory, recorded as **ADR-0036 §31** with its own gate table and 
 2026-09-16 ruling quoted in full. The PREfast change is not gated: no parameter ID, range, default,
 automation flag, serialization field or reported-latency value moves.
 
-**Validation.** State **3 859 / 0** including new State test 103 legs A–K; DSP **396 / 0**;
+**Validation.** State **3 868 / 0** including new State test 103 legs A–K; DSP **396 / 0**;
 ThreadSanitizer exit 0 with all three suppression entries credited exactly once each;
 `check-dispatch` 49 files clean, `check-realtime` 49 / 0, `check-portability` 59 / 0,
 `check-docs` 141 clean, citation gate clean after eight declarations were re-derived against the
@@ -12040,6 +12040,28 @@ JUCE-internal residual it stays OPEN on); `docs/policies/THREADING_POLICY.md` (t
 table and the corrected retry-door claim); `docs/procedures/TESTING.md` (State test 103, its eleven
 legs, the Bypass-carrier note and the two defects); `tests/tsan-suppressions.txt` (a fourth entry,
 with its proof); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §85. [Verified]
+
+**Closeout (2026-09-16), and it is part of this pass rather than a new one — same trigger, same
+head.** The mutation suite finished at **M132–M144, thirteen mutants, none surviving**, but not on
+the first run: **M137** — `PresetManager::load`'s admission deleted — survived, because `load` is an
+admission followed by `loadAdopted`, which carries an admission of its own and so preserves every
+property except the one `loadAdopted` is contractually forbidden to have, the **drain**. Verdict
+**inadequate coverage**: nothing in the suite loaded a preset with a host restore pending and then
+asked whether the preset was still what is playing. State test 50, whose subject is that exact
+guarantee, grew a second entry point and M137 now fails two checks.
+
+`macos-intel` was the one red job of fourteen on `44c8cde`, at State test 41, and it is this round's
+change rather than a flake: the walk's two contended gesture edits committed as **one** undo step,
+because `gestureEdit`'s own `pollUndoCoalesce` is an admitted command now and was refused while a
+host thread held `soundReplacement`. The deferral is correct — `pendingGestureCommit` is left
+standing and the retry commits it — so this is the coalescing window `pollUndoCoalesce` has always
+had (two gesture ends inside one 20/24 Hz tick merge) widened by the length of a contended window,
+with nothing dropped and the merged step coherent. The test asserts a step COUNT, so each contended
+edit now settles first, which is the door production gives it. One in-source claim went stale with
+the same change and is corrected: `pollUndoCoalesceAdopted`'s first-line comment said *"a
+user-action door blocks on it exactly as it always has"*, and since the admission no door blocks.
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §85h;
+`docs/procedures/TESTING.md` round-28 block. [Verified]
 
 ### Forty-sixth pass — the invariant that had no predicate, and the `true` that meant two things (2026-09-15)
 

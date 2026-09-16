@@ -1626,8 +1626,12 @@ void AnamorphAudioProcessor::pollUndoCoalesceAdopted()
     // baseline snapshot untaken (see `syncCommitted`), and every push below builds its entry's
     // `before` from `committed`. Repairing it here, ahead of the early return and ahead of every
     // branch that pushes, is what bounds that deferral to "no entry ever sees it": the timer door
-    // already holds the replacement lock across this body, so this is a free recursive re-entry,
-    // and a user-action door blocks on it exactly as it always has.
+    // already holds the replacement lock across this body, so this is a free recursive re-entry.
+    // ROUND 28 CORRECTION -- this sentence used to end "and a user-action door blocks on it exactly
+    // as it always has", and that is no longer true of any door. Since the admission, `undo`,
+    // `redo`, `pollUndoCoalesce` and the save's re-baseline all arrive here HOLDING the replacement
+    // lock their gate tried for, so this acquisition is a free recursive re-entry on every path and
+    // nothing waits. Replacing that wait with a refusal is the whole of Devin R802-807.
     if (committedNeedsResync)
     {
         committed = currentStateSet();

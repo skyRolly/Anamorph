@@ -450,13 +450,13 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.h:609"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
-     "src/PluginProcessor.cpp:2892-2991"): "setStateInformation",
+     "src/PluginProcessor.cpp:2896-2995"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869",
-     "src/PluginProcessor.cpp:2892"): "setStateInformation",
+     "src/PluginProcessor.cpp:2896"): "setStateInformation",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1405",
-     "src/PluginProcessor.cpp:2428"): "abActive",
+     "src/PluginProcessor.cpp:2432"): "abActive",
 
     # 2026-09-15 (round 21, ADR-0036 §26): ONE ENTRY, for a span this change EDITED rather than
     # moved. ADR-0008's "Source:" line brackets the whole custom-undo block, from its banner comment
@@ -476,7 +476,7 @@ DELIBERATE_REAIMS = {
     # the same anchor is a plain move that came along with it.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:922, 1251-1254",
-     "src/PluginProcessor.cpp:1246, 1673-1677"): "openGestures",
+     "src/PluginProcessor.cpp:1246, 1677-1681"): "openGestures",
     # ...and the SAME transition declared from the branch's OTHER base. `preflight.sh` runs the gate
     # against `origin/main`, the merge base and `HEAD~1`, and a declaration is keyed on the
     # TRANSITION, so the entry above answers only for the `HEAD~1` base this round pushes from. The
@@ -485,7 +485,7 @@ DELIBERATE_REAIMS = {
     # while another did not, and the green one was the one that got read.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:737, 870-873",
-     "src/PluginProcessor.cpp:1246, 1673-1677"): "openGestures",
+     "src/PluginProcessor.cpp:1246, 1677-1681"): "openGestures",
     # 2026-09-15 (round 26): THE SAME ENTRY, RE-AIMED, not a second one. Round 26 inserted comment
     # lines above `syncCommitted` in `PluginProcessor.cpp`, so the ADR's span end moved 713 -> 810
     # while its two ends kept naming the same banner and the same function. That is ordinary drift
@@ -577,7 +577,7 @@ DELIBERATE_REAIMS = {
     # first commit.
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:1135, 1483-1487",
-     "src/PluginProcessor.cpp:1246, 1673-1677"): "openGestures",
+     "src/PluginProcessor.cpp:1246, 1677-1681"): "openGestures",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

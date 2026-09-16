@@ -1031,7 +1031,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:2451`).
+    (`src/PluginProcessor.cpp:2455`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1100,7 +1100,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     the one-pass reassert makes exact by construction.
 
 23. **A relative operation acts on the session it observed (round 16).** Review finding *"relative
-    navigation uses stale targets"* (`src/PluginProcessor.cpp:2078`).
+    navigation uses stale targets"* (`src/PluginProcessor.cpp:2082`).
 
     **What a relative operation is.** One whose target is a function of the current state rather than
     of the user's input: *the other slot* (`abToggle`), *the next/previous preset*
@@ -1206,7 +1206,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     derived program-state target there to go stale.
 
 24. **One whole-sound replacement at a time (round 17).** Review finding *"overlapping restores
-    expose mixed sound"* (`src/PluginProcessor.cpp:2636`).
+    expose mixed sound"* (`src/PluginProcessor.cpp:2640`).
 
     **What a whole-sound replacement is.** An operation that installs an ENTIRE sound over the live
     parameter set, as opposed to moving one parameter: a host restore's install
@@ -2108,8 +2108,8 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
     | # | question | on yes | why here |
     |---|---|---|---|
-    | 0 | is this thread already inside an admitted command? | admit at once, count the nesting | the lock is already this thread's and the drain has already run; repeating either is what the rest of this table exists to avoid |
-    | 1 | `userTransactionDepth > 0`, or `insideDispatch()`? | queue the retry | round 25's rule and round 30's predicate, unchanged in meaning. Incomplete on its own — that is the finding — but it makes the OBSERVABLE cases defer rather than merely not-deadlock |
+    | 0 | `userTransactionDepth > 0`, or `insideDispatch()`? | queue the retry | round 25's rule and §30's predicate, unchanged in meaning. Incomplete on its own — that is the finding — but it makes the OBSERVABLE cases defer rather than merely not-deadlock. **Asked first, ahead of the nesting shortcut, and a test found out why:** `pollUndoCoalesce` is itself an admitted command, so every command its flush runs is NESTED — and a command that opens a transaction of its own and queues work from inside it must still have that work queued, not admitted because an outer gate happens to hold the lock. Nesting answers *"the lock is held and the drain has run"*; it does not answer *"a transaction is open"*. State test 101 leg H printed `1 3 2` with the two the other way round |
+    | 1 | is this thread already inside an admitted command? | admit at once, count the nesting | the lock is already this thread's and the drain has already run; repeating either is what the rest of this table exists to avoid |
     | 2 | did `adoptPendingHostState (/*mayBlock*/ false)` reach its fixed point? | queue the retry | the blocking drain the direct commands used to make **is** one of the acquisitions the finding cites. Taken with the non-blocking arm and **outside** any lock of ours, because the adoption calls out to the host from inside itself and holding a replacement lock across a host callback is the inversion State test 27 (ER-STATE-14) hangs on — measured, round 21. A command that cannot see the newest session is not a command that should replace it (§15) |
     | 3 | did `soundReplacement.tryEnter()` succeed? | queue the retry | the by-construction half. Held across the body, so `copyStateWithRawValues`, `applyStatePreservingView`, `PresetManager::applySoundTree` and `applyDefaults` are free recursive re-entries (`juce::CriticalSection` is `PTHREAD_MUTEX_RECURSIVE`) and **one try answers for all of them** |
 
@@ -2129,6 +2129,19 @@ turn late) and leaves a save issued on the host thread right after its restore d
     `flushDeferredCommands`"* was describing something the source did not do.
     `AnamorphAudioProcessor::timerCallback` now calls `flushDeferredCommands()` — the flush alone,
     not the whole poll, so no gesture step is committed at 20 Hz that is not committed today.
+
+    **AND ONE COST THAT IS NOT A DEFERRAL, measured rather than predicted.** `pollUndoCoalesce` is
+    an admitted command too, and it is what commits a finished gesture's Undo step. Refused, it
+    leaves `pendingGestureCommit` standing — nothing is dropped, the retry commits it — but a gesture
+    that ENDS before that retry re-sets the same flag, so the two edits commit as **one** step. That
+    is not a new behaviour: the commit has always been whatever `pendingGestureCommit` names at the
+    moment the poll runs, and the poll runs on a 20/24 Hz tick, so two gesture ends inside one tick
+    period have merged into one step since the custom Undo stack existed. What the admission changes
+    is the width of that window, by the length of a contended one — a host thread's whole-tree copy
+    plus its signature formats. The merged step is coherent (its `before` is the first gesture's, its
+    `after` the second's) and Undo still returns to a state the user was in. `macos-intel` measured
+    it in State test 41 on 2026-09-16 (run 35071437456), which is the only reason it is written down
+    here rather than inferred.
 
     **PRESET SAVE TAKES THE LOCK TOO, AND FOR THE OTHER LOCK.** `saveUser` replaces no sound, so §24
     is not what it needs the lock for; `writeUserPreset`'s capture calls `apvts.copyState()`, which

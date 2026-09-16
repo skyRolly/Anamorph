@@ -1705,6 +1705,32 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   State test 101 leg H printed `1 3 2` where it requires `1 2 3`. The order is now refusal first,
   nesting second, and the comment in `StateCommandGate.h` says why.
 
+  **AND TWO THINGS THE MUTATION SUITE AND CI FOUND AFTERWARDS, both of them coverage rather than
+  behaviour.**
+
+  *`PresetManager::load`'s admission was the one whose deletion killed nothing (mutant M137).* Every
+  other command's admission is killed by several legs; `load`'s survived because `load` is an
+  admission followed by `loadAdopted`, which carries an admission of its own — so deleting the outer
+  one still refuses inside a transaction, still refuses inside a dispatch and still takes the lock.
+  What it loses is the DRAIN, because `loadAdopted` is contractually forbidden one (§23): the
+  pending restore stays in the cell, the preset is applied, and the next drain adopts the restore
+  over the top of it. **State test 50** — "the restore drain reaches a fixed point before the caller
+  acts" — grew a second entry point for exactly that: a restore pending, a factory preset loaded,
+  then the assertion that the preset is still the current one after a later drain. M137 now fails
+  two checks.
+
+  *State test 41's contended edits needed the retry door the rest of its walk already had.* The walk
+  makes two gesture edits while a host thread saves in a loop, and `gestureEdit` polls for the
+  commit itself. Since round 28 that poll is an ADMITTED command: with the saving thread inside
+  `copyStateWithRawValues` it is refused and queued, `pendingGestureCommit` is still standing when
+  the next gesture ends, and the two edits commit as ONE step. `macos-intel` lost that race (run
+  35071437456: undo #1 landed on the restored sound, redo #1 on 0.60 — one merged step); the other
+  thirteen jobs did not. Two gesture ends inside one 20/24 Hz tick have always merged — that is what
+  `pollUndoCoalesce` is named for — so this is the existing coalescing window widened by the length
+  of a contended one, not a new behaviour, and the merged step is coherent (the walk's later legs
+  passed). What it is not is deterministic, and this walk asserts a step COUNT. Each contended edit
+  now settles before the next one, which is the door production gives it.
+
 * **Round 27 — State tests 101 and 102: the invariant gets a predicate, and `true` stops meaning two things.**
 
   **State test 101** (`a timer retry never runs a blocking command from inside a parameter dispatch`,

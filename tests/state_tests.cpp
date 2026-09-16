@@ -18244,8 +18244,23 @@ static void testUndoHistoryIsOwnedByTheMessageThread()
                what);
     };
 
+    // ...AND THE EDITS THEMSELVES NEED THAT DOOR TOO, which native Intel found and the other
+    // platforms did not (macos-intel, run 35071437456, State test 41). `gestureEdit` closes its
+    // gesture and then polls, and since round 28 that poll is an ADMITTED command: with the autosave
+    // thread inside `copyStateWithRawValues` at that instant it is REFUSED and queued, so
+    // `pendingGestureCommit` is still standing when the NEXT gesture ends and the two edits commit
+    // as ONE step. That is the coalescing this poll is named for -- two gesture ends inside one
+    // 20/24 Hz tick have always merged -- widened by the length of a contended window rather than a
+    // new behaviour; no state is lost and the merged step is coherent, which is why the walk's later
+    // legs still passed. What it is not is DETERMINISTIC, and this walk asserts a step COUNT: the
+    // Intel run undid to 0.15 (the restored sound, one step too far) and redid to 0.60. Settling
+    // after each edit gives the poll the same retry door the rest of the walk uses -- the ticks, in
+    // production -- so the granularity is pinned instead of raced for.
     gestureEdit (pid::width, 0.30f);
+    settle ("the 0.30 edit's own undo step was committed against the concurrent save");
     gestureEdit (pid::width, 0.60f);
+    settle ("the 0.60 edit's own undo step was committed against the concurrent save");
+    check (p.canUndo(), "two contended edits are two steps, not one merged one");
     p.undo();  settle ("undo #1 landed against the concurrent save");
     checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6, "undo #1 -> 0.30");
     p.undo();  settle ("undo #2 landed against the concurrent save");
@@ -19240,7 +19255,10 @@ static void testReplacementFinishingLastCannotWearRestoredMetadata()
 //  the edit, even though the edit came after that restore's arrival, which is
 //  precisely the case §10 says must land on top of it.
 //
-//  Reproduced through the adoption seam: R1 is pending; the A/B switch's own drain
+//  Reproduced through the adoption seam at TWO entry points -- the A/B switch, and
+//  (round 28) `PresetManager::load`, whose only drain is its admission's because
+//  `loadAdopted` is contractually forbidden one. First the switch: R1 is pending;
+//  the A/B switch's own drain
 //  takes it; R2 arrives from a host thread inside that adoption; the drain must go
 //  on to adopt R2 as well, so the switch that follows is applied to R2's slots and
 //  survives. The seam count is the direct evidence -- two fires inside ONE
@@ -19288,6 +19306,45 @@ static void testDrainReachesFixedPointBeforeTheCallerActs()
     p.pollUndoCoalesce();
     check (p.abActiveSlot() == switchTo, "a later drain does not undo the switch");
     check (d2::saveOf (p) == afterSwitch, "...and changes nothing at all");
+
+    // ...AND THE SAME QUESTION AT THE OTHER ENTRY POINT WHOSE ONLY DRAIN IS ITS ADMISSION'S
+    // (round 28, mutant M137). `PresetManager::load` reaches its row through `loadAdopted`, which
+    // deliberately does NOT drain -- "Adopted" is the whole of what that name says (section 23) --
+    // so the drain `load` is admitted with is the ONLY one on that path. Delete it and the pending
+    // restore stays in the cell: the preset is applied, the next drain adopts the restore over the
+    // top of it, and the preset the user chose is silently gone. Nothing else in the suite loads a
+    // preset with a restore pending and then asks whether the preset is still what is playing,
+    // which is exactly why deleting that admission killed nothing until this leg existed.
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+
+        int factoryIdx = -1;
+        for (int i = 0; i < q.getPresets().entries().size(); ++i)
+        {
+            const auto& e = q.getPresets().entries().getReference (i);
+            if (e.isFactory && e.name != "Default") { factoryIdx = i; break; }
+        }
+        check (factoryIdx >= 0, "non-vacuity: a factory preset other than Default is listed");
+        const auto factoryName = q.getPresets().entries().getReference (factoryIdx).name;
+        check (factoryName != R1.name, "non-vacuity: the preset and the pending restore's program differ");
+
+        d2::offMessageThread ([&] { d2::restoreFrom (q, R1.blob); });   // pending BEFORE the load
+
+        int loadSeamRuns = 0;
+        q.seams.afterRestoreTake = [&] { ++loadSeamRuns; };
+        q.getPresets().load (factoryIdx);
+        q.seams.afterRestoreTake = nullptr;
+
+        check (loadSeamRuns == 1, "the load's admission drained the pending restore before resolving its row");
+        check (q.getPresets().currentName() == factoryName, "the loaded preset is the current one");
+
+        const auto afterLoad = d2::saveOf (q);
+        q.pollUndoCoalesce();   // a later drain has nothing left to adopt
+        check (q.getPresets().currentName() == factoryName,
+               "a restore that was already pending cannot replace the preset the user then chose");
+        check (d2::saveOf (q) == afterLoad, "...and the later drain changes nothing at all");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -21068,7 +21125,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:2451).
+//  baseline", src/PluginProcessor.cpp:2455).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -21301,7 +21358,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:2078).
+//  targets", src/PluginProcessor.cpp:2082).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21678,7 +21735,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2636).
+//  mixed sound", src/PluginProcessor.cpp:2640).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
