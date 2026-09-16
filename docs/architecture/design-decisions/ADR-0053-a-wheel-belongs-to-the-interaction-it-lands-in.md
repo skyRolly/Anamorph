@@ -877,13 +877,27 @@ on the next real press (:887-890). A guard was written for it and then **removed
 observable behaviour, so nothing could cover it. State test 107 leg G keeps the measurement, because
 the answer is JUCE's and an upgrade could take it away.
 
-Two in-source claims were corrected rather than defended. `sliderRegionSize` is **1** for a rotary,
-not 0 — it is initialised to 1 and `Pimpl::resized` assigns it only for the horizontal and vertical
-styles (:1266-1274, :1324) — so the second disjunct of the drag-mode test reads `range < interval`
-rather than dividing by zero; the conclusion it supports, that the velocity branch is taken, is
-unchanged. And the pop-up-menu click and single-click reset that a `takeWheelNotch` comment named as
-the thumb-less presses are **unreachable here**: they need `menuEnabled` and `singleClickModifiers`,
-and this editor sets neither.
+**5. THE VELOCITY TEST REALLY DOES DIVIDE BY ZERO, and State test 106 is the first thing in this
+repository ever to reach it.** `Pimpl::mouseDrag`'s second disjunct is
+`(normRange.end - normRange.start) / sliderRegionSize < normRange.interval`, and `sliderRegionSize`
+is **0 for every rotary slider in every JUCE application**. Round 30 first "corrected" a round-29
+comment that said so, on the strength of the initialiser being 1 — and the sanitizers job disproved
+the correction within one push. The member is initialised to 1, but `Pimpl::resized` assigns it for
+the horizontal and vertical styles only (:1266-1274, :1324), and `juce::Slider`'s own constructor
+runs a layout while the style is still the default `LinearHorizontal` and the bounds are 0×0, which
+writes 0; `setupRotary`'s later `setSliderStyle (RotaryVerticalDrag)` re-runs the layout, takes
+neither branch, and leaves the 0 there for the object's whole life. The division is reached exactly
+when the velocity-swap modifier is held — the one case in which `isAbsoluteDragMode` does not
+short-circuit it — which is why no test had ever reached it before this round, and why
+`-fsanitize=float-divide-by-zero` fired on State test 106's very first sanitized run. The result is
+IEEE `+inf`, `inf < interval` is false, and the velocity branch is taken: JUCE's intended outcome for
+an unknown region, and the one the whole of point 2 above is written against. The numerator, the
+denominator and the comparison are all JUCE's, so the disposition is a one-file, one-sub-check entry
+in `scripts/ubsan-ignorelist.txt`, verified in both directions the way that file requires.
+
+One more in-source claim was corrected: the pop-up-menu click and single-click reset that a
+`takeWheelNotch` comment named as the thumb-less presses are **unreachable here**: they need
+`menuEnabled` and `singleClickModifiers`, and this editor sets neither.
 
 ## Consequences
 

@@ -906,14 +906,19 @@ private:
                 return false;   // `isAbsoluteDragMode` said absolute
             // ...and the second disjunct, which forces absolute mode for a range too coarse to
             // steer: `(normRange.end - normRange.start) / sliderRegionSize < normRange.interval`.
-            // `sliderRegionSize` is private; it is initialised to 1 and `Pimpl::resized` assigns it
-            // only for the horizontal and vertical styles (juce_Slider.cpp:1266-1274, :1324), so a
-            // rotary divides by 1 and the test reads `range < interval` -- false for every
-            // parameter this editor has. Measured from OUTSIDE, the same span is what
-            // `getPositionOfValue` maps a whole range across; it is the live geometry for a linear
-            // style and 0 for a rotary (which has no linear position to report), and a zero region
-            // is excluded below rather than divided by. Either way the rotary never reaches here:
-            // the first line returned already.
+            // `sliderRegionSize` is private and is **0 for every rotary slider**, which makes JUCE's
+            // own division `+inf` and the test false. Round 30 established why, because the
+            // initialiser says 1: `Pimpl::resized` assigns the member for the horizontal and
+            // vertical styles only (juce_Slider.cpp:1266-1274, :1324), and `juce::Slider`'s own
+            // constructor runs a layout while the style is still the default `LinearHorizontal` and
+            // the bounds are 0x0 -- which writes 0. `setupRotary`'s later
+            // `setSliderStyle (RotaryVerticalDrag)` re-runs the layout, takes neither branch, and
+            // leaves the 0 there for good. (That division is a genuine `float-divide-by-zero` in
+            // JUCE, reachable whenever the swap modifier is held; `scripts/ubsan-ignorelist.txt`
+            // carries the disposition.) Measured from OUTSIDE, the same span is what
+            // `getPositionOfValue` maps a whole range across: the live geometry for a linear style,
+            // and 0 for a rotary, which has no linear position to report. A zero region is excluded
+            // below rather than divided by, so this reads as JUCE's `+inf` does -- not absolute.
             const double region = std::abs ((double) getPositionOfValue (getMaximum())
                                           - (double) getPositionOfValue (getMinimum()));
             if (region > 0.0 && (getMaximum() - getMinimum()) / region < getInterval())

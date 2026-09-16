@@ -1657,6 +1657,15 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   | C | the reported sequence: velocity drag to a known value, one notch, one more drag event | `0.0042 -> notch -> 0.1542 -> next drag 0.1558`, expected `0.1558`, error `+0.0000` — the drag resumes from the WHEEL-PRODUCED value |
   | D | climb to 0.8, wheel back to 0.0, then a long climb | no ceiling and no stale baseline: one more event gives 0.2000 and the travel reaches 1.0000 |
 
+  **What State test 106 found on its first sanitized run.** It is the first test in this repository
+  ever to drag a knob with the velocity-swap modifier held, and `-fsanitize=float-divide-by-zero`
+  fired immediately at juce_Slider.cpp:929: `sliderRegionSize` is **0 for every rotary slider**,
+  because `juce::Slider`'s constructor lays the control out while the style is still the default
+  `LinearHorizontal`. The division is JUCE's, its IEEE result (`+inf`) is JUCE's intended branch, and
+  the disposition is a second section in `scripts/ubsan-ignorelist.txt` — one sub-check, one FILE
+  rather than the tree — verified in both directions as that file requires: with the entry the run is
+  clean, and with a `1.0 / 0.0` seeded into `tests/state_tests.cpp` it still fails.
+
   **State test 107 — an ownerless press still owns the wheel** (`src/gui/SpectrumImager.cpp:R3302-3304`).
   Eight legs, and **every one carries a positive control**, because *"nothing moved"* is the easiest
   assertion in the world to pass against a fixture that has quietly stopped delivering events.

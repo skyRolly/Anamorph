@@ -1,4 +1,4 @@
-# UBSan instrumentation ignorelist -- ONE sub-check, in ONE tree.
+# UBSan instrumentation ignorelist -- TWO sub-checks, each in one third-party place.
 #
 # WHY IT EXISTS. The `sanitizers` job enables `implicit-conversion` on both the C
 # and C++ flags. That flag instruments EVERY translation unit the build compiles,
@@ -20,10 +20,11 @@
 #
 # THE SCOPE IS THE POINT, and it is as small as the mechanism allows:
 #
-#   * ONE SUB-CHECK. The `[implicit-conversion]` section header limits every rule
-#     below to that sanitizer. ASan, the rest of `undefined`, `vptr`,
-#     `float-divide-by-zero`, `unsigned-shift-base`, `local-bounds` and
-#     `nullability` still instrument the vendored tree in full.
+#   * ONE SUB-CHECK PER SECTION. The `[implicit-conversion]` section header limits
+#     the rule under it to that sanitizer. ASan, the rest of `undefined`, `vptr`,
+#     `unsigned-shift-base`, `local-bounds` and `nullability` still instrument the
+#     vendored tree in full, and `float-divide-by-zero` still instruments all of it
+#     but the one file named in the second section below.
 #   * ONE TREE. `juce-src` is where FetchContent puts the dependency
 #     (`<build-dir>/_deps/juce-src`) and where `ANAMORPH_JUCE_PATH` points a local
 #     checkout. No first-party path contains it, so no `src/` or `tests/` file can
@@ -42,3 +43,40 @@
 # vendored one goes quiet and the first-party one still fails the run.
 [implicit-conversion]
 src:*juce-src/*
+
+# ============================================================================
+# THE SECOND SECTION -- `float-divide-by-zero`, ONE FILE (round 30, 2026-09-16).
+#
+# `juce::Slider::Pimpl::mouseDrag` chooses between the absolute and velocity drag
+# mappings with
+#
+#     isAbsoluteDragMode (e.mods) || (normRange.end - normRange.start) / sliderRegionSize < normRange.interval
+#
+# and `sliderRegionSize` is **0 for every rotary slider in every JUCE application**.
+# The member is initialised to 1, but `Pimpl::resized` assigns it for the
+# horizontal and vertical styles only -- and `juce::Slider`'s own constructor runs
+# a layout while the style is still the default `LinearHorizontal` and the bounds
+# are 0x0, which writes 0. The later `setSliderStyle (RotaryVerticalDrag)` re-runs
+# the layout, takes neither branch, and leaves the 0 in place for the object's
+# whole life. So the division is evaluated -- and it is evaluated exactly when the
+# user holds the velocity-swap modifier (Ctrl/Cmd/Alt) and drags a knob, because
+# that is the one case in which `isAbsoluteDragMode` does not short-circuit it.
+#
+# The result is IEEE +inf on every platform this ships to, `inf < interval` is
+# false, and the velocity branch is taken -- which is what JUCE intends when the
+# region is unknown, and what round 30's State test 106 measures end to end. There
+# is no first-party expression to correct: the numerator, the denominator and the
+# comparison are all JUCE's, and the only ways to change the denominator from here
+# (laying the knob out at a chosen size while its style is still linear, or
+# disabling the modifier swap) would either pick a region that flips the drag mode
+# for coarse-interval controls or delete a JUCE behaviour nobody asked to lose.
+#
+# WHY IT SURFACED NOW rather than years ago: no test had ever dragged a knob with
+# the velocity modifier held. State test 106 is the first, and it found this on its
+# first sanitized run.
+#
+# THE SCOPE IS ONE FILE, not the tree: every other vendored source still has
+# `float-divide-by-zero` instrumented, and `src/` and `tests/` cannot be reached by
+# this pattern at all.
+[float-divide-by-zero]
+src:*juce_Slider.cpp

@@ -1486,7 +1486,7 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 declared, and `--fix` moved all three from `src/PluginEditor.h:518` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:1183`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:1188`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1496,7 +1496,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:1183`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:1188`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1506,7 +1506,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:1183"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:1188"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -11987,9 +11987,14 @@ keyed on the control, because the two lost-release safety nets run with no event
 suspected of running JUCE's drag arithmetic from the press before last. It does, and it writes
 nothing: `sendDragEnd` has already set `sliderBeingDragged = -1`. The guard written for it was
 removed again — it changed no observable behaviour, so it could not be covered, and M167 surviving is
-how the hypothesis fell. Two in-source claims were corrected: `sliderRegionSize` is 1 for a rotary,
-not 0; and the pop-up-menu click and single-click reset named in a `takeWheelNotch` comment are
-unreachable in this editor. State test 94's header claimed a leg B it does not have.
+how the hypothesis fell. The round also "corrected" a round-29 comment to say `sliderRegionSize` is 1
+for a rotary and was **disproved by its own sanitizer run within one push**: it is 0, because
+`juce::Slider`'s constructor lays the control out while the style is still `LinearHorizontal`, and
+JUCE therefore divides by zero whenever the velocity-swap modifier is held. That is third-party UB
+with an IEEE-defined result and JUCE's intended branch; it is dispositioned by a one-file,
+one-sub-check entry in `scripts/ubsan-ignorelist.txt`, verified in both directions. Also corrected:
+the pop-up-menu click and single-click reset named in a `takeWheelNotch` comment are unreachable in
+this editor, and State test 94's header claimed a leg B it does not have.
 
 **Gate.** ADR-0053's Architecture Review Gate, cleared the way rounds 23 and 29 cleared it: by an
 owner instruction that states the new behaviour and rules on the conflict with a Consequences line of
@@ -12001,7 +12006,8 @@ Plugin Format, Build System: untouched.
 `wheelTakenByOwningPress` → `wheelTakenByAnyPress` rename, the reversed half of round 29's
 objection, Related code); `docs/procedures/TESTING.md` (State tests 106, 107 and 108, mutations
 M156–M167 with M163 recorded as equivalent); `CHANGELOG.md` `[0.9.8]`;
-`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §88. [Verified]
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §88;
+`scripts/ubsan-ignorelist.txt` (a second section, and its header prose re-counted). [Verified]
 
 ### Forty-ninth pass — the wheel that read one axis, and the press that did not own it (2026-09-16)
 

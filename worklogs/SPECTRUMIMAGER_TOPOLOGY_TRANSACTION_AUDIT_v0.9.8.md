@@ -5534,3 +5534,30 @@ State tests 106 (four legs), 107 (eight, each with a positive control) and 108 (
 the register's own `WheelPointer` overloads because nothing public creates a second
 `MouseInputSource`). Mutations M156-M167: eleven killed, M163 equivalent and recorded as such.
 State 4040 / 0, DSP 396 / 0.
+
+### The correction this round made and then had to unmake
+
+Round 30 read `int sliderRegionStart = 0, sliderRegionSize = 1;` (juce_Slider.cpp:1324), saw that
+`Pimpl::resized` assigns the member only for the horizontal and vertical styles (:1266-1274), and
+concluded that round 29's comment calling it 0 for a rotary was wrong. The sanitizers job disproved
+that within one push: State test 106 is the first test in this repository ever to drag a knob with
+the velocity-swap modifier held, and `-fsanitize=float-divide-by-zero` fired on its first sanitized
+run at juce_Slider.cpp:929.
+
+The missing step is `juce::Slider`'s own constructor, which runs a layout while the style is still
+the default `LinearHorizontal` and the bounds are 0x0 — writing **0**. `setupRotary`'s later
+`setSliderStyle (RotaryVerticalDrag)` re-runs the layout, takes neither branch, and leaves it there
+for the object's whole life. So round 29 was right for a reason round 29 did not state, and round 30
+was wrong for a reason it could have checked. The division is reached only when the modifier is
+held, which is why it had lain there unnoticed.
+
+It is JUCE's numerator, JUCE's denominator and JUCE's comparison, and its IEEE result (`+inf`, so
+`inf < interval` is false, so the velocity branch) is the outcome JUCE intends for an unknown
+region — the same outcome the whole R822 fix is written against. The two ways to change the
+denominator from first-party code are to lay the knob out at a chosen size while its style is still
+linear, which picks a finite region and flips the drag mode for any coarse-interval control, or to
+disable the modifier swap, which deletes a JUCE behaviour nobody asked to lose. So the disposition is
+a second section in `scripts/ubsan-ignorelist.txt`: one sub-check, one FILE rather than the tree,
+verified in both directions as that file requires — with the entry in place the JUCE report is gone
+and the suite runs clean, and with a `1.0 / 0.0` seeded into `tests/state_tests.cpp` the run still
+fails on it.
