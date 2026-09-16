@@ -438,13 +438,13 @@ DELIBERATE_REAIMS = {
     # check actually sees, and the check runs against `origin/main`.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:1247-1423"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1321-1497"): "parameterGestureChanged",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginProcessor.cpp:812-825",
-     "src/PluginProcessor.cpp:1247-1423"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1321-1497"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:812-826",
-     "src/PluginProcessor.cpp:1247-1424"): "parameterGestureChanged",
+     "src/PluginProcessor.cpp:1321-1498"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:250",
      "src/PluginProcessor.h:609"): "UndoStacks",
@@ -498,7 +498,7 @@ DELIBERATE_REAIMS = {
     # neither spelling of the pair is behind it -- the run's own note says "keep it".
     ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
      "src/PluginProcessor.cpp:426-565",
-     "src/PluginProcessor.cpp:470-847"): "syncCommitted",
+     "src/PluginProcessor.cpp:513-902"): "syncCommitted",
     #
     # 2026-09-13 (round 13) declared a re-aim of RISK-012's poll citation, `:963-1035` ->
     # `:980-1039`, onto the `sig != committedSig` gate. ROUND 14 DELETED IT, because round 14

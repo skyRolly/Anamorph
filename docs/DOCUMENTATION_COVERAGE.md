@@ -955,7 +955,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:932-941`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2373-2398`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2381-2406`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1475,7 +1475,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2175"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2183"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -10772,7 +10772,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:1247-1423`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:1321-1497`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -11958,6 +11958,88 @@ Flow, Latency, Plugin Format, Build System: untouched.
 M57–M60); `docs/procedures/CI_CD.md` (the re-measured stack figures);
 `CHANGELOG.md` `[0.9.8]` (two Fixed entries);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §73. [Verified]
+
+### Forty-seventh pass — the predicate that cannot exist, and the bound spelled twice (2026-09-16)
+
+**Trigger.** Two items on PR #144 at head `988ff3b`: `src/PluginProcessor.cpp:R802-807`, *"direct
+program commands can deadlock"*, and PREfast `C6001` **272/273** on the view-param
+write-back, `src/PluginProcessor.cpp:1034` (line 960 in the pre-fix file, which is the line the
+alerts name), *"using uninitialized memory 'saved'"*. The first is confirmed; the
+second is a false positive, and was removed rather than dismissed.
+
+**Root cause (R802-807).** `deferWhileUserTransactionActive` asked one question —
+`userTransactionDepth <= 0` — and at depth zero answered `false`, so the command ran inline into a
+**blocking** acquisition of `soundReplacement`. Ten commands went through that one door: `undo`,
+`redo`, `abSwitchTo`, `abToggle`, `abCopyToOther` and `PresetManager::load` / `loadAdopted` /
+`loadFile` / `step` / `saveUser`, every one of them wired to a `Button::onClick`, a `PopupMenu` or a
+`FileChooser` in `src/PluginEditor.cpp`. ADR-0036 §30's own last paragraph and RISK-009's round-27
+bullet both named this door in writing; the finding is that sentence, reported.
+
+**What the investigation established first, and why it changed the shape of the fix.** Widening
+round 27's predicate to the commands cannot work: the plug-in **cannot observe a host-started
+dispatch at all**. A host's write enters through the same non-virtual `setValueNotifyingHost`
+(VST3 `:833`/`:976`/`:3537`, AU `:1186`, VST2 `:1328`, LV2 `:188`, AAX `:994`); the `Listener`
+signatures carry only an index and a value; the flag that would answer is
+`static thread_local bool inParameterChangedCallback` inside the VST3 wrapper translation unit
+(`:825`); no plug-in callback brackets the host's, because `finalListener` is called LAST and
+returns; and `juce::MessageManager` publishes no dispatch depth. The closest structural near-miss —
+a self-registered `AudioProcessorListener`, which really would be called after the wrapper's — was
+examined and rejected on evidence: `listeners` and `getListenerLocked` are private,
+`addIfNotAlreadyThere` cannot reposition, hosts register several listeners and may remove and re-add
+them, and the forwarder walks the array unlocked.
+
+**The fix is by construction.** `src/StateCommandGate.h` takes one `tryEnter` on `soundReplacement`
+at each command's boundary, **holds it across the whole body**, and queues the command when it
+fails — so a command never WAITS for the lock, whoever started the dispatch it is nested in. The
+drain it needs is taken with the non-blocking arm and OUTSIDE that lock, because the adoption calls
+out to the host from inside itself and holding a replacement lock across a host callback is the
+inversion State test 27 hangs on (measured, round 21). `deferWhileUserTransactionActive` is
+**deleted**, so there is one door and no second spelling to forget.
+
+**Four things the finding did not name.** `pollUndoCoalesce` was itself a blocking door and is now
+an admission of its own; `applyAutoGain`'s drain and the preset menu's drain were blocking
+acquisitions by the same route; the deferred queue had **no timer retry door with the editor
+closed** (`pollUndoCoalesceFromTimer` is called from `PluginEditor::timerCallback` and nowhere else,
+while ADR-0036 §30's table and an in-source comment both said the processor's 20 Hz tick called it —
+`timerCallback` now calls `flushDeferredCommands()`, the flush alone); and
+`PresetManager::writeUserPreset` takes the APVTS `valueTreeChanging` lock with no `soundReplacement`
+around it, the only such site in the tree, which `saveUser`'s admission now covers.
+
+**Root cause (PREfast 272/273).** `applyStatePreservingView`'s capture loop and its write-back loop
+spelled the bound `std::size (pid::viewParams)` separately. MSVC `/analyze` does not fold
+`std::size` on an `inline constexpr` array and did not correlate the two occurrences across the
+`replaceState` / `reassertParameters` calls between them, so it explored {first loop 0 trips} ×
+{second loop ≥ 1 trip} — a path that does not exist — and reported the write-back reading `saved`
+uninitialised. One `constexpr size_t viewCount` now serves both loops, with a `static_assert`: a
+flow that assumes the bound is zero in the first must assume it in the second. **No initialiser was
+added.** `= {}` is a dummy write on every feasible path and, on the infeasible one it is meant to
+cover, would silently restore Bypass to "off" instead of failing loudly — which
+`DOCUMENTATION_COVERAGE.md`'s own 2026-09-07 disposition and the repository's initialisation rule
+both forbid. The earlier disposition said *"No code was changed for these four"*; this pass changes
+that decision for the two that remain, and says why: an analyzer-shaped restructuring that removes
+no information and adds no write is a better answer than a standing dismissal.
+
+**Classification.** **Thread Model** change under `ARCHITECTURE_REVIEW_GATE.md` — ten command entry
+points move from "blocks until the replacement lock is free" to "runs now or at the next door".
+Gated, ADR mandatory, recorded as **ADR-0036 §31** with its own gate table and the owner's
+2026-09-16 ruling quoted in full. The PREfast change is not gated: no parameter ID, range, default,
+automation flag, serialization field or reported-latency value moves.
+
+**Validation.** State **3 859 / 0** including new State test 103 legs A–K; DSP **396 / 0**;
+ThreadSanitizer exit 0 with all three suppression entries credited exactly once each;
+`check-dispatch` 49 files clean, `check-realtime` 49 / 0, `check-portability` 59 / 0,
+`check-docs` 141 clean, citation gate clean after eight declarations were re-derived against the
+moved source. Two defects of this round's own were found by its own tests and are written down
+rather than quietly fixed: the gate asked the nesting question before the refusal question (State
+test 101 leg H printed `1 3 2`), and two seams ended up inside the held lock, which hung the suite
+at State test 61 until an `afterDrain` hook moved them.
+
+**Documentation.** `ADR-0036` §31 (new, with its architecture-review gate table);
+`docs/FUTURE_RISKS.md` RISK-009 (the complete blocking inventory, the APVTS-lock closure, and the
+JUCE-internal residual it stays OPEN on); `docs/policies/THREADING_POLICY.md` (the round-28 clause
+table and the corrected retry-door claim); `docs/procedures/TESTING.md` (State test 103, its eleven
+legs, the Bypass-carrier note and the two defects); `tests/tsan-suppressions.txt` (a fourth entry,
+with its proof); `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §85. [Verified]
 
 ### Forty-sixth pass — the invariant that had no predicate, and the `true` that meant two things (2026-09-15)
 
