@@ -991,6 +991,55 @@ leg A now also asserts, next to the behaviour that depends on it, that a rotary 
 linear region of zero, so a future JUCE that gives it one fails there rather than silently flipping
 coarse-interval knobs into absolute mode.
 
+### What a tenth review round changed: one component, one drag
+
+Round 32 (2026-09-16). Devin `src/gui/LookAndFeel.cpp:R106-110`, *"first release strands second
+press"*, and it is round 31's own fix seen from the other end.
+
+**THE MISMATCH.** The register can key a claim per device. A COMPONENT cannot key a drag per device:
+`juce::Slider::Pimpl` holds one `valueOnMouseDown`, one `mouseDragStartPos` and one
+`sliderBeingDragged` that `sendDragEnd` puts back to -1 on the FIRST release (juce_Slider.cpp:396-399);
+the multiband display holds one `dragBand`/`bandAnchorX`/`gestureBands`; the value box holds one
+`downProp`. Round 31 keyed the RELEASE per device so that one device's `mouseUp` would stop disowning
+another's claim — and that left a claim alive past the release that ended the one drag the component
+had. The immediate consequence is inert (`takeWheelNotch` refuses while `getThumbBeingDragged()` is
+negative, so the notch merely vanishes); the reachable consequence is not. Press the control AGAIN
+and the stale claim delivers into the new drag: a device that is not dragging the control steers it.
+
+**THE OWNER'S RULE, implemented.** One component supports one active component drag at a time.
+The first accepted press establishes the component's drag and its wheel ownership; a second device
+pressing the same component establishes no second claim; and no claim survives the end of that
+component's shared drag. So the fix is on the CLAIM side — `claimDragWheel` returns without claiming
+when another cell already names the component — and the release goes back to clearing every cell that
+names the component, which is now the *statement* of the invariant rather than a scan hoping to find
+one. `releaseAllDragWheelClaims` is gone with it: there is nothing for the event paths and the two
+event-less safety nets to disagree about, because both say the same thing about the same control.
+
+**WHAT DID NOT CHANGE.** An accepted active press still owns the wheel until mouse-up wherever the
+pointer goes (State tests 105, 107 legs A-H and N). A held button with nothing claimed still CONSUMES
+the notch and moves nothing (round 30) — which is why these legs count deliveries and parameters
+rather than consumption: both the defect and the fix consume. And no per-device drag anchor, no
+per-device slider state and no multi-drag architecture was introduced; the register was brought into
+line with JUCE's model, not the other way round.
+
+**ONE LINE THE MUTATION SUITE HAD TO EARN.** `claimDragWheel` also clears the claiming device's own
+previous cell. That is redundant whenever the new claim is granted — the same cell is overwritten a
+line later — so M186 survived until a leg reached the one path where it is not: a claim that is
+REFUSED, which can only happen to a device that already had a cell, which can only happen after a
+release that never arrived (KI-028's class). State test 108 leg L is that path.
+
+### What round 32 also fixed outside the wheel
+
+Devin `src/StateCommandGate.h:R163-172`, *"unwired preset commands never run"*. A `PresetManager`
+with no processor hands the gate a default-built `StateCommandHooks`; the gate read the null
+`soundReplacement` as a failed try-lock and fell through to `defer`, whose `enqueue` is also empty.
+`saveUser` answered `OpResult::deferred`, nothing was written and no completion was called — the
+command was not queued, it was dropped, and both the manager's own `stateCommand` declaration and
+`stateCommandAdmission`'s *"no processor: admit everything"* comment had said otherwise since round
+28. A null replacement lock is now an **unguarded successful admission**: there is no lock to wait
+on, so there is no cycle to break and no queue to join. The configured path is untouched, and a
+`jassert` in `defer` now refuses to be silent about a half-wired set. State test 109.
+
 ## Consequences
 
 - **A notch during any drag now adds to it**, and the drag continues from the combined value. What a

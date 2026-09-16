@@ -952,7 +952,7 @@ such.** What is established is that the rewrite happens at a position that is no
 What is not established is the exact macOS event sequence that makes that position land one row up;
 that would need a trace on macOS, which was not available here. What supports it is arithmetic that
 accounts for all four observed controls. The box is placed `h + 8` above the cursor
-(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1130-1139`), so its top edge is a
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1135-1144`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
 `animToggle` 455–481 (`src/PluginEditor.cpp:2425-2450`). Taking each control's centre and
@@ -1546,7 +1546,7 @@ editor rather than from the registration list: **43 of 45** controls carry the s
 two that do not are `titleButton` and `aboutLink`, and neither can produce the reported symptom:
 
   * **`titleButton` — the review's named example — has a DEAD fallback.** It carries componentID
-    `"ghost"`, and `drawButtonBackground` returns at `src/gui/LookAndFeel.cpp:550` — *before* the
+    `"ghost"`, and `drawButtonBackground` returns at `src/gui/LookAndFeel.cpp:560` — *before* the
     `animOr (b, "hovA", highlighted)` on `:373` is reached. Its text path ends at
     `LookAndFeel_V4::drawButtonText (g, b, false, false)`, which passes `highlighted` as a literal
     `false`. So the control has no hover visual at all, registered or not; the argument the review
@@ -4174,7 +4174,7 @@ spells out the conversion the compiler was already performing:
 |---|---|---|
 | `src/PluginEditor.cpp:246` | `roundToInt (inner.getWidth() * 0.40f)` | `roundToInt ((float) inner.getWidth() * 0.40f)` |
 | `src/PluginEditor.cpp:247` | `roundToInt (getWidth() * 0.40f)` | `roundToInt ((float) getWidth() * 0.40f)` |
-| `src/gui/LookAndFeel.cpp:443` | `x0 + k * (barW + gap)` | `x0 + (float) k * (barW + gap)` |
+| `src/gui/LookAndFeel.cpp:453` | `x0 + k * (barW + gap)` | `x0 + (float) k * (barW + gap)` |
 | `src/dsp/VelvetNoise.cpp:30` | `std::round (m * cell + …)` | `std::round ((float) m * cell + …)` |
 
 **Nothing is suppressed.** No `#pragma`, no `-Wno-…`, no change to
@@ -4255,7 +4255,7 @@ macOS job, not assumed. Linux and Windows were unaffected and green in the same 
 the two runs, normalised, gives 15 → 19 distinct sites and 108 → 126 instances: nothing
 disappeared, no category changed, and the whole delta is
 **`-Wimplicit-int-float-conversion` at four pre-existing sites** —
-`src/PluginEditor.cpp:246, 247` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:443`
+`src/PluginEditor.cpp:246, 247` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:453`
 (`k * (barW + gap)`) and `src/dsp/VelvetNoise.cpp:30` (`m * cell`), each an `int` widened inside a
 float expression. **Recorded, not fixed here** — the source was unchanged by this change, so these
 were new diagnostics on old code, and Level 1 is not part of the `TESTING_POLICY` hard release
@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2148`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2146`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2706`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2704`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2521`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2519`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -9948,7 +9948,7 @@ probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers
 overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
 proof for the hour it took to write, and the wrong thing to leave standing.
 
-**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1100`: `pid::viewParams`
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1098`: `pid::viewParams`
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
@@ -10772,7 +10772,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:1387-1563`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:1385-1561`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -11959,6 +11959,40 @@ M57–M60); `docs/procedures/CI_CD.md` (the re-measured stack figures);
 `CHANGELOG.md` `[0.9.8]` (two Fixed entries);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §73. [Verified]
 
+### Fifty-second pass — one component, one drag, and a gate that dropped what it could not queue (2026-09-16)
+
+**Trigger.** Two confirmed review items on PR #144 — `src/StateCommandGate.h:R163-172` (*"unwired
+preset commands never run"*) and `src/gui/LookAndFeel.cpp:R106-110` (*"first release strands second
+press"*) — plus four investigations, two of which Devin had raised before.
+
+**What the round found.** Both bugs are in this PR's own earlier rounds. The gate has read a null
+`soundReplacement` as a failed try-lock since round 28, so a `PresetManager` with no processor
+answered `OpResult::deferred`, wrote nothing and called no completion — while its own declaration and
+`stateCommandAdmission`'s comment both promised synchronous execution. And round 31's per-device
+release, which fixed one symptom, left a second device's claim alive past the release that ended the
+component's only drag; pressing the control again then let that device steer a drag it was not making.
+
+**Fix.** A null replacement lock is an unguarded successful admission (there is no lock to wait on,
+so no cycle and no queue), with a `jassert` making a half-wired hook set loud. And the wheel register
+is brought into line with JUCE's model rather than the other way round: `claimDragWheel` refuses a
+second claim on a component that already has one, and the release clears every cell naming that
+component — which is now the statement of the invariant, not a hopeful scan. `releaseAllDragWheelClaims`
+is gone; there is nothing for the event and event-less paths to disagree about.
+
+**What the investigations settled without touching production code.** Cross-instance ownership is
+unchanged from round 31 and is now additionally covered for the lost-release case (108 leg L). The
+`float-divide-by-zero` disposition is unchanged, its scope is still one file, its upgrade tripwire is
+still in State test 106 leg A, and the ccache fix that makes it take effect in CI is still in place.
+The architecture-review gate is closed by ADR-0036 §32's recorded owner approval plus the in-source
+banner round 31 added.
+
+**Documents touched.** `ADR-0053` (tenth-round section), `procedures/TESTING.md` (round-32 block,
+State tests 107/108/109, M179-M186), `src/PluginProcessor.cpp` (one narrative comment condensed to its
+invariant), `scripts/check-citations.py` (re-aim targets re-derived), `CHANGELOG.md`, this file and
+the worklog §90.
+
+[Verified]
+
 ### Fifty-first pass — the bank chosen a beat too early, and the release that spoke for everyone (2026-09-16)
 
 **Trigger.** Five review items on PR #144, all of them against round 30's own work:
@@ -12190,7 +12224,7 @@ empty-directory mistake and MB1–MB6);
 
 **Trigger.** Two items on PR #144 at head `988ff3b`: `src/PluginProcessor.cpp:R802-807`, *"direct
 program commands can deadlock"*, and PREfast `C6001` **272/273** on the view-param
-write-back, `src/PluginProcessor.cpp:1100` (line 960 in the pre-fix file, which is the line the
+write-back, `src/PluginProcessor.cpp:1098` (line 960 in the pre-fix file, which is the line the
 alerts name), *"using uninitialized memory 'saved'"*. The first is confirmed; the
 second is a false positive, and was removed rather than dismissed.
 

@@ -1702,6 +1702,45 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   run and that is how the round's own hypothesis was disproved** — the guard it removed changed no
   observable behaviour, so the guard was removed too, and leg G above is what stayed.
 
+* **Round 32 — one component, one drag; and the gate that dropped a standalone command.**
+
+  **State test 107 legs I-N and State test 108 legs D, H, I, L** (`src/gui/LookAndFeel.cpp:R106-110`).
+  The owner's rule is that a component supports one active drag at a time, so a second device
+  establishes no second claim on it and no claim outlives that drag. 107 measures it against the real
+  editor and real parameters; 108 measures the registry itself.
+
+  | Leg | Where | What it proves |
+  |---|---|---|
+  | 107 I | real editor | §4 A + F: the single-device path is unchanged — the held press takes the notch, and standalone scrolling resumes after mouse-up |
+  | 107 J | real editor | §4 B: after A then B press the same knob, only A holds it |
+  | 107 K/L | real editor | §4 C + D: after either release the claim is gone, and on the knob's NEXT drag a notch from the other device moves **nothing**, while the owner's own moves it |
+  | 107 M | real editor | the release path on a real knob (destruction is 108 leg F, §4 E) |
+  | 107 N | real editor | the round-29/30 rule intact: a LIVE press still takes the notch from under the pointer |
+  | 108 D | registry | three devices press one control: the first holds it, the other two hold nothing, one release empties the table |
+  | 108 H/I | registry | the second device's wheel is consumed by the held-button rule and delivered to **nobody**, while the owner's still reaches the control |
+  | 108 L | registry | a lost release followed by a press on a held control leaves the device holding nothing |
+
+  **THE DISCRIMINATOR IS NEVER "WAS IT CONSUMED?"** Round 30's approved rule consumes a wheel that
+  arrives with a button down and nothing claimed, so the defect and the fix consume alike. What
+  separates them is DELIVERY (108) and the PARAMETER (107 K/L), which is why those legs press the
+  knob a second time: a stale claim is inert against a knob whose drag has ended and only becomes
+  visible once the knob has a live drag again.
+
+  **State test 109** (`src/StateCommandGate.h:R163-172`) — a `PresetManager` built from an APVTS with
+  no processor hooks. Leg A: `saveUser` returns `completed`, calls its completion once and the file is
+  on disk. Leg B: `loadFile`, the other command through the same admission. Leg C: `step`, which
+  returns nothing and could only have failed silently. **Leg D is the control**: the processor's own
+  wired manager still defers a save issued inside a `ScopedUserTransaction` and still runs it at the
+  boundary, so the fix is proved to touch only the null-lock configuration.
+
+  **Mutation coverage (M179-M186). All eight killed; one survivor investigated and its leg added.**
+  M179 null `soundReplacement` treated as a failed try again; M180 the null-lock path routed into the
+  empty enqueue; M181 it admits nothing and reports deferred; M182 the unwired hooks refuse always
+  (a standalone command incorrectly deferred); M183 a second device may claim a held component;
+  M184 round 31's exact shape — second claim allowed AND the release clears one cell; M185 the
+  release does nothing; M186 the claiming device keeps its own previous cell. **M186 SURVIVED its
+  first run**, which is how the one path that line serves was found — see 108 leg L above.
+
 * **Round 31 — the modifier-transition matrix, and a release that names its device.**
 
   **State test 106 legs E–J** (`src/PluginEditor.h:R1045-1047`). Which of JUCE's two drag mappings

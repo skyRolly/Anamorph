@@ -433,24 +433,22 @@ inline WheelPointer wheelPointerOf (const juce::MouseInputSource& s) noexcept
 
 void claimDragWheel (juce::Component&, WheelDragOwner&, WheelPointer);
 
-// THE ORDINARY RELEASE, AND IT NAMES A DEVICE (round 31, Devin `src/gui/LookAndFeel.cpp:R77-82`).
-// Round 30 keyed the release on the component alone and cleared EVERY cell that named it, on the
-// premise that a component cannot be held by two devices at once in a way that outlives the call.
-// That premise is false on the very platform round 30 added the cells for: X11 dispatches a `touch`
-// source per finger alongside the live `mouse` source (juce_XWindowSystem_linux.cpp:4176-4189), so
-// a finger and the mouse really can be holding the same control, and the first `mouseUp` took the
-// other one's ownership away with it -- after which its notches fell through to whatever the
-// pointer happened to be over. A release knows which device released; it says so.
-void releaseDragWheel (const juce::Component&, WheelPointer);
-
-// THE EVENT-LESS CLEANUP, and the only caller that is entitled to it: the lost-release safety nets
-// (`SpectrumImager::cancelActiveDrag`, `ValueBox::abortDragGesture`) run from the editor's 24 Hz
-// reconcile with no event, and so with no device to name. It is correct there and nowhere else,
-// because what it says is "this control has abandoned its gesture": a control holds ONE anchor
-// (`downProp`, `dragBand`, JUCE's own `valueOnMouseDown`), so once that is gone it has nothing to
-// add a notch to for ANY device. The separate name is the point -- an ordinary release cannot
-// reach this by forgetting an argument.
-void releaseAllDragWheelClaims (const juce::Component&);
+// THE COMPONENT'S SHARED DRAG HAS ENDED (round 32, owner decision; Devin
+// `src/gui/LookAndFeel.cpp:R106-110`). One component holds ONE drag -- one `valueOnMouseDown`, one
+// anchor, one `sliderBeingDragged` that `sendDragEnd` puts back to -1 on the first release -- so a
+// release is a statement about the CONTROL, not about the device that made it, and nothing may
+// still be claiming a control whose drag is over. `claimDragWheel` refuses to make a second claim
+// on a component that already has one, so there is at most one cell to clear; clearing by component
+// is the statement of that invariant rather than a scan that hopes to find only one.
+//
+// ROUND 31 KEYED THIS PER DEVICE and that was the mismatch seen from the wrong end: it kept a
+// second device's claim alive past the release that ended the component's only drag, and that claim
+// then steered the component's NEXT drag on behalf of a device that was not making it.
+//
+// It serves the event paths and the two event-less lost-release safety nets
+// (`SpectrumImager::cancelActiveDrag`, `ValueBox::abortDragGesture`) alike: they say the same
+// thing, which is that this control's gesture is over.
+void releaseDragWheel (const juce::Component&);
 
 juce::Component* dragWheelHolder (WheelPointer) noexcept;
 

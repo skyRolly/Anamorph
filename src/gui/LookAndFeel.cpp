@@ -79,42 +79,52 @@ namespace
 
 void claimDragWheel (juce::Component& c, WheelDragOwner& o, WheelPointer p)
 {
-    if (auto* cell = findClaim (p))
-    {
-        cell->holder = &c;
-        cell->owner  = &o;
-        return;
-    }
+    auto* mine = findClaim (p);
+
+    // THIS DEVICE'S PREVIOUS PRESS IS OVER, by the fact that it is making this one. One device
+    // cannot hold two controls at once, so its old cell is cleared before anything else is decided
+    // -- including on the path below that declines to give it a new one.
+    if (mine != nullptr) { mine->holder = nullptr; mine->owner = nullptr; }
+
+    // ONE COMPONENT, ONE ACTIVE DRAG (round 32, owner decision; Devin
+    // `src/gui/LookAndFeel.cpp:R106-110`). The register can key a claim per device; the COMPONENT
+    // cannot. `juce::Slider::Pimpl` has ONE `valueOnMouseDown`, ONE `mouseDragStartPos` and ONE
+    // `sliderBeingDragged`, and the multiband display and the value box each hold one anchor the
+    // same way -- so a second device pressing a control that is already held establishes no second
+    // drag, whatever the register says. Round 31 keyed the RELEASE per device, which is the same
+    // mismatch seen from the other end: it kept a claim alive past the release that ended the one
+    // drag the component had, and that claim then steered the component's NEXT drag on behalf of a
+    // device that was not making it (State tests 107 legs K and L).
+    //
+    // So the second press is not given a claim. The first accepted press owns the component's drag
+    // and its wheel until that drag ends, which is what `releaseDragWheel` below now says.
+    for (auto& cell : dragWheelClaims)
+        if (cell.holder.getComponent() == &c)
+            return;
+
+    if (mine != nullptr) { mine->holder = &c; mine->owner = &o; return; }
 
     dragWheelClaims.push_back ({ p, juce::Component::SafePointer<juce::Component> (&c), &o });
 }
 
-void releaseDragWheel (const juce::Component& c, WheelPointer p)
+void releaseDragWheel (const juce::Component& c)
 {
-    // ...only by the control that claimed it, and only for the device that is releasing (round 31,
-    // Devin `src/gui/LookAndFeel.cpp:R77-82`). BOTH halves of that are load-bearing:
+    // THE COMPONENT'S SHARED DRAG HAS ENDED, so nothing may still be claiming it (round 32, owner
+    // decision). There is at most one such cell -- `claimDragWheel` above refuses to make a second
+    // -- and clearing by component rather than by device is the STATEMENT of that invariant: a
+    // register entry pointing at a control with no drag is the contradiction this exists to
+    // prevent, and it cannot be reached by taking the wrong argument.
     //
-    //   * THE COMPONENT TEST. A release from anything else would let a press that never owned the
-    //     wheel hand it back on behalf of the one that does -- and the two overlap in the ordinary
-    //     case, because a value box's press and its parent knob's are the same click to everything
-    //     except JUCE's routing.
-    //   * THE DEVICE KEY. Round 30 had this function clear every cell naming the component, which
-    //     meant one device's `mouseUp` disowned every other device still holding that control.
-    //     Reachable wherever two sources exist at once -- X11 creates a `touch` source per finger
-    //     beside the live `mouse` source with no plug-in-side opt-out -- and the surviving press
-    //     then lost its notches to whatever the pointer was over. State test 108 legs H and I.
-    if (auto* cell = findClaim (p); cell != nullptr && cell->holder.getComponent() == &c)
-    {
-        cell->holder = nullptr;
-        cell->owner  = nullptr;
-    }
-}
-
-void releaseAllDragWheelClaims (const juce::Component& c)
-{
-    // THE EVENT-LESS PATH ONLY -- see the declaration for who is entitled to it and why. This is
-    // the one place a broad clear is right, and it is still narrow in the way that matters: it
-    // touches no cell that names a different component.
+    // ...ONLY THE CONTROL WHOSE DRAG IT IS. A release from anything else would let a press that
+    // never owned the wheel hand it back on behalf of the one that does -- and the two overlap in
+    // the ordinary case, because a value box's press and its parent knob's are the same click to
+    // everything except JUCE's routing. That half of the rule is round 30's and is unchanged.
+    //
+    // WHY IT IS NOT KEYED ON THE RELEASING DEVICE, which round 31 made it: the component has one
+    // drag, `sendDragEnd` puts `sliderBeingDragged` back to -1 on the FIRST release
+    // (juce_Slider.cpp:396-399), and every other control here drops its single anchor the same way.
+    // After any release there is no drag for any device, so a per-device release could only ever
+    // leave a cell behind that named a control with nothing to give it.
     for (auto& cell : dragWheelClaims)
         if (cell.holder.getComponent() == &c)
         {
@@ -1001,7 +1011,7 @@ namespace
         }
         void mouseUp (const juce::MouseEvent& e) override
         {
-            endPress (&e);      // close the host gesture before anything else reacts
+            abortDragGesture(); // close the host gesture before anything else reacts
             juce::Label::mouseUp (e);
         }
 
@@ -1010,17 +1020,12 @@ namespace
         // ONE body, so an abandoned press and a real one cannot diverge. Idempotent:
         // resetting a null unique_ptr is a no-op and the property write is a store,
         // so the editor's reconcile may call this on every tick.
-        void abortDragGesture() override { endPress (nullptr); }
-
-        // STILL ONE BODY (round 31). The only thing the two entries disagree about is WHICH device
-        // is releasing: a `mouseUp` knows, and the reconcile has no event to ask. Everything after
-        // that line is identical, which is what keeps an abandoned press and a real one from
-        // diverging.
-        void endPress (const juce::MouseEvent* e)
+        // ONE BODY, and round 32 made it one again. Round 31 split it so a `mouseUp` could name its
+        // device; under "one component, one drag" there is nothing for the two entries to disagree
+        // about -- both say this box's gesture is over, and that is a statement about the box.
+        void abortDragGesture() override
         {
-            // ADR-0053 round 29: the press is over, wherever it ended.
-            if (e != nullptr) releaseDragWheel (*this, wheelPointerOf (e->source));
-            else              releaseAllDragWheelClaims (*this);
+            releaseDragWheel (*this);   // ADR-0053 round 29: the press is over, wherever it ended
             dragGesture.reset();
             if (auto* s = dynamic_cast<juce::Slider*> (getParentComponent()))
             {

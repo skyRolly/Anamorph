@@ -81,6 +81,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **Two fingers, or a finger and the mouse, on the same control no longer leave it steering itself.**
+  A control can only be dragged once at a time — it keeps one starting value and one anchor — but the
+  note of *"who is holding what"* could record a second device on the same control. When the first
+  one let go, the drag ended while that second note stayed behind, and the next time you dragged that
+  control a scroll from the other hand moved it. Only the first press on a control now owns it, and
+  ending its drag clears the note. Nothing changes for one hand on one control. Regression coverage:
+  State tests 107 and 108. Evidence: PR #144. [Verified]
 - **Holding Ctrl, Alt or Command part-way through a drag no longer wipes out a scroll you made
   during it.** Those keys switch a knob to fine, velocity-based dragging, and Anamorph decided where
   to keep a mid-drag scroll adjustment the moment you made it — from the mapping the drag was using

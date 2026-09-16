@@ -1054,7 +1054,7 @@ private:
             velocityDebt = 0.0;
             injectingVelocity = false;
             lastPassedShift = {};
-            anamorph::gui::releaseDragWheel (*this, anamorph::gui::wheelPointerOf (e.source));
+            anamorph::gui::releaseDragWheel (*this);   // this knob's drag is over (round 32)
         }
         void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
         {

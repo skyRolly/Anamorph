@@ -80,12 +80,10 @@ AnamorphAudioProcessor::AnamorphAudioProcessor()
     // adopt something AFTER a relative target had been chosen. The flush and the duck stay --
     // the duck deliberately after every check that can refuse (round 26).
     presets.onAboutToLoad = [this] { pollUndoCoalesceAdopted(); engine.requestDuck(); };
-    // The completion bump used to live here, AFTER the load's write loop had released the §24
-    // lock and after the signature and setMeta work. A host thread released from the lock into
-    // that gap sampled a `begin` the preset load had already invalidated, read a CLEAN token,
-    // and the adoption then re-installed its restore over the preset. It is now published from
-    // inside the write loop's own scope (`presets.noteReplaced`), where the two processor sites
-    // have always published theirs.
+    // NO COMPLETION BUMP HERE. `soundSetGen` is published from inside the load's own write-loop
+    // scope (`presets.noteReplaced`), with the §24 lock still held -- the same point the two
+    // processor replacement sites publish theirs. ADR-0036 §24 states the invariant and the race
+    // that fixes it; this hook is only the undo step.
     presets.onLoaded      = [this] { commitPresetSwitchUndoStep(); };
     // A save changes no parameter, so nothing else would ever refresh `committed` off the
     // pre-save preset -- and the next undo would restore that stale name/identity/baseline.

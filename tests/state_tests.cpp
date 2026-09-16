@@ -21246,7 +21246,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:2521).
+//  baseline", src/PluginProcessor.cpp:2519).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -21479,7 +21479,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:2148).
+//  targets", src/PluginProcessor.cpp:2146).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21856,7 +21856,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2706).
+//  mixed sound", src/PluginProcessor.cpp:2704).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -26374,6 +26374,177 @@ static void testAPressWithNoTargetStillOwnsTheWheel()
         }
     }
 
+
+    // ---- LEGS I-N: ONE COMPONENT, ONE ACTIVE DRAG (round 32, Devin `src/gui/LookAndFeel.cpp:R106-110`)
+    //
+    //  THE MISMATCH ROUND 31 EXPOSED. The register can hold a claim per device; the COMPONENT holds
+    //  one drag. `juce::Slider::Pimpl` has one `valueOnMouseDown`, one `mouseDragStartPos`, one
+    //  `sliderBeingDragged`, and `sendDragEnd` puts that last one back to -1 on the FIRST release
+    //  (juce_Slider.cpp:396-399) -- so after any release the component has no drag at all, whatever
+    //  else is still physically held. A second device's claim that outlives it points at a control
+    //  with nothing to add a notch to: `takeWheelNotch` returns false, and the event is CONSUMED
+    //  anyway under round 30's rule. The notch is not misapplied; it disappears.
+    //
+    //  THE OWNER'S RULE (round 32): the first accepted press establishes the component's drag AND
+    //  its wheel ownership, a second device establishes no second claim on that same component, and
+    //  no claim survives the end of that component's shared drag. These legs measure all three
+    //  against the REAL editor and the REAL parameters -- not a counter.
+    {
+        using anamorph::gui::WheelPointer;
+        const WheelPointer mousePtr = anamorph::gui::wheelPointerOf (src);
+        const WheelPointer fingerA { (int) juce::MouseInputSource::InputSourceType::touch, 0 };
+        auto* driveOwner = dynamic_cast<anamorph::gui::WheelDragOwner*> (driveK);
+        auto* widOwner   = dynamic_cast<anamorph::gui::WheelDragOwner*> (widK);
+        check (driveOwner != nullptr && widOwner != nullptr,
+               "legs I-N: the knobs really are `WheelDragOwner`s (the register's delivery type)");
+
+        // Leave the table in a known state: an ordinary button-up scroll is what clears a cell.
+        auto clearTable = [&]
+        {
+            for (auto p : { mousePtr, fingerA })
+                (void) anamorph::gui::wheelTakenByAnyPress (*widK, widOwner,
+                                                            mev (widK, wkx, wky, wkx, wky, false, none),
+                                                            wheelOf (0.0f, 0.0f), p);
+        };
+
+        // ---- LEG I (§4 A + F): the single-device path, unchanged ------------------------------
+        {
+            clearTable();
+            clearHistory();
+            setPlain (driveP, 2.0f);
+            setPlain (widP, 1.2f);
+            proc.pollUndoCoalesce();
+            const float wid0 = plainOf (widP);
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+            driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            const float driveHeld = plainOf (driveP);
+            widK->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, held), wheelOf (0.0f, 0.6f));
+            const float driveNotched = plainOf (driveP);
+            driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            widK->mouseWheelMove (mev (widK, wkx, wky, wkx, wky, false, none), wheelOf (0.0f, 0.6f));
+            const float widAfter = plainOf (widP);
+            proc.pollUndoCoalesce();
+            std::printf ("  [leg I] one device: Drive %.3f -> notch %.3f (Width still %.4f),"
+                         " then after mouse-up a scroll moves Width to %.4f\n",
+                         driveHeld, driveNotched, wid0, widAfter);
+            check (! juce::exactlyEqual (driveNotched, driveHeld),
+                   "leg I: the held press takes the notch (round 29/30, unchanged)");
+            check (! juce::exactlyEqual (widAfter, wid0),
+                   "leg I: ...and standalone scrolling resumes after the release");
+        }
+
+        // ---- LEG J (§4 B): a second device establishes NO second claim ------------------------
+        {
+            clearTable();
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));   // A presses first
+            const bool aHolds = anamorph::gui::dragWheelHolder (mousePtr) == driveK;
+            anamorph::gui::claimDragWheel (*driveK, *driveOwner, fingerA);       // B presses the same knob
+            const bool bHolds = anamorph::gui::dragWheelHolder (fingerA) == driveK;
+            std::printf ("  [leg J] after A then B pressed the same knob: A holds %s, B holds %s\n",
+                         aHolds ? "it" : "nothing", bHolds ? "IT TOO" : "nothing");
+            check (aHolds, "leg J: the first press owns the component's drag and its wheel");
+            check (! bHolds,
+                   "leg J: ...and the second device establishes no second claim on that component");
+            driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, held));
+        }
+
+        // ---- LEGS K and L (§4 C + D): after ANY release, no claim on that component survives ---
+        //      THE DISCRIMINATOR IS A PARAMETER, and it took a second try to find one. "Was the
+        //      event consumed?" cannot answer this: round 30's approved rule already consumes a
+        //      wheel that arrives with a button down and nothing claimed, so both the defect and
+        //      the fix consume it. "Did the released knob move?" cannot answer it either -- a claim
+        //      pointing at a knob whose drag has ended is INERT, because `takeWheelNotch` refuses
+        //      while `getThumbBeingDragged()` is negative.
+        //
+        //      What is NOT inert is the same stale claim once the component is dragged AGAIN. The
+        //      first press ends, the second press starts a live drag, and the stale claim -- held by
+        //      a device that is not the one dragging -- now delivers into it. So these legs press
+        //      the knob a second time and measure whether a notch from the OTHER device steers it.
+        for (int order = 0; order < 2; ++order)
+        {
+            clearTable();
+            clearHistory();
+            setPlain (driveP, 2.0f);
+            setPlain (widP, 1.2f);
+            proc.pollUndoCoalesce();
+
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));   // A's real press
+            anamorph::gui::claimDragWheel (*driveK, *driveOwner, fingerA);       // B on the same knob
+
+            if (order == 0) driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, held));
+            else            anamorph::gui::releaseDragWheel (*driveK);           // B lets go first
+            const bool bClaimGone = anamorph::gui::dragWheelHolder (fingerA) == nullptr;
+
+            // A presses again and really drags: the component now HAS a live drag.
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+            driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            const float beforeStale = plainOf (driveP);
+            // B scrolls -- its own button down, its pointer over Width, and it is holding nothing.
+            (void) anamorph::gui::wheelTakenByAnyPress
+                       (*widK, widOwner, mev (widK, wkx, wky, wkx, wky, false, held),
+                        wheelOf (0.0f, 0.6f), fingerA);
+            const float afterStale = plainOf (driveP);
+            // ...and the POSITIVE CONTROL, the same notch from the device that IS holding it.
+            widK->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, held), wheelOf (0.0f, 0.6f));
+            const float afterOwner = plainOf (driveP);
+            driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            anamorph::gui::releaseDragWheel (*driveK);
+            proc.pollUndoCoalesce();
+
+            std::printf ("  [leg %s] %s released first: B's claim %s; on A's NEXT drag,"
+                         " B's notch moves Drive %.3f -> %.3f, A's own moves it -> %.3f\n",
+                         order == 0 ? "K" : "L", order == 0 ? "A" : "B",
+                         bClaimGone ? "gone" : "STILL LIVE", beforeStale, afterStale, afterOwner);
+            check (bClaimGone,
+                   "legs K/L: no claim on the component survives the end of its shared drag");
+            check (juce::exactlyEqual (afterStale, beforeStale),
+                   "legs K/L: ...so a device that is not holding the knob cannot steer a later drag of it");
+            check (! juce::exactlyEqual (afterOwner, afterStale),
+                   "legs K/L: ...while the device that IS holding it still can");
+        }
+
+        // ---- LEG M: the release path on a real knob, and where destruction is covered -----------
+        //      State test 108 leg F is §4 E: a holder destroyed mid-press reads back as nothing
+        //      through the `SafePointer`, and its device's wheel reaches nobody. That is the
+        //      lifetime half. This is the ordinary half on a real editor knob: a press registers,
+        //      and its own release ends it.
+        {
+            clearTable();
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+            check (anamorph::gui::dragWheelHolder (mousePtr) == driveK, "leg M: the press is registered");
+            driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, held));
+            std::printf ("  [leg M] after the press ended: holder %s\n",
+                         anamorph::gui::dragWheelHolder (mousePtr) == nullptr ? "null" : "STALE");
+            check (anamorph::gui::dragWheelHolder (mousePtr) == nullptr,
+                   "leg M: ...and its own release ends it");
+        }
+
+        // ---- LEG N: the ordinary rule is untouched ---------------------------------------------
+        //      A live press still owns the wheel wherever the pointer is (round 29/30). Stated
+        //      again HERE because legs J-L narrow who may hold a claim, and a narrowing that also
+        //      broke this would look like a pass everywhere else.
+        {
+            clearTable();
+            clearHistory();
+            setPlain (driveP, 2.0f);
+            setPlain (widP, 1.2f);
+            proc.pollUndoCoalesce();
+            const float wid0 = plainOf (widP);
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+            driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            const float before = plainOf (driveP);
+            widK->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, held), wheelOf (0.0f, 0.6f));
+            const float after = plainOf (driveP);
+            driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            proc.pollUndoCoalesce();
+            std::printf ("  [leg N] a LIVE press still takes the notch from under the pointer:"
+                         " Drive %.3f -> %.3f, Width %.4f -> %.4f\n",
+                         before, after, wid0, plainOf (widP));
+            check (! juce::exactlyEqual (after, before), "leg N: the live press still gets the notch");
+            check (juce::exactlyEqual (plainOf (widP), wid0),
+                   "leg N: ...and the control under the pointer still does not move");
+        }
+    }
     proc.editorBeingDeleted (ed);
     delete ed;
 }
@@ -26407,7 +26578,6 @@ static void testOnePressPerPointingDevice()
     using anamorph::gui::WheelPointer;
     using anamorph::gui::claimDragWheel;
     using anamorph::gui::releaseDragWheel;
-    using anamorph::gui::releaseAllDragWheelClaims;
     using anamorph::gui::dragWheelHolder;
     using anamorph::gui::wheelTakenByAnyPress;
 
@@ -26502,26 +26672,32 @@ static void testOnePressPerPointingDevice()
     //      has nothing to add a notch to for any device -- and that is the one place a broad clear
     //      is right. Legs H and I are the ordinary release, which is not this.
     {
-        releaseAllDragWheelClaims (cB);
-        std::printf ("  [leg D] after the control abandoned its gesture, finger holds %s\n",
+        releaseDragWheel (cB);
+        std::printf ("  [leg D] after the control's gesture ended, finger holds %s\n",
                      dragWheelHolder (fingerA) == nullptr ? "nothing" : "??");
         check (dragWheelHolder (fingerA) == nullptr,
-               "leg D: the event-less cleanup ends the claim whichever device made it");
+               "leg D: a release ends the claim whichever device made it");
 
-        // ...AND EVERY DEVICE'S, in one call: one control can be under two devices at once (a
-        // finger on the knob the mouse is already holding), and the reconcile has exactly one
-        // abandonment to report.
+        // ...AND THERE IS ONLY EVER ONE TO END (round 32). Three devices pressing one control do
+        // not make three claims: the first owns the component's single drag and the other two are
+        // given nothing, so the one release leaves the table empty either way. Round 31 asserted
+        // the same emptiness here for the opposite reason -- it believed three cells existed and
+        // that a broad clear reached them all.
         claimDragWheel (cB, ownerB, fingerA);
         claimDragWheel (cB, ownerB, fingerB);
         claimDragWheel (cB, ownerB, mouse);
-        releaseAllDragWheelClaims (cB);
-        std::printf ("  [leg D] three devices on one control, released once: %s / %s / %s\n",
-                     dragWheelHolder (fingerA) == nullptr ? "clear" : "STILL HELD",
-                     dragWheelHolder (fingerB) == nullptr ? "clear" : "STILL HELD",
-                     dragWheelHolder (mouse)   == nullptr ? "clear" : "STILL HELD");
+        std::printf ("  [leg D] three devices pressed one control: %s / %s / %s\n",
+                     dragWheelHolder (fingerA) == &cB ? "HOLDS" : "nothing",
+                     dragWheelHolder (fingerB) == &cB ? "HOLDS" : "nothing",
+                     dragWheelHolder (mouse)   == &cB ? "HOLDS" : "nothing");
+        check (dragWheelHolder (fingerA) == &cB,
+               "leg D: the first of them owns the control's one drag");
+        check (dragWheelHolder (fingerB) == nullptr && dragWheelHolder (mouse) == nullptr,
+               "leg D: ...and the other two establish no claim on it at all");
+        releaseDragWheel (cB);
         check (dragWheelHolder (fingerA) == nullptr && dragWheelHolder (fingerB) == nullptr
                  && dragWheelHolder (mouse) == nullptr,
-               "leg D: ...for every device that was holding it, not just the first one found");
+               "leg D: ...and one release leaves the table empty");
     }
 
     // ---- LEG E: a held button that claimed nothing still swallows, per device ------------------
@@ -26563,44 +26739,51 @@ static void testOnePressPerPointingDevice()
         check (p != fingerA && p != fingerB, "leg G: ...and is not any touch key");
     }
 
-    // ---- LEGS H AND I: TWO DEVICES ON ONE CONTROL, AND ONLY THE RELEASING ONE LOSES IT ---------
-    //      Round 31, Devin `src/gui/LookAndFeel.cpp:R77-82`, and §2's required regression exactly:
-    //      A presses the control, B presses the SAME control, one of them releases, the other is
-    //      still held, and the still-held one scrolls. Both release orders, because a scan that
-    //      stops at the first matching cell and a scan that clears them all fail different ones.
+    // ---- LEGS H AND I: ONE COMPONENT, ONE ACTIVE DRAG -----------------------------------------
+    //      Round 32, Devin `src/gui/LookAndFeel.cpp:R106-110`, and the owner's decision: the first
+    //      accepted press establishes the component's drag AND its wheel ownership, a second device
+    //      establishes no second claim on that same component, and no claim survives the end of that
+    //      component's shared drag. Both orders, because the two used to differ.
     //
-    //      THE DISCRIMINATOR IS `ownerB.notches`. If the release took the survivor's claim with it,
-    //      `wheelTakenByAnyPress` finds no holder: it still CONSUMES the event (round 30's rule
-    //      -- a held button moves nothing else), so a test that only asked "was it consumed?"
-    //      would pass against the defect. What is lost is the delivery, so that is what is counted.
+    //      THIS REPLACES ROUND 31'S LEGS H AND I, which asserted that a second device KEEPS its
+    //      claim when the first releases. That was the right answer to the wrong question: the
+    //      register could hold a second claim, the COMPONENT could not hold a second drag, and the
+    //      survivor's claim then pointed at a control with nothing to give it -- and steered that
+    //      control's NEXT drag. The registry consequence is measured here; the parameter one is
+    //      State test 107 legs K and L.
     for (int order = 0; order < 2; ++order)
     {
-        const auto releasing = order == 0 ? fingerA : mouse;   // leg H: B lets go.  leg I: A does.
-        const auto surviving = order == 0 ? mouse   : fingerA;
         const char* leg = order == 0 ? "H" : "I";
 
-        claimDragWheel (cB, ownerB, mouse);      // A's press on the control
-        claimDragWheel (cB, ownerB, fingerA);    // B's press on the SAME control
-        releaseDragWheel (cB, releasing);
+        claimDragWheel (cB, ownerB, mouse);      // A presses the control
+        claimDragWheel (cB, ownerB, fingerA);    // B presses the SAME control
+        const bool onlyA = dragWheelHolder (mouse) == &cB && dragWheelHolder (fingerA) == nullptr;
 
         ownerA.notches = ownerB.notches = 0;
-        // The surviving device scrolls with the pointer over the OTHER control, which is the case
-        // the claim exists for.
-        const bool took = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, surviving);
-        std::printf ("  [leg %s] one of two devices released: survivor holds %s, releaser holds %s;"
-                     " consumed=%d, delivered A x%d B x%d\n", leg,
-                     dragWheelHolder (surviving) == &cB ? "the control" : "NOTHING",
-                     dragWheelHolder (releasing) == nullptr ? "nothing" : "STILL HELD",
-                     (int) took, ownerA.notches, ownerB.notches);
-        check (dragWheelHolder (surviving) == &cB,
-               "legs H/I: the device that did not release keeps its claim");
-        check (dragWheelHolder (releasing) == nullptr,
-               "legs H/I: ...and the device that did release loses its own");
-        check (took && ownerB.notches == 1 && ownerA.notches == 0,
-               "legs H/I: ...and the surviving press still gets the notch, not the pointed-at control");
+        // B scrolls with its own button down and the pointer over the other control. It holds
+        // nothing, so round 30's rule consumes the event and delivers it to NOBODY -- and THAT is
+        // the discriminator: a second claim would have delivered it to a control B is not dragging.
+        const bool tookB = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, fingerA);
+        const int deliveredToB = ownerB.notches;
 
-        releaseDragWheel (cB, surviving);
-        check (dragWheelHolder (surviving) == nullptr, "legs H/I: ...and then its own release ends it");
+        // ...and A, which does hold it, still gets its own notch.
+        ownerA.notches = ownerB.notches = 0;
+        (void) wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, mouse);
+        const int deliveredToA = ownerB.notches;
+
+        releaseDragWheel (cB);                   // whichever of them released, the drag is over
+        const bool bothGone = dragWheelHolder (mouse) == nullptr
+                                && dragWheelHolder (fingerA) == nullptr;
+
+        std::printf ("  [leg %s] A then B pressed one control: only A holds it %s;"
+                     " B's notch consumed=%d delivered x%d, A's delivered x%d; after the release %s\n",
+                     leg, onlyA ? "yes" : "NO", (int) tookB, deliveredToB, deliveredToA,
+                     bothGone ? "nothing is held" : "SOMETHING IS STILL HELD");
+        check (onlyA, "legs H/I: the second device establishes no claim on a component already held");
+        check (tookB && deliveredToB == 0,
+               "legs H/I: ...its wheel is consumed by the held-button rule and delivered to nobody");
+        check (deliveredToA == 1, "legs H/I: ...while the owner's own notch still reaches the control");
+        check (bothGone, "legs H/I: ...and the release of that control's drag leaves no claim behind");
     }
 
     // ---- LEG K: ONE DEVICE IS ONE CELL, WHICHEVER EDITOR THE CONTROL IS IN ---------------------
@@ -26630,10 +26813,37 @@ static void testOnePressPerPointingDevice()
         check (dragWheelHolder (mouse) == &cB, "leg K: one device holds exactly one control at a time");
         check (took && ownerB.notches == 1 && ownerA.notches == 0,
                "leg K: ...the live press, and the other editor's control is unreachable through it");
-        releaseDragWheel (cB, mouse);
+        releaseDragWheel (cB);
         check (dragWheelHolder (mouse) == nullptr && dragWheelHolder (fingerA) == nullptr
                  && dragWheelHolder (fingerB) == nullptr,
-               "leg K: ...and one release per device leaves the table empty again");
+               "leg K: ...and the release of that control's drag leaves the table empty again");
+    }
+
+    // ---- LEG L: A LOST RELEASE MUST NOT LEAVE A DEVICE HOLDING TWO CONTROLS --------------------
+    //      The one path on which `claimDragWheel`'s first line is load-bearing, and the mutation
+    //      suite found it by surviving: clearing this device's own previous cell is redundant when
+    //      the new claim is granted -- the same cell is overwritten a line later -- so it only
+    //      matters when the new claim is REFUSED, and that only happens when the device already had
+    //      a stale cell. Which is KI-028's class exactly: a release that never arrived (a window
+    //      closing under the cursor, a host swallowing the up event) leaves the old claim behind,
+    //      and the device's next press then lands on a control someone else is holding.
+    //
+    //      Without the clear the device keeps pointing at the FIRST control -- whose drag ended
+    //      when its own `mouseUp` did arrive -- and its notches are delivered into that dead drag,
+    //      which is the very thing this round exists to stop.
+    {
+        claimDragWheel (cA, ownerA, fingerA);     // B presses one control...
+        claimDragWheel (cB, ownerB, mouse);       // ...A presses another
+        // B's release never arrives. B now presses the control A is holding.
+        claimDragWheel (cB, ownerB, fingerA);
+        std::printf ("  [leg L] after a lost release and a press on a held control: B holds %s\n",
+                     dragWheelHolder (fingerA) == nullptr ? "nothing"
+                       : dragWheelHolder (fingerA) == &cA ? "ITS STALE CONTROL" : "the held one");
+        check (dragWheelHolder (fingerA) == nullptr,
+               "leg L: a refused claim still ends the device's own previous one");
+        check (dragWheelHolder (mouse) == &cB, "leg L: ...and does not disturb the control's owner");
+        releaseDragWheel (cA);
+        releaseDragWheel (cB);
     }
 
     // ---- LEG J: a release names the control as well as the device ------------------------------
@@ -26642,14 +26852,142 @@ static void testOnePressPerPointingDevice()
     //      device key beside it: the wrong control cannot hand back a claim it never made.
     {
         claimDragWheel (cB, ownerB, mouse);
-        releaseDragWheel (cA, mouse);            // the control that did NOT claim it
+        releaseDragWheel (cA);                   // the control that did NOT claim it
         std::printf ("  [leg J] a foreign control released the mouse: it still holds %s\n",
                      dragWheelHolder (mouse) == &cB ? "the claimant" : "NOTHING");
         check (dragWheelHolder (mouse) == &cB,
                "leg J: only the control that claimed the wheel can hand it back");
-        releaseDragWheel (cB, mouse);
+        releaseDragWheel (cB);
         check (dragWheelHolder (mouse) == nullptr, "leg J: ...and the claimant's own release does");
     }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 109 -- an UNWIRED PresetManager runs its commands synchronously
+//  (round 32, Devin `src/StateCommandGate.h:R163-172`, "unwired preset commands
+//  never run").
+//
+//  THE CONFIGURATION IS DOCUMENTED, NOT HYPOTHETICAL. `PresetManager::stateCommand`
+//  is a non-owning pointer whose declaration says: *"Null in a manager no processor
+//  wired up, in which case every command runs synchronously exactly as it did before
+//  round 25."* `stateCommandAdmission` implements that by handing the gate a
+//  default-built `StateCommandHooks` under a comment that reads *"no processor: admit
+//  everything"*. Both statements were false from round 28 until round 32: the gate read
+//  `soundReplacement == nullptr` as a failed try-lock and fell through to `defer`, whose
+//  `enqueue` is also empty -- so `saveUser` answered `OpResult::deferred`, no file was
+//  written, and the completion was never called. Nothing was queued; the command was
+//  dropped.
+//
+//  WHY IT DID NOT SHOW UP IN THE PLUG-IN. `AnamorphAudioProcessor` wires the hooks in its
+//  constructor (`presets.stateCommand = &stateCommandHooks;`), so every command the
+//  editor issues takes the configured path. The broken one is the path the class
+//  advertises to anything that builds a manager without a processor -- which is exactly
+//  what this test does, and what the next caller would have done.
+// ---------------------------------------------------------------------------
+static void testAnUnwiredPresetManagerRunsSynchronously()
+{
+    std::printf ("State test 109: an unwired PresetManager runs synchronously (R163-172)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+
+    // The manager under test: the processor's APVTS, and NO hooks. This is the standalone shape.
+    anamorph::PresetManager standalone { proc.getAPVTS() };
+    check (true, "the standalone manager constructs from an APVTS alone");
+
+    const juce::String name = "__r32Standalone__";
+    const auto file = anamorph::PresetManager::presetDirectory()
+                          .getChildFile (name + anamorph::PresetManager::fileSuffix());
+    file.deleteFile();
+
+    // ---- LEG A: the save runs NOW, writes the file, and reports once ------------------------
+    {
+        int completions = 0;
+        bool reported = false;
+        const auto r = standalone.saveUser (name, [&] (bool ok) { ++completions; reported = ok; });
+        std::printf ("  [leg A] saveUser: result %s, completion calls %d (said %s), file %s\n",
+                     r == anamorph::PresetManager::OpResult::completed ? "completed"
+                       : r == anamorph::PresetManager::OpResult::deferred ? "DEFERRED" : "failed",
+                     completions, reported ? "true" : "false",
+                     file.existsAsFile() ? "written" : "MISSING");
+        check (r == anamorph::PresetManager::OpResult::completed,
+               "leg A: an unwired manager decides the save NOW rather than queueing it");
+        check (completions == 1 && reported, "leg A: ...and reports its result exactly once");
+        check (file.existsAsFile(), "leg A: ...and the file is actually on disk");
+    }
+
+    // ---- LEG B: and so does the OTHER admitted command that takes a file ---------------------
+    //      `loadFile` passes through the same `stateCommandAdmission`, so it failed the same way.
+    {
+        int completions = 0;
+        bool reported = false;
+        const auto r = standalone.loadFile (file, [&] (bool ok) { ++completions; reported = ok; });
+        std::printf ("  [leg B] loadFile: result %s, completion calls %d (said %s), selection \"%s\"\n",
+                     r == anamorph::PresetManager::OpResult::completed ? "completed"
+                       : r == anamorph::PresetManager::OpResult::deferred ? "DEFERRED" : "failed",
+                     completions, reported ? "true" : "false",
+                     standalone.currentName().toRawUTF8());
+        check (r == anamorph::PresetManager::OpResult::completed,
+               "leg B: the load is decided now too");
+        check (completions == 1 && reported, "leg B: ...and reports once");
+        check (standalone.currentName() == name,
+               "leg B: ...and the manager really did adopt the preset it loaded");
+    }
+
+    // ---- LEG C: the relative command, which returns nothing and could only drop silently ------
+    {
+        standalone.refresh();
+        const auto before = standalone.currentName();
+        standalone.step (1);
+        const auto after = standalone.currentName();
+        std::printf ("  [leg C] step(+1): \"%s\" -> \"%s\" (list %d entr%s)\n",
+                     before.toRawUTF8(), after.toRawUTF8(),
+                     standalone.entries().size(), standalone.entries().size() == 1 ? "y" : "ies");
+        // The list contents depend on what else is in the user preset folder, so the assertion is
+        // the one that holds either way: a step that had somewhere to go went there, and a step
+        // that did not left the selection alone. What must NEVER happen is the command vanishing
+        // while the list has more than one row.
+        check (standalone.entries().size() <= 1 || after != before,
+               "leg C: a relative command with somewhere to go is not dropped");
+    }
+
+    // ---- LEG D: THE CONFIGURED PATH IS UNCHANGED ---------------------------------------------
+    //      The whole point of the fix is that it touches only the null-lock configuration. The
+    //      processor's own manager has the hooks wired, so it still takes the try/defer path --
+    //      measured here by the thing that only a configured gate can do: refuse while a user
+    //      transaction is open, and run the command later at the boundary.
+    {
+        auto& wired = proc.getPresets();
+        const auto wiredName = juce::String ("__r32Wired__");
+        const auto wiredFile = anamorph::PresetManager::presetDirectory()
+                                   .getChildFile (wiredName + anamorph::PresetManager::fileSuffix());
+        wiredFile.deleteFile();
+        int completions = 0;
+        bool reported = false;
+        anamorph::PresetManager::OpResult r {};
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            r = wired.saveUser (wiredName, [&] (bool ok) { ++completions; reported = ok; });
+            std::printf ("  [leg D] inside a user transaction: result %s, completion calls %d,"
+                         " file %s\n",
+                         r == anamorph::PresetManager::OpResult::deferred ? "deferred" : "NOT deferred",
+                         completions, wiredFile.existsAsFile() ? "written" : "not yet");
+            check (r == anamorph::PresetManager::OpResult::deferred,
+                   "leg D: a CONFIGURED gate still defers while a transaction is open");
+            check (completions == 0 && ! wiredFile.existsAsFile(),
+                   "leg D: ...and nothing has happened yet");
+        }
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg D] after the boundary: completion calls %d (said %s), file %s\n",
+                     completions, reported ? "true" : "false",
+                     wiredFile.existsAsFile() ? "written" : "MISSING");
+        check (completions == 1 && reported && wiredFile.existsAsFile(),
+               "leg D: ...and the deferred save then runs at the boundary, exactly as before");
+        wiredFile.deleteFile();
+    }
+
+    file.deleteFile();
 }
 
 // ---------------------------------------------------------------------------
@@ -31426,6 +31764,7 @@ int main (int argc, char* argv[])
     testANotchInsideAVelocityDrag();
     testAPressWithNoTargetStillOwnsTheWheel();
     testOnePressPerPointingDevice();
+    testAnUnwiredPresetManagerRunsSynchronously();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

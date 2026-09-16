@@ -5658,3 +5658,80 @@ the disposition itself is unchanged and unwidened. Re-verified on this head with
 UBSan build of the state suite: **0 runtime errors with the section, exactly 1 without it**, at
 `juce_Slider.cpp:929`. State test 106 leg A now also pins the dependency from outside — a rotary must
 still report a linear region of zero — so a JUCE upgrade that changes it fails there.
+
+## §90. Round 32 — Devin `src/StateCommandGate.h:R163-172`, `src/gui/LookAndFeel.cpp:R106-110`, and four investigations
+
+Two confirmed bugs, both introduced by this PR's own earlier rounds, and four investigations that
+changed no production code.
+
+### The gate dropped what it could not queue
+
+`PresetManager::stateCommandAdmission` hands the gate a `static const StateCommandHooks unwired {}`
+under the comment *"no processor: admit everything"*, and `PresetManager::stateCommand`'s declaration
+promises that such a manager runs *"every command synchronously exactly as it did before round 25"*.
+Neither was true. The constructor's last test was
+
+    if (hooks.soundReplacement != nullptr && hooks.soundReplacement->tryEnter()) { ...admit... }
+    defer (hooks, std::move (retry));
+
+so a null lock fell through to `defer`, whose `if (hooks.enqueue)` is false for an unwired set. The
+retry was destroyed on the spot. Measured on a manager built from a live APVTS with no processor:
+`saveUser` returned `OpResult::deferred`, the completion was never called, and no file appeared.
+`loadFile` and `step` fail the same way through the same admission.
+
+**Reachability, stated honestly.** `AnamorphAudioProcessor` wires the hooks in its constructor
+(`presets.stateCommand = &stateCommandHooks;`), so nothing the shipping editor does takes this path.
+What was broken is the contract the class advertises to any other caller — and the one a test would
+have relied on. The fix is the smallest reading of the abstraction: with no replacement lock there is
+no cycle to break, no queue to join, and the honest answer is an unguarded admission. Everything
+above it — `refuseNow`, the nesting shortcut, `drainToFixedPoint` — is untouched and simply empty in
+that configuration, and a configured gate behaves exactly as it did (State test 109 leg D proves it
+still defers inside a user transaction and still runs at the boundary).
+
+`defer` now asserts that it has somewhere to put the command. The only configuration that used to
+reach it empty is admitted above; what is left is a half-wired set, which is incoherent and would
+lose a user action silently.
+
+### The register and JUCE's drag model disagreed, and the register was wrong
+
+Round 31 keyed the release per device so one `mouseUp` would stop disowning another device's claim.
+That is true of the REGISTER and false of the COMPONENT: `Pimpl` holds one `valueOnMouseDown`, one
+`mouseDragStartPos` and one `sliderBeingDragged` that `sendDragEnd` puts back to -1 on the first
+release (juce_Slider.cpp:396-399). So after any release the component has no drag for anyone, and a
+surviving claim points at a control with nothing to give it.
+
+Inert, until the control is dragged again. Then the stale claim delivers into the new drag and a
+device that is not dragging the control steers it — which is what State test 107 legs K and L
+measure, and why they press the knob a second time. Round 31's own legs H and I asserted the
+opposite invariant and are replaced rather than deleted; the report says so.
+
+The owner's rule — one component, one active drag — puts the fix on the CLAIM side. A second device
+pressing a held component is given no claim, so there is at most one cell per component and the
+release can say what it means: this control's drag is over, and nothing may still be claiming it.
+`releaseAllDragWheelClaims` is deleted, because the event paths and the two event-less safety nets
+now say the same thing about the same control.
+
+**M186 and the line it earned.** `claimDragWheel` also clears the claiming device's own previous
+cell. Redundant when the claim is granted; load-bearing only when it is REFUSED, which needs the
+device to already hold something, which needs a release that never arrived. The mutant survived until
+State test 108 leg L drove exactly that.
+
+### The four investigations
+
+* **Cross-instance ownership** (`src/gui/LookAndFeel.cpp:29`): round 31's disposition stands and the
+  round-32 change does not weaken it. Two instances share the static and `juce::Desktop`'s source
+  list, so a device has one identity and one press across both; the components differ, so the new
+  refusal never fires across instances; `SafePointer` covers a destroyed holder (108 leg F) and leg L
+  now covers the lost-release case that the refusal path introduced. No production change.
+* **`PluginEditor.h:R925`** (the velocity path's `+inf`): re-read at its current line. Unchanged in
+  every respect — `sliderRegionSize` is still 0 for a rotary, the `+inf` branch is still the one the
+  velocity mapping depends on, the ignorelist is still one sub-check over one file, the round-31
+  upgrade tripwire is still State test 106 leg A, and the `CCACHE_EXTRAFILES` entry that makes the
+  suppression take effect in CI is still in `build.yml`. No production change, no widening.
+* **`PluginProcessor.cpp` review-history comments**: one block condensed — the six lines narrating
+  where the completion bump *used to* live and the race that moved it, whose mechanism ADR-0036 §24
+  already records in full. The rest of the file's "used to" comments were read and kept: they are the
+  justification for the current shape (the duck request's placement, the exact-vs-tolerance gate, the
+  endpoint bookkeeping), and §7 says not to delete useful proof for being historical.
+* **Architecture review** (`src/StateCommandGate.h:8`): closed, with the rule quoted and the evidence
+  named — see the final report.

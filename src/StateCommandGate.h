@@ -160,7 +160,31 @@ public:
 
         if (afterDrain) afterDrain();
 
-        if (hooks.soundReplacement != nullptr && hooks.soundReplacement->tryEnter())
+        // NO REPLACEMENT LOCK MEANS NOTHING TO GUARD -- AND NOTHING TO DEFER TO (round 32, Devin
+        // `src/StateCommandGate.h:R163-172`). A `PresetManager` with no processor wired up is a
+        // real, documented configuration: `stateCommandAdmission` hands this gate a default-built
+        // `StateCommandHooks` whose every member is empty, and that manager's contract -- stated at
+        // its `stateCommand` declaration -- is that every command runs SYNCHRONOUSLY, exactly as it
+        // did before round 25. Until round 32 this constructor read the null lock as a failed try
+        // and fell through to `defer`, whose `enqueue` is also empty: `saveUser` returned
+        // `OpResult::deferred`, nothing was written, and no completion was ever called. The command
+        // was not deferred; it was dropped.
+        //
+        // There is nothing to decide here. The gate exists to keep a state-replacing command from
+        // waiting on a lock a host thread may be holding while it waits on us; with no such lock in
+        // the configuration there is no cycle to break, no queue to join, and the honest answer is
+        // an UNGUARDED admission. Every other refusal above is untouched, and so is the whole
+        // behaviour of a configured gate: `refuseNow` and `drainToFixedPoint` are consulted first
+        // and are simply empty here, exactly as they were.
+        if (hooks.soundReplacement == nullptr)
+        {
+            nesting = hooks.nesting;
+            if (nesting != nullptr) ++*nesting;
+            granted = true;
+            return;
+        }
+
+        if (hooks.soundReplacement->tryEnter())
         {
             replacement = hooks.soundReplacement;
             nesting     = hooks.nesting;
@@ -193,6 +217,12 @@ public:
 private:
     static void defer (const StateCommandHooks& hooks, std::function<void()> retry)
     {
+        // A REFUSAL WITH NOWHERE TO PUT THE COMMAND IS A DROPPED COMMAND, and round 32 made that
+        // loud rather than silent. The one configuration that used to reach here with an empty
+        // queue -- no `soundReplacement` at all -- is admitted above and never arrives; what is
+        // left is a half-wired set (a lock but no FIFO), which is incoherent and would lose the
+        // user's action. The assertion says so in a debug build; release behaviour is unchanged.
+        jassert (hooks.enqueue != nullptr);
         if (hooks.enqueue) hooks.enqueue (std::move (retry));
     }
 
