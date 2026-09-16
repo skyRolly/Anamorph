@@ -6890,7 +6890,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2550),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2567),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -24845,6 +24845,574 @@ static void testNoStateCommandWaitsForAReplacement()
 }
 
 // ---------------------------------------------------------------------------
+//  State test 105 -- THE WHEEL READS BOTH AXES, AND IT BELONGS TO THE PRESS
+//  (round 29: Devin `src/gui/SpectrumImager.cpp:3293`, plus the owner's two
+//  approved interaction rules and the drag+wheel boundary defect).
+//
+//  Three separate claims, measured here rather than argued:
+//
+//  1. THE AXIS. A horizontal trackpad gesture arrives in `deltaX` with `deltaY`
+//     at zero (macOS `scrollingDeltaX`, Windows `WM_MOUSEHWHEEL`). Every knob
+//     and slider has always read the DOMINANT axis, because
+//     `juce::Slider::Pimpl::mouseWheelMove` does and `wheelTargetValue` mirrors
+//     it; the multiband display read `deltaY` alone and said so in its own
+//     comment. One spelling now serves both (`wheelDominantDelta`).
+//
+//  2. THE TARGET. JUCE hit-tests the POINTER for every wheel event and never
+//     consults the drag (`getTargetForGesture` is a bare `getComponentAt`), so
+//     the notches of a drag that has carried the cursor off its own control are
+//     delivered elsewhere. The approved rule is that the control owning the
+//     press takes them, and that no other control may be moved while a button
+//     is held.
+//
+//  3. THE ANCHOR. A notch inside a drag has to move the drag's ANCHOR, not just
+//     the value, or the next mouse move erases it (ADR-0053). The knob banked
+//     that as a proportion added AFTER JUCE had clamped its own mapping, so a
+//     press scrolled down by half its range could not be dragged to the top for
+//     the rest of that press. The multiband display and the value box never had
+//     the defect, because both anchor in CURSOR space and clamp once, at the
+//     end -- which is what the knob now does too.
+// ---------------------------------------------------------------------------
+static void testTheWheelBelongsToThePressItLandsIn()
+{
+    std::printf ("State test 105: the wheel reads both axes and belongs to the press (R3293)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the wheel-ownership probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s  = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    // The slider a parameter drives, found by MOVING the parameter and seeing which one follows --
+    // no name, no tooltip, no layout assumption (State test 86's method).
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* monoP  = apvts.getParameter (pid::monoMakerFreq);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* fLoP   = apvts.getParameter (pid::mbFreqLow);
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* driveK = findSliderFor (driveP);
+    auto* monoK  = findSliderFor (monoP);
+    check (im != nullptr && im->getWidth() > 300, "the multiband display is laid out");
+    check (driveP && driveK && monoP && monoK && wLoP && fLoP && bandsP,
+           "the Drive knob, the Mono-Maker slider and the multiband parameters are all findable");
+    if (im == nullptr || im->getWidth() <= 300 || ! (driveP && driveK && monoP && monoK && wLoP && fLoP && bandsP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+    check (monoK->getSliderStyle() == juce::Slider::LinearHorizontal,
+           "...and the Mono-Maker control really is a linear slider, not a rotary one");
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    int seq = 0;
+    // EVERY EVENT GETS ITS OWN INSTANT. Both JUCE's wheel handler and this repository's in-drag
+    // one dedupe on `eventTime` (a host can send the same notch twice), so a fixture that stamped
+    // one instant would land exactly one notch of any burst and prove nothing.
+    auto stamp = [&] { return juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 7); };
+    auto mev = [&] (juce::Component* c, float x, float y, float dx, float dy, bool dragged, bool held)
+    {
+        const auto t = stamp();
+        return juce::MouseEvent (src, { x, y },
+                                 held ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, c, c, t, { dx, dy }, t, 1, dragged);
+    };
+    auto wheelOf = [] (float dx, float dy)
+    {
+        juce::MouseWheelDetails w;
+        w.deltaX = dx; w.deltaY = dy;
+        w.isReversed = false; w.isSmooth = false; w.isInertial = false;
+        return w;
+    };
+    auto plainOf = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    // Everything the multiband display can edit, as one reading -- so "the pointed control did not
+    // move" is asked of the whole control rather than of one parameter that happened not to be the
+    // one under the cursor.
+    auto mbState = [&] { return std::array<float, 4> { plainOf (wLoP), plainOf (fLoP),
+                                                       plainOf (bandsP),
+                                                       plainOf (apvts.getParameter (pid::mbSolo)) }; };
+    const float dkx = 0.5f * (float) driveK->getWidth(), dky = 0.5f * (float) driveK->getHeight();
+    const float imx = 0.5f * (float) im->getWidth(),     imy = 0.5f * (float) im->getHeight();
+
+    auto clearHistory = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
+
+    // ---- LEG A: a knob's drag keeps the wheel when the cursor is over the multiband display ----
+    {
+        clearHistory();
+        const auto mb0 = mbState();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, true));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, true));
+        const float held = plainOf (driveP);
+        im->mouseWheelMove (mev (im, imx, imy, dkx, dky, false, true), wheelOf (0.0f, 0.6f));
+        const float afterNotch = plainOf (driveP);
+        const auto  mb1 = mbState();
+        driveK->mouseDrag (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, true));
+        const float afterMore = plainOf (driveP);
+        driveK->mouseUp   (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg A] press on Drive, pointer over the display: Drive %.3f -> %.3f -> %.3f\n",
+                     (double) held, (double) afterNotch, (double) afterMore);
+        check (! juce::exactlyEqual (afterNotch, held),
+               "leg A: the notch reached the knob that owns the press, not the display under the pointer");
+        check (mb1 == mb0, "leg A: ...and the display it pointed at did not move at all");
+        check (! juce::exactlyEqual (afterMore, afterNotch),
+               "leg A: ...and the drag carried on from the value the notch produced");
+        check (proc.canUndo(), "leg A: the interaction is undoable");
+        proc.undo(); proc.pollUndoCoalesce();
+        check (! proc.canUndo(), "leg A: ...as ONE step");
+    }
+
+    // ---- LEG B: the same for a LINEAR slider, whose drag maps absolutely -----------------------
+    {
+        clearHistory();
+        const float mw = (float) monoK->getWidth(), mh = 0.5f * (float) monoK->getHeight();
+        const float drive0 = plainOf (driveP);
+        monoK->mouseDown (mev (monoK, 0.25f * mw, mh, 0.25f * mw, mh, false, true));
+        monoK->mouseDrag (mev (monoK, 0.45f * mw, mh, 0.25f * mw, mh, true, true));
+        const float held = plainOf (monoP);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky, 0.25f * mw, mh, false, true), wheelOf (0.0f, 0.6f));
+        const float afterNotch = plainOf (monoP);
+        monoK->mouseUp (mev (monoK, 0.45f * mw, mh, 0.25f * mw, mh, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg B] press on Mono Maker, pointer over Drive: Mono %.1f -> %.1f Hz,"
+                     " Drive %.3f -> %.3f\n", (double) held, (double) afterNotch,
+                     (double) drive0, (double) plainOf (driveP));
+        check (! juce::exactlyEqual (afterNotch, held),
+               "leg B: the notch reached the slider that owns the press");
+        check (juce::exactlyEqual (plainOf (driveP), drive0),
+               "leg B: ...and the knob it pointed at did not move");
+    }
+
+    // ---- LEG C: a MultiBand BANDWIDTH drag keeps the wheel outside the display ------------------
+    //      ...and the notch is a HORIZONTAL trackpad one, which is the whole of the finding.
+    {
+        clearHistory();
+        setPlain (bandsP, 1.0f);
+        setPlain (wLoP, 1.0f);
+        proc.pollUndoCoalesce();
+        // The width line is found rather than assumed: at width 1.0 it sits in the middle of the
+        // lane, but the lane is not the middle of the component.
+        float wy = -1.0f;
+        for (float y = 4.0f; y < (float) im->getHeight() - 4.0f; y += 1.0f)
+        {
+            im->mouseMove (mev (im, imx, y, imx, y, false, false));
+            if (im->getTooltip() == juce::String ("Band width")) { wy = y; break; }
+        }
+        check (wy > 0.0f, "leg C: the band's width line is findable");
+        const float drive0 = plainOf (driveP);
+        im->mouseDown (mev (im, imx, wy, imx, wy, false, true));
+        im->mouseDrag (mev (im, imx, wy - 10.0f, imx, wy, true, true));
+        im->mouseDrag (mev (im, imx, wy - 25.0f, imx, wy, true, true));
+        // THE CURSOR REALLY TRAVELS TO THE KNOB. A held press receives every mouse move, inside
+        // its own bounds and outside them, so the honest way to put the pointer over another
+        // control is to DRAG it there. Teleporting it would leave this display's cursor-space
+        // anchor (`dragGrabDY`) describing a position the press was never told about, and the
+        // wheel would then re-anchor against a cursor that had never been reported -- a fixture
+        // error whose symptom looks exactly like a product one.
+        const auto  out  = im->getLocalPoint (driveK, juce::Point<float> (dkx, dky));
+        im->mouseDrag (mev (im, out.x, out.y, imx, wy, true, true));
+        const float held = plainOf (wLoP);
+        // Off whichever rail the exit left it on: a notch FURTHER INTO a rail performs no edit by
+        // ADR-0052 and would prove nothing about the axis. `deltaX` positive reads as a downward
+        // vertical one (`wheelDominantDelta` negates it), so it lowers the width.
+        const float ax   = held > 1.0f ? 0.6f : -0.6f;
+        const float step = held > 1.0f ? 12.0f : -12.0f;
+        // The cursor is now OVER THE DRIVE KNOB, and the gesture is sideways.
+        driveK->mouseWheelMove (mev (driveK, dkx, dky, imx, wy, false, true), wheelOf (ax, 0.0f));
+        const float afterNotch = plainOf (wLoP);
+        im->mouseDrag (mev (im, out.x, out.y + step, imx, wy, true, true));
+        const float afterMore = plainOf (wLoP);
+        im->mouseUp   (mev (im, out.x, out.y + step, imx, wy, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg C] press on Bandwidth, pointer over Drive, HORIZONTAL notch:"
+                     " width %.3f -> %.3f -> %.3f; Drive %.3f -> %.3f\n",
+                     (double) held, (double) afterNotch, (double) afterMore,
+                     (double) drive0, (double) plainOf (driveP));
+        check (! juce::exactlyEqual (afterNotch, held),
+               "leg C: a horizontal notch outside the display still steers the Bandwidth it is holding");
+        check (juce::exactlyEqual (plainOf (driveP), drive0),
+               "leg C: ...and the knob under the pointer did not move");
+        check (! juce::exactlyEqual (afterMore, afterNotch),
+               "leg C: ...and the drag carried on from the value the notch produced");
+    }
+
+    // The split handle, found the way leg C finds the width line: by the affordance the component
+    // itself reports, not by recomputing its geometry here. `setContextTooltip` names a hovered
+    // handle "Drag to change the split frequency" (SpectrumImager.cpp, `hoverHandle`).
+    auto findSplitHandleX = [&] () -> float
+    {
+        for (float x = 4.0f; x < (float) im->getWidth() - 4.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (im, x, imy, x, imy, false, false));
+            if (im->getTooltip().containsIgnoreCase ("split frequency")) return x;
+        }
+        return -1.0f;
+    };
+    // WHAT IS REALLY UNDER A POINT OF THIS DISPLAY'S. `juce::Component::getComponentAt` answers
+    // nullptr for a component that has never been made visible, and an editor built for a test has
+    // no peer to make its ROOT one -- so the hit-test is spelled out here, by the rule the real one
+    // uses: descend into a child that passes clicks to its children, answer one that accepts them
+    // itself, and fall back to the editor, which is where a scroll over bare background arrives.
+    auto componentAt = [&] (juce::Point<float> pInImager) -> juce::Component*
+    {
+        std::function<juce::Component* (juce::Component*, juce::Point<float>)> descend;
+        descend = [&] (juce::Component* c, juce::Point<float> p) -> juce::Component*
+        {
+            for (int i = c->getNumChildComponents(); --i >= 0;)
+            {
+                auto* k = c->getChildComponent (i);
+                if (! k->isVisible()) continue;
+                const auto kp = p - k->getPosition().toFloat();
+                if (! k->getLocalBounds().toFloat().contains (kp)) continue;
+                bool clicks = false, kids = false;
+                k->getInterceptsMouseClicks (clicks, kids);
+                if (kids) if (auto* d = descend (k, kp)) return d;
+                if (clicks) return k;
+            }
+            return nullptr;
+        };
+        auto* found = descend (ed, ed->getLocalPoint (im, pInImager));
+        return found != nullptr ? found : static_cast<juce::Component*> (ed);
+    };
+    // ...and the notch is driven through THAT component's own handler, so a component with no wheel
+    // handler exercises exactly what a real scroll there would: `juce::Component::mouseWheelMove`
+    // walking the event up to the nearest enabled ancestor (juce_Component.cpp:2316-2321), which is
+    // a pure component-tree walk and needs no peer.
+    auto wheelAtDisplayPoint = [&] (juce::Point<float> pInImager, juce::MouseWheelDetails w,
+                                    juce::Point<float> down) -> juce::Component*
+    {
+        auto* under = componentAt (pInImager);
+        if (under == nullptr) return nullptr;
+        const auto local = under->getLocalPoint (im, pInImager);
+        under->mouseWheelMove (mev (under, local.x, local.y, down.x, down.y, false, true), w);
+        return under;
+    };
+
+    // ---- LEG D: the same for a MultiBand SPLIT FREQUENCY drag ----------------------------------
+    //      ...and the pointer is over something that is NOT A CONTROL, which is most of this
+    //      editor's surface and the one case the per-control register does not reach on its own: a
+    //      caption, a toggle or the panel background overrides no wheel handler, so JUCE walks the
+    //      event up to the editor. The notch must still arrive at the split being dragged.
+    {
+        clearHistory();
+        setPlain (bandsP, 2.0f);
+        proc.pollUndoCoalesce();
+        const float hx = findSplitHandleX();
+        check (hx > 0.0f, "leg D: a crossover handle is findable");
+        const float drive0 = plainOf (driveP);
+        const float hy = imy;
+        im->mouseDown (mev (im, hx, hy, hx, hy, false, true));
+        im->mouseDrag (mev (im, hx + 12.0f, hy, hx, hy, true, true));
+        // The cursor travels OUT through the top of the frame, as a real drag -- 12 px, which is
+        // outside this display and well inside the 50 px margin at which a split drag freezes for
+        // the merge affordance. Leg K holds the frozen case on its own.
+        const auto  out = juce::Point<float> (imx, -12.0f);
+        im->mouseDrag (mev (im, out.x, out.y, hx, hy, true, true));
+        const float held = plainOf (fLoP);
+        auto* under = wheelAtDisplayPoint (out, wheelOf (0.6f, 0.0f), { hx, hy });
+        check (under != nullptr && under != im,
+               "leg D: the exit point really is over something other than the display");
+        // ...and over something that owns NO wheel handler of its own, so the only route the notch
+        // can have taken is the editor backstop.
+        check (under != nullptr && dynamic_cast<juce::Slider*> (under) == nullptr
+                                && dynamic_cast<anamorph::gui::SpectrumImager*> (under) == nullptr,
+               "leg D: ...and over something that is not one of the wheel-owning controls");
+        const float afterNotch = plainOf (fLoP);
+        im->mouseDrag (mev (im, out.x - 12.0f, out.y, hx, hy, true, true));
+        const float afterMore = plainOf (fLoP);
+        im->mouseUp   (mev (im, out.x - 12.0f, out.y, hx, hy, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg D] press on the split, pointer outside the display over \"%s\","
+                     " HORIZONTAL notch: split %.1f -> %.1f -> %.1f Hz; Drive %.3f -> %.3f\n",
+                     under != nullptr ? under->getName().toRawUTF8() : "(nothing)",
+                     (double) held, (double) afterNotch, (double) afterMore,
+                     (double) drive0, (double) plainOf (driveP));
+        check (! juce::exactlyEqual (afterNotch, held),
+               "leg D: a horizontal notch outside the display still steers the split it is holding");
+        check (juce::exactlyEqual (plainOf (driveP), drive0),
+               "leg D: ...and nothing else in the editor moved");
+        check (! juce::exactlyEqual (afterMore, afterNotch),
+               "leg D: ...and the drag carried on from the value the notch produced");
+    }
+
+    // ---- LEG K: a split drag FROZEN for the merge affordance owns the notch and adds nothing ----
+    //      Dragged more than 70 px sideways or 50 px vertically outside the frame, a split drag
+    //      marks its band for removal on release and FREEZES, so that the split is recomputed
+    //      purely from the cursor when it returns. Before the register a notch could not reach
+    //      that state at all -- JUCE hit-tests the pointer, and the pointer is over somebody else.
+    //      It can now, and the press must own it WITHOUT creeping the split or re-anchoring it.
+    {
+        clearHistory();
+        setPlain (bandsP, 2.0f);
+        proc.pollUndoCoalesce();
+        const float hx = findSplitHandleX();
+        check (hx > 0.0f, "leg K: a crossover handle is findable");
+        const float drive0 = plainOf (driveP);
+        const float hy = imy;
+        im->mouseDown (mev (im, hx, hy, hx, hy, false, true));
+        im->mouseDrag (mev (im, hx + 12.0f, hy, hx, hy, true, true));
+        const auto far = juce::Point<float> (imx, -60.0f);   // past the 50 px merge margin
+        im->mouseDrag (mev (im, far.x, far.y, hx, hy, true, true));
+        const float frozen = plainOf (fLoP);
+        auto* under = wheelAtDisplayPoint (far, wheelOf (0.6f, 0.0f), { hx, hy });
+        const float afterNotch = plainOf (fLoP);
+        check (under != nullptr && dynamic_cast<juce::Slider*> (under) == nullptr
+                                && dynamic_cast<anamorph::gui::SpectrumImager*> (under) == nullptr,
+               "leg K: the notch really did have to travel through the editor backstop");
+        // ...and back inside: the freeze is still a freeze, so the split goes to the CURSOR.
+        im->mouseDrag (mev (im, imx, hy, hx, hy, true, true));
+        const float back = plainOf (fLoP);
+        im->mouseUp   (mev (im, imx, hy, hx, hy, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg K] frozen split (%.0f px above the frame, under \"%s\"):"
+                     " %.1f -> %.1f Hz, then %.1f on return\n",
+                     -(double) far.y, under != nullptr ? under->getName().toRawUTF8() : "(nothing)",
+                     (double) frozen, (double) afterNotch, (double) back);
+        check (juce::exactlyEqual (afterNotch, frozen),
+               "leg K: a notch does not creep a split the drag has frozen for the merge");
+        check (juce::exactlyEqual (plainOf (driveP), drive0),
+               "leg K: ...and it does not reach anything under the pointer either");
+        check (! juce::exactlyEqual (back, frozen),
+               "leg K: ...and the drag recovers exactly as it did before, from the cursor");
+    }
+
+    // ---- LEG E: the control under the pointer records nothing, not even a gesture ---------------
+    {
+        clearHistory();
+        CountGestures g;
+        auto* widP = apvts.getParameter (pid::width);
+        auto* widK = findSliderFor (widP);
+        check (widK != nullptr, "leg E: a second knob is findable");
+        if (widK != nullptr)
+        {
+            const float wid0 = plainOf (widP);
+            widP->addListener (&g);
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, true));
+            driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, true));
+            for (int i = 0; i < 3; ++i)
+                widK->mouseWheelMove (mev (widK, 0.5f * (float) widK->getWidth(),
+                                           0.5f * (float) widK->getHeight(), dkx, dky, false, true),
+                                      wheelOf (0.0f, 0.6f));
+            driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, true));
+            widP->removeListener (&g);
+            proc.pollUndoCoalesce();
+            std::printf ("  [leg E] three notches over Width while Drive holds the press:"
+                         " Width %.4f -> %.4f, gestures opened %d\n",
+                         (double) wid0, (double) plainOf (widP), g.opens);
+            check (juce::exactlyEqual (plainOf (widP), wid0),
+                   "leg E: the control under the pointer is untouched while another press is held");
+            check (g.opens == 0 && g.closes == 0,
+                   "leg E: ...and no host change gesture is opened on it either");
+        }
+    }
+
+    // ---- LEG F: the KNOB boundary regression --------------------------------------------------
+    //      Drag to half the range, wheel back to the bottom without releasing, then keep dragging
+    //      up. The remaining travel must still reach the TOP. Before round 29 the offset was added
+    //      after JUCE's own clamp, so the press was capped at the offset -- exactly the reported
+    //      "stuck around 50%".
+    {
+        clearHistory();
+        setPlain (driveP, (float) driveP->convertFrom0to1 (0.0f));
+        proc.pollUndoCoalesce();
+        const double sens = (double) driveK->getMouseDragSensitivity();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, true));
+        driveK->mouseDrag (mev (driveK, dkx, dky - (float) (sens * 0.5), dkx, dky, true, true));
+        const double half = driveK->valueToProportionOfLength (driveK->getValue());
+        // ...down to the bottom, one notch at a time, inside the press.
+        for (int i = 0; i < 24 && driveK->getValue() > driveK->getMinimum(); ++i)
+            driveK->mouseWheelMove (mev (driveK, dkx, dky - (float) (sens * 0.5), dkx, dky, false, true),
+                                    wheelOf (0.0f, -1.0f));
+        const double atBottom = driveK->valueToProportionOfLength (driveK->getValue());
+        // ...and then a FULL range of further travel from where the wheel left the cursor.
+        driveK->mouseDrag (mev (driveK, dkx, dky - (float) (sens * 1.5), dkx, dky, true, true));
+        const double reached = driveK->valueToProportionOfLength (driveK->getValue());
+        driveK->mouseUp (mev (driveK, dkx, dky - (float) (sens * 1.5), dkx, dky, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg F] knob: drag to %.3f, wheel to %.3f, then a full range of drag reaches"
+                     " %.3f (was capped at the wheel offset before round 29)\n",
+                     half, atBottom, reached);
+        check (half > 0.4 && half < 0.6, "leg F: the drag really did reach half the range");
+        check (atBottom < 1.0e-6, "leg F: ...and the wheel really did take it to the bottom");
+        check (reached > 0.999,
+               "leg F: ...and the remaining drag still reaches the TOP, with no travel lost to the notch");
+    }
+
+    // ---- LEG G: the SLIDER boundary regression, on the absolute linear mapping ------------------
+    {
+        clearHistory();
+        const float mh = 0.5f * (float) monoK->getHeight();
+        const double span = std::abs ((double) monoK->getPositionOfValue (monoK->getMaximum())
+                                      - (double) monoK->getPositionOfValue (monoK->getMinimum()));
+        check (span > 10.0, "leg G: the linear slider has a measurable travel");
+        monoK->mouseDown (mev (monoK, 1.0f, mh, 1.0f, mh, false, true));
+        monoK->mouseDrag (mev (monoK, 1.0f + 0.5f * (float) span, mh, 1.0f, mh, true, true));
+        const double half = monoK->valueToProportionOfLength (monoK->getValue());
+        for (int i = 0; i < 24 && monoK->getValue() > monoK->getMinimum(); ++i)
+            monoK->mouseWheelMove (mev (monoK, 1.0f + 0.5f * (float) span, mh, 1.0f, mh, false, true),
+                                   wheelOf (0.0f, -1.0f));
+        const double atBottom = monoK->valueToProportionOfLength (monoK->getValue());
+        monoK->mouseDrag (mev (monoK, 1.0f + 1.5f * (float) span, mh, 1.0f, mh, true, true));
+        const double reached = monoK->valueToProportionOfLength (monoK->getValue());
+        monoK->mouseUp (mev (monoK, 1.0f + 1.5f * (float) span, mh, 1.0f, mh, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg G] slider: drag to %.3f, wheel to %.3f, then a full travel reaches %.3f\n",
+                     half, atBottom, reached);
+        check (half > 0.35 && half < 0.65, "leg G: the drag really did reach about half the range");
+        check (atBottom < 1.0e-6, "leg G: ...and the wheel really did take it to the bottom");
+        check (reached > 0.999, "leg G: ...and the remaining drag still reaches the TOP");
+    }
+
+    // ---- LEG H: the MultiBand parameters are VERIFIED, not assumed, and not modified ------------
+    //      The user's observation is that Bandwidth and split frequency do NOT have the defect.
+    //      They do not, and the reason is structural: both anchor in CURSOR space
+    //      (`dragGrabDY = e.position.y - widthToY (want)`, `dragGrabDX = e.position.x - landed`)
+    //      and the clamp is applied once, to the final target -- so a notch moves the anchor and
+    //      the whole remaining travel survives. Nothing about them is changed for symmetry.
+    {
+        clearHistory();
+        setPlain (bandsP, 1.0f);
+        setPlain (wLoP, 1.0f);
+        proc.pollUndoCoalesce();
+        float wy = -1.0f;
+        for (float y = 4.0f; y < (float) im->getHeight() - 4.0f; y += 1.0f)
+        {
+            im->mouseMove (mev (im, imx, y, imx, y, false, false));
+            if (im->getTooltip() == juce::String ("Band width")) { wy = y; break; }
+        }
+        check (wy > 0.0f, "leg H: the band's width line is findable");
+        im->mouseDown (mev (im, imx, wy, imx, wy, false, true));
+        im->mouseDrag (mev (im, imx, wy - 10.0f, imx, wy, true, true));
+        im->mouseDrag (mev (im, imx, wy - 30.0f, imx, wy, true, true));
+        const float dragged = plainOf (wLoP);
+        for (int i = 0; i < 40 && plainOf (wLoP) > 0.0f; ++i)
+            im->mouseWheelMove (mev (im, imx, wy - 30.0f, imx, wy, false, true), wheelOf (0.0f, -1.0f));
+        const float atBottom = plainOf (wLoP);
+        im->mouseDrag (mev (im, imx, wy - 30.0f - (float) im->getHeight(), imx, wy, true, true));
+        const float reached = plainOf (wLoP);
+        im->mouseUp (mev (im, imx, wy - 30.0f - (float) im->getHeight(), imx, wy, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg H] bandwidth: drag to %.3f, wheel to %.3f, then a full lane of drag"
+                     " reaches %.3f (max 2.000)\n",
+                     (double) dragged, (double) atBottom, (double) reached);
+        check (dragged > 1.0f, "leg H: the drag really did raise the bandwidth");
+        check (atBottom < 1.0e-6f, "leg H: ...and the wheel really did take it to the bottom");
+        check (reached > 1.999f,
+               "leg H: ...and the remaining drag still reaches the TOP -- the defect is absent here");
+    }
+
+    // ---- LEG I: the axis, on both control families ----------------------------------------------
+    {
+        clearHistory();
+        const float d0 = plainOf (driveP);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky, dkx, dky, false, false), wheelOf (0.0f, 0.6f));
+        const float dVert = plainOf (driveP);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky, dkx, dky, false, false), wheelOf (-0.6f, 0.0f));
+        const float dHorz = plainOf (driveP);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky, dkx, dky, false, false), wheelOf (-0.6f, 0.1f));
+        const float dMixed = plainOf (driveP);
+        check (! juce::exactlyEqual (dVert, d0),    "leg I: a vertical notch moves a knob");
+        check (! juce::exactlyEqual (dHorz, dVert), "leg I: ...a horizontal-only one does too");
+        check (! juce::exactlyEqual (dMixed, dHorz), "leg I: ...and a mixed one takes the dominant axis");
+
+        setPlain (bandsP, 1.0f); setPlain (wLoP, 1.0f);
+        proc.pollUndoCoalesce();
+        float wy = -1.0f;
+        for (float y = 4.0f; y < (float) im->getHeight() - 4.0f; y += 1.0f)
+        {
+            im->mouseMove (mev (im, imx, y, imx, y, false, false));
+            if (im->getTooltip() == juce::String ("Band width")) { wy = y; break; }
+        }
+        check (wy > 0.0f, "leg I: the band's width line is findable");
+        const float w0 = plainOf (wLoP);
+        im->mouseWheelMove (mev (im, imx, wy, imx, wy, false, false), wheelOf (0.0f, -0.6f));
+        const float wVert = plainOf (wLoP);
+        im->mouseWheelMove (mev (im, imx, wy, imx, wy, false, false), wheelOf (0.6f, 0.0f));
+        const float wHorz = plainOf (wLoP);
+        std::printf ("  [leg I] display: %.3f -> %.3f (vertical) -> %.3f (horizontal only)\n",
+                     (double) w0, (double) wVert, (double) wHorz);
+        check (! juce::exactlyEqual (wVert, w0),
+               "leg I: a vertical notch moves the multiband bandwidth");
+        check (! juce::exactlyEqual (wHorz, wVert),
+               "leg I: ...and a HORIZONTAL-only trackpad notch moves it too, which it never did before");
+    }
+
+    // ---- LEG J: no-op inputs have no side effects (ADR-0052, preserved) --------------------------
+    {
+        clearHistory();
+        setPlain (bandsP, 1.0f); setPlain (wLoP, 1.0f);
+        proc.pollUndoCoalesce();
+        const auto mb0 = mbState();
+        const float d0  = plainOf (driveP);
+        const bool  undo0 = proc.canUndo();
+
+        // J1 -- both axes zero, on both control families and with no press in flight.
+        im->mouseWheelMove (mev (im, imx, imy, imx, imy, false, false), wheelOf (0.0f, 0.0f));
+        driveK->mouseWheelMove (mev (driveK, dkx, dky, dkx, dky, false, false), wheelOf (0.0f, 0.0f));
+        // J2 -- axis values that normalise to nothing: below the display's own 1e-4 threshold.
+        im->mouseWheelMove (mev (im, imx, imy, imx, imy, false, false), wheelOf (1.0e-6f, 1.0e-6f));
+        proc.pollUndoCoalesce();
+        check (mbState() == mb0 && juce::exactlyEqual (plainOf (driveP), d0),
+               "leg J: an empty or sub-threshold wheel event moves nothing");
+        check (proc.canUndo() == undo0, "leg J: ...and records no undo step");
+
+        // J3 -- a wheel over another control while a press is held: no gesture, no step, nothing.
+        CountGestures g;
+        wLoP->addListener (&g);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, true));
+        im->mouseWheelMove (mev (im, imx, imy, dkx, dky, false, true), wheelOf (0.0f, 0.0f));
+        driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, true));
+        wLoP->removeListener (&g);
+        proc.pollUndoCoalesce();
+        check (mbState() == mb0, "leg J: a null notch posted to a held press changes nothing");
+        check (g.opens == 0 && g.closes == 0, "leg J: ...and opens no gesture on the pointed control");
+
+        // J4 -- and the register does not strand: with the press over, an ordinary scroll works.
+        const auto mbBefore = mbState();
+        im->mouseWheelMove (mev (im, imx, imy, imx, imy, false, false), wheelOf (0.0f, -0.6f));
+        proc.pollUndoCoalesce();
+        check (! (mbState() == mbBefore),
+               "leg J: ...and a standalone scroll after the release still edits what it points at");
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
 //  State test 104 -- a save completion may only touch the dialog it BELONGS TO
 //  (round 28b, Devin `src/PluginEditor.cpp:R405-406`, "canceled save closes
 //  newer dialog").
@@ -29614,6 +30182,7 @@ int main (int argc, char* argv[])
     testADeferredPresetOperationReportsItsRealResult();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
+    testTheWheelBelongsToThePressItLandsIn();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

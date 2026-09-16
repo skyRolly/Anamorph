@@ -946,19 +946,22 @@ private:
             sendWheelToJuce (e, w);
         }
 
-        // A NOTCH THAT LANDED HERE WHILE SOME OTHER CONTROL HOLDS THE PRESS (ADR-0053). JUCE routes
-        // a wheel event by POINTER and not by capture -- `getTargetForGesture` hit-tests the peer at
-        // the event position whether or not a drag is in flight -- so a press held on one knob and a
-        // pointer that has travelled onto another delivers the notch HERE, with the button still
-        // down. The branch above does not claim it (no drag of this slider's own is open) and JUCE
-        // then discards it, because its whole wheel body sits behind `! e.mods.isAnyMouseButtonDown()`:
-        // a notch the user makes and never sees, while the same gesture over the multiband display
-        // edits what it points at. So the pointed control acts, exactly as it does with no button
-        // down -- the event is handed to JUCE with the MOUSE BUTTONS CLEARED and nothing else
-        // changed, which keeps JUCE's own wheel amount, interval, snapping, duplicate-event filter
-        // and `ScopedDragNotification` bracketing rather than restating any of them here. The edit
-        // therefore lands inside the other control's open gesture and the two share one undo step,
-        // which is what the multiband display has done since the top of this round.
+        // A NOTCH THAT LANDED HERE WITH A BUTTON DOWN AND NO CONTROL HOLDING A PRESS (ADR-0053).
+        // JUCE routes a wheel event by POINTER and not by capture -- `getTargetForGesture`
+        // hit-tests the peer at the event position whether or not a drag is in flight -- and then
+        // discards it if any button is down, because its whole wheel body sits behind
+        // `! e.mods.isAnyMouseButtonDown()`: a notch the user makes and never sees.
+        //
+        // ROUND 29 NARROWED WHAT REACHES HERE, and this comment used to describe the case that no
+        // longer does. "A press held on one knob and a pointer that has travelled onto another" is
+        // now the REGISTER's case: `wheelTakenByOwningPress` claims the notch for the press at the
+        // top of `mouseWheelMove` and these lines are never reached for it. What still reaches
+        // them is a button held over something that is NOT one of this editor's wheel-owning
+        // controls -- a caption, a toggle, the background -- with the pointer over this knob. The
+        // pointed control acts, exactly as it does with no button down: the event is handed to
+        // JUCE with the MOUSE BUTTONS CLEARED and nothing else changed, which keeps JUCE's own
+        // wheel amount, interval, snapping, duplicate-event filter and `ScopedDragNotification`
+        // bracketing rather than restating any of them here.
         //
         // Gated on what JUCE itself would need to act, so a disabled slider or one with the wheel
         // turned off still reaches `Component::mouseWheelMove` with the UNTOUCHED event and its

@@ -1085,8 +1085,25 @@ void AnamorphAudioProcessorEditor::updateMsLabels()
 }
 
 void AnamorphAudioProcessorEditor::showAbout (bool show)    { aboutBackdrop.setVisible (show);    if (show) { aboutBackdrop.toFront (false); resized(); } }
-void AnamorphAudioProcessorEditor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails&)
+void AnamorphAudioProcessorEditor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
+    // THE BACKSTOP FOR "THE PRESS DECIDES, NOT THE POINTER" (ADR-0053 round 29, owner decision).
+    //
+    // Knob, the value box and the multiband display each ask the register at the top of their own
+    // wheel handler, which covers a pointer that has wandered onto ANOTHER CONTROL. It does not
+    // cover a pointer that has wandered onto something that is not a control at all -- a caption, a
+    // toggle, the panel background -- and that is most of this editor's surface. Those components
+    // do not override `mouseWheelMove`, so `juce::Component`'s version walks the event up to the
+    // nearest enabled ancestor (juce_Component.cpp:2316-2321) and it arrives HERE, at the top of
+    // the tree, where it used to be dropped: the notch of a live drag, lost because the cursor was
+    // over a label. Asking the register here catches every such path at the one place they all
+    // converge, and costs a null check when no press is in flight.
+    //
+    // THE ONE COMPONENT THAT DOES NOT ARRIVE is `PopupShield`, whose `mouseWheelMove` is
+    // deliberately empty because consuming the gesture IS its behaviour -- and a raised shield
+    // means a pop-up menu owns the mouse, so there is no drag of ours for a notch to belong to.
+    if (anamorph::gui::wheelTakenByOwningPress (*this, e, w)) return;
+
     // Sustained scroll of the Persistence bar reveals the window: the first notch arms a
     // short window, a SECOND notch inside it reveals (so a single notch doesn't),
     // and a ~0.5 s dwell holds it after the last notch. Drag is handled separately

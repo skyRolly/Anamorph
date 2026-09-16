@@ -3464,6 +3464,20 @@ bool SpectrumImager::takeWheelNotch (const juce::MouseEvent& e, const juce::Mous
             // anchor is derived from where the projection actually put the handle, which is the
             // ADR's own rule ("clamped to the same limit the store itself clamps to") applied to
             // the limit that really binds. State test 80 leg G.
+            // A FROZEN SPLIT HAS NOTHING FOR THE NOTCH TO ADD TO (ADR-0052, and new in round 29
+            // because the case is new). Dragged more than 70 px outside the frame, a split drag
+            // is marked for removal on release and FREEZES: `mouseDrag` writes nothing at all, so
+            // that "when the cursor returns, the split is recomputed purely from the cursor
+            // against the drag-start positions" (its own comment, one screen up). Before the
+            // register there was no way to reach these lines in that state -- JUCE delivered a
+            // wheel event by hit-test, and a cursor 70 px outside this component is over somebody
+            // else -- so the merge affordance and the wheel never met. They meet now, and a notch
+            // that crept the frozen split would break both halves of that sentence: it would move
+            // a split whose band the release is about to merge away, and it would re-anchor
+            // `dragGrabDX`, which is precisely the variable the freeze exists to leave alone. The
+            // press still OWNS the notch -- it is not offered to the pointer -- it simply has
+            // nothing to add it to, exactly as a pending delete click does above.
+            if (dragRemovePending) return true;
             const float lo = r.getX() + kMinGapPx, hi = r.getRight() - kMinGapPx;
             const float want = juce::jlimit (lo, hi,
                                              ((float) e.position.x - dragGrabDX) + dy * kWheelSplitPx);

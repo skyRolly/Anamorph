@@ -510,10 +510,10 @@ DELIBERATE_REAIMS = {
     # so a number that was wrong when it was written fails here rather than going quiet.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginEditor.cpp:2373-2398",
-     "src/PluginEditor.cpp:2408-2433"): "oversampleBox",
+     "src/PluginEditor.cpp:2425-2450"): "oversampleBox",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/PluginEditor.cpp:2175",
-     "src/PluginEditor.cpp:2204"): "createDirectory",
+     "src/PluginEditor.cpp:2221"): "createDirectory",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1247-1424",
      "src/PluginProcessor.cpp:1387-1564"): "parameterGestureChanged",
