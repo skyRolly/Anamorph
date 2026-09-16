@@ -386,18 +386,72 @@ struct DragGestureOwner : WheelDragOwner
 //  the owner approved is that the press decides until the button comes up, whether or not it has
 //  anything to do with the notch, so this function answers the whole question in one place and the
 //  callers have nothing left to decide.
-void claimDragWheel (juce::Component&, WheelDragOwner&);
+//  ...AND "THE PRESS" IS ONE PER POINTING DEVICE, not one per process (round 30, Devin
+//  `src/gui/LookAndFeel.cpp:R16`). JUCE does not model a single pointer: `MouseInputSourceList`
+//  holds an array of them and hands each its own `MouseInputSourceImpl`, whose `buttonState` is
+//  private to that device -- `getCurrentModifiers()` is the global modifiers with the mouse
+//  buttons stripped and THAT device's buttons put back (juce_MouseInputSourceImpl.h:59-64). So the
+//  button-down test below already answers per device; only the register was process-wide, and a
+//  second device pressing anything would evict a claim it had nothing to do with.
+//
+//  That is reachable where Anamorph ships, and the envelope is exact:
+//    * macOS -- NOT reachable. `MouseInputSourceList::canUseTouch()` is `false` and `addSource()`
+//      refuses every index past 0 (juce_NSViewComponentPeer_mac.mm:2986-2999), so the process has
+//      exactly one source for its whole life.
+//    * Linux/BSD -- REACHABLE, with no opt-out. `XWindowSystem::canUseMultiTouch()` is true
+//      whenever XI2 sets up (juce_XWindowSystem_linux.cpp:2299-2306, and `JUCE_USE_XINPUT`
+//      defaults to 1), every window JUCE creates masks XI_TouchBegin/Update/End unconditionally
+//      (:676-678), and a touch dispatches as `InputSourceType::touch` with a per-finger index
+//      (:4176-4189) alongside the live `mouse` source. A finger on one control while the mouse
+//      holds another is an ordinary state there.
+//    * Windows -- a second source is created (a synthesised touch or pen message is still typed
+//      from `GetMessageExtraInfo()`, and `doMouseDown`'s early return is gated on
+//      `canUseMultiTouch()`, juce_Windowing_windows.cpp:2606-2613), but the editor never opts into
+//      real multi-touch: `AudioProcessorEditor::usesWindowsMultiTouch()` returns false
+//      (juce_AudioProcessorEditor.cpp:260-263) and nothing here overrides it, so `RegisterTouchWindow`
+//      is never called and the OS synthesises ONE cursor. Concurrency is not established there;
+//      the per-device cell is simply correct rather than needed.
+//
+//  Keyed by (type, index) because that pair IS the identity JUCE itself uses:
+//  `getOrCreateMouseInputSource` matches a mouse or pen on type alone and a touch on type and
+//  finger number (juce_MouseInputSourceList.h:67-89). Naming the key as a value rather than
+//  reaching into `e.source` inside the register is also what makes the routing testable: nothing
+//  public creates a second `MouseInputSource`, so a test drives the overloads below directly.
+struct WheelPointer
+{
+    int type  = (int) juce::MouseInputSource::InputSourceType::mouse;
+    int index = 0;
+
+    bool operator== (const WheelPointer& o) const noexcept { return type == o.type && index == o.index; }
+    bool operator!= (const WheelPointer& o) const noexcept { return ! operator== (o); }
+};
+
+inline WheelPointer wheelPointerOf (const juce::MouseInputSource& s) noexcept
+{
+    return { (int) s.getType(), s.getIndex() };
+}
+
+void claimDragWheel (juce::Component&, WheelDragOwner&, WheelPointer);
+// NOT pointer-keyed, and deliberately: two of the four release sites are the lost-release safety
+// nets, which run from the editor's reconcile with no event and so no device to name.
 void releaseDragWheel (const juce::Component&);
-juce::Component* dragWheelHolder() noexcept;
+juce::Component* dragWheelHolder (WheelPointer) noexcept;
 
 // True when this event has been dealt with and the caller must do nothing whatsoever with it --
-// not act on it, and not pass it on. That is every case in which a mouse button is down:
+// not act on it, and not pass it on. That is every case in which a mouse button is down ON THE
+// DEVICE THAT SENT IT:
 //   * the press belongs to some other control  -> the notch is posted to that control;
 //   * the press belongs to THIS control        -> `selfOwner` is offered the notch here;
 //   * a button is down but nothing claimed     -> nobody is offered it, and nobody may have it.
 // `selfOwner` may be null for a component that holds no presses of its own (the editor's backstop).
-// False means no button is down, which is the only state in which the pointer decides.
+// False means this device has no button down, which is the only state in which the pointer decides.
 bool wheelTakenByAnyPress (juce::Component& self, WheelDragOwner* selfOwner,
-                           const juce::MouseEvent&, const juce::MouseWheelDetails&);
+                           const juce::MouseEvent&, const juce::MouseWheelDetails&, WheelPointer);
+
+inline bool wheelTakenByAnyPress (juce::Component& self, WheelDragOwner* selfOwner,
+                                  const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+{
+    return wheelTakenByAnyPress (self, selfOwner, e, w, wheelPointerOf (e.source));
+}
 
 } // namespace anamorph::gui

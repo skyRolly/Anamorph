@@ -26081,8 +26081,270 @@ static void testAPressWithNoTargetStillOwnsTheWheel()
         }
     }
 
+    // ---- LEG G: an Alt-click RESET is a press, not a drag ---------------------------------------
+    //  Round 30 suspected a defect here and DISPROVED it; this leg is what pins the answer, because
+    //  the answer is JUCE's and a JUCE upgrade could take it away. The Alt branch of
+    //  `Knob::mouseDown` returns without calling `juce::Slider::mouseDown`, which is the only call
+    //  that clears `Pimpl::useDragEvents` -- `Pimpl::mouseUp` leaves it set -- so after any
+    //  completed ordinary press, `Pimpl::mouseDrag` really does run its body on the next drag with
+    //  the anchors of the press before last. It writes NOTHING, because `~ScopedDragNotification`
+    //  has already set `sliderBeingDragged = -1` (`sendDragEnd`, juce_Slider.cpp:396-399) and all
+    //  three of that function's stores are behind a `sliderBeingDragged == 0 / 1 / 2` test. So no
+    //  parameter is written outside a gesture, and the value the reset wrote stands.
+    {
+        clearHistory();
+        // A COMPLETED ORDINARY PRESS FIRST -- that is what leaves JUCE's drag state live.
+        setPlain (driveP, 5.0f);
+        proc.pollUndoCoalesce();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        driveK->mouseUp   (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        setPlain (driveP, 5.0f);
+        proc.pollUndoCoalesce();
+
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, altHeld));   // the reset fires
+        const float afterReset = plainOf (driveP);
+        driveK->mouseDrag (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, altHeld));
+        const float afterDrag = plainOf (driveP);
+        driveK->mouseUp   (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, altHeld));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg G] Alt-reset put Drive at %.4f; a 40 px drag after it leaves %.4f\n",
+                     afterReset, afterDrag);
+        check (juce::exactlyEqual (afterDrag, afterReset),
+               "leg G: a drag after an Alt-click reset moves nothing -- JUCE never saw that press");
+
+        setPlain (driveP, 5.0f);
+        proc.pollUndoCoalesce();
+        const float p0 = plainOf (driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, held));
+        const float p1 = plainOf (driveP);
+        driveK->mouseUp   (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, held));
+        proc.pollUndoCoalesce();
+        check (! juce::exactlyEqual (p1, p0), "leg G: ...and an ordinary press still drags");
+    }
+
+    // ---- LEG H: a value-box press the branch DECLINES still owns the wheel -----------------------
+    //  The second ownerless hole of the same shape as leg C's: `ValueBox::mouseDown` claims only
+    //  inside the branch that takes over the parent knob's drag, so a double click, a press on a
+    //  non-rotary parent or one while the editor is open claims NOTHING -- and before round 30 the
+    //  notch then went to whatever the pointer was over.
+    {
+        juce::Label* box = nullptr;
+        for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+            if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) box = l;
+        check (box != nullptr, "leg H: the Drive knob's value box is findable");
+        if (box != nullptr)
+        {
+            clearHistory();
+            setPlain (widP, 1.4f);
+            proc.pollUndoCoalesce();
+            const float w0 = plainOf (widP);
+            const auto t = stamp();
+            const juce::MouseEvent twoClicks (src, { 4.0f, 4.0f }, held, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                              box, box, t, { 4.0f, 4.0f }, t, 2, false);
+            // Through the `MouseListener` base: `Label` declares its handlers protected, and this
+            // is the same virtual JUCE's own dispatch calls.
+            auto* boxAsListener = static_cast<juce::MouseListener*> (box);
+            boxAsListener->mouseDown (twoClicks);   // declined: `getNumberOfClicks() < 2` is false
+            for (int i = 0; i < 3; ++i)
+                widK->mouseWheelMove (mev (widK, wkx, wky, 4.0f, 4.0f, false, held), wheelOf (0.0f, 0.6f));
+            const float wDuring = plainOf (widP);
+            boxAsListener->mouseUp (mev (box, 4.0f, 4.0f, 4.0f, 4.0f, false, none));
+            widK->mouseWheelMove (mev (widK, wkx, wky, wkx, wky, false, none), wheelOf (0.0f, 0.6f));
+            const float wAfter = plainOf (widP);
+            proc.pollUndoCoalesce();
+            std::printf ("  [leg H] Width %.4f -> %.4f under a declined value-box press -> %.4f after it\n",
+                         w0, wDuring, wAfter);
+            check (juce::exactlyEqual (wDuring, w0),
+                   "leg H: a value-box press the branch declined still silences the wheel");
+            check (! juce::exactlyEqual (wAfter, wDuring),
+                   "leg H: ...and a standalone scroll of the same knob still works");
+        }
+    }
+
     proc.editorBeingDeleted (ed);
     delete ed;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 108 -- one press per POINTING DEVICE (round 30, Devin
+//  `src/gui/LookAndFeel.cpp:R16`, "process-wide register assumes one pointer").
+//
+//  THE REGISTER IS PROCESS-WIDE AND THAT PART IS RIGHT -- two Anamorph instances in one
+//  host share one table on purpose, because it is the DEVICE that holds a press, not the
+//  editor. What was wrong is that it held ONE cell for the whole process. JUCE does not
+//  model a single pointer: `MouseInputSourceList` is an array, each entry owns its own
+//  `buttonState`, and on Linux every window masks XI_TouchBegin/Update/End with no
+//  plug-in-side opt-out, so a finger is a live source alongside the mouse. A finger
+//  landing on the display would evict the claim the mouse's own drag had made, and the
+//  mouse's next notch would steer whatever the finger was on.
+//
+//  DRIVEN THROUGH THE REGISTER'S OWN OVERLOADS, not through the editor, and that is
+//  forced rather than chosen: nothing public creates a second `MouseInputSource`
+//  (`MouseInputSourceList::addSource` is private and reached only from a peer, which a
+//  test-built editor does not have), so the device cannot be varied through a
+//  `MouseEvent`. The register therefore names its key as a value -- `WheelPointer`, the
+//  (type, index) pair that IS the identity `getOrCreateMouseInputSource` matches on --
+//  and the legs below drive that key directly. The one inch not covered this way is
+//  `wheelPointerOf`, a two-line accessor, and leg G pins it against the real source.
+// ---------------------------------------------------------------------------
+static void testOnePressPerPointingDevice()
+{
+    std::printf ("State test 108: the wheel register is per pointing device (LookAndFeel R16)\n");
+
+    using anamorph::gui::WheelPointer;
+    using anamorph::gui::claimDragWheel;
+    using anamorph::gui::releaseDragWheel;
+    using anamorph::gui::dragWheelHolder;
+    using anamorph::gui::wheelTakenByAnyPress;
+
+    struct CountingOwner : anamorph::gui::WheelDragOwner
+    {
+        int notches = 0;
+        bool takeWheelNotch (const juce::MouseEvent&, const juce::MouseWheelDetails&) override
+        { ++notches; return true; }
+    };
+
+    const WheelPointer mouse { (int) juce::MouseInputSource::InputSourceType::mouse, 0 };
+    const WheelPointer fingerA { (int) juce::MouseInputSource::InputSourceType::touch, 0 };
+    const WheelPointer fingerB { (int) juce::MouseInputSource::InputSourceType::touch, 1 };
+
+    juce::Component cA, cB;
+    cA.setBounds (0, 0, 60, 60);
+    cB.setBounds (100, 0, 60, 60);
+    CountingOwner ownerA, ownerB;
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    int seq = 0;
+    auto ev = [&] (juce::Component& c, juce::ModifierKeys m)
+    {
+        const auto t = juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 7);
+        return juce::MouseEvent (src, { 5.0f, 5.0f }, m, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 &c, &c, t, { 5.0f, 5.0f }, t, 1, false);
+    };
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f; wheel.deltaY = 0.6f;
+    wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+    const auto none = juce::ModifierKeys();
+    const auto held = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
+
+    // The table is a process-wide static and other tests have pressed things, so start from a
+    // known state: an ordinary button-up scroll is what clears a device's cell in production.
+    for (auto p : { mouse, fingerA, fingerB })
+        (void) wheelTakenByAnyPress (cA, nullptr, ev (cA, none), wheel, p);
+
+    // ---- LEG A: a second device's press does not evict the first's claim ----------------------
+    {
+        claimDragWheel (cA, ownerA, mouse);
+        claimDragWheel (cB, ownerB, fingerA);
+        const bool kept = dragWheelHolder (mouse) == &cA && dragWheelHolder (fingerA) == &cB;
+        ownerA.notches = ownerB.notches = 0;
+        const bool took = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, mouse);
+        std::printf ("  [leg A] mouse holds %s, finger holds %s; the mouse's notch went to "
+                     "A x%d, B x%d\n",
+                     dragWheelHolder (mouse) == &cA ? "A" : "??",
+                     dragWheelHolder (fingerA) == &cB ? "B" : "??",
+                     ownerA.notches, ownerB.notches);
+        check (kept, "leg A: a finger's claim does not overwrite the mouse's");
+        check (took, "leg A: the mouse's own press still consumes its wheel");
+        check (ownerA.notches == 1 && ownerB.notches == 0,
+               "leg A: ...and the notch reaches the control the MOUSE is holding");
+
+        // POSITIVE CONTROL: the same call named for the finger reaches the finger's control.
+        ownerA.notches = ownerB.notches = 0;
+        (void) wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, fingerA);
+        check (ownerB.notches == 1 && ownerA.notches == 0,
+               "leg A: ...and a notch from the FINGER reaches the control the finger is holding");
+    }
+
+    // ---- LEG B: another device's button-up scroll does not clear a live claim ------------------
+    {
+        ownerA.notches = ownerB.notches = 0;
+        const bool freed = ! wheelTakenByAnyPress (cA, nullptr, ev (cA, none), wheel, fingerB);
+        std::printf ("  [leg B] an idle third device scrolled; mouse still holds %s, finger %s\n",
+                     dragWheelHolder (mouse) == &cA ? "A" : "nothing",
+                     dragWheelHolder (fingerA) == &cB ? "B" : "nothing");
+        check (freed, "leg B: a device with no button down leaves the event to the pointer");
+        check (dragWheelHolder (mouse) == &cA && dragWheelHolder (fingerA) == &cB,
+               "leg B: ...and clears nobody else's claim");
+    }
+
+    // ---- LEG C: a device's own button-up scroll still self-heals ITS cell ----------------------
+    {
+        const bool freed = ! wheelTakenByAnyPress (cA, nullptr, ev (cA, none), wheel, mouse);
+        std::printf ("  [leg C] the mouse scrolled with no button; mouse holds %s, finger %s\n",
+                     dragWheelHolder (mouse) == nullptr ? "nothing" : "??",
+                     dragWheelHolder (fingerA) == &cB ? "B" : "nothing");
+        check (freed && dragWheelHolder (mouse) == nullptr,
+               "leg C: a stranded claim dies on the owning device's next ordinary scroll");
+        check (dragWheelHolder (fingerA) == &cB,
+               "leg C: ...and the other device's live press survives it (KI-028's self-heal)");
+    }
+
+    // ---- LEG D: release is keyed on the CONTROL, because the safety nets have no event ---------
+    {
+        releaseDragWheel (cB);   // what `cancelActiveDrag` / `abortDragGesture` call, event-less
+        std::printf ("  [leg D] after the control released itself, finger holds %s\n",
+                     dragWheelHolder (fingerA) == nullptr ? "nothing" : "??");
+        check (dragWheelHolder (fingerA) == nullptr,
+               "leg D: a control's own release ends the claim whichever device made it");
+
+        // ...AND ENDS EVERY DEVICE'S, which is the case a single-cell release would miss: one
+        // control can be under two devices at once (a finger on the knob the mouse is already
+        // holding), and the control has exactly one release to give.
+        claimDragWheel (cB, ownerB, fingerA);
+        claimDragWheel (cB, ownerB, fingerB);
+        claimDragWheel (cB, ownerB, mouse);
+        releaseDragWheel (cB);
+        std::printf ("  [leg D] three devices on one control, released once: %s / %s / %s\n",
+                     dragWheelHolder (fingerA) == nullptr ? "clear" : "STILL HELD",
+                     dragWheelHolder (fingerB) == nullptr ? "clear" : "STILL HELD",
+                     dragWheelHolder (mouse)   == nullptr ? "clear" : "STILL HELD");
+        check (dragWheelHolder (fingerA) == nullptr && dragWheelHolder (fingerB) == nullptr
+                 && dragWheelHolder (mouse) == nullptr,
+               "leg D: ...for every device that was holding it, not just the first one found");
+    }
+
+    // ---- LEG E: a held button that claimed nothing still swallows, per device ------------------
+    {
+        ownerA.notches = ownerB.notches = 0;
+        const bool took = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, fingerB);
+        std::printf ("  [leg E] a claimless held device: consumed=%d, delivered A x%d B x%d\n",
+                     (int) took, ownerA.notches, ownerB.notches);
+        check (took, "leg E: the round-30 rule holds per device -- a held button consumes");
+        check (ownerA.notches == 0 && ownerB.notches == 0,
+               "leg E: ...and nothing is moved by it");
+    }
+
+    // ---- LEG F: a holder destroyed mid-press cannot be reached through the table ---------------
+    {
+        {
+            juce::Component doomed;
+            CountingOwner ownerD;
+            claimDragWheel (doomed, ownerD, mouse);
+            check (dragWheelHolder (mouse) == &doomed, "leg F: the claim is registered");
+        }
+        ownerA.notches = 0;
+        const bool took = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, mouse);
+        std::printf ("  [leg F] after the holder was destroyed: holder=%s, consumed=%d, A x%d\n",
+                     dragWheelHolder (mouse) == nullptr ? "null" : "DANGLING",
+                     (int) took, ownerA.notches);
+        check (dragWheelHolder (mouse) == nullptr,
+               "leg F: a destroyed holder reads back as nothing (SafePointer)");
+        check (took && ownerA.notches == 0,
+               "leg F: ...and its device's wheel is still swallowed, reaching nobody");
+        (void) wheelTakenByAnyPress (cA, nullptr, ev (cA, none), wheel, mouse);   // leave it clean
+    }
+
+    // ---- LEG G: the key really is what the real source reports ---------------------------------
+    {
+        const auto p = anamorph::gui::wheelPointerOf (src);
+        std::printf ("  [leg G] the main mouse source keys as (type %d, index %d)\n", p.type, p.index);
+        check (p == mouse, "leg G: the main mouse source is the (mouse, 0) key the legs used");
+        check (p != fingerA && p != fingerB, "leg G: ...and is not any touch key");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -30858,6 +31120,7 @@ int main (int argc, char* argv[])
     testTheWheelBelongsToThePressItLandsIn();
     testANotchInsideAVelocityDrag();
     testAPressWithNoTargetStillOwnsTheWheel();
+    testOnePressPerPointingDevice();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

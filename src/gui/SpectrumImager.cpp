@@ -2773,7 +2773,7 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     // rule is that no OTHER control may be moved by the wheel while a button is held, and a press
     // that latches no identifier simply has nothing to add a notch to (`takeWheelNotch` says so by
     // returning false, and the notch is then dropped rather than handed to whatever is pointed at).
-    anamorph::gui::claimDragWheel (*this, *this);
+    anamorph::gui::claimDragWheel (*this, *this, anamorph::gui::wheelPointerOf (e.source));
     if (editingHandle >= 0) commitFreqEditor();
     // ADR-0038: the topology this gesture is about to be defined against, and (ADR-0039) the
     // sound with it. Taken once, at the top, so every branch below -- solo press, delete press,

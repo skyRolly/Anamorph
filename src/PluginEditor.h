@@ -743,7 +743,7 @@ private:
             // cursor travels. Claimed for EVERY press, not only one that starts a drag: the rule
             // the owner approved is that no other control may be moved by the wheel while a button
             // is held, and a press that holds no value simply has nothing to add a notch to.
-            anamorph::gui::claimDragWheel (*this, *this);
+            anamorph::gui::claimDragWheel (*this, *this, anamorph::gui::wheelPointerOf (e.source));
             if (e.mods.isAltDown()) // Option/Alt-click reset, as ONE undoable user gesture
             {
                 // ...and the gesture is part of what an edit costs, so the same question is asked
@@ -760,6 +760,24 @@ private:
             }
             juce::Slider::mouseDown (e);
         }
+
+        // A DRAG AFTER AN ALT-CLICK RESET IS ALREADY INERT, and nothing is added here to make it so
+        // (round 30, investigated while proving R3302 and DISPROVEN). The branch above returns
+        // without calling `juce::Slider::mouseDown`, and `Pimpl::useDragEvents` is cleared by
+        // nothing else -- `Pimpl::mouseUp` leaves it set -- so `Pimpl::mouseDrag` really does run
+        // its body on the next drag with state from the press before last. It writes nothing:
+        // `~ScopedDragNotification` calls `sendDragEnd`, which sets `sliderBeingDragged = -1`
+        // (juce_Slider.cpp:396-399), and every one of `mouseDrag`'s three stores is behind a
+        // `sliderBeingDragged == 0 / 1 / 2` test (:939-961). No `setValue`, so no gesture-less
+        // parameter write; `owner.snapValue` is not reached either, which is what State test 107
+        // leg G measures. Nothing the stale pass wrote survives, because `Pimpl::mouseDown` re-seeds
+        // `valueWhenLastDragged` and `valueOnMouseDown` from the live value on the next real press
+        // (:887-890). The one residue is the cursor hide `handleVelocityDrag` asks for, and the
+        // same press's own `mouseUp` restores it (`restoreMouseIfHidden`, guarded by the same stale
+        // `useDragEvents`). A guard on this side was written and then removed: it changed no
+        // observable behaviour, so it could not be covered, and an uncoverable guard against a
+        // defect that does not exist is worse than the comment that says so.
+
         void mouseDoubleClick (const juce::MouseEvent& e) override
         {
             if (e.getNumberOfClicks() != 2 || ! resetWouldMove()) return;
@@ -888,10 +906,14 @@ private:
                 return false;   // `isAbsoluteDragMode` said absolute
             // ...and the second disjunct, which forces absolute mode for a range too coarse to
             // steer: `(normRange.end - normRange.start) / sliderRegionSize < normRange.interval`.
-            // `sliderRegionSize` is private and is 0 for every rotary style, which makes JUCE's
-            // division `+inf` and the test false; measured from outside it is the span
-            // `getPositionOfValue` maps a whole range across, which is 0 for a rotary by the same
-            // arithmetic. So a zero region takes the velocity branch, exactly as JUCE's does.
+            // `sliderRegionSize` is private; it is initialised to 1 and `Pimpl::resized` assigns it
+            // only for the horizontal and vertical styles (juce_Slider.cpp:1266-1274, :1324), so a
+            // rotary divides by 1 and the test reads `range < interval` -- false for every
+            // parameter this editor has. Measured from OUTSIDE, the same span is what
+            // `getPositionOfValue` maps a whole range across; it is the live geometry for a linear
+            // style and 0 for a rotary (which has no linear position to report), and a zero region
+            // is excluded below rather than divided by. Either way the rotary never reaches here:
+            // the first line returned already.
             const double region = std::abs ((double) getPositionOfValue (getMaximum())
                                           - (double) getPositionOfValue (getMinimum()));
             if (region > 0.0 && (getMaximum() - getMinimum()) / region < getInterval())
@@ -907,6 +929,15 @@ private:
             injectingVelocity = false;          // exactly ONE call sees it -- handleVelocityDrag's
             const double inject = velocityInject;
             velocityInject = 0.0;               // ...and it is banked exactly once
+            // CLAMPED HERE TOO, though the only caller that can see the injection clamps
+            // immediately afterwards: `handleVelocityDrag`'s next line is
+            // `newPos = (isRotary() && ! rotaryParams.stopAtEnd) ? newPos - floor (newPos)
+            //                                                    : jlimit (0.0, 1.0, newPos)`
+            // (juce_Slider.cpp:843-845), and `stopAtEnd` is true for every slider in this editor --
+            // the Pimpl constructor sets it (:58) and `setRotaryParameters` is never called. So a
+            // mutant that drops this `jlimit` is EQUIVALENT and no test can kill it; it is kept
+            // because the wrap branch two characters away would not be, and because this function
+            // is public and JUCE may call it from somewhere else tomorrow.
             return juce::jlimit (0.0, 1.0, p + inject);
         }
 
