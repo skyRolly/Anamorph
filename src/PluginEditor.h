@@ -735,15 +735,26 @@ private:
         }
         void mouseDown (const juce::MouseEvent& e) override
         {
+            // ADR-0053 round 29: this press owns the wheel until it is released, wherever the
+            // cursor travels. Asked for EVERY press, not only one that starts a drag: the rule the
+            // owner approved is that no other control may be moved by the wheel while a button is
+            // held, and a press that holds no value simply has nothing to add a notch to.
+            //
+            // AND IT IS THE FIRST THING THIS HANDLER DOES (round 33, Devin
+            // `src/gui/LookAndFeel.cpp:R101-103`). A press refused because another device is
+            // already dragging this knob must leave EVERYTHING alone -- not just the wheel cell.
+            // Everything below this line is state the first device is mid-drag in: the four
+            // members are its banked notch and JUCE's own cursor reference, the Alt branch writes
+            // the parameter and opens a host gesture, and `juce::Slider::mouseDown` re-seeds
+            // `valueOnMouseDown`, `mouseDragStartPos` and `sliderBeingDragged` and opens a second
+            // `ScopedDragNotification`. Until round 33 the refusal stopped none of it, so the
+            // rejected press took the drag it had just been denied the wheel for.
+            if (! anamorph::gui::claimDragWheel (*this, *this, anamorph::gui::wheelPointerOf (e.source)))
+                return;
             wheelDragPx = 0.0;      // a new press starts with no notch in it (ADR-0053)
             velocityDebt = 0.0;     // ...in either of the two mappings (round 30)
             injectingVelocity = false;
             lastPassedShift = {};   // ...and JUCE's own cursor reference is the press's (round 31)
-            // ADR-0053 round 29: this press owns the wheel until it is released, wherever the
-            // cursor travels. Claimed for EVERY press, not only one that starts a drag: the rule
-            // the owner approved is that no other control may be moved by the wheel while a button
-            // is held, and a press that holds no value simply has nothing to add a notch to.
-            anamorph::gui::claimDragWheel (*this, *this, anamorph::gui::wheelPointerOf (e.source));
             if (e.mods.isAltDown()) // Option/Alt-click reset, as ONE undoable user gesture
             {
                 // ...and the gesture is part of what an edit costs, so the same question is asked
@@ -780,6 +791,11 @@ private:
 
         void mouseDoubleClick (const juce::MouseEvent& e) override
         {
+            // ...AND NOT WHILE ANOTHER DEVICE IS DRAGGING THIS KNOB (round 33). This is the
+            // continuation of a press `mouseDown` already refused, and it writes the parameter
+            // outright -- a reset landing in the middle of somebody else's drag.
+            if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
+                return;
             if (e.getNumberOfClicks() != 2 || ! resetWouldMove()) return;
             anamorph::param::beginChangeGesture (resetParam);
             doReset();
@@ -1012,6 +1028,14 @@ private:
         // outside it, so the drag keeps its whole remaining travel in both directions.
         void mouseDrag (const juce::MouseEvent& e) override
         {
+            // A REFUSED PRESS DRAGS NOTHING (round 33, Devin `src/gui/LookAndFeel.cpp:R101-103`).
+            // `Pimpl::mouseDrag` does not ask whose press it is: it runs on the OWNER's
+            // `useDragEvents` and `sliderBeingDragged`, and writes the parameter from whatever
+            // cursor it is handed (juce_Slider.cpp:906-970). Refusing the `mouseDown` stopped the
+            // anchor being replaced; without this it did not stop the rival steering the drag that
+            // anchor belongs to.
+            if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
+                return;
             // THE VELOCITY BRANCH TAKES THE OTHER MECHANISM (round 30). A pixel shift means nothing
             // to an integrator that reads a per-event cursor DELTA, so the notch goes in through
             // `valueToProportionOfLength` instead -- and the event carries the shift the PREVIOUS
@@ -1049,6 +1073,15 @@ private:
         }
         void mouseUp (const juce::MouseEvent& e) override
         {
+            // A RELEASE ENDS ONLY THE DRAG IT BELONGS TO (round 33). `Pimpl::mouseUp` ends with an
+            // unconditional `currentDrag.reset()` (juce_Slider.cpp:997) -- the OWNER's
+            // `ScopedDragNotification`, whose destructor calls `sendDragEnd` and puts
+            // `sliderBeingDragged` back to -1 -- and the four members and `releaseDragWheel` below
+            // are the owner's banked notch and the owner's claim. So a refused press's release used
+            // to end the first device's drag, close its host change gesture and free its claim, all
+            // three, one event after the `mouseDown` that was refused.
+            if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
+                return;
             juce::Slider::mouseUp (e);
             wheelDragPx = 0.0;
             velocityDebt = 0.0;

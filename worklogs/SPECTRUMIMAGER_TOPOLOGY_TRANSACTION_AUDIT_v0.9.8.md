@@ -5735,3 +5735,117 @@ State test 108 leg L drove exactly that.
   endpoint bookkeeping), and §7 says not to delete useful proof for being historical.
 * **Architecture review** (`src/StateCommandGate.h:8`): closed, with the rule quoted and the evidence
   named — see the final report.
+
+## §91. Round 33 — Devin `src/gui/LookAndFeel.cpp:R101-103`, and the half of a press that is not its `mouseDown`
+
+One confirmed bug, against round 32's own work, and a second face of it found while proving the
+first from source.
+
+### The refusal nobody could see
+
+Round 32 implemented the owner's rule — one component, one active drag — by having `claimDragWheel`
+decline to register a second cell on a component that already had one. It returned `void`. So the
+call site read
+
+    claimDragWheel (*this, *this, wheelPointerOf (e.source));
+    ...and then went on to establish the drag anyway.
+
+Every one of the three drag implementations did. `juce::Slider::Pimpl::mouseDown` sets
+`mouseDragStartPos = mousePosWhenLastDragged = e.position` (juce_Slider.cpp:856), then
+`currentDrag.reset()` (:857) — which destroys the FIRST device's `ScopedDragNotification` and so
+calls `sendDragEnd`, closing its host change gesture — then `sliderBeingDragged = getThumbIndexAt (e)`
+(:878), `valueOnMouseDown = valueWhenLastDragged = <live value>` (:887-889), and finally a second
+`ScopedDragNotification` (:899). `SpectrumImager::mouseDown` re-latches `gestureBands`, the gesture
+sound, `dragBand`, `bandAnchorX`, `soloPressBand` and the pending delete. `ValueBox::mouseDown` was
+worse than the finding states: it wrote `downProp` and constructed its `ScopedDragNotification` one
+line ABOVE the claim, so the anchor was gone before the register was even consulted.
+
+The user-visible result is the finding's: the first device goes on dragging from the second device's
+anchor. Measured on the real editor (State test 110 leg C, against the unfixed release path): the
+`LinearHorizontal` knob's continuation read **437.469788 where the clean reference read 226.665314**
+— a literal jump to the rival's x — and the rotary knob's read **0.00 against 5.26**, with
+`sliderBeingDragged` 0 → -1.
+
+### The fix: return the answer, and make forgetting to ask a compile error
+
+`claimDragWheel` is now `[[nodiscard]] bool` — TRUE when this press now owns the component's drag,
+FALSE when another device already does. `Knob::mouseDown` asks first and returns before touching
+`wheelDragPx`, `velocityDebt`, `injectingVelocity`, `lastPassedShift`, the Alt-reset branch or
+`juce::Slider::mouseDown`. `SpectrumImager::mouseDown` returns before `commitFreqEditor()` and the
+topology snapshot. `ValueBox::mouseDown` folds the claim into its `if` condition, so `downProp` and
+the gesture are never reached by a press that was refused.
+
+The device that already holds the component is granted it again: `claimDragWheel` clears that
+device's own cell before it scans for a holder, so a duplicate or re-entrant `mouseDown` from the
+owner is not treated as its own rival (State test 110 leg G).
+
+### The second face: a press is not only its `mouseDown`
+
+§1 of the brief required the state transition to be proven rather than assumed, and proving it found
+the rest of the press still reaching the owner's state — which the owner's decision forbids in the
+same words ("must not overwrite that shared drag while the first drag is active", and the enumerated
+`sliderBeingDragged`, drag anchor, display state, value-box state and parameter).
+
+* `Pimpl::mouseDrag` never asks whose press it is. It runs on the OWNER's `useDragEvents` and
+  `sliderBeingDragged` and writes the parameter from whatever cursor it is handed
+  (juce_Slider.cpp:906-970).
+* `Pimpl::mouseUp` ends with an unconditional `currentDrag.reset()` (:997), outside the guarded
+  block — so the rival's release closed the owner's host gesture and set `sliderBeingDragged` back
+  to -1. `Knob::mouseUp` then zeroed the owner's banked notch and called `releaseDragWheel`, freeing
+  the owner's claim.
+* `SpectrumImager::mouseUp` is where the ON-RELEASE ACTIONS live: a rival's release fired the
+  owner's pending band removal or solo toggle and dropped the owner's topology snapshot.
+* Both double-click handlers write a parameter outright, and `juce::Label::mouseDoubleClick` opens
+  the value box's inline editor — whose `isBeingEdited()` is exactly what the OWNER's own
+  `mouseDrag` tests before it writes.
+
+Measured, before the fix: State test 110 leg E1 read thumb 0 → -1, "owner still holds NOTHING" and
+one gesture close, all three from a press that had just been refused.
+
+### The mechanism, and why it is a question rather than a flag
+
+The register gained a read-only twin of the question `claimDragWheel` already answers:
+
+    [[nodiscard]] bool dragWheelHeldByOther (const juce::Component&, WheelPointer) noexcept;
+
+asked at the top of `mouseDrag`, `mouseUp` and `mouseDoubleClick` in all three drag implementations,
+and before the `Label` forward in `ValueBox::mouseDown`. A flag set by the refused `mouseDown` would
+be per (component, device) state — the thing §2 forbids — and would need clearing on paths that do
+not always run; the register already holds the answer and the scan is two or three elements on the
+message thread.
+
+It is deliberately **"someone else holds it"** and not **"I hold it"**. The two differ exactly where
+the lost-release safety nets live: a cell emptied while a button is still down (KI-028's self-heal,
+or a holder destroyed mid-press, which `SafePointer` reads back as null) leaves NOBODY holding the
+component, and the component's own release must still run. The guard stands down when the cell is
+empty and speaks only when a rival is named.
+
+### What did not change
+
+No per-device drag anchor, no per-device slider state, no multi-drag architecture, and no rule moved
+into DSP or state code. The single-device path is byte-identical (State test 110 leg F). An accepted
+active press still owns the wheel wherever the pointer goes; a held button with nothing claimed still
+consumes the notch and moves nothing (round 30). The register is still message-thread only, still
+keyed on the `WheelPointer` value, still process-global with the same bound: `dragWheelHeldByOther`
+adds no cell and reads the holder through the same `SafePointer`.
+
+### The revalidations, none of which changed production code
+
+* **`src/PluginEditor.h:R923` (velocity/infinity).** The durable disposition holds. `dragIsVelocity`
+  still excludes a zero region rather than dividing by it, so it reads as JUCE's own `+inf` does; the
+  genuine `float-divide-by-zero` inside `juce_Slider.cpp` is dispositioned by the one-file section in
+  `scripts/ubsan-ignorelist.txt`, and the `CCACHE_EXTRAFILES` entry that makes an edited list take
+  effect in CI is still in `.github/workflows/build.yml`. Round 33 touches none of that code, and
+  adds no new division.
+* **`src/PluginProcessor.cpp` review-history comments.** Re-inspected after round 32's cleanup. Every
+  surviving reference names an invariant and cites the round or finding as its provenance, which is
+  the repository's documented style; none is narration standing alone. Closed with evidence rather
+  than edited for symmetry, per the brief's own instruction.
+* **`src/StateCommandGate.h:8` (architecture review).** Closed. The rule is
+  `docs/policies/ARCHITECTURE_REVIEW_GATE.md`'s Thread-Model gate; the evidence is ADR-0036 §31
+  (step 1 and step 3), §32's gate-compliance table carrying the owner's ruling of 2026-09-16, and the
+  in-source banner round 31 added at line 9. Round 33 does not touch the file.
+* **`src/gui/LookAndFeel.cpp:65` (informational).** The new acceptance path preserves all four
+  invariants — message-thread-only access, the process-global lifetime bound, `WheelPointer` identity
+  and the `SafePointer` lifecycle. See above.
+* **RISK-009.** Unchanged, and preserved as an explicit residual.

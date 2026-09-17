@@ -26438,8 +26438,9 @@ static void testAPressWithNoTargetStillOwnsTheWheel()
             clearTable();
             driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));   // A presses first
             const bool aHolds = anamorph::gui::dragWheelHolder (mousePtr) == driveK;
-            anamorph::gui::claimDragWheel (*driveK, *driveOwner, fingerA);       // B presses the same knob
+            const bool bAccepted = anamorph::gui::claimDragWheel (*driveK, *driveOwner, fingerA);
             const bool bHolds = anamorph::gui::dragWheelHolder (fingerA) == driveK;
+            check (! bAccepted, "leg J: the second device's press is REFUSED, not merely unclaimed");
             std::printf ("  [leg J] after A then B pressed the same knob: A holds %s, B holds %s\n",
                          aHolds ? "it" : "nothing", bHolds ? "IT TOO" : "nothing");
             check (aHolds, "leg J: the first press owns the component's drag and its wheel");
@@ -26469,7 +26470,7 @@ static void testAPressWithNoTargetStillOwnsTheWheel()
             proc.pollUndoCoalesce();
 
             driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));   // A's real press
-            anamorph::gui::claimDragWheel (*driveK, *driveOwner, fingerA);       // B on the same knob
+            (void) anamorph::gui::claimDragWheel (*driveK, *driveOwner, fingerA);   // B, refused
 
             if (order == 0) driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, held));
             else            anamorph::gui::releaseDragWheel (*driveK);           // B lets go first
@@ -26619,8 +26620,8 @@ static void testOnePressPerPointingDevice()
 
     // ---- LEG A: a second device's press does not evict the first's claim ----------------------
     {
-        claimDragWheel (cA, ownerA, mouse);
-        claimDragWheel (cB, ownerB, fingerA);
+        check (claimDragWheel (cA, ownerA, mouse), "leg A: the mouse's press on A is accepted");
+        check (claimDragWheel (cB, ownerB, fingerA), "leg A: ...and the finger's on B is too");
         const bool kept = dragWheelHolder (mouse) == &cA && dragWheelHolder (fingerA) == &cB;
         ownerA.notches = ownerB.notches = 0;
         const bool took = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, mouse);
@@ -26683,9 +26684,9 @@ static void testOnePressPerPointingDevice()
         // given nothing, so the one release leaves the table empty either way. Round 31 asserted
         // the same emptiness here for the opposite reason -- it believed three cells existed and
         // that a broad clear reached them all.
-        claimDragWheel (cB, ownerB, fingerA);
-        claimDragWheel (cB, ownerB, fingerB);
-        claimDragWheel (cB, ownerB, mouse);
+        check (claimDragWheel (cB, ownerB, fingerA), "leg D: the first press is accepted");
+        check (! claimDragWheel (cB, ownerB, fingerB), "leg D: the second is refused");
+        check (! claimDragWheel (cB, ownerB, mouse),   "leg D: ...and so is the third");
         std::printf ("  [leg D] three devices pressed one control: %s / %s / %s\n",
                      dragWheelHolder (fingerA) == &cB ? "HOLDS" : "nothing",
                      dragWheelHolder (fingerB) == &cB ? "HOLDS" : "nothing",
@@ -26716,7 +26717,7 @@ static void testOnePressPerPointingDevice()
         {
             juce::Component doomed;
             CountingOwner ownerD;
-            claimDragWheel (doomed, ownerD, mouse);
+            check (claimDragWheel (doomed, ownerD, mouse), "leg F: the claim is accepted");
             check (dragWheelHolder (mouse) == &doomed, "leg F: the claim is registered");
         }
         ownerA.notches = 0;
@@ -26755,8 +26756,9 @@ static void testOnePressPerPointingDevice()
     {
         const char* leg = order == 0 ? "H" : "I";
 
-        claimDragWheel (cB, ownerB, mouse);      // A presses the control
-        claimDragWheel (cB, ownerB, fingerA);    // B presses the SAME control
+        check (claimDragWheel (cB, ownerB, mouse), "legs H/I: A's press on the control is accepted");
+        check (! claimDragWheel (cB, ownerB, fingerA),
+               "legs H/I: ...and B's press on the same control is REFUSED, not merely unclaimed");
         const bool onlyA = dragWheelHolder (mouse) == &cB && dragWheelHolder (fingerA) == nullptr;
 
         ownerA.notches = ownerB.notches = 0;
@@ -26802,8 +26804,9 @@ static void testOnePressPerPointingDevice()
     //      (juce_MultiTouchMapper.h:46-62), under JUCE's own `touchIndex < 100` assertion
     //      (juce_MouseInputSourceList.h:67-89).
     {
-        claimDragWheel (cA, ownerA, mouse);          // "instance 1" takes the mouse's press
-        claimDragWheel (cB, ownerB, mouse);          // "instance 2" takes the same device's next one
+        check (claimDragWheel (cA, ownerA, mouse), "leg K: \"instance 1\" takes the mouse's press");
+        check (claimDragWheel (cB, ownerB, mouse),
+               "leg K: ...and the same device's next press, in \"instance 2\", is accepted too");
         ownerA.notches = ownerB.notches = 0;
         const bool took = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, mouse);
         std::printf ("  [leg K] the same device pressed a second editor's control: it holds %s;"
@@ -26832,10 +26835,11 @@ static void testOnePressPerPointingDevice()
     //      when its own `mouseUp` did arrive -- and its notches are delivered into that dead drag,
     //      which is the very thing this round exists to stop.
     {
-        claimDragWheel (cA, ownerA, fingerA);     // B presses one control...
-        claimDragWheel (cB, ownerB, mouse);       // ...A presses another
+        check (claimDragWheel (cA, ownerA, fingerA), "leg L: B presses one control...");
+        check (claimDragWheel (cB, ownerB, mouse),   "leg L: ...A presses another");
         // B's release never arrives. B now presses the control A is holding.
-        claimDragWheel (cB, ownerB, fingerA);
+        check (! claimDragWheel (cB, ownerB, fingerA),
+               "leg L: ...and B's press on the control A holds is refused");
         std::printf ("  [leg L] after a lost release and a press on a held control: B holds %s\n",
                      dragWheelHolder (fingerA) == nullptr ? "nothing"
                        : dragWheelHolder (fingerA) == &cA ? "ITS STALE CONTROL" : "the held one");
@@ -26851,7 +26855,7 @@ static void testOnePressPerPointingDevice()
     //      knob's are one click to everything but JUCE's routing), and it still holds with the
     //      device key beside it: the wrong control cannot hand back a claim it never made.
     {
-        claimDragWheel (cB, ownerB, mouse);
+        check (claimDragWheel (cB, ownerB, mouse), "leg J: the claimant's press is accepted");
         releaseDragWheel (cA);                   // the control that did NOT claim it
         std::printf ("  [leg J] a foreign control released the mouse: it still holds %s\n",
                      dragWheelHolder (mouse) == &cB ? "the claimant" : "NOTHING");
@@ -26989,6 +26993,831 @@ static void testAnUnwiredPresetManagerRunsSynchronously()
 
     file.deleteFile();
 }
+
+// ---------------------------------------------------------------------------
+//  State test 110 -- A REFUSED PRESS ESTABLISHES NOTHING (round 33, Devin
+//  `src/gui/LookAndFeel.cpp:R101-103`, "rejected second press steals drag").
+//
+//  WHAT ROUND 32 LEFT HALF-DONE. `claimDragWheel` refused a second device's claim on a component
+//  that already had one -- and returned `void`. The refusal was invisible to the caller, so the
+//  rejected press ran the whole of its `mouseDown` anyway, and that is where a component's ONE
+//  shared drag is actually established:
+//
+//      juce::Slider::Pimpl::mouseDown  mouseDragStartPos = mousePosWhenLastDragged = e.position (:856)
+//                                      currentDrag.reset()  -- ENDS the first device's gesture  (:857)
+//                                      sliderBeingDragged = getThumbIndexAt (e)                 (:878)
+//                                      valueOnMouseDown = valueWhenLastDragged = <live value>   (:887-889)
+//                                      currentDrag = <a SECOND ScopedDragNotification>          (:899)
+//      SpectrumImager::mouseDown       gestureBands, the gesture sound, dragBand, bandAnchorX,
+//                                      soloPressBand, the pending delete
+//      ValueBox::mouseDown             downProp, and its own ScopedDragNotification
+//
+//  So the first device went on dragging from the SECOND device's anchor, with the first device's
+//  host gesture already closed. Round 33 returns the answer -- `[[nodiscard]] bool` -- and every
+//  caller asks before it writes anything.
+//
+//  ...AND A PRESS IS NOT ONLY ITS `mouseDown`. Proving the above from source (§1) found the same
+//  rejected press still reaching the owner's state through its other two events, which the owner's
+//  rule forbids in the same words: `Pimpl::mouseDrag` runs on the OWNER's `useDragEvents` and
+//  `sliderBeingDragged` and writes the parameter from the RIVAL's cursor (juce_Slider.cpp:906-970),
+//  and `Pimpl::mouseUp` ends with an unconditional `currentDrag.reset()` (:997) -- the owner's host
+//  gesture, closed by the device that was refused the drag. `SpectrumImager::mouseUp` is worse
+//  again: it fires the ON-RELEASE ACTIONS latched by the press it is not (a solo toggle, a band
+//  removal). Legs C and E measure all of it.
+//
+//  DRIVEN WITH THE REGISTER RELABELLED, which is forced rather than chosen and for the reason
+//  State test 108 gives: nothing public mints a second `MouseInputSource`, so every real event this
+//  suite can send carries the (mouse, 0) key. The component's drag state is NOT per device --
+//  `Pimpl` holds one `valueOnMouseDown`, one `mouseDragStartPos`, one `sliderBeingDragged` for the
+//  component, and the display and the value box hold one anchor each the same way -- so seeding it
+//  through the real mouse and then naming a finger as the register's holder produces exactly the
+//  state production reaches when the finger pressed first: one live drag on the component, one cell
+//  naming the finger, and the real mouse arriving as a rival. `wheelPointerOf` is pinned against
+//  the real source by State test 108 leg G.
+//
+//  AND THE MEASUREMENT IS A REFERENCE RUN, not a threshold. Leg C runs the identical press-drag-
+//  drag-release twice, the second time with a rival's whole press spliced into the middle, and
+//  demands the two parameters be EXACTLY equal. A rejected press that moved the anchor by one pixel
+//  fails it; so does one that closed the gesture, because the reference's second drag is inside a
+//  gesture and the contaminated one's would not be.
+// ---------------------------------------------------------------------------
+static void testARefusedPressEstablishesNothing()
+{
+    std::printf ("State test 110: a refused press establishes nothing (R101-103)\n");
+
+    using anamorph::gui::WheelPointer;
+    using anamorph::gui::claimDragWheel;
+    using anamorph::gui::releaseDragWheel;
+    using anamorph::gui::dragWheelHolder;
+    using anamorph::gui::wheelTakenByAnyPress;
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+    if (auto* k = apvts.getParameter (pid::monoMakerOn))  k->setValueNotifyingHost (k->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the refused-press probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s  = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* widP   = apvts.getParameter (pid::width);
+    auto* monoP  = apvts.getParameter (pid::monoMakerFreq);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* driveK = findSliderFor (driveP);
+    auto* widK   = findSliderFor (widP);
+    auto* monoK  = findSliderFor (monoP);
+
+    // THE VALUE BOX IS THE SLIDER'S OWN TEXT-BOX CHILD (`AnamorphLookAndFeel::createSliderTextBox`
+    // returns one for every knob), and it is found by the interface that makes it one of the three
+    // drag implementations rather than by position among the children.
+    // Held as a `juce::Component*`: `juce::Label` re-declares the mouse handlers `protected`, and
+    // the calls below are the ones JUCE itself makes, through the base class.
+    juce::Component* vb = nullptr;
+    juce::Label* vbLabel = nullptr;               // for `isBeingEdited()`, which Label makes public
+    anamorph::gui::DragGestureOwner* vbOwner = nullptr;
+    if (driveK != nullptr)
+        for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+            if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i)))
+                if (auto* d = dynamic_cast<anamorph::gui::DragGestureOwner*> (l))
+                { vb = l; vbLabel = l; vbOwner = d; }
+
+    auto* driveOwner = dynamic_cast<anamorph::gui::WheelDragOwner*> (driveK);
+    auto* monoOwner  = dynamic_cast<anamorph::gui::WheelDragOwner*> (monoK);
+    auto* widOwner   = dynamic_cast<anamorph::gui::WheelDragOwner*> (widK);
+    auto* imOwner    = dynamic_cast<anamorph::gui::WheelDragOwner*> (im);
+
+    check (im != nullptr && im->getWidth() > 300 && driveP && driveK && widP && widK
+             && monoP && monoK && loP && vb != nullptr && vbOwner != nullptr
+             && driveOwner && monoOwner && widOwner && imOwner,
+           "the display, the two knob styles, a value box and the multiband split are findable");
+    if (! (im != nullptr && im->getWidth() > 300 && driveP && driveK && widP && widK
+           && monoP && monoK && loP && vb != nullptr && vbOwner != nullptr
+           && driveOwner && monoOwner && widOwner && imOwner))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    // THE TWO DRAG MAPPINGS, BOTH COVERED. A rotary knob takes `handleVelocityDrag`, whose anchor
+    // is `mousePosWhenLastDragged`; a `LinearHorizontal` one takes `handleAbsoluteDrag`, whose
+    // anchor is `mouseDragStartPos` and `valueOnMouseDown`. `Pimpl::mouseDown` re-seeds all three
+    // in one line (:856, :887-889), so a rejected press corrupts either -- but they fail
+    // DIFFERENTLY (the absolute one jumps to the rival's x; the velocity one loses its integrator
+    // reference), and a fix covering only one would pass a suite that only measured one.
+    check (monoK->getSliderStyle() == juce::Slider::LinearHorizontal,
+           "the Mono Maker frequency slider is the ABSOLUTE-mapping control this test needs");
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    const WheelPointer mousePtr = anamorph::gui::wheelPointerOf (src);
+    const WheelPointer fingerA { (int) juce::MouseInputSource::InputSourceType::touch, 0 };
+
+    int seq = 0;
+    auto stamp = [&] { return juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 7); };
+    auto mev = [&] (juce::Component* c, float x, float y, float dx, float dy,
+                    bool dragged, juce::ModifierKeys m)
+    {
+        const auto t = stamp();
+        return juce::MouseEvent (src, { x, y }, m, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 c, c, t, { dx, dy }, t, 1, dragged);
+    };
+    auto wheelOf = [] (float dx, float dy)
+    {
+        juce::MouseWheelDetails w;
+        w.deltaX = dx; w.deltaY = dy;
+        w.isReversed = false; w.isSmooth = false; w.isInertial = false;
+        return w;
+    };
+    const auto none = juce::ModifierKeys();
+    const auto held = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
+    auto plainOf = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto clearHistory = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
+
+    const float dkx = 0.5f * (float) driveK->getWidth(), dky = 0.5f * (float) driveK->getHeight();
+    const float mkx = 0.5f * (float) monoK->getWidth(),  mky = 0.5f * (float) monoK->getHeight();
+    const float wkx = 0.5f * (float) widK->getWidth(),   wky = 0.5f * (float) widK->getHeight();
+    const float vbx = 0.5f * (float) vb->getWidth(),     vby = 0.5f * (float) vb->getHeight();
+    const float imW = (float) im->getWidth(),            laneY = 0.5f * (float) im->getHeight();
+
+    // The table is a process-wide static and other tests have pressed things: an ordinary
+    // button-up scroll is what clears a device's cell in production, so that is what starts here.
+    auto clearTable = [&]
+    {
+        for (auto p : { mousePtr, fingerA })
+            (void) wheelTakenByAnyPress (*widK, widOwner, mev (widK, wkx, wky, wkx, wky, false, none),
+                                         wheelOf (0.0f, 0.0f), p);
+    };
+
+    // THE RELABEL, and both directions of it. Neither call touches a single drag field: the
+    // register holds (device -> component) cells and nothing else, so this changes only WHICH
+    // DEVICE the component's one live drag is recorded as belonging to. See the header.
+    auto ownedByFinger = [&] (juce::Component& c, anamorph::gui::WheelDragOwner& o)
+    {
+        releaseDragWheel (c);
+        check (claimDragWheel (c, o, fingerA), "the first device's claim on the control is made");
+    };
+    auto ownedByMouse = [&] (juce::Component& c, anamorph::gui::WheelDragOwner& o)
+    {
+        releaseDragWheel (c);
+        (void) claimDragWheel (c, o, mousePtr);
+    };
+
+    // ---- LEG A: the original device starts the component's one drag ---------------------------
+    {
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        CountGestures g; driveP->addListener (&g);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        const int thumb = driveK->getThumbBeingDragged();
+        const bool holds = dragWheelHolder (mousePtr) == driveK;
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        const float moved = plainOf (driveP);
+        driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        driveP->removeListener (&g);
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg A] the first press: thumb=%d, holder=%s, Drive 2.000 -> %.4f,"
+                     " gesture opens=%d closes=%d\n",
+                     thumb, holds ? "the knob" : "NOTHING", moved, g.opens, g.closes);
+        check (thumb >= 0, "leg A: the press starts the component's one drag");
+        check (holds, "leg A: ...and the device that made it holds the component");
+        check (! juce::exactlyEqual (moved, 2.0f), "leg A: ...and the drag moves the parameter");
+        check (g.opens == 1 && g.closes == 1, "leg A: ...inside exactly one host change gesture");
+    }
+
+    // ---- LEG B: a second device's press is REFUSED at every drag implementation ----------------
+    //      §5: the three classes that hold drag state are covered one by one, because the fix is
+    //      one line in each of them and a miss in one is invisible in the others.
+    {
+        // ---- B1: the rotary knob (velocity mapping) -------------------------------------------
+        clearTable();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, held));
+        ownedByFinger (*driveK, *driveOwner);
+        const int  thumb0 = driveK->getThumbBeingDragged();
+        const float drive0 = plainOf (driveP);
+        driveK->mouseDown (mev (driveK, dkx + 30.0f, dky + 30.0f, dkx + 30.0f, dky + 30.0f, false, held));
+        std::printf ("  [leg B1] rotary knob, rival press: mouse holds %s, finger holds %s,"
+                     " thumb %d -> %d, Drive %.4f -> %.4f\n",
+                     dragWheelHolder (mousePtr) == nullptr ? "nothing" : "IT",
+                     dragWheelHolder (fingerA) == driveK ? "it still" : "NOTHING",
+                     thumb0, driveK->getThumbBeingDragged(), drive0, plainOf (driveP));
+        check (dragWheelHolder (mousePtr) == nullptr,
+               "leg B1: the refused press acquires no second wheel claim");
+        check (dragWheelHolder (fingerA) == driveK,
+               "leg B1: ...and does not evict the device that holds the drag");
+        check (driveK->getThumbBeingDragged() == thumb0,
+               "leg B1: ...and does not touch `sliderBeingDragged`");
+        check (juce::exactlyEqual (plainOf (driveP), drive0),
+               "leg B1: ...and moves no parameter");
+        ownedByMouse (*driveK, *driveOwner);
+        driveK->mouseUp (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, held));
+        releaseDragWheel (*driveK);
+
+        // ---- B2: the linear knob (absolute mapping) -------------------------------------------
+        clearTable();
+        setPlain (monoP, 120.0f);
+        proc.pollUndoCoalesce();
+        monoK->mouseDown (mev (monoK, mkx, mky, mkx, mky, false, held));
+        monoK->mouseDrag (mev (monoK, mkx + 6.0f, mky, mkx, mky, true, held));
+        ownedByFinger (*monoK, *monoOwner);
+        const int  mThumb0 = monoK->getThumbBeingDragged();
+        const float mono0  = plainOf (monoP);
+        monoK->mouseDown (mev (monoK, mkx + 40.0f, mky, mkx + 40.0f, mky, false, held));
+        std::printf ("  [leg B2] linear knob, rival press: mouse holds %s, thumb %d -> %d,"
+                     " MonoFreq %.4f -> %.4f\n",
+                     dragWheelHolder (mousePtr) == nullptr ? "nothing" : "IT",
+                     mThumb0, monoK->getThumbBeingDragged(), mono0, plainOf (monoP));
+        check (dragWheelHolder (mousePtr) == nullptr && dragWheelHolder (fingerA) == monoK,
+               "leg B2: the absolute-mapping control refuses it the same way");
+        check (monoK->getThumbBeingDragged() == mThumb0 && juce::exactlyEqual (plainOf (monoP), mono0),
+               "leg B2: ...and neither its thumb nor its parameter moves");
+        ownedByMouse (*monoK, *monoOwner);
+        monoK->mouseUp (mev (monoK, mkx + 6.0f, mky, mkx, mky, true, held));
+        releaseDragWheel (*monoK);
+
+        // ---- B3: the value box ----------------------------------------------------------------
+        //      Its drag state is `downProp` and a `ScopedDragNotification`, both private; the
+        //      observable is the parent knob's `dragging` property, which its press sets in the
+        //      same branch, and the parameter its drag would write.
+        clearTable();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        vb->mouseDown (mev (vb, vbx, vby, vbx, vby, false, held));
+        const bool boxHolds = dragWheelHolder (mousePtr) == vb;
+        const bool flagOn   = (bool) driveK->getProperties().getWithDefault ("dragging", false);
+        ownedByFinger (*vb, *vbOwner);
+        const float box0 = plainOf (driveP);
+        vb->mouseDown (mev (vb, vbx, vby + 20.0f, vbx, vby + 20.0f, false, held));
+        std::printf ("  [leg B3] value box: own press holds=%d flag=%d; rival press ->"
+                     " mouse holds %s, Drive %.4f -> %.4f\n",
+                     (int) boxHolds, (int) flagOn,
+                     dragWheelHolder (mousePtr) == nullptr ? "nothing" : "IT",
+                     box0, plainOf (driveP));
+        check (boxHolds && flagOn, "leg B3: the value box's own press claims and shows the drag");
+        check (dragWheelHolder (mousePtr) == nullptr && dragWheelHolder (fingerA) == vb,
+               "leg B3: ...and a rival press on it establishes nothing");
+        check (juce::exactlyEqual (plainOf (driveP), box0),
+               "leg B3: ...and moves no parameter");
+        ownedByMouse (*vb, *vbOwner);
+        vb->mouseUp (mev (vb, vbx, vby, vbx, vby, false, held));
+        releaseDragWheel (*vb);
+
+        // ---- B4: the multiband display --------------------------------------------------------
+        clearTable();
+        setPlain (loP, 180.0f);
+        proc.pollUndoCoalesce();
+        float hx = -1.0f;
+        for (float x = 4.0f; x < imW - 4.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (im, x, laneY, x, laneY, false, none));
+            if (im->getTooltip() == juce::String ("Drag to change the split frequency")) { hx = x; break; }
+        }
+        check (hx > 0.0f, "leg B4: a crossover handle was located on the display");
+        if (hx > 0.0f)
+        {
+            im->mouseDown (mev (im, hx, laneY, hx, laneY, false, held));
+            im->mouseDrag (mev (im, hx + 10.0f, laneY, hx, laneY, true, held));
+            ownedByFinger (*im, *imOwner);
+            const float lo0 = plainOf (loP);
+            im->mouseDown (mev (im, hx + 120.0f, laneY, hx + 120.0f, laneY, false, held));
+            std::printf ("  [leg B4] display, rival press: mouse holds %s, finger holds %s,"
+                         " split %.3f -> %.3f\n",
+                         dragWheelHolder (mousePtr) == nullptr ? "nothing" : "IT",
+                         dragWheelHolder (fingerA) == im ? "it still" : "NOTHING",
+                         lo0, plainOf (loP));
+            check (dragWheelHolder (mousePtr) == nullptr && dragWheelHolder (fingerA) == im,
+                   "leg B4: the display refuses a rival press the same way");
+            check (juce::exactlyEqual (plainOf (loP), lo0),
+                   "leg B4: ...and it moves no parameter");
+            ownedByMouse (*im, *imOwner);
+            im->mouseUp (mev (im, hx + 10.0f, laneY, hx, laneY, true, held));
+            releaseDragWheel (*im);
+        }
+        proc.pollUndoCoalesce();
+
+        // ---- B5: a rival's DOUBLE CLICK is part of the same refused press ----------------------
+        //      JUCE delivers `mouseDoubleClick` as its own callback after the `mouseDown` that was
+        //      refused, and both of ours write a parameter outright: the knob's is the reset, the
+        //      display's is `resetCrossover`/`resetParam`. The value box's opens its inline editor,
+        //      and `isBeingEdited()` is what the OWNER's own `mouseDrag` tests before it writes --
+        //      so that one stops the first device's drag without touching a single anchor.
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        setPlain (loP, 180.0f);
+        proc.pollUndoCoalesce();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        ownedByFinger (*driveK, *driveOwner);
+        const float dblDrive0 = plainOf (driveP);
+        driveK->mouseDoubleClick (mev (driveK, dkx, dky, dkx, dky, false, held));
+        const float dblDrive1 = plainOf (driveP);
+        ownedByMouse (*driveK, *driveOwner);
+        driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, held));
+        releaseDragWheel (*driveK);
+
+        ownedByFinger (*vb, *vbOwner);
+        vb->mouseDown (mev (vb, vbx, vby, vbx, vby, false, held));
+        const bool editedAfterDown = vbLabel->isBeingEdited();
+        vb->mouseDoubleClick (mev (vb, vbx, vby, vbx, vby, false, held));
+        const bool editedAfterDbl = vbLabel->isBeingEdited();
+        releaseDragWheel (*vb);
+
+        float dblLo0 = 0.0f, dblLo1 = 0.0f;
+        if (hx > 0.0f)
+        {
+            im->mouseDown (mev (im, hx, laneY, hx, laneY, false, held));
+            ownedByFinger (*im, *imOwner);
+            dblLo0 = plainOf (loP);
+            im->mouseDoubleClick (mev (im, hx, laneY, hx, laneY, false, held));
+            dblLo1 = plainOf (loP);
+            ownedByMouse (*im, *imOwner);
+            im->mouseUp (mev (im, hx, laneY, hx, laneY, false, held));
+            releaseDragWheel (*im);
+        }
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg B5] rival double clicks: knob reset %.4f -> %.4f, box editing"
+                     " after down=%d after double=%d, split %.3f -> %.3f\n",
+                     dblDrive0, dblDrive1, (int) editedAfterDown, (int) editedAfterDbl,
+                     dblLo0, dblLo1);
+        check (juce::exactlyEqual (dblDrive1, dblDrive0),
+               "leg B5: a rival's double click does not reset a knob another device is dragging");
+        check (! editedAfterDown && ! editedAfterDbl,
+               "leg B5: ...and does not open the editor on a value box another device is dragging");
+        if (hx > 0.0f)
+            check (juce::exactlyEqual (dblLo1, dblLo0),
+                   "leg B5: ...and does not reset a split on a display another device is dragging");
+        clearHistory();
+        proc.pollUndoCoalesce();
+    }
+
+    // ---- LEG I (§5): the rival's DRAG and RELEASE, per drag implementation ----------------------
+    //      Legs C and E measure the whole refused press on the knob, where the exact-continuation
+    //      reference lives. The value box and the display hold their own anchors and their own
+    //      release actions, so each gets the same two events measured in its own terms: the drag
+    //      must write no parameter, and the release must leave the owner holding what it held.
+    {
+        // ---- I1: the value box ----------------------------------------------------------------
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        vb->mouseDown (mev (vb, vbx, vby, vbx, vby, false, held));       // the owner's press
+        ownedByFinger (*vb, *vbOwner);
+        const float box0 = plainOf (driveP);
+        const bool flagBefore = (bool) driveK->getProperties().getWithDefault ("dragging", false);
+        vb->mouseDrag (mev (vb, vbx, vby - 60.0f, vbx, vby, true, held));
+        const float boxAfterDrag = plainOf (driveP);
+        vb->mouseUp (mev (vb, vbx, vby - 60.0f, vbx, vby, true, held));
+        const bool flagAfter = (bool) driveK->getProperties().getWithDefault ("dragging", false);
+        const bool stillOwned = dragWheelHolder (fingerA) == vb;
+        std::printf ("  [leg I1] value box, rival drag+release: Drive %.4f -> %.4f, dragging flag"
+                     " %d -> %d, owner still holds %s\n",
+                     box0, boxAfterDrag, (int) flagBefore, (int) flagAfter,
+                     stillOwned ? "it" : "NOTHING");
+        check (juce::exactlyEqual (boxAfterDrag, box0),
+               "leg I1: a refused press's drag writes nothing through the value box's anchor");
+        check (flagBefore && flagAfter,
+               "leg I1: ...and its release does not close the owner's gesture");
+        check (stillOwned, "leg I1: ...nor hand back the owner's claim");
+        ownedByMouse (*vb, *vbOwner);
+        vb->mouseUp (mev (vb, vbx, vby, vbx, vby, false, held));
+        releaseDragWheel (*vb);
+        check (! (bool) driveK->getProperties().getWithDefault ("dragging", false),
+               "leg I1: ...while the OWNER's own release does close it");
+        clearHistory();
+        proc.pollUndoCoalesce();
+
+        // ---- I2: the multiband display ---------------------------------------------------------
+        setPlain (loP, 180.0f);
+        proc.pollUndoCoalesce();
+        clearTable();
+        float hx = -1.0f;
+        for (float x = 4.0f; x < imW - 4.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (im, x, laneY, x, laneY, false, none));
+            if (im->getTooltip() == juce::String ("Drag to change the split frequency")) { hx = x; break; }
+        }
+        if (hx > 0.0f)
+        {
+            im->mouseDown (mev (im, hx, laneY, hx, laneY, false, held));
+            im->mouseDrag (mev (im, hx + 8.0f, laneY, hx, laneY, true, held));
+            ownedByFinger (*im, *imOwner);
+            const float lo0 = plainOf (loP);
+            im->mouseDrag (mev (im, hx + 140.0f, laneY, hx, laneY, true, held));   // the rival's
+            const float loAfterDrag = plainOf (loP);
+            im->mouseUp (mev (im, hx + 140.0f, laneY, hx, laneY, true, held));     // the rival's
+            const bool stillOwnedIm = dragWheelHolder (fingerA) == im;
+            // ...and the OWNER's gesture is intact, which only its own next drag can show.
+            ownedByMouse (*im, *imOwner);
+            im->mouseDrag (mev (im, hx + 20.0f, laneY, hx, laneY, true, held));
+            const float loOwnerDrag = plainOf (loP);
+            im->mouseUp (mev (im, hx + 20.0f, laneY, hx, laneY, true, held));
+            releaseDragWheel (*im);
+            proc.pollUndoCoalesce();
+            std::printf ("  [leg I2] display, rival drag+release: split %.3f -> %.3f, owner still"
+                         " holds %s, and the owner's next drag moves it to %.3f\n",
+                         lo0, loAfterDrag, stillOwnedIm ? "it" : "NOTHING", loOwnerDrag);
+            check (juce::exactlyEqual (loAfterDrag, lo0),
+                   "leg I2: a refused press's drag moves no split on the display it was refused");
+            check (stillOwnedIm,
+                   "leg I2: ...and its release does not hand back the owner's claim");
+            check (! juce::exactlyEqual (loOwnerDrag, loAfterDrag),
+                   "leg I2: ...while the owner's own gesture is still live and still moves it");
+        }
+        clearHistory();
+        proc.pollUndoCoalesce();
+    }
+
+    // ---- LEG C: THE ORIGINAL DEVICE CONTINUES DRAGGING -- the primary regression ---------------
+    //      Two identical runs, the second with a rival's WHOLE press (down, drag, up) spliced into
+    //      the middle, and the two parameters must be bit-for-bit equal. This is the assertion the
+    //      whole round exists for: an anchor moved by one pixel, a `valueOnMouseDown` re-read, a
+    //      host gesture closed early -- each of them changes the second drag's result, and none of
+    //      them is visible in "was the claim refused?".
+    for (int style = 0; style < 2; ++style)
+    {
+        auto* K   = style == 0 ? driveK : monoK;
+        auto* O   = style == 0 ? driveOwner : monoOwner;
+        auto* P   = style == 0 ? driveP : monoP;
+        const float kx = style == 0 ? dkx : mkx, ky = style == 0 ? dky : mky;
+        const float start = style == 0 ? 2.0f : 120.0f;
+        // Along the axis each mapping actually reads: vertical for the rotary, horizontal for the
+        // linear one, so both runs really do travel.
+        const float d1x = style == 0 ? 0.0f : 6.0f,  d1y = style == 0 ? -12.0f : 0.0f;
+        const float d2x = style == 0 ? 0.0f : 26.0f, d2y = style == 0 ? -34.0f : 0.0f;
+
+        auto run = [&] (bool withRival, int* thumbBefore, int* thumbAfter, CountGestures* g) -> float
+        {
+            clearTable();
+            clearHistory();
+            setPlain (P, start);
+            proc.pollUndoCoalesce();
+            if (g != nullptr) P->addListener (g);
+            K->mouseDown (mev (K, kx, ky, kx, ky, false, held));
+            K->mouseDrag (mev (K, kx + d1x, ky + d1y, kx, ky, true, held));
+            if (withRival)
+            {
+                ownedByFinger (*K, *O);
+                if (thumbBefore != nullptr) *thumbBefore = K->getThumbBeingDragged();
+                // The rival's entire press, 60 px away from the anchor the owner is dragging from.
+                const float rx = kx + 60.0f, ry = ky + 40.0f;
+                K->mouseDown (mev (K, rx, ry, rx, ry, false, held));
+                K->mouseDrag (mev (K, rx + 25.0f, ry + 25.0f, rx, ry, true, held));
+                K->mouseUp   (mev (K, rx + 25.0f, ry + 25.0f, rx, ry, true, held));
+                if (thumbAfter != nullptr) *thumbAfter = K->getThumbBeingDragged();
+                ownedByMouse (*K, *O);
+            }
+            K->mouseDrag (mev (K, kx + d2x, ky + d2y, kx, ky, true, held));
+            const float out = plainOf (P);
+            K->mouseUp (mev (K, kx + d2x, ky + d2y, kx, ky, true, held));
+            releaseDragWheel (*K);
+            if (g != nullptr) P->removeListener (g);
+            proc.pollUndoCoalesce();
+            return out;
+        };
+
+        CountGestures clean, dirty;
+        const float refValue = run (false, nullptr, nullptr, &clean);
+        int tBefore = -99, tAfter = -99;
+        const float gotValue = run (true, &tBefore, &tAfter, &dirty);
+
+        // ...AND THE FULL REMAINING RANGE. The same two runs taken to the far end of the travel:
+        // a re-anchored drag reaches a different place, and a drag whose `valueOnMouseDown` was
+        // re-read part-way through cannot reach the end at all.
+        auto far = [&] (bool withRival) -> float
+        {
+            clearTable();
+            clearHistory();
+            setPlain (P, start);
+            proc.pollUndoCoalesce();
+            K->mouseDown (mev (K, kx, ky, kx, ky, false, held));
+            K->mouseDrag (mev (K, kx + d1x, ky + d1y, kx, ky, true, held));
+            if (withRival)
+            {
+                ownedByFinger (*K, *O);
+                const float rx = kx + 60.0f, ry = ky + 40.0f;
+                K->mouseDown (mev (K, rx, ry, rx, ry, false, held));
+                K->mouseDrag (mev (K, rx + 25.0f, ry + 25.0f, rx, ry, true, held));
+                K->mouseUp   (mev (K, rx + 25.0f, ry + 25.0f, rx, ry, true, held));
+                ownedByMouse (*K, *O);
+            }
+            for (int i = 1; i <= 12; ++i)
+                K->mouseDrag (mev (K, kx + 40.0f * (float) i * (style == 0 ? 0.0f : 1.0f),
+                                   ky - 40.0f * (float) i * (style == 0 ? 1.0f : 0.0f),
+                                   kx, ky, true, held));
+            const float out = plainOf (P);
+            K->mouseUp (mev (K, kx, ky, kx, ky, true, held));
+            releaseDragWheel (*K);
+            proc.pollUndoCoalesce();
+            return out;
+        };
+        const float refFar = far (false);
+        const float gotFar = far (true);
+
+        std::printf ("  [leg C/%s] continuation %.6f vs %.6f, full travel %.6f vs %.6f,"
+                     " thumb %d -> %d, gesture opens %d/%d closes %d/%d\n",
+                     style == 0 ? "velocity" : "absolute",
+                     (double) refValue, (double) gotValue, (double) refFar, (double) gotFar,
+                     tBefore, tAfter, clean.opens, dirty.opens, clean.closes, dirty.closes);
+        check (! juce::exactlyEqual (refValue, start),
+               "leg C: the reference run really moved the parameter (the leg has a signal)");
+        check (juce::exactlyEqual (gotValue, refValue),
+               "leg C: the owner's drag continues from its OWN anchor -- no jump to the rival's press");
+        check (juce::exactlyEqual (gotFar, refFar),
+               "leg C: ...and the whole remaining travel is still available to it");
+        check (tAfter == tBefore,
+               "leg C: ...because the rival's press never touched `sliderBeingDragged`");
+        check (dirty.opens == clean.opens && dirty.closes == clean.closes,
+               "leg C: ...nor opened or closed a host change gesture of its own");
+    }
+
+    // ---- LEG D: the owner's WHEEL is still routed to the drag it is making ---------------------
+    //      Round 29/30's rule, restated against a component that has just refused a rival: the
+    //      device holding the press gets the notch wherever its cursor is, and the refused device
+    //      gets nothing -- its event is still CONSUMED (round 30), it simply reaches nobody.
+    {
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        setPlain (widP, 1.2f);
+        proc.pollUndoCoalesce();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        ownedByFinger (*driveK, *driveOwner);
+        driveK->mouseDown (mev (driveK, dkx + 60.0f, dky + 40.0f, dkx + 60.0f, dky + 40.0f, false, held));
+        const float wid0 = plainOf (widP);
+        const float beforeOwner = plainOf (driveP);
+        const bool ownerTook = wheelTakenByAnyPress (*widK, widOwner,
+                                                     mev (widK, wkx, wky, wkx, wky, false, held),
+                                                     wheelOf (0.0f, 0.6f), fingerA);
+        const float afterOwner = plainOf (driveP);
+        const bool rivalTook = wheelTakenByAnyPress (*widK, widOwner,
+                                                     mev (widK, wkx, wky, wkx, wky, false, held),
+                                                     wheelOf (0.0f, 0.6f), mousePtr);
+        const float afterRival = plainOf (driveP);
+        std::printf ("  [leg D] owner's notch: consumed=%d Drive %.4f -> %.4f; rival's:"
+                     " consumed=%d -> %.4f; Width %.4f -> %.4f\n",
+                     (int) ownerTook, beforeOwner, afterOwner, (int) rivalTook, afterRival,
+                     wid0, plainOf (widP));
+        check (ownerTook && ! juce::exactlyEqual (afterOwner, beforeOwner),
+               "leg D: the holding device's notch still reaches the drag it is making");
+        check (rivalTook && juce::exactlyEqual (afterRival, afterOwner),
+               "leg D: ...and the refused device's is swallowed, reaching nobody");
+        check (juce::exactlyEqual (plainOf (widP), wid0),
+               "leg D: ...and the control under the pointer is moved by neither");
+        ownedByMouse (*driveK, *driveOwner);
+        driveK->mouseUp (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        releaseDragWheel (*driveK);
+        proc.pollUndoCoalesce();
+    }
+
+    // ---- LEG E: BOTH RELEASE ORDERS ------------------------------------------------------------
+    //      E1 the rival lets go first -- which must end nothing, because the drag is not its own;
+    //      E2 the owner lets go first -- which ends everything, and leaves the rival's later
+    //      release with nothing to end. The two used to differ, and both used to be wrong: a
+    //      rival's `mouseUp` reached `Pimpl::mouseUp`'s unconditional `currentDrag.reset()`
+    //      (juce_Slider.cpp:997) and `releaseDragWheel`, so the refused press closed the owner's
+    //      host gesture and freed the owner's claim.
+    {
+        // ---- E1: the rival releases while the owner is still dragging -------------------------
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        CountGestures g; driveP->addListener (&g);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        ownedByFinger (*driveK, *driveOwner);
+        const int thumbLive = driveK->getThumbBeingDragged();
+        driveK->mouseDown (mev (driveK, dkx + 60.0f, dky + 40.0f, dkx + 60.0f, dky + 40.0f, false, held));
+        driveK->mouseUp   (mev (driveK, dkx + 60.0f, dky + 40.0f, dkx + 60.0f, dky + 40.0f, false, held));
+        const int  thumbAfter = driveK->getThumbBeingDragged();
+        const bool stillHeld  = dragWheelHolder (fingerA) == driveK;
+        const int  closesAfter = g.closes;
+        std::printf ("  [leg E1] the rival released first: thumb %d -> %d, owner still holds %s,"
+                     " gesture closes %d\n",
+                     thumbLive, thumbAfter, stillHeld ? "it" : "NOTHING", closesAfter);
+        check (thumbAfter == thumbLive,
+               "leg E1: a refused press's release does not end the owner's drag");
+        check (stillHeld,
+               "leg E1: ...and does not hand back a claim that is not its own");
+        check (closesAfter == 0,
+               "leg E1: ...and does not close the owner's host change gesture");
+        ownedByMouse (*driveK, *driveOwner);
+        driveK->mouseUp (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        driveP->removeListener (&g);
+        std::printf ("  [leg E1] ...and the OWNER's release then ends it: thumb %d, holder %s,"
+                     " gesture opens=%d closes=%d\n",
+                     driveK->getThumbBeingDragged(),
+                     dragWheelHolder (mousePtr) == nullptr ? "null" : "STALE", g.opens, g.closes);
+        check (driveK->getThumbBeingDragged() < 0 && dragWheelHolder (mousePtr) == nullptr,
+               "leg E1: ...while the owner's own release ends both");
+        check (g.opens == 1 && g.closes == 1,
+               "leg E1: ...with exactly one host gesture over the whole episode");
+        releaseDragWheel (*driveK);
+        proc.pollUndoCoalesce();
+
+        // ---- E2: the owner releases first, and the rival's later release finds nothing ---------
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        CountGestures g2; driveP->addListener (&g2);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        ownedByFinger (*driveK, *driveOwner);
+        driveK->mouseDown (mev (driveK, dkx + 60.0f, dky + 40.0f, dkx + 60.0f, dky + 40.0f, false, held));
+        releaseDragWheel (*driveK);                  // the OWNER lets go (its device cannot send it)
+        const bool freed = dragWheelHolder (fingerA) == nullptr && dragWheelHolder (mousePtr) == nullptr;
+        const float afterOwnerRelease = plainOf (driveP);
+        driveK->mouseUp (mev (driveK, dkx + 60.0f, dky + 40.0f, dkx + 60.0f, dky + 40.0f, false, held));
+        driveP->removeListener (&g2);
+        std::printf ("  [leg E2] the owner released first: table %s; the rival's later release"
+                     " left Drive %.4f -> %.4f, closes=%d\n",
+                     freed ? "empty" : "STILL HELD", afterOwnerRelease, plainOf (driveP), g2.closes);
+        check (freed, "leg E2: the owner's release empties the component's claim");
+        check (juce::exactlyEqual (plainOf (driveP), afterOwnerRelease),
+               "leg E2: ...and the rival's later release writes no parameter of its own");
+        check (g2.closes <= g2.opens,
+               "leg E2: ...and closes no gesture that was never opened");
+        proc.pollUndoCoalesce();
+    }
+
+    // ---- LEG F: the ORDINARY single-device path, unchanged -------------------------------------
+    //      Every leg above is a "nothing happened" assertion, which is the kind a broken fixture
+    //      passes. This is the positive control for all of them: one device, no rival, the whole
+    //      press-drag-wheel-release cycle, and everything moves.
+    {
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        setPlain (widP, 1.2f);
+        proc.pollUndoCoalesce();
+        CountGestures g; driveP->addListener (&g);
+        const float wid0 = plainOf (widP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        const bool claimed = dragWheelHolder (mousePtr) == driveK;
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        const float dragged = plainOf (driveP);
+        widK->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, held), wheelOf (0.0f, 0.6f));
+        const float notched = plainOf (driveP);
+        driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        const bool freed = dragWheelHolder (mousePtr) == nullptr;
+        widK->mouseWheelMove (mev (widK, wkx, wky, wkx, wky, false, none), wheelOf (0.0f, 0.6f));
+        driveP->removeListener (&g);
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg F] one device: claim=%d Drive 2.000 -> %.4f -> %.4f, released=%d,"
+                     " Width %.4f -> %.4f, opens=%d closes=%d\n",
+                     (int) claimed, dragged, notched, (int) freed, wid0, plainOf (widP),
+                     g.opens, g.closes);
+        check (claimed && freed, "leg F: the single-device claim lifecycle is unchanged");
+        check (! juce::exactlyEqual (dragged, 2.0f) && ! juce::exactlyEqual (notched, dragged),
+               "leg F: ...the drag moves the value and the in-press notch adds to it");
+        check (! juce::exactlyEqual (plainOf (widP), wid0),
+               "leg F: ...and standalone scrolling resumes after the release");
+        check (g.opens == 1 && g.closes == 1, "leg F: ...inside exactly one host gesture");
+    }
+
+    // ---- LEG G: a DUPLICATE press from the OWNING device is not its own rival -------------------
+    //      §3. The register keys on the device, and the refusal scans for a cell holding this
+    //      component -- so without the `mine` clear at the top of `claimDragWheel` the holder would
+    //      find ITSELF and be refused. That would break re-entrant and duplicate `mouseDown`s,
+    //      which JUCE really does deliver (a value box's press and its parent knob's are the same
+    //      click to everything except routing).
+    {
+        clearTable();
+        check (claimDragWheel (*driveK, *driveOwner, mousePtr),
+               "leg G: the owning device's first press is accepted");
+        check (claimDragWheel (*driveK, *driveOwner, mousePtr),
+               "leg G: ...and its duplicate press is accepted AGAIN, not refused as a rival");
+        check (dragWheelHolder (mousePtr) == driveK,
+               "leg G: ...leaving exactly one holder, which is that device");
+        check (! claimDragWheel (*driveK, *driveOwner, fingerA),
+               "leg G: ...while a DIFFERENT device is still refused");
+
+        // ...and the real handler agrees: a second real `mouseDown` re-anchors, exactly as JUCE
+        // intends (`Pimpl::mouseDown` re-seeds the anchor on every press it accepts).
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        const bool stillHolds = dragWheelHolder (mousePtr) == driveK;
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        const float after = plainOf (driveP);
+        driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        releaseDragWheel (*driveK);
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg G] a duplicate real press: holder=%d, and the drag after it moves"
+                     " Drive 2.000 -> %.4f\n", (int) stillHolds, after);
+        check (stillHolds, "leg G: the duplicate real press keeps the device's own claim");
+        check (! juce::exactlyEqual (after, 2.0f),
+               "leg G: ...and the drag that follows it still works");
+    }
+
+    // ---- LEG H (§5): a handler with NO drag state of its own cannot mutate another's ------------
+    //      The editor-level press handlers -- `ABControl::mouseDown`, `Backdrop::mouseDown`, the
+    //      modal shield's empty one -- hold no anchor, are not `WheelDragOwner`s and never call
+    //      `claimDragWheel`. They cannot reach another component's drag because the register is
+    //      keyed BY COMPONENT: their press writes no cell, and nothing they do names the control
+    //      that is being dragged. Measured rather than asserted: the A/B control is pressed (a real
+    //      state-replacing action) in the middle of a drag another device owns, and the drag's
+    //      continuation must still match its own reference.
+    {
+        // `ABControl` is a private nested type, so it is found by the tooltip the editor gives it
+        // (`src/PluginEditor.cpp:345`) -- and the two negative casts state what makes it the case
+        // §5 asks about: it is neither a `juce::Slider` nor a `WheelDragOwner`, so it holds no drag
+        // state and never calls `claimDragWheel`.
+        juce::Component* ab = nullptr;
+        std::function<void (juce::Component*)> findAB = [&] (juce::Component* c)
+        {
+            for (int i = 0; i < c->getNumChildComponents(); ++i)
+            {
+                auto* k = c->getChildComponent (i);
+                if (ab == nullptr
+                    && dynamic_cast<juce::Slider*> (k) == nullptr
+                    && dynamic_cast<anamorph::gui::WheelDragOwner*> (k) == nullptr)
+                    if (auto* t = dynamic_cast<juce::SettableTooltipClient*> (k))
+                        if (t->getTooltip() == juce::String ("A/B Compare")) ab = k;
+                findAB (k);
+            }
+        };
+        findAB (ed);
+        check (ab != nullptr,
+               "leg H: an editor-level press handler with no drag state of its own was found");
+
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        ownedByFinger (*driveK, *driveOwner);
+        const int thumbLive = driveK->getThumbBeingDragged();
+        const float beforeAB = plainOf (driveP);
+        if (ab != nullptr)
+            ab->mouseDown (mev (ab, 4.0f, 4.0f, 4.0f, 4.0f, false, held));
+        // The A/B toggle DOES move Drive -- that is its own job, a whole-sound swap, and it is
+        // governed by the state-replacement rules (ADR-0036) rather than by this one. What leg H
+        // asserts is the thing §5 asks about: the live drag on ANOTHER component, and the register.
+        std::printf ("  [leg H] after the editor-level press: thumb %d -> %d, holder %s,"
+                     " Drive %.4f -> %.4f (the A/B slot swap's own doing)\n",
+                     thumbLive, driveK->getThumbBeingDragged(),
+                     dragWheelHolder (fingerA) == driveK ? "unchanged" : "MOVED",
+                     beforeAB, plainOf (driveP));
+        check (driveK->getThumbBeingDragged() == thumbLive,
+               "leg H: a press with no drag state of its own leaves the live drag alone");
+        check (dragWheelHolder (fingerA) == driveK && dragWheelHolder (mousePtr) == nullptr,
+               "leg H: ...and writes no cell in the register");
+        ownedByMouse (*driveK, *driveOwner);
+        driveK->mouseUp (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        releaseDragWheel (*driveK);
+        clearHistory();
+        proc.pollUndoCoalesce();
+    }
+
+    clearTable();
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
 
 // ---------------------------------------------------------------------------
 //  State test 104 -- a save completion may only touch the dialog it BELONGS TO
@@ -31765,6 +32594,7 @@ int main (int argc, char* argv[])
     testAPressWithNoTargetStillOwnsTheWheel();
     testOnePressPerPointingDevice();
     testAnUnwiredPresetManagerRunsSynchronously();
+    testARefusedPressEstablishesNothing();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

@@ -1040,6 +1040,72 @@ command was not queued, it was dropped, and both the manager's own `stateCommand
 on, so there is no cycle to break and no queue to join. The configured path is untouched, and a
 `jassert` in `defer` now refuses to be silent about a half-wired set. State test 109.
 
+### What an eleventh review round changed: the refusal reaches the caller, and it lasts the whole press
+
+Round 33 (2026-09-17). Devin `src/gui/LookAndFeel.cpp:R101-103`, *"rejected second press steals
+drag"*.
+
+**WHAT ROUND 32 LEFT HALF-DONE.** `claimDragWheel` refused the second device's claim — and returned
+`void`. The refusal was invisible to the caller, so the rejected press ran the rest of its
+`mouseDown` regardless, and that is where a component's one shared drag is actually established:
+`juce::Slider::Pimpl::mouseDown` re-seeds `mouseDragStartPos` and `mousePosWhenLastDragged`
+(juce_Slider.cpp:856), resets the owner's `ScopedDragNotification` (:857), re-reads
+`sliderBeingDragged` (:878) and `valueOnMouseDown` (:887-889) and opens a second host gesture (:899);
+`SpectrumImager::mouseDown` re-latches `gestureBands`, the gesture sound, `dragBand`, `bandAnchorX`,
+`soloPressBand` and the pending delete; `ValueBox::mouseDown` overwrote `downProp` and its own
+`ScopedDragNotification` **one line above** the claim it had not yet asked for. The first device then
+went on dragging from the second device's anchor, with its own change gesture already closed.
+
+**THE ANSWER IS RETURNED.** `claimDragWheel` is now `[[nodiscard]] bool` — TRUE when this press now
+owns the component's drag, FALSE when another device already does — and every caller asks before it
+writes anything of its own. `[[nodiscard]]` is the enforcement: a caller that forgets to ask does not
+compile. The device that already holds the component is granted it again, because `claimDragWheel`
+clears that device's own cell before scanning, so a duplicate or re-entrant `mouseDown` from the
+owner is not treated as its own rival.
+
+**AND A PRESS IS NOT ONLY ITS `mouseDown`.** Proving the above from source showed the same rejected
+press still reaching the owner's state through its other two events, which the owner's rule forbids
+in the same words. `Pimpl::mouseDrag` never asks whose press it is: it runs on the OWNER's
+`useDragEvents` and `sliderBeingDragged` and writes the parameter from whatever cursor it is handed
+(juce_Slider.cpp:906-970). `Pimpl::mouseUp` ends with an unconditional `currentDrag.reset()` (:997),
+so a refused release closed the owner's host gesture and put `sliderBeingDragged` back to -1 —
+and `Knob::mouseUp` then handed back the owner's claim. `SpectrumImager::mouseUp` is worse again: it
+fires the ON-RELEASE ACTIONS the owner's press latched, a solo toggle or a band removal. Both
+double-click handlers write a parameter outright, and `juce::Label::mouseDoubleClick` opens the
+value box's inline editor, whose `isBeingEdited()` is exactly what the owner's own `mouseDrag` tests
+before it writes.
+
+So the register gained a read-only twin, `dragWheelHeldByOther`, and every event of a press asks it:
+`mouseDrag`, `mouseUp` and `mouseDoubleClick` in all three drag implementations, plus the `Label`
+forward in `ValueBox::mouseDown`. It is deliberately **"someone else holds it"** and not **"I hold
+it"**: the two differ exactly where the lost-release safety nets live, and a cell emptied while a
+button is still down (KI-028's self-heal, a destroyed holder read back through the `SafePointer`)
+must still let the component's own release through.
+
+**WHY IT IS ASKED AND NOT REMEMBERED.** A flag set by the refused `mouseDown` would be per
+(component, device) state — the thing the owner's decision forbids — and would need clearing on
+paths that do not always run. The register already holds the answer, and asking it costs a scan of
+two or three elements on the message thread.
+
+**WHAT DID NOT CHANGE.** No per-device drag anchor, no per-device slider state, no multi-drag
+architecture. The single-device path is byte-identical (State test 110 leg F). An accepted active
+press still owns the wheel wherever the pointer goes, and a held button with nothing claimed still
+consumes the notch and moves nothing. The register is still message-thread only, still keyed on the
+`WheelPointer` value, still process-global and still bounded by JUCE's own device-identity model:
+`dragWheelHeldByOther` adds no cell and reads the holder through the same `SafePointer`, so a
+destroyed holder is no device's rival.
+
+**HOW IT IS MEASURED.** State test 110 drives the real editor and measures real drag state and real
+parameters, never "was the event consumed?" — which cannot discriminate these bugs, because round
+30's approved rule consumes either way. Leg C is the primary regression: the identical
+press-drag-drag-release run twice, the second time with a rival's whole press spliced into the
+middle, and the two parameters must be **bit-for-bit equal**, in both drag mappings (the rotary
+knob's velocity integrator and the `LinearHorizontal` knob's absolute anchor), plus the same
+comparison taken to the end of the travel. Against the unfixed release path it read 5.26 vs 0.00 and
+226.665314 vs 437.469788 — the absolute-mapping knob literally jumping to the rival's x — with
+`sliderBeingDragged` 0 → -1.
+
+
 ## Consequences
 
 - **A notch during any drag now adds to it**, and the drag continues from the combined value. What a

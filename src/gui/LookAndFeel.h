@@ -431,7 +431,15 @@ inline WheelPointer wheelPointerOf (const juce::MouseInputSource& s) noexcept
     return { (int) s.getType(), s.getIndex() };
 }
 
-void claimDragWheel (juce::Component&, WheelDragOwner&, WheelPointer);
+// TRUE when this press now owns the component's drag, FALSE when another device already does
+// (round 33, Devin `src/gui/LookAndFeel.cpp:R101-103`). A caller MUST ask before it writes any of
+// its own drag state: refusing the wheel claim alone left the rejected press free to run the rest
+// of its `mouseDown` and replace the anchor the first device is dragging from. `[[nodiscard]]` so
+// that forgetting to ask is a compile error rather than a silent second owner.
+//
+// The device that already holds the component is granted it again, so a duplicate or re-entrant
+// `mouseDown` from the owner is not rejected as its own rival.
+[[nodiscard]] bool claimDragWheel (juce::Component&, WheelDragOwner&, WheelPointer);
 
 // THE COMPONENT'S SHARED DRAG HAS ENDED (round 32, owner decision; Devin
 // `src/gui/LookAndFeel.cpp:R106-110`). One component holds ONE drag -- one `valueOnMouseDown`, one
@@ -451,6 +459,29 @@ void claimDragWheel (juce::Component&, WheelDragOwner&, WheelPointer);
 void releaseDragWheel (const juce::Component&);
 
 juce::Component* dragWheelHolder (WheelPointer) noexcept;
+
+// TRUE when a DIFFERENT pointing device is holding this component's drag (round 33, Devin
+// `src/gui/LookAndFeel.cpp:R101-103` -- the half of that press which is not its `mouseDown`).
+// `claimDragWheel` answers the same question at the press and writes the cell; this is the
+// read-only twin the press's OTHER events ask, because a press is refused for its whole life and
+// not merely at its first event:
+//
+//   * `juce::Slider::Pimpl::mouseDrag` runs on the OWNER's `useDragEvents` and `sliderBeingDragged`
+//     and writes the parameter from whatever cursor it is handed (juce_Slider.cpp:906-970);
+//   * `Pimpl::mouseUp` ends with an unconditional `currentDrag.reset()` (:997), so a refused
+//     release closed the owner's host change gesture and set `sliderBeingDragged` back to -1;
+//   * `SpectrumImager::mouseUp` fires the ON-RELEASE ACTIONS the owner's press latched -- a solo
+//     toggle, a band removal -- and both double-click handlers write a parameter outright.
+//
+// ASKED, NOT REMEMBERED. A flag set by the refused `mouseDown` would be per (component, device)
+// state -- the thing the owner's decision forbids -- and would have to be cleared on paths that do
+// not always run. The register already holds the answer.
+//
+// AND IT IS "SOMEONE ELSE HOLDS IT", NOT "I HOLD IT". The two differ exactly where the safety nets
+// live: a claim emptied while the button is still down (KI-028's self-heal, a destroyed holder)
+// leaves NOBODY holding the component, and the component's own release must still run -- so the
+// guard stands down when the cell is empty and speaks only when a rival is named.
+[[nodiscard]] bool dragWheelHeldByOther (const juce::Component&, WheelPointer) noexcept;
 
 // True when this event has been dealt with and the caller must do nothing whatsoever with it --
 // not act on it, and not pass it on. That is every case in which a mouse button is down ON THE

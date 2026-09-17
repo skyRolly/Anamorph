@@ -206,7 +206,7 @@ session state, and is fully isolated from the pluginval state-restoration work.
 - **Mechanism:** on platforms **without per-pixel window alpha** (Linux/X11 with no compositor),
   `juce::TooltipWindow` cannot be semi-transparent, so the area **outside** the rounded capsule
   renders the window's opaque (black) fill. This is the same class of artefact already documented for
-  the popup menu, which is kept square for exactly this reason (src/gui/LookAndFeel.cpp:748-751).
+  the popup menu, which is kept square for exactly this reason (src/gui/LookAndFeel.cpp:777-780).
 - **Fix [code Verified; Linux visual re-test pending]:** `AnamorphLookAndFeel::drawTooltip`
   (src/gui/LookAndFeel.cpp) now pre-fills the full tooltip bounds with the capsule colour when
   `juce::Desktop::canUseSemiTransparentWindows()` is `false`, so the corners match the capsule rather

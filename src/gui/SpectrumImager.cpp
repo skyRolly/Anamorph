@@ -2775,7 +2775,14 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
     // decided: `takeWheelNotch` still answers false, but the drop is no longer a consequence of the
     // return value -- `wheelTakenByAnyPress` consumes the event either way, so a press that declines
     // the notch and a press that takes it both end the event here.
-    anamorph::gui::claimDragWheel (*this, *this, anamorph::gui::wheelPointerOf (e.source));
+    //
+    // AND A REFUSED PRESS STOPS HERE (round 33, Devin `src/gui/LookAndFeel.cpp:R101-103`). Another
+    // device is already dragging this display, and everything below is the state of THAT gesture:
+    // `commitFreqEditor`, the topology/sound snapshot, `dragBand`, `bandAnchorX`, `gestureBands`,
+    // `soloPressBand`, the pending delete. A second press must replace none of it -- the display
+    // holds one gesture, and it belongs to the device that started it.
+    if (! anamorph::gui::claimDragWheel (*this, *this, anamorph::gui::wheelPointerOf (e.source)))
+        return;
     if (editingHandle >= 0) commitFreqEditor();
     // ADR-0038: the topology this gesture is about to be defined against, and (ADR-0039) the
     // sound with it. Taken once, at the top, so every branch below -- solo press, delete press,
@@ -2922,6 +2929,14 @@ void SpectrumImager::mouseDown (const juce::MouseEvent& e)
 }
 void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
 {
+    // A REFUSED PRESS DRAGS NOTHING (round 33, Devin `src/gui/LookAndFeel.cpp:R101-103`). Every
+    // identifier this handler consumes -- `soloPressBand`, `dragBand`, `dragHandle`, `bandAnchorX`,
+    // `gestureBands` -- was latched by the press that owns the display, and the stores below are
+    // that gesture's. Refusing the rival's `mouseDown` stopped it LATCHING them; this stops it
+    // driving them. Asked before `gestureIsStale()`, because that branch calls `cancelActiveDrag`,
+    // which would end the owner's gesture on the rival's behalf.
+    if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
+        return;
     // ADR-0038. A gesture is defined against the topology it began in; once that has moved
     // the gesture is VOID, and the one safe thing to do with it is what a release lost
     // outside the window already does -- close the open parameter gestures, clear the
@@ -2997,6 +3012,12 @@ void SpectrumImager::mouseDrag (const juce::MouseEvent& e)
 }
 void SpectrumImager::mouseUp (const juce::MouseEvent& e)
 {
+    // A RELEASE ENDS ONLY THE GESTURE IT BELONGS TO (round 33). This handler is where the
+    // ON-RELEASE ACTIONS live -- remove a band, toggle a solo bit, commit a band move -- and they
+    // act on identifiers the OWNER's press latched. A rival's release used to fire the owner's
+    // pending delete, hand back the owner's claim and drop the owner's topology snapshot.
+    if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
+        return;
     // ADR-0053 round 29: the press is over -- and round 32: this DISPLAY's drag is over, which is
     // a statement about the display and not about the device that ended it. It holds one gesture
     // (`dragBand`, `bandAnchorX`, `gestureBands`), so nothing may still be claiming it.
@@ -3283,6 +3304,10 @@ void SpectrumImager::cancelActiveDrag()
 }
 void SpectrumImager::mouseDoubleClick (const juce::MouseEvent& e)
 {
+    // ...AND NEITHER DOES A RIVAL'S DOUBLE CLICK (round 33). `resetCrossover`, `resetParam` and
+    // `openFreqEditor` all write or take over state the owner's live gesture is defined against.
+    if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
+        return;
     const auto p = e.position;
     const int N = bandCount();
     for (int i = 0; i < N - 1; ++i)

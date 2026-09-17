@@ -77,7 +77,7 @@ namespace
     }
 }
 
-void claimDragWheel (juce::Component& c, WheelDragOwner& o, WheelPointer p)
+bool claimDragWheel (juce::Component& c, WheelDragOwner& o, WheelPointer p)
 {
     auto* mine = findClaim (p);
 
@@ -98,13 +98,29 @@ void claimDragWheel (juce::Component& c, WheelDragOwner& o, WheelPointer p)
     //
     // So the second press is not given a claim. The first accepted press owns the component's drag
     // and its wheel until that drag ends, which is what `releaseDragWheel` below now says.
+    //
+    // ...AND THE ANSWER IS RETURNED, WHICH IS THE WHOLE OF ROUND 33 (Devin
+    // `src/gui/LookAndFeel.cpp:R101-103`). Refusing the claim was never enough: the caller went on
+    // to run the rest of its `mouseDown` regardless, and THAT is where a component's shared drag
+    // lives -- `juce::Slider::Pimpl::mouseDown` re-seeds `valueOnMouseDown`, `mouseDragStartPos`
+    // and `sliderBeingDragged` and opens a second host gesture; `SpectrumImager` latches
+    // `dragBand`/`bandAnchorX`/`gestureBands`; `ValueBox` overwrites `downProp` and its
+    // `ScopedDragNotification`. The rejected press therefore took the drag it had just been
+    // refused the wheel for, and the first device's claim ended up pointing at the second
+    // device's anchor. The decision has to reach the caller, so it is returned, and it is
+    // `[[nodiscard]]`: a caller that forgets to ask does not compile.
+    //
+    // TRUE ALSO FOR THE DEVICE THAT ALREADY OWNS IT. `mine` is cleared above before this scan, so
+    // a re-claim by the holder finds no cell naming `c` and is granted -- a duplicate or re-entrant
+    // `mouseDown` from the owning device is not its own rival (State test 110 leg G).
     for (auto& cell : dragWheelClaims)
         if (cell.holder.getComponent() == &c)
-            return;
+            return false;
 
-    if (mine != nullptr) { mine->holder = &c; mine->owner = &o; return; }
+    if (mine != nullptr) { mine->holder = &c; mine->owner = &o; return true; }
 
     dragWheelClaims.push_back ({ p, juce::Component::SafePointer<juce::Component> (&c), &o });
+    return true;
 }
 
 void releaseDragWheel (const juce::Component& c)
@@ -137,6 +153,19 @@ juce::Component* dragWheelHolder (WheelPointer p) noexcept
 {
     auto* cell = findClaim (p);
     return cell != nullptr ? cell->holder.getComponent() : nullptr;
+}
+
+bool dragWheelHeldByOther (const juce::Component& c, WheelPointer p) noexcept
+{
+    // The same scan `claimDragWheel` makes, minus its write and minus the clear of this device's
+    // own cell -- which is why the pointer comparison is here instead: the holder asking about
+    // itself is not its own rival, and must go on running its own drag's events. See the
+    // declaration for the three places a refused press still reached the owner's state.
+    for (auto& cell : dragWheelClaims)
+        if (cell.holder.getComponent() == &c && cell.pointer != p)
+            return true;
+
+    return false;
 }
 
 bool wheelTakenByAnyPress (juce::Component& self, WheelDragOwner* selfOwner,
@@ -995,24 +1024,54 @@ namespace
 
         void mouseDown (const juce::MouseEvent& e) override
         {
-            if (auto* s = rotaryParent (getParentComponent()); s != nullptr && e.getNumberOfClicks() < 2 && ! isBeingEdited())
+            // ADR-0053 round 29: this press owns the wheel until it is released, wherever the
+            // cursor goes. Asked HERE rather than for every press, because a press this branch
+            // declines -- a double click, one on a non-rotary parent -- takes over no drag and has
+            // no anchor to add a notch to.
+            //
+            // AND IT IS ASKED BEFORE ANYTHING IS WRITTEN (round 32 owner rule, round 33 fix). This
+            // box's drag state is `downProp` and the `ScopedDragNotification`, and until round 33
+            // both were overwritten one line ABOVE the claim -- so a second device's press replaced
+            // the first's anchor and opened a second host gesture before the register was even
+            // consulted. A refused press now establishes nothing at all.
+            //
+            // ...AND A RIVAL'S PRESS STOPS BEFORE THE `Label` FORWARD AS WELL. That call opens the
+            // inline editor on a single or double click, and `isBeingEdited()` is exactly what the
+            // OWNER's `mouseDrag` below tests before it writes -- so letting it through would stop
+            // the first device's drag as surely as overwriting its anchor would. Asked as its own
+            // question because the claim below also declines for reasons that are NOT a rival (a
+            // double click, a non-rotary parent, an open editor), and those must still forward.
+            if (dragWheelHeldByOther (*this, wheelPointerOf (e.source))) return;
+            if (auto* s = rotaryParent (getParentComponent());
+                s != nullptr && e.getNumberOfClicks() < 2 && ! isBeingEdited()
+                  && claimDragWheel (*this, *this, wheelPointerOf (e.source)))
             {
                 downProp = s->valueToProportionOfLength (s->getValue());
                 dragGesture = std::make_unique<juce::Slider::ScopedDragNotification> (*s);
                 s->getProperties().set ("dragging", true); // knob shows press feedback (#10)
                 s->repaint();
-                // ADR-0053 round 29: this press owns the wheel until it is released, wherever the
-                // cursor goes. Claimed HERE rather than for every press, because a press this
-                // branch declines -- a double click, one on a non-rotary parent -- takes over no
-                // drag and has no anchor to add a notch to.
-                claimDragWheel (*this, *this, wheelPointerOf (e.source));
             }
             juce::Label::mouseDown (e); // double-click still opens the editor
         }
         void mouseUp (const juce::MouseEvent& e) override
         {
+            // A RELEASE ENDS ONLY THE DRAG IT BELONGS TO (round 33). `abortDragGesture` speaks for
+            // the BOX -- it closes the box's host gesture and hands back the box's claim -- so a
+            // rival's release reaching it would end the gesture another device is mid-drag in.
+            // "Someone else holds it", not "I hold it": an emptied cell (KI-028's self-heal) must
+            // still let this box's own release through. See `dragWheelHeldByOther`.
+            if (dragWheelHeldByOther (*this, wheelPointerOf (e.source))) return;
             abortDragGesture(); // close the host gesture before anything else reacts
             juce::Label::mouseUp (e);
+        }
+
+        // ...AND NEITHER DOES A RIVAL'S DOUBLE CLICK OPEN THE EDITOR ON A BOX ANOTHER DEVICE IS
+        // DRAGGING. `juce::Label::mouseDoubleClick` calls `showEditor`, and `isBeingEdited()` gates
+        // the owner's `mouseDrag`; the override exists only to ask the question first.
+        void mouseDoubleClick (const juce::MouseEvent& e) override
+        {
+            if (dragWheelHeldByOther (*this, wheelPointerOf (e.source))) return;
+            juce::Label::mouseDoubleClick (e);
         }
 
         // The release that never came (KI-028). Identical to what mouseUp does,
@@ -1035,6 +1094,10 @@ namespace
         }
         void mouseDrag (const juce::MouseEvent& e) override
         {
+            // A REFUSED PRESS DRAGS NOTHING (round 33). `downProp` is the OWNER's anchor, so the
+            // mapping below would write the owner's parameter from a rival's cursor -- the same
+            // defect as overwriting the anchor, reached one event later.
+            if (dragWheelHeldByOther (*this, wheelPointerOf (e.source))) return;
             // Directly map vertical drag to the value (respecting any skew). This
             // is robust regardless of event routing -- the previous forwarding
             // approach didn't take (feedback #28).

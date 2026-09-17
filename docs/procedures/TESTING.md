@@ -1702,6 +1702,43 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   run and that is how the round's own hypothesis was disproved** — the guard it removed changed no
   observable behaviour, so the guard was removed too, and leg G above is what stayed.
 
+* **Round 33 — a refused press establishes nothing, for the whole of its life.**
+
+  **State test 110** (`src/gui/LookAndFeel.cpp:R101-103`). Round 32 refused the second device's
+  claim and returned `void`; the caller could not see the refusal, so the rejected press ran the rest
+  of its `mouseDown` and replaced the anchor the first device was dragging from. `claimDragWheel` is
+  now `[[nodiscard]] bool`, and the register gained a read-only twin, `dragWheelHeldByOther`, that
+  the press's OTHER events ask — because `Pimpl::mouseDrag` writes the parameter from whatever
+  cursor it is handed and `Pimpl::mouseUp` ends with an unconditional `currentDrag.reset()`.
+
+  | Leg | Where | What it proves |
+  |---|---|---|
+  | A | real editor | the first device's press really starts the component's one drag, inside one host gesture |
+  | B1–B4 | real editor | §4 B: a rival's `mouseDown` is refused at all four drag implementations — rotary knob, `LinearHorizontal` knob, value box, multiband display — acquiring no claim, moving no thumb and no parameter |
+  | B5 | real editor | the same press's DOUBLE CLICK resets no knob, opens no value-box editor and resets no split |
+  | C | real editor | **§4 C, the primary regression**: the identical press-drag-drag-release run twice, the second with a rival's whole press spliced in, must give a **bit-for-bit equal** parameter — in both mappings, and again taken to the end of the travel |
+  | D | real editor | §4 D: the holding device's notch still reaches the drag it is making; the refused device's is consumed and reaches nobody |
+  | E1/E2 | real editor | §4 E, both release orders: a rival's release ends no drag, closes no gesture and hands back no claim; the owner's release ends all three |
+  | F | real editor | §4 F: the single-device press-drag-wheel-release path is unchanged |
+  | G | registry + real editor | §4 G: a duplicate press from the OWNING device is accepted, not refused as its own rival |
+  | H | real editor | §5: an editor-level handler with no drag state of its own (`ABControl`) leaves a live drag and the register alone |
+  | I1/I2 | real editor | §5: the rival's drag and release measured in the value box's and the display's own terms |
+
+  **THE SECOND DEVICE IS THE REGISTER'S, NOT JUCE'S.** Nothing public mints a second
+  `MouseInputSource`, so every real event this suite can send carries the `(mouse, 0)` key. The
+  component's drag state is not per device — `Pimpl` holds one of each field — so the legs seed it
+  through the real mouse and then name a finger as the register's holder, which is exactly the state
+  production reaches when the finger pressed first. `wheelPointerOf` is pinned against the real
+  source by State test 108 leg G.
+
+  **Mutation coverage (M187-M203).** The claim side (M187 refusal reports success, M191 the claiming
+  device's own cell is not cleared so the holder is refused as its own rival, M192 the refusal still
+  registers a second claim, M199 `dragWheelHeldByOther` ignores the pointer so the owner is its own
+  rival); the callers ignoring the refusal (M188 knob, M189 value box, M190 display); and every guard
+  on the rest of the press (M193/M194/M201 knob release, drag and double click; M195/M196/M200/M203
+  value box release, drag, `Label` forward and double click; M197/M198/M202 display release, drag and
+  double click).
+
 * **Round 32 — one component, one drag; and the gate that dropped a standalone command.**
 
   **State test 107 legs I-N and State test 108 legs D, H, I, L** (`src/gui/LookAndFeel.cpp:R106-110`).

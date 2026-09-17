@@ -952,7 +952,7 @@ such.** What is established is that the rewrite happens at a position that is no
 What is not established is the exact macOS event sequence that makes that position land one row up;
 that would need a trace on macOS, which was not available here. What supports it is arithmetic that
 accounts for all four observed controls. The box is placed `h + 8` above the cursor
-(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1135-1144`), so its top edge is a
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1198-1207`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
 `animToggle` 455–481 (`src/PluginEditor.cpp:2425-2450`). Taking each control's centre and
@@ -1486,7 +1486,7 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 declared, and `--fix` moved all three from `src/PluginEditor.h:518` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:1226`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:1259`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1496,7 +1496,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:1226`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:1259`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1506,7 +1506,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:1226"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:1259"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -1546,7 +1546,7 @@ editor rather than from the registration list: **43 of 45** controls carry the s
 two that do not are `titleButton` and `aboutLink`, and neither can produce the reported symptom:
 
   * **`titleButton` — the review's named example — has a DEAD fallback.** It carries componentID
-    `"ghost"`, and `drawButtonBackground` returns at `src/gui/LookAndFeel.cpp:560` — *before* the
+    `"ghost"`, and `drawButtonBackground` returns at `src/gui/LookAndFeel.cpp:589` — *before* the
     `animOr (b, "hovA", highlighted)` on `:373` is reached. Its text path ends at
     `LookAndFeel_V4::drawButtonText (g, b, false, false)`, which passes `highlighted` as a literal
     `false`. So the control has no hover visual at all, registered or not; the argument the review
@@ -4174,7 +4174,7 @@ spells out the conversion the compiler was already performing:
 |---|---|---|
 | `src/PluginEditor.cpp:246` | `roundToInt (inner.getWidth() * 0.40f)` | `roundToInt ((float) inner.getWidth() * 0.40f)` |
 | `src/PluginEditor.cpp:247` | `roundToInt (getWidth() * 0.40f)` | `roundToInt ((float) getWidth() * 0.40f)` |
-| `src/gui/LookAndFeel.cpp:453` | `x0 + k * (barW + gap)` | `x0 + (float) k * (barW + gap)` |
+| `src/gui/LookAndFeel.cpp:482` | `x0 + k * (barW + gap)` | `x0 + (float) k * (barW + gap)` |
 | `src/dsp/VelvetNoise.cpp:30` | `std::round (m * cell + …)` | `std::round ((float) m * cell + …)` |
 
 **Nothing is suppressed.** No `#pragma`, no `-Wno-…`, no change to
@@ -4255,7 +4255,7 @@ macOS job, not assumed. Linux and Windows were unaffected and green in the same 
 the two runs, normalised, gives 15 → 19 distinct sites and 108 → 126 instances: nothing
 disappeared, no category changed, and the whole delta is
 **`-Wimplicit-int-float-conversion` at four pre-existing sites** —
-`src/PluginEditor.cpp:246, 247` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:453`
+`src/PluginEditor.cpp:246, 247` (`getWidth() * 0.40f`), `src/gui/LookAndFeel.cpp:482`
 (`k * (barW + gap)`) and `src/dsp/VelvetNoise.cpp:30` (`m * cell`), each an `int` widened inside a
 float expression. **Recorded, not fixed here** — the source was unchanged by this change, so these
 were new diagnostics on old code, and Level 1 is not part of the `TESTING_POLICY` hard release
@@ -11958,6 +11958,44 @@ Flow, Latency, Plugin Format, Build System: untouched.
 M57–M60); `docs/procedures/CI_CD.md` (the re-measured stack figures);
 `CHANGELOG.md` `[0.9.8]` (two Fixed entries);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §73. [Verified]
+
+### Fifty-third pass — the refusal nobody could see, and the rest of the press (2026-09-17)
+
+**Trigger.** One confirmed review item on PR #144 — `src/gui/LookAndFeel.cpp:R101-103`, *"rejected
+second press steals drag"* — against round 32's own work.
+
+**What the round found.** Round 32 refused the second device's claim and returned `void`. The caller
+could not see the refusal, so the rejected press ran the rest of its `mouseDown` and established the
+component's drag anyway: `Pimpl::mouseDown` re-seeds the anchor, resets the owner's
+`ScopedDragNotification` and re-reads `valueOnMouseDown`; the display re-latches its whole gesture;
+the value box overwrote `downProp` and its gesture **above** the claim it had not yet asked for.
+Proving that from source showed the same press still reaching the owner's state through its other
+two events — `Pimpl::mouseDrag` writes the parameter from whatever cursor it is handed, and
+`Pimpl::mouseUp` ends with an unconditional `currentDrag.reset()`, so a refused release closed the
+owner's gesture, put `sliderBeingDragged` back to -1 and handed back the owner's claim. The display's
+release fires the owner's pending delete or solo toggle; both double-click handlers write outright.
+
+**Fix.** `claimDragWheel` is `[[nodiscard]] bool` and every caller asks before writing anything of
+its own; the register gained a read-only twin, `dragWheelHeldByOther`, that the press's other events
+ask. It is "someone else holds it", not "I hold it", so an emptied cell still lets the component's
+own release through (KI-028's self-heal, a destroyed holder read back as null). No per-device drag
+state, no multi-drag architecture, and the single-device path is byte-identical.
+
+**What the revalidations settled without touching production code.** The `PluginEditor.h:R923`
+velocity/infinity disposition holds — `dragIsVelocity` still excludes a zero region rather than
+dividing by it, and the genuine JUCE `float-divide-by-zero` is still dispositioned in
+`scripts/ubsan-ignorelist.txt` with the `CCACHE_EXTRAFILES` entry that makes it take effect in CI.
+`src/StateCommandGate.h:8`'s architecture-review gate is closed by ADR-0036 §32's recorded owner
+approval plus the in-source banner. The `src/gui/LookAndFeel.cpp:65` global-state invariants survive
+the new path: `dragWheelHeldByOther` is message-thread only like every caller, adds no cell (so the
+bound is unchanged), compares the same `WheelPointer` value the register keys on, and reads the
+holder through the same `SafePointer`, so a destroyed holder is no device's rival. RISK-009 is
+unchanged and remains an explicit residual.
+
+**Documents touched.** `ADR-0053` (eleventh-round section), `procedures/TESTING.md` (round-33 block,
+State test 110, M187-M203), `CHANGELOG.md`, this file and the worklog §91.
+
+[Verified]
 
 ### Fifty-second pass — one component, one drag, and a gate that dropped what it could not queue (2026-09-16)
 

@@ -81,6 +81,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **A second finger, or the mouse landing on a control another hand is already dragging, no longer
+  takes the drag over.** A control keeps one starting value and one anchor, and Anamorph had decided
+  the second press could not have them — but only for the purposes of the scroll wheel. The press
+  itself carried on: it replaced the anchor the first hand was dragging from, re-read the starting
+  value and closed the change gesture your DAW was recording, so the first hand's drag jumped to
+  wherever the second one had landed and lost the travel it had left. Letting go of the second press
+  ended the first one's drag outright, and on the Multiband display it fired whatever the first press
+  had lined up — removing a band, toggling a solo. A press on a control somebody else is already
+  dragging now does nothing at all, for as long as it lasts: it moves no value, takes no anchor, ends
+  no drag and fires no release action, and a double-click from it resets nothing and opens no
+  editor. The first hand carries on from its own anchor with its whole remaining travel, and its own
+  scrolling still reaches it. One hand on one control is unaffected. Regression coverage: State test
+  110. Evidence: PR #144. [Verified]
 - **Two fingers, or a finger and the mouse, on the same control no longer leave it steering itself.**
   A control can only be dragged once at a time — it keeps one starting value and one anchor — but the
   note of *"who is holding what"* could record a second device on the same control. When the first
