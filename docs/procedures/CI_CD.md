@@ -277,7 +277,8 @@ edge above must not be read as release non-blocking.
   `ANAMORPH_EFFECTS_CANARY` call to an allocating helper fails the step by name — *not* a call to
   `applyWidth`, which this page named until 2026-08-19: its definition is visible in that TU, so
   Clang infers its effects and the driver's own call to it is clean), while over `AnamorphEngine.cpp` it emits **52**
-  from JUCE calls whose definitions the TU cannot see — JUCE 9.0.1 carries no annotations of its own.
+  from JUCE calls whose definitions the TU cannot see — JUCE carries no annotations of its own
+  (measured at 9.0.1; re-verified at the 9.0.2 pin, ADR-0054).
   So the flag is enabled exactly where it is signal and stays off where it is noise; ADR-0029 §3
   records both measurements and the boundary between them.
   That TU is compiled **twice**, and the second compile is this gate's liveness proof: a clean
@@ -1356,7 +1357,7 @@ processors on the heap (`docs/procedures/TESTING.md`). Both suites additionally 
 
 **Both suites, since 2026-09-07.** The step used to run the state suite alone, justified by "the DSP
 suite holds no processors". That is true only of `AnamorphAudioProcessor` — `AnamorphTests` compiles
-`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:523-525), so it cannot construct one — and it
+`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:531-533), so it cannot construct one — and it
 is the wrong test: what overflows a frame is a large automatic, not that particular class, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP

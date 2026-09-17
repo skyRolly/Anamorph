@@ -824,7 +824,7 @@ jobs:
       # premise that "the DSP suite holds no processors". That is true only of
       # `AnamorphAudioProcessor` -- which `AnamorphTests` genuinely cannot construct,
       # since it compiles `tests/dsp_tests.cpp` alone and never the plugin sources
-      # (CMakeLists.txt:523-525) -- and it is the wrong test. What overflows a frame is
+      # (CMakeLists.txt:531-533) -- and it is the wrong test. What overflows a frame is
       # a large object, not that particular one, and `dsp_tests.cpp` declares
       # `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests
       # (:119, :189, :268, :304 ...). Measured with `g++ -fstack-usage` on the exact
@@ -2679,7 +2679,8 @@ jobs:
     # has two candidate causes, ISA and toolchain. The disambiguation is a
     # one-word edit -- re-run this job on `macos-26-intel`; if it still fails,
     # the cause is the ISA. It is also the configuration the sibling product
-    # runs green today on the same JUCE 9.0.1 pin and the same 10.13
+    # runs green today on the JUCE 9.0.1 pin this repository carried until
+    # ADR-0054, and the same 10.13
     # deployment target, which is why it is the one adopted rather than guessed.
     #
     # If a future label change ever lands this job on Apple Silicon anyway, the
@@ -3468,8 +3469,8 @@ jobs:
       #
       # SCOPED TO ONE TU, NOT THE BUILD. Enabling the flag over
       # `AnamorphEngine.cpp` produces 52 warnings, essentially all JUCE calls
-      # whose definitions that TU cannot see; JUCE 9.0.1 carries no annotations
-      # of its own, so those are warnings about correct code (ADR-0029 records
+      # whose definitions that TU cannot see; JUCE carries no annotations of its
+      # own (measured at 9.0.1, re-verified at 9.0.2), so those are warnings about correct code (ADR-0029 records
       # the decision not to enable it build-wide). `tests/realtime_effects.cpp`
       # includes only the JUCE-free first-party leaves, where the signal is
       # clean: measured 0 diagnostics on this tree, and the seeded

@@ -79,7 +79,7 @@ only — it configures and builds entirely from the command line on a headless L
   Below that floor the failure is an illegal-instruction fault inside the host (`SIGILL`;
   `STATUS_ILLEGAL_INSTRUCTION` on Windows). Only Apple Silicon carries no ISA floor.
   `docs/policies/COMPATIBILITY_POLICY.md`.
-- **CMake ≥ 3.22**, a **C++23** compiler, **Ninja** (recommended). **JUCE 9.0.1** is fetched
+- **CMake ≥ 3.22**, a **C++23** compiler, **Ninja** (recommended). **JUCE 9.0.2** is fetched
   automatically (pinned to an immutable commit via CMake `FetchContent`) or pointed at a local
   checkout.
 - Linux build deps install via `scripts/setup-linux.sh`. See `docs/procedures/BUILD.md`.

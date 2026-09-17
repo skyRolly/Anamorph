@@ -20,7 +20,7 @@ This document is not legal advice.
 |---|---|
 | The embedded web browser is disabled and libcurl is not linked, for every target — the plug-in, both test binaries, and the three off-by-default developer executables (benchmark, DSP dump, fuzz harness) | `CMakeLists.txt:496-497` (`JUCE_WEB_BROWSER=0`, `JUCE_USE_CURL=0`), `:448-449`, `:490-491`, `:529-530`, `:569-570`, `:609-610` |
 | Nothing under `src/` opens a network connection, so JUCE's networking code is never referenced and the linker drops it | `CMakeLists.txt:317` (`-Wl,--gc-sections`), `:244` (`-Wl,-dead_strip`, Apple), `:124` (`/OPT:REF`, MSVC); the shipped binary contains **no** `WebInputStream` symbol |
-| JUCE's own usage reporting and splash screen are disabled | `CMakeLists.txt:499-500` (`JUCE_DISPLAY_SPLASH_SCREEN=0`, `JUCE_REPORT_APP_USAGE=0`) |
+| JUCE's own usage reporting and splash screen are disabled | `CMakeLists.txt:507-508` (`JUCE_DISPLAY_SPLASH_SCREEN=0`, `JUCE_REPORT_APP_USAGE=0`) |
 | No analytics, telemetry, crash-reporting or update-check code exists in `src/` | no such symbol appears anywhere under `src/` |
 
 ### The one link in the interface

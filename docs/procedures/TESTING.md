@@ -431,7 +431,8 @@ re-deriving.
 State test 27's first leg is **deterministic** since round 12, and it says exactly what it proves.
 It uses a barrier the product itself provides: `AudioProcessor::setLatencySamples()` notifies its
 `AudioProcessorListener`s synchronously, from inside the call, whenever the reported value changes
-(pinned JUCE 9.0.1, `juce_AudioProcessor.cpp:415-436`), and the listener lock is released before
+(pinned JUCE 9.0.2, `juce_AudioProcessor.cpp:415-436` — that file is byte-identical across the
+9.0.1 → 9.0.2 bump, ADR-0054), and the listener lock is released before
 each callback — so a test listener can hold a delivery open while a real off-message thread makes
 a second request *inside* it, with no test hook in production code and no timing race. A build that
 clears the request flag AFTER delivering fails it (measured in round 12: `next tick -> 4, expected

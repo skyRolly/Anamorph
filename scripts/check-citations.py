@@ -692,6 +692,19 @@ DELIBERATE_REAIMS = {
 # claims takes the build with it.
 VERSIONED_LINES = {
     ("CMakeLists.txt", 14): "project(Anamorph VERSION",
+    # The JUCE pin, added 2026-09-17 by the 9.0.1 -> 9.0.2 bump (ADR-0054), for
+    # exactly the reason line 14 is here: these two lines CARRY a version, so
+    # every bump edits them, and thirteen documents cite the block by a span
+    # whose endpoint lands on one of them. Without this the bump that is
+    # supposed to be routine reports thirteen UNMAPPABLE citations that a human
+    # must "re-aim by hand" onto the line numbers they already have -- and the
+    # only spelling that would satisfy `DELIBERATE_REAIMS` is the one it
+    # refuses, because a key naming the same spelling twice declares that
+    # nothing moved. Only the two lines an anchor actually ENDS on are declared:
+    # :71 (the SHA) is inside every cited span and is compared by no endpoint,
+    # so declaring it would turn off a check nothing is asking about.
+    ("CMakeLists.txt", 67): "pinned by the tag's IMMUTABLE commit SHA",
+    ("CMakeLists.txt", 70): "ANAMORPH_JUCE_VERSION",
 }
 
 

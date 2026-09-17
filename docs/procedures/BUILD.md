@@ -10,13 +10,13 @@ How to configure and build Anamorph. Headless, command-line only (CMake + JUCE; 
   figure moved with the CI runner: the C++23 migration was verified on the then-current
   `macos-14` image, whose AppleClang identifies as 15.0.0.15000309 (Xcode 15.4) — the compiler
   version, not the Xcode version, is what `CMAKE_CXX_COMPILER_VERSION` reports.
-- **JUCE 9.0.1** is fetched automatically (CMake `FetchContent`, pinned to the tag's immutable
-  commit SHA `e18f7f5…`) — or pointed at a local checkout. See
+- **JUCE 9.0.2** is fetched automatically (CMake `FetchContent`, pinned to the tag's immutable
+  commit SHA `7278278…`) — or pointed at a local checkout. See
   `docs/policies/DEPENDENCY_POLICY.md` for the version-lock reasoning, ADR-0022 for the move to
-  the 9.0 line and the SHA pin, and ADR-0026 for the 9.0.1 bump.
+  the 9.0 line and the SHA pin, ADR-0026 for the 9.0.1 bump and ADR-0054 for the 9.0.2 bump.
 
 Evidence [Verified]: CMakeLists.txt:1 (`cmake_minimum_required(VERSION 3.22)`), :16-18 (C++23),
-:52-54 (JUCE 9.0.1 commit pin), :63-71 (FetchContent).
+:67-72 (JUCE 9.0.2 commit pin), :81-89 (FetchContent).
 
 ## Linux dependencies (Ubuntu)
 
@@ -56,7 +56,7 @@ Evidence [Verified]: scripts/build.sh:14-15.
 
 | Option | Default | Effect |
 |---|---|---|
-| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 522) |
+| `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 530) |
 | `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28, 417-419) |
 | `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:66, 77-79) |
 | `ANAMORPH_JUCE_TAG` | `e18f7f5…` (= tag 9.0.1) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:70-72) |
@@ -148,4 +148,4 @@ Evidence [Verified]: scripts/setup-linux.sh:8-12.
 `JUCE_STRICT_REFCOUNTEDPOINTER=1`. `ANAMORPH_BUILD_NUMBER` is the one of these attached to the
 single translation unit that reads it rather than to the targets — its value changes every CI run,
 and a target-wide definition put that changing value on the command line of every TU.
-Evidence [Verified]: CMakeLists.txt:491-501.
+Evidence [Verified]: CMakeLists.txt:491-509.

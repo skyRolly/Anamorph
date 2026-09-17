@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3406` and `.github/workflows/build.yml:3491`, this round being
+`.github/workflows/build.yml:3407` and `.github/workflows/build.yml:3492`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1894,7 +1894,7 @@ subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:603-621`, `:560-577` and `:597-623`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:613-632`, `:560-577` and `:597-623`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -2209,7 +2209,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:496-497, 527-528, 569-570`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:496-497, 535-537, 578-580`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
@@ -2965,7 +2965,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:531-540`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:540-549`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -2990,7 +2990,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:531-540`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:540-549`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
@@ -9976,7 +9976,7 @@ allocator/deallocator pair closed. Tests are not edited for a dashboard.
 **One CI control was widened, because its exclusion rested on a false premise.** The Windows-parity
 stack guard (`.github/workflows/build.yml`) ran the state suite alone, justified by "the DSP suite
 holds no processors". True of `AnamorphAudioProcessor` — `AnamorphTests` compiles
-`tests/dsp_tests.cpp` alone (CMakeLists.txt:523-525) — and the wrong test: `dsp_tests.cpp` declares
+`tests/dsp_tests.cpp` alone (CMakeLists.txt:531-533) — and the wrong test: `dsp_tests.cpp` declares
 `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests (:119, :189, :268, :304 …), at
 28% of the reserve. The step now runs both binaries; both were verified green under
 `ulimit -s 1024` first, so this arms a tripwire rather than introducing a failure.
@@ -13002,6 +13002,66 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 57th pass — 2026-09-17, round 37 (the dependency refresh: JUCE 9.0.2, and the two pins that did not move)
+
+**Commissioned:** update every updatable dependency, JUCE and Clang included, to the latest stable;
+move the changes into 0.9.8; re-date 0.9.8 to 2026-09-18.
+
+**JUCE 9.0.1 → 9.0.2 — TAKEN, and it is a gated Build System change (ADR-0054, `Proposed`).**
+`72782788ce18c2d4d760b28e0921d6ffc6431102`, the lightweight tag's own commit. Rule-2 evidence: the
+committed twin-dump harness built from one source tree against both checkouts with otherwise
+identical flags — **32 scenarios bit-identical including reported latencies**, `--self-check` green
+on both sides, run twice. The mechanism: `juce_dsp` and `juce_audio_processors` are byte-identical
+between the tags apart from their module `version:` field, and every JUCE file this repository cites
+by path and line was compared and is identical, so the citations survive the bump verbatim rather
+than by assumption. The first-party warning census is identical too — 9 instances on both sides,
+differing only in ninja's emission order.
+
+**The one thing that was not inert, and it was not in `BREAKING_CHANGES.md`.**
+`JUCE_USE_MP3AUDIOFORMAT` defaults **1** from 9.0.2 (it was **0** through 9.0.1), and the same edit
+deleted the patent/IP disclaimer beside it. Anamorph links `juce_audio_utils`, so the decoder would
+have been compiled into every shipped binary — dead code, since the tree calls no `AudioFormat` API
+at all — and it would have falsified `THIRD_PARTY_LICENSES.md`'s shipped sentence *"Anamorph
+therefore ships no MP3 decoder."* The flag is now pinned to 0 on all six targets. **The flag is the
+no-op; its omission would have been the change.**
+
+**Licence re-verification found real deltas, and they are benign.** Of the twelve licence files
+`THIRD_PARTY_LICENSES.md` cites, ten are byte-identical; the FLAC and Ogg Vorbis files differ by a
+**deletion-only** 21-line JUCE preamble that moved into new `JUCE_CHANGES.txt` / `JUCE_UPSTREAM.txt`
+companions — `tail -n +22 <old>` is byte-identical to each new file, so no term changed. Separately,
+**JUCE's authoritative dependency list left `LICENSE.md` for a new SPDX SBOM, `JUCE.spdx.json`**;
+`THIRD_PARTY_LICENSES.md` names that list both as its inventory's provenance and in its
+"re-verify after a bump" instruction, and both now point at the SBOM.
+
+**Clang stays 22, GCC stays 16 — measured, not assumed.** ADR-0033's lift condition is an
+apt.llvm.org `-23` suite rebuilt from a 23.x **release** tag. Every suite (noble, resolute, plucky)
+carries `1:23.1.2~++20260916012804+21a77e7bb6bf` — a pre-release snapshot built from a commit that
+is no release tag at all (`llvmorg-23.1.2` does not exist; the 23.x releases are `ea7d852a` and
+`6dfe1677`). `setup-llvm-apt.sh` would exit 1, which is the guard working. The same pass confirmed
+the 22 pin is already the newest installable *release* build (`ca7933e47d3a` = `llvmorg-22.1.8^{}`)
+and that GCC's newest release, 16.2.0, is still inside the floating `gcc:16` tag.
+
+**Actions:** `github/codeql-action` v4.37.9 → v4.38.0 on all three refs. Every other action pin was
+measured against its upstream tag list and is already newest.
+
+**Synced:** `CMakeLists.txt` (pin + the MP3 flag), `DEPENDENCY_POLICY.md` (table, version-lock
+reasoning, rule 3's doc-sync list, two compliance-log entries), `THIRD_PARTY_LICENSES.md`, `NOTICE`,
+`TRADEMARKS.md`, `README.md`, `COMMERCIAL_STATUS.md`, `BUILD.md`, `TROUBLESHOOTING.md`, `CI_CD.md`,
+`TESTING.md`, `LATENCY_MODEL.md`, `REALTIME_SAFETY_AUDIT.md`, `THREADING_POLICY.md`,
+`KNOWN_ISSUES.md`, `FUTURE_RISKS.md`, `dependabot.yml`, `build.yml`, `codeql.yml`, `msvc.yml`,
+ADR-0054 + `ADR_INDEX.md`, `worklogs/JUCE902_UPGRADE_v0.9.8.md`. A measurement dated against an older
+tree kept its date and gained the re-verification; it was not rewritten as if it had been taken now.
+
+**No `CHANGELOG.md` bullet** (rule 3 — by measurement nothing user-visible changed); `[0.9.8]` is
+re-dated **2026-09-18** as commissioned.
+
+**Outstanding (owner), stated rather than argued away:** the human Architecture Review and the
+rule-2 **Level-5 manual audition**. Three modules on paths Anamorph uses did change —
+`juce_opengl`, `juce_graphics`'s text shaping (`juce_SimpleShapedText.cpp`, glyph-cluster counting)
+and `juce_gui_basics`'s popup-menu accessible focus — and no headless gate covers what they look
+like.
+
 
 ## 56th pass — 2026-09-17, round 36 (the dispatch lint's own lexer, and what a `'` is)
 
