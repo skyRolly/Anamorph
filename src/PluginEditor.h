@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_opengl/juce_opengl.h>
 #include "PluginProcessor.h"
@@ -160,7 +162,8 @@ private:
     struct AttachmentWitness
     {
         AttachmentWitness (AnamorphAudioProcessor& p, juce::RangedAudioParameter& rp)
-            : proc (p), param (rp), before (*this, false), after (*this, true) {}
+            : proc (p), param (rp), before (*this, false), after (*this, true)
+        { prevRequests.reserve (4); }
 
         // ADR-0036 ROUND 27 (Devin R1390). THE ONE PARAMETER-DISPATCH BRACKET IN THE TREE THAT IS
         // NOT A SINGLE SCOPE, because the thing it brackets is not a call this editor makes:
@@ -253,13 +256,41 @@ private:
                 // happens before `after` below can state anything. The request is what the close
                 // reads instead of the live parameter. It claims nothing: no ownership, no episode
                 // bit, no step; a host push arms it and disarms it with no gesture in between.
-                prevRequest = proc.noteAttachmentRequest (&param, produced);
+                //
+                // ONE SAVE PER NOTIFICATION DEPTH, not one per witness (round 34, Devin
+                // `src/PluginEditor.h:R256-262`). A control's notification can be re-entered before
+                // its own `after` hook runs -- its attachment's parameter write notifies listeners,
+                // and one of them can drive the same control again -- so a single slot is written
+                // twice and the OUTER control's request, saved first, is the one that is lost. The
+                // inner completion then restores the outer inner request and the outer completion
+                // restores nothing, leaving the register empty for an enclosing gesture's close to
+                // fall back to a live read: host automation as the user's Redo destination. `raised`
+                // above is a count for the same reason; this is the same shape, depth-matched.
+                //
+                // Pushed only once the straddle is complete, exactly as `raiseDispatch` is: the
+                // attachment's constructor fires `sliderValueChanged` while only `before` is
+                // listening. That path arms the request and leaves it, which is what it did before.
+                //
+                // THE GUARD IS AN INVARIANT, NOT A BEHAVIOUR, and the mutation suite says so: M211
+                // drops it and no test can tell. It cannot misalign a later depth, because `after`
+                // pops the BACK and every real notification pushes its own -- the unguarded version
+                // would simply keep one construction-time entry at the bottom for ever. It is kept
+                // so that "empty means this witness has no notification open" stays true, which is
+                // what the destructor below acts on.
+                if (straddleArmed) prevRequests.push_back (proc.noteAttachmentRequest (&param, produced));
+                else               (void) proc.noteAttachmentRequest (&param, produced);
                 return;
             }
             // ...and hand the previous request back before anything else, so this runs even for the
-            // host push that returns below.
-            proc.restoreAttachmentRequest (prevRequest);
-            prevRequest = {};
+            // host push that returns below. Exactly the state THIS depth replaced: the stack is
+            // balanced by construction, and an empty one means no matching save exists, which is
+            // the unarmed case above -- there is nothing of ours to put back and clobbering the
+            // register with a blank would be the defect this fix exists to remove.
+            if (! prevRequests.empty())
+            {
+                proc.restoreAttachmentRequest (prevRequests.back());
+                prevRequests.pop_back();
+            }
             if (juce::exactlyEqual (param.getValue(), wasNorm)) return;  // the host pushed IN
             proc.noteOwnedParamEndpoint (&param, produced);
             pressProduced = true;   // ...and this press has an endpoint of its own (round 22)
@@ -306,7 +337,27 @@ private:
         // declared after every control they watch, so they are destroyed first. ROUND 27: and any
         // raise this witness still holds comes off here, so a control deleted from inside its own
         // notification cannot leave the dispatch depth standing (see `ScopedStraddle`).
-        ~AttachmentWitness() { while (raised > 0) lowerDispatch(); if (unhook) unhook(); }
+        // ROUND 34: and any request this witness still has saved goes back with them. A control
+        // deleted from inside its own notification never reaches its `after` hook, so without this
+        // the register would keep naming a control that no longer exists. The BOTTOM entry is the
+        // state before this witness's outermost notification, which is what the world should see.
+        //
+        // NOT DISTINGUISHABLE BY A TEST HERE (M212 survives its removal), for the same reason the
+        // `raised` unwind beside it has no leg either: the stack is non-empty only DURING a
+        // notification, so reaching this line means deleting the editor from inside one, and doing
+        // that in the harness means returning through the freed frames of the attachment that is
+        // still on the stack. The argument is structural: this is the destructor's half of the
+        // invariant the push above maintains.
+        ~AttachmentWitness()
+        {
+            while (raised > 0) lowerDispatch();
+            if (! prevRequests.empty())
+            {
+                proc.restoreAttachmentRequest (prevRequests.front());
+                prevRequests.clear();
+            }
+            if (unhook) unhook();
+        }
 
         AnamorphAudioProcessor&     proc;
         juce::RangedAudioParameter& param;
@@ -319,7 +370,11 @@ private:
         // whether the pair that balances them is complete (see `raiseDispatch`).
         int   raised = 0;
         bool  straddleArmed = false;
-        AnamorphAudioProcessor::AttachmentRequest prevRequest {};
+        // ROUND 34 (R256-262): one saved request per open notification depth on this control, not
+        // one per control. Bounded by the notification nesting the message thread can reach -- one
+        // or two in practice -- and reserved once at construction so a notification allocates
+        // nothing. Message thread only, like every other member here.
+        std::vector<AnamorphAudioProcessor::AttachmentRequest> prevRequests;
         std::function<void()> unhook;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AttachmentWitness)

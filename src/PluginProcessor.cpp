@@ -944,6 +944,12 @@ AnamorphAudioProcessor::noteAttachmentRequest (const juce::AudioProcessorParamet
 
 // ...and disarmed, by restoring whatever was armed before. Restoring rather than clearing is what
 // makes a nested control notification safe: the inner one puts the outer one's request back.
+//
+// THE SAVE HAS TO BE PER NOTIFICATION DEPTH, not per control (round 34, Devin
+// `src/PluginEditor.h:R256-262`). This call does exactly what it is told, so a caller that keeps one
+// slot and is re-entered before its own restore overwrites the outer save with the inner one, and
+// the outer restore then hands back a blank -- leaving an enclosing gesture's close to fall back to
+// a live read. `AttachmentWitness` keeps a stack for that reason.
 void AnamorphAudioProcessor::restoreAttachmentRequest (AttachmentRequest prev) noexcept
 {
     attachRequest = prev;

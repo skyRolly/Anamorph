@@ -21246,7 +21246,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:2519).
+//  baseline", src/PluginProcessor.cpp:2525).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -21479,7 +21479,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:2146).
+//  targets", src/PluginProcessor.cpp:2152).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21856,7 +21856,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2704).
+//  mixed sound", src/PluginProcessor.cpp:2710).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -27850,6 +27850,313 @@ static void testARefusedPressEstablishesNothing()
     delete ed;
 }
 
+// ---------------------------------------------------------------------------
+//  State test 111 -- NESTED NOTIFICATIONS KEEP THE USER'S ENDPOINT (round 34,
+//  Devin `src/PluginEditor.h:R256-262`, "nested notifications lose user endpoint").
+// ---------------------------------------------------------------------------
+static void testNestedNotificationsKeepTheUserEndpoint()
+{
+    std::printf ("State test 111: nested notifications keep the user endpoint (R256-262)\n");
+
+    using Req = AnamorphAudioProcessor::AttachmentRequest;
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the nested-notification probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    // A IS A COMBO BOX, and that is the whole reason this defect reaches an endpoint. A slider's
+    // gesture closes from `sliderDragEnded`, AFTER every `sliderValueChanged` hook, so its witness
+    // has already declared by then. A `ComboBoxParameterAttachment` (and a `ButtonParameterAttachment`)
+    // calls `setValueAsCompleteGesture`: begin, write, END, all inside the control's own callback --
+    // so the close runs BETWEEN the witness's before and after hooks, with nothing declared, and
+    // reads the REQUEST the before hook armed. That is what round 20 built the request for, and it
+    // is what a nested notification could take away.
+    std::vector<juce::Slider*> sliders;
+    juce::ComboBox* algoBox = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            if (auto* b = dynamic_cast<juce::ComboBox*> (k))
+                if (algoBox == nullptr && b->getNumItems() == 4
+                    && b->getItemText (0) == juce::String ("Haas")) algoBox = b;
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* algoP = apvts.getParameter (pid::algorithm);
+    auto* widP  = apvts.getParameter (pid::width);
+    auto* widK  = findSliderFor (widP);
+    check (algoBox != nullptr && algoP != nullptr && widP != nullptr && widK != nullptr,
+           "the Widen Algorithm combo (A) and the Width knob (B) are findable");
+    if (! (algoBox != nullptr && algoP != nullptr && widP != nullptr && widK != nullptr))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    // THE REQUEST, READ WITHOUT DISTURBING IT. `noteAttachmentRequest` returns whatever was armed
+    // and writes a new one only when it is given a parameter, so a null parameter is a pure read of
+    // the live slot -- which is what these legs need at seven points inside one call stack.
+    auto reqOf = [&] { return proc.noteAttachmentRequest (nullptr, 0.0f); };
+    const int aIdx = algoP->getParameterIndex(), bIdx = widP->getParameterIndex();
+    auto name = [&] (Req r) -> juce::String
+    {
+        if (r.index < 0) return "none";
+        if (r.index == aIdx) return "A@" + juce::String (r.norm, 4);
+        if (r.index == bIdx) return "B@" + juce::String (r.norm, 4);
+        return "other#" + juce::String (r.index);
+    };
+    auto idxOf   = [&] { return juce::roundToInt (algoP->convertFrom0to1 (algoP->getValue())); };
+    auto setIdx  = [&] (int i) { algoP->setValueNotifyingHost (algoP->convertTo0to1 ((float) i)); };
+    auto plainW  = [&] { return widP->convertFrom0to1 (widP->getValue()); };
+    auto settle  = [&] { proc.pollUndoCoalesce(); while (proc.canUndo()) proc.undo();
+                         proc.pollUndoCoalesce(); };
+
+    struct Relay final : juce::AudioProcessorParameter::Listener
+    {
+        std::function<void()> action;
+        bool armed = false, fired = false;
+        void parameterValueChanged (int, float) override
+        { if (armed && ! fired && action) { fired = true; action(); } }
+        void parameterGestureChanged (int, bool) override {}
+    };
+
+    // ---- THE SHARED SCENARIO ------------------------------------------------------------------
+    //      One user selection on A, with a nested B notification inside A's attachment write --
+    //      optionally recursing into B, optionally with a host write and a host POLL at the most
+    //      dangerous point there is. Every leg below is this run with a different combination, and
+    //      every leg ends by reading the Undo/Redo endpoint rather than an internal slot.
+    struct Trace
+    {
+        Req aArmed {}, bOuterArmed {}, bInnerArmed {}, afterInner {}, afterOuter {}, afterAHook {};
+        int hostIndex = -1, startIndex = -1, endIndex = -1, undoIndex = -1, redoIndex = -1;
+        bool haveStep = false;
+        float widthEnd = 0.0f;
+    };
+
+    auto run = [&] (bool recurse, bool hostWriteAndPoll, int userPick) -> Trace
+    {
+        Trace t;
+        setIdx (0);
+        widP->setValueNotifyingHost (widP->convertTo0to1 (1.0f));
+        settle();
+        t.startIndex = idxOf();
+
+        Relay onA, onBOuter, onBProbe;
+        onBProbe.action = [&] { t.bInnerArmed = reqOf(); };   // the RECURSIVE pass's own request
+        onBOuter.action = [&]
+        {
+            t.bOuterArmed = reqOf();      // B's outer request, armed by B's own before hook
+            if (recurse)
+            {
+                onBProbe.armed = true;
+                widK->setValue (1.6, juce::sendNotificationSync);   // B -> B, the recursion
+                onBProbe.armed = false;
+            }
+            t.afterInner = reqOf();
+            if (hostWriteAndPoll)
+            {
+                // A's gesture is open, A's attachment has written, and A's close has not run yet.
+                // Index 1 is neither where A started (0) nor what A picks, so all three stay
+                // distinguishable -- and the poll is the host pumping its message loop right here,
+                // which is the opportunity that turns a lost request into a committed endpoint.
+                setIdx (1);
+                t.hostIndex = idxOf();
+                proc.pollUndoCoalesce();
+            }
+        };
+        onA.action = [&]
+        {
+            t.aArmed = reqOf();           // A's own request, armed by A's before hook
+            onBOuter.armed = true;
+            widK->setValue (1.3, juce::sendNotificationSync);       // A -> B
+            onBOuter.armed = false;
+            t.afterOuter = reqOf();   // ...what A's close, one call later, is about to read
+        };
+
+        algoP->addListener (&onA);
+        widP->addListener (&onBOuter);
+        widP->addListener (&onBProbe);
+        onA.armed = true;
+        algoBox->setSelectedItemIndex (userPick, juce::sendNotificationSync);
+        onA.armed = false;
+        t.afterAHook = reqOf();
+        proc.pollUndoCoalesce();
+        algoP->removeListener (&onA);
+        widP->removeListener (&onBOuter);
+        widP->removeListener (&onBProbe);
+
+        t.endIndex = idxOf();
+        t.widthEnd = plainW();
+        t.haveStep = proc.canUndo();
+        if (t.haveStep) { proc.undo(); t.undoIndex = idxOf(); proc.redo(); t.redoIndex = idxOf(); }
+        return t;
+    };
+
+    // ---- LEG A: A -> B, one level of nesting --------------------------------------------------
+    {
+        const auto t = run (false, true, 3);
+        std::printf ("  [leg A] A armed %s, B armed %s, after B %s;"
+                     " start %d user 3 host %d -> undo %d redo %d\n",
+                     name (t.aArmed).toRawUTF8(), name (t.bOuterArmed).toRawUTF8(),
+                     name (t.afterOuter).toRawUTF8(), t.startIndex, t.hostIndex,
+                     t.undoIndex, t.redoIndex);
+        check (t.aArmed.index == aIdx && t.bOuterArmed.index == bIdx,
+               "leg A: each control armed its own request");
+        check (t.afterOuter.index == aIdx && juce::exactlyEqual (t.afterOuter.norm, t.aArmed.norm),
+               "leg A: B's completion restores A's request exactly");
+        check (t.haveStep && t.undoIndex == t.startIndex && t.redoIndex == 3,
+               "leg A: ...and the Undo step belongs to A's own selection");
+    }
+
+    // ---- LEG B: A -> B -> B, the recursive case (the primary Devin scenario) -------------------
+    {
+        const auto t = run (true, true, 3);
+        std::printf ("  [leg B] A armed %s | B outer %s | B recursive %s | after recursive %s"
+                     " | after outer %s | after A's hook %s\n",
+                     name (t.aArmed).toRawUTF8(), name (t.bOuterArmed).toRawUTF8(),
+                     name (t.bInnerArmed).toRawUTF8(), name (t.afterInner).toRawUTF8(),
+                     name (t.afterOuter).toRawUTF8(), name (t.afterAHook).toRawUTF8());
+        std::printf ("  [leg B] start %d, user selected 3, host wrote %d, A ended at %d;"
+                     " step=%d undo->%d redo->%d\n",
+                     t.startIndex, t.hostIndex, t.endIndex, (int) t.haveStep,
+                     t.undoIndex, t.redoIndex);
+        check (t.aArmed.index == aIdx, "leg B: A's before hook armed A's own request");
+        check (t.bOuterArmed.index == bIdx, "leg B: the nested B notification armed B's request");
+        check (t.bInnerArmed.index == bIdx && ! juce::exactlyEqual (t.bInnerArmed.norm, t.bOuterArmed.norm),
+               "leg B: ...and the recursive B notification armed its OWN, distinct from the outer's");
+        check (t.afterInner.index == bIdx && juce::exactlyEqual (t.afterInner.norm, t.bOuterArmed.norm),
+               "leg B: the recursive completion restores the OUTER B request exactly");
+        check (t.afterOuter.index == aIdx && juce::exactlyEqual (t.afterOuter.norm, t.aArmed.norm),
+               "leg B: the outer completion restores A's request exactly -- this is R256-262");
+        check (t.haveStep, "leg B: the user's selection recorded an Undo step");
+        check (t.undoIndex == t.startIndex, "leg B: Undo returns to where the user started");
+        check (t.redoIndex == 3,
+               "leg B: ...and Redo goes to what the USER selected, not what the host wrote");
+    }
+
+    // ---- LEG C: the host's poll opportunity, with and without it ------------------------------
+    //      The same recursive run twice: once with the host write and the nested poll at the
+    //      dangerous point, once without either. The endpoint must be the same both times -- which
+    //      is the statement that the host cannot reach it, rather than that it happens not to.
+    {
+        const auto withHost = run (true, true,  3);
+        const auto clean    = run (true, false, 3);
+        std::printf ("  [leg C] with a re-entrant host write + poll: redo %d; without: redo %d\n",
+                     withHost.redoIndex, clean.redoIndex);
+        check (clean.haveStep && clean.redoIndex == 3,
+               "leg C: the clean recursive run records the user's own endpoint");
+        check (withHost.redoIndex == clean.redoIndex,
+               "leg C: ...and a host write plus a nested poll at A's close cannot change it");
+        check (withHost.hostIndex == 1 && clean.hostIndex == -1,
+               "leg C: ...with the two runs really differing in whether the host wrote at all");
+    }
+
+    // ---- LEG D: sequential, NON-nested notifications ------------------------------------------
+    //      The ordinary path, unchanged: two selections in a row with nothing nested inside either.
+    {
+        setIdx (0);
+        settle();
+        const Req beforeAll = reqOf();
+        algoBox->setSelectedItemIndex (2, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+        const Req betweenTwo = reqOf();
+        const int afterFirst = idxOf();
+        algoBox->setSelectedItemIndex (1, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+        const int afterSecond = idxOf();
+        const bool step2 = proc.canUndo();
+        int u1 = -1, u2 = -1;
+        if (step2) { proc.undo(); u1 = idxOf(); if (proc.canUndo()) { proc.undo(); u2 = idxOf(); } }
+        std::printf ("  [leg D] sequential: 0 -> %d -> %d, undo %d then %d;"
+                     " request before %s, between %s\n",
+                     afterFirst, afterSecond, u1, u2,
+                     name (beforeAll).toRawUTF8(), name (betweenTwo).toRawUTF8());
+        check (afterFirst == 2 && afterSecond == 1,
+               "leg D: two sequential selections both land where the user put them");
+        check (step2 && u1 == 2 && u2 == 0,
+               "leg D: ...and each is its own Undo step, in order");
+        check (betweenTwo.index == beforeAll.index
+                 && juce::exactlyEqual (betweenTwo.norm, beforeAll.norm),
+               "leg D: a completed notification RESTORES what it replaced, nested or not");
+        settle();
+    }
+
+    // ---- LEG E: two separate user gestures cannot leak into each other -------------------------
+    //      Gesture 1 is the nested-and-recursive one; gesture 2 is an ordinary selection made
+    //      afterwards. Gesture 2's endpoint must be its own, with nothing of gesture 1's depth
+    //      stack surviving into it.
+    {
+        const auto first = run (true, true, 3);
+        const int  mid   = idxOf();
+        const Req  beforeSecond = reqOf();
+        algoBox->setSelectedItemIndex (2, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+        const Req afterSecond = reqOf();
+        const int end2 = idxOf();
+        int u1 = -1, r1 = -1;
+        if (proc.canUndo()) { proc.undo(); u1 = idxOf(); proc.redo(); r1 = idxOf(); }
+        std::printf ("  [leg E] gesture 1 ended at %d, gesture 2 at %d; undo %d redo %d;"
+                     " request after gesture 2 %s\n", mid, end2, u1, r1,
+                     name (afterSecond).toRawUTF8());
+        check (first.redoIndex == 3, "leg E: gesture 1 kept its own endpoint");
+        check (end2 == 2 && r1 == 2,
+               "leg E: ...and gesture 2's endpoint is gesture 2's, not gesture 1's");
+        // ...and nothing of gesture 1's depth stack survived into gesture 2: gesture 2 restored
+        // exactly what it found, which is what gesture 1 had already restored before it.
+        check (afterSecond.index == beforeSecond.index
+                 && juce::exactlyEqual (afterSecond.norm, beforeSecond.norm),
+               "leg E: ...and gesture 2 restored exactly what it found, carrying nothing forward");
+        settle();
+    }
+
+    // ---- LEG F: the no-op and empty-request paths, unchanged -----------------------------------
+    //      Selecting the index that is already selected notifies nothing, so no request is armed
+    //      and no step is recorded -- the ADR-0052 no-op semantics this round must not disturb.
+    {
+        setIdx (2);
+        settle();
+        const Req before = reqOf();
+        const int startIdx = idxOf();
+        algoBox->setSelectedItemIndex (2, juce::sendNotificationSync);   // the same one again
+        proc.pollUndoCoalesce();
+        const Req after = reqOf();
+        const bool anyStep = proc.canUndo();
+        std::printf ("  [leg F] re-selecting the live index %d: step=%d;"
+                     " request %s -> %s\n", startIdx, (int) anyStep,
+                     name (before).toRawUTF8(), name (after).toRawUTF8());
+        check (idxOf() == startIdx, "leg F: a no-op selection changes no value");
+        check (! anyStep, "leg F: ...and records no Undo step");
+        check (after.index == before.index && juce::exactlyEqual (after.norm, before.norm),
+               "leg F: ...and leaves the request slot exactly as it found it");
+        settle();
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
 
 // ---------------------------------------------------------------------------
 //  State test 104 -- a save completion may only touch the dialog it BELONGS TO
@@ -32627,6 +32934,7 @@ int main (int argc, char* argv[])
     testOnePressPerPointingDevice();
     testAnUnwiredPresetManagerRunsSynchronously();
     testARefusedPressEstablishesNothing();
+    testNestedNotificationsKeepTheUserEndpoint();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

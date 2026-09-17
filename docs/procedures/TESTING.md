@@ -1702,6 +1702,49 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   run and that is how the round's own hypothesis was disproved** — the guard it removed changed no
   observable behaviour, so the guard was removed too, and leg G above is what stayed.
 
+* **Round 34 — a nested notification keeps its own depth's request.**
+
+  **State test 111** (`src/PluginEditor.h:R256-262`). `AttachmentWitness` saved the previous
+  `attachRequest` in ONE slot per witness, so a control whose notification was re-entered before its
+  own `after` hook overwrote the outer save with the inner one. The inner completion then restored
+  the inner save and the OUTER completion restored a blank — leaving an enclosing gesture's close to
+  fall back to a live read that a re-entrant host write had just changed. The save is now a stack,
+  one entry per open notification depth.
+
+  **A IS A COMBO BOX, and that is what makes the defect reach an endpoint.** A slider's gesture
+  closes from `sliderDragEnded`, after every `sliderValueChanged` hook, so its witness has already
+  declared; a `ComboBoxParameterAttachment` calls `setValueAsCompleteGesture` — begin, write, **end**,
+  all inside the control's own callback — so the close runs between the witness's two hooks with
+  nothing declared, and reads the request. That is what round 20 built the request for.
+
+  | Leg | What it proves |
+  |---|---|
+  | A | §5 A: one level of nesting — B's completion restores A's request exactly, and the Undo step is A's own |
+  | B | §5 B, **the primary Devin case**: A → B → B. Each depth arms its own request; the recursive completion restores the outer B save; the outer completion restores A's; Undo returns to the start and **Redo goes to what the user selected, not what the host wrote** |
+  | C | §5 C: the same recursive run with and without a re-entrant host write plus a nested `pollUndoCoalesce` at A's close — the endpoint is identical, which says the host cannot reach it rather than that it happened not to |
+  | D | §5 D: two sequential, non-nested selections are two Undo steps in order, and a completed notification restores what it replaced |
+  | E | §5 E: gesture 2's endpoint is gesture 2's, and it restored exactly what it found — nothing of gesture 1's depth stack carried forward |
+  | F | §5 F: re-selecting the live index changes no value, records no step and leaves the request slot exactly as it found it |
+
+  **MEASURED BEFORE THE FIX**, on the real editor: A armed `A@1.0000`; the nested B armed `B@0.6500`
+  saving A; the recursive B armed `B@0.8000` saving `B@0.6500` — *A lost here*; the recursive
+  completion restored `B@0.6500`; the outer completion restored **`none`**. The user selected index
+  3, the host wrote 1, and **Redo went to 1**.
+
+  **Mutation coverage (M204-M210). All seven killed**, one per shape the round's brief names: M204
+  one shared slot again (the pre-round-34 implementation), M205 the nested pass overwrites the outer
+  save instead of stacking, M206 restore the wrong depth (`front()` rather than this depth's own),
+  M207 pop without restoring, M208 clear the saves at the push, M209 skip restoration once anything
+  is nested, M210 the close stops preferring the request over its live read.
+
+  **M211 and M212 are not distinguishable by any safe test, and are recorded rather than covered.**
+  M211 drops the `straddleArmed` guard on the push: it cannot misalign a depth, because `after` pops
+  the back and every real notification pushes its own — the unguarded version merely keeps one
+  construction-time entry at the bottom for ever. M212 removes the destructor's unwind, which is
+  reachable only by deleting the editor from inside its own notification; doing that in the harness
+  means returning through the freed frames of the attachment still on the stack. The `raised` unwind
+  beside it has no leg either, for the same reason, and both rest on the same structural argument.
+
 * **Round 33 — a refused press establishes nothing, for the whole of its life.**
 
   **State test 110** (`src/gui/LookAndFeel.cpp:R101-103`). Round 32 refused the second device's

@@ -81,6 +81,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **Automation arriving while a menu or switch is being changed can no longer become what Redo
+  restores.** Picking a Widen Algorithm, or flipping a switch, is a complete edit the moment you
+  release it — Anamorph records what you picked so Undo and Redo return to it rather than to whatever
+  the parameter happened to hold. That record could be lost when changing one control caused another
+  to update, and that second control was then updated again before its own change had finished: a
+  chain Anamorph itself can start, since several controls move together. Your pick was forgotten, the
+  value read back instead was whatever your DAW's automation had just written, and pressing Redo
+  jumped to the DAW's value rather than to your choice. Each step of such a chain now keeps its own
+  record, so the outer edit still has yours when it completes. Regression coverage: State test 111.
+  Evidence: PR #144. [Verified]
 - **A second finger, or the mouse landing on a control another hand is already dragging, no longer
   takes the drag over.** A control keeps one starting value and one anchor, and Anamorph had decided
   the second press could not have them — but only for the purposes of the scroll wheel. The press

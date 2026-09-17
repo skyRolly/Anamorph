@@ -5874,3 +5874,105 @@ registers the press.
   invariants — message-thread-only access, the process-global lifetime bound, `WheelPointer` identity
   and the `SafePointer` lifecycle. See above.
 * **RISK-009.** Unchanged, and preserved as an explicit residual.
+
+## §92. Round 34 — Devin `src/PluginEditor.h:R256-262`, and the architecture-review evidence
+
+One confirmed bug and one procedural investigation that changed no production code.
+
+### One slot cannot hold two depths
+
+`AttachmentWitness::mark` arms the processor's single `attachRequest` before handing over to JUCE's
+attachment, and restores the previous value afterwards. The previous value was kept in ONE member
+per witness. That is enough for one control nested inside another — each witness has its own slot —
+and `restoreAttachmentRequest`'s comment said exactly that: *"the inner one puts the outer one's
+request back."* It is not enough for a control whose notification is **re-entered before its own
+`after` hook runs**, which the attachment's own parameter write makes possible: a listener on that
+parameter can drive the same control again. The second save overwrites the first.
+
+Traced from source, with G the global slot and W the per-witness save:
+
+| step | G | W_A | W_B |
+|---|---|---|---|
+| A's before hook arms | A | {} | — |
+| the nested B arms | B1 | {} | **A** |
+| the recursive B arms | B2 | {} | **B1** — A is gone |
+| the recursive completion restores | B1 | {} | {} |
+| the outer completion restores | **{}** | {} | {} |
+| A's close reads | **{}** → live read | | |
+
+### Measured, on the real editor
+
+A is the Widen Algorithm **ComboBox**, and that choice is the mechanism rather than a convenience: a
+slider's gesture closes from `sliderDragEnded`, after every `sliderValueChanged` hook, so its witness
+has already declared its endpoint by then. `ComboBoxParameterAttachment::comboBoxChanged` calls
+`setValueAsCompleteGesture` — begin, write, **end** — inside the control's own callback, so the close
+runs between the witness's two hooks with nothing declared, and reads the request. That is the case
+round 20 built the request for.
+
+    A armed                     A@1.0000
+    the nested B armed          B@0.6500        (saving A)
+    the recursive B armed       B@0.8000        (saving B@0.6500 -- A lost here)
+    the recursive completion    B@0.6500        correct
+    the outer completion        none            <-- R256-262
+    start index 0, user selected 3, host wrote 1, Redo -> 1
+
+The host's re-entrant value stood as the user's Redo destination. This is the same failure class as
+R968 and RISK-012, reached by a path round 20's mechanism was supposed to have closed.
+
+### The fix: depth-matched storage
+
+`prevRequests` is a stack — one entry per open notification on that control, pushed when the request
+is armed and popped into `restoreAttachmentRequest` when that same depth completes. `raised` beside
+it has been a count rather than a flag since round 27 for precisely this reason (*"a nested
+notification can straddle a straddle"*); this is the same shape applied to the request, and the push
+carries the same `straddleArmed` guard so the attachment constructor's initial update — which fires
+`sliderValueChanged` while only `before` is listening — pushes nothing. The destructor restores the
+bottom entry, so a control deleted from inside its own notification cannot leave the register naming
+it.
+
+Nothing else moved: parameter ownership, the host-automation endpoint rules, gesture grouping, the
+no-op semantics, `StateCommandGate` and the wheel register are untouched, and the non-nested path
+behaves exactly as before (State test 111 legs D and F).
+
+### Two mutants that no safe test can distinguish
+
+M204-M210 cover the seven shapes the round's brief names and all seven are killed. Two more are
+recorded rather than covered, with the reason at the call site:
+
+* **M211** drops the `straddleArmed` guard on the push. It cannot misalign a depth — `after` pops the
+  back and every real notification pushes its own — so the unguarded version merely keeps one
+  construction-time entry at the bottom for ever. The guard is kept because it makes "empty means no
+  notification is open" true, which is what the destructor acts on.
+* **M212** removes the destructor's unwind. Reaching it means deleting the editor from inside its own
+  notification, and doing that in the harness means returning through the freed frames of the
+  attachment still on the stack. The `raised` unwind beside it has no leg either, for the same
+  reason; both rest on the same structural argument.
+
+### A pre-existing residual this round did not widen to cover
+
+The unarmed initial-update path arms a request and never restores it, so from editor construction the
+register permanently names one parameter. It is inert: the close reads the request only for an
+episode whose bits are exactly "owned, not declared, not refused", and every control that can reach
+such a close arms a FRESH request in the same notification first, while Anamorph's own bare brackets
+declare (bit 2) or refuse (bit 4) per round 23. Behaviour here is unchanged from before this round —
+the guarded push leaves that path exactly as it was — and narrowing it is a separate decision about
+what a host-to-control push should state, not part of this fix.
+
+### `src/StateCommandGate.h:8` — architecture-review evidence, verified
+
+Checked against `docs/policies/ARCHITECTURE_REVIEW_GATE.md` §Procedure, step by step, rather than
+against the finding's wording:
+
+| Step | The rule | The evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | ADR-0036 §31: *"This is a **Thread Model** change … Gated, ADR mandatory"*, plus the round-28 comment on PR #144 |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | the owner's ruling of 2026-09-16, quoted verbatim in §31 with its scope, required handling and prohibitions, and restated in §32: *"The `StateCommandGate` architecture is APPROVED and is not to be redesigned"* |
+| 3 | if the change is a decision, an ADR is added/updated | §31 and §32 of ADR-0036, whose Status is **Accepted** and which carries `ADR_POLICY.md`'s required fields |
+| 4 | compatibility-affecting changes additionally run the release compatibility checklist | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value moves |
+
+`AI_AGENT_POLICY.md` adds that *"a passing build/test/pluginval does not clear a Hard Stop — only
+human review does"*. It does; the review exists and is recorded. The policy nowhere requires a GitHub
+`APPROVED` review, a signed file or any other medium for step 2, and both ADR sections state out loud
+that nothing was manufactured on GitHub and that no self-approval of any kind was performed — which
+is the failure mode the item guards against. **Procedural requirement satisfied.** No artifact is
+missing, and no architecture code was changed.

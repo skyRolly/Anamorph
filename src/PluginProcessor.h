@@ -297,7 +297,9 @@ public:
     // the close prefers that over its live read. It is a REQUEST, not a declaration: it states no
     // ownership and creates no step -- a host push arms and disarms it with no gesture in between
     // and nothing consumes it. The previous request is returned so the caller can restore it,
-    // which keeps one control's notification nested inside another's from stranding the outer one.
+    // which keeps one control's notification nested inside another's from stranding the outer one --
+    // provided the caller saves it PER NOTIFICATION DEPTH. A control whose notification is re-entered
+    // before its own restore has two saves live at once, and one slot cannot hold both (round 34).
     struct AttachmentRequest { int index = -1; float norm = 0.0f; };
     AttachmentRequest noteAttachmentRequest (const juce::AudioProcessorParameter* p,
                                              float norm) noexcept;

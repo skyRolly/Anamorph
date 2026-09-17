@@ -945,6 +945,57 @@ a discarded failure, and not the R640 class. The A/B and undo commands
 unchanged.
 
 
+## Decision — correction, 2026-09-17 (round 34)
+
+**A nested attachment notification must preserve its OWN depth's request, not the control's.**
+Round 20 gave the processor one `attachRequest` slot and had each control save the previous value
+before arming its own, restoring it afterwards — which is correct as far as it goes, and the comment
+on `restoreAttachmentRequest` said so: *"the inner one puts the outer one's request back."* What it
+missed is that the SAVE lived in one slot **per witness**, and a control's notification can be
+re-entered before its own `after` hook runs: the attachment's parameter write notifies listeners, and
+one of them can drive the same control again. The second save then overwrites the first, the inner
+completion restores the inner save, and the outer completion restores a blank.
+
+Measured on the real editor, with A a ComboBox (whose attachment does begin/write/**end** in one
+callback, so the close reads the request) and B a knob driven from inside A's write:
+
+| point | request slot |
+|---|---|
+| A's before hook armed | `A@1.0000` |
+| the nested B notification armed | `B@0.6500` (saving A) |
+| the recursive B notification armed | `B@0.8000` (saving B@0.65 — **A is lost here**) |
+| the recursive completion restored | `B@0.6500` ✔ |
+| **the outer completion restored** | **`none`** ✘ |
+
+With A's request gone, A's close fell through to its live read, which a re-entrant host write had
+just changed: the user selected index **3**, the host wrote **1**, and **Redo went to 1**.
+
+**The fix is depth-matched storage.** `AttachmentWitness::prevRequests` is a stack: one save per open
+notification on that control, pushed when the request is armed and popped into
+`restoreAttachmentRequest` when that same depth completes. `raised` beside it has been a count rather
+than a flag since round 27 for exactly this reason — *"a nested notification can straddle a
+straddle"* — and this is the same shape applied to the request. The push is guarded by
+`straddleArmed` like `raiseDispatch`, so the attachment constructor's initial update (before-hook
+only) pushes nothing; the destructor restores the bottom entry, so a control deleted from inside its
+own notification cannot leave the register naming it.
+
+**What did NOT change.** Parameter ownership, the host-automation endpoint rules, gesture grouping,
+the no-op semantics and the `attachRequest` contract itself are untouched: the request is still a
+request, still claims no ownership and still creates no step. The non-nested path is unchanged —
+a completed notification restores exactly what it replaced, as it always did.
+
+**Architecture-review gate (`docs/policies/ARCHITECTURE_REVIEW_GATE.md`).**
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | **NOT GATED, and stated rather than assumed.** This is editor-side bookkeeping on the message thread inside the user's own event handler: no new thread, no new cross-thread path and no new atomic ordering, so it is not a Thread Model change. No DSP node, stage order, parameter ID, range, default, automation flag, serialization field, reported latency, plug-in format or build input moves |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | not required for an ungated change; nothing in `StateCommandGate`, §31 or §32 is reopened |
+| 3 | if the change is a decision, an ADR is added/updated | this section |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** |
+
+State test 111, legs A–F. Mutation coverage M204–M210.
+
+
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
   not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots
@@ -986,5 +1037,5 @@ unchanged.
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:523-966, :340-520
+- Source: src/PluginProcessor.cpp:523-972, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")
