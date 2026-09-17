@@ -126,8 +126,11 @@ gate covers what they look like**:
 | `juce_core` | `JUCE_BUILDNUMBER`, vendored zlib | Inert. |
 
 The OpenGL, text-shaping and menu-accessibility rows are exactly what `DEPENDENCY_POLICY.md`
-rule 2's **Level-5 manual audition** exists for. It is outstanding, and ADR-0054 says so instead of
-arguing the gap away.
+rule 2's **Level-5 manual audition** exists for — they are the part of this bump no headless gate
+reaches, which is why the gap was named here rather than argued away. **That audition is complete**
+(owner, 2026-09-17) and **no regression was reported**. Nothing further is recorded about it: it is a
+human sign-off, not a measurement, and writing an observation the owner did not report would make
+this file say more than was established.
 
 ## §7. Rule-3 evidence — licences and attribution
 

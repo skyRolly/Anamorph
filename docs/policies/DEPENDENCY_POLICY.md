@@ -88,8 +88,11 @@ repository ever grows a real package manifest.
 
 ## Compliance log
 
-- **JUCE 9.0.1 → 9.0.2** — recorded in **ADR-0054** (v0.9.8 cycle; **`Proposed`** — the headless
-  half is complete, the human Architecture Review and the rule-2 Level-5 audition are outstanding).
+- **JUCE 9.0.1 → 9.0.2** — recorded in **ADR-0054** (v0.9.8 cycle; **`Accepted`** — the human
+  Architecture Review and the rule-2 **Level-5 manual audition** were both completed and signed off
+  by the owner on **2026-09-17**, on top of the headless evidence below. No audition observation is
+  recorded beyond completion, because none was reported; no regression was reported either, which is
+  the other half of why rule 3 admits no changelog entry here).
   **Zero C++ source changes**, and **one build change**: `JUCE_USE_MP3AUDIOFORMAT=0` is now pinned
   explicitly on all six targets, because 9.0.2 flips that module default 0 → 1 (and drops the
   patent/IP disclaimer beside it), which would otherwise have compiled an unused MP3 decoder into

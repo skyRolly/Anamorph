@@ -13003,12 +13003,47 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 58th pass — 2026-09-17, round 38 (ADR-0054 accepted, and the build contract catches up)
+
+Final merge-readiness round for PR #145. **No dependency decision was reopened** and no source,
+test or DSP file was touched.
+
+**ADR-0054 is `Accepted`.** The owner completed and signed off both human acts on **2026-09-17** —
+the Architecture Review (approved as implemented, `JUCE_USE_MP3AUDIOFORMAT=0` pin included) and the
+`DEPENDENCY_POLICY.md` rule-2 **Level-5 manual audition**, with **no regression reported**. The
+ADR's "Outstanding (owner)" section is replaced by a section that records the two sign-offs and
+says explicitly that **no audition observation is written down because none was reported** —
+inventing one would make the record say more than the owner did. `ADR_INDEX.md`, the
+`DEPENDENCY_POLICY.md` compliance log and `worklogs/JUCE902_UPGRADE_v0.9.8.md` §6 were moved to the
+same state; no historical measurement or date was rewritten.
+
+**Review finding — `docs/procedures/BUILD.md`, "build contract remains stale": CONFIRMED and
+fixed.** Two migration-caused defects, both real: the build-options table still gave
+`ANAMORPH_JUCE_TAG` as `e18f7f5…` (= tag 9.0.1) after the pin had moved, and the §Compile
+definitions inventory — the section that calls itself *part of the build contract* — omitted
+`JUCE_USE_MP3AUDIOFORMAT=0` entirely, so the one definition the bump ADDED was the one the contract
+did not list. The row now reads `7278278…` (= tag 9.0.2); the inventory lists the definition in its
+source order and explains that it is the one entry which **restates a former default rather than
+overriding a live one**, with the other five targets named. Every CMake line reference in the file
+was re-verified against the current tree (`:27`, `:28`, `:66`, `:70-72`, `:77-79`, `:81-89`,
+`:413-419`, `:469`, `:491-509`, `:530`) and the rest of `BUILD.md` was swept for further migration
+drift — none found; the `libegl-dev`/"required since JUCE 9" note is still true at 9.0.2.
+
+**No `CHANGELOG.md` entry, and the decision is evidence-based rather than habitual.**
+`CHANGELOG_POLICY.md` rule 3 admits user-visible changes only. The completed audition reported **no
+regression**, and no observation of a user-visible change exists anywhere in the repository to
+classify; the headless side already proves engine output and reported latency bit-identical across
+32 scenarios. Nothing user-visible is established, so nothing is written — a dependency-version
+bullet would be exactly the generic maintenance language the policy excludes. `[0.9.8]` keeps its
+commissioned date, **2026-09-18**.
+
 ## 57th pass — 2026-09-17, round 37 (the dependency refresh: JUCE 9.0.2, and the two pins that did not move)
 
 **Commissioned:** update every updatable dependency, JUCE and Clang included, to the latest stable;
 move the changes into 0.9.8; re-date 0.9.8 to 2026-09-18.
 
-**JUCE 9.0.1 → 9.0.2 — TAKEN, and it is a gated Build System change (ADR-0054, `Proposed`).**
+**JUCE 9.0.1 → 9.0.2 — TAKEN, and it is a gated Build System change (ADR-0054, written
+`Proposed` in this pass and `Accepted` by the owner the same day — see the 58th).**
 `72782788ce18c2d4d760b28e0921d6ffc6431102`, the lightweight tag's own commit. Rule-2 evidence: the
 committed twin-dump harness built from one source tree against both checkouts with otherwise
 identical flags — **32 scenarios bit-identical including reported latencies**, `--self-check` green
@@ -13056,11 +13091,12 @@ tree kept its date and gained the re-verification; it was not rewritten as if it
 **No `CHANGELOG.md` bullet** (rule 3 — by measurement nothing user-visible changed); `[0.9.8]` is
 re-dated **2026-09-18** as commissioned.
 
-**Outstanding (owner), stated rather than argued away:** the human Architecture Review and the
-rule-2 **Level-5 manual audition**. Three modules on paths Anamorph uses did change —
-`juce_opengl`, `juce_graphics`'s text shaping (`juce_SimpleShapedText.cpp`, glyph-cluster counting)
-and `juce_gui_basics`'s popup-menu accessible focus — and no headless gate covers what they look
-like.
+**The two human acts this round could not perform** were the human Architecture Review and the
+rule-2 **Level-5 manual audition** — three modules on paths Anamorph uses did change
+(`juce_opengl`, `juce_graphics`'s text shaping in `juce_SimpleShapedText.cpp`, glyph-cluster
+counting, and `juce_gui_basics`'s popup-menu accessible focus) and no headless gate covers what
+they look like. **Both were completed by the owner on 2026-09-17**; the 58th pass records the
+acceptance.
 
 
 ## 56th pass — 2026-09-17, round 36 (the dispatch lint's own lexer, and what a `'` is)

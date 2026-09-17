@@ -1,8 +1,9 @@
 # ADR-0054 — JUCE dependency upgrade 9.0.1 → 9.0.2
 
-**Status:** **Proposed** — the headless half of `DEPENDENCY_POLICY.md` rule 2 is complete and
-recorded below; **two owner actions remain** and are named in *Outstanding* at the end. This ADR
-becomes `Accepted` when they are done, which is the sequence ADR-0022 and ADR-0026 each followed.
+**Status:** **Accepted** — the human Architecture Review and the `DEPENDENCY_POLICY.md` rule-2
+Level-5 manual audition were both completed and signed off by the owner on **2026-09-17**, on top of
+the headless verification recorded below. That is the same sequence ADR-0022 and ADR-0026 each
+followed: headless evidence first, then the two human acts that no gate can produce.
 
 ## Context
 JUCE is pinned to an exact version, and any JUCE bump is a **Build System change requiring an
@@ -133,13 +134,22 @@ records the default flip and says the pin is what keeps its claim true.
 - `CHANGELOG.md` carries **no entry** for this bump — `CHANGELOG_POLICY.md` rule 3 admits user-visible
   changes only, and by construction this one has none to report.
 
-## Outstanding (owner)
-1. **Human Architecture Review.** `ARCHITECTURE_REVIEW_GATE.md` gates a Build System change and says
-   a green build does not clear it. The evidence a reviewer needs is above and in
-   `worklogs/JUCE902_UPGRADE_v0.9.8.md`.
-2. **The Level-5 manual audition** (`DEPENDENCY_POLICY.md` rule 2) — a DAW audition against this
-   build. It is a human sign-off and is not headlessly reproducible; the three editor-visible module
-   changes listed above are what it is for.
+## The two human acts, and what is recorded of them
+
+Both are **complete** (owner, 2026-09-17). They are recorded here as completed sign-offs and nothing
+more: **no audition observation is written down, because none was reported**, and inventing one
+would make this record say more than the owner did.
+
+1. **Human Architecture Review — completed and approved.** `ARCHITECTURE_REVIEW_GATE.md` gates a
+   Build System change and says a green build does not clear it; the review was carried out against
+   the evidence above and in `worklogs/JUCE902_UPGRADE_v0.9.8.md`, and the decision is to accept the
+   bump as implemented, including the `JUCE_USE_MP3AUDIOFORMAT=0` pin.
+2. **Level-5 manual audition — completed** (`DEPENDENCY_POLICY.md` rule 2). A DAW audition against
+   this build, which is a human sign-off and not headlessly reproducible. It is what covers the
+   three editor-visible module changes listed above (`juce_opengl`, `juce_graphics`'s text shaping,
+   `juce_gui_basics`'s popup-menu accessible focus), which no headless gate reaches. **No regression
+   was reported**, and that — together with the bit-identical twin dump — is why this bump takes no
+   `CHANGELOG.md` entry under rule 3: there is no user-visible change to report.
 
 ## Related
 - ADR-0012 (8.0.8 → 8.0.14), ADR-0022 (8.0.14 → 9.0.0, and the immutable-SHA pin), ADR-0026
