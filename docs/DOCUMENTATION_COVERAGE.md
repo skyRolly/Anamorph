@@ -1483,10 +1483,10 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
-declared, and `--fix` moved all three from `src/PluginEditor.h:573` to `:223` in this change set.
+declared, and `--fix` moved all three from `src/PluginEditor.h:602` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:1314`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:1343`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1496,7 +1496,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:1314`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:1343`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1506,7 +1506,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:1314"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:1343"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2152`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2177`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2710`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2735`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2525`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2550`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -9948,7 +9948,7 @@ probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers
 overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
 proof for the hour it took to write, and the wrong thing to leave standing.
 
-**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1104`: `pid::viewParams`
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1115`: `pid::viewParams`
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
@@ -10772,7 +10772,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:1391-1567`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:1402-1578`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -12295,7 +12295,7 @@ empty-directory mistake and MB1–MB6);
 
 **Trigger.** Two items on PR #144 at head `988ff3b`: `src/PluginProcessor.cpp:R802-807`, *"direct
 program commands can deadlock"*, and PREfast `C6001` **272/273** on the view-param
-write-back, `src/PluginProcessor.cpp:1104` (line 960 in the pre-fix file, which is the line the
+write-back, `src/PluginProcessor.cpp:1115` (line 960 in the pre-fix file, which is the line the
 alerts name), *"using uninitialized memory 'saved'"*. The first is confirmed; the
 second is a false positive, and was removed rather than dismissed.
 
@@ -13002,3 +13002,45 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)
+
+**Finding 1 — `src/PluginEditor.h:R280-281`, "recursive slider loses latest endpoint": CONFIRMED and
+fixed.** Round 34 made the saved `attachRequest` depth-matched and left `wasNorm` a single
+witness-level float beside it. Measured on the round-34 tree (State test 112 leg B): a user press
+moves the Width knob to 1.3, a re-entrant write of the same parameter lands inside that
+notification, `ParameterAttachment` echoes it into the knob, and the nested notification's `before`
+hook overwrites the enclosing one's `wasNorm` — so the outer hook classified the user's own move as
+a host push and `notePressEnded` refused the press. **`step = 0`: the edit was not undoable.**
+Everything a before/after pairing owns is now one `Frame` (previous request, `wasNorm`,
+`statedInside`), and the third member is what keeps an outer notification's stale live read from
+overwriting the newer value a nested one installed.
+
+**Finding 2 — `src/PluginProcessor.cpp:R1601-1602`, "host callback deadlocks timer polling":
+DISPROVEN, measured rather than argued.** Steps A–D of the reported chain are all true and are now
+asserted (State test 113 legs A–B): a host-started dispatch holds the `listenerLock`,
+`insideDispatch()` reads zero there, and the pumped tick reaches both `pollUndoCoalesceAdopted` and
+`apvts.copyState()`. Step E cannot happen: every one of those acquisitions runs with
+`soundReplacement` held (leg C, from a second thread whose `tryEnter` fails), a tick that finds the
+lock taken refuses in microseconds (leg D), and a concurrent production restore is parked at
+`soundReplacement` with the parameters untouched (leg E). That is ADR-0036 §31's ordering rule, and
+the half that makes the combination unreachable is Anamorph-owned. **No threading-model change; no
+production behaviour change**; the two source comments that predated §31 and still described this
+door as half of an open cycle are corrected.
+
+**Claude carry-forward — the unarmed initial-update request: conclusively inert, production code
+unchanged.** The register names index 17 (Multiband Enable) at 1.0000 from editor construction. Its
+one read is the batch close, and only for an episode that is owned, undeclared and unrefused; State
+test 112 leg F measures the strongest available case — a click on that parameter's own toggle,
+whose `ButtonParameterAttachment` close IS that read — starting at the stale value, and the step's
+Redo endpoint is the user's 0.0000.
+
+**Validation.** State 4 265 / 0 (newly executed), DSP 396 / 0, preflight, check-docs, citations
+against `HEAD` and `origin/main`, source-lint. Mutations M213–M221, **all nine killed**; M204–M212's
+verdicts are unaffected by this round's change and were not re-run for bookkeeping.
+
+**Documentation.** `ADR-0008` (round-35 correction section, with its own NOT-GATED gate table);
+`ADR-0036` §33 (verification of §31, no new decision); `docs/FUTURE_RISKS.md` RISK-009 (round-35
+bullet, disposition unchanged); `docs/procedures/TESTING.md` (State tests 112 and 113, M213–M221);
+`CHANGELOG.md` `[0.9.8]` (one Fixed entry);
+`worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §93. [Verified]

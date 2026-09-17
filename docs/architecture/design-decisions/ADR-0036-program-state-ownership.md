@@ -1031,7 +1031,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
 
 22. **A restore's clean baseline is the sound the restore installed, decided from its own bytes
     (round 15).** Review finding *"pending edits become the clean baseline"*
-    (`src/PluginProcessor.cpp:2525`).
+    (`src/PluginProcessor.cpp:2550`).
 
     **What `presetBaseline` is.** The sound signature the session was clean against when it was
     saved — what the modified-star is compared with after a reload. Two real shapes carry none: a
@@ -1100,7 +1100,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     the one-pass reassert makes exact by construction.
 
 23. **A relative operation acts on the session it observed (round 16).** Review finding *"relative
-    navigation uses stale targets"* (`src/PluginProcessor.cpp:2152`).
+    navigation uses stale targets"* (`src/PluginProcessor.cpp:2177`).
 
     **What a relative operation is.** One whose target is a function of the current state rather than
     of the user's input: *the other slot* (`abToggle`), *the next/previous preset*
@@ -1206,7 +1206,7 @@ turn late) and leaves a save issued on the host thread right after its restore d
     derived program-state target there to go stale.
 
 24. **One whole-sound replacement at a time (round 17).** Review finding *"overlapping restores
-    expose mixed sound"* (`src/PluginProcessor.cpp:2710`).
+    expose mixed sound"* (`src/PluginProcessor.cpp:2735`).
 
     **What a whole-sound replacement is.** An operation that installs an ENTIRE sound over the live
     parameter set, as opposed to moving one parameter: a host restore's install
@@ -2265,6 +2265,42 @@ turn late) and leaves a save issued on the host thread right after its restore d
     `valueTreeChanging` blocking on the message thread from a callback a host's pump delivers, with
     no Anamorph lock on the waiting side and no Anamorph code on either edge of the wait. No
     suppression was added for it, and it is not described as an Anamorph defect.
+
+### §33. Round 35 — the timer door's APVTS acquisition, measured rather than argued
+
+Devin `src/PluginProcessor.cpp:R1601-1602` (*"host callback deadlocks timer polling"*) reports the
+RISK-009 cycle reached through `pollUndoCoalesceFromTimer`: a host-started parameter callback holds
+JUCE's `listenerLock`, the host pumps the editor timer inside it, `insideDispatch()` does not
+recognise the dispatch, the tick reaches `pollUndoCoalesceAdopted` and `apvts.copyState()`, and a
+concurrent restore holds `valueTreeChanging` while waiting for that same `listenerLock`.
+
+**Every step but the last is true, and the last cannot happen.** §31's rule is what answers it —
+*every thread that can hold `valueTreeChanging` while waiting for a `listenerLock` must take
+`soundReplacement` FIRST* — and the poll body runs under the try it holds, so a successful try is
+the evidence that no such thread exists at that instant. **No new decision is taken here**: this
+section records the verification of an existing one.
+
+State test 113 measures each step on the real processor rather than asserting it:
+
+| Leg | What it measures |
+|---|---|
+| A | inside a dispatch THIS plug-in started the tick does nothing at all — no poll body, no APVTS copy — and the identical call outside that extent reaches both |
+| B | inside a HOST-started dispatch (raw `beginChangeGesture` / `setValueNotifyingHost`, so no depth of ours is raised) `insideDispatch()` reads **zero**, and the pumped tick really does reach `pollUndoCoalesceAdopted` and `apvts.copyState()` — the finding's steps B, C and D, confirmed |
+| C | **every** APVTS acquisition that tick makes runs with `soundReplacement` already held, measured from a second thread whose `tryEnter` fails (2 of 2) |
+| D | with the lock held elsewhere by a non-announcing owner, the tick refuses in microseconds, takes no APVTS lock and consumes nothing |
+| E | the whole triple — host dispatch + pumped tick + a concurrent off-message-thread `setStateInformation` — leaves the restore **parked at `soundReplacement` with the parameters untouched**, which is exactly "it holds no APVTS lock", and both sides then complete |
+
+**Disposition: an unreachable combination, and NOT because JUCE owns one of the locks.** The half
+that makes it unreachable is Anamorph-owned: the ordering rule above and the try that depends on it.
+**RISK-009 is unchanged** — still OPEN on the JUCE-internal residual (`AudioProcessorValueTreeState`'s
+own 10 Hz timer blocking on `valueTreeChanging`, and a host nesting two parameters' listener locks),
+still with no Anamorph lock on the waiting side. Mutation coverage: M220 (bypass the guard/defer)
+and M221 (reintroduce the blocking acquisition) are both killed by legs B and D.
+
+Two source comments that predated §31 and still told a reader this door was half of an OPEN cycle —
+the round-26 paragraph above `flushDeferredCommands` and the round-27 banner on
+`pollUndoCoalesceFromTimer` — are corrected in place. That is the whole of the production change
+this finding produced.
 
 ## Consequences
 

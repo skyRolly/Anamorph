@@ -748,8 +748,19 @@ void AnamorphAudioProcessor::endUserTransaction()
 // is RISK-009's round-20 escalation verbatim: not a new cycle, not one this round created (round
 // 21's timer doors try on `soundReplacement` alone and have the same residual), and not one an
 // agent may close, because closing it is a threading-model change. Devin R651 names the
-// `soundReplacement` edge and that edge is closed here. The APVTS edge is NOT, and RISK-009
-// carries it OPEN rather than this comment implying otherwise.
+// `soundReplacement` edge and that edge is closed here.
+//
+// ROUND 28 CLOSED THE APVTS EDGE AT THIS DOOR TOO, and round 35 corrects the sentence that used to
+// end this paragraph ("the APVTS edge is NOT [closed]"). It was written before ADR-0036 section 31
+// existed and it is what a reader of `pollUndoCoalesceFromTimer` was left with. The rule section 31
+// states is: EVERY THREAD THAT CAN HOLD `valueTreeChanging` WHILE WAITING FOR A `listenerLock` MUST
+// TAKE `soundReplacement` FIRST -- both of this plug-in's `replaceState` sites are inside it
+// (`applyStatePreservingView`, `applySoundTree`) and so is the host-thread `copyState` in
+// `copyStateWithRawValues`. The body below runs under the try it holds, so a successful try is the
+// evidence that no such thread exists at that instant, and the APVTS acquisition inside it cannot be
+// half of the cycle. What RISK-009 still carries OPEN contains no Anamorph lock at all: JUCE's own
+// APVTS 10 Hz timer blocking on `valueTreeChanging`, and a host nesting two parameters' listener
+// locks. State test 113 measures all five steps of that argument rather than asserting it.
 //
 // WHAT "COME BACK" MEANS HERE, and why nothing is dropped. The refusal happens BEFORE the queue is
 // moved and BEFORE `pollUndoCoalesceAdopted` runs, so `pendingGestureCommit` is left standing and
@@ -1573,10 +1584,11 @@ void AnamorphAudioProcessor::parameterGestureChanged (int parameterIndex, bool g
 // has returned -- so a depth counter kept around our callback body reads zero at exactly the moment
 // it would need to read one. Not blocking at all needs to detect nothing.
 //
-// ROUND 27 (RISK-009, and MEASURED rather than argued). The try answers for `soundReplacement` and
-// says nothing about the APVTS lock, which `copyStateWithRawValues` takes INSIDE it via
-// `apvts.copyState()`. ThreadSanitizer reported the full cycle on the round-27 tree with the flush
-// already guarded, and named this function on BOTH sides of it:
+// ROUND 27 (RISK-009, and MEASURED rather than argued), WITH ROUND 35'S CORRECTION AFTER IT. The
+// try answers for `soundReplacement` directly; the APVTS lock `copyStateWithRawValues` takes INSIDE
+// it via `apvts.copyState()` it answers for TRANSITIVELY, through the ordering rule ADR-0036 section
+// 31 states -- see below. ThreadSanitizer reported the lock-order pair on the round-27 tree with the
+// flush already guarded, and named this function on BOTH sides of it:
 //
 //   M0 => M1   `endChangeGesture` holds a parameter's `listenerLock`, the host pumps, this tick
 //              runs -> `pollUndoCoalesceAdopted` -> `currentStateSet` -> `copyStateWithRawValues`
@@ -1596,6 +1608,19 @@ void AnamorphAudioProcessor::parameterGestureChanged (int parameterIndex, bool g
 // tick reaches the flush directly -- see `timerCallback` -- which is what makes the queue's retry
 // door unconditional with no editor open.) Nothing is consumed and
 // nothing is decided, exactly as a failed try already behaved.
+//
+// ROUND 35 (Devin `src/PluginProcessor.cpp:R1601-1602`, "host callback deadlocks timer polling").
+// THE GUARD BELOW IS NOT WHAT KEEPS THIS DOOR OUT OF THE CYCLE, and the report is right that it
+// could not be: `insideDispatch()` answers for a dispatch THIS plug-in started, so a host-started
+// parameter callback reaches this line with the depth at zero and the tick runs. What keeps it out
+// is the try that follows, plus ADR-0036 section 31's ordering rule -- every thread that can hold
+// the APVTS `valueTreeChanging` lock while waiting for a parameter's `listenerLock` must take
+// `soundReplacement` FIRST -- so a successful try means no such thread exists and `copyState` below
+// cannot be half of any cycle. State test 113 measures each step: the tick really is entered with
+// the depth at zero (leg B), really does reach `pollUndoCoalesceAdopted` (leg B) and
+// `apvts.copyState()` (leg B), does so with `soundReplacement` held every time (leg C), refuses in
+// microseconds when the lock is already taken (leg D), and leaves a concurrent production restore
+// PARKED at `soundReplacement` with the parameters untouched -- holding no APVTS lock (leg E).
 void AnamorphAudioProcessor::pollUndoCoalesceFromTimer()
 {
     if (anamorph::param::insideDispatch())

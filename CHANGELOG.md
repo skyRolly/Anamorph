@@ -81,6 +81,15 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   Decision: ADR-0053. Regression coverage: State test 86 leg F, State test 88 legs E and G. Evidence: PR #144. [Verified]
 
 ### Fixed
+- **An edit you make while your DAW writes the same control is undoable again.** Turn a knob while
+  automation — or another Anamorph control that moves with it — writes the same value at the same
+  instant, and the edit could vanish from the Undo history entirely: pressing Undo skipped straight
+  past it, as though you had clicked the knob without moving it. Anamorph was comparing your move
+  against the wrong starting point, because the two changes shared one record. Each change now keeps
+  its own, so your move is recorded, one Undo puts the knob back where you found it, and Redo
+  returns it to the value **you** asked for rather than the one your DAW wrote. Where a single
+  action moves a control more than once, Redo now lands on the last value it actually produced.
+  Regression coverage: State test 112. Evidence: PR #144. [Verified]
 - **Automation arriving while a menu or switch is being changed can no longer become what Redo
   restores.** Picking a Widen Algorithm, or flipping a switch, is a complete edit the moment you
   release it — Anamorph records what you picked so Undo and Redo return to it rather than to whatever

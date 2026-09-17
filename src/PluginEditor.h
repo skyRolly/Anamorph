@@ -163,7 +163,7 @@ private:
     {
         AttachmentWitness (AnamorphAudioProcessor& p, juce::RangedAudioParameter& rp)
             : proc (p), param (rp), before (*this, false), after (*this, true)
-        { prevRequests.reserve (4); }
+        { frames.reserve (4); }
 
         // ADR-0036 ROUND 27 (Devin R1390). THE ONE PARAMETER-DISPATCH BRACKET IN THE TREE THAT IS
         // NOT A SINGLE SCOPE, because the thing it brackets is not a call this editor makes:
@@ -245,11 +245,35 @@ private:
             const bool post;
         };
 
+        // ONE COHERENT FRAME PER NOTIFICATION DEPTH (round 35, Devin `src/PluginEditor.h:R280-281`,
+        // "recursive slider loses latest endpoint"). Round 34 made the saved REQUEST depth-matched
+        // and left `wasNorm` a single witness-level float beside it, which is split state: a
+        // notification of this control can be re-entered before its own `after` hook (the
+        // attachment's parameter write notifies listeners, and one of them can drive the same
+        // control again), and the nested `before` hook then overwrites the enclosing notification's
+        // `wasNorm`. Everything a before/after pairing owns lives here instead, and the after hook
+        // reads ALL of it from the frame its own before hook pushed.
+        //
+        // `statedInside` is the third member and the one the finding's title is about. The `after`
+        // hook's `produced` is a LIVE read of the control -- and by the time an OUTER notification
+        // reaches its `after` hook, `ParameterAttachment` has already echoed that outer write back
+        // into the control, so the control reads the outer's OLDER value while the parameter holds
+        // the newer one the nested notification installed. Letting the outer state that value would
+        // overwrite the newer endpoint with an older one. A completed nested notification therefore
+        // marks its parent, and a marked frame states nothing: the deepest notification that moved
+        // the parameter is the one that names the endpoint, which is the "latest value the user
+        // action produced" rule ADR-0008 already applies to a batch.
+        struct Frame
+        {
+            AnamorphAudioProcessor::AttachmentRequest prevRequest {};
+            float wasNorm      = 0.0f;   // what the parameter held when THIS notification began
+            bool  statedInside = false;  // a notification nested in this one stated the endpoint
+        };
+
         void mark (bool post, float produced) noexcept
         {
             if (! post)
             {
-                wasNorm = param.getValue();
                 // ROUND 20: SAY WHAT THIS CONTROL IS ABOUT TO ASK FOR, BEFORE THE ATTACHMENT RUNS.
                 // For a ComboBox or a Button the attachment opens, writes and CLOSES the gesture in
                 // its own callback, so the close -- which is where the batch becomes pollable --
@@ -277,7 +301,8 @@ private:
                 // would simply keep one construction-time entry at the bottom for ever. It is kept
                 // so that "empty means this witness has no notification open" stays true, which is
                 // what the destructor below acts on.
-                if (straddleArmed) prevRequests.push_back (proc.noteAttachmentRequest (&param, produced));
+                if (straddleArmed) frames.push_back ({ proc.noteAttachmentRequest (&param, produced),
+                                                       param.getValue(), false });
                 else               (void) proc.noteAttachmentRequest (&param, produced);
                 return;
             }
@@ -286,14 +311,18 @@ private:
             // balanced by construction, and an empty one means no matching save exists, which is
             // the unarmed case above -- there is nothing of ours to put back and clobbering the
             // register with a blank would be the defect this fix exists to remove.
-            if (! prevRequests.empty())
+            if (frames.empty()) return;       // no matching save: nothing of ours is open
+            const Frame f = frames.back();
+            frames.pop_back();
+            proc.restoreAttachmentRequest (f.prevRequest);
+
+            bool stated = f.statedInside;
+            if (! juce::exactlyEqual (param.getValue(), f.wasNorm))   // ...else the host pushed IN
             {
-                proc.restoreAttachmentRequest (prevRequests.back());
-                prevRequests.pop_back();
+                pressProduced = true;   // this press has an endpoint of its own (round 22)
+                if (! stated) { proc.noteOwnedParamEndpoint (&param, produced); stated = true; }
             }
-            if (juce::exactlyEqual (param.getValue(), wasNorm)) return;  // the host pushed IN
-            proc.noteOwnedParamEndpoint (&param, produced);
-            pressProduced = true;   // ...and this press has an endpoint of its own (round 22)
+            if (stated && ! frames.empty()) frames.back().statedInside = true;
         }
 
         // The other half of the round-22 rule above: the press is over and nothing this control
@@ -351,10 +380,10 @@ private:
         ~AttachmentWitness()
         {
             while (raised > 0) lowerDispatch();
-            if (! prevRequests.empty())
+            if (! frames.empty())
             {
-                proc.restoreAttachmentRequest (prevRequests.front());
-                prevRequests.clear();
+                proc.restoreAttachmentRequest (frames.front().prevRequest);
+                frames.clear();
             }
             if (unhook) unhook();
         }
@@ -362,7 +391,7 @@ private:
         AnamorphAudioProcessor&     proc;
         juce::RangedAudioParameter& param;
         Hook  before, after;
-        float wasNorm = 0.0f;
+
         // Round 22: did anything this control did move the parameter between its drag start and
         // its drag end? Message thread only, like everything else in this type.
         bool  pressProduced = false;
@@ -374,7 +403,7 @@ private:
         // one per control. Bounded by the notification nesting the message thread can reach -- one
         // or two in practice -- and reserved once at construction so a notification allocates
         // nothing. Message thread only, like every other member here.
-        std::vector<AnamorphAudioProcessor::AttachmentRequest> prevRequests;
+        std::vector<Frame> frames;
         std::function<void()> unhook;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AttachmentWitness)

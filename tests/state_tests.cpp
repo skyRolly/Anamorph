@@ -21246,7 +21246,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:2525).
+//  baseline", src/PluginProcessor.cpp:2550).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -21479,7 +21479,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:2152).
+//  targets", src/PluginProcessor.cpp:2177).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -21856,7 +21856,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2710).
+//  mixed sound", src/PluginProcessor.cpp:2735).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -24446,6 +24446,43 @@ namespace {
 // The host seat. Identical in shape to State test 100's `PumpedUserInteraction`, with the one
 // difference this test exists for: it records whether the plug-in's own dispatch depth was raised.
 // It must not be -- the gestures below are a HOST's.
+// THE HOLDER. A non-announcing owner of `soundReplacement`, parked on another thread, with the
+// harness watchdog that turns a regressed tree into a FAILING leg rather than a hung suite.
+struct HeldReplacement
+{
+    AnamorphAudioProcessor& proc;
+    std::atomic<bool> parked { false }, release { false }, done { false };
+    std::thread holder, watchdog;
+
+    explicit HeldReplacement (AnamorphAudioProcessor& p) : proc (p)
+    {
+        proc.seams.insideDurableCapture = [this]
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread()) return;  // ours pass through
+            if (parked.exchange (true)) return;                            // park exactly once
+            while (! release.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        holder = std::thread ([this] { juce::MemoryBlock mb; proc.getStateInformation (mb);
+                                       done.store (true, std::memory_order_release); });
+        for (int waited = 0; waited < 2000 && ! parked.load(); waited += 2)
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        watchdog = std::thread ([this]
+        {
+            for (int waited = 0; waited < 400; waited += 5)
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            release.store (true, std::memory_order_release);
+        });
+    }
+    ~HeldReplacement()
+    {
+        release.store (true, std::memory_order_release);
+        watchdog.join();
+        holder.join();
+        proc.seams.insideDurableCapture = nullptr;   // cleared AFTER the join
+    }
+};
+
 struct HostPumpedCommand final : public juce::AudioProcessorListener
 {
     std::function<void()> pumped;
@@ -24531,42 +24568,6 @@ static void testNoStateCommandWaitsForAReplacement()
                what);
     };
 
-    // THE HOLDER. A non-announcing owner of `soundReplacement`, parked on another thread, with the
-    // harness watchdog that turns a regressed tree into a FAILING leg rather than a hung suite.
-    struct HeldReplacement
-    {
-        AnamorphAudioProcessor& proc;
-        std::atomic<bool> parked { false }, release { false }, done { false };
-        std::thread holder, watchdog;
-
-        explicit HeldReplacement (AnamorphAudioProcessor& p) : proc (p)
-        {
-            proc.seams.insideDurableCapture = [this]
-            {
-                if (juce::MessageManager::existsAndIsCurrentThread()) return;  // ours pass through
-                if (parked.exchange (true)) return;                            // park exactly once
-                while (! release.load (std::memory_order_acquire))
-                    std::this_thread::sleep_for (std::chrono::milliseconds (2));
-            };
-            holder = std::thread ([this] { juce::MemoryBlock mb; proc.getStateInformation (mb);
-                                           done.store (true, std::memory_order_release); });
-            for (int waited = 0; waited < 2000 && ! parked.load(); waited += 2)
-                std::this_thread::sleep_for (std::chrono::milliseconds (2));
-            watchdog = std::thread ([this]
-            {
-                for (int waited = 0; waited < 400; waited += 5)
-                    std::this_thread::sleep_for (std::chrono::milliseconds (5));
-                release.store (true, std::memory_order_release);
-            });
-        }
-        ~HeldReplacement()
-        {
-            release.store (true, std::memory_order_release);
-            watchdog.join();
-            holder.join();
-            proc.seams.insideDurableCapture = nullptr;   // cleared AFTER the join
-        }
-    };
 
     // One leg's worth of assertions, so eleven legs read as eleven facts rather than eleven copies.
     auto refusedWithoutWaiting = [&] (const char* leg, size_t expectedQueued)
@@ -28156,6 +28157,549 @@ static void testNestedNotificationsKeepTheUserEndpoint()
 
     proc.editorBeingDeleted (ed);
     delete ed;
+}
+
+
+// ---------------------------------------------------------------------------
+//  State test 112 -- A RECURSIVE SAME-CONTROL NOTIFICATION KEEPS THE LATEST
+//  ENDPOINT (round 35, Devin `src/PluginEditor.h:R280-281`,
+//  "recursive slider loses latest endpoint").
+// ---------------------------------------------------------------------------
+static void testRecursiveNotificationKeepsTheLatestEndpoint()
+{
+    std::printf ("State test 112: recursive same-control notification endpoint (R280-281)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the recursive-notification probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* widP = apvts.getParameter (pid::width);
+    auto* widK = findSliderFor (widP);
+    check (widP != nullptr && widK != nullptr, "the Width knob is findable");
+    if (widP == nullptr || widK == nullptr) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto plainW = [&] { return widP->convertFrom0to1 (widP->getValue()); };
+    auto settle = [&] { proc.pollUndoCoalesce(); while (proc.canUndo()) proc.undo();
+                        proc.pollUndoCoalesce(); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 widK, widK, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
+
+
+    struct Relay final : juce::AudioProcessorParameter::Listener
+    {
+        std::function<void()> action;
+        bool armed = false, fired = false;
+        void parameterValueChanged (int, float) override
+        { if (armed && ! fired && action) { fired = true; action(); } }
+        void parameterGestureChanged (int, bool) override {}
+    };
+
+    struct Trace
+    {
+        float outerWas = 0.0f, atReentry = 0.0f, atOuterExit = 0.0f, afterUp = 0.0f;
+        double sliderAtReentry = 0.0, sliderAtOuterExit = 0.0;
+        float endW = 0.0f, undoW = -1.0f, redoW = -1.0f;
+        bool  reentered = false, step = false;
+    };
+
+    // 0 = no re-entry at all; 1 = the same CONTROL is driven again (Devin's recursion);
+    // 2 = the PARAMETER is written again, which re-enters the control through the attachment's
+    //     own echo -- a notification of this control whose attachment write is suppressed.
+    auto run = [&] (int mode, double recurseTo, float hostNorm) -> Trace
+    {
+        Trace t;
+        widP->setValueNotifyingHost (widP->convertTo0to1 (1.0f));
+        settle();
+
+        Relay r;
+        r.action = [&]
+        {
+            t.atReentry       = widP->getValue();
+            t.sliderAtReentry = widK->getValue();
+            if (mode == 1) widK->setValue (recurseTo, juce::sendNotificationSync);
+            if (mode == 2) widP->setValueNotifyingHost (hostNorm);
+        };
+        widP->addListener (&r);
+
+        t.outerWas = widP->getValue();
+        const float cx = 0.5f * (float) widK->getWidth();
+        const float cy = 0.5f * (float) widK->getHeight();
+        widK->mouseDown (mev (cx, cy));
+        r.armed = (mode != 0); r.fired = false;
+        widK->setValue (1.3, juce::sendNotificationSync);
+        r.armed = false;
+        t.reentered       = r.fired;
+        t.atOuterExit     = widP->getValue();
+        t.sliderAtOuterExit = widK->getValue();
+        widK->mouseUp (mev (cx, cy));
+        t.afterUp = widP->getValue();
+        proc.pollUndoCoalesce();
+        t.endW = plainW();
+        t.step = proc.canUndo();
+        if (t.step) { proc.undo(); t.undoW = plainW(); proc.redo(); t.redoW = plainW(); }
+        widP->removeListener (&r);
+        settle();
+        return t;
+    };
+
+    // ---- LEG A: the recursion Devin names -- the same control driven again inside its own
+    //      notification. The user's action ends at 1.6, and 1.6 is what Redo must restore: the
+    //      outer notification's `produced` is a LIVE read of the control, and by the time it runs
+    //      the attachment has already echoed the OUTER write (1.3) back into the knob.
+    {
+        const auto t = run (1, 1.6, 0.0f);
+        std::printf ("  [leg A] outer wasNorm %.4f, re-entry at param %.4f / knob %.4f;"
+                     " knob at outer exit %.4f, param %.4f\n",
+                     t.outerWas, t.atReentry, t.sliderAtReentry, t.sliderAtOuterExit, t.atOuterExit);
+        std::printf ("  [leg A] end %.4f, step=%d, undo->%.4f redo->%.4f\n",
+                     t.endW, (int) t.step, t.undoW, t.redoW);
+        check (t.reentered, "leg A: the recursive same-control notification really happened");
+        check (std::abs (t.sliderAtOuterExit - 1.3) < 1.0e-4
+                 && ! juce::exactlyEqual (t.atOuterExit, t.outerWas),
+               "leg A: ...and the outer hook reads the knob at ITS value while the parameter holds"
+               " the newer one");
+        check (t.step && juce::approximatelyEqual (t.undoW, 1.0f),
+               "leg A: the press records one step, from where the user started");
+        check (juce::approximatelyEqual (t.redoW, 1.6f),
+               "leg A: ...and Redo restores the LATEST value the action produced, not the outer's");
+    }
+
+    // ---- LEG B: a re-entrant write of the PARAMETER during the user's own notification.
+    //      The attachment echoes it into the knob, which is a nested notification of this control
+    //      whose own write is suppressed -- so its `before` hook records the parameter as it then
+    //      stands. Sharing one `wasNorm` with the enclosing notification makes the user's press
+    //      read as having produced nothing at all.
+    {
+        const auto t = run (2, 0.0, 0.9f);
+        std::printf ("  [leg B] outer wasNorm %.4f, re-entrant write -> %.4f;"
+                     " knob at outer exit %.4f, param %.4f; end %.4f\n",
+                     t.outerWas, t.atOuterExit, t.sliderAtOuterExit, t.atOuterExit, t.endW);
+        std::printf ("  [leg B] step=%d, undo->%.4f redo->%.4f\n",
+                     (int) t.step, t.undoW, t.redoW);
+        check (t.reentered, "leg B: the re-entrant parameter write really happened");
+        check (juce::approximatelyEqual (t.atOuterExit, 0.9f),
+               "leg B: ...and it, not the user, is what the parameter holds at the outer hook");
+        check (t.step, "leg B: the user's press still records a step of its own");
+        check (juce::approximatelyEqual (t.undoW, 1.0f),
+               "leg B: ...from where the user started");
+        check (juce::approximatelyEqual (t.redoW, 1.3f),
+               "leg B: ...and Redo restores what the USER asked for, not the re-entrant write");
+    }
+
+    // ---- LEG C: no re-entry at all. The ordinary press, unchanged. ------------------------------
+    {
+        const auto t = run (0, 0.0, 0.0f);
+        std::printf ("  [leg C] plain press: step=%d, undo->%.4f redo->%.4f\n",
+                     (int) t.step, t.undoW, t.redoW);
+        check (! t.reentered, "leg C: nothing re-entered");
+        check (t.step && juce::approximatelyEqual (t.undoW, 1.0f)
+                 && juce::approximatelyEqual (t.redoW, 1.3f),
+               "leg C: a plain press keeps its own endpoint exactly as it always has");
+    }
+
+    // ---- LEG D: a host push with NO press at all still creates no step ---------------------------
+    {
+        widP->setValueNotifyingHost (widP->convertTo0to1 (1.0f));
+        settle();
+        widP->setValueNotifyingHost (widP->convertTo0to1 (1.7f));
+        proc.pollUndoCoalesce();
+        const bool any = proc.canUndo();
+        std::printf ("  [leg D] a bare host push to %.4f: step=%d\n", plainW(), (int) any);
+        check (! any, "leg D: host automation with no press is not an undoable user edit");
+        settle();
+    }
+
+    // ---- LEG E: two presses in a row, the first recursive -- nothing of the first press's
+    //      frame stack survives into the second.
+    {
+        const auto first  = run (1, 1.6, 0.0f);
+        const auto second = run (0, 0.0, 0.0f);
+        std::printf ("  [leg E] press 1 redo->%.4f; press 2 step=%d redo->%.4f\n",
+                     first.redoW, (int) second.step, second.redoW);
+        check (juce::approximatelyEqual (first.redoW, 1.6f),
+               "leg E: the recursive press kept its own latest endpoint");
+        check (second.step && juce::approximatelyEqual (second.redoW, 1.3f),
+               "leg E: ...and the next press states its own, carrying nothing forward");
+    }
+
+    // ---- LEG F: the UNARMED INITIAL UPDATE'S request, and why nothing can read it ---------------
+    //      Constructing the editor arms a request from the attachment's own `sendInitialUpdate`,
+    //      which fires while only `before` is listening: that notification has no completion, so
+    //      nothing puts the register back and one parameter stays named from construction onwards.
+    //      Reported by this project in round 34; investigated to a disposition in round 35.
+    {
+        const auto stale = proc.noteAttachmentRequest (nullptr, 0.0f);   // a pure, non-mutating read
+        const auto& ps = proc.getParameters();
+        auto* named = (stale.index >= 0 && stale.index < ps.size()) ? ps[stale.index] : nullptr;
+        std::printf ("  [leg F] the register names index %d (%s) at %.4f with no notification open\n",
+                     stale.index, named != nullptr ? named->getName (24).toRawUTF8() : "-", stale.norm);
+        check (stale.index >= 0 && named != nullptr,
+               "leg F: non-vacuity -- a request really does stand with no notification open");
+
+        // The ONE read of the register is the batch close, and only for an episode that is owned,
+        // undeclared and unrefused. A user gesture on the very parameter it names DECLARES, so the
+        // close takes the user's value. Measured rather than assumed.
+        auto* namedRanged = dynamic_cast<juce::RangedAudioParameter*> (named);
+        auto* namedK = findSliderFor (namedRanged);
+        std::printf ("  [leg F] ...and it has %s of its own\n",
+                     namedK != nullptr ? "a slider" : "no slider");
+        if (namedRanged != nullptr && namedK != nullptr)
+        {
+            settle();
+            const double target = namedK->getValue() < 0.5 * (namedK->getMinimum() + namedK->getMaximum())
+                                ? namedK->getMaximum() : namedK->getMinimum();
+            const float startNorm = namedRanged->getValue();
+            const float cx = 0.5f * (float) namedK->getWidth();
+            const float cy = 0.5f * (float) namedK->getHeight();
+            auto ev = [&] { return juce::MouseEvent (source, { cx, cy },
+                                                     juce::ModifierKeys::leftButtonModifier,
+                                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, namedK, namedK,
+                                                     juce::Time::getCurrentTime(), { cx, cy },
+                                                     juce::Time::getCurrentTime(), 1, false); };
+            namedK->mouseDown (ev());
+            namedK->setValue (target, juce::sendNotificationSync);
+            namedK->mouseUp (ev());
+            proc.pollUndoCoalesce();
+            const float endNorm = namedRanged->getValue();
+            const bool  step    = proc.canUndo();
+            float redoNorm = -1.0f;
+            if (step) { proc.undo(); proc.redo(); redoNorm = namedRanged->getValue(); }
+            std::printf ("  [leg F] a user gesture on it: %.4f -> %.4f, step=%d, redo->%.4f"
+                         " (the construction-time request holds %.4f)\n",
+                         startNorm, endNorm, (int) step, redoNorm, stale.norm);
+            check (step && juce::approximatelyEqual (redoNorm, endNorm),
+                   "leg F: a user gesture on the named parameter takes its OWN endpoint");
+            check (! juce::approximatelyEqual (endNorm, stale.norm),
+                   "leg F: ...non-vacuity -- and not the construction-time value by coincidence");
+            settle();
+        }
+
+        // THE DECISIVE ONE. Index 17 is a BOOLEAN driven by a ToggleButton, and a
+        // `ButtonParameterAttachment` calls `setValueAsCompleteGesture` -- begin, write, END inside
+        // the control's own callback -- so its close is exactly the close that reads the register,
+        // and it runs between the witness's two hooks. If the construction-time request could ever
+        // be read, this is where. It cannot: the `before` hook arms a FRESH request for the value
+        // the user just asked for, so the close prefers that one.
+        {
+            std::vector<juce::Button*> buttons;
+            std::function<void (juce::Component*)> walkB = [&] (juce::Component* c)
+            {
+                for (int i = 0; i < c->getNumChildComponents(); ++i)
+                {
+                    auto* k = c->getChildComponent (i);
+                    if (auto* b = dynamic_cast<juce::Button*> (k)) buttons.push_back (b);
+                    walkB (k);
+                }
+            };
+            walkB (ed);
+            juce::Button* namedB = nullptr;
+            if (namedRanged != nullptr)
+            {
+                const float was = namedRanged->getValue();
+                std::vector<bool> before;
+                before.reserve (buttons.size());
+                for (auto* b : buttons) before.push_back (b->getToggleState());
+                namedRanged->setValueNotifyingHost (was < 0.5f ? 1.0f : 0.0f);
+                int hits = 0;
+                for (size_t i = 0; i < buttons.size(); ++i)
+                    if (buttons[i]->getToggleState() != before[i]) { namedB = buttons[i]; ++hits; }
+                namedRanged->setValueNotifyingHost (was);
+                if (hits != 1) namedB = nullptr;
+            }
+            check (namedB != nullptr, "leg F: the named parameter's own toggle is findable");
+            if (namedB != nullptr && namedRanged != nullptr)
+            {
+                namedRanged->setValueNotifyingHost (stale.norm);   // start AT the stale value
+                settle();
+                const float startNorm = namedRanged->getValue();
+                namedB->setToggleState (! namedB->getToggleState(), juce::sendNotificationSync);
+                proc.pollUndoCoalesce();
+                const float endNorm = namedRanged->getValue();
+                const bool  step    = proc.canUndo();
+                float undoNorm = -1.0f, redoNorm = -1.0f;
+                if (step) { proc.undo(); undoNorm = namedRanged->getValue();
+                            proc.redo(); redoNorm = namedRanged->getValue(); }
+                std::printf ("  [leg F] a user click on its toggle: %.4f -> %.4f, step=%d,"
+                             " undo->%.4f redo->%.4f (the stale request holds %.4f)\n",
+                             startNorm, endNorm, (int) step, undoNorm, redoNorm, stale.norm);
+                check (step, "leg F: the click records a step");
+                check (juce::approximatelyEqual (redoNorm, endNorm),
+                       "leg F: ...whose Redo endpoint is what the USER asked for");
+                check (! juce::approximatelyEqual (redoNorm, stale.norm),
+                       "leg F: ...and is NOT the construction-time request the register still holds");
+                settle();
+            }
+        }
+
+        // ...and an unrelated control's whole gesture leaves the residual exactly as it found it:
+        // every completed notification restores what it replaced, so the register comes back.
+        widP->setValueNotifyingHost (widP->convertTo0to1 (1.0f));
+        settle();
+        (void) run (0, 0.0, 0.0f);
+        const auto again = proc.noteAttachmentRequest (nullptr, 0.0f);
+        check (again.index == stale.index && juce::exactlyEqual (again.norm, stale.norm),
+               "leg F: an unrelated control's complete gesture leaves the residual exactly as it was");
+        settle();
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+
+// ---------------------------------------------------------------------------
+//  State test 113 -- THE PUMPED TIMER'S APVTS ACQUISITION IS NEVER BARE
+//  (round 35, Devin `src/PluginProcessor.cpp:R1601-1602`, "host callback
+//  deadlocks timer polling"; RISK-009).
+//
+//  THE CHAIN AS REPORTED, and the one step of it this leg set measures rather
+//  than argues:
+//      a host-started parameter callback holds JUCE's `listenerLock`
+//      -> the host pumps the editor timer inside it
+//      -> `insideDispatch()` is FALSE, because it answers for a dispatch this
+//         plug-in started and a host's raises no depth of ours
+//      -> the tick reaches `pollUndoCoalesceAdopted`
+//      -> which reaches `apvts.copyState()` and its `valueTreeChanging` lock
+//      -> while a concurrent restore holds `valueTreeChanging` and waits for
+//         that same `listenerLock`.
+//
+//  Every step but the last is TRUE and is asserted below (legs A-C). The last
+//  is where the chain breaks, and the reason is ADR-0036 section 31 rather than
+//  a reachability argument: every thread that can hold `valueTreeChanging` while
+//  waiting for a `listenerLock` must take `soundReplacement` FIRST -- both
+//  `replaceState` sites are inside it (`applyStatePreservingView`,
+//  `applySoundTree`) and so is the host-thread `copyState` in
+//  `copyStateWithRawValues`. The poll body holds `soundReplacement` across its
+//  own `copyState`, so no such thread can be holding the APVTS lock at that
+//  instant. Leg D measures the refusal when the lock is already taken; leg E
+//  runs the real three-way interleave and measures the restore PARKED at
+//  `soundReplacement` with the parameters untouched -- which is exactly
+//  "it holds no APVTS lock".
+// ---------------------------------------------------------------------------
+static void testThePumpedTimerNeverBaresTheApvtsLock()
+{
+    std::printf ("State test 113: the pumped timer's APVTS acquisition is never bare (R1601-1602)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    auto* carrierP = apvts.getParameter (pid::bypass);
+    auto* widthP   = apvts.getParameter (pid::width);
+    const auto* lock = proc.stateCommandHooks.soundReplacement;
+    check (carrierP != nullptr && widthP != nullptr && lock != nullptr,
+           "the probe's parameters and the replacement lock are wired");
+    if (carrierP == nullptr || widthP == nullptr || lock == nullptr) return;
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };   // RAW: a host's write
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+
+    HostPumpedCommand seat;
+    seat.index = carrierP->getParameterIndex();
+    proc.addListener (&seat);
+
+    // A HOST's own gesture: raw `juce::` calls throughout, so the plug-in's dispatch depth stays at
+    // zero for the whole extent while JUCE holds the carrier's `listenerLock` across it.
+    auto hostGestureDelivering = [&] (std::function<void()> command)
+    {
+        seat.pumped = std::move (command);
+        seat.fired = 0; seat.toFire = 1; seat.elapsedMs = 0.0; seat.pluginDepthRaised = false;
+        carrierP->beginChangeGesture();
+        carrierP->setValueNotifyingHost (carrierP->getValue() > 0.5f ? 0.0f : 1.0f);
+        carrierP->endChangeGesture();                 // <- the seat fires from inside this
+    };
+
+    std::atomic<int> pollBodies { 0 }, captures { 0 }, capturesWithLockHeld { 0 };
+
+    proc.seams.insidePollBody = [&]
+    { if (juce::MessageManager::existsAndIsCurrentThread()) pollBodies.fetch_add (1); };
+
+    // THE MEASUREMENT: at the one instant `copyStateWithRawValues` is about to take the APVTS lock,
+    // ask a SECOND thread whether `soundReplacement` is available. A failed `tryEnter` there is the
+    // whole of step E -- it says no other thread can be inside `replaceState`, which is the only
+    // place `valueTreeChanging` is held while a `listenerLock` is wanted.
+    proc.seams.insideDurableCapture = [&]
+    {
+        if (! juce::MessageManager::existsAndIsCurrentThread()) return;   // a host-thread save: not ours
+        captures.fetch_add (1);
+        std::atomic<bool> got { false };
+        std::thread probe ([&] { if (lock->tryEnter()) { got.store (true); lock->exit(); } });
+        probe.join();
+        if (! got.load()) capturesWithLockHeld.fetch_add (1);
+    };
+
+    // ---- LEG A: NO TIMER RE-ENTRY -- inside a dispatch THIS plug-in started --------------------
+    {
+        setPlain (widthP, 0.80f);
+        const int p0 = pollBodies.load(), c0 = captures.load();
+        {
+            const anamorph::param::ScopedDispatch ours;   // what every bracketed write looks like
+            proc.pollUndoCoalesceFromTimer();
+        }
+        const int p1 = pollBodies.load(), c1 = captures.load();
+        proc.pollUndoCoalesceFromTimer();                 // ...and the very next tick does the work
+        const int p2 = pollBodies.load(), c2 = captures.load();
+        std::printf ("  [leg A] inside our own dispatch: poll bodies +%d, APVTS captures +%d;"
+                     " outside it: +%d / +%d\n", p1 - p0, c1 - c0, p2 - p1, c2 - c1);
+        check (p1 == p0 && c1 == c0,
+               "leg A: inside a dispatch this plug-in started the tick does NOTHING -- no poll, no copy");
+        check (p2 > p1 && c2 > c1,
+               "leg A: non-vacuity -- the identical call outside that extent reaches both");
+    }
+
+    // ---- LEG B: SAFE TIMER RE-ENTRY -- inside a dispatch the HOST started -----------------------
+    //      Devin's step B, measured: `insideDispatch()` reads zero here, so the guard does not
+    //      refuse and the tick really does reach the poll body and the APVTS copy (steps C and D).
+    {
+        setPlain (widthP, 0.90f);
+        const int p0 = pollBodies.load(), c0 = captures.load();
+        hostGestureDelivering ([&proc] { proc.pollUndoCoalesceFromTimer(); });
+        const int p1 = pollBodies.load(), c1 = captures.load();
+        std::printf ("  [leg B] host-started dispatch: plug-in depth raised %s; took %.1f ms;"
+                     " poll bodies +%d, APVTS captures +%d\n",
+                     seat.pluginDepthRaised ? "YES" : "no", seat.elapsedMs, p1 - p0, c1 - c0);
+        check (seat.fired > 0, "leg B: non-vacuity -- the tick really ran inside the host's dispatch");
+        check (! seat.pluginDepthRaised,
+               "leg B: `insideDispatch()` reads ZERO in a host-started dispatch -- the finding's step B");
+        check (p1 > p0, "leg B: ...so the pumped tick reaches `pollUndoCoalesceAdopted` -- step C");
+        check (c1 > c0, "leg B: ...and that body reaches `apvts.copyState()` -- step D");
+    }
+
+    // ---- LEG C: ...AND EVERY ONE OF THOSE ACQUISITIONS HELD `soundReplacement` -------------------
+    {
+        std::printf ("  [leg C] APVTS captures on this thread: %d, of which with the replacement"
+                     " lock already held: %d\n", captures.load(), capturesWithLockHeld.load());
+        check (captures.load() > 0, "leg C: non-vacuity -- the APVTS lock was taken at all");
+        check (capturesWithLockHeld.load() == captures.load(),
+               "leg C: every APVTS acquisition this tick makes runs INSIDE `soundReplacement`"
+               " -- the acquisition the finding calls bare is not bare");
+    }
+
+    // ---- LEG D: A REPLACEMENT ALREADY IN FLIGHT -- the tick refuses, and does not wait -----------
+    {
+        setPlain (widthP, 1.10f);
+        const float before = plainOf (widthP);
+        const int c0 = captures.load();
+        {
+            HeldReplacement held (proc);
+            check (held.parked.load(),
+                   "leg D: non-vacuity -- a NON-ANNOUNCING holder really owns soundReplacement");
+            hostGestureDelivering ([&proc] { proc.pollUndoCoalesceFromTimer(); });
+            std::printf ("  [leg D] with the lock held elsewhere: took %.1f ms, APVTS captures +%d\n",
+                         seat.elapsedMs, captures.load() - c0);
+            check (seat.fired > 0, "leg D: non-vacuity -- the tick ran");
+            check (seat.elapsedMs < 250.0, "leg D: ...and did not WAIT for the replacement lock");
+            check (captures.load() == c0,
+                   "leg D: ...and took no APVTS lock at all: a failed try consumes nothing");
+            check (! held.done.load (std::memory_order_acquire),
+                   "leg D: non-vacuity -- the holder held the lock throughout");
+        }
+        check (std::abs (plainOf (widthP) - before) < 1.0e-3f, "leg D: nothing was consumed");
+    }
+
+    // ---- LEG E: THE WHOLE TRIPLE -- host dispatch + pumped tick + a CONCURRENT RESTORE -----------
+    //      The restore is the production one: an off-message-thread `setStateInformation`, which
+    //      announces, then installs the sound UNDER `soundReplacement` and only then reaches
+    //      `apvts.replaceState`. Parked at that first acquisition it holds no APVTS lock, which is
+    //      the step the reported chain needs and cannot have.
+    {
+        setPlain (widthP, 1.90f);
+        juce::MemoryBlock blob;
+        proc.getStateInformation (blob);
+        setPlain (widthP, 1.00f);
+        proc.pollUndoCoalesce();
+        const float parkedWidthExpected = plainOf (widthP);
+
+        std::atomic<bool> go { false }, restoreDone { false }, sawRestoreDone { false };
+        std::atomic<float> widthWhileParked { -1.0f };
+        std::atomic<bool>  parkedOnce { false };
+
+        std::thread restorer ([&]
+        {
+            while (! go.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            proc.setStateInformation (blob.getData(), (int) blob.getSize());
+            restoreDone.store (true, std::memory_order_release);
+        });
+
+        proc.seams.insideDurableCapture = [&]
+        {
+            if (! juce::MessageManager::existsAndIsCurrentThread()) return;
+            captures.fetch_add (1);
+            if (parkedOnce.exchange (true)) return;          // park exactly once
+            go.store (true, std::memory_order_release);
+            std::this_thread::sleep_for (std::chrono::milliseconds (120));
+            widthWhileParked.store (widthP->convertFrom0to1 (widthP->getValue()));
+            sawRestoreDone.store (restoreDone.load (std::memory_order_acquire));
+        };
+
+        setPlain (widthP, 1.05f);                             // dirty, so the poll body runs
+        hostGestureDelivering ([&proc] { proc.pollUndoCoalesceFromTimer(); });
+        restorer.join();
+
+        std::printf ("  [leg E] while the tick held the lock: restore finished %s, width %.4f"
+                     " (expected the pre-restore %.4f); tick took %.1f ms\n",
+                     sawRestoreDone.load() ? "YES" : "no", (double) widthWhileParked.load(),
+                     (double) 1.05f, seat.elapsedMs);
+        check (parkedOnce.load(), "leg E: non-vacuity -- the tick really reached the APVTS capture");
+        check (! sawRestoreDone.load(),
+               "leg E: the concurrent restore is PARKED at `soundReplacement` while the tick holds it");
+        check (std::abs (widthWhileParked.load() - 1.05f) < 1.0e-3f,
+               "leg E: ...so it has not entered `apvts.replaceState` and holds NO APVTS lock");
+        check (restoreDone.load (std::memory_order_acquire),
+               "leg E: ...and both sides complete -- the reported cyclic wait cannot form");
+        juce::ignoreUnused (parkedWidthExpected);
+
+        proc.seams.insideDurableCapture = nullptr;
+        check (d2::waitFor ([&] { proc.pollUndoCoalesceFromTimer(); return proc.deferredCommandCount() == 0; }),
+               "leg E: the harness settles");
+    }
+
+    proc.seams.insidePollBody = nullptr;
+    proc.seams.insideDurableCapture = nullptr;
+    proc.removeListener (&seat);
 }
 
 // ---------------------------------------------------------------------------
@@ -32935,6 +33479,8 @@ int main (int argc, char* argv[])
     testAnUnwiredPresetManagerRunsSynchronously();
     testARefusedPressEstablishesNothing();
     testNestedNotificationsKeepTheUserEndpoint();
+    testRecursiveNotificationKeepsTheLatestEndpoint();
+    testThePumpedTimerNeverBaresTheApvtsLock();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
     testAScrollIsOneUndoStep();

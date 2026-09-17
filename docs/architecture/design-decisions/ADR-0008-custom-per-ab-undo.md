@@ -996,6 +996,68 @@ a completed notification restores exactly what it replaced, as it always did.
 State test 111, legs A–F. Mutation coverage M204–M210.
 
 
+## Decision — correction, 2026-09-17 (round 35)
+
+**Everything a notification's before/after pairing owns is ONE frame, and the deepest notification
+that moved the parameter is the one that names the endpoint.**
+
+Round 34 made the saved `attachRequest` depth-matched and left `wasNorm` a single witness-level
+float next to it. Devin `src/PluginEditor.h:R280-281` names that split, and it is a real defect
+rather than an untidiness. A control's notification can be re-entered before its own `after` hook —
+the attachment's parameter write notifies listeners and one of them can drive the same control or
+the same parameter again — and the nested `before` hook then overwrites the enclosing notification's
+`wasNorm`. The `after` hook's one question, *"did the parameter move across MY notification?"*, is
+then asked about somebody else's interval.
+
+**Measured on the round-34 tree** (State test 112 leg B, real editor, real gesture): the user presses
+the Width knob and moves it to 1.3; a re-entrant write of the same parameter lands inside that
+notification; `ParameterAttachment` echoes it into the knob, which is a nested notification of this
+control whose own write JUCE suppresses. The outer hook compared the parameter against that echo's
+`wasNorm`, read them equal, classified the user's own move as a host push and left `pressProduced`
+false — so `notePressEnded` REFUSED the press. **`step = 0`: the user's edit was not undoable at
+all.** With the frame: `step = 1`, Undo → 1.0, Redo → **1.3**, the value the user asked for.
+
+**The frame carries a third member, and it is the other half of the finding's title.** The `after`
+hook's `produced` is a LIVE read of the control. By the time an OUTER notification reaches its
+`after` hook, `ParameterAttachment` has already echoed the outer write back into the control — so
+the control reads the outer's OLDER value while the parameter holds the newer one the nested
+notification installed (measured, leg A: knob at 1.3, parameter at 1.6). A frame-local `wasNorm`
+alone would therefore let the outer state 1.3 over the inner's 1.6. A completed nested notification
+marks its parent (`statedInside`), and a marked frame states nothing.
+
+```
+struct Frame { AttachmentRequest prevRequest; float wasNorm; bool statedInside; };
+```
+
+pushed by the `before` hook when the straddle is armed, popped by the matching `after` hook, and
+every member read from that same frame.
+
+**What did NOT change.** The Undo/Redo endpoint policy, parameter ownership, host-automation rules,
+gesture grouping, the no-op semantics and the `attachRequest` contract are untouched; host
+automation still cannot become the user's Redo destination (leg B is exactly that statement).
+
+**The unarmed initial update's request is an ACCEPTED RESIDUAL, with the invariant that makes it
+inert.** `sendInitialUpdate` fires while only `before` is listening, so it arms a request no `after`
+hook will put back: the register names index 17 (Multiband Enable) at 1.0000 from editor
+construction onwards. The register is READ in exactly one place — the batch close — and only for a
+parameter whose episode is *owned, undeclared and unrefused*; every control that reaches such a
+close arms a fresh request first. Measured on the strongest case available (leg F): starting the
+parameter AT the stale value and clicking its own toggle — a `ButtonParameterAttachment`, whose
+`setValueAsCompleteGesture` close IS the close that reads the register — the step's Redo endpoint is
+the user's 0.0000, not the 1.0000 the register still holds. Production code is unchanged.
+
+**Architecture-review gate (`docs/policies/ARCHITECTURE_REVIEW_GATE.md`).**
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | **NOT GATED, and stated rather than assumed.** Editor-side bookkeeping on the message thread inside the user's own event handler: no new thread, no new cross-thread path, no new atomic ordering. No DSP node, stage order, parameter ID, range, default, automation flag, serialization field, reported latency, plug-in format or build input moves |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | not required for an ungated change; nothing in `StateCommandGate`, §31, §32 or §33 is reopened |
+| 3 | if the change is a decision, an ADR is added/updated | this section |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** |
+
+State test 112, legs A–F. Mutation coverage M213–M219.
+
+
 ## Consequences
 - Both A/B slots are snapshotted to the **open (Default) state in the constructor** (`abEnsureInit`),
   not lazily on the first switch — so editing A before ever visiting B does not leak into B; the slots
@@ -1037,5 +1099,5 @@ State test 111, legs A–F. Mutation coverage M204–M210.
 - `src/PluginParameters.h:65-88` (view/preset exclusion lists)
 
 Evidence [Verified]:
-- Source: src/PluginProcessor.cpp:523-972, :340-520
+- Source: src/PluginProcessor.cpp:523-983, :340-520
 - History [Partially Verified]: CHANGELOG.md [0.6.x and earlier] (0.5.1, "Replaces JUCE's global undo manager")

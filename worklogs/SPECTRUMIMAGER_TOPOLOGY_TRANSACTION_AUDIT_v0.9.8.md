@@ -5976,3 +5976,81 @@ human review does"*. It does; the review exists and is recorded. The policy nowh
 that nothing was manufactured on GitHub and that no self-approval of any kind was performed — which
 is the failure mode the item guards against. **Procedural requirement satisfied.** No artifact is
 missing, and no architecture code was changed.
+
+
+## §93. Round 35 — Devin `src/PluginEditor.h:R280-281` and `src/PluginProcessor.cpp:R1601-1602`
+
+### `src/PluginEditor.h:R280-281` — recursive slider loses latest endpoint: CONFIRMED, fixed
+
+**The split.** Round 34 made `AttachmentWitness`'s saved `attachRequest` a stack, one entry per open
+notification depth, and left `wasNorm` a single float on the witness. The `after` hook asks one
+question — *"did the parameter move across MY notification?"* — and with a shared `wasNorm` it asks
+it about whichever `before` hook ran last.
+
+**What re-enters, in production.** `SliderParameterAttachment::sliderValueChanged` writes the
+parameter; `AudioProcessorParameter::sendValueChangedMessageToListeners` then runs every parameter
+listener, *including `ParameterAttachment`'s own*, which pushes the parameter's value back into the
+control with `ignoreCallbacks` set. That echo is a nested notification of the same control whose own
+write JUCE suppresses — and its `before` hook reads the parameter as it then stands.
+
+**Measured, round-34 tree, State test 112 leg B** (real editor, real press):
+
+| | |
+|---|---|
+| user presses the Width knob, moves it to | 1.3 (norm 0.65) |
+| a re-entrant write of the same parameter lands | norm 0.9 |
+| the echo's `before` hook overwrites `wasNorm` with | 0.9 |
+| the outer `after` hook compares 0.9 against 0.9 | **equal → "the host pushed IN"** |
+| `pressProduced` | false → `notePressEnded` **refuses the press** |
+| **Undo steps recorded** | **0** |
+
+The user's own move was not undoable. With the frame: `step = 1`, Undo → 1.0, Redo → **1.3**.
+
+**And the title's other half.** Leg A measures the outer hook's `produced`: the knob reads **1.3**
+while the parameter holds **1.6**, because the attachment has already echoed the outer write back
+into the control. A frame-local `wasNorm` ALONE would have let the outer state 1.3 over the inner's
+1.6 — mutation M219 does exactly that and dies on legs A and E. `statedInside` is the third member
+for that reason: a completed nested notification marks its parent, and a marked frame states
+nothing.
+
+**The fix.** `struct Frame { AttachmentRequest prevRequest; float wasNorm; bool statedInside; }`,
+pushed by the `before` hook when the straddle is armed and popped by the matching `after` hook, with
+every member read from that one frame. Nothing else moved: ownership, host-automation endpoint
+rules, gesture grouping and the request contract are untouched.
+
+### `src/PluginProcessor.cpp:R1601-1602` — host callback deadlocks timer polling: DISPROVEN
+
+The brief asked for each step to be established separately. Each was, on the real processor.
+
+| Step | Question | Answer, and where it is measured |
+|---|---|---|
+| A | can a host-started parameter notification hold the `listenerLock` while the editor timer is pumped? | **Yes.** `juce_AudioProcessorParameter.cpp:101-108` holds `listenerLock` across the whole of `endChangeGesture`, including `finalListener`. State test 113's seat fires from inside it |
+| B | why does `insideDispatch()` return false? | **Because it answers a different question.** It is a `thread_local` raised by `src/ParameterDispatch.h`'s four wrappers, which bracket the calls THIS plug-in makes; a host's write enters through the same non-virtual `setValueNotifyingHost` and raises no depth of ours. Leg B measures `pluginDepthRaised == false` |
+| C | can that tick reach `pollUndoCoalesceAdopted`? | **Yes** — leg B, poll bodies +1 |
+| D | does it reach `apvts.copyState()`? | **Yes** — leg B, APVTS captures +1, through `currentStateSet` → `copyStateWithRawValues` |
+| E | can a concurrent restore hold the APVTS lock first? | **No.** `copyStateWithRawValues` takes `soundReplacement` and only then `apvts.copyState()`; both `replaceState` sites (`applyStatePreservingView:1081`, `applySoundTree:1378`) are inside `soundReplacement`; so is the host-thread `copyState`. Leg C: 2 of 2 captures ran with the lock held, measured from a second thread whose `tryEnter` failed. Leg E: a concurrent off-message-thread `setStateInformation` sits **parked at `soundReplacement` with the parameters untouched** |
+| F | which side is whose? | The `listenerLock` and `valueTreeChanging` are JUCE's; **the ordering rule that keeps them from closing is Anamorph's** (ADR-0036 §31), and so is the try the timer door takes. This is not "JUCE-internal because JUCE owns a lock" |
+
+**Disposition: (3) an unreachable combination under the supported host/input architecture** — and
+unreachable because of a rule this project owns and enforces, not by luck. **RISK-009 is unchanged**:
+still OPEN on the JUCE-internal residual (the APVTS 10 Hz timer's own blocking `valueTreeChanging`
+acquisition; a host nesting two parameters' listener locks), still Low, still with no Anamorph lock
+on the waiting side.
+
+**What the finding did produce.** Two source comments predating ADR-0036 §31 still told a reader
+that this door was half of an OPEN cycle — the round-26 paragraph above `flushDeferredCommands`
+(*"The APVTS edge is NOT [closed]"*) and the round-27 banner on `pollUndoCoalesceFromTimer`. Both
+are corrected in place. No behaviour changed, and no architecture review is triggered: §33 records
+a verification of §31, not a new decision.
+
+### Claude carry-forward — the unarmed initial-update request
+
+Conclusively inert; production code unchanged. The register names index 17 (Multiband Enable) at
+1.0000 from editor construction, because `sendInitialUpdate` fires while only `before` is listening
+and that notification has no completion. Its one read is the batch close and only for an episode
+that is *owned, undeclared and unrefused*. State test 112 leg F takes the strongest case available —
+index 17 is a boolean whose `ButtonParameterAttachment` calls `setValueAsCompleteGesture`, so its
+close IS that read and runs between the witness's two hooks — starts the parameter AT the stale
+value, clicks its own toggle, and measures Redo → **0.0000**, the user's value. An unrelated
+control's complete gesture leaves the residual exactly as it found it.
+

@@ -1745,6 +1745,39 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   means returning through the freed frames of the attachment still on the stack. The `raised` unwind
   beside it has no leg either, for the same reason, and both rest on the same structural argument.
 
+* **Round 35 — a notification's own frame, and the timer door's lock order.**
+
+  **State test 112** (`src/PluginEditor.h:R280-281`). Round 34 made the saved request depth-matched
+  and left `wasNorm` a single witness-level float beside it. Everything a before/after pairing owns
+  is now one `Frame` — the previous request, `wasNorm`, and `statedInside`.
+
+  | Leg | What it proves |
+  |---|---|
+  | A | §6: the same control driven again inside its own notification. The knob reads **1.3** at the outer hook while the parameter holds **1.6**, and Redo restores **1.6** — the latest value the action produced, not the outer's stale live read |
+  | B | **the measurable defect.** A re-entrant write of the same parameter during the user's own notification; the attachment echoes it into the knob, whose nested notification clobbered the shared `wasNorm`. Round-34 tree: **`step = 0`** — the user's move to 1.3 was not undoable at all. Fixed tree: `step = 1`, Undo → 1.0, Redo → **1.3** |
+  | C | the ordinary press with nothing re-entering keeps its own endpoint exactly as it always has |
+  | D | a bare host push with no press at all is still not an undoable user edit |
+  | E | two presses in a row, the first recursive: nothing of the first press's frame stack survives into the second |
+  | F | §10: the unarmed initial update's residual. The register names index 17 (Multiband Enable) at 1.0000 with no notification open; a user click on **its own toggle**, starting AT that value, redoes to the user's 0.0000; an unrelated control's complete gesture leaves the residual exactly as it found it |
+
+  **Mutation coverage (M213-M219). All seven killed**, one per shape the round's brief names: M213
+  keep one witness-level `wasNorm` (the round-34 shape), M214 the inner notification overwrites the
+  outer frame's, M215 restore the wrong depth's request, M216 pop the request and `wasNorm` from
+  different frames, M217 skip the restoration, M218 classify with the enclosing frame's `wasNorm`,
+  M219 let the outer produced value overwrite the newer inner endpoint. M213 and M214 die on leg B;
+  M216, M218 and M219 on legs A and E; M215 and M217 on the request legs of State test 111.
+
+  **State test 113** (`src/PluginProcessor.cpp:R1601-1602`). The reported host-callback/timer
+  deadlock, measured step by step instead of argued: leg A no timer re-entry (inside our own
+  dispatch the tick does nothing, and the identical call outside it does both), leg B safe timer
+  re-entry (`insideDispatch()` reads zero in a HOST-started dispatch, and the tick really does reach
+  the poll body and `apvts.copyState()`), leg C every one of those acquisitions runs with
+  `soundReplacement` held — measured from a second thread whose `tryEnter` fails — leg D the refusal
+  when the lock is already taken (microseconds, no APVTS acquisition, nothing consumed), leg E the
+  whole triple with a concurrent production restore **parked at `soundReplacement`, parameters
+  untouched**. **Mutations M220** (bypass the safe-boundary guard/defer) **and M221** (reintroduce
+  the blocking acquisition) **are killed** by legs B and D, so the leg set is not vacuous.
+
 * **Round 33 — a refused press establishes nothing, for the whole of its life.**
 
   **State test 110** (`src/gui/LookAndFeel.cpp:R101-103`). Round 32 refused the second device's

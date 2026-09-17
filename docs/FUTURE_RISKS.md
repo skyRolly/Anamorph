@@ -226,7 +226,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   plug-in creates the nesting at all:** `AnamorphAudioProcessor::parameterValueChanged`
   (`src/PluginProcessor.h:496-499`) is a single relaxed `fetch_add`,
   `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:701`) the same, and
-  `parameterGestureChanged` (`src/PluginProcessor.cpp:1391-1568`) touches two ints — the last
+  `parameterGestureChanged` (`src/PluginProcessor.cpp:1402-1579`) touches two ints — the last
   deliberately, its comment recording that `--d2-stress-probe` once reported this same detector
   for an APVTS/`listenerLock` inversion, closed by **removing** the nesting.
 - **How it surfaced:** ThreadSanitizer's deadlock detector, on `AnamorphStateTests` at
@@ -475,7 +475,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   cancelled save's completion closed a newer dialog) — and both are fixed, so the command path was
   walked again for anything Anamorph owns that can WAIT. **Nothing was found, and the inventory is
   the evidence rather than the conclusion.** Every `ScopedLock (soundReplacement)` a command can
-  reach — `applyStatePreservingView` (`src/PluginProcessor.cpp:1081`), `copyStateWithRawValues`
+  reach — `applyStatePreservingView` (`src/PluginProcessor.cpp:1092`), `copyStateWithRawValues`
   (`:1134`), `applySoundTree` (`:1374`), `PresetManager::applyDefaults`
   (`src/PresetManager.cpp:197`), `PresetManager::applySoundTree` (`:313`) and the factory half of
   `loadAdopted` (`:550`) — runs underneath the gate's own held lock and is a free recursive
@@ -488,6 +488,28 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   three TSan entries are unchanged and each still matches exactly once (`WriteFromInsideAGestureOpen`,
   `PumpedUserInteraction`, `testNoStateCommandWaitsForAReplacement`; ThreadSanitizer exit 0,
   3 917 / 0 under the instrument).
+- **Round 35 (2026-09-17) — the same cycle reported at the TIMER door, and MEASURED to a
+  disposition.** Review finding `src/PluginProcessor.cpp:R1601-1602`, *"host callback deadlocks timer
+  polling"*, walks the chain through `pollUndoCoalesceFromTimer`. **Steps A–D are all true and are
+  asserted, not conceded:** a host-started gesture holds the `listenerLock` across the pump;
+  `insideDispatch()` reads **zero** there, because it answers for a dispatch this plug-in started;
+  the pumped tick reaches `pollUndoCoalesceAdopted`; and that body reaches `apvts.copyState()`.
+  **Step E is where it breaks.** State test 113 leg C measures every one of those APVTS acquisitions
+  running with `soundReplacement` already held (from a second thread whose `tryEnter` fails, 2 of 2),
+  and leg E runs the whole triple — host dispatch, pumped tick, and a concurrent off-message-thread
+  `setStateInformation` — with the restore **parked at `soundReplacement`, the parameters untouched**:
+  it has not entered `apvts.replaceState` and holds no APVTS lock. Leg D measures the refusal when
+  the lock is already taken: microseconds, no APVTS acquisition, nothing consumed. That is ADR-0036
+  §31's ordering rule doing the work, and §33 records the verification.
+  **Disposition: the reported combination is UNREACHABLE, and the half that makes it so is
+  Anamorph-owned** — the ordering rule and the try that rests on it — so it is not dismissed as
+  "JUCE owns one of the locks". **RISK-009 itself is unchanged: still OPEN on the JUCE-internal
+  residual only** (the APVTS 10 Hz timer's own blocking `valueTreeChanging` acquisition, and a host
+  nesting two parameters' listener locks), still Low for both survivors, still with no Anamorph lock
+  on the waiting side. No suppression was added; no threading-model change was made. Mutations M220
+  (bypass the guard/defer) and M221 (reintroduce the blocking acquisition) are killed by legs B and
+  D. Two source comments written before §31 existed, which still described this door as half of an
+  open cycle, are corrected.
 
 ## RISK-010 — The DSP's multiband snapshot is not a snapshot (ESCALATED as an architecture-review item)
 - **Risk:** `PluginParameters::toEngine` builds the per-block DSP view of the multiband layout from
@@ -546,7 +568,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 
 ## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps — **RESOLVED (rounds 24 and 25, three doors)**
 - **Risk:** `AnamorphAudioProcessor::parameterGestureChanged` counts open gestures and sets
-  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:1391-1567`), and
+  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:1402-1578`), and
   `pollUndoCoalesce` turns that into an undo entry. A `SpectrumImager` topology transaction is a
   burst of stores, several of which open and close their own gesture (`setBands`, `setSoloMask`,
   `resetParam`), so the open count returns to zero **inside** the burst. A poll that runs there —
@@ -558,7 +580,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   DSP, as RISK-010 describes — but it is a state-correctness one.
 - **Likelihood:** Low as observed (no reported occurrence, and no test in the suite reaches it),
   **structural** as a mechanism: nothing in the current code prevents it.
-- **Evidence [Verified]:** `src/PluginProcessor.cpp:1391-1567` (the counter), `:827-834`
+- **Evidence [Verified]:** `src/PluginProcessor.cpp:1402-1578` (the counter), `:827-834`
   (`pollUndoCoalesce`), `src/gui/SpectrumImager.cpp` `addBandAt` / `removeBand` (the multi-gesture
   bursts). Carried through the v0.9.8 review rounds as residuals **U1–U3** with a deliberate
   no-fix decision; recorded here on 2026-09-08 because a decision carried only in a worklog is a
@@ -956,7 +978,7 @@ mitigation. Do not invent risks to fill the template.
   inside that window is ordered after the restore.
 - **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:2966-3065 read
+  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:2991-3090 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -1034,7 +1056,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:2966`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:2991`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -1043,7 +1065,7 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:2502`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `src/PluginProcessor.cpp:2527`, against `canUndo()`; the `abUndo` vector's internals twice, via
   `UndoStacks::operator=` (`src/PluginProcessor.h:611`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture

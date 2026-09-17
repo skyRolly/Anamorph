@@ -308,3 +308,44 @@ deadlock:PumpedUserInteraction
 # a shipped build, so a real host-vs-host inversion on these two locks, with no
 # harness frame in either stack, is still REPORTED.
 deadlock:testNoStateCommandWaitsForAReplacement
+
+# ---------------------------------------------------------------------------
+# ROUND 35 (Devin `src/PluginProcessor.cpp:R1601-1602`). A FIFTH NAME FOR THE SAME
+# PAIR, and it is here because the leg DELIBERATELY BUILDS the report.
+#
+# State test 113 is the measurement the finding asked for: a host-started gesture
+# holding a parameter's `listenerLock`, the editor tick pumped from inside it, and a
+# CONCURRENT production restore -- an off-message-thread `setStateInformation` --
+# running against it. Its M0 => M1 edge is
+#
+#   main thread: `endChangeGesture` holds bypass's `listenerLock`, the pump runs
+#                `pollUndoCoalesceFromTimer` -> `pollUndoCoalesceAdopted` ->
+#                `currentStateSet` -> `copyStateWithRawValues` -> `copyState` takes
+#                `valueTreeChanging`
+#
+# and its M1 => M0 edge is the restorer thread's `applySoundTree` -> `replaceState`
+# holding `valueTreeChanging` -> `valueTreeRedirected` -> `setNewState` ->
+# `setValueNotifyingHost` -> `sendValueChangedMessageToListeners` taking the
+# `listenerLock`.
+#
+# THE TWO ORDERS CANNOT BE HELD AT ONCE, and this leg set is what measures that
+# rather than asserting it. ADR-0036 section 31: every thread that can hold
+# `valueTreeChanging` while waiting for a `listenerLock` must take `soundReplacement`
+# FIRST. Leg C measures every one of the tick's APVTS acquisitions running with
+# `soundReplacement` held -- from a second thread whose `tryEnter` fails -- and leg E
+# measures the restorer PARKED at `soundReplacement` with the parameters untouched,
+# which is exactly "it is not inside `replaceState` and holds no APVTS lock". TSan
+# reports the pair anyway because its deadlock detector keeps a PAIRWISE lock-order
+# graph and does not model an outer lock that serialises both orders; the two edges
+# above are recorded at different times, with the second only after the first
+# released.
+#
+# WHAT THIS DOES NOT CLAIM. Exactly what the entry above it does not claim: RISK-009
+# stays OPEN on the edge no first-party lock covers -- JUCE's own APVTS 10 Hz
+# `Timer`, whose `timerCallback` blocks on `valueTreeChanging` from the message
+# thread while a host-pumped dispatch holds a `listenerLock` and no
+# `soundReplacement` is involved.
+#
+# The entry names the TEST FUNCTION, as the rule above requires, and shares no
+# prefix with any other entry.
+deadlock:testThePumpedTimerNeverBaresTheApvtsLock
