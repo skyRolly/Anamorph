@@ -1042,6 +1042,16 @@ namespace
             // question because the claim below also declines for reasons that are NOT a rival (a
             // double click, a non-rotary parent, an open editor), and those must still forward.
             if (dragWheelHeldByOther (*this, wheelPointerOf (e.source))) return;
+            // ...WHICH MAKES THE CLAIM'S ANSWER BELOW REDUNDANT HERE, and the mutation suite says
+            // so: M189 replaces `&& claimDragWheel (...)` with `&& (claimDragWheel (...), true)`
+            // and no test can tell. It is EQUIVALENT rather than uncovered. `claimDragWheel` clears
+            // this device's own cell before it scans, so it returns false exactly when some cell
+            // with a DIFFERENT pointer names this component -- which is `dragWheelHeldByOther`,
+            // which the line above has already answered false; nothing between the two touches the
+            // register (`rotaryParent`, `getNumberOfClicks` and `isBeingEdited` are reads). The
+            // call is still the WRITE that registers this press, so it stays; consuming its value
+            // in the condition is how a `[[nodiscard]]` is honoured, and it keeps this branch
+            // correct on its own if the guard above ever moves.
             if (auto* s = rotaryParent (getParentComponent());
                 s != nullptr && e.getNumberOfClicks() < 2 && ! isBeingEdited()
                   && claimDragWheel (*this, *this, wheelPointerOf (e.source)))

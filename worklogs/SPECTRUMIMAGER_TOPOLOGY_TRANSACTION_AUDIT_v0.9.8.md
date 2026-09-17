@@ -5829,6 +5829,31 @@ consumes the notch and moves nothing (round 30). The register is still message-t
 keyed on the `WheelPointer` value, still process-global with the same bound: `dragWheelHeldByOther`
 adds no cell and reads the holder through the same `SafePointer`.
 
+### The mutation suite, and the two survivors that were the suite's fault
+
+Seventeen mutants (M187-M203): the claim side, the three callers ignoring the refusal, and every
+guard on the rest of the press. Sixteen killed, one equivalent.
+
+**M194 and M190 survived their first run**, and investigating them (§14, "investigate every
+survivor") found two real holes in State test 110 rather than two equivalences:
+
+* **M194** removes the knob's `mouseDrag` guard. Leg C compared only the owner's CONTINUATION, and
+  a rival write followed by JUCE's velocity integrator can land back on the same value — so the
+  comparison passed while the rival really had written the parameter. Leg C now measures the
+  rival's own three events directly (`rivalWrote`, required to be exactly 0), which is the §2
+  prohibition stated about the events it is about.
+* **M190** makes the display's `mouseDown` ignore the refusal. With the rival's later events
+  guarded, a re-latched `dragHandle`/`dragBand`/`gestureBands`/`soloPressBand` shows up NOWHERE
+  until the owner drags again — and then the owner is dragging the rival's identifiers. Leg B4 now
+  relabels the register back and requires the owner's next drag to move the split it was dragging
+  and to leave the other two alone.
+
+Both die on the added assertions. **M189 is equivalent**, with the proof carried in source at the
+call site: `ValueBox::mouseDown`'s guard has already established that no other device holds the box,
+and `claimDragWheel` returns false exactly in that case (it clears the calling device's own cell
+before it scans), so its answer there cannot be false. The call remains because it is the write that
+registers the press.
+
 ### The revalidations, none of which changed production code
 
 * **`src/PluginEditor.h:R923` (velocity/infinity).** The durable disposition holds. `dragIsVelocity`

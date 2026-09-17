@@ -1095,6 +1095,17 @@ consumes the notch and moves nothing. The register is still message-thread only,
 `dragWheelHeldByOther` adds no cell and reads the holder through the same `SafePointer`, so a
 destroyed holder is no device's rival.
 
+**TWO LINES THE MUTATION SUITE HAD TO EARN**, as round 32's did. M194 (drop the knob's `mouseDrag`
+guard) and M190 (make the display's `mouseDown` ignore the refusal) both SURVIVED their first run,
+and neither was equivalent — the suite was measuring the wrong thing. Leg C compared only the
+owner's continuation, which a rival write can land back on through the velocity integrator, so it
+now also requires the rival's own three events to have written **exactly zero**; and a re-latched
+`dragHandle`/`dragBand`/`gestureBands` on the display is invisible until the OWNER drags again, so
+leg B4 now relabels the register back and requires that drag to move the split it was dragging and
+no other. A third, M189, is genuinely EQUIVALENT and says so in source: the guard above
+`ValueBox::mouseDown`'s condition has already established what `claimDragWheel`'s answer there
+would say.
+
 **HOW IT IS MEASURED.** State test 110 drives the real editor and measures real drag state and real
 parameters, never "was the event consumed?" — which cannot discriminate these bugs, because round
 30's approved rule consumes either way. Leg C is the primary regression: the identical

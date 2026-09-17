@@ -521,7 +521,7 @@ DELIBERATE_REAIMS = {
      "src/PluginEditor.h:1259"): "aboutLink",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/LookAndFeel.cpp:1005-1014",
-     "src/gui/LookAndFeel.cpp:1198-1207"): "layoutTooltip",
+     "src/gui/LookAndFeel.cpp:1208-1217"): "layoutTooltip",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/gui/LookAndFeel.cpp:435",
      "src/gui/LookAndFeel.cpp:589"): "getComponentID",

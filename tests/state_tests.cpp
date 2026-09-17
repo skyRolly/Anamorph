@@ -27325,8 +27325,28 @@ static void testARefusedPressEstablishesNothing()
                    "leg B4: the display refuses a rival press the same way");
             check (juce::exactlyEqual (plainOf (loP), lo0),
                    "leg B4: ...and it moves no parameter");
-            ownedByMouse (*im, *imOwner);
-            im->mouseUp (mev (im, hx + 10.0f, laneY, hx, laneY, true, held));
+
+            // ...AND THE OWNER'S GESTURE IS STILL THE ONE IT STARTED. This is the half M190
+            // survived on: the display's press latches `gestureBands`, `dragHandle`, `dragBand`,
+            // `bandAnchorX` and `soloPressBand`, and a rival press 120 px away re-latches every one
+            // of them to whatever is under IT. The rival's own later events are refused, so nothing
+            // shows until the OWNER drags again -- and then it is dragging the rival's identifiers.
+            // Measured as "the owner still moves the split it was moving, and only that one".
+            const float midBefore = plainOf (apvts.getParameter (pid::mbFreqMid));
+            const float hiBefore  = plainOf (apvts.getParameter (pid::mbFreqHigh));
+            ownedByMouse (*im, *imOwner);   // from here the events are the OWNER's again
+            im->mouseDrag (mev (im, hx + 30.0f, laneY, hx, laneY, true, held));
+            const float loOwner = plainOf (loP);
+            std::printf ("  [leg B4] ...and the owner's next drag moves split %.3f -> %.3f"
+                         " (mid %.3f, high %.3f unchanged)\n",
+                         lo0, loOwner, plainOf (apvts.getParameter (pid::mbFreqMid)),
+                         plainOf (apvts.getParameter (pid::mbFreqHigh)));
+            check (! juce::exactlyEqual (loOwner, lo0),
+                   "leg B4: ...while the OWNER's next drag still moves the split it was dragging");
+            check (juce::exactlyEqual (plainOf (apvts.getParameter (pid::mbFreqMid)), midBefore)
+                     && juce::exactlyEqual (plainOf (apvts.getParameter (pid::mbFreqHigh)), hiBefore),
+                   "leg B4: ...and moves no OTHER split, which a re-latched gesture would");
+            im->mouseUp (mev (im, hx + 30.0f, laneY, hx, laneY, true, held));
             releaseDragWheel (*im);
         }
         proc.pollUndoCoalesce();
@@ -27482,6 +27502,12 @@ static void testARefusedPressEstablishesNothing()
         const float d1x = style == 0 ? 0.0f : 6.0f,  d1y = style == 0 ? -12.0f : 0.0f;
         const float d2x = style == 0 ? 0.0f : 26.0f, d2y = style == 0 ? -34.0f : 0.0f;
 
+        // `rivalWrote` is the §2 assertion leg C was missing until M194 survived: the rival's own
+        // `mouseDrag` and `mouseUp` must write NO parameter. The continuation check alone cannot
+        // see that -- a rival write followed by a velocity integrator that lands back on the same
+        // value reads as a pass -- and "must not alter the parameter" is a statement about the
+        // rival's events, not only about what the owner reaches afterwards.
+        float rivalWrote = 0.0f;
         auto run = [&] (bool withRival, int* thumbBefore, int* thumbAfter, CountGestures* g) -> float
         {
             clearTable();
@@ -27497,9 +27523,11 @@ static void testARefusedPressEstablishesNothing()
                 if (thumbBefore != nullptr) *thumbBefore = K->getThumbBeingDragged();
                 // The rival's entire press, 60 px away from the anchor the owner is dragging from.
                 const float rx = kx + 60.0f, ry = ky + 40.0f;
+                const float beforeRival = plainOf (P);
                 K->mouseDown (mev (K, rx, ry, rx, ry, false, held));
                 K->mouseDrag (mev (K, rx + 25.0f, ry + 25.0f, rx, ry, true, held));
                 K->mouseUp   (mev (K, rx + 25.0f, ry + 25.0f, rx, ry, true, held));
+                rivalWrote = plainOf (P) - beforeRival;
                 if (thumbAfter != nullptr) *thumbAfter = K->getThumbBeingDragged();
                 ownedByMouse (*K, *O);
             }
@@ -27551,10 +27579,12 @@ static void testARefusedPressEstablishesNothing()
         const float gotFar = far (true);
 
         std::printf ("  [leg C/%s] continuation %.6f vs %.6f, full travel %.6f vs %.6f,"
-                     " thumb %d -> %d, gesture opens %d/%d closes %d/%d\n",
+                     " thumb %d -> %d, gesture opens %d/%d closes %d/%d, the rival's own three"
+                     " events moved the parameter by %.6f\n",
                      style == 0 ? "velocity" : "absolute",
                      (double) refValue, (double) gotValue, (double) refFar, (double) gotFar,
-                     tBefore, tAfter, clean.opens, dirty.opens, clean.closes, dirty.closes);
+                     tBefore, tAfter, clean.opens, dirty.opens, clean.closes, dirty.closes,
+                     (double) rivalWrote);
         check (! juce::exactlyEqual (refValue, start),
                "leg C: the reference run really moved the parameter (the leg has a signal)");
         check (juce::exactlyEqual (gotValue, refValue),
@@ -27565,6 +27595,8 @@ static void testARefusedPressEstablishesNothing()
                "leg C: ...because the rival's press never touched `sliderBeingDragged`");
         check (dirty.opens == clean.opens && dirty.closes == clean.closes,
                "leg C: ...nor opened or closed a host change gesture of its own");
+        check (juce::exactlyEqual (rivalWrote, 0.0f),
+               "leg C: ...and the rival's own drag and release wrote no parameter at all");
     }
 
     // ---- LEG D: the owner's WHEEL is still routed to the drag it is making ---------------------

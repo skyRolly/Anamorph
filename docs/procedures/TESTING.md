@@ -1731,13 +1731,31 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   production reaches when the finger pressed first. `wheelPointerOf` is pinned against the real
   source by State test 108 leg G.
 
-  **Mutation coverage (M187-M203).** The claim side (M187 refusal reports success, M191 the claiming
-  device's own cell is not cleared so the holder is refused as its own rival, M192 the refusal still
-  registers a second claim, M199 `dragWheelHeldByOther` ignores the pointer so the owner is its own
-  rival); the callers ignoring the refusal (M188 knob, M189 value box, M190 display); and every guard
-  on the rest of the press (M193/M194/M201 knob release, drag and double click; M195/M196/M200/M203
-  value box release, drag, `Label` forward and double click; M197/M198/M202 display release, drag and
-  double click).
+  **Mutation coverage (M187-M203). Sixteen killed, one equivalent, and two survivors that were
+  coverage gaps rather than equivalences.** The claim side: M187 the refusal reports success, M191
+  the claiming device's own cell is not cleared so the holder is refused as its own rival (kills on
+  108 leg L and 110 leg G), M192 the refusal still registers a second claim, M199
+  `dragWheelHeldByOther` ignores the pointer so the owner becomes its own rival (221 failures — the
+  broadest kill in the suite, because it breaks every ordinary drag). The callers ignoring the
+  refusal: M188 knob, M189 value box, M190 display. Every guard on the rest of the press:
+  M193/M194/M201 knob release, drag and double click; M195/M196/M200/M203 value box release, drag,
+  `Label` forward and double click; M197/M198/M202 display release, drag and double click.
+
+  **M190 AND M194 SURVIVED THEIR FIRST RUN, and both were the suite's fault.** M194 removes the
+  knob's `mouseDrag` guard: leg C compared only the owner's CONTINUATION, which a rival write
+  followed by a velocity integrator can land back on — so leg C now also measures what the rival's
+  own three events wrote (`rivalWrote`, required to be exactly 0). M190 makes the display's
+  `mouseDown` ignore the refusal: with the rival's later events guarded, a re-latched
+  `dragHandle`/`dragBand`/`gestureBands` showed up nowhere until the OWNER dragged again — so leg B4
+  now relabels the register back and requires the owner's next drag to move the split it was
+  dragging and no other. Both mutants die on the added assertions.
+
+  **M189 IS EQUIVALENT, with the proof in source.** It discards `claimDragWheel`'s answer inside
+  `ValueBox::mouseDown`'s condition. The guard one line above has already established that no other
+  device holds the box, and `claimDragWheel` returns false exactly in that case (it clears the
+  calling device's own cell before scanning), so the call cannot return false there. The call stays
+  because it is the WRITE that registers the press, and consuming its value is how a `[[nodiscard]]`
+  is honoured.
 
 * **Round 32 — one component, one drag; and the gate that dropped a standalone command.**
 
