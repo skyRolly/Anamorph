@@ -23,7 +23,7 @@ The VST3/Standalone wrapper (`: juce::AudioProcessor, private APVTS::Listener`).
 | `abSwitchTo` / `abCopyToOther` / `abActiveSlot` | A/B API | A/B compare living in the processor (survives editor close). |
 | `abToggle` | `void ()` | The A/B toggle as its own operation (ADR-0036 §18). Drains any pending host restore, then derives the destination as the other slot of the **post-drain** active slot. The editor's toggle calls this; it used to compute `abSwitchTo (abActiveSlot() == 0 ? 1 : 0)` from a read taken before the drain, which a restore flipping the active slot turned into a no-op. `abSwitchTo (int)` stays the primitive for an explicit target, which is intent rather than a stale derivation. |
 
-Evidence [Verified]: src/PluginProcessor.h:23-141.
+Evidence [Verified]: src/PluginProcessor.h:25-466.
 
 ## `AnamorphEngine` — `src/dsp/AnamorphEngine.h`
 
@@ -98,7 +98,7 @@ Evidence [Verified]: src/InternalState.h:165-435.
 | `onAboutToSave` / `soundParamGeneration` | `std::function<void()>` / `std::function<juce::uint32()>` | The two hooks `saveUser` uses to keep the file and the clean baseline one coherent pair (ADR-0036 §16). `onAboutToSave` drains any pending host restore **before** the sound is captured, so the bytes are the session the plug-in is on. `soundParamGeneration` is no longer read by `saveUser` at all — §17 replaced its two reads and their retry with ONE capture, so there is nothing to re-check; it remains `isDirty()`'s memo generation. Both optional. |
 | `Entry::factoryId` | `juce::String` | Empty for user presets; the factory preset's internal id otherwise. Immutable — renaming a preset is a display change, renaming an id would re-point live A/B and undo slots. |
 
-Evidence [Verified]: src/PresetManager.h:30-101.
+Evidence [Verified]: src/PresetManager.h:31-102.
 
 ## DSP module public interfaces
 

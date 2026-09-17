@@ -1,8 +1,11 @@
 #pragma once
 
+#include <vector>
+
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_opengl/juce_opengl.h>
 #include "PluginProcessor.h"
+#include "ParameterDispatch.h"  // ADR-0036 round 27 (R1390): the attachment straddle raises the dispatch depth
 #include "gui/LookAndFeel.h"
 #include "gui/Vectorscope.h"
 #include "gui/SpectrumImager.h"
@@ -102,10 +105,312 @@ public:
     // physical buttons through anamorph::gui::anyPhysicalMouseButtonDown().
     void abortAbandonedDragGestures();
 
+    // The Save-preset overlay, opened from the preset menu and closed by Cancel, Escape, a click
+    // on the backdrop or a completed save. PUBLIC for the same reason `abortAbandonedDragGestures`
+    // above is: the round-28b regression for Devin R405-406 has to open a dialog, cancel it and
+    // open another one, and the production route to it is a `juce::PopupMenu` item -- an
+    // asynchronous, windowed thing a headless suite cannot drive. Nothing else changes: the
+    // function is the same one the menu item calls, and every rule about save-attempt identity
+    // lives inside it (see `saveAttempt` below).
+    void showSavePreset (bool);
+
 private:
     using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+
+    // ========================================================================================
+    //  ADR-0008, ROUND 18. THE CONTROL THAT WROTE THE PARAMETER SAYS WHAT IT WROTE.
+    // ========================================================================================
+    //  A JUCE parameter attachment declares OWNERSHIP when its gesture opens and declares no VALUE
+    //  at all, so until this class existed the undo batch had nothing to close a step with except a
+    //  live read of the parameter at the gesture close. A host write landing after the user's last
+    //  attachment write and before that close therefore became the value Redo restored -- the user's
+    //  own value recoverable from neither end of the step (State test 91 legs A, B, D, E, G).
+    //
+    //  WHAT IS HARD ABOUT IT, stated rather than implied: a host write reaches the control's
+    //  value-changed callbacks EXACTLY as a user write does. `SliderParameterAttachment::setValue`
+    //  pushes the host's value in with `sendNotificationSync`, and the `ignoreCallbacks` flag that
+    //  suppresses the echo is private to JUCE's own attachment with no accessor -- so
+    //  `Slider::valueChanged`, `Slider::Listener::sliderValueChanged` and `Slider::onValueChange`
+    //  all fire for both, and the value alone cannot tell them apart. `Slider::snapValue` CAN
+    //  (JUCE reaches it only from user input), but its coverage hole is categorical: it is declared
+    //  on `juce::Slider` alone, so it can see no Button and no ComboBox write, and four of this
+    //  editor's own user-write sites call `Slider::setValue` directly and never consult it.
+    //
+    //  SO THE DISCRIMINATOR IS NOT THE VALUE, IT IS WHO MOVED THE PARAMETER. Two hooks per control,
+    //  one registered BEFORE JUCE's attachment and one AFTER it -- `juce::ListenerList` dispatches
+    //  in registration order, and the attachment writes the parameter inside its own callback, so
+    //  the pair straddles the write:
+    //
+    //      user   : before = P_old ... attachment writes P ... after = P_new   -> P MOVED, record
+    //      host   : before = P_host ... attachment suppresses itself ...       -> P did not move
+    //
+    //  A host push writes the parameter FIRST and only then sets the control, so the parameter
+    //  cannot move during the control's own notification; a user write is the only thing that can.
+    //  A user write that lands on the value the parameter already holds moves nothing either, and
+    //  JUCE skips it outright (`ParameterAttachment::callIfParameterValueChanged`) -- correctly, as
+    //  it produced nothing to record.
+    //
+    //  WHAT IS RECORDED IS WHAT THE CONTROL ASKED FOR, not a second reading of the parameter: a
+    //  host answering the write re-entrantly would be in the live value by then, which is the same
+    //  reason `SpectrumImager::storeOwned` passes its own installed value (round 15).
+    //
+    //  THREADING: message thread only, inside the user's own event handler, on the same synchronous
+    //  stack as the write. No timer, no lock, no `callAsync`, and nothing added to
+    //  `parameterValueChanged` -- the audio-thread-reachable path ADR-0036 forbids.
+    struct AttachmentWitness
+    {
+        AttachmentWitness (AnamorphAudioProcessor& p, juce::RangedAudioParameter& rp)
+            : proc (p), param (rp), before (*this, false), after (*this, true)
+        { frames.reserve (4); }
+
+        // ADR-0036 ROUND 27 (Devin R1390). THE ONE PARAMETER-DISPATCH BRACKET IN THE TREE THAT IS
+        // NOT A SINGLE SCOPE, because the thing it brackets is not a call this editor makes:
+        // JUCE's own attachment writes the parameter from inside its listener callback, and this
+        // witness already STRADDLES that write -- `before` is registered ahead of the attachment
+        // and `after` behind it (`juce::ListenerList` dispatches in registration order). So the
+        // raise belongs to the BEFORE hook and the lower to the AFTER one, and the pair covers
+        // `beginChangeGesture` (from `sliderDragStarted`), the value write (from
+        // `sliderValueChanged` / `buttonClicked` / `comboBoxChanged`) and `endChangeGesture` (from
+        // `sliderDragEnded`) -- every dispatch a JUCE attachment can start.
+        //
+        // WHY A LEAK IS NOT POSSIBLE, which is the question a two-callback bracket has to answer.
+        // `juce::Slider` dispatches through `listeners.callChecked` with a `BailOutChecker` on the
+        // control, so if the control is DELETED from inside the attachment's callback -- which a
+        // host pumping its message loop there really can do, by closing the editor -- the AFTER
+        // hook is never reached. A leaked raise would make `flushDeferredCommands` refuse forever,
+        // which is the "strand indefinitely" failure the mechanism exists to prevent. So the
+        // witness counts its own raises and unwinds them in its destructor: the witnesses are
+        // members of the editor and the controls they watch are members too, so a control that
+        // dies takes its witness with it and the count returns to zero. `raised` is a count and
+        // not a flag because a nested notification can straddle a straddle.
+        struct ScopedStraddle
+        {
+            ScopedStraddle (AttachmentWitness& o, bool isAfter) : owner (o), post (isAfter)
+            { if (! post) owner.raiseDispatch(); }
+            ~ScopedStraddle() { if (post) owner.lowerDispatch(); }
+            ScopedStraddle (const ScopedStraddle&)            = delete;
+            ScopedStraddle& operator= (const ScopedStraddle&) = delete;
+            AttachmentWitness& owner;
+            const bool         post;
+        };
+
+        // One object serves all three control families: the three JUCE listener interfaces have
+        // distinct method names, so there is nothing to disambiguate.
+        struct Hook final : juce::Slider::Listener,
+                            juce::Button::Listener,
+                            juce::ComboBox::Listener
+        {
+            Hook (AttachmentWitness& o, bool isAfter) : owner (o), post (isAfter) {}
+            void sliderValueChanged (juce::Slider* s) override
+            {
+                const ScopedStraddle straddle (owner, post);
+                owner.mark (post, owner.param.convertTo0to1 ((float) s->getValue()));
+            }
+            // ROUND 22, RISK-012. A PRESS THAT PRODUCES NOTHING SAYS SO. JUCE opens the change
+            // gesture from `SliderParameterAttachment::sliderDragStarted` and closes it from
+            // `sliderDragEnded`, so a press that never moves the slider -- a click on a knob or a
+            // value box with no drag -- brackets a gesture around no write at all. The batch close
+            // then had nothing declared to prefer and fell back to a LIVE READ, which is whatever
+            // host automation left in the parameter during the press: a value the user never
+            // produced, becoming that press's Undo/Redo endpoint (ADR-0008). Only the BEFORE hook
+            // acts, because `juce::ListenerList` dispatches in registration order and this hook is
+            // registered ahead of JUCE's attachment -- so the refusal is recorded before
+            // `endChangeGesture` runs, which is where the close reads it.
+            void sliderDragStarted (juce::Slider*) override
+            {
+                const ScopedStraddle straddle (owner, post);
+                if (! post) owner.pressProduced = false;
+            }
+            void sliderDragEnded   (juce::Slider*) override
+            {
+                const ScopedStraddle straddle (owner, post);
+                if (! post) owner.notePressEnded();
+            }
+            void buttonClicked (juce::Button* b) override
+            {
+                const ScopedStraddle straddle (owner, post);
+                owner.mark (post, owner.param.convertTo0to1 (b->getToggleState() ? 1.0f : 0.0f));
+            }
+            void comboBoxChanged (juce::ComboBox* c) override
+            {
+                const ScopedStraddle straddle (owner, post);
+                // The arithmetic JUCE's own `ComboBoxParameterAttachment::comboBoxChanged` does.
+                const int n = c->getNumItems();
+                const float raw = n > 1 ? (float) c->getSelectedItemIndex() / (float) (n - 1) : 0.0f;
+                owner.mark (post, owner.param.convertTo0to1 (owner.param.convertFrom0to1 (raw)));
+            }
+            AttachmentWitness& owner;
+            const bool post;
+        };
+
+        // ONE COHERENT FRAME PER NOTIFICATION DEPTH (round 35, Devin `src/PluginEditor.h:R280-281`,
+        // "recursive slider loses latest endpoint"). Round 34 made the saved REQUEST depth-matched
+        // and left `wasNorm` a single witness-level float beside it, which is split state: a
+        // notification of this control can be re-entered before its own `after` hook (the
+        // attachment's parameter write notifies listeners, and one of them can drive the same
+        // control again), and the nested `before` hook then overwrites the enclosing notification's
+        // `wasNorm`. Everything a before/after pairing owns lives here instead, and the after hook
+        // reads ALL of it from the frame its own before hook pushed.
+        //
+        // `statedInside` is the third member and the one the finding's title is about. The `after`
+        // hook's `produced` is a LIVE read of the control -- and by the time an OUTER notification
+        // reaches its `after` hook, `ParameterAttachment` has already echoed that outer write back
+        // into the control, so the control reads the outer's OLDER value while the parameter holds
+        // the newer one the nested notification installed. Letting the outer state that value would
+        // overwrite the newer endpoint with an older one. A completed nested notification therefore
+        // marks its parent, and a marked frame states nothing: the deepest notification that moved
+        // the parameter is the one that names the endpoint, which is the "latest value the user
+        // action produced" rule ADR-0008 already applies to a batch.
+        struct Frame
+        {
+            AnamorphAudioProcessor::AttachmentRequest prevRequest {};
+            float wasNorm      = 0.0f;   // what the parameter held when THIS notification began
+            bool  statedInside = false;  // a notification nested in this one stated the endpoint
+        };
+
+        void mark (bool post, float produced) noexcept
+        {
+            if (! post)
+            {
+                // ROUND 20: SAY WHAT THIS CONTROL IS ABOUT TO ASK FOR, BEFORE THE ATTACHMENT RUNS.
+                // For a ComboBox or a Button the attachment opens, writes and CLOSES the gesture in
+                // its own callback, so the close -- which is where the batch becomes pollable --
+                // happens before `after` below can state anything. The request is what the close
+                // reads instead of the live parameter. It claims nothing: no ownership, no episode
+                // bit, no step; a host push arms it and disarms it with no gesture in between.
+                //
+                // ONE SAVE PER NOTIFICATION DEPTH, not one per witness (round 34, Devin
+                // `src/PluginEditor.h:R256-262`). A control's notification can be re-entered before
+                // its own `after` hook runs -- its attachment's parameter write notifies listeners,
+                // and one of them can drive the same control again -- so a single slot is written
+                // twice and the OUTER control's request, saved first, is the one that is lost. The
+                // inner completion then restores the outer inner request and the outer completion
+                // restores nothing, leaving the register empty for an enclosing gesture's close to
+                // fall back to a live read: host automation as the user's Redo destination. `raised`
+                // above is a count for the same reason; this is the same shape, depth-matched.
+                //
+                // Pushed only once the straddle is complete, exactly as `raiseDispatch` is: the
+                // attachment's constructor fires `sliderValueChanged` while only `before` is
+                // listening. That path arms the request and leaves it, which is what it did before.
+                //
+                // THE GUARD IS AN INVARIANT, NOT A BEHAVIOUR, and the mutation suite says so: M211
+                // drops it and no test can tell. It cannot misalign a later depth, because `after`
+                // pops the BACK and every real notification pushes its own -- the unguarded version
+                // would simply keep one construction-time entry at the bottom for ever. It is kept
+                // so that "empty means this witness has no notification open" stays true, which is
+                // what the destructor below acts on.
+                if (straddleArmed) frames.push_back ({ proc.noteAttachmentRequest (&param, produced),
+                                                       param.getValue(), false });
+                else               (void) proc.noteAttachmentRequest (&param, produced);
+                return;
+            }
+            // ...and hand the previous request back before anything else, so this runs even for the
+            // host push that returns below. Exactly the state THIS depth replaced: the stack is
+            // balanced by construction, and an empty one means no matching save exists, which is
+            // the unarmed case above -- there is nothing of ours to put back and clobbering the
+            // register with a blank would be the defect this fix exists to remove.
+            if (frames.empty()) return;       // no matching save: nothing of ours is open
+            const Frame f = frames.back();
+            frames.pop_back();
+            proc.restoreAttachmentRequest (f.prevRequest);
+
+            bool stated = f.statedInside;
+            if (! juce::exactlyEqual (param.getValue(), f.wasNorm))   // ...else the host pushed IN
+            {
+                pressProduced = true;   // this press has an endpoint of its own (round 22)
+                if (! stated) { proc.noteOwnedParamEndpoint (&param, produced); stated = true; }
+            }
+            if (stated && ! frames.empty()) frames.back().statedInside = true;
+        }
+
+        // The other half of the round-22 rule above: the press is over and nothing this control
+        // did moved the parameter, so it has NO endpoint to state and the close must not invent
+        // one. `noteOwnedParamRefused` is exactly that sentence -- it suppresses the live read and
+        // leaves `after` where `noteFirstOwnership` seeded it, which is `before`, which is how the
+        // poll comes to record no step for a press that did nothing (ADR-0008, ADR-0053).
+        void notePressEnded() noexcept
+        {
+            if (! pressProduced) proc.noteOwnedParamRefused (&param);
+            pressProduced = false;
+        }
+
+        // The order is the mechanism: `listenBefore` runs before JUCE's attachment is constructed
+        // and `listenAfter` after it, so the pair straddles the attachment's own callback.
+        template <typename Control> void listenBefore (Control& c)
+        {
+            unhook = [this, &c] { c.removeListener (&before); c.removeListener (&after); };
+            c.addListener (&before);
+        }
+        template <typename Control> void listenAfter (Control& c)
+        { c.addListener (&after); straddleArmed = true; }
+
+        // The raise/lower pair `ScopedStraddle` drives, and the count that makes it unwindable.
+        //
+        // ARMED ONLY ONCE BOTH HOOKS ARE ON THE CONTROL, and that guard is not a nicety: it was
+        // found by this round's own suite. `attachSlider` registers `before`, CONSTRUCTS the JUCE
+        // attachment, then registers `after` -- and the attachment's constructor calls
+        // `ParameterAttachment::sendInitialUpdate()`, which pushes the parameter's value into the
+        // control and therefore fires `sliderValueChanged` while only `before` is listening. That
+        // raise has no `after` to lower it. Measured: the dispatch depth stood at 14 -- one per
+        // parameter-backed control -- from the moment the editor finished constructing, so every
+        // deferred command in State tests 99 and 100 refused forever. The initial update writes no
+        // parameter (it is the host->control direction, and JUCE suppresses the echo), so there is
+        // nothing to bracket there and not raising is the correct answer as well as the safe one.
+        void raiseDispatch() noexcept
+        { if (! straddleArmed) return; ++raised; anamorph::param::enterDispatch(); }
+        void lowerDispatch() noexcept { if (raised > 0) { --raised; anamorph::param::exitDispatch(); } }
+
+        // Both hooks come off the control while the control is still alive: the witnesses are
+        // declared after every control they watch, so they are destroyed first. ROUND 27: and any
+        // raise this witness still holds comes off here, so a control deleted from inside its own
+        // notification cannot leave the dispatch depth standing (see `ScopedStraddle`).
+        // ROUND 34: and any request this witness still has saved goes back with them. A control
+        // deleted from inside its own notification never reaches its `after` hook, so without this
+        // the register would keep naming a control that no longer exists. The BOTTOM entry is the
+        // state before this witness's outermost notification, which is what the world should see.
+        //
+        // NOT DISTINGUISHABLE BY A TEST HERE (M212 survives its removal), for the same reason the
+        // `raised` unwind beside it has no leg either: the stack is non-empty only DURING a
+        // notification, so reaching this line means deleting the editor from inside one, and doing
+        // that in the harness means returning through the freed frames of the attachment that is
+        // still on the stack. The argument is structural: this is the destructor's half of the
+        // invariant the push above maintains.
+        ~AttachmentWitness()
+        {
+            while (raised > 0) lowerDispatch();
+            if (! frames.empty())
+            {
+                proc.restoreAttachmentRequest (frames.front().prevRequest);
+                frames.clear();
+            }
+            if (unhook) unhook();
+        }
+
+        AnamorphAudioProcessor&     proc;
+        juce::RangedAudioParameter& param;
+        Hook  before, after;
+
+        // Round 22: did anything this control did move the parameter between its drag start and
+        // its drag end? Message thread only, like everything else in this type.
+        bool  pressProduced = false;
+        // ROUND 27 (R1390): how many dispatch raises this witness is currently holding, and
+        // whether the pair that balances them is complete (see `raiseDispatch`).
+        int   raised = 0;
+        bool  straddleArmed = false;
+        // ROUND 34 (R256-262): one saved request per open notification depth on this control, not
+        // one per control. Bounded by the notification nesting the message thread can reach -- one
+        // or two in practice -- and reserved once at construction so a notification allocates
+        // nothing. Message thread only, like every other member here.
+        std::vector<Frame> frames;
+        std::function<void()> unhook;
+
+        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AttachmentWitness)
+    };
+
+    // Make the witness for `id`, or nullptr when the control is not parameter-backed.
+    AttachmentWitness* makeWitness (const char* id);
 
     // Consumes the click that dismissed a pop-up, so it cannot also act on whatever sits under it.
     //
@@ -254,8 +559,12 @@ private:
     void applyUiScale();                 // whole-window XS..XL transform scale (F4)
     void refreshPresetDisplay();         // preset name + dirty mark (F2)
     void showPresetMenu();
-    void showSavePreset (bool);
     void focusSaveNameField (int attemptsLeft); // deferred, verified grab (Space-vs-host fix)
+    // ADR-0036 round 27 (R640): the Save dialog's PENDING state. A save that could not run
+    // synchronously -- one issued from inside a multi-store user transaction -- is queued to a
+    // safe boundary, and the dialog must neither close nor claim success until its completion
+    // says what happened. While pending the OK button is disabled, so one click is one save.
+    void setSavePending (bool pending);
     void showLoadPreset();               // OS file chooser (#3)
     void setupRotary (juce::Slider&, juce::Label&, const juce::String& name, const juce::String& tip);
     void attachSlider (juce::Slider&, const char* id);
@@ -389,8 +698,26 @@ private:
     // Knob: a slider that resets to its default on a clean double-click OR an
     // Option/Alt-click (#6 / 0.6.7 #21). onSweep lets the editor play the eased
     // position travel when a RESET happens (but not on a drag).
-    struct Knob : public juce::Slider
+    struct Knob : public juce::Slider, public anamorph::gui::WheelDragOwner
     {
+        // THE VELOCITY-SWAP MODIFIER, PINNED (round 30, Devin `src/PluginEditor.h:R822-828`).
+        // JUCE decides which of its TWO drag mappings an event takes with
+        //     isVelocityBased == (userKeyOverridesVelocity && mods.testFlags (modifierToSwapModes))
+        // (`Slider::Pimpl::isAbsoluteDragMode`, juce_Slider.cpp) and exposes getters for the first
+        // two and NONE for `modifierToSwapModes`. `dragIsVelocity` below has to answer the same
+        // question this class answers the notch with, so the modifier is set rather than assumed.
+        //
+        // THE VALUES ARE JUCE'S OWN DEFAULTS, so nothing about the feel changes: the member
+        // initialisers are `velocityModeSensitivity = 1.0, velocityModeOffset = 0`,
+        // `velocityModeThreshold = 1`, `userKeyOverridesVelocity = true` and
+        // `modifierToSwapModes = ModifierKeys::ctrlAltCommandModifiers` (juce_Slider.cpp). This
+        // states them where the predicate can be read against them.
+        Knob()
+        {
+            setVelocityModeParameters (1.0, 1, 0.0, true,
+                                       juce::ModifierKeys::ctrlAltCommandModifiers);
+        }
+
         double resetValue = 0.0;
         // The attached parameter (null for host-hidden InternalState knobs): the
         // ALT-CLICK reset must open its own host change gesture. Our mouseDown
@@ -399,15 +726,86 @@ private:
         // the processor's undo coalescer gesture-less -- which is the automation
         // path, folded into the baseline with NO undo step and NO redo clear.
         // That is why Option/Alt-click reset was un-undoable (and left Redo
-        // alive). The DOUBLE-CLICK reset needs no wrap: its second press runs
-        // Slider::mouseDown first, whose ScopedDragNotification has already
-        // opened the drag gesture that mouseUp will close -- wrapping there
-        // would nest begin/endChangeGesture on the same parameter.
+        // alive). THE DOUBLE-CLICK RESET NEEDS THE SAME WRAP, and this comment used to say the
+        // opposite -- "its second press runs Slider::mouseDown first, whose ScopedDragNotification
+        // has already opened the drag gesture that mouseUp will close, so wrapping there would
+        // nest". The premise is false: JUCE dispatches `mouseDoubleClick` from
+        // `Component::internalMouseUp`, AFTER `mouseUp` has run, so the press's gesture is already
+        // CLOSED by then and there is nothing to nest inside. JUCE's own
+        // `Slider::Pimpl::mouseDoubleClick` wraps its write in a `ScopedDragNotification` for that
+        // reason; this class overrides `mouseDoubleClick` and never reaches it, so until round 14
+        // the reset reached the host as a gesture-less write -- the automation shape KI-010
+        // names, and the reason its undo step existed only as a side effect of the whole-state
+        // push rule. Bracketed now, gated on `resetWouldMove()` exactly as the Alt path is
+        // (ADR-0052: an input that performs no edit has no side effects).
         juce::RangedAudioParameter* resetParam = nullptr;
         std::function<void()> onSweep;
+        // ADR-0053. THE WHEEL IS PART OF THE INTERACTION IT LANDS IN, and this member is what lets a
+        // drag carry ON from a notch instead of erasing it. JUCE discards the wheel outright while a
+        // button is held -- `! e.mods.isAnyMouseButtonDown()` guards its whole handler
+        // (juce_Slider.cpp) -- so a notch mid-drag used to do nothing at all; and merely writing the
+        // value would not survive either, because `handleAbsoluteDrag` recomputes it from
+        // `valueOnMouseDown` plus the cursor delta on EVERY mouse move and never reads the live value
+        // back. Both of those are private Pimpl members with no public setter, and
+        // `getThumbBeingDragged()` is the only part of that state a subclass can see -- so the notch
+        // is remembered OUT HERE and re-applied on top of whatever the drag computed. In PROPORTION
+        // space, so one notch means the same travel on a skewed range as on a linear one.
+        //
+        // Zero for a press with no notch in it, and every line that reads it returns immediately on
+        // zero, so an ordinary drag makes exactly the parameter writes it always did.
+        //
+        // IN PIXELS SINCE ROUND 29, AND THAT IS THE FIX RATHER THAN A TIDY-UP. It was a PROPORTION,
+        // added to whatever the drag computed, in a `snapValue` override -- and `snapValue` is
+        // called by JUCE AFTER it has already clamped its own mapping to [0, 1]
+        // (`handleAbsoluteDrag` ends `newPos = jlimit (0.0, 1.0, ...)`, juce_Slider.cpp, and
+        // `mouseDrag` clamps again to the range before it calls `snapValue`). So the offset sat
+        // OUTSIDE the clamp: after a notch that took the value DOWN by half the range, the drag's
+        // own proportion saturated at 1.0 while the returned proportion was `1.0 + offset` = 0.5,
+        // and the knob could not be dragged to its maximum for the rest of that press. That is the
+        // reported "stuck around 50%".
+        //
+        // A pixel offset is applied where the ANCHOR is instead: `mouseDrag` below hands JUCE an
+        // event whose position is shifted by this many pixels, so the shift is inside
+        // `mouseDiff` -- i.e. inside what JUCE clamps -- and the remaining physical travel maps
+        // exactly as it would have if the press had started at the value the notch produced. It is
+        // the same shape the multiband display and the value box have always used (both anchor in
+        // CURSOR space and clamp once, at the end), which is why neither of them has this defect.
+        //
+        // Positive means "the value the drag computes is raised", whichever axis and whichever
+        // direction the style reads the cursor in; `wheelDragShift()` turns it into the offset for
+        // this slider's own style.
+        double wheelDragPx = 0.0;
+        // ADR-0053, round 11. JUCE's DUPLICATE-EVENT FILTER, restated for the in-drag path -- and it
+        // is restated because the floor above made it load-bearing. JUCE's own reason
+        // (`juce_Slider.cpp`) is exactly that: "sometimes duplicate wheel events seem to be sent, so
+        // since we're going to bump the value by a minimum of the interval, avoid doing this twice".
+        // It is about two DISTINCT events carrying one timestamp, not about one event delivered
+        // twice -- so single delivery, which the routing does guarantee, is not an answer to it.
+        // Before the floor, a duplicate asked for the same sub-interval nothing twice; with the
+        // floor it asks for two whole intervals, which would make the in-drag notch move FURTHER
+        // than the standalone one and break the same contract from the other side.
+        //
+        // IT STAYS PER-OWNER (round 30). A register-wide filter looks tidier and is wrong: it would
+        // refuse the second and later notches of a smooth-trackpad burst, which share a millisecond
+        // because `juce::Time::getCurrentTime()` has no finer resolution. It guards this floor, not
+        // a delivery.
+        juce::Time lastNotchTime;
+        // The processor, for the wheel's undo grouping (ADR-0053). Null for a knob with no APVTS
+        // parameter behind it -- which is the Settings Persistence bar, and exactly the control whose
+        // undo participation must not change: with no parameter there is no change gesture and no
+        // sound signature, so it cannot record a step whatever this does.
+        AnamorphAudioProcessor* owner = nullptr;
+
+        // ADR-0052 (round 11). A RESET THAT HAS NOTHING TO RESET IS NOT AN EDIT. The knob is
+        // already sitting on `resetValue`, so `setValue` below would write the value the control
+        // already holds and JUCE would drop it -- but the animation, the `vpos` seed and, on the
+        // Alt path, a host change gesture would all have gone out for an interaction that changed
+        // nothing. Asked in VALUE space, which is the space `setValue` compares in.
+        bool resetWouldMove() const { return ! juce::exactlyEqual (getValue(), resetValue); }
 
         void doReset()
         {
+            if (! resetWouldMove()) return;   // no edit, no sweep, no latched "vpos" (ADR-0052)
             // Seed the sweep from the CURRENT position so the eased travel has a real
             // "from" to leave. onSweep (below) then flags the reset sweep -- but only
             // when animations are on -- so the value-travel easing plays even though the
@@ -421,18 +819,488 @@ private:
         }
         void mouseDown (const juce::MouseEvent& e) override
         {
+            // ADR-0053 round 29: this press owns the wheel until it is released, wherever the
+            // cursor travels. Asked for EVERY press, not only one that starts a drag: the rule the
+            // owner approved is that no other control may be moved by the wheel while a button is
+            // held, and a press that holds no value simply has nothing to add a notch to.
+            //
+            // AND IT IS THE FIRST THING THIS HANDLER DOES (round 33, Devin
+            // `src/gui/LookAndFeel.cpp:R101-103`). A press refused because another device is
+            // already dragging this knob must leave EVERYTHING alone -- not just the wheel cell.
+            // Everything below this line is state the first device is mid-drag in: the four
+            // members are its banked notch and JUCE's own cursor reference, the Alt branch writes
+            // the parameter and opens a host gesture, and `juce::Slider::mouseDown` re-seeds
+            // `valueOnMouseDown`, `mouseDragStartPos` and `sliderBeingDragged` and opens a second
+            // `ScopedDragNotification`. Until round 33 the refusal stopped none of it, so the
+            // rejected press took the drag it had just been denied the wheel for.
+            if (! anamorph::gui::claimDragWheel (*this, *this, anamorph::gui::wheelPointerOf (e.source)))
+                return;
+            wheelDragPx = 0.0;      // a new press starts with no notch in it (ADR-0053)
+            velocityDebt = 0.0;     // ...in either of the two mappings (round 30)
+            injectingVelocity = false;
+            lastPassedShift = {};   // ...and JUCE's own cursor reference is the press's (round 31)
             if (e.mods.isAltDown()) // Option/Alt-click reset, as ONE undoable user gesture
             {
-                if (resetParam != nullptr) resetParam->beginChangeGesture();
+                // ...and the gesture is part of what an edit costs, so the same question is asked
+                // before it opens rather than inside `doReset` alone: a begin/end pair on a
+                // parameter that never moved is an automation punch-in a host recording touch or
+                // latch writes a point for (ADR-0052, round 11 -- the same rule the multiband
+                // wheel branches answer for their own rails).
+                if (! resetWouldMove()) return;
+                anamorph::param::beginChangeGesture (resetParam);
                 doReset();
-                if (resetParam != nullptr) resetParam->endChangeGesture();
+                noteResetProducedNothing();   // round 23, see below
+                anamorph::param::endChangeGesture (resetParam);
                 return;
             }
             juce::Slider::mouseDown (e);
         }
+
+        // A DRAG AFTER AN ALT-CLICK RESET IS ALREADY INERT, and nothing is added here to make it so
+        // (round 30, investigated while proving R3302 and DISPROVEN). The branch above returns
+        // without calling `juce::Slider::mouseDown`, and `Pimpl::useDragEvents` is cleared by
+        // nothing else -- `Pimpl::mouseUp` leaves it set -- so `Pimpl::mouseDrag` really does run
+        // its body on the next drag with state from the press before last. It writes nothing:
+        // `~ScopedDragNotification` calls `sendDragEnd`, which sets `sliderBeingDragged = -1`
+        // (juce_Slider.cpp:396-399), and every one of `mouseDrag`'s three stores is behind a
+        // `sliderBeingDragged == 0 / 1 / 2` test (:939-961). No `setValue`, so no gesture-less
+        // parameter write; `owner.snapValue` is not reached either, which is what State test 107
+        // leg G measures. Nothing the stale pass wrote survives, because `Pimpl::mouseDown` re-seeds
+        // `valueWhenLastDragged` and `valueOnMouseDown` from the live value on the next real press
+        // (:887-890). The one residue is the cursor hide `handleVelocityDrag` asks for, and the
+        // same press's own `mouseUp` restores it (`restoreMouseIfHidden`, guarded by the same stale
+        // `useDragEvents`). A guard on this side was written and then removed: it changed no
+        // observable behaviour, so it could not be covered, and an uncoverable guard against a
+        // defect that does not exist is worse than the comment that says so.
+
         void mouseDoubleClick (const juce::MouseEvent& e) override
         {
-            if (e.getNumberOfClicks() == 2) doReset();
+            // ...AND NOT WHILE ANOTHER DEVICE IS DRAGGING THIS KNOB (round 33). This is the
+            // continuation of a press `mouseDown` already refused, and it writes the parameter
+            // outright -- a reset landing in the middle of somebody else's drag.
+            if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
+                return;
+            if (e.getNumberOfClicks() != 2 || ! resetWouldMove()) return;
+            anamorph::param::beginChangeGesture (resetParam);
+            doReset();
+            noteResetProducedNothing();   // round 23, see below
+            anamorph::param::endChangeGesture (resetParam);
+        }
+
+        // ADR-0008, ROUND 23 (Devin R1117-1119). A RESET THAT REACHES ITS CLOSE WITH NOTHING
+        // DECLARED SAYS SO, and the two lines above are the reason it can.
+        //
+        // `resetWouldMove()` asks the SLIDER, because that is the space `Slider::setValue` compares
+        // in and ADR-0052's rule is about what the interaction costs. The PARAMETER can already be
+        // sitting on the reset value while the slider is not: a parameter written without notifying
+        // its listeners never reaches `ParameterAttachment`, and an off-message-thread write reaches
+        // it only through `triggerAsyncUpdate`, so the control lags by up to one message-loop turn.
+        // In that window the guard says "this moves something", the gesture opens, and JUCE's
+        // attachment then DROPS the write because the parameter already holds that value
+        // (`ParameterAttachment::setValueAsPartOfGesture` -> `callIfParameterValueChanged`). The
+        // witness's AFTER hook declares nothing for a parameter that did not move, no store was
+        // refused, and the batch close was left with a live read of whatever a host lane had put
+        // there -- the host's value as the user's Redo destination. State test 96 leg C measured it.
+        //
+        // Stated UNCONDITIONALLY, exactly as `SpectrumImager::endGesture` states it since round 22
+        // and for the same reason: it carries no value, and the close skips a parameter whose store
+        // DECLARED an endpoint (bit 2) before it ever consults the refusal bit -- so a reset that
+        // really did move the parameter keeps the endpoint the witness stated for it.
+        void noteResetProducedNothing() noexcept
+        {
+            if (resetParam != nullptr && owner != nullptr)
+                owner->noteOwnedParamRefused (resetParam);
+        }
+        // ADR-0053, ROUND 14: THE NOTCH TOTAL IS FOLDED IN BEFORE THE DRAG WRITES, NOT AFTER IT.
+        // JUCE asks this immediately before its own drag store --
+        // `setValue (owner.snapValue (valueWhenLastDragged, dragMode), sendNotificationSync)` -- so
+        // answering with the COMBINED value makes a drag event publish once. Until round 14 the
+        // offset was applied by a second `setValue` in a `mouseDrag` override, which published the
+        // PURE DRAG value first: measured on the Drive knob with one notch banked, the host's
+        // `audioProcessorParameterChanged` and the DSP atomic both took 2.1100 dB while the control
+        // stood at 3.9100 -- a full notch BACKWARDS, on every mouse move, inside the open
+        // touch/latch punch-in the press holds, so a DAW recording automation wrote the spike into
+        // the lane. Both writes landed in one gesture, so nothing downstream of the release could
+        // see it and no existing check did.
+        //
+        // GATED ON THE NOTCH TOTAL, NOT ON `dragMode`: JUCE leaves `dragMode == notDragging` for the
+        // plain `Rotary` style, so a `dragMode` test would silently stop folding for a style this
+        // editor does not happen to use today. `wheelDragProp` is non-zero only between a notch and
+        // the release of THIS slider's own press -- `mouseDown` and `mouseUp` both zero it -- which
+        // is exactly the drag path, and every other `snapValue` caller in JUCE (the wheel, the text
+        // box, the inc/dec buttons) is reached only with it at zero.
+        //
+        // `base` COMES FROM THE SNAPPED VALUE because that is what the old `getValue()` returned:
+        // JUCE runs `constrainedValue` (i.e. `snapToLegalValue`) on whatever this answers, so taking
+        // the raw `attempted` would drop a quantisation step the arithmetic had already applied.
+        // Measured equivalent to the old code on 8640 sequences -- every APVTS parameter x four drag
+        // paths x five start values x four wheel deltas x three notch positions -- with the raw form
+        // differing on 89 of them and the snapped form on none.
+        //
+        // A two- or three-value slider deriving from `Knob` would get the offset folded into its
+        // min/max thumbs as well (`setMinValue`/`setMaxValue` call this with a live `dragMode`).
+        // There is no such slider here -- every one is single-value -- and this is recorded rather
+        // than guarded, because a guard with no caller cannot be tested.
+        // HOW MANY PIXELS OF CURSOR TRAVEL ARE ONE WHOLE RANGE, asked of JUCE rather than restated
+        // here, because a scale of our own would be a second sensitivity to keep in step. The two
+        // families this editor uses answer differently and both answers are public:
+        //   * the relative styles -- every `RotaryVerticalDrag` knob here -- map
+        //     `mouseDiff / pixelsForFullDragExtent`, which is `getMouseDragSensitivity()`;
+        //   * an absolute linear style -- the two `LinearHorizontal` knobs, which keep JUCE's
+        //     default `snapsToMousePos` -- maps `(mousePos - sliderRegionStart) / sliderRegionSize`,
+        //     and `sliderRegionSize` is exactly the distance between the positions of the two ends.
+        // The condition is JUCE's own (`handleAbsoluteDrag`, juce_Slider.cpp), spelled the same way
+        // round, so a style that changes there changes here with it.
+        [[nodiscard]] bool dragIsRelativeToPress() const
+        {
+            const auto st = getSliderStyle();
+            if (st == juce::Slider::RotaryHorizontalDrag || st == juce::Slider::RotaryVerticalDrag
+                || st == juce::Slider::RotaryHorizontalVerticalDrag || st == juce::Slider::IncDecButtons)
+                return true;
+            if (st == juce::Slider::LinearHorizontal || st == juce::Slider::LinearVertical
+                || st == juce::Slider::LinearBar || st == juce::Slider::LinearBarVertical)
+                return ! getSliderSnapsToMousePosition();
+            return false;   // `Rotary` steers by ANGLE; see `wheelDragShift`
+        }
+
+        // ---- THE VELOCITY MAPPING (round 30, Devin `src/PluginEditor.h:R822-828`) --------------
+        //
+        // JUCE HAS TWO DRAG MAPPINGS AND ONLY ONE OF THEM IS AFFINE IN THE CURSOR.
+        // `handleAbsoluteDrag` is `prop (valueOnMouseDown) + mouseDiff / pixelsForFullDragExtent`,
+        // which is what `wheelDragPx` above relies on: a constant pixel shift is a constant value
+        // shift. `handleVelocityDrag` is an INTEGRATOR --
+        //     speed  = a sine curve of |e.position - mousePosWhenLastDragged|
+        //     newPos = prop (valueWhenLastDragged) + speed
+        // (juce_Slider.cpp) -- and a pixel shift there is neither constant nor a shift: it enters
+        // through `mouseDiff`, is bent by the curve, and lands as one spurious kick.
+        //
+        // WORSE, THE NOTCH ITSELF IS DISCARDED. `Pimpl::setValue` never writes
+        // `valueWhenLastDragged` -- every write to it is in `handleRotaryDrag`,
+        // `handleAbsoluteDrag`, `handleVelocityDrag`, `mouseDown` and the clamp in `mouseDrag`, and
+        // none of them is reachable from `Slider::setValue` -- so a notch that writes the value
+        // leaves the integrator behind and the NEXT event recomputes from the stale base. Measured
+        // on Drive with the modifier held: `0.0042 -> notch -> 0.1542 -> next drag 0.0550`, where
+        // the drag should have continued from 0.1542.
+        //
+        // SO THE NOTCH IS BANKED IN THE INTEGRATOR'S OWN SPACE, as a PROPORTION, and injected into
+        // the one place the integrator reads: `owner.valueToProportionOfLength (valueWhenLastDragged)`.
+        // That is a public virtual, so this class can add the banked proportion to exactly that
+        // call and nothing else -- the flag is armed for the duration of one
+        // `juce::Slider::mouseDrag` and disarms itself on the FIRST call, which is provably
+        // `handleVelocityDrag`'s: nothing earlier in `Pimpl::mouseDrag` calls it (the
+        // `useDragEvents` test, the `Rotary` branch, the `IncDecButtons` threshold and
+        // `isAbsoluteDragMode` read no proportion). The injection therefore lands INSIDE the
+        // `jlimit (0, 1, ...)` two lines below it, so the whole remaining range stays reachable,
+        // it is applied exactly once, and it never passes through the velocity curve.
+        // HOW FAR JUCE'S INTEGRATOR IS BEHIND THE LIVE VALUE, as a proportion (round 31: round 30
+        // called this `velocityInject` and only ever added to it when the notch's PREDICTED mapping
+        // was the velocity one). A notch always leaves the integrator behind, whichever mapping is
+        // active, because `Pimpl::setValue` never writes `valueWhenLastDragged`; an ABSOLUTE drag
+        // event always catches it up, because `handleAbsoluteDrag` writes that member outright from
+        // a position this class has already shifted. So the debt is incurred at every notch and
+        // discharged by whichever of the two mappings the next event turns out to take -- by the
+        // injection below, or by the absolute branch of `mouseDrag` clearing it. Exactly once.
+        double velocityDebt      = 0.0;
+        bool   injectingVelocity = false;  // armed only around one juce::Slider::mouseDrag call
+        // THE SHIFT THE LAST EVENT HANDED TO JUCE. `Pimpl::mouseDrag` ends with
+        // `mousePosWhenLastDragged = e.position` (juce_Slider.cpp:969) -- whatever it was HANDED,
+        // shift included -- and `handleVelocityDrag` reads a DIFFERENCE against that member. So a
+        // velocity event must carry the same shift the previous event carried, or the change in
+        // the shift is read as physical travel and bent through the speed curve: the notch, already
+        // applied, arriving a second time as a kick (State test 106 leg J measured -0.0188 with the
+        // sign inverted). Carrying the previous shift makes the difference exactly the physical
+        // travel, which is all the integrator is entitled to.
+        juce::Point<float> lastPassedShift {};
+
+        // JUCE's own branch test, from `Slider::Pimpl::mouseDrag` and `::isAbsoluteDragMode`
+        // (juce_Slider.cpp), negated. The swap modifier is pinned in this class's constructor
+        // because JUCE exposes no getter for it; everything else it reads has one.
+        [[nodiscard]] bool dragIsVelocity (const juce::ModifierKeys& mods) const
+        {
+            if (getSliderStyle() == juce::Slider::Rotary) return false;   // `handleRotaryDrag`, neither branch
+            if (getVelocityBasedMode() == (getVelocityModeIsSwappable()
+                                            && mods.testFlags (juce::ModifierKeys::ctrlAltCommandModifiers)))
+                return false;   // `isAbsoluteDragMode` said absolute
+            // ...and the second disjunct, which forces absolute mode for a range too coarse to
+            // steer: `(normRange.end - normRange.start) / sliderRegionSize < normRange.interval`.
+            // `sliderRegionSize` is private and is **0 for every rotary slider**, which makes JUCE's
+            // own division `+inf` and the test false. Round 30 established why, because the
+            // initialiser says 1: `Pimpl::resized` assigns the member for the horizontal and
+            // vertical styles only (juce_Slider.cpp:1266-1274, :1324), and `juce::Slider`'s own
+            // constructor runs a layout while the style is still the default `LinearHorizontal` and
+            // the bounds are 0x0 -- which writes 0. `setupRotary`'s later
+            // `setSliderStyle (RotaryVerticalDrag)` re-runs the layout, takes neither branch, and
+            // leaves the 0 there for good. (That division is a genuine `float-divide-by-zero` in
+            // JUCE, reachable whenever the swap modifier is held; `scripts/ubsan-ignorelist.txt`
+            // carries the disposition.) Measured from OUTSIDE, the same span is what
+            // `getPositionOfValue` maps a whole range across: the live geometry for a linear style,
+            // and 0 for a rotary, which has no linear position to report. A zero region is excluded
+            // below rather than divided by, so this reads as JUCE's `+inf` does -- not absolute.
+            const double region = std::abs ((double) getPositionOfValue (getMaximum())
+                                          - (double) getPositionOfValue (getMinimum()));
+            if (region > 0.0 && (getMaximum() - getMinimum()) / region < getInterval())
+                return false;
+            return true;
+        }
+
+        // THE INJECTION POINT. Everything outside the one armed call is JUCE's own answer.
+        double valueToProportionOfLength (double v) override
+        {
+            const double p = juce::Slider::valueToProportionOfLength (v);
+            if (! injectingVelocity) return p;
+            injectingVelocity = false;          // exactly ONE call sees it -- handleVelocityDrag's
+            const double inject = velocityDebt;
+            velocityDebt = 0.0;                 // ...and the debt is discharged exactly once
+            // CLAMPED HERE TOO, though the only caller that can see the injection clamps
+            // immediately afterwards: `handleVelocityDrag`'s next line is
+            // `newPos = (isRotary() && ! rotaryParams.stopAtEnd) ? newPos - floor (newPos)
+            //                                                    : jlimit (0.0, 1.0, newPos)`
+            // (juce_Slider.cpp:843-845), and `stopAtEnd` is true for every slider in this editor --
+            // the Pimpl constructor sets it (:58) and `setRotaryParameters` is never called. So a
+            // mutant that drops this `jlimit` is EQUIVALENT and no test can kill it; it is kept
+            // because the wrap branch two characters away would not be, and because this function
+            // is public and JUCE may call it from somewhere else tomorrow.
+            return juce::jlimit (0.0, 1.0, p + inject);
+        }
+
+        // (WHICH BRANCH JUCE ACTUALLY TOOK used to be recorded here, in a `snapValue` override
+        // that returned its argument untouched and stored the `DragMode` JUCE passed it. Round 30
+        // banked the notch from that record; round 31 stopped, because the mapping the notch must
+        // be banked for is the NEXT event's and not the last one's -- see `takeWheelNotch`. With
+        // its one reader gone the override recorded state nothing read, so it is gone too. Round 29
+        // had already moved the wheel fold out of it, and nothing has moved back.)
+
+        [[nodiscard]] double pixelsPerWholeRange() const
+        {
+            if (dragIsRelativeToPress())
+                return (double) juce::jmax (1, getMouseDragSensitivity());
+            const double a = (double) getPositionOfValue (getMinimum());
+            const double b = (double) getPositionOfValue (getMaximum());
+            return juce::jmax (1.0, std::abs (b - a));
+        }
+
+        // The offset to add to an event's position so that JUCE's own mapping comes out `wheelDragPx`
+        // higher in VALUE. Every style this editor uses reads exactly one axis, and reads it in the
+        // direction recorded here: `x` rises with the value, `y` falls with it (JUCE's vertical
+        // forms are `mouseDragStartPos.y - e.position.y` and `1.0 - (y - start) / size`).
+        //
+        // `Rotary` -- the angle-steered style -- is NOT one of them: its mapping is not affine in
+        // the cursor, so a constant pixel shift is not a constant value shift and this returns a
+        // zero offset for it. That is recorded rather than guarded because it is unreachable in this
+        // editor: `setSliderStyle` is called three times in `src/` (`src/PluginEditor.cpp:541`,
+        // `:687`, `:812`) and none of them names `Rotary`. The assertion is what would notice if a
+        // fourth call ever did.
+        [[nodiscard]] juce::Point<float> wheelDragShift() const
+        {
+            if (juce::exactlyEqual (wheelDragPx, 0.0)) return {};
+            const auto st = getSliderStyle();
+            jassert (st != juce::Slider::Rotary);
+            if (st == juce::Slider::RotaryHorizontalDrag || st == juce::Slider::LinearHorizontal
+                || st == juce::Slider::LinearBar)
+                return { (float) wheelDragPx, 0.0f };
+            if (st == juce::Slider::Rotary)
+                return {};
+            return { 0.0f, (float) -wheelDragPx };   // every vertical form, and the H+V rotary
+        }
+
+        // THE ONE PLACE THE OFFSET IS APPLIED. JUCE recomputes the drag's value from its own anchor
+        // and the cursor on every move and never reads the live value back, so a notch that only
+        // wrote the value would be erased by the next move (ADR-0053's original finding). Shifting
+        // the position it is handed moves the ANCHOR instead -- `mouseDiff` is `e.position` minus a
+        // start point JUCE captured at the press, so a constant shift is a constant value offset --
+        // and, unlike the `snapValue` override this replaces, it is inside the clamp rather than
+        // outside it, so the drag keeps its whole remaining travel in both directions.
+        void mouseDrag (const juce::MouseEvent& e) override
+        {
+            // A REFUSED PRESS DRAGS NOTHING (round 33, Devin `src/gui/LookAndFeel.cpp:R101-103`).
+            // `Pimpl::mouseDrag` does not ask whose press it is: it runs on the OWNER's
+            // `useDragEvents` and `sliderBeingDragged`, and writes the parameter from whatever
+            // cursor it is handed (juce_Slider.cpp:906-970). Refusing the `mouseDown` stopped the
+            // anchor being replaced; without this it did not stop the rival steering the drag that
+            // anchor belongs to.
+            if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
+                return;
+            // THE VELOCITY BRANCH TAKES THE OTHER MECHANISM (round 30). A pixel shift means nothing
+            // to an integrator that reads a per-event cursor DELTA, so the notch goes in through
+            // `valueToProportionOfLength` instead -- and the event carries the shift the PREVIOUS
+            // event carried, not this press's current one, so that the delta JUCE reads against
+            // `mousePosWhenLastDragged` is the physical travel and nothing else (round 31).
+            if (dragIsVelocity (e.mods))
+            {
+                const juce::ScopedValueSetter<bool> arm (injectingVelocity,
+                                                        ! juce::exactlyEqual (velocityDebt, 0.0));
+                juce::Slider::mouseDrag (lastPassedShift.isOrigin() ? e : shifted (e, lastPassedShift));
+                return;
+            }
+            const auto shift = wheelDragShift();
+            lastPassedShift = shift;
+            juce::Slider::mouseDrag (shift.isOrigin() ? e : shifted (e, shift));
+            // AND THE INTEGRATOR IS NOW CAUGHT UP, whatever it was owed: `handleAbsoluteDrag` has
+            // just written `valueWhenLastDragged` from the shifted position, so the notch is inside
+            // it. Clearing unconditionally is the same statement -- a press that banked nothing
+            // owes nothing, and a press whose `useDragEvents` is false (the Alt-click reset's) can
+            // never have banked, because `takeWheelNotch` refuses while `getThumbBeingDragged()`
+            // is negative.
+            velocityDebt = 0.0;
+        }
+
+        // ONE SHIFTED COPY OF AN EVENT. `mouseDownPosition` is deliberately NOT shifted: JUCE's own
+        // absolute anchor is `mouseDragStartPos`, captured in `Pimpl::mouseDown` from the press, and
+        // this member is not it.
+        [[nodiscard]] static juce::MouseEvent shifted (const juce::MouseEvent& e, juce::Point<float> by)
+        {
+            return { e.source, e.position + by, e.mods,
+                     e.pressure, e.orientation, e.rotation, e.tiltX, e.tiltY,
+                     e.eventComponent, e.originalComponent, e.eventTime,
+                     e.mouseDownPosition, e.mouseDownTime,
+                     e.getNumberOfClicks(), e.mouseWasDraggedSinceMouseDown() };
+        }
+        void mouseUp (const juce::MouseEvent& e) override
+        {
+            // A RELEASE ENDS ONLY THE DRAG IT BELONGS TO (round 33). `Pimpl::mouseUp` ends with an
+            // unconditional `currentDrag.reset()` (juce_Slider.cpp:997) -- the OWNER's
+            // `ScopedDragNotification`, whose destructor calls `sendDragEnd` and puts
+            // `sliderBeingDragged` back to -1 -- and the four members and `releaseDragWheel` below
+            // are the owner's banked notch and the owner's claim. So a refused press's release used
+            // to end the first device's drag, close its host change gesture and free its claim, all
+            // three, one event after the `mouseDown` that was refused.
+            if (anamorph::gui::dragWheelHeldByOther (*this, anamorph::gui::wheelPointerOf (e.source)))
+                return;
+            juce::Slider::mouseUp (e);
+            wheelDragPx = 0.0;
+            velocityDebt = 0.0;
+            injectingVelocity = false;
+            lastPassedShift = {};
+            anamorph::gui::releaseDragWheel (*this);   // this knob's drag is over (round 32)
+        }
+        void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
+            // THE PRESS DECIDES, NOT THE POINTER (ADR-0053, owner decision). If some other control
+            // is holding a press, this notch is ITS notch however far its cursor has wandered onto
+            // this knob; if THIS knob holds the press, the notch is offered to it here; and if a
+            // button is down with nothing claimed, nobody may have it (round 30). All three are
+            // the same question, so there is one call and nothing below it to get wrong.
+            if (anamorph::gui::wheelTakenByAnyPress (*this, this, e, w)) return;
+            mouseWheelMoveTail (e, w);
+        }
+
+        // A NOTCH INSIDE THIS KNOB'S OWN DRAG (ADR-0053). `getThumbBeingDragged()` is >= 0 only
+        // between the mouseDown that actually STARTED a drag and the drag-end notification
+        // (`Pimpl::mouseDown` assigns it, `sendDragEnd` puts it back to -1 -- juce_Slider.cpp:878,
+        // :396-399), so a press that started none does not qualify and a notch can never write
+        // outside a change gesture. Round 30 named the presses that means, since the two this
+        // comment used to name are not among them: a pop-up-menu click needs `menuEnabled` and a
+        // single-click reset needs `singleClickModifiers`, and this editor sets neither, so JUCE's
+        // own branches for them are unreachable. What IS reachable is the Alt-click reset above,
+        // which returns before `juce::Slider::mouseDown`, and any press made while the value box
+        // under this knob has taken the drag instead.
+        //
+        // ...AND IT IS THE `WheelDragOwner` HOOK (round 29), so the same body serves a notch
+        // delivered here by the pointer and one posted here by the register while the cursor is
+        // somewhere else entirely. `false` means this press has nothing to add the notch to.
+        bool takeWheelNotch (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
+            // `e.mods.isAnyMouseButtonDown()` is the register's precondition, not this hook's:
+            // round 30 made `wheelTakenByAnyPress` the only caller and it asks first.
+            if (isScrollWheelEnabled() && getThumbBeingDragged() >= 0)
+            {
+                // What JUCE's own handler would move this slider to for this event -- direction,
+                // scale, rails AND its one-interval floor, from the single source in LookAndFeel.h
+                // -- so one notch means the same travel whether or not a button is held. It said
+                // that here before and did not deliver it: without the floor a sub-interval notch
+                // was snapped straight back by `setValue` and the press ate it (round 11).
+                if (e.eventTime == lastNotchTime) return true;   // ...the duplicate, before anything (ADR-0052)
+                lastNotchTime = e.eventTime;
+                const double v0     = getValue();
+                const double target = anamorph::gui::wheelTargetValue (*this, w, v0);
+                if (juce::exactlyEqual (target, v0)) return true;  // ADR-0052: no edit, no side effects
+                const double base = juce::Slider::valueToProportionOfLength (v0);
+                setValue (target, juce::sendNotificationSync);
+                // BANK WHAT ACTUALLY MOVED, read back from the slider rather than from the request:
+                // the write is clamped to the range and snapped to the interval grid, and banking
+                // the request instead would leave the drag carrying travel the control never took
+                // -- dead travel the next mouse move would then apply as a jump (ADR-0052's latch
+                // half). ...and the drag carries on from the value the notch left behind.
+                //
+                // IN PIXELS (round 29): the proportion that actually moved, times the travel JUCE
+                // itself maps a whole range across. See `wheelDragPx`.
+                //
+                // ...AND IN BOTH MAPPINGS' SPACES, BECAUSE THIS IS NOT WHERE THE MAPPING IS CHOSEN
+                // (round 31, Devin `src/PluginEditor.h:R1045-1047`). Round 30 picked one bank here
+                // from `lastDragMode` -- the mapping the PREVIOUS event took -- and that is a
+                // prediction, not a fact: `Pimpl::mouseDrag` asks the NEXT event's own modifiers
+                // (`isAbsoluteDragMode (e.mods)`, juce_Slider.cpp:928), and ctrl/alt/command can go
+                // down or come up between this notch and that event without the mouse moving at
+                // all. A wrong prediction put the notch in the bank the next event does not read
+                // and the contribution vanished, while the other bank kept it to be spent later if
+                // the user changed the modifier back -- measured at 0.15 of the range on Drive,
+                // State test 106 legs E-J.
+                //
+                // Both banks are cheap and neither is a scale of its own: `wheelDragPx` is this
+                // same proportion in the pixels the absolute mapping reads, and the two are
+                // reconciled where they are SPENT, which is the only place that knows the mapping.
+                const double moved = juce::Slider::valueToProportionOfLength (getValue()) - base;
+                wheelDragPx  += moved * pixelsPerWholeRange();
+                velocityDebt += moved;
+                return true;
+            }
+            return false;
+        }
+
+        // A STANDALONE SCROLL OF THIS KNOB HAPPENED (round 30). The Settings Persistence bar reveals
+        // its window on a sustained scroll, and until this round the editor learned about that by
+        // registering itself as a `MouseListener` on the bar. That worked, and it also made
+        // `Component::internalMouseWheel` offer the SAME notch to the wheel register twice -- once
+        // when it called the bar's own handler and once when it called the bar's listeners
+        // (juce_Component.cpp) -- so a press held elsewhere had its notch posted to the holder
+        // twice. The knob and the value box filtered the repeat on `eventTime`; the multiband
+        // display had no filter and would have applied it twice. A callback the knob raises where
+        // the scroll actually is says the same thing once.
+        std::function<void()> onStandaloneWheel;
+
+        void mouseWheelMoveTail (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+        {
+            if (onStandaloneWheel) onStandaloneWheel();
+            // (The value box under this knob no longer has to be asked from here. It claims the
+            // wheel for itself at its own `mouseDown`, so a notch delivered to this knob during the
+            // box's drag is routed by the register above -- one rule for every control instead of
+            // one parent knowing about one child.)
+
+            // A STANDALONE SCROLL NAMES THE CONTROL IT EDITS, so the processor can keep the whole
+            // scroll -- however many notches, and however many pauses between them -- as ONE undo
+            // step (ADR-0053). The value box below the knob forwards its own wheel events here, so
+            // the knob and the number under it name the same control, which is what they are.
+            if (owner != nullptr && resetParam != nullptr)
+            {
+                const AnamorphAudioProcessor::ScopedWheelStep step
+                    (*owner, AnamorphAudioProcessor::wheelStepKeyFor (resetParam));
+                sendWheelToJuce (e, w);
+                return;
+            }
+            sendWheelToJuce (e, w);
+        }
+
+        // A NOTCH THAT LANDED HERE WITH A BUTTON DOWN AND NO CONTROL HOLDING A PRESS (ADR-0053).
+        // JUCE routes a wheel event by POINTER and not by capture -- `getTargetForGesture`
+        // hit-tests the peer at the event position whether or not a drag is in flight -- and then
+        // discards it if any button is down, because its whole wheel body sits behind
+        // `! e.mods.isAnyMouseButtonDown()`: a notch the user makes and never sees.
+        //
+        // ROUND 29 NARROWED WHAT REACHES HERE, and this comment used to describe the case that no
+        // longer does, and round 30 REMOVED the branch that served it. The case this laundering
+        // existed for -- "a button is held somewhere that owns no wheel press, and the pointer is
+        // over this knob, so let JUCE act as if no button were down" -- is exactly the case the
+        // owner reversed: while any button is held, no control moves but the one being held, and
+        // `wheelTakenByAnyPress` now returns true for it at the top of `mouseWheelMove`. Nothing
+        // reaches here with a button down any more, so the laundered event has no reader, and the
+        // one line left is what a standalone scroll always did.
+        //
+        // KEPT AS A FUNCTION rather than inlined: `mouseWheelMoveTail` names the undo grouping and
+        // this names the delivery, and the two are separate decisions.
+        void sendWheelToJuce (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+        {
+            jassert (! e.mods.isAnyMouseButtonDown());   // round 30: the register consumed those
+            juce::Slider::mouseWheelMove (e, w);
         }
     };
 
@@ -487,8 +1355,35 @@ private:
     juce::Label      saveTitle;
     juce::TextEditor saveNameEditor;
     juce::TextButton saveOkButton { "Save" }, saveCancelButton { "Cancel" };
+    // ADR-0036 ROUND 28b (Devin R405-406). WHICH SAVE ATTEMPT THE DIALOG IN FRONT OF THE USER
+    // BELONGS TO, and it is not the same question as "does the editor still exist".
+    //
+    // Round 27 made the save's completion asynchronous (R640): a save issued from inside a user
+    // transaction is queued, and the dialog waits for the answer. The completion captured a
+    // `SafePointer`, which answers EDITOR LIFETIME and nothing else -- so a user who cancels the
+    // dialog, opens it again and starts a second save has the FIRST save's completion land on the
+    // SECOND save's dialog: closing it, or painting "SAVE FAILED" on it, or taking its focus, for
+    // a file operation that has nothing to do with what is on screen.
+    //
+    // The owner's ruling is that cancelling the dialog cancels the UI ASSOCIATION and not the file
+    // operation: a write already queued may still complete and its result must still be processed
+    // internally (the preset list and the dirty mark really did change). So identity is carried
+    // explicitly. `nextSaveAttempt` only ever increases; `saveAttempt` is the attempt the dialog
+    // currently belongs to, and it is cleared to 0 by EVERY show and EVERY hide -- cancel, Escape,
+    // the backdrop dismiss and a successful close all go through `showSavePreset`. A completion
+    // whose captured id is not `saveAttempt` touches no part of the dialog.
+    //
+    // A counter rather than a token object because the whole question is "is this still the one",
+    // and a `uint32` answers it with no allocation, no lifetime and nothing to keep in step. It is
+    // message-thread-only: both the click and the completion run there.
+    juce::uint32 saveAttempt     = 0;
+    juce::uint32 nextSaveAttempt = 0;
     std::unique_ptr<juce::FileChooser> fileChooser;
 
+    juce::OwnedArray<AttachmentWitness>  writeWitnesses;   // ADR-0008 round 18, see the class above
+    // ROUND 27: the slot the A/B letter was last painted for. -1 forces the first tick to
+    // paint, which costs one repaint at editor construction and removes a special case.
+    int lastAbSlot = -1;
     juce::OwnedArray<SliderAttachment>   sliderAtts;
     juce::OwnedArray<ButtonAttachment>   buttonAtts;
     juce::OwnedArray<ComboBoxAttachment> comboAtts;

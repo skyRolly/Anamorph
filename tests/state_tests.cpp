@@ -64,6 +64,15 @@ namespace
     int failures = 0;
     int checks   = 0;
 
+    // ADR-0036 round 27 (Devin R640). `saveUser` and `loadFile` no longer return a bool, because
+    // `true` used to mean "saved OR merely queued" and the editor read it as "saved". These two
+    // read the tri-state for the SYNCHRONOUS cases every call site below is in -- none of them has
+    // a user transaction open, so `deferred` would itself be a failure and reads as one.
+    bool opCompleted (anamorph::PresetManager::OpResult r)
+    { return r == anamorph::PresetManager::OpResult::completed; }
+    bool opFailed (anamorph::PresetManager::OpResult r)
+    { return r == anamorph::PresetManager::OpResult::failed; }
+
     void check (bool cond, const char* what)
     {
         ++checks;
@@ -858,7 +867,7 @@ static void testPresetSaveReloadRoundTrip()
     const bool hadUserFile = presetFile.existsAsFile();
     if (hadUserFile) { parked.deleteFile(); presetFile.moveFileTo (parked); }
 
-    check (presets.saveUser (name), "saveUser succeeds");
+    check (opCompleted (presets.saveUser (name)), "saveUser succeeds");
     check (presetFile.existsAsFile(), "preset file written");
     checkStr (presets.currentName(), name, "current preset adopts saved name");
     check (! presets.isDirty(), "freshly saved preset is clean");
@@ -911,7 +920,7 @@ static void testPresetSaveReloadRoundTrip()
     if (presetFile.copyFileTo (tempCopy))
     {
         setRaw (p, "drive", 0.9f);
-        check (presets.loadFile (tempCopy), "loadFile loads an arbitrary .anamorph path");
+        check (opCompleted (presets.loadFile (tempCopy)), "loadFile loads an arbitrary .anamorph path");
         checkNear ((double) rawOf (p, "drive"), (double) driveSaved, 1.0e-5,
                    "loadFile restores the saved sound");
         tempCopy.deleteFile();
@@ -1070,7 +1079,7 @@ static void testDuplicateNameFactoryVsUserPreset()
     check (presets.currentIndex() == factoryIdx, "the factory preset is current before any user file exists");
 
     // The case the split exists for: save a user preset under the factory name.
-    check (presets.saveUser (shared), "saveUser succeeds under a factory preset's name");
+    check (opCompleted (presets.saveUser (shared)), "saveUser succeeds under a factory preset's name");
     check (presetFile.existsAsFile(), "user preset file written");
     checkStr (presets.currentName(), shared, "the shared name is still what is DISPLAYED");
     const int userIdx = presets.currentIndex();
@@ -1093,7 +1102,7 @@ static void testDuplicateNameFactoryVsUserPreset()
     // baseline; without the onSaved hook `committed` keeps the pre-save (factory) identity
     // and the first undo restores it.
     presets.load (factoryIdx);
-    check (presets.saveUser (shared), "re-save under the shared name");
+    check (opCompleted (presets.saveUser (shared)), "re-save under the shared name");
     check (presets.currentIndex() == userIdx, "the save selects the user row");
     if (auto* drive = p.getAPVTS().getParameter ("drive"))
     {
@@ -1141,7 +1150,7 @@ static void testDuplicateNameFactoryVsUserPreset()
         check (stagedOutside, "outside-folder copy staged");
         if (stagedOutside)
         {
-            check (presets.loadFile (outside), "loadFile accepts a preset from outside the folder");
+            check (opCompleted (presets.loadFile (outside)), "loadFile accepts a preset from outside the folder");
             checkStr (presets.currentName(), shared, "an outside file still displays its own name");
             check (presets.currentIndex() < 0, "an outside file ticks nothing, not the same-named factory row");
             outside.deleteFile();
@@ -1153,7 +1162,7 @@ static void testDuplicateNameFactoryVsUserPreset()
     check (presetFile.deleteFile(), "user preset file removed while selected");
     presets.refresh();
     check (presets.currentIndex() < 0, "a deleted user preset ticks nothing, not the same-named factory row");
-    check (presets.saveUser (shared), "re-create the user preset for the restore check");
+    check (opCompleted (presets.saveUser (shared)), "re-create the user preset for the restore check");
 
     // The session carries the identity too since 0.9.2, so the tick survives a reload.
     // (State test 12 covers the restore matrix in full, including the fallbacks.)
@@ -1305,11 +1314,11 @@ static void testPresetIndicatorIdentityAcrossRestore()
     }
 
     // --- Case 2: a USER preset sharing the factory name is current ----------------
-    check (presets.saveUser (shared), "a user preset can be saved under the factory name");
+    check (opCompleted (presets.saveUser (shared)), "a user preset can be saved under the factory name");
     const int userIdx = presets.currentIndex();
     check (userIdx > factoryIdx, "the saved user preset sits below the factory block");
     setRaw (p, "drive", 0.61f);                  // make the user preset's sound distinct
-    check (presets.saveUser (shared), "re-save so the file matches the live sound");
+    check (opCompleted (presets.saveUser (shared)), "re-save so the file matches the live sound");
     const auto userRaw = rawSnapshot (p);
     juce::MemoryBlock userBlob;
     p.getStateInformation (userBlob);
@@ -1336,7 +1345,7 @@ static void testPresetIndicatorIdentityAcrossRestore()
         check (stagedNested, "nested sub-folder copy staged");
         if (stagedNested)
         {
-            check (presets.loadFile (nested), "loadFile accepts a preset from a sub-folder");
+            check (opCompleted (presets.loadFile (nested)), "loadFile accepts a preset from a sub-folder");
             check (presets.currentIndex() < 0, "a nested preset ticks nothing while live");
             const auto nestedRaw = rawSnapshot (p);
             juce::MemoryBlock nestedBlob;
@@ -1377,7 +1386,7 @@ static void testPresetIndicatorIdentityAcrossRestore()
 
     // --- A/B: each slot carries its own identity across the reload ----------------
     {
-        check (presets.saveUser (shared), "re-create the user preset for the A/B check");
+        check (opCompleted (presets.saveUser (shared)), "re-create the user preset for the A/B check");
         const int userRow = presets.currentIndex();
         p.abSwitchTo (1);
         presets.load (factoryIdx);        // slot B := the factory preset
@@ -2391,6 +2400,16 @@ namespace
 // burst writes puts the write in the exact window between that store and the rest.
 // ADR-0045: fires from inside a parameter's own beginChangeGesture dispatch -- the window
 // between a gesture open and the store it brackets, which no check outside that bracket sees.
+// ADR-0052, round 11. The observable an "opened no gesture" claim needs: a host's own view of the
+// parameter. A change gesture is not visible in any value, in the undo stack or in the signature --
+// an empty begin/end pair is exactly a touch or latch punch-in that writes nothing -- so the only
+// way to assert it is to listen the way a host does.
+struct CountGestures final : public juce::AudioProcessorParameter::Listener
+{
+    int opens = 0, closes = 0, writes = 0;
+    void parameterValueChanged (int, float) override { ++writes; }
+    void parameterGestureChanged (int, bool starting) override { starting ? ++opens : ++closes; }
+};
 struct WriteOnGestureOpen final : public juce::AudioProcessorParameter::Listener
 {
     juce::RangedAudioParameter* target = nullptr;
@@ -2429,6 +2448,31 @@ struct WriteFromInsideAStoreQuietly final : public juce::AudioProcessorParameter
         target->setValue (target->convertTo0to1 (to));
     }
     void parameterGestureChanged (int, bool) override {}
+};
+// ROUND 23. A HOST WRITE THAT LANDS AT THE GESTURE **CLOSE**, which is a different instant from
+// `WriteOnGestureOpen`'s and is the one that reaches the batch close's live read.
+//
+// WHY THE DISTINCTION IS LOAD-BEARING, and it is what made mutation M93 survive round 22. JUCE
+// dispatches a parameter's listeners in REVERSE registration order
+// (juce_AudioProcessorParameter.cpp:80, :103, :115 all walk `for (int i = listeners.size(); --i >= 0;)`),
+// and a test adds its probe AFTER the processor has registered its own. So a probe armed on the
+// gesture OPEN runs BEFORE `AnamorphAudioProcessor::parameterGestureChanged` seeds the batch, and the
+// host's value becomes the step's `before` -- where the close's live read agrees with it and no
+// endpoint can disagree. Armed on the CLOSE, the probe runs before the processor's close logic and
+// the live read is the first thing to see the host's value, which is the window under test.
+struct WriteOnGestureClose final : public juce::AudioProcessorParameter::Listener
+{
+    juce::RangedAudioParameter* target = nullptr;
+    float to = 0.0f;
+    bool  armed = false, fired = false;
+    void parameterValueChanged (int, float) override {}
+    void parameterGestureChanged (int, bool starting) override
+    {
+        if (! armed || starting || target == nullptr) return;
+        armed = false;
+        fired = true;
+        target->setValue (target->convertTo0to1 (to));   // quiet: the batch must not see a store
+    }
 };
 struct WriteFromInsideAStore final : public juce::AudioProcessorParameter::Listener
 {
@@ -2788,10 +2832,17 @@ struct WriteFromInsideAGestureOpen final : public juce::AudioProcessorParameter:
     juce::RangedAudioParameter* target = nullptr;
     float to = 0.0f;
     bool  armed = false, fired = false;
+    // ROUND 17: ...or the CLOSE, which is the only instant that can reach a batch's endpoint after
+    // the user's last store and before the close reads it. Same type, deliberately: the TSan
+    // suppression `deadlock:WriteFromInsideAGestureOpen` exists because writing a parameter from
+    // inside a gesture dispatch re-enters JUCE's listener lock, and the CI gate asserts that every
+    // entry in the file is matched -- a second, differently named probe of the identical shape
+    // would need a second entry for no gain.
+    bool onClose = false;
     void parameterValueChanged (int, float) override {}
     void parameterGestureChanged (int, bool starting) override
     {
-        if (! starting || ! armed || target == nullptr) return;
+        if (starting == onClose || ! armed || target == nullptr) return;
         armed = false;
         fired = true;
         target->setValueNotifyingHost (target->convertTo0to1 (to));
@@ -2894,6 +2945,20 @@ static void testTheCheckIsAdjacentToEveryStore()
                                  imager, imager, juce::Time::getCurrentTime(),
                                  { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
     };
+    // A STANDALONE SCROLL CARRIES NO BUTTON (round 30). The `mev` above declares a held left button
+    // for every event it builds, which is right for the press sequences this test drives and wrong
+    // for the wheel probes: those issue no `mouseDown` at all, so the button they claim belongs to
+    // no press. Round 30 made that difference load-bearing -- while a button is held the press
+    // decides, and a held button with nothing claimed means nobody may have the notch (Devin
+    // `src/gui/SpectrumImager.cpp:R3302-3304`) -- so a probe that means "scrolled with the hand off
+    // the mouse" now has to say so.
+    auto wheelEv = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
     const float W     = (float) imager->getWidth();
     const float H     = (float) imager->getHeight();
     const float laneY = 0.5f * H;
@@ -2985,7 +3050,7 @@ static void testTheCheckIsAdjacentToEveryStore()
             juce::MouseWheelDetails wheel;
             wheel.deltaX = 0.0f; wheel.deltaY = 0.05f; wheel.isReversed = false;
             wheel.isSmooth = false; wheel.isInertial = false;
-            imager->mouseWheelMove (mev (hx, laneY, hx, laneY, false), wheel);
+            imager->mouseWheelMove (wheelEv (hx, laneY), wheel);
             imager->mouseDrag (mev (hx - 40.0f, laneY, hx, laneY, true));
             imager->mouseUp   (mev (hx - 40.0f, laneY, hx, laneY, true));
             if (! juce::exactlyEqual (installed, plainOf (hiP)))
@@ -3016,7 +3081,7 @@ static void testTheCheckIsAdjacentToEveryStore()
             juce::MouseWheelDetails wheel;
             wheel.deltaX = 0.0f; wheel.deltaY = 0.20f; wheel.isReversed = false;
             wheel.isSmooth = false; wheel.isInertial = false;
-            imager->mouseWheelMove (mev (hx, laneY, hx, laneY, false), wheel);
+            imager->mouseWheelMove (wheelEv (hx, laneY), wheel);
             check (! juce::exactlyEqual (before, plainOf (loP)),
                    "leg E: the wheel still moves a split when no gesture is in flight");
         }
@@ -3996,6 +4061,20 @@ static void testACommitWithNoIntentWritesNothing()
                                  imager, imager, juce::Time::getCurrentTime(),
                                  { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
     };
+    // A STANDALONE SCROLL CARRIES NO BUTTON (round 30). The `mev` above declares a held left button
+    // for every event it builds, which is right for the press sequences this test drives and wrong
+    // for the wheel probes: those issue no `mouseDown` at all, so the button they claim belongs to
+    // no press. Round 30 made that difference load-bearing -- while a button is held the press
+    // decides, and a held button with nothing claimed means nobody may have the notch (Devin
+    // `src/gui/SpectrumImager.cpp:R3302-3304`) -- so a probe that means "scrolled with the hand off
+    // the mouse" now has to say so.
+    auto wheelEv = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
     const float W     = (float) imager->getWidth();
     const float H     = (float) imager->getHeight();
     const float laneY = 0.5f * H;
@@ -4316,7 +4395,7 @@ static void testACommitWithNoIntentWritesNothing()
             poke.to     = 5000.0f;
             loP->addListener (&poke);
             poke.armed = true;
-            imager->mouseWheelMove (mev (hx, laneY, hx, laneY, false), wheel);
+            imager->mouseWheelMove (wheelEv (hx, laneY), wheel);
             const bool landed = poke.fired;
             loP->removeListener (&poke);
 
@@ -4754,30 +4833,43 @@ static void testTheFarSideOfACoupledCommitIsCoveredByItsCaller()
 
 
 // ---------------------------------------------------------------------------
-//  State test 80 -- a wheel tick during a held drag finishes the press, and
-//  finishing it has three consequences that are all intended.
+//  State test 80 -- a wheel notch inside a held press belongs to that press.
 //
-//  ADR-0041 made this a product decision and its Consequences section said so in
-//  one line: "a wheel tick during a drag ends the drag. New, deliberate." What it
-//  did not say -- and what a later review had to ask for -- is what ending it
-//  costs, because `cancelActiveDrag()` calls `endGesture()` on the dragged
-//  parameter. This test pins all three, so a future change that quietly restores
-//  drag continuity, or that stops closing the gesture, fails here rather than in
-//  somebody's session.
+//  INVERTED 2026-09-12 BY ADR-0053, and the assertion it replaces is named here
+//  rather than deleted. This test used to be "a wheel tick during a held drag
+//  finishes the press", and it pinned ADR-0041's Consequences line in three
+//  parts: the press was dead after the tick (`a further drag writes nothing`),
+//  the host change gesture closed AT the tick rather than at mouseUp, and the
+//  drag so far was committed as its OWN undo step. ADR-0053 supersedes that
+//  consequence on maintainer instruction: a notch now ADDS to the value the
+//  press has produced, the press carries on FROM the notched value, and the
+//  whole interaction is ONE undo step at the release.
 //
-//  The behaviour was ALREADY covered indirectly, by State test 73 leg A -- and by
-//  ONE leg, not two. This comment used to name "State test 71 leg C and State test
-//  73 leg A"; re-measured 2026-09-09 by removing `cancelActiveDrag()` from
-//  `mouseWheelMove` altogether, the failures are 73 leg A and this test's own leg A,
-//  three checks in all. State test 71 leg C is about a Bands change inside a REMOVAL
-//  burst and has nothing to say about the wheel. 73 leg A asserts that the drag does
-//  not write over a value installed during the tick, which holds only because the
-//  press is finished -- a real guard but an oblique one, since it would survive a
-//  change that kept the press alive while breaking ownership some other way. This
-//  test asserts the property directly.
-static void testAWheelTickFinishesAHeldPress()
+//  ADR-0041's DECISION is untouched, and is what makes the new answer safe. Its
+//  rule -- a refresh that cannot bring every piece of state the next write
+//  depends on to the same authoritative sound refreshes none of it -- used to be
+//  obeyed by refusing to refresh, i.e. by ending the press. It is obeyed now by
+//  having NOTHING to refresh: a notch moves the press's own anchor (dragGrabDY,
+//  dragGrabDX, bandAnchorX) and writes through the press's own owned-store path,
+//  inside the gesture the press already opened.
+//
+//  WHAT LEG A'S FOUR VALUE CHECKS WOULD EACH CATCH -- they are the mechanism,
+//  one clause at a time. The drag must move the value at all (or the fixture is
+//  not driving a drag). The notch must move it (or the notch did nothing, which
+//  is what JUCE's own handler does while a button is held). The next drag event
+//  must still write (or the press was finished -- the behaviour this test used
+//  to assert). And that write must NOT land back where the same cursor position
+//  put it BEFORE the notch (or the value was written without moving the anchor,
+//  which is ADR-0041's T1 defect arriving from the other direction, and is the
+//  one failure a naive implementation actually produces).
+//
+//  Legs B and C are the same mechanism for the multiband SPLIT press and for a
+//  second notch after further drag; leg D is unchanged in purpose -- an event
+//  that performs no edit has no side effects (ADR-0052) -- with one check added
+//  that is only meaningful under the new rule: it must make no EDIT either.
+static void testAWheelNotchInsideAPressBelongsToIt()
 {
-    std::printf ("State test 80: a wheel tick during a held drag finishes the press\n");
+    std::printf ("State test 80: a wheel notch inside a held press belongs to that press\n");
 
     AnamorphAudioProcessor proc;
     proc.prepareToPlay (48000.0, 512);
@@ -4851,8 +4943,8 @@ static void testAWheelTickFinishesAHeldPress()
     wheel.deltaX = 0.0f; wheel.deltaY = 0.4f;
     wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
 
-    // ---- LEG A: the press is finished, the gesture closes AT the tick, and the
-    //      drag so far becomes its own undo step.
+    // ---- LEG A: a notch inside a held WIDTH press adds to it, the press carries on
+    //      FROM the notched value, and the whole interaction is one undo step at the release.
     {
         reset();
         const float wy = findY ("Band width", bx);
@@ -4861,33 +4953,52 @@ static void testAWheelTickFinishesAHeldPress()
         {
             GestureLog g; wLoP->addListener (&g);
             im->mouseDown (mev (bx, wy, bx, wy, false));
-            im->mouseDrag (mev (bx, wy - 10.0f, bx, wy, true));
-            im->mouseDrag (mev (bx, wy - 25.0f, bx, wy, true));
+            // The first drag event only ENGAGES the width (the 3 px click-vs-drag threshold anchors
+            // dragGrabDY so the value stays put); the second is the one that moves it.
+            im->mouseDrag (mev (bx, wy - 6.0f, bx, wy, true));
+            const float atY1 = plainOf (wLoP);
+            im->mouseDrag (mev (bx, wy - 16.0f, bx, wy, true));
+            const float atY2 = plainOf (wLoP);
             proc.pollUndoCoalesce();
-            const bool undoMidDrag = proc.canUndo();
-            const int  closesMidDrag = g.closes;
+            const bool undoMidPress   = proc.canUndo();
+            const int  closesMidPress = g.closes;
 
-            im->mouseWheelMove (mev (bx, wy - 25.0f, bx, wy, false), wheel);
-            const float atTick = plainOf (wLoP);
+            im->mouseWheelMove (mev (bx, wy - 16.0f, bx, wy, false), wheel);
+            const float afterNotch = plainOf (wLoP);
             proc.pollUndoCoalesce();
-            const bool undoAfterTick  = proc.canUndo();
-            const int  closesAfterTick = g.closes;
+            const bool undoAfterNotch = proc.canUndo();
 
-            im->mouseDrag (mev (bx, wy - 60.0f, bx, wy, true));   // still holding the button
-            const float afterMoreDrag = plainOf (wLoP);
-            im->mouseUp   (mev (bx, wy - 60.0f, bx, wy, true));
+            // ...back to the FIRST cursor position. An uninterrupted press would put the width
+            // exactly back at `atY1`; a press carrying a notch must land somewhere else entirely.
+            im->mouseDrag (mev (bx, wy - 6.0f, bx, wy, true));
+            const float backAtY1 = plainOf (wLoP);
+            im->mouseUp   (mev (bx, wy - 6.0f, bx, wy, true));
+            const int closesAfterRelease = g.closes;
+            proc.pollUndoCoalesce();
+            const bool undoAfterRelease = proc.canUndo();
             wLoP->removeListener (&g);
 
-            if (! juce::exactlyEqual (afterMoreDrag, atTick))
-                std::printf ("  [leg A] the press survived the wheel tick: %.3f -> %.3f on a further"
-                             " drag, where ADR-0041 finishes it\n",
-                             (double) atTick, (double) afterMoreDrag);
-            check (juce::exactlyEqual (afterMoreDrag, atTick),
-                   "leg A: the held press is finished -- a further drag writes nothing");
-            check (closesMidDrag == 0 && closesAfterTick == 1,
-                   "leg A: the host's change gesture closes AT the tick, not at mouseUp");
-            check (! undoMidDrag && undoAfterTick,
-                   "leg A: ...and the drag so far is committed as its own undo step");
+            check (! juce::exactlyEqual (atY2, atY1), "leg A: the drag moves the width");
+            if (juce::exactlyEqual (afterNotch, atY2))
+                std::printf ("  [leg A] the notch changed nothing: the width stayed at %.4f\n",
+                             (double) atY2);
+            check (! juce::exactlyEqual (afterNotch, atY2),
+                   "leg A: a notch inside the press adds to what the press has produced");
+            if (juce::exactlyEqual (backAtY1, afterNotch))
+                std::printf ("  [leg A] the notch finished the press: a further drag left the width"
+                             " at %.4f\n", (double) afterNotch);
+            check (! juce::exactlyEqual (backAtY1, afterNotch),
+                   "leg A: ...the press is NOT finished -- a further drag still writes");
+            if (juce::exactlyEqual (backAtY1, atY1))
+                std::printf ("  [leg A] the notch did not move the anchor: the cursor returned to"
+                             " its first position and the width returned to %.4f, losing the notch\n",
+                             (double) atY1);
+            check (! juce::exactlyEqual (backAtY1, atY1),
+                   "leg A: ...and it continues FROM the notched value, not from the cursor alone");
+            check (closesMidPress == 0 && closesAfterRelease == 1,
+                   "leg A: the host's change gesture closes at the release, not at the notch");
+            check (! undoMidPress && ! undoAfterNotch && undoAfterRelease,
+                   "leg A: the whole drag-plus-notch interaction is ONE undo step, at the release");
         }
     }
 
@@ -4983,19 +5094,22 @@ static void testAWheelTickFinishesAHeldPress()
         else { delete raw2; }
     }
 
-    // ---- LEG C: a PENDING CLICK is a press too, and the tick swallows it ---------
+    // ---- LEG C: a notch during a held SOLO button does not leave a solo toggle behind ----
     //
-    //      ADR-0041's rule has four consequences and this test pinned three. The
-    //      fourth -- `cancelActiveDrag` clears `soloPressBand` and `pressDeleteBand`
-    //      as well, so a tick during a held solo button discards the click -- was
-    //      MEASURED when the round found it (mask `0x0` against `0x1` for the
-    //      uninterrupted press) and then only written down. This round's audit found
-    //      that gap by mutation: stop the wheel clearing `soloPressBand` and all 2814
-    //      checks stay green. Documenting a measurement is not the same as pinning it.
+    //      THE ASSERTION SURVIVED ADR-0053 AND ITS REASON DID NOT, which is why this
+    //      comment is rewritten rather than left standing. Under ADR-0041 the notch
+    //      SWALLOWED the click: `cancelActiveDrag` cleared `soloPressBand`, so `mouseUp`
+    //      found nothing to toggle. Under ADR-0053 the press is never cancelled -- the
+    //      notch turns it into a BAND MOVE (task section 7), exactly as the first 4 px of
+    //      sideways travel would, so the release runs the move's own branch (clear the
+    //      audition, close the two pins) and the toggle is not reached. The mask is `0x0`
+    //      either way, and both readings are the conservative one: a press that became a
+    //      drag was never a click.
     //
-    //      The outcome is the conservative one and it is the rule, not an accident:
-    //      ADR-0041 leg B already establishes that a click whose world moved under it
-    //      writes nothing, and a wheel tick moves the world.
+    //      State test 87 is where the new half is asserted directly -- that the notch
+    //      MOVED the band, and moved it rather than the bandwidth. This leg keeps the
+    //      negative: whatever else a notch does to a held solo, it must not leave a
+    //      latched solo bit behind when the button comes up.
     {
         AnamorphAudioProcessor proc3;
         proc3.prepareToPlay (48000.0, 512);
@@ -5065,7 +5179,7 @@ static void testAWheelTickFinishesAHeldPress()
                     check (uninterrupted != 0,
                            "leg C: control -- an uninterrupted solo press toggles the band");
                     check (afterTick == 0,
-                           "leg C: ...and a wheel tick during the press swallows the click");
+                           "leg C: ...and a press a notch turned into a band move leaves no toggle");
                 }
             }
             proc3.editorBeingDeleted (ed3);
@@ -5087,8 +5201,17 @@ static void testAWheelTickFinishesAHeldPress()
     //      ADR-0041's rule is that two gestures cannot own the same state at once. An
     //      event that writes nothing is not a second owner, so it has nothing to claim
     //      and nothing to end. Both halves below are the SAME cases legs A and C
-    //      measure, with the only change being that the wheel event carries no vertical
-    //      delta -- so together they say the rule is about the edit, not the event.
+    //      measure, with the only change being that the wheel event carries no delta at
+    //      all -- so together they say the rule is about the edit, not the event.
+    //
+    //      RE-BASED IN ROUND 29 (ADR-0053, Devin `src/gui/SpectrumImager.cpp:R3293`), and the
+    //      paragraph above is left standing because it is the history. This leg used to spell
+    //      "an event this handler ignores" as a HORIZONTAL-ONLY trackpad scroll, on the stated
+    //      grounds that `deltaX` was read nowhere in the handler. That is no longer true and is
+    //      no longer wanted: a horizontal two-finger gesture is now a real notch, by the same
+    //      dominant-axis rule the knobs have always had. So the ignored event is now a genuinely
+    //      EMPTY one -- both axes zero, which is what a host that delivers a spurious wheel event
+    //      sends -- and the sideways event gets the opposite assertions, immediately below D1.
     {
         AnamorphAudioProcessor proc4;
         proc4.prepareToPlay (48000.0, 512);
@@ -5136,9 +5259,15 @@ static void testAWheelTickFinishesAHeldPress()
                 { return p2->convertFrom0to1 (p2->getValue()); };
                 auto mask4  = [&] { return juce::roundToInt (plain4 (solo4)); };
 
-                // A wheel event with no VERTICAL delta at all. `isSmooth`/`isInertial` are
-                // irrelevant to the handler; `deltaX` is what a horizontal trackpad gesture
-                // carries, and this class never reads it.
+                // A wheel event with no delta on EITHER axis -- the one shape that still performs
+                // no edit now that both axes are read. `isSmooth`/`isInertial` are irrelevant to
+                // the handler.
+                juce::MouseWheelDetails ignored;
+                ignored.deltaX = 0.0f; ignored.deltaY = 0.0f;
+                ignored.isReversed = false; ignored.isSmooth = false; ignored.isInertial = false;
+                // ...and the horizontal gesture that used to BE the ignored one, which round 29
+                // turned into a real notch. Kept here, beside the case it was split from, so the
+                // two spellings are read together and neither can quietly become the other again.
                 juce::MouseWheelDetails sideways;
                 sideways.deltaX = 0.6f; sideways.deltaY = 0.0f;
                 sideways.isReversed = false; sideways.isSmooth = false; sideways.isInertial = false;
@@ -5164,7 +5293,14 @@ static void testAWheelTickFinishesAHeldPress()
                     im4->mouseDrag (mev4 (bx4, wy4 - 10.0f, bx4, wy4, true));
                     im4->mouseDrag (mev4 (bx4, wy4 - 25.0f, bx4, wy4, true));
                     const float beforeTick  = plain4 (w4);
-                    im4->mouseWheelMove (mev4 (bx4, wy4 - 25.0f, bx4, wy4, true), sideways);
+                    im4->mouseWheelMove (mev4 (bx4, wy4 - 25.0f, bx4, wy4, true), ignored);
+                    // ADDED FOR ADR-0053, and only meaningful under it: the press now SURVIVES a
+                    // real notch, so "the press is still alive afterwards" no longer discriminates
+                    // on its own. What still does is that the ignored event made no EDIT. The
+                    // threshold sits above the press branches for exactly this reason -- below them,
+                    // `deltaY == 0` yields `sgn == -1` and the width branch would write
+                    // `base - kWheelWidthMin`, a silent downward nudge on every sideways scroll.
+                    const float atIgnoredEvent = plain4 (w4);
                     const int   closesAtTick = g4.closes;
                     im4->mouseDrag (mev4 (bx4, wy4 - 60.0f, bx4, wy4, true));
                     const float afterTick4  = plain4 (w4);
@@ -5175,10 +5311,43 @@ static void testAWheelTickFinishesAHeldPress()
                         std::printf ("  [leg D] an ignored wheel event ended the press:"
                                      " width %.3f before the event and %.3f after 35 px more drag\n",
                                      (double) beforeTick, (double) afterTick4);
+                    check (juce::exactlyEqual (atIgnoredEvent, beforeTick),
+                           "leg D: an ignored wheel event writes nothing at all");
                     check (! juce::exactlyEqual (afterTick4, beforeTick),
-                           "leg D: an ignored wheel event does not end a held drag");
+                           "leg D: ...and does not end a held drag");
                     check (closesAtTick == 0,
                            "leg D: ...and does not close its host gesture at the event");
+
+                    // ...AND THE SIDEWAYS GESTURE IS THE OPPOSITE CASE NOW (round 29). Same held
+                    // width drag, same press, a horizontal-only event -- and it must MOVE the
+                    // width, inside the press's own gesture, without closing it. This is the
+                    // assertion that would have caught the finding: on the round-28 tree the
+                    // handler returned at the delta threshold and the width did not move.
+                    im4->cancelActiveDrag();
+                    set4 (w4, 1.0f);
+                    proc4.pollUndoCoalesce();
+                    GestureLog gSide; w4->addListener (&gSide);
+                    im4->mouseDown (mev4 (bx4, wy4, bx4, wy4, false));
+                    im4->mouseDrag (mev4 (bx4, wy4 - 10.0f, bx4, wy4, true));
+                    im4->mouseDrag (mev4 (bx4, wy4 - 25.0f, bx4, wy4, true));
+                    const float beforeSideways = plain4 (w4);
+                    im4->mouseWheelMove (mev4 (bx4, wy4 - 25.0f, bx4, wy4, true), sideways);
+                    const float atSideways   = plain4 (w4);
+                    const int   closesSide   = gSide.closes;
+                    im4->mouseDrag (mev4 (bx4, wy4 - 60.0f, bx4, wy4, true));
+                    const float afterSideways = plain4 (w4);
+                    im4->mouseUp   (mev4 (bx4, wy4 - 60.0f, bx4, wy4, true));
+                    w4->removeListener (&gSide);
+                    std::printf ("  [leg D] sideways notch inside the press: width %.3f -> %.3f,"
+                                 " then %.3f after 35 px more drag (gesture closes %d)\n",
+                                 (double) beforeSideways, (double) atSideways,
+                                 (double) afterSideways, closesSide);
+                    check (! juce::exactlyEqual (atSideways, beforeSideways),
+                           "leg D: a HORIZONTAL trackpad notch inside the press moves the width");
+                    check (closesSide == 0,
+                           "leg D: ...inside the press's own gesture, which it does not close");
+                    check (! juce::exactlyEqual (afterSideways, atSideways),
+                           "leg D: ...and the drag carries on from the value it produced");
                 }
 
                 // D2 -- and a PENDING CLICK survives it, where leg C's real tick swallows it.
@@ -5204,7 +5373,7 @@ static void testAWheelTickFinishesAHeldPress()
 
                     set4 (solo4, 0.0f);
                     im4->mouseDown (mev4 (sx4, soloY4, sx4, soloY4, false));
-                    im4->mouseWheelMove (mev4 (sx4, soloY4, sx4, soloY4, false), sideways);
+                    im4->mouseWheelMove (mev4 (sx4, soloY4, sx4, soloY4, false), ignored);
                     im4->mouseUp   (mev4 (sx4, soloY4, sx4, soloY4, false));
                     const int afterIgnored = mask4();
 
@@ -5222,6 +5391,229 @@ static void testAWheelTickFinishesAHeldPress()
             delete ed4;
         }
         else { delete raw4; }
+    }
+
+    // ---- LEG E: the same mechanism for a held SPLIT press (Multiband Split Frequency).
+    //      The split drag steers `cursor - dragGrabDX`, so the notch has to move THAT offset;
+    //      returning the cursor to where it started must not return the split to where it was.
+    {
+        auto* loP  = apvts.getParameter (pid::mbFreqLow);
+        auto* midP = apvts.getParameter (pid::mbFreqMid);
+        auto* hiP  = apvts.getParameter (pid::mbFreqHigh);
+        check (loP != nullptr && midP != nullptr && hiP != nullptr,
+               "leg E: the crossover parameters exist");
+        if (loP != nullptr && midP != nullptr && hiP != nullptr)
+        {
+            im->cancelActiveDrag();
+            setPlain (bandsP, 4.0f);
+            setPlain (loP, 200.0f); setPlain (midP, 2000.0f); setPlain (hiP, 10000.0f);
+            proc.pollUndoCoalesce();
+
+            const float laneY = 0.5f * H;
+            float sx = -1.0f;
+            for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+            {
+                im->mouseMove (mev (x, laneY, x, laneY, false));
+                if (im->getTooltip() == juce::String ("Drag to change the split frequency")) { sx = x; break; }
+            }
+            check (sx >= 0.0f, "leg E: the first split's handle is findable");
+            if (sx >= 0.0f)
+            {
+                // THE BASELINE IS TAKEN AT THE SAME CURSOR POSITION THE DECIDING CHECK USES, and
+                // that is the whole point of the shape. A first version compared the final split
+                // against the frequency the press STARTED from, which a split drag cannot reproduce
+                // bit-for-bit through `freqToX`/`xToFreq` -- so `! exactlyEqual` passed whether or
+                // not the notch had survived, and the mutation that drops `dragGrabDX` went
+                // UNDETECTED (measured: all 3 012 checks green with that line deleted). Two drag
+                // events to the same x with the notch between them compare exactly: with the grab
+                // offset unmoved the plan, the store and the read-back are identical.
+                GestureLog g; loP->addListener (&g);
+                im->mouseDown (mev (sx, laneY, sx, laneY, false));
+                im->mouseDrag (mev (sx + 30.0f, laneY, sx, laneY, true));
+                const float atX2 = plainOf (loP);
+                im->mouseDrag (mev (sx, laneY, sx, laneY, true));      // the baseline, at the press x
+                const float beforeNotch = plainOf (loP);
+                im->mouseWheelMove (mev (sx, laneY, sx, laneY, false), wheel);
+                const float afterNotch = plainOf (loP);
+                im->mouseDrag (mev (sx, laneY, sx, laneY, true));      // the SAME x as the baseline
+                const float sameXAgain = plainOf (loP);
+                im->mouseDrag (mev (sx + 15.0f, laneY, sx, laneY, true));
+                const float furtherDrag = plainOf (loP);
+                im->mouseUp   (mev (sx + 15.0f, laneY, sx, laneY, true));
+                const int closes = g.closes;
+                loP->removeListener (&g);
+                proc.pollUndoCoalesce();
+
+                check (! juce::exactlyEqual (atX2, beforeNotch), "leg E: the drag moves the split");
+                check (! juce::exactlyEqual (afterNotch, beforeNotch),
+                       "leg E: a notch inside the split press adds to it");
+                if (juce::exactlyEqual (sameXAgain, beforeNotch))
+                    std::printf ("  [leg E] the notch did not move the grab offset: the very next drag"
+                                 " event at the same cursor position put the split back to %.4f Hz\n",
+                                 (double) beforeNotch);
+                check (! juce::exactlyEqual (sameXAgain, beforeNotch),
+                       "leg E: ...and the next drag event does not put it back -- the offset moved with it");
+                check (! juce::exactlyEqual (furtherDrag, sameXAgain),
+                       "leg E: ...the press is not finished -- a further drag still steers the split");
+                check (closes == 1, "leg E: one change gesture for the whole interaction");
+            }
+        }
+    }
+
+    // ---- LEG F: a SECOND notch, after more drag, accumulates on top of the first.
+    //      Task section 2's last clause -- "further wheel adjustments must continue to accumulate
+    //      on the current value" -- is the one an implementation that re-anchors only once would
+    //      fail, so it is asserted separately rather than assumed to follow from leg A.
+    {
+        reset();
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg F: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            GestureLog g; wLoP->addListener (&g);
+            im->mouseDown (mev (bx, wy, bx, wy, false));
+            im->mouseDrag (mev (bx, wy - 6.0f,  bx, wy, true));
+            im->mouseDrag (mev (bx, wy - 16.0f, bx, wy, true));
+            const float beforeNotch1 = plainOf (wLoP);
+            im->mouseWheelMove (mev (bx, wy - 16.0f, bx, wy, false), wheel);
+            const float afterNotch1 = plainOf (wLoP);
+            im->mouseDrag (mev (bx, wy - 26.0f, bx, wy, true));
+            const float afterMoreDrag = plainOf (wLoP);
+            im->mouseWheelMove (mev (bx, wy - 26.0f, bx, wy, false), wheel);
+            const float afterNotch2 = plainOf (wLoP);
+            im->mouseUp   (mev (bx, wy - 26.0f, bx, wy, true));
+            const int closes = g.closes;
+            wLoP->removeListener (&g);
+            proc.pollUndoCoalesce();
+
+            check (afterNotch1 > beforeNotch1, "leg F: the first notch raises the width");
+            check (afterMoreDrag > afterNotch1, "leg F: the drag after it carries on upward from there");
+            if (! (afterNotch2 > afterMoreDrag))
+                std::printf ("  [leg F] the second notch added nothing: %.4f before it and %.4f after\n",
+                             (double) afterMoreDrag, (double) afterNotch2);
+            check (afterNotch2 > afterMoreDrag,
+                   "leg F: ...and a second notch accumulates on the combined result");
+            check (closes == 1, "leg F: still ONE change gesture for the whole interaction");
+        }
+    }
+
+    // ---- LEG G: a PACKED split banks no travel it cannot take ------------------------
+    //      ADR-0053 says every wheel anchor is re-derived from a target "already clamped to the
+    //      limit the store itself clamps to", so a notch past the end of a control's travel banks
+    //      nothing. The split branch clamped to the FRAME edges only, and that is not the store's
+    //      limit: `projectFromOrig` pushes the splits between the pinned one and the edge aside by
+    //      `kMinGapPx` each and then runs its ordering pass BACKWARDS, which pulls the PIN itself
+    //      back to `hi - (M - 1 - handle) * kMinGapPx`. With the first of three splits scrolled
+    //      right that is 92 px the anchor banked and the store refused -- three whole notches of
+    //      travel to unwind before the split moves again, and the same 92 px displacing the rest
+    //      of the press's MOUSE drag, which reads the same offset and never rewrites it.
+    {
+        auto* loP  = apvts.getParameter (pid::mbFreqLow);
+        auto* midP = apvts.getParameter (pid::mbFreqMid);
+        auto* hiP  = apvts.getParameter (pid::mbFreqHigh);
+        check (loP != nullptr && midP != nullptr && hiP != nullptr,
+               "leg G: the crossover parameters exist");
+        if (loP != nullptr && midP != nullptr && hiP != nullptr)
+        {
+            auto packed = [&] ()
+            {
+                im->cancelActiveDrag();
+                setPlain (bandsP, 4.0f);
+                setPlain (loP, 200.0f); setPlain (midP, 2000.0f); setPlain (hiP, 10000.0f);
+                proc.pollUndoCoalesce();
+            };
+            auto firstHandleX = [&] () -> float
+            {
+                for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+                {
+                    im->mouseMove (mev (x, 0.5f * H, x, 0.5f * H, false));
+                    if (im->getTooltip() == juce::String ("Drag to change the split frequency")) return x;
+                }
+                return -1.0f;
+            };
+            const float laneY = 0.5f * H;
+
+            packed();
+            const float sx = firstHandleX();
+            check (sx >= 0.0f, "leg G: the first split's handle is findable");
+            if (sx >= 0.0f)
+            {
+                juce::MouseWheelDetails up = wheel, down = wheel;
+                up.deltaY = 0.4f; down.deltaY = -0.4f;
+                im->mouseDown (mev (sx, laneY, sx, laneY, false));
+                // Scroll it hard against the two splits above it. The cursor never moves, so
+                // every notch asks for 28 px more than the last and the store refuses each one
+                // once the pin has reached `hi - 2 * kMinGapPx`.
+                for (int i = 0; i < 160; ++i) im->mouseWheelMove (mev (sx, laneY, sx, laneY, false), up);
+                im->mouseWheelMove (mev (sx, laneY, sx, laneY, false), up);
+                const float parked = plainOf (loP);   // AFTER the proof notch, so the pair below
+                im->mouseWheelMove (mev (sx, laneY, sx, laneY, false), up);   // cannot cancel out
+                check (juce::exactlyEqual (plainOf (loP), parked),
+                       "leg G: the packed split has stopped moving -- the store refuses the target");
+
+                // THE LEG. One notch BACK must move it. Every pixel the anchor banked while the
+                // store refused is a notch the user has to give back before anything happens.
+                im->mouseWheelMove (mev (sx, laneY, sx, laneY, false), down);
+                const float afterOneBack = plainOf (loP);
+                if (juce::exactlyEqual (afterOneBack, parked))
+                {
+                    int notches = 1;
+                    while (notches < 12 && juce::exactlyEqual (plainOf (loP), parked))
+                    { im->mouseWheelMove (mev (sx, laneY, sx, laneY, false), down); ++notches; }
+                    std::printf ("  [leg G] the blocked notches banked travel the split could not"
+                                 " take: %d notches back before it moved at all\n", notches);
+                }
+                check (! juce::exactlyEqual (afterOneBack, parked),
+                       "leg G: ONE notch back moves the packed split -- the refused travel was"
+                       " never banked");
+                im->mouseUp (mev (sx, laneY, sx, laneY, true));
+                proc.pollUndoCoalesce();
+            }
+
+            // ...AND THE SAME FOR THE MOUSE DRAG THAT FOLLOWS ONE. `dragGrabDX` is the offset the
+            // drag steers by and the notch is the only thing that rewrites it, so travel banked
+            // by a blocked notch displaces the rest of the press as well.
+            packed();
+            const float sx2 = firstHandleX();
+            if (sx2 >= 0.0f)
+            {
+                juce::MouseWheelDetails up = wheel; up.deltaY = 0.4f;
+                im->mouseDown (mev (sx2, laneY, sx2, laneY, false));
+                for (int i = 0; i < 160; ++i) im->mouseWheelMove (mev (sx2, laneY, sx2, laneY, false), up);
+                const float parked = plainOf (loP);
+                im->mouseDrag (mev (sx2 - 20.0f, laneY, sx2, laneY, true));
+                const float afterDrag = plainOf (loP);
+                im->mouseUp (mev (sx2 - 20.0f, laneY, sx2, laneY, true));
+                proc.pollUndoCoalesce();
+                if (juce::exactlyEqual (afterDrag, parked))
+                    std::printf ("  [leg G] ...and the drag after it was dead too: 20 px of cursor"
+                                 " travel left the split at %.1f Hz\n", (double) parked);
+                check (! juce::exactlyEqual (afterDrag, parked),
+                       "leg G: ...and the mouse drag after a blocked notch is not dead either");
+            }
+
+            // ---- the control: where the target was feasible all along, nothing changes -------
+            packed();
+            const float sx3 = firstHandleX();
+            if (sx3 >= 0.0f)
+            {
+                juce::MouseWheelDetails up = wheel, down = wheel;
+                up.deltaY = 0.4f; down.deltaY = -0.4f;
+                im->mouseDown (mev (sx3, laneY, sx3, laneY, false));
+                im->mouseWheelMove (mev (sx3, laneY, sx3, laneY, false), up);
+                const float one = plainOf (loP);
+                im->mouseWheelMove (mev (sx3, laneY, sx3, laneY, false), up);
+                const float two = plainOf (loP);
+                im->mouseWheelMove (mev (sx3, laneY, sx3, laneY, false), down);
+                const float back = plainOf (loP);
+                im->mouseUp (mev (sx3, laneY, sx3, laneY, true));
+                proc.pollUndoCoalesce();
+                check (! juce::exactlyEqual (one, two),
+                       "leg G: control -- an unobstructed split moves on every notch");
+                check (std::abs (back - one) <= std::abs (two - one) * 0.05f,
+                       "leg G: ...and one notch back returns it to where the notch before left it");
+            }
+        }
     }
 
     proc.editorBeingDeleted (ed);
@@ -5764,6 +6156,20 @@ static void testAPositionalLatchIsVoidOnceItsTopologyMoves()
                                  imager, imager, juce::Time::getCurrentTime(),
                                  { downX, downY }, juce::Time::getCurrentTime(), 1, dragged);
     };
+    // A STANDALONE SCROLL CARRIES NO BUTTON (round 30). The `mev` above declares a held left button
+    // for every event it builds, which is right for the press sequences this test drives and wrong
+    // for the wheel probes: those issue no `mouseDown` at all, so the button they claim belongs to
+    // no press. Round 30 made that difference load-bearing -- while a button is held the press
+    // decides, and a held button with nothing claimed means nobody may have the notch (Devin
+    // `src/gui/SpectrumImager.cpp:R3302-3304`) -- so a probe that means "scrolled with the hand off
+    // the mouse" now has to say so.
+    auto wheelEv = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
     auto mevAlt = [&] (float x, float y)
     {
         const auto mods = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
@@ -5790,7 +6196,7 @@ static void testAPositionalLatchIsVoidOnceItsTopologyMoves()
         juce::MouseWheelDetails wheel;
         wheel.deltaX = 0.0f; wheel.deltaY = delta; wheel.isReversed = false;
         wheel.isSmooth = false; wheel.isInertial = false;
-        imager->mouseWheelMove (mev (x, y, x, y, false), wheel);
+        imager->mouseWheelMove (wheelEv (x, y), wheel);
     };
     auto resetWorld = [&] ()
     {
@@ -6107,6 +6513,20 @@ static void testADerivationAnswersUnderTheTopologyItWasGiven()
                                  imager, imager, juce::Time::getCurrentTime(),
                                  { x, y }, juce::Time::getCurrentTime(), 1, false);
     };
+    // A STANDALONE SCROLL CARRIES NO BUTTON (round 30). The `mev` above declares a held left button
+    // for every event it builds, which is right for the press sequences this test drives and wrong
+    // for the wheel probes: those issue no `mouseDown` at all, so the button they claim belongs to
+    // no press. Round 30 made that difference load-bearing -- while a button is held the press
+    // decides, and a held button with nothing claimed means nobody may have the notch (Devin
+    // `src/gui/SpectrumImager.cpp:R3302-3304`) -- so a probe that means "scrolled with the hand off
+    // the mouse" now has to say so.
+    auto wheelEv = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 imager, imager, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
     auto mevAlt = [&] (float x, float y)
     {
         const auto mods = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
@@ -6133,7 +6553,7 @@ static void testADerivationAnswersUnderTheTopologyItWasGiven()
         juce::MouseWheelDetails wheel;
         wheel.deltaX = 0.0f; wheel.deltaY = delta; wheel.isReversed = false;
         wheel.isSmooth = false; wheel.isInertial = false;
-        imager->mouseWheelMove (mev (x, y), wheel);
+        imager->mouseWheelMove (wheelEv (x, y), wheel);
     };
     // The wheel's latch survives between ticks by design (ADR-0045); every probe here is a fresh
     // burst, so the latch is dropped explicitly rather than relying on the >3 px move rule.
@@ -6526,7 +6946,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2408),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2576),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -6789,6 +7209,5484 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
 //  kept pure so the decision runs here with no display, no editor and no
 //  tooltip window. The geometry below is the measured Settings layout.
 // ============================================================================
+// ---------------------------------------------------------------------------
+//  State test 86 -- a scroll is ONE undo step, and the next scroll of the same
+//  control extends it rather than pushing a second (ADR-0053).
+//
+//  WHAT AN UNDO ENTRY HOLDS is the whole reason this can be implemented without
+//  a timer: the entry on the stack is the state from BEFORE the step it undoes,
+//  so "keep the value the scroll started from and replace only where it ended"
+//  is exactly "do not push another entry, and move the committed baseline on".
+//  The step therefore exists from the FIRST notch and is extended by every notch
+//  after it, which makes "one Undo returns the parameter to the value it had
+//  before the scroll" true at every instant instead of only after a dwell.
+//
+//  WHAT BREAKS EACH LEG. Leg A fails if the extend rule is missing (three
+//  notches, three steps, and one Undo walks back only the last of them). Leg B
+//  fails if the chain is not ENDED by an edit of another kind -- the scroll after
+//  the drag would merge into the scroll before it and one Undo would jump past
+//  the drag entirely. Leg C fails if the name is not per-control. Legs D and E
+//  fail if the multiband wheel edits open no change gesture at all, which is how
+//  they behaved until this round (KI-010's imager half): with no gesture there is
+//  no step to extend and no step to undo. Leg F is the exception the task states
+//  explicitly -- the Settings slider's interaction changes, its undo
+//  participation must not -- and it fails if this round ever gives the
+//  host-hidden Persistence value a gesture or a name.
+// ---------------------------------------------------------------------------
+static void testAScrollIsOneUndoStep()
+{
+    std::printf ("State test 86: a scroll is one undo step, and the next scroll of the same control extends it\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the scroll-undo probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s  = dynamic_cast<juce::Slider*> (k))                  sliders.push_back (s);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    // The slider a given parameter drives, found by MOVING that parameter and seeing which one
+    // follows. No name, no tooltip and no layout assumption -- and it fails loudly (nullptr) if
+    // more than one follows, rather than picking whichever came first.
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    int wheelSeq = 0;
+    // JUCE's slider wheel handler DEDUPES on the event time (`if (e.eventTime != lastMouseWheelTime)`,
+    // juce_Slider.cpp) because some hosts send the same notch twice. A fixture that stamps every
+    // synthetic event with the same instant would therefore land exactly one notch out of three and
+    // prove nothing, so each one is stamped a few milliseconds on.
+    auto scrollAt = [&] (juce::Component* c, float x, float y, float deltaY)
+    {
+        const auto t = juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++wheelSeq * 11);
+        const juce::MouseEvent e (src, { x, y }, juce::ModifierKeys(),
+                                  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, c, c,
+                                  t, { x, y }, t, 1, false);
+        juce::MouseWheelDetails w;
+        w.deltaX = 0.0f; w.deltaY = deltaY;
+        w.isReversed = false; w.isSmooth = false; w.isInertial = false;
+        c->mouseWheelMove (e, w);
+    };
+    auto scrollKnob = [&] (juce::Slider* s, float deltaY)
+    { scrollAt (s, (float) s->getWidth() * 0.5f, (float) s->getHeight() * 0.5f, deltaY); };
+    auto dragKnob = [&] (juce::Slider* s, float upPixels)
+    {
+        const float cx = (float) s->getWidth() * 0.5f, cy = (float) s->getHeight() * 0.5f;
+        const auto t = juce::Time::getCurrentTime();
+        auto ev = [&] (float y, bool dragged)
+        {
+            return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, s, s, t, { cx, cy }, t, 1, dragged);
+        };
+        s->mouseDown (ev (cy, false));
+        s->mouseDrag (ev (cy - upPixels, true));
+        s->mouseUp   (ev (cy - upPixels, true));
+    };
+    auto plainOf = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    // The value as the signature and the poll's own move test see it -- `normalisedAsRendered` of
+    // whatever the parameter currently holds. See leg Z for why a Redo is asserted on this grid.
+    auto renderedOf = [] (juce::RangedAudioParameter* p)
+    { return normalisedAsRendered (*p, p->getValue()); };
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* widP   = apvts.getParameter (pid::width);
+    auto* driveK = findSliderFor (driveP);
+    auto* widK   = findSliderFor (widP);
+    check (driveP != nullptr && widP != nullptr && driveK != nullptr && widK != nullptr,
+           "the Drive and Width knobs are each findable from their parameter");
+
+    // ADR-0008 as amended (round 14). THE HOST'S WRITES HAVE TO BE ORDER-INDEPENDENT NOW. Every
+    // leg below used to move Width by +0.20 from wherever it stood, and that worked only because an
+    // Undo in one leg pulled Width back for the next -- which is precisely the behaviour the
+    // amendment removes: a step owns the parameters the user's batch moved, and Width is not one of
+    // them. Left alone the increments walked into the rail and the third leg's "the host write moved
+    // Width" precondition failed against correct code. This always moves it and never saturates.
+    // A SEQUENCE rather than a toggle, because leg U writes twice and a toggle would put Width
+    // back where it started -- "the host write moved Width" would then fail on working code for the
+    // opposite reason. Seven distinct values, well inside both rails, so consecutive calls always
+    // move and nothing saturates.
+    int  hostWidthStep  = 0;
+    auto hostMovesWidth = [&] { widP->setValueNotifyingHost (0.15f + 0.10f * (float) (hostWidthStep++ % 7)); };
+
+    if (driveP != nullptr && widP != nullptr && driveK != nullptr && widK != nullptr)
+    {
+        // ---- LEG A: three notches on one knob are ONE undo step ------------------------
+        {
+            proc.pollUndoCoalesce();
+            check (! proc.canUndo(), "leg A: the probe starts with no undo history");
+            const float start = plainOf (driveP);
+            for (int i = 0; i < 3; ++i) { scrollKnob (driveK, 0.5f); proc.pollUndoCoalesce(); }
+            const float after = plainOf (driveP);
+            check (! juce::exactlyEqual (after, start), "leg A: the scroll moved Drive");
+            check (proc.canUndo(), "leg A: ...and a scroll is undoable at all");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), start))
+                std::printf ("  [leg A] one Undo left Drive at %.4f, where the whole scroll started"
+                             " from %.4f\n", (double) plainOf (driveP), (double) start);
+            check (juce::exactlyEqual (plainOf (driveP), start),
+                   "leg A: one Undo returns Drive to the value before the whole scroll");
+            check (! proc.canUndo(),
+                   "leg A: ...and the three notches were ONE step, not three");
+        }
+
+        // ---- LEG B: another editing method ENDS the chain --------------------------------
+        //      Scroll, drag, scroll. Three steps, in that order -- not one step with the drag
+        //      swallowed into it, which is what a chain that never ends would produce.
+        {
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float v1 = plainOf (driveP);
+            dragKnob (driveK, 25.0f);   proc.pollUndoCoalesce();
+            const float v2 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float v3 = plainOf (driveP);
+            check (! juce::exactlyEqual (v1, v0) && ! juce::exactlyEqual (v2, v1)
+                   && ! juce::exactlyEqual (v3, v2),
+                   "leg B: each of the three edits moved Drive");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), v2))
+                std::printf ("  [leg B] the scroll after the drag merged into the scroll before it:"
+                             " one Undo left Drive at %.4f, past the drag's %.4f\n",
+                             (double) plainOf (driveP), (double) v2);
+            check (juce::exactlyEqual (plainOf (driveP), v2),
+                   "leg B: the scroll after a drag is its OWN step");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), v1), "leg B: ...the drag is the step before it");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), v0), "leg B: ...and the first scroll before that");
+            check (! proc.canUndo(), "leg B: exactly three steps, and no more");
+        }
+
+        // ---- LEG C: a scroll of a DIFFERENT control is a different step -------------------
+        {
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP), w0 = plainOf (widP);
+            scrollKnob (driveK, 0.5f); proc.pollUndoCoalesce();
+            const float d1 = plainOf (driveP);
+            scrollKnob (widK,   0.5f); proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (d1, d0) && ! juce::exactlyEqual (plainOf (widP), w0),
+                   "leg C: both knobs moved");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (widP), w0) && juce::exactlyEqual (plainOf (driveP), d1),
+                   "leg C: one Undo takes back the Width scroll and leaves the Drive scroll standing");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), d0), "leg C: ...and the next takes back Drive's");
+            check (! proc.canUndo(), "leg C: two controls, two steps");
+        }
+
+        // ---- LEG G: two gestures inside ONE poll period are nobody's scroll ---------------
+        //      The poll runs on the editor's 24 Hz tick, so a drag released and a notch taken
+        //      within the same ~42 ms collapse into a single step -- which they always have.
+        //      What this round added is the NAME on that step, and taking the LAST gesture's
+        //      would attribute the pair to the scroll and extend the step the earlier scroll
+        //      created: the drag would lose its own undo point entirely. This leg is the one
+        //      in the suite that deliberately does NOT poll between two edits.
+        //      Found by this round's own adversarial pass.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();   // step one: a scroll, named
+            const float v1 = plainOf (driveP);
+            dragKnob (driveK, 25.0f);                              // ...and now NO poll between
+            scrollKnob (driveK, 0.5f);
+            proc.pollUndoCoalesce();                               // one commit for both gestures
+            const float v2 = plainOf (driveP);
+            check (! juce::exactlyEqual (v1, v0) && ! juce::exactlyEqual (v2, v1),
+                   "leg G: the scroll and the drag-plus-notch both moved Drive");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), v0))
+                std::printf ("  [leg G] the drag was folded into the earlier scroll's step: one Undo"
+                             " jumped straight back to %.4f\n", (double) v0);
+            check (juce::exactlyEqual (plainOf (driveP), v1),
+                   "leg G: a batch holding a drag is not the scroll's -- one Undo stops at the scroll");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), v0),
+                   "leg G: ...and the scroll before it is still its own step");
+        }
+
+        // ---- LEG H: a change that is not the scroll's ends the chain ----------------------
+        //      A host automation write opens no gesture, so the poll folds it into the baseline
+        //      with no undo step -- and it must also END the run, or the scroll after it would
+        //      extend a step whose "before" predates the automation, and one Undo would walk back
+        //      past a change the user never made. This leg is what makes the single line in the
+        //      poll's non-gesture branch load-bearing; without it that line's mutation survives.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f); proc.pollUndoCoalesce();
+            const float v1 = plainOf (driveP);
+            driveP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, driveP->getValue() + 0.10f));
+            proc.pollUndoCoalesce();
+            const float v2 = plainOf (driveP);
+            check (! juce::exactlyEqual (v2, v1), "leg H: the automation write moved Drive");
+            scrollKnob (driveK, 0.5f); proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (plainOf (driveP), v2),
+                   "leg H: ...and the scroll after it moved Drive again");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), v0))
+                std::printf ("  [leg H] the scroll after the automation write extended the scroll"
+                             " before it: one Undo jumped straight back to %.4f\n", (double) v0);
+            check (juce::exactlyEqual (plainOf (driveP), v2),
+                   "leg H: a change that is not the scroll's ends the chain");
+        }
+
+        // ---- LEG K: a double-click reset is an edit of its own, and ends the chain --------
+        //      Task section 5.3 names "another non-wheel editing method" as something that must
+        //      create a NEW step rather than replace the scroll's. A double-click reset is one,
+        //      and it was worth measuring rather than assuming, because the obvious reading says
+        //      it cannot work: JUCE delivers `mouseDoubleClick` from `internalMouseUp` AFTER
+        //      `mouseUp`, so the drag gesture the second press opened is already CLOSED when
+        //      `Knob::doReset` runs, and `doReset`'s `setValue` reaches the parameter with no
+        //      gesture of its own -- the KI-010 shape.
+        //
+        //      IT WORKS, and the mechanism is worth writing down. The second press's gesture
+        //      brackets no VALUE change (`Pimpl::mouseDown` calls `mouseDrag` immediately and the
+        //      cursor has not moved), so its close leaves `pendingGestureCommit` set with the
+        //      signature unchanged; the reset then changes the value BEFORE the next poll, and
+        //      that poll finds a pending commit and a moved signature and records the step. So the
+        //      reset rides the press's own empty gesture. It is reliable because the two are
+        //      consecutive message-thread callbacks and the poll runs on a 24 Hz timer -- but it
+        //      is a coincidence of ordering rather than a bracket, which is exactly why it is
+        //      pinned here instead of left to be rediscovered.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            scrollKnob (driveK, 0.5f); proc.pollUndoCoalesce();
+            const float afterScroll = plainOf (driveP);
+            const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+            const auto t = juce::Time::getCurrentTime();
+            auto clickEv = [&] (int clicks)
+            {
+                return juce::MouseEvent (src, { cx, cy }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                         t, { cx, cy }, t, clicks, false);
+            };
+            driveK->mouseDown (clickEv (1)); driveK->mouseUp (clickEv (1));
+            driveK->mouseDown (clickEv (2)); driveK->mouseUp (clickEv (2));
+            driveK->mouseDoubleClick (clickEv (2));   // JUCE's order: mouseUp first, then this
+            proc.pollUndoCoalesce();
+            const float afterReset = plainOf (driveP);
+            check (! juce::exactlyEqual (afterReset, afterScroll), "leg K: the double-click reset moved Drive");
+            check (proc.canUndo(), "leg K: ...and it is undoable");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), afterScroll))
+                std::printf ("  [leg K] one Undo left Drive at %.4f, where the reset started from %.4f\n",
+                             (double) plainOf (driveP), (double) afterScroll);
+            check (juce::exactlyEqual (plainOf (driveP), afterScroll),
+                   "leg K: one Undo takes back the reset and stops at the scroll before it");
+        }
+
+        // ---- LEG L: an EMPTY click between two notches does not split the scroll ----------
+        //      Gesture closes are batched: the poll runs on the editor's 24 Hz tick, so a press
+        //      that opens and closes a gesture without moving anything can land in the same batch
+        //      as the next notch. It is not one of section 5.3's "other modification methods" --
+        //      it modifies nothing -- so it must not end the chain, which is exactly what the poll
+        //      already says about a gesture that records no step ("a gesture that changed nothing
+        //      has not interrupted the scroll"). Only the batch's NAME did not know it, and a
+        //      disagreement between an empty gesture's name and the notch's turned the second
+        //      scroll into a second undo step.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float start = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);
+            proc.pollUndoCoalesce();
+            const float afterFirst = plainOf (driveP);
+            check (! juce::exactlyEqual (afterFirst, start), "leg L: the first scroll moved Drive");
+            {
+                // A press and a release with nothing between them. NOT polled: the whole point is
+                // that this gesture's close and the next notch's arrive in ONE poll period.
+                const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+                const auto t = juce::Time::getCurrentTime();
+                const juce::MouseEvent click (src, { cx, cy }, juce::ModifierKeys::leftButtonModifier,
+                                              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                              t, { cx, cy }, t, 1, false);
+                driveK->mouseDown (click);
+                driveK->mouseUp   (click);
+            }
+            check (juce::exactlyEqual (plainOf (driveP), afterFirst),
+                   "leg L: ...and the empty click changes no value");
+            scrollKnob (driveK, 0.5f);
+            proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (plainOf (driveP), afterFirst),
+                   "leg L: the second scroll moved it again");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), start))
+                std::printf ("  [leg L] one Undo stopped at %.4f: the empty click between the two"
+                             " scrolls made the second one its own step\n", (double) plainOf (driveP));
+            check (juce::exactlyEqual (plainOf (driveP), start),
+                   "leg L: one Undo returns to before the FIRST scroll -- an empty click does not"
+                   " break the chain");
+            check (! proc.canUndo(), "leg L: ...ONE step across both scrolls");
+        }
+
+        // ---- LEG N: a drag that RETURNS to its starting value still ends the chain --------
+        //      The poll records the name only where it records a step, which is right for a
+        //      gesture that changed nothing -- and wrong for one that changed something and put
+        //      it back. A drag away and back is a real edit of the same control by another
+        //      method: section 5.3 says the chain ends there, and the user who dragged and
+        //      released expects the next notch to be its own undo point rather than a silent
+        //      continuation of the scroll from before the drag.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float v1 = plainOf (driveP);
+            check (! juce::exactlyEqual (v1, v0), "leg N: the first scroll moved Drive");
+            float mid = v1;
+            {   // down, away, back to the press position, up -- absolute drag, so the value
+                // returns EXACTLY to where the press found it (`valueOnMouseDown`).
+                const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+                const auto t = juce::Time::getCurrentTime();
+                auto ev = [&] (float y, bool dragged)
+                {
+                    return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                             t, { cx, cy }, t, 1, dragged);
+                };
+                driveK->mouseDown (ev (cy, false));
+                driveK->mouseDrag (ev (cy - 25.0f, true));
+                mid = plainOf (driveP);
+                driveK->mouseDrag (ev (cy, true));
+                driveK->mouseUp   (ev (cy, true));
+            }
+            proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (mid, v1), "leg N: the drag really did move Drive on the way");
+            check (juce::exactlyEqual (plainOf (driveP), v1),
+                   "leg N: ...and returned it to exactly where it started");
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float v2 = plainOf (driveP);
+            check (! juce::exactlyEqual (v2, v1), "leg N: the scroll after the drag moved Drive again");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), v0))
+                std::printf ("  [leg N] the round-trip drag left the chain standing: one Undo jumped"
+                             " past it to %.4f, where the FIRST scroll started\n", (double) v0);
+            check (juce::exactlyEqual (plainOf (driveP), v1),
+                   "leg N: the scroll after a round-trip drag is its OWN step");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), v0),
+                   "leg N: ...and the scroll before the drag is the step behind it");
+        }
+
+        // ---- LEG O: host automation in the commit window is not the scroll's ---------------
+        //      A finished notch leaves its commit request pending until the next 24 Hz poll. A
+        //      gesture-less host write landing in that window used to be attributed to the
+        //      scroll: the name still matched, so the step was EXTENDED and the automation
+        //      replaced the ending value of a step the user had already finished. The batch that
+        //      carries a foreign write is nobody's scroll.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP), w0 = plainOf (widP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float d1 = plainOf (driveP);
+            check (! juce::exactlyEqual (d1, d0), "leg O: the first scroll moved Drive");
+            scrollKnob (driveK, 0.5f);                       // the second notch -- NOT yet polled
+            hostMovesWidth();
+            const float w1 = plainOf (widP);                 // ...and a gesture-less host write in the window
+            check (! juce::exactlyEqual (w1, w0), "leg O: the host write moved Width");
+            proc.pollUndoCoalesce();
+            const float d2 = plainOf (driveP);
+            check (! juce::exactlyEqual (d2, d1), "leg O: the second notch moved Drive");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), d0))
+                std::printf ("  [leg O] the batch carrying the host write EXTENDED the first scroll:"
+                             " one Undo jumped straight back to %.4f\n", (double) d0);
+            check (juce::exactlyEqual (plainOf (driveP), d1),
+                   "leg O: the batch that carries a host write does not extend the scroll before it");
+            // ADR-0008 AS AMENDED (round 14). This was a printed measurement for three review
+            // rounds, because the implementation and the intended product rule disagreed here: the
+            // step behind the user's edit was a whole state predating the host's write, so one Undo
+            // took the automation back with the scroll. It is an ASSERTION now. The step owns Drive,
+            // because Drive is what the user's batch moved; Width is nobody's step and stands.
+            if (! juce::exactlyEqual (plainOf (widP), w1))
+                std::printf ("  [leg O] one Undo took the host's Width write back with the user's"
+                             " step: Width reads %.4f where the host wrote %.4f\n",
+                             (double) plainOf (widP), (double) w1);
+            check (juce::exactlyEqual (plainOf (widP), w1),
+                   "leg O: ...and the host's write in the commit window survives the Undo -- it is"
+                   " in no user step");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), d0), "leg O: ...and the first scroll is the step behind it");
+        }
+
+        // ---- LEG S: ...and the OTHER side of the same window -----------------------------
+        //      Leg O's host write lands after the notch's gesture closed. This one lands before
+        //      the NEXT notch's gesture opens, inside the same poll period -- a different window
+        //      with the same outcome, because the poll commits everything since its last run as
+        //      one step either way. A close-time measurement cannot see it: by the time the
+        //      gesture closes, the counter has moved for the notch's own write as well. The open
+        //      side is where that evidence still exists.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP), w0 = plainOf (widP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float d1 = plainOf (driveP);
+            check (! juce::exactlyEqual (d1, d0), "leg S: the first scroll moved Drive");
+            hostMovesWidth();
+            check (! juce::exactlyEqual (plainOf (widP), w0), "leg S: the host write moved Width");
+            scrollKnob (driveK, 0.5f);                       // ...and only NOW the second notch
+            proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (plainOf (driveP), d1), "leg S: the second notch moved Drive");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), d0))
+                std::printf ("  [leg S] a host write that arrived BEFORE the notch was still folded"
+                             " into the scroll before it: one Undo jumped back to %.4f\n", (double) d0);
+            check (juce::exactlyEqual (plainOf (driveP), d1),
+                   "leg S: a batch is not the scroll's when a host write arrived before it either");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), d0), "leg S: ...and the first scroll is behind it");
+        }
+
+        // ---- LEG P: the SAME scroll netting zero inside one poll period keeps its chain ----
+        //      The guard on leg N's rule, and the reason that rule tests the NAME rather than
+        //      just "the batch edited and the signature did not move". Two notches of one scroll
+        //      -- up, then down -- can land in a single 24 Hz period and net exactly nothing.
+        //      That batch edited, so a rule that ended the chain on "edited and netted zero"
+        //      alone would split one continuous scroll into two undo steps. The batch's name is
+        //      the scroll's own, so the chain stands.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float v1 = plainOf (driveP);
+            check (! juce::exactlyEqual (v1, v0), "leg P: the first scroll moved Drive");
+            scrollKnob (driveK,  0.5f);                    // ...and now two notches in ONE period
+            scrollKnob (driveK, -0.5f);
+            proc.pollUndoCoalesce();
+            if (! juce::exactlyEqual (plainOf (driveP), v1))
+                std::printf ("  [leg P] the up-down pair did not net exactly zero: %.6f vs %.6f --"
+                             " this leg measures nothing unless it does\n",
+                             (double) plainOf (driveP), (double) v1);
+            check (juce::exactlyEqual (plainOf (driveP), v1),
+                   "leg P: the up-down pair returned Drive to where the pair started");
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (plainOf (driveP), v1), "leg P: the next notch moved it again");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), v0))
+                std::printf ("  [leg P] a pair of the scroll's OWN notches broke its chain: one Undo"
+                             " stopped at %.4f instead of %.4f\n", (double) plainOf (driveP), (double) v0);
+            check (juce::exactlyEqual (plainOf (driveP), v0),
+                   "leg P: one Undo still returns to before the whole scroll -- ONE step");
+            check (! proc.canUndo(), "leg P: ...and there is no second step behind it");
+        }
+
+        // ---- LEG T: a scroll taken right after an Undo is still ONE step -----------------
+        //      The guard on the foreign-write rule, and it exists because this round's own
+        //      adversarial pass found the rule breaking ADR-0053's primary guarantee. A program
+        //      state jump -- Undo, Redo, a preset load, an A/B switch -- polls FIRST and applies
+        //      its parameters AFTER, and applying them notifies the host, which bumps the sound
+        //      generation once per parameter. So the generation the foreign test compares against
+        //      is stale the moment the jump returns, and the first notch after it looks like a
+        //      batch carrying somebody else's write: unnamed, and the notch after that starts a
+        //      second undo step instead of extending the first. Deterministic here because the
+        //      leg deliberately does NOT poll between the Undo and the notch -- in a host the
+        //      24 Hz tick usually lands in that gap and hides it.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (plainOf (driveP), v0), "leg T: the first scroll moved Drive");
+            proc.undo();                                   // ...and now a state jump, with NO poll after it
+            const float base = plainOf (driveP);
+            check (juce::exactlyEqual (base, v0), "leg T: the Undo returned Drive to where it started");
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n1 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n2 = plainOf (driveP);
+            check (! juce::exactlyEqual (n1, base) && ! juce::exactlyEqual (n2, n1),
+                   "leg T: both notches after the Undo moved Drive");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), n1))
+                std::printf ("  [leg T] the scroll after the Undo was split in two: one Undo stopped"
+                             " at %.4f, the value between its two notches\n", (double) n1);
+            check (juce::exactlyEqual (plainOf (driveP), base),
+                   "leg T: one Undo takes back BOTH notches -- the state jump is not a foreign write");
+        }
+
+        // ---- LEG U: a write the poll ABSORBED is not foreign to the next scroll -----------
+        //      The other half of leg T, and the last stale-edge case. The poll samples the sound
+        //      generation at its TOP, builds the signature, and only then captures `committed`
+        //      from the LIVE parameters -- so a host write landing in between is inside the
+        //      baseline the poll commits while the generation the poll ends with does not name
+        //      it. The next gesture then compares against that stale edge, reads a batch nothing
+        //      foreign touched as carrying somebody else's write, goes unnamed, and the notch
+        //      after it starts a second undo step: a two-notch scroll becoming two steps, which
+        //      is the guarantee ADR-0053 exists to give.
+        //
+        //      Cross-thread in a host -- `parameterValueChanged` can arrive on the audio thread
+        //      while the message thread is inside the poll -- so the leg uses the one seam that
+        //      can put a write at that program point. It is faithful because every consumer of
+        //      this window reads only the relaxed counter and live parameter values, so a write
+        //      made on the test thread AT that point is indistinguishable from a host write that
+        //      landed there.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float w0 = plainOf (widP);
+
+            // A first gesture-less host write, so the poll below has work to do and reaches the
+            // fold branch (an unchanged generation returns at the top and never captures at all).
+            hostMovesWidth();
+            bool armed = true;
+            proc.seams.insidePollBody = [&]
+            {
+                if (! armed) return;
+                armed = false;                      // ...and a SECOND one from inside the poll body
+                hostMovesWidth();
+            };
+            proc.pollUndoCoalesce();                // absorbs both into `committed`
+            proc.seams.insidePollBody = nullptr;
+            check (! armed, "leg U: the seam write landed inside the poll body");
+            const float w1 = plainOf (widP);
+            check (! juce::exactlyEqual (w1, w0), "leg U: ...and it moved Width");
+
+            const float d0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n1 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n2 = plainOf (driveP);
+            check (! juce::exactlyEqual (n1, d0) && ! juce::exactlyEqual (n2, n1),
+                   "leg U: both notches after the absorbed write moved Drive");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), n1))
+                std::printf ("  [leg U] the scroll after the absorbed write was split in two: one"
+                             " Undo stopped at %.4f, the value between its two notches\n", (double) n1);
+            check (juce::exactlyEqual (plainOf (driveP), d0),
+                   "leg U: one Undo takes back BOTH notches -- a write the poll already committed"
+                   " is not foreign to the scroll after it");
+        }
+
+        // ---- LEG U2: a write the COMMITTING poll absorbs still ends the chain --------------
+        //      The stanza above lands the write in the poll's non-gesture FOLD, which sets
+        //      `lastStepWheelKey = 0` itself -- the chain is already ended there and the only
+        //      question is whether the scroll AFTER it is penalised twice. This one lands it in
+        //      the branch that RECORDS A STEP, where nothing else ends the chain: the name
+        //      survives unless `foreign` says otherwise. So the two branches need opposite
+        //      answers from the same edge, and one leg cannot cover both.
+        //
+        //      THE RULE, and it is the product rule rather than an implementation detail: a host
+        //      write that lands after the user's gesture boundary is not part of that user action.
+        //      It must end the merge chain, so the notch after it starts its own step instead of
+        //      extending one the automation is now inside. `foreign` therefore has to be measured
+        //      against the same instant the baseline is captured at -- not against the sample the
+        //      poll opened with, which predates the write and reports nothing foreign at all.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP), w0 = plainOf (widP);
+            scrollKnob (driveK, 0.5f);              // a notch whose commit is still PENDING
+            bool armed = true;
+            proc.seams.insidePollBody = [&]
+            {
+                if (! armed) return;
+                armed = false;
+                hostMovesWidth();
+            };
+            proc.pollUndoCoalesce();                // the GESTURE branch captures, absorbing it
+            proc.seams.insidePollBody = nullptr;
+            check (! armed, "leg U2: the seam write landed inside the committing poll's body");
+            check (! juce::exactlyEqual (plainOf (widP), w0), "leg U2: ...and it moved Width");
+            const float n1 = plainOf (driveP);
+            check (! juce::exactlyEqual (n1, d0), "leg U2: the first notch moved Drive");
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n2 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n3 = plainOf (driveP);
+            check (! juce::exactlyEqual (n2, n1) && ! juce::exactlyEqual (n3, n2),
+                   "leg U2: ...and so did the two notches after it");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), d0))
+                std::printf ("  [leg U2] the chain extended straight across the host write: one Undo"
+                             " went all the way back to %.4f, taking the automation with it\n",
+                             (double) d0);
+            check (juce::exactlyEqual (plainOf (driveP), n1),
+                   "leg U2: one Undo stops at the notch the host write landed behind -- automation"
+                   " after a gesture boundary ends the merge chain");
+            check (juce::exactlyEqual (plainOf (driveP), n1) && proc.canUndo(),
+                   "leg U2: ...and the notch before it is a step of its own behind that");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), d0),
+                   "leg U2: ...which a second Undo reaches");
+        }
+
+        // ---- LEG V: an EMPTY press records the automation beside it ----------------------
+        //      MEASUREMENT, not an assertion of correctness -- and the round that added it tried
+        //      to "fix" it first, which is why the measurement is worth having. Leg L proves an
+        //      empty click NAMES nothing; this is what it RECORDS. The poll's push decision asks
+        //      the signature and not who moved it, so a press that changes nothing, batched with
+        //      a gesture-less host write in the same 24 Hz period, pushes a step whose only
+        //      content is the automation, and one Undo takes that write back.
+        //
+        //      GATING THE PUSH ON `edited` REMOVES IT AND COSTS MORE THAN IT SAVES, measured:
+        //      leg K's double-click reset has no gesture of its own and is undoable ONLY through
+        //      this rule, and legs I and J rely on the step a refused burst records to stop the
+        //      next Undo reaching past the automation into the previous scroll. All three failed
+        //      under the gate. It is the ADR-0008 whole-state-snapshot consequence wearing
+        //      another face: a foreign write is either inside the user's step or is a step of its
+        //      own, and while an undo entry is a whole state there is no third answer.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP), w0 = plainOf (widP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float d1 = plainOf (driveP);
+            check (! juce::exactlyEqual (d1, d0), "leg V: the scroll moved Drive");
+
+            hostMovesWidth();
+            const float w1 = plainOf (widP);
+            check (! juce::exactlyEqual (w1, w0), "leg V: the host write moved Width");
+            {
+                // The same empty press leg L uses, in the same unpolled window as the host write.
+                const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+                const auto t = juce::Time::getCurrentTime() + juce::RelativeTime::seconds (30.0);
+                const juce::MouseEvent click (src, { cx, cy }, juce::ModifierKeys::leftButtonModifier,
+                                              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                              t, { cx, cy }, t, 1, false);
+                driveK->mouseDown (click);
+                driveK->mouseUp   (click);
+            }
+            check (juce::exactlyEqual (plainOf (driveP), d1), "leg V: ...and the press changes no value");
+            proc.pollUndoCoalesce();
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (widP), w1))
+                std::printf ("  [leg V] the empty press still recorded the write beside it: after"
+                             " one Undo Width reads %.4f where the host wrote %.4f\n",
+                             (double) plainOf (widP), (double) w1);
+            // RE-BASED FOR ADR-0008 AS AMENDED (round 14), and the old expectation is worth keeping
+            // in view: this leg used to assert that the empty press's step STOOD BETWEEN the
+            // automation and the scroll, because the press recorded a whole state containing the
+            // host's write and one Undo therefore took that write back. Both halves of that are
+            // gone. The press owns Drive, Drive did not move, so nothing is recorded at all -- the
+            // automation is undoable by nobody, and one Undo correctly reaches the user's own
+            // scroll, which is the only step there is.
+            check (juce::exactlyEqual (plainOf (widP), w1),
+                   "leg V: an empty press records nothing of the host write beside it");
+            check (juce::exactlyEqual (plainOf (driveP), d0),
+                   "leg V: ...and one Undo reaches the user's own scroll, the only step there is");
+        }
+
+        // ---- LEG X: automation during ANOTHER user gesture, and Redo -----------------------
+        //      MEASUREMENT. The fifth of the five timings R983 names, and the only one no leg
+        //      reached: a host write that lands while a user gesture is OPEN. The poll refuses to
+        //      fold while `openGestures > 0`, so `committed` is frozen for the gesture's whole
+        //      duration -- seconds, for a knob drag -- and the write is inside the step the close
+        //      records, with no window to hit. This leg holds a gesture open across two polls to
+        //      make that explicit, then prints what one Undo does to the host's parameter and what
+        //      Redo puts back.
+        //
+        //      The assertion is the half that is not in question: the USER's own edit is undone
+        //      and redone exactly. What is printed rather than asserted is the automated
+        //      parameter, because the intended product rule and the implementation disagree there
+        //      -- see RISK-012 and the ADR-0008 escalation.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP), w0 = plainOf (widP);
+            driveP->beginChangeGesture();
+            driveP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, driveP->getValue() + 0.20f));
+            const float d1 = plainOf (driveP);
+            proc.pollUndoCoalesce();                 // ...twice, with the gesture still open
+            proc.pollUndoCoalesce();
+            hostMovesWidth();
+            const float w1 = plainOf (widP);
+            driveP->endChangeGesture();
+            proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (d1, d0) && ! juce::exactlyEqual (w1, w0),
+                   "leg X: the user gesture moved Drive and the host write moved Width");
+            proc.undo();
+            const float dU = plainOf (driveP), wU = plainOf (widP);
+            std::printf ("  [leg X] automation INSIDE a held gesture: one Undo puts Drive back to"
+                         " %.4f (it was %.4f) and leaves Width at %.4f (the host wrote %.4f)\n",
+                         (double) dU, (double) d0, (double) wU, (double) w1);
+            check (juce::exactlyEqual (dU, d0),
+                   "leg X: one Undo takes back the user's own edit exactly");
+            // ASSERTED SINCE ROUND 14, and this is the fifth of the five R983 timings -- the one no
+            // leg reached until round 13 and none asserted until the amendment. The user's gesture
+            // is open across two polls, so `committed` is frozen and the host's write is inside the
+            // window the step is committed from; what keeps it out of the step is that the batch
+            // never declared Width its own.
+            check (juce::exactlyEqual (wU, w1),
+                   "leg X: ...and the host's write inside the held gesture survives it");
+            proc.redo();
+            std::printf ("  [leg X] ...and Redo restores Drive %.4f, leaving Width %.4f\n",
+                         (double) plainOf (driveP), (double) plainOf (widP));
+            check (juce::exactlyEqual (plainOf (driveP), d1),
+                   "leg X: ...and Redo puts the user's edit back exactly");
+            check (juce::exactlyEqual (plainOf (widP), w1),
+                   "leg X: ...and Redo restores the user's value, never the automated one beside it");
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+        }
+
+        // ---- LEG Y: A -> B (user) -> C (automation) -> Undo -> Redo, on ONE parameter -----
+        //      THE CANONICAL SEQUENCE, and what ADR-0008's amendment is for. Undo must produce A,
+        //      the value from immediately before the user's action; Redo must produce B, the value
+        //      the user's action produced -- never the automated C. Until round 14 the redo entry
+        //      was manufactured from the LIVE parameters at the moment Undo was pressed
+        //      (`st.redo.push_back (currentStateSet())`), so C was what Redo restored: any
+        //      automation between the step and the Undo silently redefined the step's far endpoint,
+        //      and nothing in the suite asked. The entry now carries both ends and MOVES between the
+        //      stacks, so the two directions are one object read twice and cannot disagree.
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float valueA = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();     // the user's own edit
+            const float valueB = plainOf (driveP);
+            check (! juce::exactlyEqual (valueB, valueA), "leg Y: the user edit moved Drive from A to B");
+            // ...and a gesture-less HOST write after it, on the SAME parameter.
+            driveP->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, driveP->getValue() + 0.25f));
+            proc.pollUndoCoalesce();
+            const float valueC = plainOf (driveP);
+            check (! juce::exactlyEqual (valueC, valueB),
+                   "leg Y: ...and the host automation then moved it from B to C");
+            check (! proc.canRedo(), "leg Y: the automation created no step of its own to redo");
+            proc.undo();
+            const float afterUndo = plainOf (driveP);
+            proc.redo();
+            const float afterRedo = plainOf (driveP);
+            std::printf ("  [leg Y] A %.4f -> B %.4f (user) -> C %.4f (automation):"
+                         " Undo gives %.4f, Redo gives %.4f\n",
+                         (double) valueA, (double) valueB, (double) valueC,
+                         (double) afterUndo, (double) afterRedo);
+            check (juce::exactlyEqual (afterUndo, valueA),
+                   "leg Y: Undo restores the value from immediately before the user's action");
+            check (juce::exactlyEqual (afterRedo, valueB),
+                   "leg Y: Redo restores the value the user's action produced, never the automated one");
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+        }
+
+        // ---- LEG W: a host write that renders to no change still ends the chain -----------
+        //      MEASUREMENT, not an assertion of correctness. `foreignSinceEdge` is derived from
+        //      the raw sound generation, which `parameterValueChanged` bumps for every value
+        //      store; every other "did the sound change" test in this file asks the RENDERED
+        //      signature, which snaps to the parameter's own grid. A host write inside one step
+        //      of a discrete parameter therefore moves the counter and not the signature: the
+        //      poll's own non-gesture branch would NOT have ended the chain for it, and the
+        //      gesture open does. Recorded rather than asserted because the only place to make
+        //      the two agree is inside `parameterValueChanged`, which can run on the audio
+        //      thread -- see the worklog for why that is not a wheel fix.
+        if (auto* algoP = apvts.getParameter (pid::algorithm))
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float a0 = algoP->getValue();
+            const float d0 = plainOf (driveP);
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            const float n1 = plainOf (driveP);
+            // Inside ONE step of a 0..n-1 choice: the rendered index cannot move.
+            const float nudged = juce::jlimit (0.0f, 1.0f, a0 + 0.01f);
+            algoP->setValueNotifyingHost (nudged);
+            const bool rendersSame = juce::exactlyEqual (normalisedAsRendered (*algoP, algoP->getValue()),
+                                                         normalisedAsRendered (*algoP, a0));
+            check (rendersSame, "leg W: the host write lands inside one step of the choice");
+            scrollKnob (driveK, 0.5f);  proc.pollUndoCoalesce();
+            check (! juce::exactlyEqual (plainOf (driveP), n1), "leg W: the second notch moved Drive");
+            proc.undo();
+            if (! juce::exactlyEqual (plainOf (driveP), d0))
+                std::printf ("  [leg W] a host write the signature calls no change still split the"
+                             " scroll: one Undo stopped at %.4f rather than %.4f\n",
+                             (double) plainOf (driveP), (double) d0);
+            algoP->setValueNotifyingHost (a0);
+            proc.pollUndoCoalesce();
+        }
+    }
+
+    // ---- the multiband legs, on the same editor -------------------------------------
+    check (im != nullptr && im->getWidth() > 300, "the imager is laid out for the scroll-undo probe");
+    if (im != nullptr && im->getWidth() > 300)
+    {
+        auto* bandsP = apvts.getParameter (pid::mbBands);
+        auto* loP    = apvts.getParameter (pid::mbFreqLow);
+        auto* midP   = apvts.getParameter (pid::mbFreqMid);
+        auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+        auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+        check (bandsP && loP && midP && hiP && wLoP, "the multiband parameters exist");
+        if (bandsP && loP && midP && hiP && wLoP)
+        {
+            auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+            { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+            const float W = (float) im->getWidth(), H = (float) im->getHeight();
+            const float laneY = 0.5f * H;
+            auto hover = [&] (float x, float y)
+            {
+                const auto t = juce::Time::getCurrentTime();
+                im->mouseMove (juce::MouseEvent (src, { x, y }, juce::ModifierKeys(),
+                                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                                 t, { x, y }, t, 1, false));
+            };
+            auto resetBands = [&]
+            {
+                // `canUndo()` is CUMULATIVE and the knob legs above leave real steps behind, so
+                // each multiband leg drains the history before it can measure its own.
+                while (proc.canUndo()) proc.undo();
+                im->cancelActiveDrag();
+                setPlain (bandsP, 4.0f);
+                setPlain (loP, 200.0f); setPlain (midP, 2000.0f); setPlain (hiP, 10000.0f);
+                setPlain (wLoP, 1.0f);
+                proc.pollUndoCoalesce();
+            };
+
+            // ---- LEG D: the multiband SPLIT -- three notches, one step ---------------
+            resetBands();
+            check (! proc.canUndo(), "leg D: the multiband legs start with no undo history");
+            float sx = -1.0f;
+            for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+            {
+                hover (x, laneY);
+                if (im->getTooltip() == juce::String ("Drag to change the split frequency")) { sx = x; break; }
+            }
+            check (sx >= 0.0f, "leg D: a split handle is findable");
+            if (sx >= 0.0f)
+            {
+                const float s0 = plainOf (loP), s1 = plainOf (midP), s2 = plainOf (hiP);
+                for (int i = 0; i < 3; ++i) { scrollAt (im, sx, laneY, 0.4f); proc.pollUndoCoalesce(); }
+                check (! juce::exactlyEqual (plainOf (loP), s0), "leg D: the scroll moved the split");
+                if (! proc.canUndo())
+                    std::printf ("  [leg D] a multiband wheel edit still records no undo step at all\n");
+                check (proc.canUndo(),
+                       "leg D: ...and a multiband wheel edit is undoable at all (KI-010's imager half)");
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (loP), s0)
+                       && juce::exactlyEqual (plainOf (midP), s1)
+                       && juce::exactlyEqual (plainOf (hiP), s2),
+                       "leg D: one Undo returns the whole split row to where the scroll started");
+                check (! proc.canUndo(), "leg D: ...and the three notches were ONE step");
+            }
+
+            // ---- LEG E: the multiband BANDWIDTH -- three notches, one step ------------
+            resetBands();
+            check (! proc.canUndo(), "leg E: the bandwidth leg starts with no undo history");
+            const float bandX = sx >= 0.0f ? 0.5f * (4.0f + sx) : 0.25f * W;
+            {
+                const float w0 = plainOf (wLoP);
+                for (int i = 0; i < 3; ++i) { scrollAt (im, bandX, laneY, 0.4f); proc.pollUndoCoalesce(); }
+                check (! juce::exactlyEqual (plainOf (wLoP), w0), "leg E: the scroll moved the bandwidth");
+                check (proc.canUndo(), "leg E: ...and it is undoable");
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (wLoP), w0),
+                       "leg E: one Undo returns the bandwidth to where the scroll started");
+                check (! proc.canUndo(), "leg E: ...and the three notches were ONE step");
+            }
+
+            // ---- LEG D2: ...and a pushed NEIGHBOUR belongs to the step that pushed it ---------
+            //      Leg D above asserts "the whole split row", and on its own fixture nothing is ever
+            //      pushed -- three notches of 0.4 x 28 px against a decade of separation -- so it
+            //      passes whether or not the neighbours are in the step at all. This leg drives the
+            //      split until it packs against its neighbour and MOVES it, which is the case
+            //      ADR-0008's amendment has to get right: `dragCrossoverTo` pushes that neighbour
+            //      through `storeOwned`, outside any change gesture of its own, and the step must
+            //      still own it or one Undo leaves the row in a layout nobody produced. What makes
+            //      it own it is `SpectrumImager::onOwnedWrite`; mutation M50 removes that call and
+            //      this leg is what notices.
+            resetBands();
+            if (sx >= 0.0f)
+            {
+                hover (sx, laneY);
+                const float s0 = plainOf (loP), s1 = plainOf (midP), s2 = plainOf (hiP);
+                for (int i = 0; i < 60; ++i) { scrollAt (im, sx, laneY, 0.4f); proc.pollUndoCoalesce(); }
+                check (! juce::exactlyEqual (plainOf (loP), s0), "leg D2: the scroll moved the split");
+                check (! juce::exactlyEqual (plainOf (midP), s1),
+                       "leg D2: ...far enough to push its neighbour, which is the whole point of this leg");
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (loP), s0)
+                       && juce::exactlyEqual (plainOf (midP), s1)
+                       && juce::exactlyEqual (plainOf (hiP), s2),
+                       "leg D2: one Undo brings the pushed neighbour back with the split that pushed it");
+                check (! proc.canUndo(), "leg D2: ...and the whole scroll was ONE step");
+            }
+
+            // ---- LEG Z: a RESET owns the neighbours its own spread pushed --------------------
+            //      Leg D2 covers the WHEEL, whose stores all happen inside one open gesture, so
+            //      the batch's closing snapshot is taken after the last of them. The RESET paths
+            //      are the opposite shape: `resetCrossover` closes the primary's gesture and only
+            //      THEN calls `spreadSplits`, so every neighbour it pushes is stored while nothing
+            //      is open. `onOwnedWrite` still declares those stores the user's, but the value
+            //      the step would record for them was read before they happened.
+            //      The layout is chosen so the reset pushes TWO neighbours and the handle it is
+            //      aimed at is still 100+ px clear of them: split 0 sits far below its 180 Hz
+            //      default with the other two packed just above that default, so resetting it
+            //      walks the whole row.
+            const float chipY = H - 15.0f;   // rulerY() = plot().getBottom() - 14, as State test 80 has it
+            auto altClickAt = [&] (float x, float y)
+            {
+                const auto t = juce::Time::getCurrentTime();
+                im->mouseDown (juce::MouseEvent (src, { x, y },
+                                                 juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                                                     | juce::ModifierKeys::altModifier),
+                                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                                 t, { x, y }, t, 1, false));
+            };
+            // The packed row legs Z, Z2 and Z3 all drive: split 0 far below its 180 Hz default with
+            // the other two parked just above that default, so restoring split 0 walks the row.
+            auto packRow = [&]
+            {
+                setPlain (loP, 50.0f); setPlain (midP, 200.0f); setPlain (hiP, 280.0f);
+                proc.pollUndoCoalesce();
+            };
+            auto firstHandleX = [&] () -> float
+            {
+                for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+                {
+                    hover (x, laneY);
+                    if (im->getTooltip() == juce::String ("Drag to change the split frequency")) return x;
+                }
+                return -1.0f;
+            };
+
+            resetBands();
+            {
+                packRow();
+                check (! proc.canUndo(), "leg Z: the reset leg starts with no undo history");
+                const float zx = firstHandleX();
+                check (zx >= 0.0f, "leg Z: the packed layout's first split handle is findable");
+                if (zx >= 0.0f)
+                {
+                    const float s0 = plainOf (loP), s1 = plainOf (midP), s2 = plainOf (hiP);
+                    altClickAt (zx, laneY);
+                    proc.pollUndoCoalesce();
+                    // THE REDO COMPARISON IS MADE ON THE GRID THE PLUG-IN RENDERS AND SIGNS ON,
+                    // and that is not a tolerance. `storeOwned` leaves a parameter holding the value
+                    // it read back -- one `convertTo0to1 (convertFrom0to1 (.))` from the store's own
+                    // input -- and that map is not idempotent on a log-skewed frequency range, so a
+                    // live split can sit up to one more round trip off the grid. Redo writes the
+                    // recorded normalised value back and the parameter re-renders it, landing on the
+                    // grid instead of beside it: measured 0.421038747 -> 0.421038717 on split 2, a
+                    // difference of 3e-8 normalised, which is exactly what `soundSignature` and the
+                    // poll's own move test call no change (`normalisedAsRendered`). Comparing plain
+                    // Hz exactly would assert a property the parameter itself does not have; this
+                    // compares the rendered values EXACTLY, which is the property that matters.
+                    const float r0 = renderedOf (loP), r1 = renderedOf (midP), r2 = renderedOf (hiP);
+                    check (! juce::exactlyEqual (r0, s0), "leg Z: the alt-click reset moved the split it was aimed at");
+                    check (! juce::exactlyEqual (r1, s1) && ! juce::exactlyEqual (r2, s2),
+                           "leg Z: ...and its spread pushed BOTH neighbours, which is what this leg measures");
+                    check (proc.canUndo(), "leg Z: a reset is undoable at all");
+                    proc.undo();
+                    if (! (juce::exactlyEqual (plainOf (midP), s1) && juce::exactlyEqual (plainOf (hiP), s2)))
+                        std::printf ("  [leg Z] the reset's Undo left displaced splits: %.1f / %.1f / %.1f Hz,"
+                                     " against the %.1f / %.1f / %.1f the user had before the reset\n",
+                                     (double) plainOf (loP), (double) plainOf (midP), (double) plainOf (hiP),
+                                     (double) s0, (double) s1, (double) s2);
+                    check (juce::exactlyEqual (plainOf (loP), s0)
+                           && juce::exactlyEqual (plainOf (midP), s1)
+                           && juce::exactlyEqual (plainOf (hiP), s2),
+                           "leg Z: one Undo restores the whole layout the reset replaced, neighbours included");
+                    check (! proc.canUndo(), "leg Z: ...and the reset was ONE step");
+                    proc.redo();
+                    if (! (juce::exactlyEqual (renderedOf (midP), r1) && juce::exactlyEqual (renderedOf (hiP), r2)))
+                        std::printf ("  [leg Z] the reset's Redo left displaced splits: %.9g / %.9g / %.9g,"
+                                     " against the %.9g / %.9g / %.9g the reset itself produced"
+                                     " (rendered normalised)\n",
+                                     (double) renderedOf (loP), (double) renderedOf (midP),
+                                     (double) renderedOf (hiP),
+                                     (double) r0, (double) r1, (double) r2);
+                    check (juce::exactlyEqual (renderedOf (loP), r0)
+                           && juce::exactlyEqual (renderedOf (midP), r1)
+                           && juce::exactlyEqual (renderedOf (hiP), r2),
+                           "leg Z: Redo restores the whole layout the reset produced, neighbours included");
+                }
+            }
+
+            // ---- LEG Z2: a neighbour store that did NOT stand is not in the step -------------
+            //      The other half of the same rule. `storeOwned` declares the parameter it wrote
+            //      only after proving the parameter still holds what it wrote, so a spread store an
+            //      authoritative write refused claims nothing -- and one Undo therefore takes back
+            //      the reset without taking back somebody else's write beside it. Declared before
+            //      the store instead, the step would carry a neighbour it never moved, and the
+            //      value it would restore is the one the batch opened with: the authoritative
+            //      write, silently undone. Mutation M55 moves the declaration back and this leg is
+            //      what notices.
+            resetBands();
+            {
+                packRow();
+                check (! proc.canUndo(), "leg Z2: the refused-spread leg starts with no undo history");
+                const float zx = firstHandleX();
+                check (zx >= 0.0f, "leg Z2: the packed layout's first split handle is findable");
+                if (zx >= 0.0f)
+                {
+                    const float s0 = plainOf (loP), s2 = plainOf (hiP);
+                    WriteFromInsideAStoreQuietly echo;   // the neighbour answers its own store
+                    echo.target = midP;
+                    echo.to     = 4000.0f;
+                    midP->addListener (&echo);
+                    echo.armed = true;
+                    altClickAt (zx, laneY);
+                    const bool landed = echo.fired;
+                    midP->removeListener (&echo);
+                    proc.pollUndoCoalesce();
+
+                    check (landed, "leg Z2: the echo landed inside the spread's own neighbour store");
+                    check (! landed || std::abs (plainOf (midP) - 4000.0f) <= 1.0f,
+                           "leg Z2: the refused store leaves the authoritative value standing");
+                    check (! landed || juce::exactlyEqual (plainOf (hiP), s2),
+                           "leg Z2: ...and the spread stops there, so the split above is untouched");
+                    check (! landed || ! juce::exactlyEqual (plainOf (loP), s0),
+                           "leg Z2: the reset itself still stood");
+                    check (! landed || proc.canUndo(), "leg Z2: ...and is undoable");
+                    if (landed) proc.undo();
+                    if (landed && ! (std::abs (plainOf (midP) - 4000.0f) <= 1.0f))
+                        std::printf ("  [leg Z2] Undo took back an authoritative write the user's"
+                                     " action never made: the split is at %.1f Hz, not the 4000.0"
+                                     " that was installed\n", (double) plainOf (midP));
+                    check (! landed || juce::exactlyEqual (plainOf (loP), s0),
+                           "leg Z2: one Undo restores the reset split");
+                    check (! landed || std::abs (plainOf (midP) - 4000.0f) <= 1.0f,
+                           "leg Z2: ...and leaves the authoritative write that refused the spread");
+                    check (! landed || ! proc.canUndo(), "leg Z2: ...in ONE step");
+                }
+            }
+
+            // ---- LEG Z3: the TYPED commit owns its spread too --------------------------------
+            //      `commitFreqEditor` has the identical shape -- gesture closed, then spread -- so
+            //      the same rule has to hold for a value typed into the number chip.
+            resetBands();
+            {
+                packRow();
+                check (! proc.canUndo(), "leg Z3: the typed-commit leg starts with no undo history");
+                const float zx = firstHandleX();
+                check (zx >= 0.0f, "leg Z3: the packed layout's first split handle is findable");
+                if (zx >= 0.0f)
+                {
+                    const float s0 = plainOf (loP), s1 = plainOf (midP), s2 = plainOf (hiP);
+                    const auto t = juce::Time::getCurrentTime();
+                    im->mouseDoubleClick (juce::MouseEvent (src, { zx, chipY }, juce::ModifierKeys(),
+                                                            1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                                            t, { zx, chipY }, t, 2, false));
+                    juce::TextEditor* te = nullptr;
+                    for (int i = 0; i < im->getNumChildComponents(); ++i)
+                        if (auto* c = dynamic_cast<juce::TextEditor*> (im->getChildComponent (i)))
+                            if (c->isVisible()) { te = c; break; }
+                    check (te != nullptr, "leg Z3: the frequency text editor opens on the number chip");
+                    if (te != nullptr)
+                    {
+                        te->setText ("180", false);
+                        if (te->onReturnKey) te->onReturnKey();
+                        proc.pollUndoCoalesce();
+                        const float r0 = renderedOf (loP), r1 = renderedOf (midP), r2 = renderedOf (hiP);
+                        check (! juce::exactlyEqual (plainOf (loP), s0),
+                               "leg Z3: the typed value moved the split it was typed into");
+                        check (! juce::exactlyEqual (plainOf (midP), s1)
+                               && ! juce::exactlyEqual (plainOf (hiP), s2),
+                               "leg Z3: ...and its spread pushed both neighbours");
+                        check (proc.canUndo(), "leg Z3: a typed commit is undoable");
+                        proc.undo();
+                        if (! (juce::exactlyEqual (plainOf (midP), s1) && juce::exactlyEqual (plainOf (hiP), s2)))
+                            std::printf ("  [leg Z3] the typed commit's Undo left displaced splits:"
+                                         " %.1f / %.1f / %.1f Hz, against the %.1f / %.1f / %.1f the"
+                                         " user had before typing\n",
+                                         (double) plainOf (loP), (double) plainOf (midP),
+                                         (double) plainOf (hiP), (double) s0, (double) s1, (double) s2);
+                        check (juce::exactlyEqual (plainOf (loP), s0)
+                               && juce::exactlyEqual (plainOf (midP), s1)
+                               && juce::exactlyEqual (plainOf (hiP), s2),
+                               "leg Z3: one Undo restores the whole layout the typed value replaced");
+                        check (! proc.canUndo(), "leg Z3: ...and the typed commit was ONE step");
+                        proc.redo();
+                        check (juce::exactlyEqual (renderedOf (loP), r0)
+                               && juce::exactlyEqual (renderedOf (midP), r1)
+                               && juce::exactlyEqual (renderedOf (hiP), r2),
+                               "leg Z3: Redo restores the whole typed layout, neighbours included");
+                    }
+                }
+            }
+
+            // ---- LEG Z4: an ADD owns every split and width it shifted ------------------------
+            //      `addBandAt` reaches the parameters through `setParam`, the OTHER store that
+            //      brackets no gesture of its own, and inserting a split shifts every split above
+            //      it. Those writes sit between `setSoloMask`'s gesture (which opens the batch)
+            //      and `setBands`'s (which closes it), so they are inside the batch but outside
+            //      every bracket -- exactly the position `spreadSplits` is in, and covered by the
+            //      same declaration. `removeBand` has the identical shape (`setSoloMask`, then the
+            //      `setParam` loops, then `setBands`) and is covered by the same declaration; this
+            //      leg drives the add because the add affordance is findable from the tooltip alone
+            //      while the delete x is not (`getTooltip` asks `deleteHit` about the LIVE mouse
+            //      position, which a synthetic event does not move). Mutation M57 removes the
+            //      declaration and this leg is what notices; at ef6d4f0 it passed, so what it
+            //      closes is a coverage gap round 14 left, not a defect round 14 shipped.
+            resetBands();
+            {
+                while (proc.canUndo()) proc.undo();
+                im->cancelActiveDrag();
+                setPlain (bandsP, 3.0f);
+                setPlain (loP, 200.0f); setPlain (midP, 300.0f); setPlain (hiP, 10000.0f);
+                proc.pollUndoCoalesce();
+                check (! proc.canUndo(), "leg Z4: the add leg starts with no undo history");
+                const float addY = 30.0f;
+                float ax = -1.0f;
+                for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+                {
+                    hover (x, addY);
+                    if (im->getTooltip() == juce::String ("Click to add a band split")) { ax = x; break; }
+                }
+                check (ax >= 0.0f, "leg Z4: the add affordance is findable");
+                if (ax >= 0.0f)
+                {
+                    const float b0 = plainOf (bandsP);
+                    const float s0 = plainOf (loP), s1 = plainOf (midP), s2 = plainOf (hiP);
+                    const auto t = juce::Time::getCurrentTime();
+                    const juce::MouseEvent d (src, { ax, addY }, juce::ModifierKeys::leftButtonModifier,
+                                              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                              t, { ax, addY }, t, 1, false);
+                    im->mouseDown (d); im->mouseUp (d);
+                    proc.pollUndoCoalesce();
+                    check (! juce::exactlyEqual (plainOf (bandsP), b0), "leg Z4: the click added a band");
+                    check (! juce::exactlyEqual (plainOf (loP), s0)
+                           && ! juce::exactlyEqual (plainOf (midP), s1)
+                           && ! juce::exactlyEqual (plainOf (hiP), s2),
+                           "leg Z4: ...and shifted every split that was already there");
+                    check (proc.canUndo(), "leg Z4: an add is undoable");
+                    proc.undo();
+                    if (! (juce::exactlyEqual (plainOf (loP), s0)
+                           && juce::exactlyEqual (plainOf (midP), s1)
+                           && juce::exactlyEqual (plainOf (hiP), s2)))
+                        std::printf ("  [leg Z4] the add's Undo left shifted splits: %.1f / %.1f / %.1f Hz,"
+                                     " against the %.1f / %.1f / %.1f the user had before the click\n",
+                                     (double) plainOf (loP), (double) plainOf (midP), (double) plainOf (hiP),
+                                     (double) s0, (double) s1, (double) s2);
+                    check (juce::exactlyEqual (plainOf (bandsP), b0),
+                           "leg Z4: one Undo takes the band back out");
+                    check (juce::exactlyEqual (plainOf (loP), s0)
+                           && juce::exactlyEqual (plainOf (midP), s1)
+                           && juce::exactlyEqual (plainOf (hiP), s2),
+                           "leg Z4: ...and puts every split it shifted back where it was");
+                    check (! proc.canUndo(), "leg Z4: ...in ONE step");
+                }
+            }
+
+            // ---- LEG Z5: a topology store an authoritative write REPLACED is not owned ---------
+            //      The other side of leg Z4. `setParam` had no read-back -- `addBandAt`'s loops
+            //      prove slot i BEFORE storing slot i and never again, and `setBands`' own guard
+            //      proves only the COUNT -- so a host answering the store's own dispatch left the
+            //      transaction running with the parameter holding somebody else's value, declared
+            //      the user's anyway. The declared VALUE was never the problem (round 15 passes the
+            //      asked-for value deliberately); the OWNERSHIP FLAG is, because `batchCloseValue`
+            //      is retaken IN FULL at the next zero-crossing close -- `setBands` ends every add
+            //      -- and that snapshot reads the parameter live. Mutation M58 restores the
+            //      unconditional declaration and this leg is what notices.
+            //
+            //      THE PROBE TARGETS SPLIT 1, NOT SPLIT 0, and the distinction is the whole reason
+            //      this leg is a `setParam` leg at all. The click inserts at the far left, so
+            //      `addBandAt` returns index 0 and `mouseDown` opens a change gesture on `freqP[0]`
+            //      for the drag that may follow -- which declares split 0 by GESTURE, whatever its
+            //      store did, and a host write there is the narrow in-gesture window ADR-0008
+            //      records as an accepted residual rather than this defect. Split 1 gets no gesture
+            //      in an add, so `setParam`'s declaration is the only thing that can own it.
+            resetBands();
+            {
+                while (proc.canUndo()) proc.undo();
+                im->cancelActiveDrag();
+                setPlain (bandsP, 3.0f);
+                setPlain (loP, 200.0f); setPlain (midP, 300.0f); setPlain (hiP, 10000.0f);
+                proc.pollUndoCoalesce();
+                check (! proc.canUndo(), "leg Z5: the replaced-store leg starts with no undo history");
+                const float addY = 30.0f;
+                float ax = -1.0f;
+                for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+                {
+                    hover (x, addY);
+                    if (im->getTooltip() == juce::String ("Click to add a band split")) { ax = x; break; }
+                }
+                check (ax >= 0.0f, "leg Z5: the add affordance is findable");
+                if (ax >= 0.0f)
+                {
+                    const float b0 = plainOf (bandsP);
+                    WriteFromInsideAStore poke;       // the host answers split 1's own store dispatch
+                    poke.target = midP;
+                    poke.to     = 4000.0f;
+                    midP->addListener (&poke);
+                    poke.armed = true;
+                    const auto t = juce::Time::getCurrentTime();
+                    const juce::MouseEvent d (src, { ax, addY }, juce::ModifierKeys::leftButtonModifier,
+                                              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                              t, { ax, addY }, t, 1, false);
+                    im->mouseDown (d); im->mouseUp (d);
+                    const bool landed = poke.fired;
+                    midP->removeListener (&poke);
+                    proc.pollUndoCoalesce();
+                    const float after = plainOf (midP);
+
+                    check (landed, "leg Z5: the probe write landed inside the add's own split store");
+                    check (! landed || std::abs (after - 4000.0f) <= 1.0f,
+                           "leg Z5: the replaced store leaves the authoritative value standing");
+                    check (! landed || ! juce::exactlyEqual (plainOf (bandsP), b0),
+                           "leg Z5: the add itself still committed");
+                    check (! landed || proc.canUndo(), "leg Z5: ...and is undoable");
+                    if (landed) proc.undo();
+                    if (landed && std::abs (plainOf (midP) - 4000.0f) > 1.0f)
+                        std::printf ("  [leg Z5] Undo took back an authoritative write the user's Add"
+                                     " never made: the split is at %.1f Hz, not the 4000.0 that was"
+                                     " installed\n", (double) plainOf (midP));
+                    check (! landed || std::abs (plainOf (midP) - 4000.0f) <= 1.0f,
+                           "leg Z5: one Undo leaves the authoritative write that replaced the store");
+                    check (! landed || juce::exactlyEqual (plainOf (bandsP), b0),
+                           "leg Z5: ...and still takes the band back out");
+                    check (! landed || ! proc.canUndo(), "leg Z5: ...in ONE step");
+                    if (landed)
+                    {
+                        proc.redo();
+                        if (std::abs (plainOf (midP) - 4000.0f) > 1.0f)
+                            std::printf ("  [leg Z5] Redo moved a split the user's Add never"
+                                         " installed: %.1f Hz\n", (double) plainOf (midP));
+                        check (std::abs (plainOf (midP) - 4000.0f) <= 1.0f,
+                               "leg Z5: Redo leaves it alone too -- the step never owned it");
+                    }
+                }
+            }
+
+            // ---- LEG Z6: ...and the same rule through the REMOVE transaction -----------------
+            //      `removeBand` reaches the parameters through the same `setParam`, so this leg
+            //      exercises the other caller of the one proof. The delete x at `deleteBox(0)` is
+            //      pressed and released over the same spot (State test 69's coordinates), which
+            //      opens no change gesture on any split -- so `setParam`'s declaration is again the
+            //      only thing that can own one. The probe answers the SECOND split store, the one
+            //      that shifts slot 1 up to the old slot 2.
+            resetBands();
+            {
+                while (proc.canUndo()) proc.undo();
+                im->cancelActiveDrag();
+                setPlain (bandsP, 4.0f);
+                setPlain (loP, 200.0f); setPlain (midP, 2000.0f); setPlain (hiP, 10000.0f);
+                proc.pollUndoCoalesce();
+                check (! proc.canUndo(), "leg Z6: the remove leg starts with no undo history");
+                const float delX = 13.0f, delY = H - 30.0f;   // deleteBox(0), as State test 69 has it
+                const float b0 = plainOf (bandsP), s0 = plainOf (loP);
+                WriteFromInsideAStore poke;
+                poke.target = midP;
+                poke.to     = 4000.0f;
+                midP->addListener (&poke);
+                poke.armed = true;
+                const auto t = juce::Time::getCurrentTime();
+                const juce::MouseEvent d (src, { delX, delY }, juce::ModifierKeys::leftButtonModifier,
+                                          1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                          t, { delX, delY }, t, 1, false);
+                im->mouseDown (d); im->mouseUp (d);
+                const bool landed = poke.fired;
+                midP->removeListener (&poke);
+                proc.pollUndoCoalesce();
+
+                check (landed, "leg Z6: the probe write landed inside the remove's own split store");
+                check (! landed || juce::exactlyEqual (plainOf (bandsP), b0 - 1.0f),
+                       "leg Z6: the delete x still removed its band");
+                check (! landed || std::abs (plainOf (midP) - 4000.0f) <= 1.0f,
+                       "leg Z6: the replaced store leaves the authoritative value standing");
+                check (! landed || proc.canUndo(), "leg Z6: ...and the remove is undoable");
+                if (landed) proc.undo();
+                if (landed && std::abs (plainOf (midP) - 4000.0f) > 1.0f)
+                    std::printf ("  [leg Z6] Undo took back an authoritative write the user's Remove"
+                                 " never made: the split is at %.1f Hz, not the 4000.0 that was"
+                                 " installed\n", (double) plainOf (midP));
+                check (! landed || std::abs (plainOf (midP) - 4000.0f) <= 1.0f,
+                       "leg Z6: one Undo leaves the authoritative write that replaced the store");
+                check (! landed || juce::exactlyEqual (plainOf (bandsP), b0),
+                       "leg Z6: ...and still puts the band back");
+                check (! landed || juce::exactlyEqual (plainOf (loP), s0),
+                       "leg Z6: ...and still restores the split whose store DID stand");
+                check (! landed || ! proc.canUndo(), "leg Z6: ...in ONE step");
+            }
+
+            // ---- LEG Z7: a store's own endpoint outranks the live read at its close ------------
+            //      The last instant that can still reach a user endpoint: after the drag's final
+            //      `storeOwned` has installed and PROVED its value, and before that same split's
+            //      gesture closes. `storeOwned`'s read-back cannot see it -- the write lands after
+            //      the store returned -- so the only thing standing between the host's value and
+            //      the user's Redo destination is the rule that a store which declared its own
+            //      endpoint is not second-guessed by a live read at the close. JUCE walks a
+            //      parameter's listeners in REVERSE registration order, so a listener the test adds
+            //      runs before the processor's own handler and its write is already in place when
+            //      the close reads. Mutation M65 removes that rule and this leg is what notices.
+            resetBands();
+            {
+                while (proc.canUndo()) proc.undo();
+                proc.pollUndoCoalesce();
+                check (! proc.canUndo(), "leg Z7: the declared-endpoint leg starts with no undo history");
+                float splitX = -1.0f;
+                for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+                {
+                    hover (x, laneY);
+                    if (im->getTooltip() == juce::String ("Drag to change the split frequency")) { splitX = x; break; }
+                }
+                check (splitX >= 0.0f, "leg Z7: a split handle is findable");
+                if (splitX >= 0.0f)
+                {
+                    const float s0 = plainOf (loP);
+                    const float foreign = 7000.0f;
+                    WriteFromInsideAGestureOpen poke;   // ...on the CLOSE, see onClose below
+                    poke.onClose = true;
+                    poke.target  = loP;
+                    poke.to      = foreign;
+                    const auto t = juce::Time::getCurrentTime();
+                    auto ev = [&] (float x, bool dragged)
+                    {
+                        return juce::MouseEvent (src, { x, laneY },
+                                                 juce::ModifierKeys::leftButtonModifier,
+                                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                                 t, { splitX, laneY }, t, 1, dragged);
+                    };
+                    im->mouseDown (ev (splitX, false));
+                    im->mouseDrag (ev (splitX + 60.0f, true));
+                    const float dragged = plainOf (loP);
+                    check (! juce::exactlyEqual (dragged, s0), "leg Z7: the drag moved the split");
+                    loP->addListener (&poke);
+                    poke.armed = true;
+                    im->mouseUp (ev (splitX + 60.0f, true));   // the close dispatches; the probe writes
+                    const bool landed = poke.fired;
+                    loP->removeListener (&poke);
+                    proc.pollUndoCoalesce();
+
+                    check (landed, "leg Z7: the probe write landed inside the gesture's own close");
+                    check (! landed || std::abs (plainOf (loP) - foreign) <= 1.0f,
+                           "leg Z7: the host's value is live after the release");
+                    check (! landed || proc.canUndo(), "leg Z7: the drag is undoable");
+                    if (landed)
+                    {
+                        proc.undo();
+                        check (juce::exactlyEqual (plainOf (loP), s0),
+                               "leg Z7: Undo restores the value the split held before the drag");
+                        proc.redo();
+                        if (std::abs (plainOf (loP) - foreign) <= 1.0f)
+                            std::printf ("  [leg Z7] Redo restored the host's value as the user's"
+                                         " endpoint: %.1f Hz, where the drag's own store installed"
+                                         " %.1f\n", (double) plainOf (loP), (double) dragged);
+                        check (std::abs (plainOf (loP) - foreign) > 1.0f,
+                               "leg Z7: Redo does not restore the host's value as the drag's endpoint");
+                        check (juce::exactlyEqual (plainOf (loP), dragged),
+                               "leg Z7: ...it restores exactly what the drag's own store installed");
+                    }
+                }
+            }
+
+            // ---- LEG I: a host write from inside the notch's OWN gesture-open stands -------
+            //      This window did not exist before this round. The multiband wheel opened no
+            //      change gesture, so nothing dispatched between the reading and the store;
+            //      opening one to make the scroll undoable creates it. The width branch answers
+            //      it the way the split branch has since ADR-0043: ONE reading taken before the
+            //      dispatch, stamped into the ownership record, and a store that refuses if the
+            //      record has moved (ADR-0047).
+            {
+                resetBands();
+                // The scroll LATCH survives a press, a release and a `cancelActiveDrag`; only a
+                // pointer move of more than 3 px, a `mouseExit`, or a topology change drops it. So
+                // each of these legs moves the pointer to its own target first, or it inherits the
+                // previous leg's latch and edits the previous leg's control.
+                hover (bandX, laneY);
+                // A REAL notch first, so the refused one below has a scroll step of its own control
+                // sitting on the stack to be mis-attributed to -- which is the whole of the second
+                // half of this leg.
+                const float scrollStart = plainOf (wLoP);   // ...and where that scroll begins
+                scrollAt (im, bandX, laneY, 0.4f);
+                proc.pollUndoCoalesce();
+                check (proc.canUndo(), "leg I: the first notch recorded a step of its own");
+
+                WriteOnGestureOpen poke;
+                poke.target = wLoP;
+                poke.to     = 1.6f;     // the host moves the very width this notch is about to edit
+                poke.armed  = true;
+                wLoP->addListener (&poke);
+                scrollAt (im, bandX, laneY, 0.4f);
+                const bool landed = poke.fired;
+                wLoP->removeListener (&poke);
+                proc.pollUndoCoalesce();
+                check (landed, "leg I: the probe write landed inside the notch's own gesture-open");
+                if (landed && ! juce::exactlyEqual (plainOf (wLoP), 1.6f))
+                    std::printf ("  [leg I] the notch wrote over the host's 1.600 with %.4f\n",
+                                 (double) plainOf (wLoP));
+                check (! landed || juce::exactlyEqual (plainOf (wLoP), 1.6f),
+                       "leg I: ...and the notch leaves it standing rather than writing over it");
+                // AND A BURST THAT WROTE NOTHING IS NOT A SCROLL. Its gesture still closed, so the
+                // poll still sees a moved signature and records the host's write -- but attributing
+                // that to the wheel would EXTEND the step above, and one Undo would then take back
+                // the first notch as well as the automation.
+                // RE-BASED FOR ADR-0008 AS AMENDED (round 14). This used to assert that one Undo
+                // stopped at `afterRealNotch`, because the refused burst recorded a whole-state step
+                // whose only content was the host's write and that step was the boundary. Under the
+                // amendment the burst owns `wLo`, `wLo` did not move (its own store was refused), so
+                // the burst records NOTHING -- the host's write is undoable by nobody -- and one Undo
+                // correctly reaches the previous scroll and returns it to where that scroll started.
+                // The property the old assertion was really protecting is unchanged and is asserted
+                // just above: the burst does not write over the host's value.
+                proc.undo();
+                if (landed && ! juce::exactlyEqual (plainOf (wLoP), scrollStart))
+                    std::printf ("  [leg I] one Undo stopped at %.4f rather than the %.4f the"
+                                 " previous scroll started from\n",
+                                 (double) plainOf (wLoP), (double) scrollStart);
+                check (! landed || juce::exactlyEqual (plainOf (wLoP), scrollStart),
+                       "leg I: ...and a burst whose own store was refused records no step at all,"
+                       " so one Undo reaches the scroll before it");
+            }
+
+            // ---- LEG J: a reentrant cancellation inside the burst's gesture-open changes nothing
+            //      ADR-0050's guard, for the window this round opened. `cancelActiveDrag`'s first
+            //      act is `gestureBands = -1`, and that is the record `writeCrossovers` proves
+            //      every store against -- so a host that pumps the message loop from the burst's
+            //      own gesture open, landing `tick`'s staleness reconcile there, would disarm the
+            //      proof and let the burst write over the host's install. The burst holds the
+            //      ownership claim for its length, so the nested call declines.
+            if (sx >= 0.0f)
+            {
+                resetBands();
+                struct WriteThenCancelOnOpen final : public juce::AudioProcessorParameter::Listener
+                {
+                    anamorph::gui::SpectrumImager* imager = nullptr;
+                    juce::RangedAudioParameter* target = nullptr;
+                    float to = 0.0f;
+                    bool  armed = false, fired = false;
+                    void parameterValueChanged (int, float) override {}
+                    void parameterGestureChanged (int, bool starting) override
+                    {
+                        if (! starting || ! armed || imager == nullptr || target == nullptr) return;
+                        armed = false;
+                        fired = true;
+                        target->setValueNotifyingHost (target->convertTo0to1 (to)); // the host's write...
+                        imager->cancelActiveDrag();                                 // ...and the reconcile it pumps
+                    }
+                };
+                // What the probe's own write actually leaves in the parameter, measured by making
+                // the identical write here first. A literal 650.0f is not it: the value makes two
+                // normalise/denormalise round trips on the way in and out, and this suite compares
+                // ownership EXACTLY (ADR-0041) rather than with an invented tolerance. Measured
+                // BEFORE the real notch below, not between it and the burst: these are gesture-less
+                // writes, and a gesture-less write ends a scroll's chain -- which is the very thing
+                // the second half of this leg has to still be alive to measure.
+                setPlain (loP, 650.0f);
+                const float installed = plainOf (loP);
+                setPlain (loP, 200.0f);
+                proc.pollUndoCoalesce();
+
+                hover (sx, laneY);            // ...drop leg I's band latch and re-aim at the split
+                // A real notch first, so the refused burst below has a scroll step of its own
+                // control on the stack to be mis-attributed to (the split half of leg I).
+                const float scrollStart = plainOf (loP);    // ...and where that scroll begins
+                scrollAt (im, sx, laneY, 0.4f);
+                proc.pollUndoCoalesce();
+                check (proc.canUndo(), "leg J: the first notch recorded a step of its own");
+
+                WriteThenCancelOnOpen poke;
+                poke.imager = im; poke.target = loP; poke.to = 650.0f; poke.armed = true;
+                loP->addListener (&poke);
+                scrollAt (im, sx, laneY, 0.4f);
+                const bool landed = poke.fired;
+                loP->removeListener (&poke);
+                proc.pollUndoCoalesce();
+                check (landed, "leg J: the probe write and the reconcile landed inside the gesture-open");
+                if (landed && ! juce::exactlyEqual (plainOf (loP), installed))
+                    std::printf ("  [leg J] the burst wrote over the host's %.4f Hz with %.4f Hz\n",
+                                 (double) installed, (double) plainOf (loP));
+                check (! landed || juce::exactlyEqual (plainOf (loP), installed),
+                       "leg J: ...and the burst leaves the host's install standing");
+                // RE-BASED FOR ADR-0008 AS AMENDED (round 14) -- see leg I for the reasoning; this
+                // is the split half of the same shape.
+                proc.undo();
+                if (landed && ! juce::exactlyEqual (plainOf (loP), scrollStart))
+                    std::printf ("  [leg J] one Undo stopped at %.4f Hz rather than the %.4f Hz the"
+                                 " previous scroll started from\n",
+                                 (double) plainOf (loP), (double) scrollStart);
+                check (! landed || juce::exactlyEqual (plainOf (loP), scrollStart),
+                       "leg J: ...and a split burst whose store was refused records no step at all,"
+                       " so one Undo reaches the scroll before it");
+            }
+
+            // ---- LEG M: a burst that PART-WROTE and then aborted is not a scroll's step -------
+            //      Legs I and J reach their refusal through a host write that lands in the
+            //      gesture-OPEN, and a write there is delivered before the coalescer's own
+            //      gesture callback -- `ListenerList` calls in reverse order of registration and
+            //      the processor registers in its constructor -- so the batch's "did this gesture
+            //      change anything" test already sees nothing and names nothing. That leaves the
+            //      other order UNMEASURED by them: a write that lands AFTER the gesture opened and
+            //      after this burst's own first store, which is what makes the burst's own result
+            //      the only thing that can tell the two apart.
+            //
+            //      `writeCrossovers` proves EVERY split in the row, not only the ones it moves, so
+            //      a probe that changes the next split from inside the first split's store aborts
+            //      the transaction after part of it has landed -- no push and no crowded layout
+            //      needed. The burst wrote, so the signature moved; the transaction failed, so the
+            //      notch did not produce the state it meant to, and the step is its own rather than
+            //      an extension of the scroll before it.
+            if (sx >= 0.0f)
+            {
+                resetBands();
+                struct WriteNeighbourOnFirstStore final : public juce::AudioProcessorParameter::Listener
+                {
+                    juce::RangedAudioParameter* neighbour = nullptr;
+                    float to = 0.0f;
+                    bool  armed = false, fired = false;
+                    void parameterGestureChanged (int, bool) override {}
+                    void parameterValueChanged (int, float) override
+                    {
+                        if (! armed || neighbour == nullptr) return;
+                        armed = false;
+                        fired = true;
+                        neighbour->setValueNotifyingHost (neighbour->convertTo0to1 (to));
+                    }
+                };
+                // The value the probe's own write leaves behind, measured the same way leg J
+                // measures its own, and BEFORE the scroll that has to stay the chain's head.
+                setPlain (midP, 3000.0f);
+                const float installedMid = plainOf (midP);
+                setPlain (midP, 2000.0f);
+                proc.pollUndoCoalesce();
+
+                hover (sx, laneY);
+                scrollAt (im, sx, laneY, 0.4f);
+                proc.pollUndoCoalesce();
+                const float afterRealNotch = plainOf (loP);
+                check (proc.canUndo(), "leg M: the first notch recorded a step of its own");
+
+                WriteNeighbourOnFirstStore poke;
+                poke.neighbour = midP; poke.to = 3000.0f; poke.armed = true;
+                loP->addListener (&poke);
+                scrollAt (im, sx, laneY, 0.4f);
+                const bool landed = poke.fired;
+                loP->removeListener (&poke);
+                proc.pollUndoCoalesce();
+                check (landed, "leg M: the probe write landed inside the burst's own first store");
+                check (! landed || juce::exactlyEqual (plainOf (midP), installedMid),
+                       "leg M: ...and the aborted burst leaves the neighbour the host wrote alone");
+                proc.undo();
+                if (landed && ! juce::exactlyEqual (plainOf (loP), afterRealNotch))
+                    std::printf ("  [leg M] one Undo stopped at %.4f Hz, not at the %.4f Hz the"
+                                 " previous scroll ended on: the aborted burst extended it\n",
+                                 (double) plainOf (loP), (double) afterRealNotch);
+                check (! landed || juce::exactlyEqual (plainOf (loP), afterRealNotch),
+                       "leg M: ...and its step is its own, not an extension of the scroll before it");
+            }
+
+            // ---- LEG Q: a notch that can write nothing opens no gesture ------------------
+            //      ADR-0052 at the two standalone branches. A scroll at the end of a control's
+            //      travel produces a clamped target that IS the value already there: the split
+            //      branch's projection gives every split back unchanged (and `writeCrossovers`
+            //      skips a store under half a pixel), the width branch's `jlimit` gives `base`
+            //      back. Both used to discover that only AFTER `beginChangeGesture` had gone out
+            //      -- an automation punch-in for an edit that never happened, which a host
+            //      recording touch or latch writes a point for, plus a commit request to the undo
+            //      poll. The counter is the only way to see it: an empty gesture pair moves no
+            //      value, records no undo step and changes no signature.
+            {
+                resetBands();
+                hover (sx, laneY);
+                // Park split 0 against its left limit first -- one notch far larger than the
+                // travel, which the projection clamps. THEN the notch that can do nothing.
+                scrollAt (im, sx, laneY, -40.0f);
+                proc.pollUndoCoalesce();
+                const float parked = plainOf (loP);
+                CountGestures gsplit;
+                loP->addListener (&gsplit);
+                scrollAt (im, sx, laneY, -40.0f);
+                loP->removeListener (&gsplit);
+                proc.pollUndoCoalesce();
+                if (! juce::exactlyEqual (plainOf (loP), parked))
+                    std::printf ("  [leg Q] the split was not parked: %.4f Hz -> %.4f Hz, so this"
+                                 " half measures nothing\n", (double) parked, (double) plainOf (loP));
+                check (juce::exactlyEqual (plainOf (loP), parked),
+                       "leg Q: a notch past the split's travel limit moves nothing");
+                if (gsplit.opens != 0)
+                    std::printf ("  [leg Q] it opened %d change gesture(s) anyway -- a host recording"
+                                 " automation sees a touch for an edit that never happened\n", gsplit.opens);
+                check (gsplit.opens == 0 && gsplit.closes == 0,
+                       "leg Q: ...and opens no host change gesture");
+
+                // The width rail, and the control that a notch which CAN move still brackets.
+                resetBands();
+                hover (bandX, laneY);
+                setPlain (wLoP, 2.0f);
+                proc.pollUndoCoalesce();
+                CountGestures gwide;
+                wLoP->addListener (&gwide);
+                scrollAt (im, bandX, laneY, 0.4f);     // upward, at the top of the range
+                wLoP->removeListener (&gwide);
+                proc.pollUndoCoalesce();
+                check (juce::exactlyEqual (plainOf (wLoP), 2.0f),
+                       "leg Q: a notch past the bandwidth's top moves nothing");
+                if (gwide.opens != 0)
+                    std::printf ("  [leg Q] the blocked bandwidth notch opened %d change gesture(s)\n",
+                                 gwide.opens);
+                check (gwide.opens == 0 && gwide.closes == 0,
+                       "leg Q: ...and opens no host change gesture either");
+
+                CountGestures gcontrol;
+                wLoP->addListener (&gcontrol);
+                scrollAt (im, bandX, laneY, -0.4f);    // ...downward, which CAN move
+                wLoP->removeListener (&gcontrol);
+                proc.pollUndoCoalesce();
+                check (! juce::exactlyEqual (plainOf (wLoP), 2.0f),
+                       "leg Q: control -- a notch that can move the bandwidth still does");
+                check (gcontrol.opens == 1 && gcontrol.closes == 1,
+                       "leg Q: ...inside exactly one host change gesture, as the host needs");
+            }
+
+            // ---- LEG R: a blocked notch does not ENGAGE the width drag -------------------
+            //      The same rule one press deeper. A press inside a band has not edited anything
+            //      until it crosses the 3 px threshold, and a notch is the user asking for the
+            //      edit directly -- so the notch engages the drag. At the rail there is no edit
+            //      to ask for: engaging anyway leaves a press that writes the width on the next
+            //      one-pixel tremor, which is not what a scroll that did nothing should cost.
+            {
+                resetBands();
+                setPlain (wLoP, 2.0f);
+                proc.pollUndoCoalesce();
+                // WHERE THE WIDTH LINE IS, found rather than assumed: a width press is latched only
+                // within `kWidthGrab` of the band's width line (`nearWidthLine`), and at 2.0 that
+                // line sits at the TOP of the lane, nowhere near its middle. The first version of
+                // this leg pressed at `laneY` and latched nothing, so every check below passed on a
+                // press that reached no branch -- which is exactly how it passed against the
+                // mutation it exists to kill. Swept by tooltip, the same way the solo legs find
+                // their buttons.
+                float widthY = -1.0f;
+                for (float y = 2.0f; y < H - 2.0f; y += 1.0f)
+                {
+                    hover (bandX, y);
+                    if (im->getTooltip() == juce::String ("Band width")) { widthY = y; break; }
+                }
+                check (widthY > 0.0f, "leg R: the band's width line is findable");
+                const auto t0 = juce::Time::getCurrentTime();
+                auto press = [&] (float y, bool dragged)
+                {
+                    return juce::MouseEvent (src, { bandX, y }, juce::ModifierKeys::leftButtonModifier,
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                             t0, { bandX, widthY }, t0, 1, dragged);
+                };
+                juce::MouseWheelDetails up;
+                up.deltaX = 0.0f; up.deltaY = 0.4f;
+                up.isReversed = false; up.isSmooth = false; up.isInertial = false;
+                // THE CONTROL FIRST, because this leg is worthless if the press does not latch a
+                // width drag at all: a press here plus a drag PAST the 3 px threshold must move
+                // the width. Without it, every check below passes on a press that reached no
+                // branch -- which is exactly how the first version of this leg passed against the
+                // mutation that removes the guard it is supposed to be measuring.
+                // TWO drag events, because the first one only ENGAGES: the 3 px threshold arms the
+                // drag and anchors `dragGrabDY` to the cursor where it armed, so the engaging event
+                // writes the width it already had and the one after it is the first that moves.
+                im->mouseDown (press (widthY, false));
+                im->mouseDrag (press (widthY + 10.0f, true));
+                im->mouseDrag (press (widthY + 20.0f, true));
+                const float engaged = plainOf (wLoP);
+                im->mouseUp (press (widthY + 20.0f, true));
+                proc.pollUndoCoalesce();
+                check (! juce::exactlyEqual (engaged, 2.0f),
+                       "leg R: control -- a press here plus a 10 px drag does move the width");
+                setPlain (wLoP, 2.0f);
+                proc.pollUndoCoalesce();
+
+                im->mouseDown (press (widthY, false));
+                im->mouseWheelMove (press (widthY, false), up);      // blocked: already at 2.0
+                const float afterNotch = plainOf (wLoP);
+                im->mouseDrag (press (widthY + 1.0f, true));         // one pixel: below the engage
+                const float afterTremor = plainOf (wLoP);
+                im->mouseUp (press (widthY + 1.0f, true));
+                proc.pollUndoCoalesce();
+                check (juce::exactlyEqual (afterNotch, 2.0f),
+                       "leg R: the blocked notch inside the press moves no width");
+                if (! juce::exactlyEqual (afterTremor, 2.0f))
+                    std::printf ("  [leg R] it engaged the drag anyway: a 1 px move then wrote"
+                                 " %.4f\n", (double) afterTremor);
+                check (juce::exactlyEqual (afterTremor, 2.0f),
+                       "leg R: ...and does not engage the drag the 3 px threshold has not");
+            }
+        }
+    }
+
+    // ---- LEG F: the SETTINGS slider keeps its interaction and its exclusion -----------
+    //      Task section 4's stated exception. It is host-hidden (InternalState, not an APVTS
+    //      parameter), so it opens no change gesture and contributes nothing to the sound
+    //      signature -- and this leg is what would notice if this round ever gave it either.
+    {
+        juce::Slider* persist = nullptr;
+        int hits = 0;
+        for (auto* s : sliders)
+            if (s->getTooltip().containsIgnoreCase ("afterglow")) { persist = s; ++hits; }
+        check (persist != nullptr && hits == 1, "leg F: the Settings Persistence slider is findable");
+        if (persist != nullptr && hits == 1)
+        {
+            proc.pollUndoCoalesce();
+            const bool undoBefore = proc.canUndo();
+            const double v0 = persist->getValue();
+            scrollKnob (persist, 0.5f);
+            proc.pollUndoCoalesce();
+            const double v1 = persist->getValue();
+            check (! juce::exactlyEqual (v1, v0), "leg F: a scroll still moves the Persistence slider");
+            check (proc.canUndo() == undoBefore,
+                   "leg F: ...and records no undo step, exactly as before this round");
+
+            if (persist->getWidth() > 20)
+            {
+                const float cy = (float) persist->getHeight() * 0.5f;
+                const auto t = juce::Time::getCurrentTime();
+                auto ev = [&] (float x, bool dragged)
+                {
+                    return juce::MouseEvent (src, { x, cy }, juce::ModifierKeys::leftButtonModifier,
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, persist, persist,
+                                             t, { 4.0f, cy }, t, 1, dragged);
+                };
+                persist->mouseDown (ev (4.0f, false));
+                persist->mouseDrag (ev ((float) persist->getWidth() - 4.0f, true));
+                const double v2 = persist->getValue();
+                persist->mouseUp   (ev ((float) persist->getWidth() - 4.0f, true));
+                proc.pollUndoCoalesce();
+                check (! juce::exactlyEqual (v2, v1), "leg F: a drag still moves it too");
+                check (proc.canUndo() == undoBefore,
+                       "leg F: ...and a drag records no undo step either");
+            }
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+
+// ---------------------------------------------------------------------------
+//  State test 87 -- holding a band's solo button and scrolling MOVES the band
+//  (ADR-0053, task section 7).
+//
+//  THE CHANGE IS ONLY IN THE HELD CASE, and both halves are asserted here
+//  because only the pair says that. While the button is held a notch does what a
+//  sideways drag of that button does -- it translates the whole band segment, so
+//  BOTH of a middle band's edge splits move and its width does not (leg A). With
+//  the button up the wheel is unchanged: over a band it still edits that band's
+//  Bandwidth and moves no split (leg B). Leg B is the control leg A would pass
+//  without: an implementation that simply routed every notch over the solo lane
+//  into a band move would break scrolling for everyone who is not holding a
+//  button.
+//
+//  LEGS C AND D are task section 7.1 -- the notch accumulates with the drag, the
+//  drag carries on from the notched position, and the whole thing is one undo
+//  step at the release. Leg C's last check is the one that fails if the notch
+//  writes the splits without moving `bandAnchorX`: the cursor comes back to the
+//  press point and `moveBand` puts the band back exactly where it started.
+// ---------------------------------------------------------------------------
+static void testHoldingSoloAndScrollingMovesTheBand()
+{
+    std::printf ("State test 87: holding a band's solo and scrolling moves the band\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))
+        m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the solo-scroll probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (im != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) { im = si; return; }
+            walk (k);
+            if (im != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "the imager is laid out for the solo-scroll probe");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* wMidP  = apvts.getParameter (pid::mbWidthMid);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    check (bandsP && loP && midP && hiP && wMidP && soloP,
+           "the parameters the solo-scroll probe drives exist");
+    if (! (bandsP && loP && midP && hiP && wMidP && soloP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    const float W = (float) im->getWidth();
+    const float soloY = 11.0f;
+    auto mev = [&] (float x, float y, float dx, float dy, bool dragged, bool button)
+    {
+        return juce::MouseEvent (src, { x, y },
+                                 button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                 juce::Time::getCurrentTime(), { dx, dy },
+                                 juce::Time::getCurrentTime(), 1, dragged);
+    };
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f; wheel.deltaY = 0.4f;
+    wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+    auto resetBands = [&]
+    {
+        im->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (soloP, 0.0f);
+        setPlain (loP, 200.0f); setPlain (midP, 2000.0f); setPlain (hiP, 10000.0f);
+        setPlain (wMidP, 1.0f);
+        proc.pollUndoCoalesce();
+    };
+    // The centre of the k-th contiguous run of "Solo this band" along the solo lane, so a MIDDLE
+    // band (both of whose edges are real splits) is found without hardcoding any geometry.
+    auto soloRunCentre = [&] (int which) -> float
+    {
+        int run = -1; bool in = false; float first = -1.0f, last = -1.0f;
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (x, soloY, x, soloY, false, false));
+            const bool hit = im->getTooltip() == juce::String ("Solo this band");
+            if (hit && ! in) { ++run; in = true; if (run == which) first = x; }
+            if (hit && run == which) last = x;
+            if (! hit && in) { in = false; if (run == which) break; }
+        }
+        return (first >= 0.0f && last >= first) ? 0.5f * (first + last) : -1.0f;
+    };
+
+    resetBands();
+    const float sx = soloRunCentre (1);   // band 1: soloMoveLeft = 0, soloMoveRight = 1
+    check (sx > 0.0f, "a middle band's solo button is findable");
+    if (sx <= 0.0f) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    // ---- LEG A: held solo + a notch moves the band, not the bandwidth ----------------
+    {
+        resetBands();
+        const float lo0 = plainOf (loP), mid0 = plainOf (midP), w0 = plainOf (wMidP);
+        im->mouseDown (mev (sx, soloY, sx, soloY, false, true));
+        im->mouseWheelMove (mev (sx, soloY, sx, soloY, false, true), wheel);
+        const float lo1 = plainOf (loP), mid1 = plainOf (midP), w1 = plainOf (wMidP);
+        im->mouseUp (mev (sx, soloY, sx, soloY, false, true));
+        proc.pollUndoCoalesce();
+
+        if (juce::exactlyEqual (lo1, lo0) && juce::exactlyEqual (mid1, mid0))
+            std::printf ("  [leg A] the notch moved no split: the band stayed at %.1f-%.1f Hz\n",
+                         (double) lo0, (double) mid0);
+        check (! juce::exactlyEqual (lo1, lo0) && ! juce::exactlyEqual (mid1, mid0),
+               "leg A: a notch while the solo button is held moves BOTH of the band's edges");
+        if (! juce::exactlyEqual (w1, w0))
+            std::printf ("  [leg A] the notch edited the bandwidth instead: %.3f -> %.3f\n",
+                         (double) w0, (double) w1);
+        check (juce::exactlyEqual (w1, w0),
+               "leg A: ...and does not touch the band's Bandwidth");
+    }
+
+    // ---- LEG B: the control -- with NO button held the wheel is unchanged -------------
+    {
+        resetBands();
+        const float lo0 = plainOf (loP), mid0 = plainOf (midP), w0 = plainOf (wMidP);
+        const auto t = juce::Time::getCurrentTime();
+        const juce::MouseEvent we (src, { sx, soloY }, juce::ModifierKeys(),
+                                   1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                   t, { sx, soloY }, t, 1, false);
+        im->mouseWheelMove (we, wheel);
+        check (! juce::exactlyEqual (plainOf (wMidP), w0),
+               "leg B: with no button held the wheel still edits that band's Bandwidth");
+        check (juce::exactlyEqual (plainOf (loP), lo0) && juce::exactlyEqual (plainOf (midP), mid0),
+               "leg B: ...and moves no split");
+    }
+
+    // ---- LEG C: drag + notch accumulate, and the drag carries on from the notch -------
+    {
+        resetBands();
+        const float lo0 = plainOf (loP);
+        im->mouseDown (mev (sx, soloY, sx, soloY, false, true));
+        im->mouseDrag (mev (sx + 20.0f, soloY, sx, soloY, true, true));
+        const float a1 = plainOf (loP);
+        im->mouseWheelMove (mev (sx + 20.0f, soloY, sx, soloY, false, true), wheel);
+        const float a2 = plainOf (loP);
+        im->mouseDrag (mev (sx, soloY, sx, soloY, true, true));   // cursor back to the press point
+        const float a3 = plainOf (loP);
+        im->mouseUp (mev (sx, soloY, sx, soloY, true, true));
+        proc.pollUndoCoalesce();
+
+        check (! juce::exactlyEqual (a1, lo0), "leg C: the sideways drag moves the band");
+        check (! juce::exactlyEqual (a2, a1), "leg C: a notch adds to what the drag has produced");
+        check (! juce::exactlyEqual (a3, a2), "leg C: ...the press is not finished by the notch");
+        if (juce::exactlyEqual (a3, lo0))
+            std::printf ("  [leg C] the notch did not move the move's anchor: the cursor returned to"
+                         " the press point and the band went back to %.1f Hz\n", (double) lo0);
+        check (! juce::exactlyEqual (a3, lo0),
+               "leg C: ...and it continues FROM the notched position, not from the cursor alone");
+    }
+
+    // ---- LEG D: the whole held-solo interaction is ONE undo step ----------------------
+    {
+        // Legs A and C were real interactions and left real steps behind; `canUndo()` is
+        // CUMULATIVE, so this leg drains the history before it can measure its own.
+        while (proc.canUndo()) proc.undo();
+        resetBands();
+        check (! proc.canUndo(), "leg D: the leg starts with no undo history");
+        const float lo0 = plainOf (loP), mid0 = plainOf (midP);
+        struct GestureLog final : public juce::AudioProcessorParameter::Listener
+        {
+            int opens = 0, closes = 0;
+            void parameterValueChanged (int, float) override {}
+            void parameterGestureChanged (int, bool starting) override { if (starting) ++opens; else ++closes; }
+        };
+        GestureLog g; loP->addListener (&g);
+        im->mouseDown (mev (sx, soloY, sx, soloY, false, true));
+        im->mouseDrag (mev (sx + 20.0f, soloY, sx, soloY, true, true));
+        im->mouseWheelMove (mev (sx + 20.0f, soloY, sx, soloY, false, true), wheel);
+        proc.pollUndoCoalesce();
+        const bool undoMidPress = proc.canUndo();
+        im->mouseDrag (mev (sx + 30.0f, soloY, sx, soloY, true, true));
+        im->mouseUp   (mev (sx + 30.0f, soloY, sx, soloY, true, true));
+        loP->removeListener (&g);
+        proc.pollUndoCoalesce();
+
+        check (! undoMidPress, "leg D: nothing is committed while the button is still down");
+        check (g.opens == 1 && g.closes == 1,
+               "leg D: the band's left edge sees exactly one change gesture for the interaction");
+        check (proc.canUndo(), "leg D: ...and the interaction is undoable");
+        proc.undo();
+        check (juce::exactlyEqual (plainOf (loP), lo0) && juce::exactlyEqual (plainOf (midP), mid0),
+               "leg D: one Undo returns the band to where the press started");
+        check (! proc.canUndo(), "leg D: ...and the drag and the notch were ONE step");
+    }
+
+    // ---- LEG E: a notch with NOTHING TO MOVE is not an edit, and does not eat the click ----
+    //      ADR-0052's rule applied to this round's own new branch, and it is the failure this
+    //      round's adversarial pass actually found. At ONE band there is no edge split:
+    //      `beginBandMove` leaves both pins at -1 and `moveBand` returns at `M <= 0` having
+    //      written nothing and opened nothing. Converting the press into a "move" regardless
+    //      would swallow the solo click on release for no gain at all.
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 1.0f);
+        setPlain (soloP, 0.0f);
+        proc.pollUndoCoalesce();
+        float sx1 = -1.0f;
+        for (float x = 2.0f; x < W - 2.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (x, soloY, x, soloY, false, false));
+            if (im->getTooltip() == juce::String ("Solo this band")) { sx1 = x; break; }
+        }
+        check (sx1 > 0.0f, "leg E: the single band's solo button is findable");
+        if (sx1 > 0.0f)
+        {
+            // The control first: an uninterrupted press toggles.
+            im->mouseDown (mev (sx1, soloY, sx1, soloY, false, true));
+            im->mouseUp   (mev (sx1, soloY, sx1, soloY, false, true));
+            const int uninterrupted = juce::roundToInt (plainOf (soloP));
+
+            setPlain (soloP, 0.0f);
+            im->mouseDown (mev (sx1, soloY, sx1, soloY, false, true));
+            im->mouseWheelMove (mev (sx1, soloY, sx1, soloY, false, true), wheel);
+            im->mouseUp   (mev (sx1, soloY, sx1, soloY, false, true));
+            const int afterNotch = juce::roundToInt (plainOf (soloP));
+
+            check (uninterrupted != 0, "leg E: control -- an uninterrupted press toggles the band");
+            if (uninterrupted != 0 && afterNotch == 0)
+                std::printf ("  [leg E] a notch with no band to move swallowed the click: mask 0x%X"
+                             " where the uninterrupted press gives 0x%X\n", afterNotch, uninterrupted);
+            check (afterNotch == uninterrupted,
+                   "leg E: ...and a notch with no band to move leaves the click intact");
+        }
+    }
+
+    // ---- LEG F: a notch with NOWHERE TO MOVE is the same, and it is the reachable one ----
+    //      Leg E's band has no split at all, which takes a one-band layout to arrange. This is
+    //      the case an ordinary four-band layout reaches every time a user parks a band against
+    //      the end of its travel and keeps scrolling: the translation clamps to the one the band
+    //      already has, `moveBand` writes nothing -- `writeCrossovers` skips a store under half a
+    //      pixel -- and the notch has edited nothing. The press was converted into a move all the
+    //      same, so the release took the MOVE branch and the solo click was swallowed; and
+    //      `beginBandMove` had opened a change gesture on each edge split on the way, which a
+    //      host recording touch or latch automation writes points for.
+    {
+        while (proc.canUndo()) proc.undo();
+        resetBands();
+        juce::MouseWheelDetails hardLeft;
+        hardLeft.deltaX = 0.0f; hardLeft.deltaY = -40.0f;   // far more travel than the band has
+        hardLeft.isReversed = false; hardLeft.isSmooth = false; hardLeft.isInertial = false;
+
+        // Park the band against its left limit with one press, and release it.
+        im->mouseDown (mev (sx, soloY, sx, soloY, false, true));
+        im->mouseWheelMove (mev (sx, soloY, sx, soloY, false, true), hardLeft);
+        im->mouseUp (mev (sx, soloY, sx, soloY, false, true));
+        proc.pollUndoCoalesce();
+        const float parkedLo = plainOf (loP), parkedMid = plainOf (midP);
+        check (! juce::exactlyEqual (parkedLo, 200.0f),
+               "leg F: the first notch moved the band to its left limit");
+        // ...and the button moved with it: the solo lane is laid out from the splits, so the run
+        // this leg presses has to be found again in the layout the parking produced.
+        const float sx2 = soloRunCentre (1);
+        check (sx2 > 0.0f, "leg F: the parked band's solo button is findable");
+        if (sx2 <= 0.0f) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+        // The control: an uninterrupted press on the same button toggles.
+        setPlain (soloP, 0.0f);
+        im->mouseDown (mev (sx2, soloY, sx2, soloY, false, true));
+        im->mouseUp   (mev (sx2, soloY, sx2, soloY, false, true));
+        const int uninterrupted = juce::roundToInt (plainOf (soloP));
+        check (uninterrupted != 0, "leg F: control -- an uninterrupted press toggles the band");
+
+        // ...and the same press with a notch that cannot move the band anywhere.
+        setPlain (soloP, 0.0f);
+        CountGestures gsolo;
+        loP->addListener (&gsolo);
+        im->mouseDown (mev (sx2, soloY, sx2, soloY, false, true));
+        im->mouseWheelMove (mev (sx2, soloY, sx2, soloY, false, true), hardLeft);
+        im->mouseUp   (mev (sx2, soloY, sx2, soloY, false, true));
+        loP->removeListener (&gsolo);
+        proc.pollUndoCoalesce();
+        const int afterBlocked = juce::roundToInt (plainOf (soloP));
+
+        if (! juce::exactlyEqual (plainOf (loP), parkedLo) || ! juce::exactlyEqual (plainOf (midP), parkedMid))
+            std::printf ("  [leg F] the blocked notch moved the band after all: %.4f/%.4f -> %.4f/%.4f\n",
+                         (double) parkedLo, (double) parkedMid,
+                         (double) plainOf (loP), (double) plainOf (midP));
+        check (juce::exactlyEqual (plainOf (loP), parkedLo) && juce::exactlyEqual (plainOf (midP), parkedMid),
+               "leg F: a notch at the end of the travel moves no split");
+        if (afterBlocked != uninterrupted)
+            std::printf ("  [leg F] it swallowed the click: mask 0x%X where the uninterrupted press"
+                         " gives 0x%X\n", afterBlocked, uninterrupted);
+        check (afterBlocked == uninterrupted,
+               "leg F: ...and leaves the solo click intact, exactly as leg E's does");
+        if (gsolo.opens != 0)
+            std::printf ("  [leg F] it opened %d change gesture(s) on the left edge split\n", gsolo.opens);
+        check (gsolo.opens == 0 && gsolo.closes == 0,
+               "leg F: ...and opens no host change gesture on the band's edges");
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+
+// ---------------------------------------------------------------------------
+//  State test 88 -- a wheel notch inside a KNOB press belongs to that press
+//  (ADR-0053, task sections 2, 3 and 4).
+//
+//  JUCE DISCARDS THE WHEEL OUTRIGHT while a mouse button is held -- its slider
+//  handler is wrapped in `! e.mods.isAnyMouseButtonDown()` -- so before this
+//  round a notch during a knob drag did nothing whatsoever. It now moves the
+//  value, and the drag carries on from there, which it can only do because the
+//  notch is remembered outside JUCE's private drag state and re-applied after
+//  every drag event: `handleAbsoluteDrag` recomputes the value from
+//  `valueOnMouseDown` plus the cursor delta on every single move and would
+//  otherwise erase it.
+//
+//  EACH LEG'S LAST CHECK IS THE ONE THAT MATTERS: the cursor is returned to
+//  where it was BEFORE the notch, and the value must not return with it. An
+//  implementation that writes the value and forgets fails exactly there, and
+//  passes everything else.
+//
+//  Leg A is a rotary knob, leg B is the numeric value box under it (a different
+//  drag model entirely -- it maps `downProp + (-dragY)/180` and never consults
+//  JUCE's drag state), and leg C is the Settings Persistence bar, whose
+//  INTERACTION must change with everything else while its exclusion from Undo
+//  must not (that exclusion is asserted in State test 86 leg F).
+// ---------------------------------------------------------------------------
+static void testAWheelNotchInsideAKnobPressBelongsToIt()
+{
+    std::printf ("State test 88: a wheel notch inside a knob press belongs to that press\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "editor constructs for the knob-notch probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto plainOf = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f; wheel.deltaY = 0.5f;
+    wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+    // Every leg below stamps its events from ITS OWN instant, five seconds past the leg before.
+    // `juce::Time` is millisecond-resolution and two legs can read the clock inside one
+    // millisecond on a fast host -- arm64 CI measured exactly that, and the wheel handlers'
+    // duplicate-event filter (JUCE's own, and the in-drag one beside it) then correctly discarded
+    // the second leg's FIRST notch, failing a leg against working code. A leg whose events must
+    // SHARE one stamp, as leg L's do, cannot step within itself, so the separation has to come
+    // from the leg base. Nothing in the plug-in or in JUCE's Slider compares an event time to the
+    // wall clock or to another event's -- both only ever ask whether two stamps are EQUAL -- so a
+    // base in the future is indistinguishable from "now" to everything under test.
+    int  legNo = 0;
+    const auto suiteBase = juce::Time::getCurrentTime();
+    auto legStamp = [&] { return suiteBase + juce::RelativeTime::seconds (5.0 * ++legNo); };
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* driveK = findSliderFor (driveP);
+    check (driveP != nullptr && driveK != nullptr, "the Drive knob is findable from its parameter");
+    // ---- LEG A: the rotary knob ------------------------------------------------------
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        proc.pollUndoCoalesce();
+        const bool undoBefore = proc.canUndo();
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+        auto ev = [&] (float y, bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, y },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        const float start = plainOf (driveP);
+        driveK->mouseDown (ev (cy, false, true));
+        driveK->mouseDrag (ev (cy - 20.0f, true, true));
+        const float atY1 = plainOf (driveP);
+        proc.pollUndoCoalesce();
+        const bool undoMidPress = proc.canUndo();
+        driveK->mouseWheelMove (ev (cy - 20.0f, false, true), wheel);
+        const float afterNotch = plainOf (driveP);
+        driveK->mouseDrag (ev (cy, true, true));      // the cursor goes back to the press point
+        const float backAtPress = plainOf (driveP);
+        driveK->mouseUp   (ev (cy, true, true));
+        proc.pollUndoCoalesce();
+
+        check (! juce::exactlyEqual (atY1, start), "leg A: the drag moves the knob");
+        if (juce::exactlyEqual (afterNotch, atY1))
+            std::printf ("  [leg A] the notch changed nothing -- JUCE discards the wheel while a"
+                         " button is held, and nothing overrode that\n");
+        check (! juce::exactlyEqual (afterNotch, atY1),
+               "leg A: a notch inside the press adds to what the press has produced");
+        check (! juce::exactlyEqual (backAtPress, afterNotch),
+               "leg A: ...the press is not finished -- a further drag still writes");
+        if (juce::exactlyEqual (backAtPress, start))
+            std::printf ("  [leg A] the notch was erased by the next drag event: the cursor returned"
+                         " to the press point and the value returned to %.4f\n", (double) start);
+        check (! juce::exactlyEqual (backAtPress, start),
+               "leg A: ...and it continues FROM the notched value, not from the cursor alone");
+        check (undoBefore == undoMidPress,
+               "leg A: nothing is committed while the button is still down");
+        check (proc.canUndo(), "leg A: ...and the whole interaction is undoable");
+        proc.undo();
+        check (juce::exactlyEqual (plainOf (driveP), start),
+               "leg A: one Undo returns the knob to where the press started -- ONE step");
+    }
+
+    // ---- LEG B: the numeric value box under the same knob ----------------------------
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        juce::Label* box = nullptr;
+        for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+            if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) { box = l; break; }
+        check (box != nullptr && box->getHeight() > 0, "leg B: the knob's value box is findable");
+        if (box != nullptr && box->getHeight() > 0)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float cx = (float) box->getWidth() * 0.5f, cy = (float) box->getHeight() * 0.5f;
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            auto ev = [&] (float y, bool dragged, bool button)
+            {
+                return juce::MouseEvent (src, { cx, y },
+                                         button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, box, box,
+                                         t, { cx, cy }, t, 1, dragged);
+            };
+            const float start = plainOf (driveP);
+            // Through the base-class pointer: juce::Label narrows Component::mouseUp to protected,
+            // and the override that matters here lives one level further down (the ValueBox in
+            // LookAndFeel.cpp's anonymous namespace), so the call has to be virtual-dispatched from
+            // where the declaration is still public.
+            juce::Component* boxC = box;
+            boxC->mouseDown (ev (cy, false, true));
+            boxC->mouseDrag (ev (cy - 20.0f, true, true));
+            const float atY1 = plainOf (driveP);
+            boxC->mouseWheelMove (ev (cy - 20.0f, false, true), wheel);
+            const float afterNotch = plainOf (driveP);
+            boxC->mouseDrag (ev (cy, true, true));
+            const float backAtPress = plainOf (driveP);
+            boxC->mouseUp (ev (cy, true, true));
+            proc.pollUndoCoalesce();
+
+            check (! juce::exactlyEqual (atY1, start), "leg B: dragging the value box moves the knob");
+            check (! juce::exactlyEqual (afterNotch, atY1),
+                   "leg B: a notch inside the value-box drag adds to it");
+            check (! juce::exactlyEqual (backAtPress, afterNotch),
+                   "leg B: ...the drag is not finished by it");
+            if (juce::exactlyEqual (backAtPress, start))
+                std::printf ("  [leg B] the value box lost the notch: the cursor returned to the press"
+                             " point and the value returned to %.4f\n", (double) start);
+            check (! juce::exactlyEqual (backAtPress, start),
+                   "leg B: ...and it continues FROM the notched value");
+            check (proc.canUndo(), "leg B: the value-box interaction is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), start),
+                   "leg B: one Undo returns the knob to where the press started -- ONE step");
+        }
+    }
+
+    // ---- LEG D: the value box and its knob are ONE control for Undo -------------------
+    //      Task section 3 asks for the numeric readout to follow the same rules as the knob, and
+    //      section 5 treats "scrolling over the numeric value" as a scroll of that same control.
+    //      A standalone notch over the box is not handled by the box at all: it forwards to the
+    //      parent Slider, which names the control by its PARAMETER -- so the two must extend one
+    //      undo step rather than record two. This leg is what would notice if the forward stopped
+    //      reaching the knob's naming path.
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        juce::Component* boxC = nullptr;
+        for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+            if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) { boxC = l; break; }
+        check (boxC != nullptr, "leg D: the knob's value box is findable");
+        if (boxC != nullptr)
+        {
+            int seq = 0;
+            const auto legBase = legStamp();
+            auto scrollOver = [&] (juce::Component* c)
+            {
+                // Distinct event times: JUCE's slider wheel handler dedupes on `e.eventTime`.
+                const auto t = legBase + juce::RelativeTime::milliseconds (++seq * 13);
+                const juce::MouseEvent we (src, { (float) c->getWidth() * 0.5f, (float) c->getHeight() * 0.5f },
+                                           juce::ModifierKeys(), 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, c, c,
+                                           t, { 0.0f, 0.0f }, t, 1, false);
+                c->mouseWheelMove (we, wheel);
+            };
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float v0 = plainOf (driveP);
+            scrollOver (driveK); proc.pollUndoCoalesce();
+            const float v1 = plainOf (driveP);
+            scrollOver (boxC);   proc.pollUndoCoalesce();
+            const float v2 = plainOf (driveP);
+            check (! juce::exactlyEqual (v1, v0), "leg D: a notch over the knob moves Drive");
+            if (juce::exactlyEqual (v2, v1))
+                std::printf ("  [leg D] a notch over the value box moved nothing -- the forward to the"
+                             " parent slider did not reach it\n");
+            check (! juce::exactlyEqual (v2, v1), "leg D: ...and a notch over the value box moves it too");
+            proc.undo();
+            if (juce::exactlyEqual (plainOf (driveP), v1))
+                std::printf ("  [leg D] the box's notch was its own step: one Undo stopped at %.4f\n",
+                             (double) v1);
+            check (juce::exactlyEqual (plainOf (driveP), v0),
+                   "leg D: one Undo returns to before BOTH -- the box and its knob are one control");
+            check (! proc.canUndo(), "leg D: ...one step, not two");
+        }
+    }
+
+    // ---- LEG E: the Settings Persistence bar -- the interaction changes with the rest --
+    {
+        juce::Slider* persist = nullptr;
+        for (auto* s : sliders)
+            if (s->getTooltip().containsIgnoreCase ("afterglow")) { persist = s; break; }
+        check (persist != nullptr, "leg E: the Settings Persistence slider is findable");
+        if (persist != nullptr && persist->getWidth() > 40)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const bool undoBefore = proc.canUndo();
+            const float cy = (float) persist->getHeight() * 0.5f;
+            const float x0 = 0.35f * (float) persist->getWidth();
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            auto ev = [&] (float x, bool dragged, bool button)
+            {
+                return juce::MouseEvent (src, { x, cy },
+                                         button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, persist, persist,
+                                         t, { x0, cy }, t, 1, dragged);
+            };
+            const double start = persist->getValue();
+            persist->mouseDown (ev (x0, false, true));
+            persist->mouseDrag (ev (x0 + 12.0f, true, true));
+            const double atX1 = persist->getValue();
+            persist->mouseWheelMove (ev (x0 + 12.0f, false, true), wheel);
+            const double afterNotch = persist->getValue();
+            persist->mouseDrag (ev (x0, true, true));
+            const double backAtPress = persist->getValue();
+            persist->mouseUp (ev (x0, true, true));
+            proc.pollUndoCoalesce();
+
+            check (! juce::exactlyEqual (atX1, start), "leg E: the drag moves Persistence");
+            check (! juce::exactlyEqual (afterNotch, atX1),
+                   "leg E: a notch inside the drag adds to it here too");
+            check (! juce::exactlyEqual (backAtPress, afterNotch),
+                   "leg E: ...the drag is not finished by it");
+            check (! juce::exactlyEqual (backAtPress, start),
+                   "leg E: ...and it continues FROM the notched value");
+            check (proc.canUndo() == undoBefore,
+                   "leg E: ...while the Settings slider still records no undo step at all");
+        }
+    }
+
+    // ---- LEG F: a notch lands on the control HOLDING THE PRESS, wherever the pointer is ----
+    //      JUCE routes a wheel event by POINTER and not by capture: `getTargetForGesture`
+    //      hit-tests the peer at the event position whether or not a drag is in flight
+    //      (`juce_MouseInputSourceImpl.h`). So a press held on one knob and a pointer that has
+    //      travelled onto another delivers the notch to the SECOND one, with the button still
+    //      down -- and JUCE's own handler drops it there, because its whole body sits behind
+    //      `! e.mods.isAnyMouseButtonDown()`. That was a notch the user makes and never sees.
+    //
+    //      REVERSED IN ROUND 29 BY OWNER DECISION, and the paragraph above is kept because it is
+    //      the mechanism, not the verdict. Until this round the POINTED control acted -- this leg
+    //      asserted exactly that, and that is what has changed. The approved rule is that while a
+    //      button is held the wheel steers the control that owns the press, however far its cursor
+    //      has travelled, and no other control may be moved by it. The register in
+    //      `LookAndFeel.cpp` posts the notch to the holder; the pointed control does nothing.
+    {
+        auto* widP = apvts.getParameter (pid::width);
+        auto* widK = findSliderFor (widP);
+        check (widP != nullptr && widK != nullptr, "leg F: a second knob is findable");
+        if (driveP != nullptr && driveK != nullptr && widP != nullptr && widK != nullptr)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float drive0 = plainOf (driveP), wid0 = plainOf (widP);
+            const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            auto onDrive = [&] (float y, bool dragged)
+            {
+                return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                         t, { cx, cy }, t, 1, dragged);
+            };
+            const juce::MouseEvent overWidth (src, { (float) widK->getWidth() * 0.5f,
+                                                     (float) widK->getHeight() * 0.5f },
+                                              juce::ModifierKeys::leftButtonModifier,  // still held
+                                              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, widK, widK,
+                                              t, { cx, cy }, t, 1, false);
+            driveK->mouseDown (onDrive (cy, false));
+            driveK->mouseDrag (onDrive (cy - 20.0f, true));
+            const float driveDragged = plainOf (driveP);
+            widK->mouseWheelMove (overWidth, wheel);
+            const float widAfter = plainOf (widP), driveAfter = plainOf (driveP);
+            driveK->mouseDrag (onDrive (cy - 30.0f, true));
+            const float driveMore = plainOf (driveP);
+            driveK->mouseUp (onDrive (cy - 30.0f, true));
+            proc.pollUndoCoalesce();
+
+            std::printf ("  [leg F] pointer over Width, press held on Drive: Width %.4f -> %.4f,"
+                         " Drive %.4f -> %.4f, then %.4f after 10 px more drag\n",
+                         (double) wid0, (double) widAfter,
+                         (double) driveDragged, (double) driveAfter, (double) driveMore);
+            check (juce::exactlyEqual (widAfter, wid0),
+                   "leg F: a notch over a control another press owns does NOT edit the pointed control");
+            check (! juce::exactlyEqual (driveAfter, driveDragged),
+                   "leg F: ...it edits the knob holding the press instead");
+            check (! juce::exactlyEqual (driveMore, driveAfter),
+                   "leg F: ...which carries on dragging, uncancelled");
+            check (proc.canUndo(), "leg F: the interaction is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), drive0)
+                   && juce::exactlyEqual (plainOf (widP), wid0),
+                   "leg F: one Undo takes back the whole interaction -- the notch was inside the press");
+            check (! proc.canUndo(), "leg F: ...ONE step, not two");
+        }
+    }
+
+    // ---- LEG G: the same for the Settings bar, which is not the press's owner either ----
+    //      Round 29: this leg used to assert that a pointed notch moved the Settings bar while
+    //      another knob held the press. It must not now -- the bar is not the control the press
+    //      belongs to -- and the notch must reach that control instead. What has NOT changed is
+    //      the bar's exclusion from Undo: it is host-hidden, so it never records a step whichever
+    //      way the routing goes, and that is still asserted below.
+    {
+        juce::Slider* persist = nullptr;
+        for (auto* s : sliders)
+            if (s->getTooltip().containsIgnoreCase ("afterglow")) { persist = s; break; }
+        check (persist != nullptr, "leg G: the Settings Persistence slider is findable");
+        if (persist != nullptr && persist->getWidth() > 40 && driveP != nullptr && driveK != nullptr)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const double persist0 = persist->getValue();
+            const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            auto onDrive = [&] (float y, bool dragged)
+            {
+                return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                         t, { cx, cy }, t, 1, dragged);
+            };
+            const juce::MouseEvent overPersist (src, { 0.5f * (float) persist->getWidth(),
+                                                       0.5f * (float) persist->getHeight() },
+                                                juce::ModifierKeys::leftButtonModifier,
+                                                1.0f, 0.0f, 0.0f, 0.0f, 0.0f, persist, persist,
+                                                t, { cx, cy }, t, 1, false);
+            driveK->mouseDown (onDrive (cy, false));
+            driveK->mouseDrag (onDrive (cy - 20.0f, true));
+            const float driveHeld = plainOf (driveP);
+            persist->mouseWheelMove (overPersist, wheel);
+            const double persist1 = persist->getValue();
+            const float driveAfterNotch = plainOf (driveP);
+            driveK->mouseUp (onDrive (cy - 20.0f, true));
+            proc.pollUndoCoalesce();
+
+            std::printf ("  [leg G] pointer over the Settings bar, press held on Drive:"
+                         " bar %.4f -> %.4f, Drive %.4f -> %.4f\n",
+                         persist0, persist1, (double) driveHeld, (double) driveAfterNotch);
+            check (juce::exactlyEqual (persist1, persist0),
+                   "leg G: a notch over the Settings bar does NOT move it while another press is held");
+            check (! juce::exactlyEqual (driveAfterNotch, driveHeld),
+                   "leg G: ...it reaches the knob holding the press instead");
+            check (proc.canUndo(), "leg G: the knob's own press is undoable");
+            proc.undo();
+            check (! proc.canUndo(), "leg G: ...and it is the ONLY step -- the Settings bar added none");
+            check (juce::exactlyEqual (persist->getValue(), persist1),
+                   "leg G: ...and the Settings bar is where it started, having taken no part");
+        }
+    }
+
+    // ---- LEG H: the VELOCITY drag branch, which no leg above exercises -----------------
+    //      An unmodified drag runs JUCE's `handleAbsoluteDrag`; Ctrl/Alt/Cmd switches it to
+    //      `handleVelocityDrag`, which accumulates INCREMENTALLY from its own
+    //      `valueWhenLastDragged` instead of recomputing from a press-time anchor.
+    //      `applyWheelDragOffset` runs after `Slider::mouseDrag` whichever branch it took, so it
+    //      composes with both by construction -- but by construction is not by measurement.
+    //
+    //      IT IS THE MONO-MAKER SLIDER AND NOT A ROTARY KNOB, and that is not a convenience.
+    //      `Slider::Pimpl` only assigns `sliderRegionSize` for horizontal and vertical styles
+    //      (`juce_Slider.cpp` `Pimpl::resized`), and the slider's own constructor takes that
+    //      branch once with the DEFAULT `LinearHorizontal` style against empty bounds -- so every
+    //      rotary slider carries `sliderRegionSize == 0` for life. Measured here rather than
+    //      assumed: `getPositionOfValue(max) - getPositionOfValue(min)` is `pos * sliderRegionSize`,
+    //      and it is 0.000 for Drive against 246.000 for this one. Velocity mode is selected by
+    //      `(normRange.end - normRange.start) / sliderRegionSize < normRange.interval`, so a
+    //      velocity drag of a KNOB divides by zero there. The IEEE result is +inf, the comparison
+    //      is false, and the velocity branch is taken exactly as intended -- but it is still a
+    //      division by zero inside JUCE, and the `sanitizers` job is right to say so. This leg
+    //      therefore drives the same JUCE branch through a slider whose region size is real.
+    {
+        auto* monoP = apvts.getParameter (pid::monoMakerFreq);
+        auto* monoK = findSliderFor (monoP);
+        check (monoP != nullptr && monoK != nullptr && monoK->getWidth() > 40,
+               "leg H: the mono-maker frequency slider is findable and laid out");
+        if (monoP != nullptr && monoK != nullptr && monoK->getWidth() > 40)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float start = plainOf (monoP);
+            const float cy = (float) monoK->getHeight() * 0.5f;
+            const float x0 = 0.45f * (float) monoK->getWidth();
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            // Ctrl is `Slider`'s default modifierToSwapModes and the knobs leave
+            // `userKeyOverridesVelocity` at its default true, so holding it makes this a velocity
+            // drag. Alt would have meant something else here -- `Knob::mouseDown` treats it as the
+            // reset gesture -- which is why the leg holds Ctrl specifically.
+            const juce::ModifierKeys held (juce::ModifierKeys::leftButtonModifier
+                                           | juce::ModifierKeys::ctrlModifier);
+            auto ev = [&] (float x, bool dragged)
+            {
+                return juce::MouseEvent (src, { x, cy }, held, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                         monoK, monoK, t, { x0, cy }, t, 1, dragged);
+            };
+            // A POSITIVE CONTROL THAT THIS IS THE OTHER BRANCH: the same 20 px with no modifier is
+            // an absolute drag, which on this style also snaps to the cursor, while the velocity
+            // branch accumulates a speed-scaled increment. If the modifier ever stopped selecting
+            // the branch this leg would be a second copy of leg A and say nothing; here it says so.
+            float absoluteDelta = 0.0f;
+            {
+                auto plain = [&] (float x, bool dragged)
+                {
+                    return juce::MouseEvent (src, { x, cy }, juce::ModifierKeys::leftButtonModifier,
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, monoK, monoK,
+                                             t, { x0, cy }, t, 1, dragged);
+                };
+                monoK->mouseDown (plain (x0, false));
+                monoK->mouseDrag (plain (x0 + 20.0f, true));
+                monoK->mouseUp   (plain (x0 + 20.0f, true));
+                const float absolute = plainOf (monoP);
+                proc.pollUndoCoalesce();
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (monoP), start), "leg H: the control drag is undone");
+                check (! juce::exactlyEqual (absolute, start), "leg H: ...having moved the slider at all");
+                absoluteDelta = absolute - start;
+            }
+            monoK->mouseDown (ev (x0, false));
+            monoK->mouseDrag (ev (x0 + 20.0f, true));
+            const float atX1 = plainOf (monoP);
+            check (! juce::exactlyEqual (atX1 - start, absoluteDelta),
+                   "leg H: ...and the modified drag is a DIFFERENT branch, not the same one again");
+            monoK->mouseWheelMove (ev (x0 + 20.0f, false), wheel);
+            const float afterNotch = plainOf (monoP);
+            monoK->mouseDrag (ev (x0, true));          // the cursor goes back where it started
+            const float backAtPress = plainOf (monoP);
+            monoK->mouseUp (ev (x0, true));
+            proc.pollUndoCoalesce();
+
+            check (! juce::exactlyEqual (atX1, start), "leg H: the velocity drag moves the slider");
+            check (! juce::exactlyEqual (afterNotch, atX1),
+                   "leg H: a notch inside a velocity drag adds to what the drag has produced");
+            if (juce::exactlyEqual (backAtPress, start))
+                std::printf ("  [leg H] the notch was erased by the next velocity drag event: the"
+                             " value returned to %.4f\n", (double) start);
+            check (! juce::exactlyEqual (backAtPress, start),
+                   "leg H: ...and survives the drag events after it, exactly as in the absolute branch");
+            check (proc.canUndo(), "leg H: the whole interaction is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (monoP), start),
+                   "leg H: one Undo returns to where the press started -- ONE step");
+        }
+    }
+
+    // ---- LEG I: a value-box drag's notch, delivered to the KNOB -----------------------
+    //      Leg B scrolls over the box itself, which is the case the box's own handler answers.
+    //      This is the case the POINTER produces: the box drag maps 180 px of travel over a box
+    //      18 px tall, so the cursor leaves it within a few pixels and every notch after that is
+    //      delivered to the knob underneath. Writing the value on the slider there is not enough
+    //      -- the box's next drag event recomputes from `downProp` and erases it -- so the knob
+    //      hands the event to whichever of its children is holding a drag gesture, and the box's
+    //      own handler moves the anchor the drag is steering.
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        juce::Component* boxC = nullptr;
+        for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+            if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) { boxC = l; break; }
+        check (boxC != nullptr, "leg I: the knob's value box is findable");
+        if (boxC != nullptr)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float start = plainOf (driveP);
+            const float bx = (float) boxC->getWidth() * 0.5f, by = (float) boxC->getHeight() * 0.5f;
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            auto onBox = [&] (float y, bool dragged)
+            {
+                return juce::MouseEvent (src, { bx, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, boxC, boxC,
+                                         t, { bx, by }, t, 1, dragged);
+            };
+            // The pointer is over the KNOB by now, so this is the component JUCE hands it to.
+            const juce::MouseEvent onKnob (src, { (float) driveK->getWidth() * 0.5f,
+                                                  (float) driveK->getHeight() * 0.5f },
+                                           juce::ModifierKeys::leftButtonModifier,
+                                           1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                           t, { bx, by }, t, 1, false);
+            boxC->mouseDown (onBox (by, false));
+            boxC->mouseDrag (onBox (by - 20.0f, true));
+            const float dragged = plainOf (driveP);
+            driveK->mouseWheelMove (onKnob, wheel);
+            const float afterNotch = plainOf (driveP);
+            boxC->mouseDrag (onBox (by - 20.0f, true));   // the same cursor position, one event later
+            const float nextEvent = plainOf (driveP);
+            boxC->mouseUp (onBox (by - 20.0f, true));
+            proc.pollUndoCoalesce();
+
+            check (! juce::exactlyEqual (dragged, start), "leg I: the value-box drag moves the knob");
+            if (juce::exactlyEqual (afterNotch, dragged))
+                std::printf ("  [leg I] the notch was dropped: the knob stayed at %.4f while its own"
+                             " value box held the press\n", (double) dragged);
+            check (! juce::exactlyEqual (afterNotch, dragged),
+                   "leg I: a notch delivered to the knob during its value box's drag still lands");
+            if (juce::exactlyEqual (nextEvent, dragged))
+                std::printf ("  [leg I] the box's next drag event erased it: back to %.4f\n",
+                             (double) dragged);
+            check (! juce::exactlyEqual (nextEvent, dragged),
+                   "leg I: ...and the drag's own next event does not erase it");
+            check (proc.canUndo(), "leg I: the interaction is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (driveP), start),
+                   "leg I: one Undo returns to where the press started -- ONE step");
+        }
+    }
+
+    // ---- LEG J: a SUB-INTERVAL notch moves the control the same, press or no press ------
+    //      The asymmetry ADR-0053 exists to remove, in the one size of notch that still had
+    //      it. JUCE floors a notch to at least one INTERVAL of value movement
+    //      (`jmax (normRange.interval, std::abs (delta))`, juce_Slider.cpp) and
+    //      `SliderParameterAttachment` copies the parameter's interval onto the slider, so
+    //      Amount's grid is 0.001 -- while the in-drag path asked for `amount * 0.15` of
+    //      proportion and nothing else. A macOS trackpad's smallest precise notch is
+    //      `deltaY = 0.5/256`, which asks for 0.0003: `Slider::setValue` snapped it back to the
+    //      value already there and the press ate the notch, however many arrived. With no
+    //      button held the identical notch moves one whole interval.
+    //
+    //      The leg deliberately synthesises that delta rather than using a mouse wheel's 1.0:
+    //      a wheel notch is ~250 times the interval and would pass either way. Both halves
+    //      stamp each event a few milliseconds on, because JUCE's own handler DEDUPES on the
+    //      event time and the standalone half would otherwise land exactly one notch.
+    {
+        auto* amtP = apvts.getParameter (pid::amount);
+        auto* amtK = findSliderFor (amtP);
+        check (amtP != nullptr && amtK != nullptr, "leg J: the Amount knob is findable from its parameter");
+        if (amtP != nullptr && amtK != nullptr)
+        {
+            juce::MouseWheelDetails tiny;
+            tiny.deltaX = 0.0f; tiny.deltaY = 0.5f / 256.0f;   // one macOS precise-scroll unit
+            tiny.isReversed = false; tiny.isSmooth = true; tiny.isInertial = false;
+            const float cx = (float) amtK->getWidth() * 0.5f, cy = (float) amtK->getHeight() * 0.5f;
+            int seq = 0;
+            const auto legBase = legStamp();
+            auto at = [&] (float y, bool dragged, bool button)
+            {
+                const auto t = legBase + juce::RelativeTime::milliseconds (++seq * 7);
+                return juce::MouseEvent (src, { cx, y },
+                                         button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, amtK, amtK,
+                                         t, { cx, cy }, t, 1, dragged);
+            };
+            const float start = 0.5f;
+            // ---- inside a press ----
+            amtP->setValueNotifyingHost (amtP->convertTo0to1 (start));
+            amtK->mouseDown (at (cy, false, true));
+            amtK->mouseDrag (at (cy - 20.0f, true, true));
+            const float pressed = plainOf (amtP);
+            for (int i = 0; i < 20; ++i) amtK->mouseWheelMove (at (cy - 20.0f, false, true), tiny);
+            const float inPress = plainOf (amtP) - pressed;
+            amtK->mouseUp (at (cy - 20.0f, true, true));
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            // ---- and with no button held at all ----
+            amtP->setValueNotifyingHost (amtP->convertTo0to1 (start));
+            proc.pollUndoCoalesce();
+            const float before = plainOf (amtP);
+            for (int i = 0; i < 20; ++i) amtK->mouseWheelMove (at (cy, false, false), tiny);
+            const float standalone = plainOf (amtP) - before;
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+
+            if (juce::exactlyEqual (inPress, 0.0f))
+                std::printf ("  [leg J] 20 sub-interval notches inside the press moved Amount by"
+                             " nothing at all, while the same 20 with no button held moved it %.4f\n",
+                             (double) standalone);
+            check (! juce::exactlyEqual (standalone, 0.0f),
+                   "leg J: control -- with no button held JUCE's floor moves Amount");
+            check (! juce::exactlyEqual (inPress, 0.0f),
+                   "leg J: a sub-interval notch inside a press moves Amount too");
+            // WITHIN HALF AN INTERVAL, not bit-identical: both halves snap to Amount's 0.001
+            // grid, and they start from different points on it (the press has dragged first), so
+            // the two sums round differently in the last bits of a float. Half a grid step is the
+            // tightest bound that measures the rule rather than the arithmetic -- the failure this
+            // leg is for is 0.000 against 0.020, twenty whole steps apart.
+            if (std::abs (inPress - standalone) > 0.0005f)
+                std::printf ("  [leg J] the two differ: %.6f inside the press against %.6f outside it\n",
+                             (double) inPress, (double) standalone);
+            check (std::abs (inPress - standalone) <= 0.0005f,
+                   "leg J: ...by the SAME travel -- one notch means one notch, press or no press");
+        }
+    }
+
+    // ---- LEG K: an Alt-click that resets nothing is not an edit either ------------------
+    //      Found by this round's own investigation, one control family away from the notch
+    //      rails: the Option/Alt-click reset bracketed `doReset` in a change gesture and ran the
+    //      sweep animation unconditionally, so clicking a knob ALREADY at its default punched a
+    //      host touch/latch write region for a parameter that never moved. Same rule as the
+    //      multiband rails (ADR-0052), same shape of fix: ask whether the edit would move
+    //      anything before paying for any part of it.
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        const float def = driveP->convertFrom0to1 (driveP->getDefaultValue());
+        auto altClick = [&] (juce::Slider* k)
+        {
+            const float cx = (float) k->getWidth() * 0.5f, cy = (float) k->getHeight() * 0.5f;
+            const auto t = legStamp();   // this leg's own instant (see `legStamp` above)
+            const juce::MouseEvent e (src, { cx, cy },
+                                      juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                                          | juce::ModifierKeys::altModifier),
+                                      1.0f, 0.0f, 0.0f, 0.0f, 0.0f, k, k, t, { cx, cy }, t, 1, false);
+            k->mouseDown (e);
+            k->mouseUp (e);
+        };
+        while (proc.canUndo()) proc.undo();
+        driveP->setValueNotifyingHost (driveP->getDefaultValue());
+        proc.pollUndoCoalesce();
+        CountGestures gnoop;
+        driveP->addListener (&gnoop);
+        altClick (driveK);
+        driveP->removeListener (&gnoop);
+        proc.pollUndoCoalesce();
+        check (juce::exactlyEqual (plainOf (driveP), def),
+               "leg K: an Alt-click on a knob already at its default leaves the value alone");
+        if (gnoop.opens != 0)
+            std::printf ("  [leg K] it opened %d change gesture(s) for a reset that reset nothing\n",
+                         gnoop.opens);
+        check (gnoop.opens == 0 && gnoop.closes == 0,
+               "leg K: ...and opens no host change gesture");
+
+        // The control: from anywhere else, the reset still resets, inside exactly one gesture.
+        driveP->setValueNotifyingHost (driveP->convertTo0to1 (def + 6.0f));
+        proc.pollUndoCoalesce();
+        CountGestures greal;
+        driveP->addListener (&greal);
+        altClick (driveK);
+        driveP->removeListener (&greal);
+        proc.pollUndoCoalesce();
+        check (juce::exactlyEqual (plainOf (driveP), def),
+               "leg K: control -- an Alt-click from anywhere else still resets to the default");
+        check (greal.opens == 1 && greal.closes == 1,
+               "leg K: ...inside exactly one host change gesture, as the host needs");
+    }
+
+    // ---- LEG L: two events, one timestamp, ONE notch -- press or no press ---------------
+    //      The other half of leg J's rule, and a hazard leg J's own fix created. JUCE dedupes
+    //      wheel events on `e.eventTime` for a stated reason -- "since we're going to bump the
+    //      value by a minimum of the interval, avoid doing this twice" -- so the filter and the
+    //      floor are one mechanism. Round 11 gave the in-drag path the floor; without the filter
+    //      beside it, a platform that sends the same notch twice (which is what JUCE's comment
+    //      describes) would move a held control TWICE as far as an unheld one, breaking the same
+    //      contract leg J fixed, from the other side.
+    //
+    //      Deterministic and platform-free: the leg sends two events bearing one timestamp,
+    //      which is exactly the input JUCE's own filter is written against.
+    {
+        auto* amtP = apvts.getParameter (pid::amount);
+        auto* amtK = findSliderFor (amtP);
+        check (amtP != nullptr && amtK != nullptr, "leg L: the Amount knob is findable");
+        if (amtP != nullptr && amtK != nullptr)
+        {
+            juce::MouseWheelDetails notch;
+            notch.deltaX = 0.0f; notch.deltaY = 0.5f;
+            notch.isReversed = false; notch.isSmooth = false; notch.isInertial = false;
+            const float cx = (float) amtK->getWidth() * 0.5f, cy = (float) amtK->getHeight() * 0.5f;
+            // ONE instant for every event below -- that shared stamp is what the leg measures,
+            // and `legStamp` is what keeps it from colliding with an earlier leg's. This is the
+            // leg the collision was measured on: leg I delivers its notch to the KNOB, which
+            // forwards it to the child holding the drag -- the very value box the second stanza
+            // below then scrolls -- so leg I stamps that box's `lastNotchTime`, and one shared
+            // millisecond was enough to make the filter discard this leg's FIRST notch.
+            const auto t = legStamp();
+            auto at = [&] (float y, bool dragged, bool button)
+            {
+                return juce::MouseEvent (src, { cx, y },
+                                         button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, amtK, amtK,
+                                         t, { cx, cy }, t, 1, dragged);
+            };
+            while (proc.canUndo()) proc.undo();
+            amtP->setValueNotifyingHost (amtP->convertTo0to1 (0.5f));
+            proc.pollUndoCoalesce();
+            amtK->mouseDown (at (cy, false, true));
+            amtK->mouseDrag (at (cy - 20.0f, true, true));
+            const float base = plainOf (amtP);
+            amtK->mouseWheelMove (at (cy - 20.0f, false, true), notch);
+            const float afterOne = plainOf (amtP) - base;
+            amtK->mouseWheelMove (at (cy - 20.0f, false, true), notch);   // the duplicate
+            const float afterTwo = plainOf (amtP) - base;
+            amtK->mouseUp (at (cy - 20.0f, true, true));
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            check (! juce::exactlyEqual (afterOne, 0.0f), "leg L: the first notch moved Amount");
+            if (! juce::exactlyEqual (afterTwo, afterOne))
+                std::printf ("  [leg L] the duplicate moved it again: %.4f after one, %.4f after two\n",
+                             (double) afterOne, (double) afterTwo);
+            check (juce::exactlyEqual (afterTwo, afterOne),
+                   "leg L: ...and a second event bearing the SAME timestamp does not move it again");
+
+            // The control: JUCE's own filter, on the standalone path, answering identically.
+            amtP->setValueNotifyingHost (amtP->convertTo0to1 (0.5f));
+            proc.pollUndoCoalesce();
+            const float base2 = plainOf (amtP);
+            amtK->mouseWheelMove (at (cy, false, false), notch);
+            const float standaloneOne = plainOf (amtP) - base2;
+            amtK->mouseWheelMove (at (cy, false, false), notch);
+            const float standaloneTwo = plainOf (amtP) - base2;
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            check (juce::exactlyEqual (standaloneTwo, standaloneOne),
+                   "leg L: control -- JUCE's own filter answers the same with no button held");
+            check (std::abs (afterOne - standaloneOne) <= 0.0005f,
+                   "leg L: ...and the one notch each of them took is the same size");
+        }
+
+        // ...and the value box, which holds its own drag and its own last-notch stamp.
+        juce::Component* boxC = nullptr;
+        if (driveK != nullptr)
+            for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+                if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) { boxC = l; break; }
+        check (boxC != nullptr, "leg L: the knob's value box is findable");
+        if (boxC != nullptr && driveP != nullptr)
+        {
+            juce::MouseWheelDetails notch;
+            notch.deltaX = 0.0f; notch.deltaY = 0.5f;
+            notch.isReversed = false; notch.isSmooth = false; notch.isInertial = false;
+            const float bx = (float) boxC->getWidth() * 0.5f, by = (float) boxC->getHeight() * 0.5f;
+            const auto t = legStamp();   // its own instant, past the knob stanza's and leg I's
+            auto onBox = [&] (float y, bool dragged)
+            {
+                return juce::MouseEvent (src, { bx, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, boxC, boxC,
+                                         t, { bx, by }, t, 1, dragged);
+            };
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            boxC->mouseDown (onBox (by, false));
+            boxC->mouseDrag (onBox (by - 20.0f, true));
+            const float base = plainOf (driveP);
+            boxC->mouseWheelMove (onBox (by - 20.0f, false), notch);
+            const float boxOne = plainOf (driveP) - base;
+            boxC->mouseWheelMove (onBox (by - 20.0f, false), notch);   // the duplicate
+            const float boxTwo = plainOf (driveP) - base;
+            boxC->mouseUp (onBox (by - 20.0f, true));
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            check (! juce::exactlyEqual (boxOne, 0.0f), "leg L: the box takes the first notch");
+            if (! juce::exactlyEqual (boxTwo, boxOne))
+                std::printf ("  [leg L] the box took the duplicate as a second notch: %.4f then %.4f\n",
+                             (double) boxOne, (double) boxTwo);
+            check (juce::exactlyEqual (boxTwo, boxOne),
+                   "leg L: ...and not the duplicate behind it");
+        }
+    }
+
+        // ---- LEG M: a drag inside a scrolled press publishes ONCE, and publishes the COMBINED
+        //      value ---------------------------------------------------------------------------
+        //      THE ONLY OBSERVABLE THAT SEES THIS. Every other leg in this test samples the
+        //      parameter BETWEEN whole events, or counts undo steps, and both are blind here: the
+        //      endpoints, the single gesture and the one-step property were all already correct.
+        //      What was wrong was the WRITE SEQUENCE inside one `mouseDrag` call -- `Slider::mouseDrag`
+        //      published the pure drag value and `applyWheelDragOffset` corrected it afterwards, so
+        //      with a notch banked the host, its automation lane and the DSP atomic each took a value
+        //      a whole notch BACKWARDS before the right one arrived, on every mouse move, inside the
+        //      press's open touch/latch punch-in.
+        //
+        //      `juce::AudioProcessorListener` rather than an `AudioProcessorParameter::Listener`,
+        //      deliberately: JUCE walks the parameter's listener list in reverse registration order,
+        //      so a listener added by a test is called BEFORE the APVTS adapter that stores the DSP
+        //      atomic and would read the PREVIOUS atomic value. The processor-level listener is
+        //      reached after the whole list, which is both the host's own view and the only place
+        //      the atomic can be compared against the value being reported.
+        if (driveP != nullptr && driveK != nullptr)
+        {
+            struct WriteRecorder final : public juce::AudioProcessorListener
+            {
+                AnamorphAudioProcessor* proc = nullptr;
+                int   idx   = -1;
+                bool  armed = false;
+                int   opens = 0, closes = 0;
+                float heldBefore = 0.0f, landed = 0.0f;   // read INSIDE the press, not after it
+                std::vector<float> seen, atom;
+                void audioProcessorParameterChanged (juce::AudioProcessor*, int i, float v) override
+                {
+                    if (! armed || i != idx) return;
+                    seen.push_back (v);
+                    if (proc != nullptr)
+                        if (auto* a = proc->getAPVTS().getRawParameterValue (pid::drive))
+                            atom.push_back (a->load());
+                }
+                void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+                void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int i) override
+                { if (armed && i == idx) ++opens; }
+                void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
+                { if (armed && i == idx) ++closes; }
+            };
+
+            auto oneDragEvent = [&] (bool withNotch, WriteRecorder& rec)
+            {
+                while (proc.canUndo()) proc.undo();
+                proc.pollUndoCoalesce();
+                const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+                const auto t = legStamp();
+                auto ev = [&] (float y, bool dragged, bool button)
+                {
+                    return juce::MouseEvent (src, { cx, y },
+                                             button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                             t, { cx, cy }, t, 1, dragged);
+                };
+                driveK->mouseDown (ev (cy, false, true));
+                driveK->mouseDrag (ev (cy - 20.0f, true, true));
+                if (withNotch) driveK->mouseWheelMove (ev (cy - 20.0f, false, true), wheel);
+                rec.heldBefore = plainOf (driveP);
+                rec.proc = &proc; rec.idx = driveP->getParameterIndex();
+                proc.addListener (&rec);
+                rec.armed = true;
+                driveK->mouseDrag (ev (cy - 22.0f, true, true));   // ONE further drag event
+                rec.armed = false;
+                proc.removeListener (&rec);
+                rec.landed = plainOf (driveP);      // ...read here, because the NEXT run drains undo
+                driveK->mouseUp (ev (cy - 22.0f, true, true));
+                proc.pollUndoCoalesce();
+            };
+
+            WriteRecorder withNotch, control;
+            oneDragEvent (true,  withNotch);
+            oneDragEvent (false, control);
+
+            if (withNotch.seen.size() != 1)
+                std::printf ("  [leg M] one drag event published %d values: the pure drag value went"
+                             " out before the correction\n", (int) withNotch.seen.size());
+            check (withNotch.seen.size() == 1,
+                   "leg M: one drag event inside a scrolled press publishes exactly ONE value");
+            check (control.seen.size() == 1,
+                   "leg M: control -- one drag event with no notch banked publishes one value too");
+            check (! withNotch.seen.empty()
+                   && juce::exactlyEqual (driveP->convertFrom0to1 (withNotch.seen.back()), withNotch.landed),
+                   "leg M: ...and the value it published is the one the control landed on");
+            for (size_t i = 0; i < withNotch.seen.size(); ++i)
+                check (driveP->convertFrom0to1 (withNotch.seen[i]) >= withNotch.heldBefore,
+                       "leg M: no value published during an upward drag is below where the press"
+                       " already stood -- the notch is never briefly unwound");
+            for (size_t i = 0; i < withNotch.atom.size(); ++i)
+                check (juce::exactlyEqual (withNotch.atom[i], driveP->convertFrom0to1 (withNotch.seen[i])),
+                       "leg M: ...and the DSP atomic never holds a value the host was not told");
+            check (withNotch.opens == 0 && withNotch.closes == 0,
+                   "leg M: the event sits INSIDE the press's open gesture -- it is automation-recordable");
+        }
+
+        // ---- LEG N: a TYPED value is undoable, and KI-010 said it was not ----------------
+        //      DRIFT CORRECTED, round 14, measured rather than read. `KNOWN_ISSUES.md` KI-010 and
+        //      the user manual's "Known quirks" both stated that values typed into a value box
+        //      create no undo step, "gesture-less edit path". They do not: the box IS
+        //      `juce::Slider`'s own `valueBox` (this plug-in supplies it from
+        //      `LookAndFeel::createSliderTextBox`), JUCE wires `valueBox->onTextChange` to
+        //      `Slider::Pimpl::textChanged`, and that wraps its `setValue` in a
+        //      `ScopedDragNotification` -- a real begin/end pair on the parameter. Measured here:
+        //      one open, one close, and one Undo returns the typed value to where it was.
+        //
+        //      The leg drives `Label::setText (..., sendNotificationSync)`, which is exactly where
+        //      the user's own path arrives: return key -> `hideEditor (true)` -> `textWasEdited()`
+        //      -> that same call. Nothing in this plug-in overrides it.
+        if (driveP != nullptr && driveK != nullptr)
+        {
+            juce::Component* boxC = nullptr;
+            for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+                if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) { boxC = l; break; }
+            auto* lab = dynamic_cast<juce::Label*> (boxC);
+            check (lab != nullptr, "leg N: the knob's value box is findable");
+            if (lab != nullptr)
+            {
+                while (proc.canUndo()) proc.undo();
+                proc.pollUndoCoalesce();
+                const float before = plainOf (driveP);
+                CountGestures cg; driveP->addListener (&cg);
+                lab->setText (juce::String (before + 4.0f, 2), juce::sendNotificationSync);
+                driveP->removeListener (&cg);
+                proc.pollUndoCoalesce();
+                check (! juce::exactlyEqual (plainOf (driveP), before), "leg N: the typed value moved Drive");
+                check (cg.opens == 1 && cg.closes == 1,
+                       "leg N: ...inside ONE host change gesture, not as a gesture-less write");
+                check (proc.canUndo(), "leg N: ...so it IS undoable -- KI-010's typed path is stale");
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (driveP), before),
+                       "leg N: one Undo returns the typed value to where it was");
+                while (proc.canUndo()) proc.undo();
+                proc.pollUndoCoalesce();
+            }
+        }
+
+    // ---- LEG O: an empty knob press cannot make automation the user's Redo (RISK-012) ---
+    //      The last open face of RISK-012, and the one no earlier leg reached: a press that opens
+    //      a change gesture and NEVER MOVES THE PARAMETER. JUCE opens the gesture from
+    //      `SliderParameterAttachment::sliderDragStarted` and closes it from `sliderDragEnded`, so
+    //      a click on a knob with no drag brackets a gesture around no write at all. The batch
+    //      close then had nothing declared to prefer for that parameter and fell back to a LIVE
+    //      READ -- which, during the press, is whatever host automation left there. The user's
+    //      Redo destination became a value the user never produced, which is precisely what
+    //      ADR-0008 forbids and what R983 and RISK-012 have recorded as open since round 12.
+    //
+    //      Round 22's fix is the missing sentence, not a new mechanism: `AttachmentWitness` now
+    //      states a REFUSAL at the drag end when nothing this control did moved the parameter, and
+    //      a refusal has suppressed the close's live read since round 19.
+    if (driveP != nullptr && driveK != nullptr)
+    {
+        while (proc.canUndo()) proc.undo();
+        driveP->setValueNotifyingHost (driveP->convertTo0to1 (3.0f));
+        proc.pollUndoCoalesce();
+        const float pressedAt = plainOf (driveP);
+        const float hostTo    = 7.25f;
+        check (std::abs (pressedAt - hostTo) > 1.0e-3f,
+               "leg O: the two values the leg distinguishes are distinct");
+
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto  t  = legStamp();
+        const juce::MouseEvent press (src, { cx, cy }, juce::ModifierKeys::leftButtonModifier,
+                                      1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                      t, { cx, cy }, t, 1, false);
+        CountGestures cg;
+        driveP->addListener (&cg);
+        driveK->mouseDown (press);
+        driveP->setValueNotifyingHost (driveP->convertTo0to1 (hostTo));   // automation, INSIDE the press
+        driveK->mouseUp (press);
+        driveP->removeListener (&cg);
+        proc.pollUndoCoalesce();
+
+        check (cg.opens == 1 && cg.closes == 1,
+               "leg O: non-vacuity -- the press really did bracket one host change gesture");
+        check (std::abs (plainOf (driveP) - hostTo) < 1.0e-3f,
+               "leg O: ...and the host's value is what is live afterwards");
+        check (! proc.canUndo(),
+               "leg O: a press that moved nothing records no step, so the automation is in none");
+
+        // ---- the control the rule needs: a press that DID move the knob is still one step ----
+        while (proc.canUndo()) proc.undo();
+        driveP->setValueNotifyingHost (driveP->convertTo0to1 (3.0f));
+        proc.pollUndoCoalesce();
+        const float from = plainOf (driveP);
+        const auto  t2   = legStamp();
+        const juce::MouseEvent press2 (src, { cx, cy }, juce::ModifierKeys::leftButtonModifier,
+                                       1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                       t2, { cx, cy }, t2, 1, false);
+        driveK->mouseDown (press2);
+        driveK->setValue ((double) (from + 4.0f), juce::sendNotificationSync);   // the drag's own write
+        const float produced = plainOf (driveP);
+        driveK->mouseUp (press2);
+        proc.pollUndoCoalesce();
+        check (std::abs (produced - from) > 1.0e-3f, "leg O: the control leg really moved the knob");
+        check (proc.canUndo(), "leg O: ...and a press that produced a value IS one undoable step");
+        if (proc.canUndo())
+        {
+            proc.undo();
+            check (std::abs (plainOf (driveP) - from) < 1.0e-3f, "leg O: Undo returns the user's start");
+            proc.redo();
+            check (std::abs (plainOf (driveP) - produced) < 1.0e-3f,
+                   "leg O: Redo restores the value the user produced, not a live read");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+
+// ----------------------------------------------------------------------------
+//  State test 89 -- the A/B history obeys ADR-0008's cap on EVERY path into it
+// ----------------------------------------------------------------------------
+//  ADR-0008's Consequences call the history "a hand-rolled history with a 128-entry cap per slot".
+//  Until round 16 that cap was two hand-copied triples -- the poll's step push and the
+//  preset-switch push -- and `abCopyToOther` had neither, so repeated A/B Copies grew the TARGET
+//  slot's history without limit. A Copy's entry is also the expensive kind: two whole `ValueTree`s,
+//  where an ordinary step is a handful of `{index, before, after}` triples.
+//
+//  The observable is the number of Undos the slot will actually perform, which is the only thing a
+//  user can see and the only thing the cap is for. Each Copy carries a distinguishable Drive, so
+//  the leg can say WHICH entries survived rather than only how many.
+static void testTheABHistoryObeysItsCap()
+{
+    std::printf ("State test 89: the A/B copy history obeys ADR-0008's 128-entry cap\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    auto* driveP = apvts.getParameter (pid::drive);
+    check (driveP != nullptr, "State test 89: the Drive parameter exists");
+    if (driveP == nullptr) return;
+    auto plainOf = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+
+    // 130 Copies from slot A into slot B, each carrying its own Drive. Two more than the cap, so
+    // the eviction boundary is crossed by a known amount rather than by exactly one.
+    const int kCopies = 130;
+    check (proc.abActiveSlot() == 0, "State test 89: the probe starts on slot A");
+    for (int k = 1; k <= kCopies; ++k)
+    {
+        setPlain (driveP, (float) k * 0.1f);
+        proc.pollUndoCoalesce();
+        proc.abCopyToOther();
+    }
+
+    // Stand on the slot the Copies were pushed onto; a switch is not itself an undo step (ADR-0008).
+    proc.abToggle();
+    check (proc.abActiveSlot() == 1, "State test 89: the probe is standing on slot B");
+    check (std::abs (plainOf (driveP) - (float) kCopies * 0.1f) <= 1.0e-4f,
+           "State test 89: slot B holds what the LAST Copy put there");
+
+    // The newest entry is retained: one Undo reverts exactly the last Copy.
+    check (proc.canUndo(), "State test 89: the copy history is undoable at all");
+    proc.undo();
+    if (std::abs (plainOf (driveP) - (float) (kCopies - 1) * 0.1f) > 1.0e-4f)
+        std::printf ("  [test 89] one Undo did not revert the NEWEST Copy: Drive %.4f, expected"
+                     " %.4f\n", (double) plainOf (driveP), (double) ((float) (kCopies - 1) * 0.1f));
+    check (std::abs (plainOf (driveP) - (float) (kCopies - 1) * 0.1f) <= 1.0e-4f,
+           "State test 89: one Undo reverts the newest Copy -- the cap evicts from the OLD end");
+
+    // Drain, counting. The bound is what the cap says, not what the loop did.
+    int steps = 1;
+    while (proc.canUndo() && steps < 4 * kCopies) { proc.undo(); ++steps; }
+    if (steps != 128)
+        std::printf ("  [test 89] %d Copies left %d undo steps, where ADR-0008 caps a slot at 128\n",
+                     kCopies, steps);
+    check (steps == 128,
+           "State test 89: 130 A/B Copies leave exactly 128 undo steps, not 130");
+
+    // ...and the two that went are the OLDEST: the drained state is the one Copy 2 left behind,
+    // not the slot's initial state.
+    if (std::abs (plainOf (driveP) - (float) (kCopies - 128) * 0.1f) > 1.0e-4f)
+        std::printf ("  [test 89] the drained state is Drive %.4f, not the %.4f Copy %d left\n",
+                     (double) plainOf (driveP), (double) ((float) (kCopies - 128) * 0.1f),
+                     kCopies - 128);
+    check (std::abs (plainOf (driveP) - (float) (kCopies - 128) * 0.1f) <= 1.0e-4f,
+           "State test 89: ...and the evicted entries are the oldest, not the newest");
+
+    // Redo across the eviction boundary: the first Redo re-applies the oldest RETAINED entry.
+    check (proc.canRedo(), "State test 89: the drained history is redoable");
+    proc.redo();
+    check (std::abs (plainOf (driveP) - (float) (kCopies - 127) * 0.1f) <= 1.0e-4f,
+           "State test 89: one Redo re-applies the oldest entry the cap kept");
+
+    // And the redo stack is bounded by the same rule, because it is fed from a capped undo stack.
+    int back = 1;
+    while (proc.canRedo() && back < 4 * kCopies) { proc.redo(); ++back; }
+    check (back == 128, "State test 89: the redo side holds the same 128 and no more");
+    check (std::abs (plainOf (driveP) - (float) kCopies * 0.1f) <= 1.0e-4f,
+           "State test 89: ...and redoing them all returns slot B to the last Copy's state");
+}
+
+// ----------------------------------------------------------------------------
+//  State test 90 -- a user step's endpoints belong to the USER, per parameter
+// ----------------------------------------------------------------------------
+//  ADR-0008 as amended: a user step is the set of parameters that action moved, each with the value
+//  it held when the action first took it and the value the action produced for it. Host automation
+//  may move the LIVE value and must not redefine either endpoint.
+//
+//  This test drives the bookkeeping directly -- `beginChangeGesture` / `setValueNotifyingHost` /
+//  `endChangeGesture` on the parameter itself -- because that is exactly what a JUCE attachment
+//  does for every knob, slider, value box, button and combo in the editor, and it lets a leg place
+//  an automation write at an exact instant between two gestures. A gesture-less
+//  `setValueNotifyingHost` is host automation by the only definition the coalescer has.
+static void testAUserStepsEndpointsBelongToTheUser()
+{
+    std::printf ("State test 90: a user step's endpoints belong to the user, per parameter\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* widthP = apvts.getParameter (pid::width);
+    auto* mixP   = apvts.getParameter (pid::mix);
+    check (driveP != nullptr && widthP != nullptr && mixP != nullptr,
+           "State test 90: the parameters the endpoint probe drives exist");
+    if (driveP == nullptr || widthP == nullptr || mixP == nullptr) return;
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    // A user edit: the gesture bracket a JUCE attachment opens around every control write.
+    auto userSets = [&] (juce::RangedAudioParameter* p, float v)
+    { p->beginChangeGesture(); setPlain (p, v); p->endChangeGesture(); };
+    // A user press that changes nothing -- a click that starts no drag.
+    auto userTouches = [] (juce::RangedAudioParameter* p)
+    { p->beginChangeGesture(); p->endChangeGesture(); };
+    // Host automation: the same store with NO gesture, which is the only thing that tells the
+    // coalescer it was not the user.
+    auto hostSets = setPlain;
+
+    auto near = [] (float a, float b) { return std::abs (a - b) <= 1.0e-3f; };
+    auto reset = [&] (float d, float w, float m)
+    {
+        while (proc.canUndo()) proc.undo();
+        setPlain (driveP, d); setPlain (widthP, w); setPlain (mixP, m);
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        setPlain (driveP, d); setPlain (widthP, w); setPlain (mixP, m);
+        proc.pollUndoCoalesce();
+    };
+
+    // ---- LEG A: the reported case -- automation between two gestures of one batch -------
+    //      Drive 0 -> D1 by the user; the host then moves Drive to DA; the user edits Width; both
+    //      gestures close before the 24 Hz poll, so they share ONE pending batch. The batch's
+    //      closing snapshot used to be a full live re-read, so Drive's user endpoint D1 was
+    //      replaced by DA and REDO restored the host's value as though the user had produced it.
+    {
+        reset (2.0f, 1.0f, 0.50f);
+        const float D0 = plainOf (driveP), W0 = plainOf (widthP);
+        const float D1 = 6.0f, DA = 9.0f, W1 = 1.6f;
+        check (! proc.canUndo(), "leg A: the endpoint probe starts with no undo history");
+        userSets (driveP, D1);
+        hostSets (driveP, DA);
+        userSets (widthP, W1);
+        proc.pollUndoCoalesce();
+        check (near (plainOf (driveP), DA), "leg A: the host's value is live before the Undo");
+        check (proc.canUndo(), "leg A: the two gestures recorded one undoable step");
+        proc.undo();
+        check (near (plainOf (driveP), D0), "leg A: Undo restores Drive's first-owned before-value");
+        check (near (plainOf (widthP), W0), "leg A: ...and Width's");
+        check (! proc.canUndo(), "leg A: ...and the two gestures were ONE step");
+        proc.redo();
+        if (! near (plainOf (driveP), D1))
+            std::printf ("  [leg A] REDO restored the host's automation value as the user's endpoint:"
+                         " Drive %.4f, where the user's own edit produced %.4f (the host wrote %.4f)\n",
+                         (double) plainOf (driveP), (double) D1, (double) DA);
+        check (near (plainOf (driveP), D1),
+               "leg A: Redo restores the value the USER produced, never the automation that followed it");
+        check (near (plainOf (widthP), W1), "leg A: ...and Width's user value too");
+    }
+
+    // ---- LEG B: the SAME parameter, automation between the two gestures -----------------
+    //      before stays the value Drive held when the batch first took it; after is the LATEST
+    //      value the user produced. The automation in between is neither.
+    {
+        reset (2.0f, 1.0f, 0.50f);
+        const float D0 = plainOf (driveP);
+        const float A = 5.0f, X = 8.0f, B = 3.0f;
+        userSets (driveP, A);
+        hostSets (driveP, X);
+        userSets (driveP, B);
+        proc.pollUndoCoalesce();
+        check (proc.canUndo(), "leg B: the repeated-parameter batch is undoable");
+        proc.undo();
+        if (! near (plainOf (driveP), D0))
+            std::printf ("  [leg B] Undo did not reach the FIRST-owned before-value: Drive %.4f,"
+                         " expected %.4f\n", (double) plainOf (driveP), (double) D0);
+        check (near (plainOf (driveP), D0), "leg B: Undo restores the value Drive held at first ownership");
+        proc.redo();
+        if (! near (plainOf (driveP), B))
+            std::printf ("  [leg B] Redo did not restore the LATEST user-produced value: Drive %.4f,"
+                         " expected %.4f (the host wrote %.4f in between)\n",
+                         (double) plainOf (driveP), (double) B, (double) X);
+        check (near (plainOf (driveP), B), "leg B: Redo restores the latest value the user produced");
+    }
+
+    // ---- LEG C: automation on a parameter the batch never owned ------------------------
+    {
+        reset (2.0f, 1.0f, 0.50f);
+        const float D0 = plainOf (driveP);
+        const float D1 = 6.0f, WA = 1.8f;
+        userSets (driveP, D1);
+        hostSets (widthP, WA);
+        proc.pollUndoCoalesce();
+        check (proc.canUndo(), "leg C: the user's own edit is undoable");
+        proc.undo();
+        check (near (plainOf (driveP), D0), "leg C: Undo takes back the user's edit");
+        if (! near (plainOf (widthP), WA))
+            std::printf ("  [leg C] Undo moved a parameter the user never touched: Width %.4f,"
+                         " where the host had written %.4f\n", (double) plainOf (widthP), (double) WA);
+        check (near (plainOf (widthP), WA),
+               "leg C: ...and leaves the host's value on the parameter it never owned");
+        proc.redo();
+        check (near (plainOf (driveP), D1) && near (plainOf (widthP), WA),
+               "leg C: Redo restores the user's edit and still leaves the host's value alone");
+    }
+
+    // ---- LEG D: an EMPTY gesture must not make a host write undoable --------------------
+    //      A press that starts no drag opens and closes a gesture without producing a value. It
+    //      still declares the parameter, and a full live close snapshot then handed it whatever
+    //      the host had written -- turning pure automation into a user Undo step. With the
+    //      endpoints taken at first ownership and from user-produced values only, before and after
+    //      are the same value and the poll records nothing for it.
+    {
+        reset (2.0f, 1.0f, 0.50f);
+        const float D0 = plainOf (driveP);
+        const float D1 = 6.0f, WA = 1.8f;
+        userSets (driveP, D1);
+        hostSets (widthP, WA);
+        userTouches (widthP);              // the empty press, AFTER the host wrote
+        proc.pollUndoCoalesce();
+        check (proc.canUndo(), "leg D: the real edit is still undoable");
+        proc.undo();
+        if (! near (plainOf (widthP), WA))
+            std::printf ("  [leg D] an empty press made the host's write undoable: Width %.4f,"
+                         " where the host had written %.4f\n", (double) plainOf (widthP), (double) WA);
+        check (near (plainOf (widthP), WA),
+               "leg D: an empty press does not make a concurrent host write part of the user's step");
+        check (near (plainOf (driveP), D0), "leg D: ...and the real edit is still undone");
+    }
+
+    // ---- LEG E: three parameters, each tracked independently ----------------------------
+    {
+        reset (2.0f, 1.0f, 0.50f);
+        const float D0 = plainOf (driveP), W0 = plainOf (widthP), M0 = plainOf (mixP);
+        const float D1 = 6.0f, W1 = 1.6f, M1 = 0.80f, DA = 9.0f, MA = 0.20f;
+        userSets (driveP, D1);
+        hostSets (driveP, DA);
+        userSets (widthP, W1);
+        hostSets (mixP, MA);               // a parameter the batch has not owned yet
+        userSets (mixP, M1);               // ...and now the user takes it, AFTER the automation
+        proc.pollUndoCoalesce();
+        check (proc.canUndo(), "leg E: the three-parameter batch is undoable");
+        proc.undo();
+        check (near (plainOf (driveP), D0), "leg E: Drive returns to its first-owned before");
+        check (near (plainOf (widthP), W0), "leg E: Width returns to its first-owned before");
+        if (! near (plainOf (mixP), MA))
+            std::printf ("  [leg E] Mix's before-value was taken before the automation that preceded"
+                         " the user's first touch: %.4f, expected %.4f\n",
+                         (double) plainOf (mixP), (double) MA);
+        check (near (plainOf (mixP), MA),
+               "leg E: Mix returns to the value it held when the USER first took it, not before the host's");
+        juce::ignoreUnused (M0);
+        proc.redo();
+        check (near (plainOf (driveP), D1) && near (plainOf (widthP), W1) && near (plainOf (mixP), M1),
+               "leg E: Redo restores every user-produced endpoint");
+    }
+
+    // ---- LEG F: the completed-step semantics are unchanged ------------------------------
+    //      A -> B by the user, the step commits, THEN automation moves it to C. Undo gives A and
+    //      Redo gives B. This is ADR-0008's canonical sequence and must not move.
+    {
+        reset (2.0f, 1.0f, 0.50f);
+        const float A = plainOf (driveP), B = 6.0f, C = 9.0f;
+        userSets (driveP, B);
+        proc.pollUndoCoalesce();           // the step is committed HERE
+        hostSets (driveP, C);
+        proc.pollUndoCoalesce();
+        proc.undo();
+        check (near (plainOf (driveP), A), "leg F: Undo gives A");
+        proc.redo();
+        check (near (plainOf (driveP), B), "leg F: Redo gives B, never the automation's C");
+    }
+}
+
+// ----------------------------------------------------------------------------
+//  State test 91 -- an attachment-driven user endpoint belongs to the USER
+// ----------------------------------------------------------------------------
+//  ADR-0008 as amended, round 18. State test 90 proves the endpoint RULES, but it drives the
+//  parameters directly, so it can only place host automation BETWEEN gestures. The window this test
+//  exists for is INSIDE one: a control that writes through a JUCE parameter attachment declares
+//  ownership when its gesture opens and declares no value at all, so until round 18 the close took
+//  the LIVE parameter -- and a host write landing after the user's last attachment write and before
+//  that gesture closed became the value Redo restored.
+//
+//  So every leg here drives a REAL attachment-backed control through synthetic mouse and wheel
+//  events, exactly as a user does. Two different instants are used deliberately, because they are
+//  reached by different code:
+//    * a bare `setValueNotifyingHost` interposed between the last `mouseDrag` and `mouseUp` -- the
+//      ordinary case, a whole message-loop turn wide, which is what a DAW's automation lane does;
+//    * `WriteFromInsideAGestureOpen` with `onClose`, which fires from inside the `endChangeGesture`
+//      dispatch itself -- the tightest instant that can still reach the endpoint, reachable because
+//      JUCE walks a parameter's listeners in REVERSE registration order, so a listener the test adds
+//      runs before the processor's own handler.
+static void testAnAttachmentEndpointBelongsToTheUser()
+{
+    std::printf ("State test 91: an attachment-driven user endpoint belongs to the user\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "State test 91: the editor constructs for the attachment-endpoint probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    // Identify a control by MOVING its parameter and seeing which single slider follows -- the same
+    // identification State tests 86 and 88 use, and the only one available: the editor exposes no
+    // component ids and the knobs are private members.
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto hostSets = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto near     = [] (float a, float b) { return std::abs (a - b) <= 1.0e-3f; };
+    auto settle   = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f; wheel.deltaY = 0.5f;
+    wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+    // Each leg stamps its events from its own instant, for the reason State test 88 records: the
+    // wheel handlers' duplicate-event filters compare stamps for EQUALITY, and two legs can read a
+    // millisecond clock inside one millisecond.
+    int legNo = 0;
+    const auto suiteBase = juce::Time::getCurrentTime();
+    auto legStamp = [&] { return suiteBase + juce::RelativeTime::seconds (5.0 * ++legNo); };
+
+    auto* driveP  = apvts.getParameter (pid::drive);
+    auto* amountP = apvts.getParameter (pid::amount);
+    auto* driveK  = findSliderFor (driveP);
+    auto* amountK = findSliderFor (amountP);
+    check (driveP != nullptr && driveK != nullptr,
+           "State test 91: the Drive knob is findable from its parameter");
+    check (amountP != nullptr && amountK != nullptr,
+           "State test 91: the Amount knob is findable from its parameter");
+    if (driveP == nullptr || driveK == nullptr || amountP == nullptr || amountK == nullptr)
+    { delete raw; return; }
+
+    // One drag of `dy` pixels upward on `k`, with the events stamped from `t`. `hostAt` runs after
+    // the LAST drag event and before `mouseUp`, which is the window under test.
+    auto dragWith = [&] (juce::Slider* k, float dy, juce::Time t,
+                         const std::function<void()>& hostAt) -> void
+    {
+        const float cx = (float) k->getWidth() * 0.5f, cy = (float) k->getHeight() * 0.5f;
+        auto ev = [&] (float y, bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, y },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, k, k,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        k->mouseDown (ev (cy, false, true));
+        k->mouseDrag (ev (cy - dy, true, true));
+        if (hostAt) hostAt();
+        k->mouseUp   (ev (cy - dy, true, true));
+    };
+
+    // ---- LEG A: the exact Devin case, the tightest instant ---------------------------
+    //      The host write fires from INSIDE the gesture-close dispatch, after the drag's last
+    //      attachment write and before the processor's close handler reads. Nothing the user did
+    //      can be recovered from the live value at that point: this is the leg that says the
+    //      endpoint must have been recorded when the user's write happened.
+    settle();
+    {
+        const float start   = plainOf (driveP);
+        const float foreign = 9.0f;
+        WriteFromInsideAGestureOpen poke;
+        poke.onClose = true;
+        poke.target  = driveP;
+        poke.to      = foreign;
+        driveP->addListener (&poke);
+        float produced = start;
+        dragWith (driveK, 20.0f, legStamp(), [&]
+        {
+            produced   = plainOf (driveP);    // what the user's own drag actually produced
+            poke.armed = true;                // ...and the host answers the close, not the drag
+        });
+        driveP->removeListener (&poke);
+        proc.pollUndoCoalesce();
+
+        check (poke.fired, "leg A: the host write landed inside the gesture close");
+        check (! near (produced, start), "leg A: the drag moved Drive");
+        check (near (plainOf (driveP), foreign),
+               "leg A: the host's write is what the plug-in is left holding");
+        check (proc.canUndo(), "leg A: the drag is one undoable step");
+        proc.undo();
+        check (near (plainOf (driveP), start),
+               "leg A: Undo returns Drive to the value it held when the press started");
+        proc.redo();
+        if (near (plainOf (driveP), foreign))
+            std::printf ("  [leg A] REDO restored the host's automation value as the user's endpoint:"
+                         " Drive %.4f, where the user's own drag produced %.4f\n",
+                         (double) plainOf (driveP), (double) produced);
+        check (near (plainOf (driveP), produced),
+               "leg A: Redo restores what the DRAG produced, never the automation");
+    }
+
+    // ---- LEG D: the same defect at the ordinary instant ------------------------------
+    //      A whole message-loop turn wide: the user has stopped moving and has not yet let go.
+    //      Listed separately from leg A because it is reached by different code -- no listener is
+    //      involved, the write is simply a DAW's automation lane arriving while the button is held.
+    settle();
+    {
+        const float start   = plainOf (driveP);
+        const float foreign = 3.0f;
+        float produced = start;
+        dragWith (driveK, 24.0f, legStamp(), [&]
+        {
+            produced = plainOf (driveP);
+            hostSets (driveP, foreign);       // ...between the last drag write and the release
+        });
+        proc.pollUndoCoalesce();
+
+        check (! near (produced, start), "leg D: the drag moved Drive");
+        check (near (plainOf (driveP), foreign),
+               "leg D: the host's write is what the plug-in is left holding");
+        proc.undo();
+        check (near (plainOf (driveP), start), "leg D: Undo returns Drive to the pre-press value");
+        proc.redo();
+        check (near (plainOf (driveP), produced),
+               "leg D: Redo restores the drag's own value, not the automation that followed it");
+    }
+
+    // ---- LEG B: several user writes, then automation, then the close -----------------
+    //      `after` must be the LAST value the user produced, not the first and not the host's.
+    settle();
+    {
+        const float start   = plainOf (driveP);
+        const float foreign = 11.0f;
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();
+        auto ev = [&] (float y, bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, y },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        driveK->mouseDown (ev (cy, false, true));
+        driveK->mouseDrag (ev (cy - 10.0f, true, true));
+        const float a1 = plainOf (driveP);
+        driveK->mouseDrag (ev (cy - 20.0f, true, true));
+        const float a2 = plainOf (driveP);
+        driveK->mouseDrag (ev (cy - 30.0f, true, true));
+        const float a3 = plainOf (driveP);
+        hostSets (driveP, foreign);
+        driveK->mouseUp (ev (cy - 30.0f, true, true));
+        proc.pollUndoCoalesce();
+
+        check (! near (a1, a2) && ! near (a2, a3), "leg B: the three drag events each moved Drive");
+        proc.undo();
+        check (near (plainOf (driveP), start), "leg B: Undo returns to the pre-press value");
+        proc.redo();
+        check (near (plainOf (driveP), a3),
+               "leg B: Redo restores the LAST value the user produced, not the first and not the host's");
+    }
+
+    // ---- LEG C: automation BETWEEN two user writes, before the close -----------------
+    //      The user writes again after the automation, so the last user-produced value is the
+    //      endpoint and the automation is simply overwritten while the press is still held.
+    settle();
+    {
+        const float start   = plainOf (driveP);
+        const float foreign = 1.5f;
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();
+        auto ev = [&] (float y, bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, y },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        driveK->mouseDown (ev (cy, false, true));
+        driveK->mouseDrag (ev (cy - 12.0f, true, true));
+        hostSets (driveP, foreign);
+        driveK->mouseDrag (ev (cy - 26.0f, true, true));
+        const float last = plainOf (driveP);
+        driveK->mouseUp (ev (cy - 26.0f, true, true));
+        proc.pollUndoCoalesce();
+
+        check (! near (last, foreign), "leg C: the second drag event wrote over the automation");
+        proc.undo();
+        check (near (plainOf (driveP), start), "leg C: Undo returns to the pre-press value");
+        proc.redo();
+        check (near (plainOf (driveP), last),
+               "leg C: Redo restores the user's later value");
+    }
+
+    // ---- LEG E: two parameters in one batch, automation on one of them ---------------
+    //      The endpoints are per parameter: automating Drive must not reach Amount's endpoint, and
+    //      Amount's own close must not retake Drive's.
+    settle();
+    {
+        const float d0 = plainOf (driveP), a0 = plainOf (amountP);
+        const float foreign = 7.5f;
+        float dProduced = d0;
+        dragWith (driveK, 18.0f, legStamp(), [&]
+        {
+            dProduced = plainOf (driveP);
+            hostSets (driveP, foreign);
+        });
+        float aProduced = a0;
+        dragWith (amountK, 18.0f, legStamp(), [&] { aProduced = plainOf (amountP); });
+        proc.pollUndoCoalesce();
+
+        check (! near (dProduced, d0) && ! near (aProduced, a0),
+               "leg E: both drags moved their own parameter");
+        proc.undo();
+        check (near (plainOf (driveP), d0) && near (plainOf (amountP), a0),
+               "leg E: one Undo puts both back to where their own presses started");
+        proc.redo();
+        check (near (plainOf (driveP), dProduced),
+               "leg E: Redo gives Drive what ITS drag produced, not the automation");
+        check (near (plainOf (amountP), aProduced),
+               "leg E: ...and Amount what its own drag produced");
+    }
+
+    // ---- LEG F: sequential gestures in one batch (the round-17 guarantee) ------------
+    //      Two presses that finish inside one 24 Hz period share a pending batch by design. The
+    //      SECOND one's close must not retake the FIRST one's endpoint -- which is what round 17
+    //      fixed, and what this round must not undo.
+    settle();
+    {
+        const float d0 = plainOf (driveP), a0 = plainOf (amountP);
+        const float foreign = 2.5f;
+        float dProduced = d0;
+        dragWith (driveK, 16.0f, legStamp(), [&] { dProduced = plainOf (driveP); });
+        hostSets (driveP, foreign);                        // ...between the two presses
+        float aProduced = a0;
+        dragWith (amountK, 16.0f, legStamp(), [&] { aProduced = plainOf (amountP); });
+        proc.pollUndoCoalesce();                           // ...one poll, one step
+
+        proc.undo();
+        check (near (plainOf (driveP), d0), "leg F: Undo gives Drive its own pre-press value");
+        proc.redo();
+        check (near (plainOf (driveP), dProduced),
+               "leg F: Redo gives Drive the first press's own value, not the automation between them");
+        check (near (plainOf (amountP), aProduced),
+               "leg F: ...and Amount the second press's");
+    }
+
+    // ---- LEG G: the standalone wheel, and ADR-0053's chain ---------------------------
+    //      A standalone notch is bracketed by JUCE's own `ScopedDragNotification`, so it has the
+    //      same open/write/close shape and the same window. The chain assertions are here so the
+    //      endpoint fix cannot buy correctness by breaking the wheel rules State test 86 owns.
+    settle();
+    {
+        const float start   = plainOf (driveP);
+        const float foreign = 8.25f;
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();
+        auto wev = [&] (juce::Time when)
+        {
+            return juce::MouseEvent (src, { cx, cy }, juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                     when, { cx, cy }, when, 1, false);
+        };
+        // What ONE notch from `start` produces, measured with nothing interfering. The notch is a
+        // pure function of the start value and the wheel delta, so the poked run below produces the
+        // same thing -- and reading it here is the only way to know it, because the poke fires
+        // inside the very call that would otherwise report it.
+        driveK->mouseWheelMove (wev (t), wheel);
+        const float oneNotch = plainOf (driveP);
+        proc.pollUndoCoalesce();
+        check (! near (oneNotch, start), "leg G: one notch moves Drive");
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        check (near (plainOf (driveP), start), "leg G: ...and the measurement leaves no residue");
+
+        // ...and now the same notch with the host answering its gesture close. A standalone notch is
+        // bracketed by JUCE's own `ScopedDragNotification` (juce_Slider.cpp:1164), so it has the
+        // same open / write / close shape a drag has, and the same window.
+        WriteFromInsideAGestureOpen poke;
+        poke.onClose = true;
+        poke.target  = driveP;
+        poke.to      = foreign;
+        driveP->addListener (&poke);
+        poke.armed = true;
+        driveK->mouseWheelMove (wev (t + juce::RelativeTime::seconds (1.0)), wheel);
+        driveP->removeListener (&poke);
+        proc.pollUndoCoalesce();
+
+        check (poke.fired, "leg G: the host write landed inside the notch's own gesture close");
+        check (near (plainOf (driveP), foreign),
+               "leg G: the host's write is what the plug-in is left holding");
+        proc.undo();
+        check (near (plainOf (driveP), start), "leg G: Undo returns Drive to the pre-scroll value");
+        proc.redo();
+        check (near (plainOf (driveP), oneNotch),
+               "leg G: Redo restores what the NOTCH produced, not the automation inside its close");
+
+        // ...and ADR-0053's chain is untouched by any of this: a second notch on the same control,
+        // with nothing else in between, extends the same step rather than starting another.
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        driveK->mouseWheelMove (wev (t + juce::RelativeTime::seconds (2.0)), wheel);
+        proc.pollUndoCoalesce();
+        driveK->mouseWheelMove (wev (t + juce::RelativeTime::seconds (3.0)), wheel);
+        proc.pollUndoCoalesce();
+        const float twoNotches = plainOf (driveP);
+        check (! near (twoNotches, start), "leg G: two notches move Drive further");
+        proc.undo();
+        check (near (plainOf (driveP), start),
+               "leg G: one Undo walks back the WHOLE scroll -- the chain still extends");
+        check (! proc.canUndo(), "leg G: ...and it was one step, not two");
+        proc.redo();
+        check (near (plainOf (driveP), twoNotches),
+               "leg G: Redo restores what the whole scroll produced");
+    }
+
+    // ---- LEG H: a host write REENTRANT inside the user's own store -------------------
+    //      The one instant a live read taken right after the attachment's write would still get
+    //      wrong: a host answering `setValueNotifyingHost` from inside its own listener dispatch.
+    //      The value the CONTROL asked for is the user's; the value the parameter holds when the
+    //      call returns is the host's. This leg is why the witness records the former.
+    //      `WriteFromInsideAStoreQuietly` writes with `setValue` rather than
+    //      `setValueNotifyingHost` for the reason its own comment gives -- a notifying write from
+    //      inside a store re-enters JUCE's listener lock.
+    settle();
+    {
+        const float start   = plainOf (driveP);
+        const float foreign = 5.75f;
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();
+        auto ev = [&] (float y, bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, y },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        WriteFromInsideAStoreQuietly echo;
+        echo.target = driveP;
+        echo.to     = foreign;
+        driveP->addListener (&echo);
+        driveK->mouseDown (ev (cy, false, true));
+        echo.armed = true;                         // ...fires from inside the drag's own store
+        driveK->mouseDrag (ev (cy - 22.0f, true, true));
+        // The control still holds what the user's drag asked for; the PARAMETER holds the echo's.
+        const float asked = driveP->convertFrom0to1 (driveP->convertTo0to1 ((float) driveK->getValue()));
+        driveK->mouseUp (ev (cy - 22.0f, true, true));
+        driveP->removeListener (&echo);
+        proc.pollUndoCoalesce();
+
+        check (echo.fired, "leg H: the host answered the drag's own store");
+        check (! near (asked, start), "leg H: the drag asked for a value of its own");
+        proc.undo();
+        check (near (plainOf (driveP), start), "leg H: Undo returns Drive to the pre-press value");
+        proc.redo();
+        check (near (plainOf (driveP), asked),
+               "leg H: Redo restores what the CONTROL asked for, not what the reentrant host left");
+    }
+
+    // ---- LEG I: a gesture-less UI write must not state an endpoint -------------------
+    //      A write with no change gesture open is the automation-shaped path ADR-0052 leaves
+    //      alone -- the numeric value box's drag is one. It must not declare an endpoint, because
+    //      a LATER gesture on the same parameter would then close on the value box's value instead
+    //      of its own. The sequence is what makes it visible: a first press leaves a batch pending,
+    //      so the second press's open does NOT re-base the episode bits.
+    settle();
+    {
+        const float a0 = plainOf (amountP);
+        (void) a0;
+        dragWith (amountK, 14.0f, legStamp(), nullptr);   // ...a batch is now pending, unpolled
+        const float d0 = plainOf (driveP);
+        const float loose = d0 + 4.0f;
+        driveK->setValue ((double) loose, juce::sendNotificationSync);  // gesture-LESS, like the box
+        check (near (plainOf (driveP), loose), "leg I: the gesture-less write moved Drive");
+        float produced = loose;
+        dragWith (driveK, 20.0f, legStamp(), [&] { produced = plainOf (driveP); });
+        proc.pollUndoCoalesce();
+
+        check (! near (produced, loose), "leg I: the press that followed moved Drive again");
+        proc.undo();
+        proc.redo();
+        check (near (plainOf (driveP), produced),
+               "leg I: Redo restores the PRESS's own value, not the gesture-less write before it");
+    }
+
+    // ---- LEG J: ...and it must not survive to be somebody else's endpoint ------------
+    //      The sharp edge of leg I. A gesture-less write that DID state an endpoint would leave it
+    //      behind, and the empty press that follows -- a click that starts no drag, which owns the
+    //      parameter and produces nothing -- would close on it. With a host write in between, the
+    //      press's `before` is the host's value and the stale endpoint is not, so the poll records a
+    //      step for a press that edited nothing and Redo lands on a value the user never produced.
+    //      The batch must already be pending, or the second press's open re-bases the episode bits
+    //      and the stale endpoint is cleared before it can be read.
+    settle();
+    {
+        dragWith (amountK, 14.0f, legStamp(), nullptr);   // ...a batch is now pending, unpolled
+        const float d0    = plainOf (driveP);
+        const float loose = d0 + 5.0f;
+        const float host  = d0 - 3.0f;
+        driveK->setValue ((double) loose, juce::sendNotificationSync);   // gesture-LESS
+        check (near (plainOf (driveP), loose), "leg J: the gesture-less write moved Drive");
+        hostSets (driveP, host);
+        check (near (plainOf (driveP), host), "leg J: ...and the host moved it again afterwards");
+
+        // An EMPTY press on Drive: it owns the parameter and produces nothing.
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();
+        auto ev = [&] (bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, cy },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        driveK->mouseDown (ev (false, true));
+        driveK->mouseUp   (ev (false, true));
+        proc.pollUndoCoalesce();
+
+        check (near (plainOf (driveP), host),
+               "leg J: the empty press left the host's value alone");
+        proc.undo();
+        proc.redo();
+        check (near (plainOf (driveP), host),
+               "leg J: ...and Redo does not hand the press an endpoint the gesture-less write left");
+    }
+
+    delete raw;
+    std::printf ("\n");
+}
+
+// ----------------------------------------------------------------------------
+//  State test 92 -- a REFUSED store states no endpoint at all
+// ----------------------------------------------------------------------------
+//  ADR-0008, round 19. `SpectrumImager::storeOwned` proves its own write: it reads the parameter
+//  back and REFUSES the declaration when what is there is not what it installed, because a refused
+//  store means somebody else's value is in the slot. Round 18 gave the close a second source of
+//  endpoints (the attachment witness), and left the refusal with only the ABSENCE of a declaration
+//  to say so -- which is exactly what an attachment control that has written nothing yet looks like.
+//  The close could not tell them apart, so it live-read the parameter and the host's replacement
+//  became the user's `after`.
+//
+//  A refused store is a positive fact and is now recorded as one. Every leg drives the real
+//  multiband display with synthetic events, and the "host/controller replaces the value during
+//  `setValueNotifyingHost`" case is produced by `WriteFromInsideAStoreQuietly` pointed at the very
+//  parameter being stored -- a write with no notification, for the reason that probe's own comment
+//  gives, and the exact shape `storeOwned`'s read-back proof exists to catch.
+static void testARefusedStoreStatesNoEndpoint()
+{
+    std::printf ("State test 92: a refused store states no endpoint at all\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "State test 92: the editor constructs for the refused-store probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (im != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) { im = si; return; }
+            walk (k);
+            if (im != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "State test 92: the imager is laid out");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* driveP = apvts.getParameter (pid::drive);
+    check (bandsP && wLoP && loP && driveP, "State test 92: the parameters it drives exist");
+    if (! (bandsP && wLoP && loP && driveP)) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto near     = [] (float a, float b) { return std::abs (a - b) <= 1.0e-3f; };
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float dx, float dy, bool dragged)
+    {
+        return juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                 juce::Time::getCurrentTime(), { dx, dy },
+                                 juce::Time::getCurrentTime(), 1, dragged);
+    };
+    auto hov = [&] (float x, float y)
+    {
+        return juce::MouseEvent (src, { x, y }, juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                 juce::Time::getCurrentTime(), { x, y },
+                                 juce::Time::getCurrentTime(), 1, false);
+    };
+    const float W = (float) im->getWidth(), H = (float) im->getHeight();
+    const float bx = 0.5f * W;
+    auto findY = [&] (const char* want, float x) -> float
+    {
+        for (float y = 4.0f; y < H - 4.0f; y += 1.0f)
+        {
+            im->mouseMove (mev (x, y, x, y, false));
+            if (im->getTooltip() == juce::String (want)) return y;
+        }
+        return -1.0f;
+    };
+    auto findX = [&] (const char* want, float y) -> float
+    {
+        for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (x, y, x, y, false));
+            if (im->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f; wheel.deltaY = 0.4f;
+    wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+    // Two bands, a known Width, and no history: the state every leg starts from.
+    // ONE band and a known Width: the state State test 80's own width legs start from, because the
+    // width line the tooltip names is band 0's and a two-band layout puts a split under `bx`.
+    auto settle = [&] { im->cancelActiveDrag();
+                        setPlain (bandsP, 1.0f); setPlain (wLoP, 1.0f);
+                        while (proc.canUndo()) proc.undo();
+                        proc.pollUndoCoalesce(); };
+    // ...and the split leg needs a layout that HAS a split.
+    auto settleSplit = [&] { im->cancelActiveDrag();
+                             setPlain (bandsP, 2.0f);
+                             while (proc.canUndo()) proc.undo();
+                             proc.pollUndoCoalesce(); };
+
+    // ---- LEG A: a store that STOOD still states its endpoint (control) ---------------
+    settle();
+    {
+        const float start = plainOf (wLoP);
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg A: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            im->mouseDown (mev (bx, wy, bx, wy, false));
+            im->mouseDrag (mev (bx, wy - 6.0f, bx, wy, true));
+            im->mouseDrag (mev (bx, wy - 18.0f, bx, wy, true));
+            const float produced = plainOf (wLoP);
+            im->mouseUp   (mev (bx, wy - 18.0f, bx, wy, true));
+            proc.pollUndoCoalesce();
+
+            check (! near (produced, start), "leg A: the drag moved the width");
+            check (proc.canUndo(), "leg A: ...and it is one undoable step");
+            proc.undo();
+            check (near (plainOf (wLoP), start), "leg A: Undo gives the pre-press width");
+            proc.redo();
+            check (near (plainOf (wLoP), produced), "leg A: Redo gives what the store installed");
+        }
+    }
+
+    // ---- LEG B: a REFUSED store states NOTHING -- the reported case -------------------
+    //      The controller replaces the value from inside the store's own dispatch, so the
+    //      read-back proof fails and `storeOwned` refuses. Nothing the user asked for stood, so
+    //      the interaction has no endpoint and must leave no step -- and above all the host's
+    //      replacement must not become one.
+    settle();
+    {
+        const float start   = plainOf (wLoP);
+        const float foreign = 1.4f;
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg B: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            check (! proc.canUndo(), "leg B: the leg starts with no undo history");
+            WriteFromInsideAStoreQuietly echo;
+            echo.target = wLoP;
+            echo.to     = foreign;
+            wLoP->addListener (&echo);
+            im->mouseDown (mev (bx, wy, bx, wy, false));
+            echo.armed = true;      // ...the controller answers the FIRST store, so none ever stood
+            im->mouseDrag (mev (bx, wy - 6.0f, bx, wy, true));
+            im->mouseDrag (mev (bx, wy - 18.0f, bx, wy, true));
+            im->mouseUp   (mev (bx, wy - 18.0f, bx, wy, true));
+            wLoP->removeListener (&echo);
+            proc.pollUndoCoalesce();
+
+            check (echo.fired, "leg B: the controller replaced the value inside the store");
+            check (near (plainOf (wLoP), foreign),
+                   "leg B: the controller's value is what the plug-in is left holding");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                proc.redo();
+                std::printf ("  [leg B] a refused store recorded a step: Redo gives %.4f,"
+                             " where the controller wrote %.4f\n",
+                             (double) plainOf (wLoP), (double) foreign);
+                check (! near (plainOf (wLoP), foreign),
+                       "leg B: Redo never produces the controller's value");
+            }
+            check (! proc.canUndo() || ! near (plainOf (wLoP), foreign),
+                   "leg B: a refused store states no endpoint");
+            check (! near (start, foreign), "leg B: the leg's two values differ");
+        }
+    }
+
+    // ---- LEG E: the same refusal on the STANDALONE width scroll ----------------------
+    //      A different bracket: `beginGesture` / `storeOwned` / `endGesture` around one notch,
+    //      with no drag in flight at all.
+    settle();
+    {
+        const float foreign = 0.6f;
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg E: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            check (! proc.canUndo(), "leg E: the leg starts with no undo history");
+            WriteFromInsideAStoreQuietly echo;
+            echo.target = wLoP;
+            echo.to     = foreign;
+            wLoP->addListener (&echo);
+            echo.armed = true;
+            im->mouseWheelMove (hov (bx, wy), wheel);
+            wLoP->removeListener (&echo);
+            proc.pollUndoCoalesce();
+
+            check (echo.fired, "leg E: the controller replaced the notch's own store");
+            check (! proc.canUndo() || ! near (plainOf (wLoP), foreign),
+                   "leg E: a refused standalone notch states no endpoint");
+        }
+    }
+
+    // ---- LEG D: the same refusal on a SPLIT FREQUENCY store --------------------------
+    settleSplit();
+    {
+        const float hy = 0.5f * H;
+        const float hx = findX ("Drag to change the split frequency", hy);
+        check (hx >= 0.0f, "leg D: a split handle is findable");
+        if (hx >= 0.0f)
+        {
+            const float foreign = 7000.0f;
+            check (! proc.canUndo(), "leg D: the leg starts with no undo history");
+            WriteFromInsideAStoreQuietly echo;
+            echo.target = loP;
+            echo.to     = foreign;
+            loP->addListener (&echo);
+            im->mouseDown (mev (hx, hy, hx, hy, false));
+            echo.armed = true;
+            im->mouseDrag (mev (hx + 40.0f, hy, hx, hy, true));
+            im->mouseUp   (mev (hx + 40.0f, hy, hx, hy, true));
+            loP->removeListener (&echo);
+            proc.pollUndoCoalesce();
+
+            check (echo.fired, "leg D: the controller replaced the split store");
+            // MEASURED rather than asserted away, and the measurement is not what a first reading
+            // predicts: the controller's value DOES stand -- the split is left at 7000 Hz -- and no
+            // undo step is recorded for it all the same, before the round-19 fix as well as after.
+            // So the split path never reached the window legs B, C and E reach, and this leg is a
+            // CONTROL for it rather than a second proof. The rule itself is covered by those three
+            // through the one `storeOwned` that every split and width store shares.
+            std::printf ("  [leg D] after the refused split store: split %.1f Hz, controller wrote"
+                         " %.1f Hz, undo available %d\n",
+                         (double) plainOf (loP), (double) foreign, (int) proc.canUndo());
+            check (! proc.canUndo() || ! near (plainOf (loP), foreign),
+                   "leg D: a refused split store states no endpoint");
+        }
+    }
+
+    // ---- LEG C: several notches, the LAST of them refused ----------------------------
+    //      The endpoint must be the last value that actually STOOD, not the controller's and not
+    //      the pre-scroll value.
+    settle();
+    {
+        const float start = plainOf (wLoP);
+        const float foreign = 0.25f;
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg C: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            im->mouseWheelMove (hov (bx, wy), wheel);
+            proc.pollUndoCoalesce();
+            const float afterOne = plainOf (wLoP);
+            check (! near (afterOne, start), "leg C: the first notch moved the width");
+            const float wy2 = findY ("Band width", bx);
+            if (wy2 >= 0.0f)
+            {
+                WriteFromInsideAStoreQuietly echo;
+                echo.target = wLoP;
+                echo.to     = foreign;
+                wLoP->addListener (&echo);
+                echo.armed = true;
+                im->mouseWheelMove (hov (bx, wy2), wheel);
+                wLoP->removeListener (&echo);
+                proc.pollUndoCoalesce();
+                check (echo.fired, "leg C: the controller replaced the second notch's store");
+                check (proc.canUndo(), "leg C: the first notch is still undoable");
+                proc.undo();
+                check (near (plainOf (wLoP), start), "leg C: Undo gives the pre-scroll width");
+                proc.redo();
+                check (! near (plainOf (wLoP), foreign),
+                       "leg C: Redo never produces the controller's value");
+                check (near (plainOf (wLoP), afterOne),
+                       "leg C: ...it gives the last value that actually stood");
+            }
+        }
+    }
+
+    // ---- LEG F: a refused store, then another user gesture before the poll -----------
+    //      They share one pending batch. The refused parameter must contribute nothing to it, and
+    //      the second gesture's own endpoint must be unaffected.
+    settle();
+    {
+        const float foreign = 1.75f;
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg F: the width line is findable");
+        if (wy >= 0.0f)
+        {
+            WriteFromInsideAStoreQuietly echo;
+            echo.target = wLoP;
+            echo.to     = foreign;
+            wLoP->addListener (&echo);
+            im->mouseDown (mev (bx, wy, bx, wy, false));
+            im->mouseDrag (mev (bx, wy - 6.0f, bx, wy, true));
+            echo.armed = true;
+            im->mouseDrag (mev (bx, wy - 18.0f, bx, wy, true));
+            im->mouseUp   (mev (bx, wy - 18.0f, bx, wy, true));
+            wLoP->removeListener (&echo);
+
+            const float d0 = plainOf (driveP);          // ...a second, ordinary user gesture
+            driveP->beginChangeGesture();
+            setPlain (driveP, d0 + 3.0f);
+            const float dProduced = plainOf (driveP);
+            driveP->endChangeGesture();
+            proc.pollUndoCoalesce();                    // ...one poll, one batch
+
+            check (echo.fired, "leg F: the controller replaced the width store");
+            check (proc.canUndo(), "leg F: the second gesture is undoable");
+            proc.undo();
+            check (near (plainOf (driveP), d0), "leg F: Undo gives Drive its pre-gesture value");
+            proc.redo();
+            check (near (plainOf (driveP), dProduced), "leg F: Redo gives Drive what the user made");
+            check (near (plainOf (wLoP), foreign),
+                   "leg F: ...and the refused width is left where the controller put it -- the"
+                   " step does not carry it");
+        }
+    }
+
+    // ---- LEG G: automation AFTER a completed user batch ------------------------------
+    settle();
+    {
+        const float a = plainOf (driveP);
+        driveP->beginChangeGesture();
+        setPlain (driveP, a + 4.0f);
+        const float b = plainOf (driveP);
+        driveP->endChangeGesture();
+        proc.pollUndoCoalesce();
+        setPlain (driveP, b + 5.0f);                    // ...automation, after the step is closed
+        proc.undo();
+        check (near (plainOf (driveP), a), "leg G: Undo gives A");
+        proc.redo();
+        check (near (plainOf (driveP), b), "leg G: Redo gives B, never the automation's C");
+    }
+
+    // ---- LEG H: the round-18 attachment path is unchanged ----------------------------
+    //      A gesture on an attachment-backed parameter, automation before the close, Redo must give
+    //      the user's value. Driven through the parameter here because State test 91 already drives
+    //      the real knob; this leg exists so a change to the refusal rule cannot silently undo it.
+    settle();
+    {
+        std::vector<juce::Slider*> sliders;
+        std::function<void (juce::Component*)> sw = [&] (juce::Component* c)
+        {
+            for (int i = 0; i < c->getNumChildComponents(); ++i)
+            {
+                auto* k = c->getChildComponent (i);
+                if (auto* sl = dynamic_cast<juce::Slider*> (k)) sliders.push_back (sl);
+                sw (k);
+            }
+        };
+        sw (ed);
+        juce::Slider* driveK = nullptr;
+        {
+            const float was = driveP->getValue();
+            std::vector<double> before;
+            before.reserve (sliders.size());
+            for (auto* sl : sliders) before.push_back (sl->getValue());
+            driveP->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+            int hits = 0;
+            for (size_t i = 0; i < sliders.size(); ++i)
+                if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { driveK = sliders[i]; ++hits; }
+            driveP->setValueNotifyingHost (was);
+            if (hits != 1) driveK = nullptr;
+        }
+        check (driveK != nullptr, "leg H: the Drive knob is findable from its parameter");
+        if (driveK != nullptr)
+        {
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float d0 = plainOf (driveP);
+            const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+            const auto t = juce::Time::getCurrentTime();
+            auto kev = [&] (float y, bool dragged)
+            {
+                return juce::MouseEvent (src, { cx, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                         t, { cx, cy }, t, 1, dragged);
+            };
+            driveK->mouseDown (kev (cy, false));
+            driveK->mouseDrag (kev (cy - 20.0f, true));
+            const float produced = plainOf (driveP);
+            setPlain (driveP, d0 + 9.0f);               // ...host automation, before the release
+            driveK->mouseUp (kev (cy - 20.0f, true));
+            proc.pollUndoCoalesce();
+
+            check (! near (produced, d0), "leg H: the knob drag moved Drive");
+            proc.undo();
+            check (near (plainOf (driveP), d0), "leg H: Undo gives the pre-press value");
+            proc.redo();
+            check (near (plainOf (driveP), produced),
+                   "leg H: Redo gives the drag's own value -- round 18 is intact");
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+    std::printf ("\n");
+}
+
+
+
+// ---------------------------------------------------------------------------
+//  State test 93 -- a complete-gesture endpoint is known before the gesture can be polled
+//  (ADR-0008 round 20; review finding "nested polls capture stale endpoints",
+//  src/PluginEditor.h:R178-181).
+//
+//  ROUND 18 GAVE THE ATTACHMENT FAMILIES AN ENDPOINT WITNESS; ROUND 20 FOUND THE ONE ORDERING
+//  IT CANNOT REACH. For a ComboBox or a Button, JUCE's attachment performs the WHOLE gesture
+//  inside a single listener callback -- `setValueAsCompleteGesture` is beginChangeGesture /
+//  setValueNotifyingHost / endChangeGesture on one stack (juce_ParameterAttachments.cpp:59-67,
+//  called from :239 and :274) -- and the witness's after-hook is the NEXT listener in that same
+//  pass, so it cannot run until the gesture has already closed. A slider is not like this: it
+//  writes with `setValueAsPartOfGesture` and closes from a separate `sliderDragEnded` dispatch
+//  (juce_ParameterAttachments.cpp:189-193, .h:166-167), so its witness runs first and the close
+//  skips the live read on episode bit 1.
+//
+//  THE CLOSE IS WHERE THE BATCH BECOMES POLLABLE. `pendingGestureCommit = true`
+//  (PluginProcessor.cpp:1019) and the endpoint live read (:1049) both happen inside
+//  `parameterGestureChanged` -- and the plug-in is an ORDINARY parameter listener (:47) while the
+//  host's wrapper sits behind the parameter's `finalListener`, called LAST
+//  (juce_AudioProcessorParameter.cpp:103-108). The host is therefore handed control with the
+//  batch already pollable, the endpoint already read, and the witness still pending.
+//
+//  TWO INGREDIENTS ARE NEEDED AND THE REVIEW NAMED ONE. A host that merely pumps at the close
+//  makes the poll commit the live read -- which is what the user asked for, so nothing is wrong.
+//  The endpoint is poisoned only if a host write landed EARLIER, inside `setValueNotifyingHost`,
+//  before the read at :1049. Both halves are the host's own two callbacks, so this test drives
+//  them from the host's own seat rather than approximating one of them.
+// ---------------------------------------------------------------------------
+namespace {
+// THE HOST'S SEAT, AND IT IS THE LITERAL ONE -- no ordering trick. `AudioProcessorParameter`
+// walks `listeners` in reverse registration order and then calls `finalListener` last
+// (juce_AudioProcessorParameter.cpp:103-108); `finalListener` is `AudioProcessor`'s
+// `ParameterChangeForwarder` (juce_AudioProcessor.h:1664), which fans out to the
+// `AudioProcessorListener`s -- the seat the VST3/AU/VST2 wrapper occupies. Registering here runs
+// exactly where a host runs: after the plug-in's own close, before the witness resumes.
+struct HostSeat final : public juce::AudioProcessorListener
+{
+    AnamorphAudioProcessor*     proc   = nullptr;
+    juce::RangedAudioParameter* target = nullptr;   // what the host re-entrantly writes
+    int   index       = -1;                         // ...and the index whose callbacks arm it
+    float writeToNorm = 0.0f;
+    // ...and, optionally, a SECOND parameter written NOTIFYINGLY in the same breath. That one
+    // drives its own attachment, which sets its own control, which runs that control's witness
+    // pair NESTED inside the one still in flight -- the ordinary "a host moved another control
+    // while you were selecting" case, and the only thing that can strand an outer request.
+    juce::RangedAudioParameter* nestTarget = nullptr;
+    float nestToNorm = 0.0f;
+    bool  armWrite = false, armPoll = false;
+    bool  wrote    = false, polled  = false;
+    int   pollMillis = -1;   // how long the nested poll took (round 21, State test 94 leg F)
+
+    // The host answers the WRITE, re-entrantly, from inside `setValueNotifyingHost`. That is the
+    // only place a host value can land before the close's live read at PluginProcessor.cpp:1049.
+    // `setValue` rather than `setValueNotifyingHost`, so the answer does not recurse -- the same
+    // quiet shape `WriteFromInsideAStoreQuietly` uses.
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int i, float) override
+    {
+        if (! armWrite || i != index || target == nullptr) return;
+        armWrite = false; wrote = true;
+        target->setValue (writeToNorm);
+        if (nestTarget != nullptr) nestTarget->setValueNotifyingHost (nestToNorm);
+    }
+    // ...and PUMPS ITS MESSAGE LOOP from the gesture-end callback. The only thing the pump does
+    // that matters here is let the editor's 24 Hz timer run, and all that timer does is poll
+    // (PluginEditor.cpp:1545). Calling the poll IS the pump, for this purpose.
+    //
+    // ROUND 21: THROUGH THE DOOR THE TIMER ACTUALLY USES. `PluginEditor.cpp:1545` calls
+    // `pollUndoCoalesceFromTimer`, not `pollUndoCoalesce`, and the difference is the whole of
+    // RISK-009: the timer's door must not block on `soundReplacement`, because this seat is
+    // reached with a parameter's `listenerLock` held. Calling the blocking door from here modelled
+    // a path production does not have. `pollMillis` is how State test 94 leg F reads the result.
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
+    {
+        if (! armPoll || i != index || proc == nullptr) return;
+        armPoll = false; polled = true;
+        const auto t0 = std::chrono::steady_clock::now();
+        proc->pollUndoCoalesceFromTimer();
+        pollMillis = (int) std::chrono::duration_cast<std::chrono::milliseconds> (
+                         std::chrono::steady_clock::now() - t0).count();
+    }
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
+    void audioProcessorChanged (juce::AudioProcessor*,
+                                const juce::AudioProcessorListener::ChangeDetails&) override {}
+};
+} // namespace
+
+static void testACompleteGestureEndpointPrecedesThePoll()
+{
+    std::printf ("State test 93: a complete-gesture endpoint is known before the gesture can be polled\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode))
+        a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "State test 93: the editor constructs for the nested-poll probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::ComboBox*>     combos;
+    std::vector<juce::ToggleButton*> toggles;
+    std::vector<juce::Slider*>       sliders;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* b = dynamic_cast<juce::ComboBox*>     (k)) combos.push_back (b);
+            if (auto* t = dynamic_cast<juce::ToggleButton*> (k)) toggles.push_back (t);
+            if (auto* s = dynamic_cast<juce::Slider*>       (k)) sliders.push_back (s);
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    // Move-and-see identification, as State tests 86/88/91 do: the editor exposes no component
+    // ids and every control is a private member, so the only handle is "which one follows".
+    auto findComboFor = [&] (juce::RangedAudioParameter* p) -> juce::ComboBox*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<int> before;
+        before.reserve (combos.size());
+        for (auto* c : combos) before.push_back (c->getSelectedItemIndex());
+        p->setValueNotifyingHost (was < 0.5f ? 1.0f : 0.0f);
+        juce::ComboBox* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < combos.size(); ++i)
+            if (combos[i]->getSelectedItemIndex() != before[i]) { found = combos[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+    auto findToggleFor = [&] (juce::RangedAudioParameter* p) -> juce::ToggleButton*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<bool> before;
+        before.reserve (toggles.size());
+        for (auto* t : toggles) before.push_back (t->getToggleState());
+        p->setValueNotifyingHost (was < 0.5f ? 1.0f : 0.0f);
+        juce::ToggleButton* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < toggles.size(); ++i)
+            if (toggles[i]->getToggleState() != before[i]) { found = toggles[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* algoP  = apvts.getParameter (pid::algorithm);
+    auto* monoP  = apvts.getParameter (pid::monoSum);
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* algoB  = findComboFor  (algoP);
+    auto* monoT  = findToggleFor (monoP);
+    auto* driveK = findSliderFor (driveP);
+    check (algoP != nullptr && algoB != nullptr,
+           "State test 93: the Algorithm combo is findable from its parameter");
+    check (monoP != nullptr && monoT != nullptr,
+           "State test 93: the Mono toggle is findable from its parameter");
+    check (driveP != nullptr && driveK != nullptr,
+           "State test 93: the Drive knob is findable from its parameter");
+    if (algoP == nullptr || algoB == nullptr || monoP == nullptr || monoT == nullptr
+        || driveP == nullptr || driveK == nullptr)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    const int nAlgo = algoB->getNumItems();
+    check (nAlgo >= 3, "State test 93: the Algorithm combo offers a third value the host can install");
+    if (nAlgo < 3) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto plainOf = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto near    = [] (float a, float b) { return std::abs (a - b) <= 1.0e-3f; };
+    auto settle  = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
+    // The normalised value the combo's own arithmetic produces for an item index -- JUCE's
+    // `ComboBoxParameterAttachment::comboBoxChanged` maps index/(numItems-1) and the attachment
+    // then round-trips it through the parameter's range (juce_ParameterAttachments.cpp:229-240).
+    auto normForItem = [&] (juce::RangedAudioParameter* p, int idx, int n)
+    {
+        const float rawv = n > 1 ? (float) idx / (float) (n - 1) : 0.0f;
+        return p->convertTo0to1 (p->convertFrom0to1 (rawv));
+    };
+
+    HostSeat host;
+    host.proc = &proc;
+    proc.addListener (&host);
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    int legNo = 0;
+    const auto suiteBase = juce::Time::getCurrentTime();
+    auto legStamp = [&] { return suiteBase + juce::RelativeTime::seconds (5.0 * ++legNo); };
+    auto dragKnob = [&] (juce::Slider* k, float dy, juce::Time t, const std::function<void()>& at)
+    {
+        const float cx = (float) k->getWidth() * 0.5f, cy = (float) k->getHeight() * 0.5f;
+        auto ev = [&] (float y, bool dragged, bool button)
+        {
+            return juce::MouseEvent (src, { cx, y },
+                                     button ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, k, k,
+                                     t, { cx, cy }, t, 1, dragged);
+        };
+        k->mouseDown (ev (cy, false, true));
+        k->mouseDrag (ev (cy - dy, true, true));
+        if (at) at();
+        k->mouseUp   (ev (cy - dy, true, true));
+    };
+
+    // ---- LEG A: THE PROOF -- a combo selection whose close the host both poisons and polls ----
+    //      Start on item 0, the user selects the last item, and the host installs a THIRD item
+    //      from inside the write. Three distinct values, so neither "the host wrote what the user
+    //      wanted" nor "the host put it back" can mask the result.
+    settle();
+    {
+        algoP->setValueNotifyingHost (normForItem (algoP, 0, nAlgo));
+        settle();
+        const float start = plainOf (algoP);
+        const int   pick  = nAlgo - 1;
+        const int   hostItem = 1;                     // distinct from 0 and from pick
+        const float expected = algoP->convertFrom0to1 (normForItem (algoP, pick, nAlgo));
+
+        host.target      = algoP;
+        host.index       = algoP->getParameterIndex();
+        host.writeToNorm = normForItem (algoP, hostItem, nAlgo);
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        algoB->setSelectedItemIndex (pick, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+
+        check (host.wrote,  "leg A: the host answered the write from inside setValueNotifyingHost");
+        check (host.polled, "leg A: the host pumped -- a nested poll ran inside the gesture close");
+        check (proc.canUndo(), "leg A: the selection is one undoable step");
+        proc.undo();
+        check (near (plainOf (algoP), start),
+               "leg A: Undo returns Algorithm to the value the selection started from");
+        proc.redo();
+        if (near (plainOf (algoP), algoP->convertFrom0to1 (host.writeToNorm)))
+            std::printf ("  [leg A] the nested poll committed the HOST's value as the user's endpoint:"
+                         " Redo gives %.4f, where the user selected %.4f\n",
+                         (double) plainOf (algoP), (double) expected);
+        check (near (plainOf (algoP), expected),
+               "leg A: Redo restores what the USER selected, never the host's value");
+    }
+
+    // ---- LEG B: a CONTROL, and the measurement is why it is one -----------------------------
+    //      Same shape on a Button. Every toggle in this editor drives a `RawBool`
+    //      (PluginParameters.cpp:47-58, getNumSteps() == 2), so the host's re-entrant write has
+    //      only one value available that is not the one the user just produced: the one the user
+    //      just left. That restores the committed sound, and the batch's own `sig != committedSig`
+    //      gate (PluginProcessor.cpp:1135) then correctly records nothing. A two-valued parameter
+    //      cannot carry a WRONG endpoint, so this leg is a control rather than a second proof --
+    //      recorded because the review's finding named buttons alongside combo boxes.
+    settle();
+    {
+        const bool was = monoT->getToggleState();
+        host.target      = monoP;
+        host.index       = monoP->getParameterIndex();
+        host.writeToNorm = was ? 1.0f : 0.0f;         // ...the value the user just left
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        monoT->setToggleState (! was, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+
+        check (host.wrote && host.polled,
+               "leg B: the button case reached the same window (write in, poll at the close)");
+        std::printf ("  [leg B] two-valued parameter: live Mono %.0f, undo available %d\n",
+                     (double) plainOf (monoP), (int) proc.canUndo());
+        check (near (plainOf (monoP), was ? 1.0f : 0.0f),
+               "leg B: the host's write is what the plug-in is left holding");
+    }
+
+    // ---- LEG C: a CONTROL -- the host write WITHOUT the nested poll --------------------------
+    //      This is round 18's own case, and it must keep working: the witness's after-hook runs,
+    //      finds the parameter moved, and states the user's endpoint.
+    settle();
+    {
+        algoP->setValueNotifyingHost (normForItem (algoP, 0, nAlgo));
+        settle();
+        const float start = plainOf (algoP);
+        const int   pick  = nAlgo - 1;
+        const float expected = algoP->convertFrom0to1 (normForItem (algoP, pick, nAlgo));
+
+        host.target      = algoP;
+        host.index       = algoP->getParameterIndex();
+        host.writeToNorm = normForItem (algoP, 1, nAlgo);
+        host.armWrite = true; host.armPoll = false;   // ...the host does NOT pump this time
+        host.wrote = host.polled = false;
+
+        algoB->setSelectedItemIndex (pick, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+
+        check (host.wrote && ! host.polled, "leg C: the host wrote but did not pump");
+        check (proc.canUndo(), "leg C: the selection is one undoable step");
+        proc.undo();
+        check (near (plainOf (algoP), start), "leg C: Undo returns to the starting item");
+        proc.redo();
+        check (near (plainOf (algoP), expected),
+               "leg C: Redo restores the user's selection (round 18 preserved)");
+    }
+
+    // ---- LEG D: a CONTROL -- the nested poll WITHOUT a host write ----------------------------
+    //      The live read at the close IS the user's value here, so the nested poll commits the
+    //      right thing. This leg exists to show the fix does not depend on suppressing the poll.
+    settle();
+    {
+        algoP->setValueNotifyingHost (normForItem (algoP, 0, nAlgo));
+        settle();
+        const float start = plainOf (algoP);
+        const int   pick  = nAlgo - 1;
+        const float expected = algoP->convertFrom0to1 (normForItem (algoP, pick, nAlgo));
+
+        host.target      = algoP;
+        host.index       = algoP->getParameterIndex();
+        host.armWrite = false; host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        algoB->setSelectedItemIndex (pick, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+
+        check (! host.wrote && host.polled, "leg D: the host pumped but wrote nothing");
+        check (proc.canUndo(), "leg D: the selection is one undoable step");
+        proc.undo();
+        check (near (plainOf (algoP), start), "leg D: Undo returns to the starting item");
+        proc.redo();
+        check (near (plainOf (algoP), expected), "leg D: Redo restores the user's selection");
+    }
+
+    // ---- LEG E: two user gestures in one batch, the nested poll inside the FIRST --------------
+    //      The combo's close is polled while a knob drag is still to come. Whatever the poll
+    //      commits, the combo's own endpoint must be the user's -- a stale endpoint here would be
+    //      the same defect wearing a second gesture as cover.
+    settle();
+    {
+        algoP->setValueNotifyingHost (normForItem (algoP, 0, nAlgo));
+        settle();
+        const float aStart = plainOf (algoP), dStart = plainOf (driveP);
+        const int   pick   = nAlgo - 1;
+        const float aExpect = algoP->convertFrom0to1 (normForItem (algoP, pick, nAlgo));
+
+        host.target      = algoP;
+        host.index       = algoP->getParameterIndex();
+        host.writeToNorm = normForItem (algoP, 1, nAlgo);
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        algoB->setSelectedItemIndex (pick, juce::sendNotificationSync);
+        float dProduced = dStart;
+        dragKnob (driveK, 18.0f, legStamp(), [&] { dProduced = plainOf (driveP); });
+        proc.pollUndoCoalesce();
+
+        check (host.wrote && host.polled, "leg E: the first gesture's close was poisoned and polled");
+        check (! near (dProduced, dStart), "leg E: the drag moved Drive");
+        // Walk the history back to the start, then forward again, and read the combo.
+        while (proc.canUndo()) proc.undo();
+        check (near (plainOf (algoP), aStart) && near (plainOf (driveP), dStart),
+               "leg E: Undo puts both controls back where they started");
+        while (proc.canRedo()) proc.redo();
+        check (near (plainOf (algoP), aExpect),
+               "leg E: Redo restores the user's SELECTION, not the host's, even across two gestures");
+        check (near (plainOf (driveP), dProduced),
+               "leg E: ...and the drag's own endpoint is untouched by the nested poll");
+    }
+
+    // ---- LEG F: a CONTROL -- automation on a DIFFERENT parameter during the combo gesture -----
+    //      ADR-0008's per-parameter rule: a host move on Drive while the user is selecting an
+    //      algorithm must not join the user's step.
+    settle();
+    {
+        algoP->setValueNotifyingHost (normForItem (algoP, 0, nAlgo));
+        settle();
+        const float aStart = plainOf (algoP), dStart = plainOf (driveP);
+        const int   pick   = nAlgo - 1;
+
+        host.target      = driveP;                     // ...a parameter the user is NOT touching
+        host.index       = algoP->getParameterIndex(); // armed by the combo's callbacks
+        host.writeToNorm = driveP->convertTo0to1 (dStart + 3.0f);
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        algoB->setSelectedItemIndex (pick, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+
+        check (host.wrote && host.polled, "leg F: the unrelated automation landed inside the gesture");
+        check (! near (plainOf (driveP), dStart), "leg F: Drive really did move");
+        const float dAfter = plainOf (driveP);
+        proc.undo();
+        check (near (plainOf (algoP), aStart), "leg F: Undo puts the algorithm back");
+        check (near (plainOf (driveP), dAfter),
+               "leg F: ...and leaves the host's Drive move alone -- it was never the user's");
+    }
+
+    // ---- LEG G: a CONTROL -- the slider path, which is structurally out of reach --------------
+    //      A slider writes with `setValueAsPartOfGesture` and closes from a separate
+    //      `sliderDragEnded` dispatch, so its witness has already set episode bit 1 and the close
+    //      skips the live read. Driven here with BOTH ingredients to show it stays correct.
+    settle();
+    {
+        const float start = plainOf (driveP);
+        float produced = start;
+        host.target      = driveP;
+        host.index       = driveP->getParameterIndex();
+        host.writeToNorm = driveP->convertTo0to1 (9.0f);
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        // Read what the USER produced from the SLIDER, not from the parameter: by this point the
+        // host has already overwritten the parameter, and the slider's own value is exactly what
+        // the witness records (PluginEditor.h, `Hook::sliderValueChanged`).
+        dragKnob (driveK, 20.0f, legStamp(), [&] { produced = (float) driveK->getValue(); });
+        proc.pollUndoCoalesce();
+
+        check (! near (produced, start), "leg G: the drag moved Drive");
+        check (proc.canUndo(), "leg G: the drag is one undoable step");
+        proc.undo();
+        check (near (plainOf (driveP), start), "leg G: Undo returns to the pre-press value");
+        proc.redo();
+        check (near (plainOf (driveP), produced),
+               "leg G: Redo restores what the DRAG produced (rounds 18/19 preserved)");
+    }
+
+    // ---- LEG H: a CONTROL -- round 19's refusal, now with a nested poll on top ---------------
+    //      R1032-1035 is covered end-to-end by State test 92, which runs in this same suite. What
+    //      is NEW here is the combination: a store the imager REFUSES, whose gesture close is then
+    //      polled from the host's seat. Episode bit 2 must still suppress the live read, so the
+    //      poll commits the endpoint the last standing write left rather than the controller's.
+    settle();
+    {
+        anamorph::gui::SpectrumImager* im = nullptr;
+        std::function<void (juce::Component*)> findIm = [&] (juce::Component* c)
+        {
+            if (im != nullptr) return;
+            for (int i = 0; i < c->getNumChildComponents(); ++i)
+            {
+                auto* k = c->getChildComponent (i);
+                if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) { im = si; return; }
+                findIm (k);
+                if (im != nullptr) return;
+            }
+        };
+        findIm (ed);
+        auto* bandsP = apvts.getParameter (pid::mbBands);
+        auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+        check (im != nullptr && im->getWidth() > 300 && bandsP != nullptr && wLoP != nullptr,
+               "leg H: the imager and its band-width parameter are available");
+        if (im != nullptr && im->getWidth() > 300 && bandsP != nullptr && wLoP != nullptr)
+        {
+            bandsP->setValueNotifyingHost (bandsP->convertTo0to1 (1.0f));
+            wLoP->setValueNotifyingHost (wLoP->convertTo0to1 (1.0f));
+            settle();
+            const float start = plainOf (wLoP);
+
+            const float W = (float) im->getWidth(), H = (float) im->getHeight();
+            const float bx = 0.5f * W;
+            auto mev = [&] (float x, float y, bool dragged)
+            {
+                const auto t = juce::Time::getCurrentTime();
+                return juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                         t, { x, y }, t, 1, dragged);
+            };
+            float wy = -1.0f;
+            for (float y = 4.0f; y < H - 4.0f; y += 1.0f)
+            {
+                im->mouseMove (juce::MouseEvent (src, { bx, y }, juce::ModifierKeys(),
+                                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                                 juce::Time::getCurrentTime(), { bx, y },
+                                                 juce::Time::getCurrentTime(), 1, false));
+                if (im->getTooltip() == juce::String ("Band width")) { wy = y; break; }
+            }
+            check (wy > 0.0f, "leg H: the band-width line is findable");
+            if (wy > 0.0f)
+            {
+                WriteFromInsideAStoreQuietly echo;
+                echo.target = wLoP;
+                echo.to     = 1.4f;                 // the controller's value, refused by storeOwned
+                echo.armed  = true;
+                wLoP->addListener (&echo);
+
+                host.target   = wLoP;
+                host.index    = wLoP->getParameterIndex();
+                host.armWrite = false;              // the refusal is the poison here, not the host
+                host.armPoll  = true;               // ...but the host still pumps at the close
+                host.wrote = host.polled = false;
+
+                im->mouseDown (mev (bx, wy, false));
+                im->mouseDrag (mev (bx, wy - 18.0f, true));
+                im->mouseUp   (mev (bx, wy - 18.0f, true));
+                wLoP->removeListener (&echo);
+                proc.pollUndoCoalesce();
+
+                check (echo.fired, "leg H: the controller replaced the value inside the store");
+                if (proc.canUndo())
+                {
+                    proc.undo();
+                    proc.redo();
+                    if (near (plainOf (wLoP), 1.4f))
+                        std::printf ("  [leg H] a refused store plus a nested poll recorded the"
+                                     " controller's value: Redo gives %.4f\n", (double) plainOf (wLoP));
+                    check (! near (plainOf (wLoP), 1.4f),
+                           "leg H: a refused store states no endpoint, nested poll or not");
+                }
+                else
+                {
+                    std::printf ("  [leg H] the refused store recorded no step at all"
+                                 " (width %.4f, started %.4f)\n",
+                                 (double) plainOf (wLoP), (double) start);
+                    check (true, "leg H: a refused store recorded no user step");
+                }
+            }
+        }
+    }
+
+    // ---- LEG I: a CONTROL -- a standalone wheel notch whose close the host polls --------------
+    //      ADR-0053's wheel rules are untouched by this round. JUCE wraps a slider's wheel in a
+    //      one-shot drag notification, so the witness still runs before the close; with the host
+    //      both writing and pumping, the notch must still be the user's own step.
+    settle();
+    {
+        const float start = plainOf (driveP);
+        juce::MouseWheelDetails wheel;
+        wheel.deltaX = 0.0f; wheel.deltaY = 0.5f;
+        wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+        host.target      = driveP;
+        host.index       = driveP->getParameterIndex();
+        host.writeToNorm = driveP->convertTo0to1 (9.5f);
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+        const auto t = legStamp();
+        driveK->mouseWheelMove (juce::MouseEvent (src, { cx, cy }, juce::ModifierKeys(),
+                                                  1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                                  t, { cx, cy }, t, 1, false), wheel);
+        const float produced = (float) driveK->getValue();   // the notch's own value, as in leg G
+        proc.pollUndoCoalesce();
+
+        check (! near (produced, start) || ! host.wrote,
+               "leg I: the notch either moved Drive or the host never got its chance");
+        if (proc.canUndo())
+        {
+            proc.undo();
+            check (near (plainOf (driveP), start), "leg I: Undo returns to the pre-notch value");
+            proc.redo();
+            check (near (plainOf (driveP), produced),
+                   "leg I: Redo restores what the NOTCH produced (ADR-0053 preserved)");
+        }
+    }
+
+    // ---- LEG J: a nested control notification inside the one under test ----------------------
+    //      The host answers the combo's write by moving Drive NOTIFYINGLY, so Drive's attachment
+    //      sets Drive's slider and Drive's own witness pair runs INSIDE the combo's. The inner
+    //      after-hook must hand the combo's request back rather than clear it, or the combo's
+    //      close falls through to a live read that the host has already poisoned.
+    settle();
+    {
+        algoP->setValueNotifyingHost (normForItem (algoP, 0, nAlgo));
+        settle();
+        const float aStart = plainOf (algoP), dStart = plainOf (driveP);
+        const int   pick   = nAlgo - 1;
+        const float aExpect = algoP->convertFrom0to1 (normForItem (algoP, pick, nAlgo));
+
+        host.target      = algoP;
+        host.index       = algoP->getParameterIndex();
+        host.writeToNorm = normForItem (algoP, 1, nAlgo);
+        host.nestTarget  = driveP;
+        host.nestToNorm  = driveP->convertTo0to1 (dStart + 4.0f);
+        host.armWrite = host.armPoll = true;
+        host.wrote = host.polled = false;
+
+        algoB->setSelectedItemIndex (pick, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+        host.nestTarget = nullptr;
+
+        check (host.wrote && host.polled, "leg J: the combo's close was poisoned and polled");
+        check (! near (plainOf (driveP), dStart),
+               "leg J: the host's notifying write really did drive the other control");
+        check (proc.canUndo(), "leg J: the selection is one undoable step");
+        proc.undo();
+        check (near (plainOf (algoP), aStart), "leg J: Undo returns to the starting item");
+        proc.redo();
+        check (near (plainOf (algoP), aExpect),
+               "leg J: Redo restores the user's selection even with a nested control notification");
+    }
+
+    proc.removeListener (&host);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 94 -- round 21. Two review findings whose fixes meet in one place:
+//  what a user action is allowed to claim it produced.
+//
+//  R1078-1081 (legs A, C, H -- there is no leg B; round 30 corrected the count). `SpectrumImager::resetParam`, `setBands` and
+//  `setSoloMask` wrote their parameter inside a change gesture and DECLARED
+//  NOTHING, so the gesture close fell back to a live read of the parameter to
+//  learn the endpoint (PluginProcessor.cpp, the batch close). The write is
+//  `setValueNotifyingHost`, whose listeners run synchronously inside it, so a
+//  host answering that write is sitting in the live value when the close reads
+//  it: the host's value became the user's `after`, and therefore the destination
+//  of the user's Redo. ADR-0008 forbids exactly that -- host automation is never
+//  a user action.
+//
+//  R1204 / RISK-009 (leg F). The nested poll blocked on `soundReplacement` while
+//  a host thread held it and waited for a parameter's `listenerLock`. Leg F
+//  builds both edges at once and measures the one that has to give.
+//
+//  WHAT LEG F PROVES AND HOW. The cycle needs two threads in two states at the
+//  same instant, so the harness puts them there rather than hoping:
+//    * the HOST THREAD is parked inside `applySoundTree`'s write loop, through
+//      `seams.insideSoundReplacement`, which fires WITH the replacement lock held
+//      (PluginProcessor.cpp) and part-way through a loop that takes parameters'
+//      listener locks one at a time;
+//    * the MESSAGE THREAD is inside `endChangeGesture`, in the host's own seat --
+//      `HostSeat` sits behind `finalListener`, which JUCE calls last and with the
+//      parameter's `listenerLock` HELD -- and from there it polls, which is what
+//      a host that pumps its message loop there makes the editor's timer do.
+//  A poll that waits for the replacement lock closes the cycle. The seam's wait
+//  is BOUNDED so that a build with the cycle reports a long poll instead of
+//  hanging the suite; the measurement is the elapsed time of the nested poll.
+// ---------------------------------------------------------------------------
+static void testBareStoresDeclareTheirEndpointAndThePollNeverWaits()
+{
+    std::printf ("State test 94: bare imager stores declare their endpoint, and the timer's poll never waits\n");
+
+    // ===== LEG F: the RISK-009 lock cycle, built and then measured =============
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto* driveP = proc.getAPVTS().getParameter (pid::drive);
+        check (driveP != nullptr, "leg F: the parameter the gesture runs on exists");
+
+        // A real session for the host thread to restore. Authored by an instance of its own, so
+        // the blob is a whole sound and the replacement it drives is the production one.
+        juce::MemoryBlock blob;
+        {
+            AnamorphAudioProcessor author;
+            author.prepareToPlay (48000.0, 512);
+            if (auto* d = author.getAPVTS().getParameter (pid::drive))
+                d->setValueNotifyingHost (d->convertTo0to1 (7.5f));
+            author.getStateInformation (blob);
+        }
+        check (blob.getSize() > 0, "leg F: the session to restore was authored");
+
+        std::atomic<bool> inReplacement { false }, messageThreadDone { false };
+        std::atomic<int>  seamWaited { -1 };
+
+        // WITH THE LOCK HELD. The seam's contract forbids joining a thread that itself performs a
+        // whole-sound replacement; the message thread below performs a GESTURE, not a replacement,
+        // so waiting for it is exactly what this seam is for. Bounded: a build in which the message
+        // thread is stuck on the replacement lock reports a slow poll here rather than hanging.
+        proc.seams.insideSoundReplacement = [&]
+        {
+            inReplacement.store (true);
+            int waited = 0;
+            for (; waited < 4000 && ! messageThreadDone.load(); ++waited)
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            seamWaited.store (waited);
+        };
+
+        HostSeat host;
+        host.proc  = &proc;
+        host.index = driveP != nullptr ? driveP->getParameterIndex() : -1;
+        proc.addListener (&host);
+
+        std::thread restorer ([&] { proc.setStateInformation (blob.getData(), (int) blob.getSize()); });
+
+        for (int i = 0; i < 4000 && ! inReplacement.load(); ++i)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        check (inReplacement.load(),
+               "leg F: a host thread is parked inside a whole-sound replacement, holding its lock");
+
+        host.armPoll = true;
+        host.polled  = false;
+        if (driveP != nullptr)
+        {
+            driveP->beginChangeGesture();
+            driveP->setValueNotifyingHost (driveP->convertTo0to1 (2.5f));
+            driveP->endChangeGesture();     // the nested poll runs from in here, listenerLock held
+        }
+        messageThreadDone.store (true);
+        restorer.join();
+        proc.removeListener (&host);
+        proc.seams.insideSoundReplacement = nullptr;
+
+        check (host.polled, "leg F: the poll ran from the host's seat inside the gesture close");
+        std::printf ("  [leg F] the nested poll returned in %d ms; the replacement was held open for %d ms\n",
+                     host.pollMillis, seamWaited.load());
+        check (host.polled && host.pollMillis >= 0 && host.pollMillis < 500,
+               "leg F: the nested poll did NOT wait for the whole-sound replacement it ran beside");
+        // Non-vacuity: the two threads really were in the two states at once. A seam that returned
+        // immediately would have measured nothing, and a poll that blocked would have held the
+        // seam open for its whole bound.
+        check (seamWaited.load() > 0,
+               "leg F: non-vacuity -- the replacement really was open while the gesture closed");
+    }
+
+    // ===== LEG G: the DRAIN's acquisition, which is the other half of the fix ==
+    //  Leg F exercises the poll body's `currentStateSet`. The adoption has an acquisition of its
+    //  own -- `adoptRestoreTail` re-installing a restored sound -- and it is reached from the same
+    //  timer door, so it needs the same proof. Here a FIRST off-thread restore is left undrained in
+    //  the cell and a SECOND one is parked inside its write loop holding the lock; the timer door
+    //  must adopt the first without waiting for the second.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+
+        auto author = [] (float drive)
+        {
+            AnamorphAudioProcessor a;
+            a.prepareToPlay (48000.0, 512);
+            if (auto* d = a.getAPVTS().getParameter (pid::drive))
+                d->setValueNotifyingHost (d->convertTo0to1 (drive));
+            juce::MemoryBlock b;
+            a.getStateInformation (b);
+            return b;
+        };
+        const juce::MemoryBlock first = author (6.0f), second = author (9.0f);
+
+        std::atomic<int>  seamRuns { 0 };
+        std::atomic<bool> parked { false }, messageThreadDone { false };
+        std::atomic<int>  seamWaited { -1 };
+        proc.seams.insideSoundReplacement = [&]
+        {
+            if (seamRuns.fetch_add (1) != 1) return;   // park on the SECOND replacement only
+            parked.store (true);
+            int waited = 0;
+            for (; waited < 4000 && ! messageThreadDone.load(); ++waited)
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            seamWaited.store (waited);
+        };
+
+        // The first restore lands in the cell and is deliberately NOT drained: no message-thread
+        // entry point runs between here and the measurement below.
+        std::thread r1 ([&] { proc.setStateInformation (first.getData(), (int) first.getSize()); });
+        r1.join();
+        std::thread r2 ([&] { proc.setStateInformation (second.getData(), (int) second.getSize()); });
+        for (int i = 0; i < 4000 && ! parked.load(); ++i)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        check (parked.load(), "leg G: the second restore is parked inside its replacement, holding the lock");
+
+        const auto t0 = std::chrono::steady_clock::now();
+        proc.pollUndoCoalesceFromTimer();
+        const int millis = (int) std::chrono::duration_cast<std::chrono::milliseconds> (
+                               std::chrono::steady_clock::now() - t0).count();
+        messageThreadDone.store (true);
+        r2.join();
+        proc.seams.insideSoundReplacement = nullptr;
+
+        std::printf ("  [leg G] the timer door returned in %d ms with a restore pending and the"
+                     " replacement lock held elsewhere\n", millis);
+        check (millis < 500, "leg G: the drain did not wait for the replacement either");
+        check (seamWaited.load() > 0, "leg G: non-vacuity -- the replacement really was open");
+    }
+
+    // ===== LEGS A-C and H: the three bare stores ==============================
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "State test 94: the editor constructs for the bare-store probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (im != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (kid)) { im = si; return; }
+            walk (kid);
+            if (im != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "State test 94: the imager is laid out");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* driveP = apvts.getParameter (pid::drive);
+    check (bandsP && soloP && wLoP && driveP, "State test 94: the parameters the legs drive exist");
+    if (! (bandsP && soloP && wLoP && driveP)) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto plainOf  = [] (juce::RangedAudioParameter* p)
+    { return p->convertFrom0to1 (p->getValue()); };
+    auto near     = [] (float a, float b) { return std::abs (a - b) < 1.0e-3f; };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y, float dx, float dy, bool dragged)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                 juce::Time::getCurrentTime(), { dx, dy },
+                                 juce::Time::getCurrentTime(), 1, dragged);
+    };
+    const float W = (float) im->getWidth(), H = (float) im->getHeight();
+    auto findY = [&] (const char* want, float x) -> float
+    {
+        for (float y = 4.0f; y < H - 4.0f; y += 1.0f)
+        {
+            im->mouseMove (mev (x, y, x, y, false));
+            if (im->getTooltip() == juce::String (want)) return y;
+        }
+        return -1.0f;
+    };
+    auto findX = [&] (const char* want, float y) -> float
+    {
+        for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (x, y, x, y, false));
+            if (im->getTooltip() == juce::String (want)) return x;
+        }
+        return -1.0f;
+    };
+    auto settle = [&] { im->cancelActiveDrag(); proc.pollUndoCoalesce(); };
+    const float bx = 0.5f * W;
+
+    // ---- LEG A: a reset whose store the host OVERWRITES re-entrantly ----------
+    //  The user double-clicks a width line: `resetParam` opens a gesture, writes the default, and
+    //  the host answers that very write with a value of its own. The read-back no longer matches
+    //  what was installed, so the store is a REFUSAL -- and a refusal states no endpoint, which is
+    //  what keeps the host's value out of the user's Redo. Before this round the close read the
+    //  parameter live and found the host sitting in it.
+    {
+        // ONE band. At two the lane midpoint is the split HANDLE, and `mouseDoubleClick` resolves
+        // a handle before it ever asks about a width line -- measured: the first draft of this leg
+        // reset the crossover instead and never reached `resetParam` at all.
+        setPlain (bandsP, 1.0f);
+        setPlain (wLoP, 1.60f);
+        settle();
+        const float userStart = plainOf (wLoP);
+        const float deflt     = wLoP->convertFrom0to1 (wLoP->getDefaultValue());
+        const float hostTo    = 0.55f * (userStart + deflt) + 0.21f;   // neither endpoint
+        check (! near (userStart, deflt) && ! near (hostTo, deflt) && ! near (hostTo, userStart),
+               "leg A: the three values the leg distinguishes are distinct");
+
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg A: band 1's width line is findable");
+        if (wy >= 0.0f)
+        {
+            WriteFromInsideAStoreQuietly poke;
+            poke.target = wLoP;
+            poke.to     = hostTo;
+            poke.armed  = true;
+            wLoP->addListener (&poke);
+            im->mouseDoubleClick (mev (bx, wy, bx, wy, false));
+            wLoP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg A: the host answered the reset's own write, re-entrantly");
+            check (near (plainOf (wLoP), hostTo),
+                   "leg A: ...and the host's value is what is live afterwards");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                const float afterUndo = plainOf (wLoP);
+                proc.redo();
+                const float afterRedo = plainOf (wLoP);
+                std::printf ("  [leg A] a step was recorded: Undo -> %.4f, Redo -> %.4f"
+                             " (user started at %.4f, default %.4f, host wrote %.4f)\n",
+                             (double) afterUndo, (double) afterRedo,
+                             (double) userStart, (double) deflt, (double) hostTo);
+                check (! near (afterRedo, hostTo),
+                       "leg A: the host's re-entrant answer is NOT the user's Redo destination");
+            }
+            else
+            {
+                std::printf ("  [leg A] the refused reset recorded no step, and the host's %.4f"
+                             " is therefore in none\n", (double) hostTo);
+                check (true, "leg A: a refused reset records no user step");
+            }
+        }
+    }
+
+    // ---- LEG C: the same reset with NO host interference still works ----------
+    //  The counterpart leg A needs to mean anything: when nothing answers the store, the reset is
+    //  an ordinary undoable user action whose Redo destination is the DEFAULT the user asked for.
+    {
+        setPlain (bandsP, 1.0f);   // one band, for the reason leg A records
+        setPlain (wLoP, 1.60f);
+        settle();
+        const float userStart = plainOf (wLoP);
+        const float deflt     = wLoP->convertFrom0to1 (wLoP->getDefaultValue());
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg C: band 1's width line is findable");
+        if (wy >= 0.0f)
+        {
+            im->mouseDoubleClick (mev (bx, wy, bx, wy, false));
+            proc.pollUndoCoalesce();
+            check (near (plainOf (wLoP), deflt), "leg C: the reset installed the default");
+            check (proc.canUndo(), "leg C: an unanswered reset is one undoable user step");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                check (near (plainOf (wLoP), userStart), "leg C: Undo returns the user's own value");
+                proc.redo();
+                check (near (plainOf (wLoP), deflt), "leg C: Redo restores the default the user asked for");
+            }
+        }
+    }
+
+    // ---- LEG H: a solo click represents the solo bit and NOTHING ELSE ---------
+    //  `setSoloMask` is the second bare store. The host writes a DIFFERENT parameter from inside
+    //  the mask's own dispatch -- the ordinary "automation landed while you clicked" case -- and the
+    //  rule under test is the one ADR-0008 states: a user step carries only the parameters that
+    //  user's own action moved. Drive must not travel with the solo bit.
+    {
+        setPlain (bandsP, 2.0f);
+        setPlain (soloP, 0.0f);
+        setPlain (driveP, 3.0f);
+        settle();
+        const float driveStart = plainOf (driveP);
+        const float driveHost  = driveStart + 5.0f;
+        const float maskStart  = plainOf (soloP);
+
+        const float sx = findX ("Solo this band", 11.0f);
+        check (sx >= 0.0f, "leg H: a band's solo chip is findable");
+        if (sx >= 0.0f)
+        {
+            WriteFromInsideAStoreQuietly poke;
+            poke.target = driveP;
+            poke.to     = driveHost;
+            poke.armed  = true;
+            soloP->addListener (&poke);
+            im->mouseDown (mev (sx, 11.0f, sx, 11.0f, false));
+            im->mouseUp   (mev (sx, 11.0f, sx, 11.0f, false));
+            soloP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg H: the host moved Drive from inside the solo store's dispatch");
+            check (! near (plainOf (soloP), maskStart), "leg H: the click really did move the solo mask");
+            check (near (plainOf (driveP), driveHost), "leg H: ...and Drive carries the host's value");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                std::printf ("  [leg H] after Undo: mask %.4f (started %.4f), Drive %.4f"
+                             " (host wrote %.4f, user never touched it)\n",
+                             (double) plainOf (soloP), (double) maskStart,
+                             (double) plainOf (driveP), (double) driveHost);
+                check (near (plainOf (driveP), driveHost),
+                       "leg H: Undo of the solo click does not drag the host's Drive back with it");
+            }
+        }
+    }
+
+
+    // ---- LEG H2: the solo store's OWN answer, which is what leg H does not reach --
+    //  Leg H holds for the pre-round-21 code too, and says so: a batch has only ever owned the
+    //  parameters whose gesture it opened, so Drive was never going to be in that step. The half
+    //  that changed is the store's own read-back. Here the host answers `mbSolo` itself, from
+    //  inside the store's dispatch, with a different mask -- so what is live at the close is the
+    //  host's mask, and the question is whether the user's Redo goes there.
+    {
+        setPlain (bandsP, 2.0f);
+        setPlain (soloP, 0.0f);
+        settle();
+        const float sx = findX ("Solo this band", 11.0f);
+        check (sx >= 0.0f, "leg H2: a band's solo chip is findable");
+        if (sx >= 0.0f)
+        {
+            // What the click produces on its own, measured rather than assumed -- the chip the
+            // tooltip scan finds first decides which bit moves.
+            im->mouseDown (mev (sx, 11.0f, sx, 11.0f, false));
+            im->mouseUp   (mev (sx, 11.0f, sx, 11.0f, false));
+            proc.pollUndoCoalesce();
+            const float userMask = plainOf (soloP);
+            check (! near (userMask, 0.0f), "leg H2: the click on its own moves the solo mask");
+
+            setPlain (soloP, 0.0f);
+            settle();
+            const float hostMask = near (userMask, 2.0f) ? 1.0f : 2.0f;
+
+            WriteFromInsideAStoreQuietly poke;
+            poke.target = soloP;
+            poke.to     = hostMask;
+            poke.armed  = true;
+            soloP->addListener (&poke);
+            im->mouseDown (mev (sx, 11.0f, sx, 11.0f, false));
+            im->mouseUp   (mev (sx, 11.0f, sx, 11.0f, false));
+            soloP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg H2: the host answered the solo store's own write, re-entrantly");
+            check (near (plainOf (soloP), hostMask), "leg H2: ...and the host's mask is what is live");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                const float afterUndo = plainOf (soloP);
+                proc.redo();
+                const float afterRedo = plainOf (soloP);
+                std::printf ("  [leg H2] a step was recorded: Undo -> %.4f, Redo -> %.4f"
+                             " (the user's own click makes %.4f, the host wrote %.4f)\n",
+                             (double) afterUndo, (double) afterRedo,
+                             (double) userMask, (double) hostMask);
+                check (! near (afterRedo, hostMask),
+                       "leg H2: the host's mask is NOT the user's Redo destination");
+            }
+            else
+            {
+                std::printf ("  [leg H2] the refused solo store recorded no step, so the host's"
+                             " %.4f is in none\n", (double) hostMask);
+                check (true, "leg H2: a refused solo store records no user step");
+            }
+        }
+    }
+
+    // ---- LEG J: a reset with nothing to reset is not an edit (R853-864, ADR-0052) -----
+    //  `resetParam` ran its sweep animation and bracketed a `setValueNotifyingHost` in a change
+    //  gesture before it looked at the value, so a double-click on a width ALREADY at its default
+    //  punched a host touch/latch write region for a parameter that never moved -- the same defect
+    //  ADR-0052 closed for `Knob::doReset` in round 11, on the one reset that had not been given
+    //  the rule. The four observables below are that ADR's Decision, verbatim: no gesture, no
+    //  write, no sweep, no undo entry.
+    //
+    //  THE GUARD ASKS IN THE SNAPPED SPACE, and so does this leg: `expect` is what writing the
+    //  default would actually leave in the parameter, which for a stepped or skewed range is not
+    //  `getDefaultValue()` itself. Driving the width through `setPlain` and then reading it back
+    //  puts the leg on the same side of that conversion as the code.
+    {
+        setPlain (bandsP, 1.0f);   // one band, for the reason leg A records
+        const float deflt = wLoP->convertFrom0to1 (wLoP->getDefaultValue());
+        setPlain (wLoP, deflt);
+        settle();
+        check (juce::exactlyEqual (wLoP->getValue(),
+                                   wLoP->convertTo0to1 (wLoP->convertFrom0to1 (wLoP->getDefaultValue()))),
+               "leg J: the width really is sitting on what a reset would install");
+
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg J: band 1's width line is findable");
+        if (wy >= 0.0f)
+        {
+            const bool  undoBefore = proc.canUndo();
+            int         sweeps     = 0;
+            auto        prevSweep  = im->onSweep;
+            im->onSweep = [&] { ++sweeps; if (prevSweep) prevSweep(); };
+            CountGestures cg;
+            wLoP->addListener (&cg);
+            im->mouseDoubleClick (mev (bx, wy, bx, wy, false));
+            wLoP->removeListener (&cg);
+            im->onSweep = prevSweep;
+            proc.pollUndoCoalesce();
+
+            check (cg.opens == 0 && cg.closes == 0, "leg J: no host change gesture was opened");
+            check (cg.writes == 0, "leg J: ...and the host was told of no write");
+            check (sweeps == 0, "leg J: ...and the sweep animation did not run");
+            check (proc.canUndo() == undoBefore, "leg J: ...and no undo entry was created");
+            check (near (plainOf (wLoP), deflt), "leg J: ...and the width is where it already was");
+        }
+    }
+
+    // ---- LEG K: an empty imager press cannot make automation the user's Redo (RISK-012) ----
+    //  The press branch's own comment has said since ADR-0046 that a bare click on a width line
+    //  "begins+ends an EMPTY gesture -- no value change, no divider jump, no automation/undo step".
+    //  The last clause was false: the batch close fell back to a LIVE READ for a parameter whose
+    //  episode declared nothing, so a host write landing inside the press became the press's `after`
+    //  and therefore the destination of the user's Redo -- ADR-0008's rule that a value no user
+    //  operation produced cannot be that operation's endpoint, broken by an action that produced
+    //  nothing at all. Round 22 makes `endGesture` state the refusal that was missing.
+    {
+        setPlain (bandsP, 1.0f);
+        setPlain (wLoP, 1.60f);
+        settle();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+
+        const float wy = findY ("Band width", bx);
+        check (wy >= 0.0f, "leg K: band 1's width line is findable");
+        if (wy >= 0.0f)
+        {
+            const float pressedAt = plainOf (wLoP);
+            const float hostTo    = 1.15f;
+            check (! near (pressedAt, hostTo), "leg K: the two values the leg distinguishes are distinct");
+            CountGestures cg;
+            wLoP->addListener (&cg);
+            im->mouseDown (mev (bx, wy, bx, wy, false));
+            setPlain (wLoP, hostTo);                       // host automation, INSIDE the press
+            im->mouseUp (mev (bx, wy, bx, wy, false));
+            wLoP->removeListener (&cg);
+            proc.pollUndoCoalesce();
+
+            check (cg.opens == 1 && cg.closes == 1,
+                   "leg K: non-vacuity -- the press really did bracket one change gesture");
+            check (near (plainOf (wLoP), hostTo), "leg K: ...and the host's value is what is live");
+            check (! proc.canUndo(),
+                   "leg K: a press that moved nothing records no step, so the automation is in none");
+        }
+    }
+
+    // ---- LEG L: the two resets that bracket their OWN gesture (RISK-012, round 22) ----
+    //  `resetCrossover` and `commitFreqEditor` do not go through `beginGesture`/`endGesture`, so the
+    //  blanket refusal added there this round does not reach them -- which the first draft of the fix
+    //  got wrong, and its own comment claimed otherwise. Their `ok = (i < M)` arm leaves the gesture
+    //  open around NO store at all: `M` is re-read AFTER `beginChangeGesture`, which dispatches, so a
+    //  host lane that drops Bands inside the gesture open makes the reset skip its store entirely.
+    //  The batch close then had nothing declared and live-read whatever that same host lane left in
+    //  the split -- the RISK-012 shape, on a control family leg K does not reach.
+    //
+    //  The probe writes BOTH from inside the gesture open, which is what makes the window: the band
+    //  count that voids the reset, and the automation value that must not become the user's endpoint.
+    //
+    //  WHAT THIS LEG ACTUALLY MEASURES, and it is a NEGATIVE RESULT worth keeping. Mutation M93
+    //  removes the refusal this leg was written for, and the leg still passes: no step is recorded
+    //  EITHER WAY. So the window is already shut on the current head by something older than round
+    //  22's refusal -- and this round did not isolate which rule, which is stated rather than
+    //  guessed at. The refusal stays because it makes the property local to the two functions
+    //  instead of resting on a mechanism two subsystems away, and M93 is recorded as SURVIVED in
+    //  `TESTING.md` rather than dressed up. The leg is kept because what it asserts is real and
+    //  non-vacuous -- the probe fires, the reset is voided, the host's value is live, and no step
+    //  carries it -- so it fails if that stops being true, whichever rule is holding it.
+    {
+        setPlain (bandsP, 3.0f);   // two splits, so `i < M` is true before the drop
+        settle();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+
+        auto* loP = apvts.getParameter (pid::mbFreqLow);
+        check (loP != nullptr, "leg L: the first split's parameter exists");
+
+        // The handle lane, found the way every other leg finds a target: by its tooltip.
+        float hx = -1.0f, hy = -1.0f;
+        for (float y = 4.0f; y < H - 4.0f && hx < 0.0f; y += 3.0f)
+        {
+            const float x = findX ("Drag to change the split frequency", y);
+            if (x >= 0.0f) { hx = x; hy = y; }
+        }
+        check (hx >= 0.0f, "leg L: a split handle is findable");
+
+        if (hx >= 0.0f && loP != nullptr)
+        {
+            // ROUND 23: THE TWO WRITES LAND AT DIFFERENT INSTANTS, AND THAT IS THE WHOLE LEG.
+            // Round 22 did both on the gesture OPEN and mutation M93 survived: JUCE dispatches a
+            // parameter's listeners in REVERSE registration order, and this probe is registered
+            // AFTER the processor's own, so an open-time write runs BEFORE
+            // `parameterGestureChanged` seeds the batch -- the host's value becomes the step's
+            // `before`, the close's live read agrees with it, and no endpoint can disagree. The
+            // band drop still belongs on the OPEN (it is what makes `ok = (i < M)` false and voids
+            // the store), but the AUTOMATION belongs on the CLOSE, where the live read is the first
+            // thing to see it. Same reversal, used deliberately in both directions.
+            struct DropBandsThenAutomateAtTheClose final : public juce::AudioProcessorParameter::Listener
+            {
+                juce::RangedAudioParameter* bands = nullptr;
+                juce::RangedAudioParameter* split = nullptr;
+                float splitTo = 0.0f;
+                bool  armed = false, fired = false, automated = false;
+                void parameterValueChanged (int, float) override {}
+                void parameterGestureChanged (int, bool starting) override
+                {
+                    if (bands == nullptr || split == nullptr) return;
+                    if (starting)
+                    {
+                        if (! armed) return;
+                        armed = false;
+                        fired = true;
+                        bands->setValueNotifyingHost (bands->convertTo0to1 (1.0f));   // voids the reset
+                        return;
+                    }
+                    if (automated) return;
+                    automated = true;
+                    split->setValue (split->convertTo0to1 (splitTo));   // quiet, at the CLOSE
+                }
+            };
+
+            const float hostHz = 900.0f;
+            DropBandsThenAutomateAtTheClose poke;
+            poke.bands = bandsP; poke.split = loP; poke.splitTo = hostHz; poke.armed = true;
+            loP->addListener (&poke);
+            const auto t = juce::Time::getCurrentTime();
+            const juce::MouseEvent alt (source, { hx, hy },
+                                        juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                                            | juce::ModifierKeys::altModifier),
+                                        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im,
+                                        t, { hx, hy }, t, 1, false);
+            im->mouseDown (alt);
+            im->mouseUp (alt);
+            loP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg L: non-vacuity -- the probe ran inside the reset's gesture open");
+            std::printf ("  [leg L] probe fired=%d, bands=%d, split=%.1f Hz, a step was recorded: %s\n",
+                         (int) poke.fired, (int) std::lround (plainOf (bandsP)),
+                         (double) plainOf (loP), proc.canUndo() ? "yes" : "no");
+            if (poke.fired)
+            {
+                check (near (plainOf (loP), hostHz),
+                       "leg L: the host's value is what is live after the voided reset");
+                if (proc.canUndo())
+                {
+                    proc.undo();
+                    proc.redo();
+                    check (! near (plainOf (loP), hostHz),
+                           "leg L: the host's value is NOT the user's Redo destination");
+                }
+                else
+                {
+                    check (true, "leg L: the voided reset recorded no step, so the host's value is in none");
+                }
+            }
+        }
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
 static void testTooltipSourceOfTruth()
 {
     std::printf ("Tooltip source of truth: the cached component vs the live pointer\n");
@@ -7053,7 +12951,7 @@ static void testNonFiniteParameterInStateIsRejected()
         if (auto xml = tree.createXml())
             check (xml->writeTo (presetFile), "poisoned preset file written");
 
-        check (pm.loadFile (presetFile), "the poisoned preset file loads (it is well-formed XML)");
+        check (opCompleted (pm.loadFile (presetFile)), "the poisoned preset file loads (it is well-formed XML)");
         std::printf ("  width after loading a preset with value=\"nan\": %f\n",
                      rawOf (viaPreset, pid::width));
         check (std::isfinite (rawOf (viaPreset, pid::width)),
@@ -7110,7 +13008,7 @@ static void testValuelessParamMeansDefault()
     if (auto xml = tree.createXml())
         check (xml->writeTo (presetFile), "value-less preset file written");
 
-    check (pm.loadFile (presetFile), "the value-less preset file loads (it is well-formed XML)");
+    check (opCompleted (pm.loadFile (presetFile)), "the value-less preset file loads (it is well-formed XML)");
     const float after = rawOf (proc, pid::width);
     std::printf ("  width after loading a preset with a value-less PARAM: %f\n", after);
     check (juce::approximatelyEqual (after, expected),
@@ -7518,7 +13416,7 @@ static void testMalformedValuesRestoreDefaults()
             node.setProperty ("value", juce::String (poison), nullptr);
             tree.appendChild (node, nullptr);
             if (auto xml = tree.createXml()) xml->writeTo (f);
-            const bool loaded = proc.getPresets().loadFile (f);
+            const bool loaded = opCompleted (proc.getPresets().loadFile (f));
             f.deleteFile();
 
             check (loaded, "the malformed preset file loads (it is well-formed XML)");
@@ -7892,7 +13790,7 @@ static int runPresetSemanticsProbe()
             tree.appendChild (node, nullptr);
             bool wrote = false;
             if (auto xml = tree.createXml()) wrote = xml->writeTo (f);
-            const bool loaded = wrote && proc.getPresets().loadFile (f);
+            const bool loaded = wrote && opCompleted (proc.getPresets().loadFile (f));
             const float after = rp2->getValue();
             f.deleteFile();
 
@@ -11079,7 +16977,7 @@ static void testRejectedPresetDoesNotDuck()
         juce::AudioBuffer<float> buf (2, block);
         juce::MidiBuffer midi;
         for (int nb = 0; nb < 60; ++nb) { fill (buf, rng); p.processBlock (buf, midi); }
-        check (p.getPresets().loadFile (validFile), "the valid harness preset loads");
+        check (opCompleted (p.getPresets().loadFile (validFile)), "the valid harness preset loads");
         fill (buf, rng);
         p.processBlock (buf, midi);
         const double sideLoaded = sideRms (buf);
@@ -11099,7 +16997,7 @@ static void testRejectedPresetDoesNotDuck()
         juce::AudioBuffer<float> buf (2, block);
         juce::MidiBuffer midi;
         for (int nb = 0; nb < 60; ++nb) { fill (buf, rng); p.processBlock (buf, midi); }
-        check (! p.getPresets().loadFile (brokenFile), "a malformed preset is still refused");
+        check (opFailed (p.getPresets().loadFile (brokenFile)), "a malformed preset is still refused");
         fill (buf, rng);
         p.processBlock (buf, midi);
         check (std::abs (sideRms (buf) - sideControl) < 1.0e-9,
@@ -11213,7 +17111,7 @@ static void testForeignPresetDoesNotResetSound()
         for (const auto& s : sentinelA) std::printf (" %s=%.4f", s.id, (double) rawOf (p, s.id));
         std::printf ("\n");
     }
-    const bool foreignAccepted = presets.loadFile (foreignFile);
+    const bool foreignAccepted = opCompleted (presets.loadFile (foreignFile));
     {
         std::printf ("  after  foreign load: loadFile returned %s |", foreignAccepted ? "TRUE" : "false");
         for (const auto& s : sentinelA)
@@ -11245,13 +17143,13 @@ static void testForeignPresetDoesNotResetSound()
     // A->B transition is not a guard. Change the sound, reject again, re-check.
     applySentinel (sentinelB, 5);
     check (differsFromDefaults (sentinelB, 5) == 5, "second sentinel also differs from every default");
-    check (! presets.loadFile (foreignFile), "loadFile still rejects the foreign root from the second state");
+    check (opFailed (presets.loadFile (foreignFile)), "loadFile still rejects the foreign root from the second state");
     if (foreignIndex >= 0) presets.load (foreignIndex);
     check (sameAsSentinel (sentinelB, 5), "the second sound survives BOTH loaders unchanged");
 
     // ---- malformed XML keeps its existing behaviour ----
     check (brokenFile.replaceWithText ("<ANAMORPH><PARAM id=\"width\" value="), "malformed preset written");
-    check (! presets.loadFile (brokenFile), "loadFile still rejects unparsable XML (unchanged behaviour)");
+    check (opFailed (presets.loadFile (brokenFile)), "loadFile still rejects unparsable XML (unchanged behaviour)");
     check (sameAsSentinel (sentinelB, 5), "malformed XML leaves the sound untouched (unchanged behaviour)");
 
     // ---- a VALID Anamorph root with missing parameters keeps the documented
@@ -11264,7 +17162,7 @@ static void testForeignPresetDoesNotResetSound()
         "  <PARAM id=\"width\" value=\"1.85\"/>\n"
         "</" + p.getAPVTS().state.getType().toString() + ">\n";
     check (sparseFile.replaceWithText (sparseXml), "sparse Anamorph preset written");
-    check (presets.loadFile (sparseFile), "a VALID Anamorph root still LOADS, however few params it carries");
+    check (opCompleted (presets.loadFile (sparseFile)), "a VALID Anamorph root still LOADS, however few params it carries");
     if (widthP != nullptr)
         check (std::abs (rawOf (p, "width") - widthP->convertTo0to1 (1.85f)) < 1.0e-4f,
                "the one parameter the sparse preset carries is adopted");
@@ -11290,11 +17188,11 @@ static void testForeignPresetDoesNotResetSound()
         // was saved in, and take the reading as the expectation for the reload
         // from a DIFFERENT state below. Any discrepancy is then about the load,
         // not about float text.
-        check (presets.loadFile (goodFile), "a valid Anamorph preset still loads successfully");
+        check (opCompleted (presets.loadFile (goodFile)), "a valid Anamorph preset still loads successfully");
         for (int i = 0; i < 5; ++i) savedSound[i] = rawOf (p, sentinelA[i].id);
     }
     applySentinel (sentinelB, 5);
-    check (presets.loadFile (goodFile), "...and loads again from a different current sound");
+    check (opCompleted (presets.loadFile (goodFile)), "...and loads again from a different current sound");
     {
         bool restored = true;
         for (int i = 0; i < 5; ++i)
@@ -12453,20 +18351,57 @@ static void testUndoHistoryIsOwnedByTheMessageThread()
     check (d2::waitFor ([&] { return hostSaves.load (std::memory_order_relaxed) > 0; }),
            "the host thread is saving before the undo walk starts");
 
+    // ROUND 28 (Devin R802-807). A STATE COMMAND NO LONGER WAITS FOR THE REPLACEMENT LOCK, and this
+    // walk is the one place in the suite where that is visible. The autosave thread above is inside
+    // `getStateInformation` -> `copyStateWithRawValues` holding `soundReplacement` for a slice of
+    // every iteration, so an Undo issued at that instant has its admission REFUSED and is queued
+    // rather than blocking on it -- which is exactly the edge the finding says the message thread
+    // must never supply. Nothing is lost: `settle` is the retry door, which in production is the
+    // processor's 20 Hz tick and the editor's 24 Hz one. What this test asserts is unchanged --
+    // every command's EFFECT, in order -- with the one added assertion that each one lands.
+    const auto settle = [&] (const char* what)
+    {
+        check (d2::waitFor ([&] { p.flushDeferredCommands(); return p.deferredCommandCount() == 0; }),
+               what);
+    };
+
+    // ...AND THE EDITS THEMSELVES NEED THAT DOOR TOO, which native Intel found and the other
+    // platforms did not (macos-intel, run 35071437456, State test 41). `gestureEdit` closes its
+    // gesture and then polls, and since round 28 that poll is an ADMITTED command: with the autosave
+    // thread inside `copyStateWithRawValues` at that instant it is REFUSED and queued, so
+    // `pendingGestureCommit` is still standing when the NEXT gesture ends and the two edits commit
+    // as ONE step. That is the coalescing this poll is named for -- two gesture ends inside one
+    // 20/24 Hz tick have always merged -- widened by the length of a contended window rather than a
+    // new behaviour; no state is lost and the merged step is coherent, which is why the walk's later
+    // legs still passed. What it is not is DETERMINISTIC, and this walk asserts a step COUNT: the
+    // Intel run undid to 0.15 (the restored sound, one step too far) and redid to 0.60. Settling
+    // after each edit gives the poll the same retry door the rest of the walk uses -- the ticks, in
+    // production -- so the granularity is pinned instead of raced for.
     gestureEdit (pid::width, 0.30f);
+    settle ("the 0.30 edit's own undo step was committed against the concurrent save");
     gestureEdit (pid::width, 0.60f);
-    p.undo();  checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6, "undo #1 -> 0.30");
-    p.undo();  checkNear ((double) rawOf (p, "width"), (double) X.widthA, 1.0e-6, "undo #2 -> the restored sound");
+    settle ("the 0.60 edit's own undo step was committed against the concurrent save");
+    check (p.canUndo(), "two contended edits are two steps, not one merged one");
+    p.undo();  settle ("undo #1 landed against the concurrent save");
+    checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6, "undo #1 -> 0.30");
+    p.undo();  settle ("undo #2 landed against the concurrent save");
+    checkNear ((double) rawOf (p, "width"), (double) X.widthA, 1.0e-6, "undo #2 -> the restored sound");
     check (! p.canUndo() && p.canRedo(), "the history is exhausted downward and full upward");
-    p.redo();  checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6, "redo #1 -> 0.30");
-    p.redo();  checkNear ((double) rawOf (p, "width"), 0.60, 1.0e-6, "redo #2 -> 0.60");
+    p.redo();  settle ("redo #1 landed against the concurrent save");
+    checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6, "redo #1 -> 0.30");
+    p.redo();  settle ("redo #2 landed against the concurrent save");
+    checkNear ((double) rawOf (p, "width"), 0.60, 1.0e-6, "redo #2 -> 0.60");
 
     p.abCopyToOther();                 // B := 0.60, recorded on B's history
+    settle ("the A/B copy landed against the concurrent save");
     p.abSwitchTo (1);
+    settle ("the A/B switch landed against the concurrent save");
     checkNear ((double) rawOf (p, "width"), 0.60, 1.0e-6, "the copy reached slot B");
     p.undo();
+    settle ("the slot-B undo landed against the concurrent save");
     checkNear ((double) rawOf (p, "width"), (double) X.widthB, 1.0e-6, "undoing on slot B reverts the copy to B's restored sound");
     p.abSwitchTo (0);
+    settle ("the switch back to slot A landed against the concurrent save");
     checkNear ((double) rawOf (p, "width"), 0.60, 1.0e-6, "slot A's history and sound are undisturbed");
 
     stop.store (true, std::memory_order_release);
@@ -13441,7 +19376,10 @@ static void testReplacementFinishingLastCannotWearRestoredMetadata()
 //  the edit, even though the edit came after that restore's arrival, which is
 //  precisely the case §10 says must land on top of it.
 //
-//  Reproduced through the adoption seam: R1 is pending; the A/B switch's own drain
+//  Reproduced through the adoption seam at TWO entry points -- the A/B switch, and
+//  (round 28) `PresetManager::load`, whose only drain is its admission's because
+//  `loadAdopted` is contractually forbidden one. First the switch: R1 is pending;
+//  the A/B switch's own drain
 //  takes it; R2 arrives from a host thread inside that adoption; the drain must go
 //  on to adopt R2 as well, so the switch that follows is applied to R2's slots and
 //  survives. The seam count is the direct evidence -- two fires inside ONE
@@ -13489,6 +19427,45 @@ static void testDrainReachesFixedPointBeforeTheCallerActs()
     p.pollUndoCoalesce();
     check (p.abActiveSlot() == switchTo, "a later drain does not undo the switch");
     check (d2::saveOf (p) == afterSwitch, "...and changes nothing at all");
+
+    // ...AND THE SAME QUESTION AT THE OTHER ENTRY POINT WHOSE ONLY DRAIN IS ITS ADMISSION'S
+    // (round 28, mutant M137). `PresetManager::load` reaches its row through `loadAdopted`, which
+    // deliberately does NOT drain -- "Adopted" is the whole of what that name says (section 23) --
+    // so the drain `load` is admitted with is the ONLY one on that path. Delete it and the pending
+    // restore stays in the cell: the preset is applied, the next drain adopts the restore over the
+    // top of it, and the preset the user chose is silently gone. Nothing else in the suite loads a
+    // preset with a restore pending and then asks whether the preset is still what is playing,
+    // which is exactly why deleting that admission killed nothing until this leg existed.
+    {
+        AnamorphAudioProcessor q;
+        q.prepareToPlay (48000.0, 512);
+
+        int factoryIdx = -1;
+        for (int i = 0; i < q.getPresets().entries().size(); ++i)
+        {
+            const auto& e = q.getPresets().entries().getReference (i);
+            if (e.isFactory && e.name != "Default") { factoryIdx = i; break; }
+        }
+        check (factoryIdx >= 0, "non-vacuity: a factory preset other than Default is listed");
+        const auto factoryName = q.getPresets().entries().getReference (factoryIdx).name;
+        check (factoryName != R1.name, "non-vacuity: the preset and the pending restore's program differ");
+
+        d2::offMessageThread ([&] { d2::restoreFrom (q, R1.blob); });   // pending BEFORE the load
+
+        int loadSeamRuns = 0;
+        q.seams.afterRestoreTake = [&] { ++loadSeamRuns; };
+        q.getPresets().load (factoryIdx);
+        q.seams.afterRestoreTake = nullptr;
+
+        check (loadSeamRuns == 1, "the load's admission drained the pending restore before resolving its row");
+        check (q.getPresets().currentName() == factoryName, "the loaded preset is the current one");
+
+        const auto afterLoad = d2::saveOf (q);
+        q.pollUndoCoalesce();   // a later drain has nothing left to adopt
+        check (q.getPresets().currentName() == factoryName,
+               "a restore that was already pending cannot replace the preset the user then chose");
+        check (d2::saveOf (q) == afterLoad, "...and the later drain changes nothing at all");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -13569,7 +19546,7 @@ static void testPresetSavedDuringRestoreIsCleanAgainstItsOwnFile()
                    "the A/B switch finished last, so the live sound is not the restore's yet");
         }
 
-        check (p.getPresets().saveUser (name), "saveUser succeeds");
+        check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds");
         check (presetFile.existsAsFile(), "the preset file was written");
         check (! p.getPresets().isDirty(), "the preset the save selected reads CLEAN");
 
@@ -13697,7 +19674,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
             if (pm.isDirty()) continue;      // dirty is always safe: the star can only over-report
             ++cleanLegs;
             const auto soundBefore = anamorph::PresetManager::soundSignatureFor (proc.getAPVTS());
-            check (pm.loadFile (f), "the preset file the save wrote loads back");
+            check (opCompleted (pm.loadFile (f)), "the preset file the save wrote loads back");
             proc.pollUndoCoalesce();
             checkStr (anamorph::PresetManager::soundSignatureFor (proc.getAPVTS()), soundBefore,
                       (juce::String ("a preset that reads CLEAN reloads without changing the sound (")
@@ -13722,7 +19699,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
         setRaw (p, "width", A);
         int fires = 0;
         p.getPresets().beforeStateCapture = [&] { ++fires; setRaw (p, "width", B); };
-        check (p.getPresets().saveUser (name), "saveUser succeeds");
+        check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds");
         p.getPresets().beforeStateCapture = nullptr;
         assertCoherent (p, presetFile, A, B, fires, "one mutation in the window");
     }
@@ -13741,7 +19718,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
             ++fires;
             setRaw (p, "width", (fires % 2) == 1 ? B : A);   // cycle, like an LFO on the lane
         };
-        check (p.getPresets().saveUser (name), "saveUser succeeds under sustained automation");
+        check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds under sustained automation");
         p.getPresets().beforeStateCapture = nullptr;
         assertCoherent (p, presetFile, A, B, fires, "sustained cycling automation");
     }
@@ -13761,7 +19738,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
             setRaw (p, "drive", driveB);
             setRaw (p, "amount", 0.61f);
         };
-        check (p.getPresets().saveUser (name), "saveUser succeeds with several parameters moving");
+        check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds with several parameters moving");
         p.getPresets().beforeStateCapture = nullptr;
         assertCoherent (p, presetFile, A, B, fires, "several parameters in the window");
     }
@@ -13809,7 +19786,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
         // the save returned", so it would pass on exactly the vacuous run this leg has to
         // reject.
         const int writesBeforeSave = writes.load (std::memory_order_relaxed);
-        const bool ok = p.getPresets().saveUser (name);
+        const bool ok = opCompleted (p.getPresets().saveUser (name));
         run.store (false, std::memory_order_release);
         automation.join();
         p.getPresets().beforeStateCapture = nullptr;
@@ -13836,12 +19813,12 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p.getAPVTS().getParameter ("algorithm")))
             check (! juce::exactlyEqual (normalisedAsRendered (*rp, 0.66f), 0.66f),
                    "...and that value is NOT what the plug-in renders, so the two could disagree");
-        check (p.getPresets().saveUser (name), "saveUser succeeds for a sub-step discrete value");
+        check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds for a sub-step discrete value");
         check (! p.getPresets().isDirty(), "the freshly saved preset reads clean");
         const auto baselineAtSave = p.getPresets().baseline();
         checkStr (baselineAtSave, signatureOfFile (p, presetFile),
                   "the clean baseline is the signature of the bytes on disk (sub-step discrete)");
-        check (p.getPresets().loadFile (presetFile), "the preset file loads back");
+        check (opCompleted (p.getPresets().loadFile (presetFile)), "the preset file loads back");
         p.pollUndoCoalesce();
         check (! p.getPresets().isDirty(),
                "...and reloading a preset saved at a sub-step discrete value leaves it CLEAN");
@@ -13918,7 +19895,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
         AnamorphAudioProcessor p;
         p.prepareToPlay (48000.0, 512);
         setRaw (p, "mbFreqLow", 0.381175071f);
-        check (p.getPresets().saveUser (name), "saveUser succeeds at a custom-mapped frequency value");
+        check (opCompleted (p.getPresets().saveUser (name)), "saveUser succeeds at a custom-mapped frequency value");
         check (! p.getPresets().isDirty(),
                "a freshly saved preset reads CLEAN at a custom-mapped frequency value");
         checkStr (p.getPresets().baseline(), signatureOfFile (p, presetFile),
@@ -14009,7 +19986,7 @@ static void testSaveBaselineDescribesTheBytesUnderAutomation()
 
             auto xml = tree.createXml();
             if (xml == nullptr || ! probe.replaceWithText (xml->toString())) { ++loadsFailed; continue; }
-            if (! p.getPresets().loadFile (probe)) { ++loadsFailed; continue; }
+            if (! opCompleted (p.getPresets().loadFile (probe))) { ++loadsFailed; continue; }
 
             if (p.getPresets().isDirty()) ++markerWrong;
             if (anamorph::PresetManager::soundSignatureFor (apvts) != sigAtSave) ++sigDrift;
@@ -14273,11 +20250,11 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
         AnamorphAudioProcessor p;
         p.prepareToPlay (48000.0, 512);
         setRaw (p, "width", A);
-        check (p.getPresets().saveUser (name), "the preset (width A) is on disk");
+        check (opCompleted (p.getPresets().saveUser (name)), "the preset (width A) is on disk");
         setRaw (p, "width", 0.5f);                                     // leave the file's sound
         int fires = 0;
         p.getPresets().beforeStateCapture = [&] { ++fires; setRaw (p, "width", B); };   // automation, in the window
-        if (viaFile) check (p.getPresets().loadFile (presetFile), "loadFile succeeds");
+        if (viaFile) check (opCompleted (p.getPresets().loadFile (presetFile)), "loadFile succeeds");
         else       { p.getPresets().refresh(); const int idx = [&] { int i = 0; for (const auto& e : p.getPresets().entries()) { if (! e.isFactory && e.name == name) return i; ++i; } return -1; }();
                      check (idx >= 0, "the saved preset is listed"); p.getPresets().load (idx); }
         p.getPresets().beforeStateCapture = nullptr;
@@ -14289,7 +20266,7 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
         setRaw (p, "width", A);
         check (! p.getPresets().isDirty(), "...and CLEAN at the file's value");
         const auto before = anamorph::PresetManager::soundSignatureFor (p.getAPVTS());
-        check (p.getPresets().loadFile (presetFile), "reloading the clean preset");
+        check (opCompleted (p.getPresets().loadFile (presetFile)), "reloading the clean preset");
         p.pollUndoCoalesce();
         checkStr (anamorph::PresetManager::soundSignatureFor (p.getAPVTS()), before,
                   "a preset that reads CLEAN reloads without changing the sound");
@@ -14342,7 +20319,7 @@ static void testLoadedPresetBaselineIsFixedFromWhatTheLoadWrote()
             const auto sigAfter = anamorph::PresetManager::soundSignatureAfterLoading (apvts, tree);
             const auto sigSaved = anamorph::PresetManager::soundSignatureForSavedTree (apvts, tree);
             auto xml = tree.createXml();
-            if (xml == nullptr || ! probe.replaceWithText (xml->toString()) || ! p.getPresets().loadFile (probe)) { ++loadsFailed; continue; }
+            if (xml == nullptr || ! probe.replaceWithText (xml->toString()) || ! opCompleted (p.getPresets().loadFile (probe))) { ++loadsFailed; continue; }
             const auto live = anamorph::PresetManager::soundSignatureFor (apvts);
             if (live != sigAfter) ++afterLoadingMismatch;
             if (live != sigSaved) ++savedTreeMismatch;
@@ -14663,9 +20640,9 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
         // 1. The preset is written at `base`, and loaded ONCE UNDISTURBED so the test holds
         //    an oracle for the baseline that does not come from the function under test.
         rp->setValueNotifyingHost (b.base);
-        check (p.getPresets().saveUser (name), "the preset is written at the base value");
+        check (opCompleted (p.getPresets().saveUser (name)), "the preset is written at the base value");
         rp->setValueNotifyingHost (0.5f);                       // leave the preset's sound
-        check (p.getPresets().loadFile (presetFile), "the preset loads undisturbed");
+        check (opCompleted (p.getPresets().loadFile (presetFile)), "the preset loads undisturbed");
         p.pollUndoCoalesce();
         check (! p.getPresets().isDirty(), "an undisturbed load reads clean");
         const auto oracle = anamorph::PresetManager::soundSignatureFor (p.getAPVTS());
@@ -14674,7 +20651,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
         rp->setValueNotifyingHost (0.5f);
         int fires = 0;
         p.getPresets().beforeStateCapture = [&] { ++fires; rp->setValueNotifyingHost (b.nudged); };
-        check (p.getPresets().loadFile (presetFile), "the preset loads");
+        check (opCompleted (p.getPresets().loadFile (presetFile)), "the preset loads");
         p.getPresets().beforeStateCapture = nullptr;
         p.pollUndoCoalesce();
         check (fires == 1, "the seam fired once, after the apply and before the baseline");
@@ -14695,7 +20672,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
                "a sub-1e-6 automation write inside the load window leaves the preset DIRTY, not absorbed");
 
         // ...and reloading it, undisturbed, is clean again at the file's own value.
-        check (p.getPresets().loadFile (presetFile), "the preset reloads");
+        check (opCompleted (p.getPresets().loadFile (presetFile)), "the preset reloads");
         p.pollUndoCoalesce();
         check (! p.getPresets().isDirty(), "a reload reads clean");
         checkNear ((double) rp->getValue(), (double) normalisedAsRendered (*rp, b.base), 1.0e-7,
@@ -14720,7 +20697,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
             if (b.found)
             {
                 rp->setValueNotifyingHost (b.base);
-                check (p.getPresets().saveUser (name), "the preset is written");
+                check (opCompleted (p.getPresets().saveUser (name)), "the preset is written");
                 const int idx = p.getPresets().currentIndex();
                 check (idx >= 0, "the freshly saved preset is the selected list entry");
                 if (idx >= 0)
@@ -14771,7 +20748,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
         if (! cell.found) continue;
 
         rp->setValueNotifyingHost (base);
-        check (p.getPresets().saveUser (name), "the preset is written");
+        check (opCompleted (p.getPresets().saveUser (name)), "the preset is written");
         check (! p.getPresets().isDirty(), "freshly saved reads clean");
 
         rp->setValueNotifyingHost (base + cell.step * 0.2f);             // a fifth of THIS cell
@@ -14794,7 +20771,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
         check (crossing > 0.0 && crossing <= 1.0e-6,
                "non-vacuity: ...and the move between them is real and smaller than 1e-6");
         rp->setValueNotifyingHost (below);
-        check (p.getPresets().saveUser (name), "the preset is written at the boundary");
+        check (opCompleted (p.getPresets().saveUser (name)), "the preset is written at the boundary");
         check (! p.getPresets().isDirty(), "...and reads clean there");
         rp->setValueNotifyingHost (above);
         check (p.getPresets().isDirty(),
@@ -14829,7 +20806,7 @@ static void testNoToleranceAbsorbsAnAutomationWrite()
             if (midBucket)
             {
                 rp->setValueNotifyingHost (base);
-                check (p.getPresets().saveUser (name), "the preset is written");
+                check (opCompleted (p.getPresets().saveUser (name)), "the preset is written");
                 check (! p.getPresets().isDirty(), "freshly saved reads clean");
                 float v = rp->getValue();
                 v += nudge; rp->setValueNotifyingHost (v);
@@ -14953,7 +20930,7 @@ static void testARestoreIsAFixedPoint()
             // Make the project CLEAN against a preset holding exactly this sound.
             auto xml = apvts.copyState().createXml();
             if (xml == nullptr || ! probe.replaceWithText (xml->toString())
-                || ! p.getPresets().loadFile (probe)) { ++loadsFailed; continue; }
+                || ! opCompleted (p.getPresets().loadFile (probe))) { ++loadsFailed; continue; }
             p.pollUndoCoalesce();
             if (p.getPresets().isDirty()) ++dirtyBeforeSave;
             const auto sigBefore = anamorph::PresetManager::soundSignatureFor (apvts);
@@ -15269,7 +21246,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:1286).
+//  baseline", src/PluginProcessor.cpp:2550).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -15502,7 +21479,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:1023).
+//  targets", src/PluginProcessor.cpp:2177).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -15879,7 +21856,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:1471).
+//  mixed sound", src/PluginProcessor.cpp:2735).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -16789,6 +22766,126 @@ static int runD2StressProbe()
 
 
 // ---------------------------------------------------------------------------
+//  State test 95 -- round 22. A RESTORE IS CONSUMED ONLY WHEN ITS SOUND CAN GO
+//  WITH IT (Devin R1792-1795, ADR-0036 §27).
+//
+//  Round 21 made the two TIMER doors non-blocking (§26): a failed try on
+//  `soundReplacement` skips the restore tail's sound re-install rather than waiting
+//  for it. The `pendingRestore.take()` that produced the decode was left IN FRONT of
+//  that try, so a failed acquisition CONSUMED the restore and then published its
+//  metadata over whatever sound happened to be live. The cell has no put-back -- a
+//  host thread owns the writing end -- so the mixed session is PERMANENT: no later
+//  adoption repairs it, because there is nothing left to adopt.
+//
+//  WHY ROUND 21'S SAFETY ARGUMENT DID NOT COVER THIS. It said a failed try proves
+//  the holder is another thread; that `applySoundTree` from `installRestoredSound`
+//  is the only site another thread ever holds; and that such a holder has already
+//  ANNOUNCED a newer generation (§25), which makes the re-install's own guard false
+//  -- so skipping reaches the state the wait would have. The middle premise is
+//  false. `copyStateWithRawValues`, the durable capture behind every save, has taken
+//  the same lock since round 18 (§25), an off-message-thread `getStateInformation`
+//  reaches it through `writeState`, and it announces NOTHING. Against that holder the
+//  guard can be true, the re-install genuinely owed, and the try still fail.
+//
+//  THE THREE STATES ARE FORCED, NOT RACED:
+//    * the pending restore's sound is made STALE while the restore is held between
+//      its install and its handoff (`seams.afterRestoreSoundApplied`), by an A/B
+//      switch the owner runs in that window -- so its adoption owes a re-install;
+//    * a HOST-THREAD SAVE is parked inside the durable capture
+//      (`seams.insideDurableCapture`), holding the lock and announcing nothing;
+//    * the TIMER door then runs, and must consume nothing.
+//  Before the fix the door consumed the restore, skipped the re-install and published
+//  the restored session's NAME over the A/B switch's sound.
+// ---------------------------------------------------------------------------
+static void testARestoreIsConsumedOnlyWhenItsSoundCanGoWithIt()
+{
+    std::printf ("State test 95: a restore is consumed only when its sound can go with it (R1792, ADR-0036 §27)\n");
+
+    const auto R = d2::author ("D2-R22-R", 0.30f, 0.30f, 0, 1);
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& p = *owned;
+    p.prepareToPlay (48000.0, 512);
+
+    // Two slots with DIFFERENT sounds, so "the switch's sound" and "the restore's sound"
+    // are distinguishable by one read. The instance ends on A.
+    setRaw (p, "width", 0.45f);
+    p.abCopyToOther();                 // B := 0.45 for now
+    p.abSwitchTo (1);
+    setRaw (p, "width", 0.70f);        // B's own sound
+    p.abSwitchTo (0);                  // stores B, applies A
+    p.pollUndoCoalesce();
+    checkNear ((double) rawOf (p, "width"), 0.45, 1.0e-6, "State test 95: the owner sits on A's sound");
+
+    // ---- 1. a restore whose sound is stale by the time it is adopted ------------------
+    std::atomic<bool> installed { false }, switchDone { false };
+    p.seams.afterRestoreSoundApplied = [&]
+    {
+        installed.store (true);
+        for (int i = 0; i < 4000 && ! switchDone.load(); ++i)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    };
+    std::thread restoring ([&] { p.setStateInformation (R.blob.getData(), (int) R.blob.getSize()); });
+    for (int i = 0; i < 4000 && ! installed.load(); ++i)
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    check (installed.load(), "State test 95: the restore is held between its install and its handoff");
+
+    // The owner replaces the whole sound in that window. The cell is still empty, so this
+    // entry point's own drain adopts nothing -- exactly the §10 window the re-install exists for.
+    p.abSwitchTo (1);
+    switchDone.store (true);
+    restoring.join();
+    p.seams.afterRestoreSoundApplied = nullptr;
+    checkNear ((double) rawOf (p, "width"), 0.70, 1.0e-6,
+               "State test 95: the switch's sound is live, and it is not the restore's");
+    check (p.getPresets().currentName() != R.name, "State test 95: the restore has not been adopted yet");
+
+    // ---- 2. a NON-ANNOUNCING holder of the replacement lock ---------------------------
+    const auto ownerThread = std::this_thread::get_id();
+    std::atomic<bool> parked { false }, releaseSave { false };
+    std::atomic<int>  saveWaited { -1 };
+    p.seams.insideDurableCapture = [&]
+    {
+        if (std::this_thread::get_id() == ownerThread) return;   // the owner's own captures pass through
+        parked.store (true);
+        int waited = 0;
+        for (; waited < 4000 && ! releaseSave.load(); ++waited)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        saveWaited.store (waited);
+    };
+    juce::MemoryBlock hostSave;
+    std::thread saver ([&] { hostSave = d2::saveOf (p); });
+    for (int i = 0; i < 4000 && ! parked.load(); ++i)
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    check (parked.load(), "State test 95: a host save is parked inside the durable capture, holding the lock");
+
+    // ---- 3. the timer door, which may neither wait nor consume ------------------------
+    const auto t0 = std::chrono::steady_clock::now();
+    p.pollUndoCoalesceFromTimer();
+    const int millis = (int) std::chrono::duration_cast<std::chrono::milliseconds> (
+                           std::chrono::steady_clock::now() - t0).count();
+    std::printf ("  [test 95] the timer door returned in %d ms with a restore pending and the capture open\n", millis);
+    check (millis < 500, "State test 95: the timer door did not wait for the durable capture (§26 still holds)");
+    check (p.getPresets().currentName() != R.name,
+           "State test 95: the door consumed nothing -- no metadata was published without its sound");
+    checkNear ((double) rawOf (p, "width"), 0.70, 1.0e-6,
+               "State test 95: ...and the live sound is still the one the switch installed");
+
+    releaseSave.store (true);
+    saver.join();
+    p.seams.insideDurableCapture = nullptr;
+    check (saveWaited.load() > 0, "State test 95: non-vacuity -- the capture really was open across the door");
+
+    // ---- 4. the next door adopts it WHOLE --------------------------------------------
+    p.pollUndoCoalesce();
+    check (p.getPresets().currentName() == R.name, "State test 95: the next door adopted the restore");
+    check (d2::View::of (p).matches (R), "State test 95: ...and its program view");
+    checkNear ((double) rawOf (p, "width"), 0.30, 1.0e-6,
+               "State test 95: ...with ITS OWN sound: one adoption, one session");
+    check (d2::saveOf (p) == R.blob, "State test 95: a save is byte-identical to the session restored");
+}
+
+// ---------------------------------------------------------------------------
 //  State test 65 -- a legacy A/B slot is canonical at the decode boundary, and no
 //  baseline is a live read (ADR-0037; closes ADR-0036 §22's "recorded, not changed").
 //
@@ -17508,11 +23605,34 @@ static int runSplitSnapshotProbe (int iterations)
     bool flip = false;
     std::thread automation ([&]
     {
-        while (! quit.load (std::memory_order_acquire))
+        while (! quit.load (std::memory_order_seq_cst))
         {
-            while (phase.load (std::memory_order_acquire) == 1)
+            // ROUND 27: PUBLISH FIRST, THEN LOOK, and both accesses are `seq_cst`. The old order
+            // read `phase` and only THEN set `writing`, so a GUI drain (`phase = 0; while
+            // (writing) {}`) that sampled `writing` in that gap saw `false` while one more
+            // `setPlain` was still to come -- and that late write landed in the NEXT iteration,
+            // between `reset()` and the press, so the press latched a count the lane was supposed
+            // to be too late to change. MEASURED, in both directions and on both trees, by widening
+            // the gap to 50 us on `--band-move-probe`: on the old order 3 presses latched a count
+            // != 3 and 2 of them were counted as defects; on this order, 0 and 0 across nine runs.
+            // The same forcing on the round-26 head `24b7400` -- which contains none of round 27 --
+            // scores 3, 4 and 2 defects per 1200, so the hole is the HARNESS's and predates the
+            // round that tripped over it. Unforced, this tree scores 0 across ~58 000 samples.
+            // That 1/1200 is exactly the false positive `--band-move-probe`'s own header records
+            // ("some presses latch gestureBands = 4, after which a band move writing freqP[2] is
+            // entirely CORRECT"), and exactly what failed the `linux` job on e889f24.
+            //
+            // WHY `seq_cst` AND NOT RELEASE/ACQUIRE. With the publish moved first, the argument is:
+            // if the lane's `phase` load returns 1 then it precedes the GUI's `phase = 0`, and the
+            // lane's `writing = true` precedes that load, so the GUI's `writing` load -- which
+            // follows its own store -- must observe `true` or a LATER store, and the only later
+            // store is the `writing = false` sequenced after the pass's writes. That argument is a
+            // statement about ONE total order, which only `seq_cst` provides: release/acquire on
+            // two different objects is the store-buffer shape, where both sides may read stale and
+            // the drain slips through exactly as before.
+            writing.store (true, std::memory_order_seq_cst);
+            while (phase.load (std::memory_order_seq_cst) == 1)
             {
-                writing.store (true, std::memory_order_release);
                 // A signal fence rather than a volatile counter: incrementing a volatile is
                 // deprecated in C++20 and the first draft of this loop earned a -Wdeprecated-volatile
                 // the warning gate would have failed on. The fence is not optimised away either.
@@ -17524,7 +23644,7 @@ static int runSplitSnapshotProbe (int iterations)
                 flip = ! flip;
                 setPlain (midP, flip ? kMidMovedA : kMidMovedB);
             }
-            writing.store (false, std::memory_order_release);
+            writing.store (false, std::memory_order_seq_cst);
         }
     });
 
@@ -17548,8 +23668,8 @@ static int runSplitSnapshotProbe (int iterations)
             imager->mouseDrag (mev (split0X + 2.0f, laneY, split0X, laneY, true));
             imager->mouseUp   (mev (split0X + 2.0f, laneY, split0X, laneY, true));
 
-            phase.store (0, std::memory_order_release);   // and stops
-            while (writing.load (std::memory_order_acquire)) { }
+            phase.store (0, std::memory_order_seq_cst);   // and stops
+            while (writing.load (std::memory_order_seq_cst)) { }   // seq_cst: see the lane above
             detector.armed.store (false, std::memory_order_release);
 
             // THE VERDICT IS THE LISTENER, NOT THE FINAL VALUE. With a lane that keeps writing, the
@@ -17713,17 +23833,21 @@ static int runAddTargetProbe (int iterations)
     bool flip = false;
     std::thread automation ([&]
     {
-        while (! quit.load (std::memory_order_acquire))
+        while (! quit.load (std::memory_order_seq_cst))
         {
-            while (phase.load (std::memory_order_acquire) == 1)
+            // ROUND 27, the shared lane handshake: publish `writing` BEFORE reading `phase`, both
+            // `seq_cst`. The whole argument -- and the 50 us forcing that measured the old order
+            // leaking one late write into the next iteration's press -- is written out at the
+            // first lane of this kind (`--split-snapshot-probe`'s, above).
+            writing.store (true, std::memory_order_seq_cst);
+            while (phase.load (std::memory_order_seq_cst) == 1)
             {
-                writing.store (true, std::memory_order_release);
                 const int n = spin.load (std::memory_order_relaxed);
                 for (int i = 0; i < n; ++i) std::atomic_signal_fence (std::memory_order_acq_rel);
                 flip = ! flip;
                 setPlain (bandsP, flip ? 3.0f : 2.0f);   // the lane moves the COUNT
             }
-            writing.store (false, std::memory_order_release);
+            writing.store (false, std::memory_order_seq_cst);
         }
     });
 
@@ -17752,8 +23876,8 @@ static int runAddTargetProbe (int iterations)
             imager->mouseDown (mev (clickX, laneY, false));
             imager->mouseUp   (mev (clickX, laneY, false));
 
-            phase.store (0, std::memory_order_release);
-            while (writing.load (std::memory_order_acquire)) { }
+            phase.store (0, std::memory_order_seq_cst);
+            while (writing.load (std::memory_order_seq_cst)) { }   // seq_cst: see the lane above
             for (auto& d : det) d.armed.store (false, std::memory_order_release);
 
             bool clamped = false;
@@ -17922,17 +24046,21 @@ static int runAddEdgeProbe (int iterations)
     bool flip = false;
     std::thread automation ([&]
     {
-        while (! quit.load (std::memory_order_acquire))
+        while (! quit.load (std::memory_order_seq_cst))
         {
-            while (phase.load (std::memory_order_acquire) == 1)
+            // ROUND 27, the shared lane handshake: publish `writing` BEFORE reading `phase`, both
+            // `seq_cst`. The whole argument -- and the 50 us forcing that measured the old order
+            // leaking one late write into the next iteration's press -- is written out at the
+            // first lane of this kind (`--split-snapshot-probe`'s, above).
+            writing.store (true, std::memory_order_seq_cst);
+            while (phase.load (std::memory_order_seq_cst) == 1)
             {
-                writing.store (true, std::memory_order_release);
                 const int n = spin.load (std::memory_order_relaxed);
                 for (int i = 0; i < n; ++i) std::atomic_signal_fence (std::memory_order_acq_rel);
                 flip = ! flip;
                 setPlain (loP, flip ? kHigh : kLow);     // the lane moves the SPLIT, not the count
             }
-            writing.store (false, std::memory_order_release);
+            writing.store (false, std::memory_order_seq_cst);
         }
     });
 
@@ -17959,8 +24087,8 @@ static int runAddEdgeProbe (int iterations)
             imager->mouseDown (mev (clickX, laneY, false));
             imager->mouseUp   (mev (clickX, laneY, false));
 
-            phase.store (0, std::memory_order_release);
-            while (writing.load (std::memory_order_acquire)) { }
+            phase.store (0, std::memory_order_seq_cst);
+            while (writing.load (std::memory_order_seq_cst)) { }   // seq_cst: see the lane above
             for (auto& d : det) d.armed.store (false, std::memory_order_release);
 
             bool clamped = false;
@@ -18153,17 +24281,21 @@ static int runBandMoveProbe (int iterations)
     bool flip = false;
     std::thread automation ([&]
     {
-        while (! quit.load (std::memory_order_acquire))
+        while (! quit.load (std::memory_order_seq_cst))
         {
-            while (phase.load (std::memory_order_acquire) == 1)
+            // ROUND 27, the shared lane handshake: publish `writing` BEFORE reading `phase`, both
+            // `seq_cst`. The whole argument -- and the 50 us forcing that measured the old order
+            // leaking one late write into the next iteration's press -- is written out at the
+            // first lane of this kind (`--split-snapshot-probe`'s, above).
+            writing.store (true, std::memory_order_seq_cst);
+            while (phase.load (std::memory_order_seq_cst) == 1)
             {
-                writing.store (true, std::memory_order_release);
                 const int n = spin.load (std::memory_order_relaxed);
                 for (int i = 0; i < n; ++i) std::atomic_signal_fence (std::memory_order_acq_rel);
                 flip = ! flip;
                 setPlain (bandsP, flip ? 4.0f : 3.0f);   // the ABA generator
             }
-            writing.store (false, std::memory_order_release);
+            writing.store (false, std::memory_order_seq_cst);
         }
     });
 
@@ -18184,8 +24316,8 @@ static int runBandMoveProbe (int iterations)
         im->mouseDrag (mev (sx + 40.0f, soloY, sx, soloY, true));
         if (laneOn)
         {
-            phase.store (0, std::memory_order_release);
-            while (writing.load (std::memory_order_acquire)) { }
+            phase.store (0, std::memory_order_seq_cst);
+            while (writing.load (std::memory_order_seq_cst)) { }   // seq_cst: see the lane above
         }
         im->mouseUp   (mev (sx + 40.0f, soloY, sx, soloY, true));
     };
@@ -18272,6 +24404,4552 @@ static int runBandMoveProbe (int iterations)
 //   * leg D -- the positive control: with nothing interfering, the move commits.
 //     A test whose "voided" legs pass because nothing ever moves proves nothing.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+//  State test 103 -- round 28, Devin R802-807 and RISK-009. A STATE-REPLACING
+//  COMMAND NEVER WAITS FOR A WHOLE-SOUND REPLACEMENT, WHOEVER STARTED THE
+//  DISPATCH IT IS NESTED IN.
+//
+//  THE FINDING. `deferWhileUserTransactionActive` asked ONE question -- is a multi-store user
+//  transaction open -- and at depth zero answered "no" and let the command run inline. Every
+//  direct program command went through that door: `undo`, `redo`, `abSwitchTo`, `abToggle`,
+//  `abCopyToOther`, and `PresetManager::load` / `loadAdopted` / `loadFile` / `step` / `saveUser`.
+//  With no transaction running, a pumped Undo click reached `pollUndoCoalesce`'s BLOCKING drain
+//  and then `copyStateWithRawValues`' and `applyStatePreservingView`'s BLOCKING acquisitions of
+//  `soundReplacement`. That is one half of
+//
+//      message thread : holds a parameter's `listenerLock`  ->  WAITS for `soundReplacement`
+//      host thread    : holds `soundReplacement`            ->  WAITS for that `listenerLock`
+//
+//  and it is the half this plug-in owns.
+//
+//  WHY ROUND 27's PREDICATE COULD NOT CLOSE IT, and why every gesture below is driven with RAW
+//  `juce::AudioProcessorParameter` calls. `anamorph::param::insideDispatch()` answers for a
+//  dispatch THIS PLUG-IN started. A host's parameter write enters through the same non-virtual
+//  `setValueNotifyingHost`, the listener signatures carry only an index and a value, and the flag
+//  that would answer -- JUCE's `inParameterChangedCallback` -- is a file-static `thread_local`
+//  inside the wrapper translation unit. So the seat below asserts `insideDispatch() == false` on
+//  every leg: whatever protects these commands, it is demonstrably NOT the depth counter.
+//
+//  WHAT IS MEASURED. Each leg parks a NON-ANNOUNCING holder of `soundReplacement` on another
+//  thread -- an off-message-thread `getStateInformation`, stopped inside `copyStateWithRawValues`
+//  through the `insideDurableCapture` seam, which is the documented and only way to do it
+//  (ADR-0036 section 25) -- then delivers the command from inside a host gesture's dispatch and
+//  measures how long it took. On the fixed tree the admission's `tryEnter` fails in microseconds
+//  and the command is QUEUED; on a tree without it the message thread waits for the holder.
+//
+//  IT CANNOT HANG THE SUITE, and that is deliberate. The holder never wants a `listenerLock`, so
+//  the cycle is never actually closed here, and a harness watchdog releases it after 400 ms -- so
+//  a regressed tree FAILS the elapsed-time assertion instead of deadlocking the run. That is the
+//  same rule State tests 27, 100 and 101 follow.
+// ---------------------------------------------------------------------------
+namespace {
+// The host seat. Identical in shape to State test 100's `PumpedUserInteraction`, with the one
+// difference this test exists for: it records whether the plug-in's own dispatch depth was raised.
+// It must not be -- the gestures below are a HOST's.
+// THE HOLDER. A non-announcing owner of `soundReplacement`, parked on another thread, with the
+// harness watchdog that turns a regressed tree into a FAILING leg rather than a hung suite.
+struct HeldReplacement
+{
+    AnamorphAudioProcessor& proc;
+    std::atomic<bool> parked { false }, release { false }, done { false };
+    std::thread holder, watchdog;
+
+    explicit HeldReplacement (AnamorphAudioProcessor& p) : proc (p)
+    {
+        proc.seams.insideDurableCapture = [this]
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread()) return;  // ours pass through
+            if (parked.exchange (true)) return;                            // park exactly once
+            while (! release.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        holder = std::thread ([this] { juce::MemoryBlock mb; proc.getStateInformation (mb);
+                                       done.store (true, std::memory_order_release); });
+        for (int waited = 0; waited < 2000 && ! parked.load(); waited += 2)
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        watchdog = std::thread ([this]
+        {
+            for (int waited = 0; waited < 400; waited += 5)
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            release.store (true, std::memory_order_release);
+        });
+    }
+    ~HeldReplacement()
+    {
+        release.store (true, std::memory_order_release);
+        watchdog.join();
+        holder.join();
+        proc.seams.insideDurableCapture = nullptr;   // cleared AFTER the join
+    }
+};
+
+struct HostPumpedCommand final : public juce::AudioProcessorListener
+{
+    std::function<void()> pumped;
+    int    index     = -1;
+    int    toFire    = 0;
+    int    fired     = 0;
+    double elapsedMs = 0.0;
+    bool   pluginDepthRaised = false;
+
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
+    {
+        if (toFire <= 0 || i != index || ! pumped) return;
+        toFire = 0; ++fired;                       // cleared FIRST: the pump may re-enter this
+        pluginDepthRaised = anamorph::param::insideDispatch();
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        pumped();
+        elapsedMs = juce::Time::getMillisecondCounterHiRes() - t0;
+    }
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
+    void audioProcessorChanged (juce::AudioProcessor*,
+                                const juce::AudioProcessorListener::ChangeDetails&) override {}
+};
+} // namespace
+
+static void testNoStateCommandWaitsForAReplacement()
+{
+    std::printf ("State test 103: no state-replacing command waits for a whole-sound replacement (R802-807)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts   = proc.getAPVTS();
+    auto& presets = proc.getPresets();
+    using Op = anamorph::PresetManager::OpResult;
+
+    // THE CARRIER GESTURE IS ON BYPASS, and the choice is load-bearing rather than arbitrary.
+    // The seat fires from a gesture END, so that gesture is itself a user edit -- and a SOUND
+    // parameter's gesture becomes an undo step at the next poll, which would sit in front of every
+    // deferred command the leg then measures (round 25's ordering, working exactly as intended).
+    // `pid::bypass` is a VIEW parameter (`pid::viewParams`), never recorded as an undo step and
+    // never part of a sound signature, so it carries the dispatch and contributes nothing to what
+    // the legs assert. It raises the same `listenerLock` and reaches the same `finalListener`.
+    auto* carrierP = apvts.getParameter (pid::bypass);
+    auto* widthP   = apvts.getParameter (pid::width);
+    check (carrierP != nullptr && widthP != nullptr, "the probe's parameters exist");
+    if (carrierP == nullptr || widthP == nullptr) return;
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };   // RAW: a host's write
+
+    HostPumpedCommand seat;
+    seat.index = carrierP->getParameterIndex();
+    proc.addListener (&seat);
+
+    // A HOST's own gesture: raw `juce::` calls throughout, so the plug-in's dispatch depth stays
+    // at zero for the whole extent while JUCE holds Drive's `listenerLock` across it.
+    auto hostGestureDelivering = [&] (std::function<void()> command)
+    {
+        seat.pumped = std::move (command);
+        seat.fired = 0; seat.toFire = 1; seat.elapsedMs = 0.0; seat.pluginDepthRaised = false;
+        carrierP->beginChangeGesture();
+        carrierP->setValueNotifyingHost (carrierP->getValue() > 0.5f ? 0.0f : 1.0f);
+        carrierP->endChangeGesture();                 // <- the seat fires from inside this
+    };
+
+    // One user edit on the undo stack, and a settled poll, so `undo()` has something to do.
+    auto armOneEdit = [&] (float to)
+    {
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        widthP->beginChangeGesture();
+        setPlain (widthP, to);
+        widthP->endChangeGesture();
+        proc.pollUndoCoalesce();
+    };
+
+    // The retry door, which in production is the processor's 20 Hz tick and the editor's 24 Hz one.
+    auto settle = [&] (const char* what)
+    {
+        check (d2::waitFor ([&] { proc.flushDeferredCommands(); return proc.deferredCommandCount() == 0; }),
+               what);
+    };
+
+
+    // One leg's worth of assertions, so eleven legs read as eleven facts rather than eleven copies.
+    auto refusedWithoutWaiting = [&] (const char* leg, size_t expectedQueued)
+    {
+        std::printf ("  [%s] pumped command took %.1f ms; plug-in dispatch depth raised: %s;"
+                     " queued %d\n", leg, seat.elapsedMs, seat.pluginDepthRaised ? "YES" : "no",
+                     (int) proc.deferredCommandCount());
+        check (seat.fired > 0, "non-vacuity: the command really ran inside the host's dispatch");
+        check (! seat.pluginDepthRaised,
+               "the dispatch really was the HOST's -- insideDispatch() read zero throughout");
+        check (seat.elapsedMs < 250.0, "...and the command did NOT wait for the replacement lock");
+        check (proc.deferredCommandCount() == expectedQueued,
+               "...and it was QUEUED rather than dropped");
+    };
+
+    // ---- LEG A: DIRECT UNDO, no transaction open, inside a host dispatch ----------------------
+    {
+        armOneEdit (0.70f);
+        const float before = plainOf (widthP);
+        {
+            HeldReplacement held (proc);
+            check (held.parked.load(),
+                   "leg A: non-vacuity -- a NON-ANNOUNCING holder really owns soundReplacement");
+            hostGestureDelivering ([&proc] { proc.undo(); });
+            refusedWithoutWaiting ("leg A", 1);
+            check (std::abs (plainOf (widthP) - before) < 1.0e-3f,
+                   "leg A: ...and nothing was undone yet");
+            check (! held.done.load (std::memory_order_acquire),
+                   "leg A: non-vacuity -- the holder held the lock throughout");
+        }
+        settle ("leg A: the queued Undo landed at the next door");
+        check (std::abs (plainOf (widthP) - before) > 1.0e-3f,
+               "leg A: the Undo was not dropped -- it happened, one door later");
+    }
+
+    // ---- LEG B: DIRECT REDO -------------------------------------------------------------------
+    {
+        armOneEdit (0.75f);
+        proc.undo();
+        settle ("leg B: the priming Undo landed");
+        const float afterUndo = plainOf (widthP);
+        check (proc.canRedo(), "leg B: there is something to redo");
+        {
+            HeldReplacement held (proc);
+            hostGestureDelivering ([&proc] { proc.redo(); });
+            refusedWithoutWaiting ("leg B", 1);
+            check (std::abs (plainOf (widthP) - afterUndo) < 1.0e-3f, "leg B: nothing redone yet");
+        }
+        settle ("leg B: the queued Redo landed at the next door");
+        check (std::abs (plainOf (widthP) - afterUndo) > 1.0e-3f,
+               "leg B: the Redo happened, one door later");
+    }
+
+    // ---- LEG C: DIRECT A/B SWITCH -------------------------------------------------------------
+    {
+        armOneEdit (0.40f);
+        {
+            HeldReplacement held (proc);
+            hostGestureDelivering ([&proc] { proc.abSwitchTo (1); });
+            refusedWithoutWaiting ("leg C", 1);
+        }
+        settle ("leg C: the queued A/B switch landed at the next door");
+        proc.abSwitchTo (0);
+        settle ("leg C: ...and the switch back landed too");
+    }
+
+    // ---- LEG C2: THE TOGGLE, which does not route through `abSwitchTo` -------------------------
+    {
+        {
+            HeldReplacement held (proc);
+            hostGestureDelivering ([&proc] { proc.abToggle(); });
+            refusedWithoutWaiting ("leg C2", 1);
+        }
+        settle ("leg C2: the queued A/B toggle landed at the next door");
+        proc.abToggle();
+        settle ("leg C2: ...and the toggle back landed too");
+    }
+
+    // ---- LEG D: DIRECT A/B COPY ---------------------------------------------------------------
+    {
+        {
+            HeldReplacement held (proc);
+            hostGestureDelivering ([&proc] { proc.abCopyToOther(); });
+            refusedWithoutWaiting ("leg D", 1);
+        }
+        settle ("leg D: the queued A/B copy landed at the next door");
+    }
+
+    // ---- LEG E: PRESET LOAD -------------------------------------------------------------------
+    {
+        presets.refresh();
+        check (presets.entries().size() > 0, "leg E: there is at least one preset row to load");
+        if (presets.entries().size() > 0)
+        {
+            HeldReplacement held (proc);
+            hostGestureDelivering ([&presets] { presets.load (0); });
+            refusedWithoutWaiting ("leg E", 1);
+        }
+        settle ("leg E: the queued preset load landed at the next door");
+    }
+
+    // ---- LEG F: PRESET STEP -------------------------------------------------------------------
+    {
+        if (presets.entries().size() > 0)
+        {
+            HeldReplacement held (proc);
+            hostGestureDelivering ([&presets] { presets.step (1); });
+            refusedWithoutWaiting ("leg F", 1);
+        }
+        settle ("leg F: the queued preset step landed at the next door");
+    }
+
+    // ---- LEG G: THE PROTECTION IS NOT THE DEPTH COUNTER ----------------------------------------
+    //  Every leg above already asserts `insideDispatch() == false` inside the seat. This leg makes
+    //  the converse explicit and is the one that would survive if somebody "simplified" the
+    //  admission back into a predicate: with the plug-in's own depth raised as well, the command is
+    //  refused for the FIRST reason rather than the third, and the queue is still exactly one deep.
+    {
+        HeldReplacement held (proc);
+        seat.pumped = [&proc]
+        {
+            const anamorph::param::ScopedDispatch ours;     // as if the plug-in had started it too
+            proc.undo();
+        };
+        seat.fired = 0; seat.toFire = 1; seat.elapsedMs = 0.0; seat.pluginDepthRaised = false;
+        carrierP->beginChangeGesture();
+        carrierP->setValueNotifyingHost (carrierP->getValue() > 0.5f ? 0.0f : 1.0f);
+        carrierP->endChangeGesture();
+        std::printf ("  [leg G] with the plug-in's own depth ALSO raised: %.1f ms, queued %d\n",
+                     seat.elapsedMs, (int) proc.deferredCommandCount());
+        check (seat.fired > 0, "leg G: non-vacuity -- the command ran");
+        check (seat.elapsedMs < 250.0, "leg G: ...and still did not wait");
+        check (proc.deferredCommandCount() == 1, "leg G: ...and was queued exactly once");
+    }
+    settle ("leg G: the queued command landed at the next door");
+
+    // ---- LEG H: A CONCURRENT RESTORE, AND NO DEADLOCK ------------------------------------------
+    //  A real host-thread restore, arriving while commands are being delivered from inside a host
+    //  gesture. The restore ANNOUNCES (it publishes through the cell and the message thread adopts
+    //  it), so this leg exercises the drain half of the admission as well as the lock half.
+    {
+        juce::MemoryBlock snapshot;
+        setPlain (widthP, 0.62f);
+        proc.getStateInformation (snapshot);
+        setPlain (widthP, 0.20f);
+        d2::offMessageThread ([&] { d2::restoreFrom (proc, snapshot); });
+        hostGestureDelivering ([&proc] { proc.undo(); });
+        std::printf ("  [leg H] with a restore pending: %.1f ms, queued %d\n",
+                     seat.elapsedMs, (int) proc.deferredCommandCount());
+        check (seat.fired > 0, "leg H: non-vacuity -- the command ran");
+        check (seat.elapsedMs < 250.0, "leg H: the command did not wait for the restore either");
+        settle ("leg H: everything queued behind the restore landed");
+        check (! proc.canUndo() || true, "leg H: the run completed without deadlocking");
+    }
+
+    // ---- LEG I: COMMAND ORDER IS PRESERVED ------------------------------------------------------
+    {
+        std::vector<int> ran;
+        {
+            HeldReplacement held (proc);
+            seat.pumped = [&]
+            {
+                proc.undo();                                                 // 1
+                (void) proc.admitStateCommand ([&] { ran.push_back (2); }).admitted();
+                (void) proc.admitStateCommand ([&] { ran.push_back (3); }).admitted();
+            };
+            seat.fired = 0; seat.toFire = 1;
+            carrierP->beginChangeGesture();
+            carrierP->setValueNotifyingHost (carrierP->getValue() > 0.5f ? 0.0f : 1.0f);
+            carrierP->endChangeGesture();
+            check (proc.deferredCommandCount() == 3, "leg I: all three commands are queued");
+        }
+        settle ("leg I: the queue drained");
+        check (ran.size() == 2 && ran[0] == 2 && ran[1] == 3,
+               "leg I: the queued commands ran in the order the user gave them");
+    }
+
+    // ---- LEG J: THE TRANSACTION'S OWN STEP COMMITS BEFORE THE DEFERRED COMMANDS ------------------
+    //  Round 25's ordering, re-asserted against round 28's door: a command refused because a
+    //  transaction is open must still run after that transaction's Undo step is recorded, and the
+    //  new refusal reasons must not reorder it.
+    {
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        const float start = plainOf (widthP);
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            widthP->beginChangeGesture();
+            setPlain (widthP, 0.33f);
+            widthP->endChangeGesture();
+            const auto admit = proc.admitStateCommand ([&proc] { proc.undo(); });
+            check (! admit.admitted(), "leg J: a command inside a transaction is refused");
+            check (proc.deferredCommandCount() == 1, "leg J: ...and queued");
+        }                                            // <- the close commits the step, then flushes
+        settle ("leg J: the transaction's deferred Undo landed");
+        check (std::abs (plainOf (widthP) - start) < 1.0e-3f,
+               "leg J: the deferred Undo undid THIS transaction's step, so it was committed first");
+    }
+
+    // ---- LEG K: THE PRESET COMPLETION CONTRACT (R640) IS UNCHANGED -------------------------------
+    //  A save refused by the admission must report `deferred` and say NOTHING until it really
+    //  happens, then say the truth exactly once -- which is round 27's contract, and it must not
+    //  have been weakened by a new refusal reason.
+    {
+        const juce::String name = "__AnamorphR802Harness__K";
+        auto file = anamorph::PresetManager::presetDirectory()
+                        .getChildFile (name + anamorph::PresetManager::fileSuffix());
+        file.deleteFile();
+        int calls = 0; bool said = false;
+        Op r = Op::completed;
+        {
+            HeldReplacement held (proc);
+            seat.pumped = [&] { r = presets.saveUser (name, [&] (bool ok) { ++calls; said = ok; }); };
+            seat.fired = 0; seat.toFire = 1;
+            carrierP->beginChangeGesture();
+            carrierP->setValueNotifyingHost (carrierP->getValue() > 0.5f ? 0.0f : 1.0f);
+            carrierP->endChangeGesture();
+            check (seat.fired > 0, "leg K: non-vacuity -- the save really ran in the dispatch");
+            check (r == Op::deferred, "leg K: a save the admission refuses reports deferred");
+            check (calls == 0, "leg K: ...and says NOTHING yet -- queued is not done");
+            check (! file.existsAsFile(), "leg K: ...and has written nothing yet");
+        }
+        settle ("leg K: the queued save landed");
+        std::printf ("  [leg K] after the door: completion calls %d, said %s, file %s\n",
+                     calls, said ? "true" : "false", file.existsAsFile() ? "yes" : "no");
+        check (calls == 1 && said, "leg K: the completion arrived once, with the real answer");
+        check (file.existsAsFile(), "leg K: ...and the file really was written");
+        file.deleteFile();
+    }
+
+    // ---- LEG L (ROUND 28b, Devin R834-835): A REFUSED COMMAND IS NOT OVERTAKEN -----------------
+    //  Two commands queued in the order the user gave them, and then the FIRST one's admission is
+    //  made to fail after the flush has already begun walking the batch. That is the one moment
+    //  round 28's flush got wrong: it ran the rest of the batch anyway and compared queue sizes
+    //  afterwards, so the second command executed first and the first came back on a later pass.
+    //  `seams.atRelativeDecision` is `abToggle`'s `afterDrain` hook -- the single point inside an
+    //  admission that is after its drain and still OUTSIDE the replacement lock -- so a holder
+    //  parked from there makes exactly that command's `tryEnter` fail and no other's.
+    {
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        settle ("leg L: the queue is empty before the leg starts");
+
+        std::vector<int> ran;
+        const int slotBefore = proc.abActiveSlot();
+
+        {
+            HeldReplacement held (proc);
+            check (held.parked.load(), "leg L: non-vacuity -- the replacement really is held");
+            proc.abToggle();                                                  // A, queued first
+            (void) proc.admitStateCommand ([&] { ran.push_back (proc.abActiveSlot()); })
+                       .admitted();                                           // B, queued behind it
+        }
+        check (proc.deferredCommandCount() == 2, "leg L: both are queued, A in front of B");
+        check (proc.abActiveSlot() == slotBefore, "leg L: ...and neither has run");
+
+        // The flush now starts with the lock FREE -- so its own try succeeds and it really does
+        // walk the batch -- and A's own admission is the thing that fails.
+        std::unique_ptr<HeldReplacement> duringA;
+        bool armed = true;
+        proc.seams.atRelativeDecision = [&]
+        {
+            if (! armed) return;
+            armed = false;
+            duringA = std::make_unique<HeldReplacement> (proc);
+        };
+        proc.flushDeferredCommands();
+        proc.seams.atRelativeDecision = nullptr;
+
+        std::printf ("  [leg L] after the refused pass: %d queued, B ran %d time(s), slot %d -> %d\n",
+                     (int) proc.deferredCommandCount(), (int) ran.size(),
+                     slotBefore, proc.abActiveSlot());
+        check (ran.empty(), "leg L: B did NOT overtake the command that refused in front of it");
+        check (proc.abActiveSlot() == slotBefore, "leg L: ...and A did not run either");
+        check (proc.deferredCommandCount() == 2,
+               "leg L: ...both are still queued, neither dropped nor duplicated");
+
+        duringA.reset();                                   // the contention clears
+        settle ("leg L: the queue drained once the replacement was free");
+        std::printf ("  [leg L] after the retry: slot %d, B saw slot %d (expected %d)\n",
+                     proc.abActiveSlot(), ran.empty() ? -1 : ran[0], 1 - slotBefore);
+        check (proc.abActiveSlot() != slotBefore, "leg L: A ran at the next door");
+        check (ran.size() == 1 && ran[0] == 1 - slotBefore,
+               "leg L: ...and B ran AFTER it, seeing the slot A had already switched to");
+    }
+
+    // ---- LEG M (ROUND 28b): A COMMAND THAT RUNS MAY QUEUE MORE, AND IT GOES BEHIND -------------
+    //  The other half of the finding, and the reason the flush cannot decide anything from the
+    //  queue's SIZE: a command that was admitted and DID run may legitimately queue work, so a
+    //  queue that comes back the same size it went in says nothing about which of the two
+    //  happened. A runs, queues C from inside a transaction of its own, and C must run behind B --
+    //  which was already in front of it when A asked (round 25's ordering rule).
+    {
+        settle ("leg M: the queue is empty before the leg starts");
+
+        std::vector<int> ran;
+        std::function<void()> A, B;
+        const std::function<void()> C = [&ran] { ran.push_back (3); };
+        A = [&]
+        {
+            const auto admit = proc.admitStateCommand (A);   // re-queues ITSELF, as every command does
+            if (! admit.admitted()) return;
+            ran.push_back (1);
+            AnamorphAudioProcessor::ScopedUserTransaction fromCommand (proc);
+            (void) proc.admitStateCommand (C).admitted();    // ...queued, not run: a transaction is open
+        };
+        B = [&]
+        {
+            const auto admit = proc.admitStateCommand (B);
+            if (! admit.admitted()) return;
+            ran.push_back (2);
+        };
+
+        {
+            HeldReplacement held (proc);
+            check (held.parked.load(), "leg M: non-vacuity -- the replacement really is held");
+            A(); B();                                        // both refuse and queue themselves
+        }
+        check (proc.deferredCommandCount() == 2, "leg M: both are queued, A in front of B");
+        check (ran.empty(), "leg M: ...and neither has run");
+
+        settle ("leg M: the queue drained once the replacement was free");
+        std::printf ("  [leg M] order: ");
+        for (int v : ran) std::printf ("%d ", v);
+        std::printf ("(expected 1 2 3)\n");
+        check (ran.size() == 3 && ran[0] == 1 && ran[1] == 2 && ran[2] == 3,
+               "leg M: the work a running command queued ran behind what was already in front of it");
+        check (proc.deferredCommandCount() == 0, "leg M: nothing is left queued");
+    }
+
+    proc.removeListener (&seat);
+}
+
+// ---------------------------------------------------------------------------
+//  State test 105 -- THE WHEEL READS BOTH AXES, AND IT BELONGS TO THE PRESS
+//  (round 29: Devin `src/gui/SpectrumImager.cpp:R3293`, plus the owner's two
+//  approved interaction rules and the drag+wheel boundary defect).
+//
+//  Three separate claims, measured here rather than argued:
+//
+//  1. THE AXIS. A horizontal trackpad gesture arrives in `deltaX` with `deltaY`
+//     at zero (macOS `scrollingDeltaX`, Windows `WM_MOUSEHWHEEL`). Every knob
+//     and slider has always read the DOMINANT axis, because
+//     `juce::Slider::Pimpl::mouseWheelMove` does and `wheelTargetValue` mirrors
+//     it; the multiband display read `deltaY` alone and said so in its own
+//     comment. One spelling now serves both (`wheelDominantDelta`).
+//
+//  2. THE TARGET. JUCE hit-tests the POINTER for every wheel event and never
+//     consults the drag (`getTargetForGesture` is a bare `getComponentAt`), so
+//     the notches of a drag that has carried the cursor off its own control are
+//     delivered elsewhere. The approved rule is that the control owning the
+//     press takes them, and that no other control may be moved while a button
+//     is held.
+//
+//  3. THE ANCHOR. A notch inside a drag has to move the drag's ANCHOR, not just
+//     the value, or the next mouse move erases it (ADR-0053). The knob banked
+//     that as a proportion added AFTER JUCE had clamped its own mapping, so a
+//     press scrolled down by half its range could not be dragged to the top for
+//     the rest of that press. The multiband display and the value box never had
+//     the defect, because both anchor in CURSOR space and clamp once, at the
+//     end -- which is what the knob now does too.
+// ---------------------------------------------------------------------------
+static void testTheWheelBelongsToThePressItLandsIn()
+{
+    std::printf ("State test 105: the wheel reads both axes and belongs to the press (R3293)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the wheel-ownership probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s  = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    // The slider a parameter drives, found by MOVING the parameter and seeing which one follows --
+    // no name, no tooltip, no layout assumption (State test 86's method).
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* monoP  = apvts.getParameter (pid::monoMakerFreq);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* fLoP   = apvts.getParameter (pid::mbFreqLow);
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* driveK = findSliderFor (driveP);
+    auto* monoK  = findSliderFor (monoP);
+    check (im != nullptr && im->getWidth() > 300, "the multiband display is laid out");
+    check (driveP && driveK && monoP && monoK && wLoP && fLoP && bandsP,
+           "the Drive knob, the Mono-Maker slider and the multiband parameters are all findable");
+    if (im == nullptr || im->getWidth() <= 300 || ! (driveP && driveK && monoP && monoK && wLoP && fLoP && bandsP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+    check (monoK->getSliderStyle() == juce::Slider::LinearHorizontal,
+           "...and the Mono-Maker control really is a linear slider, not a rotary one");
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    int seq = 0;
+    // EVERY EVENT GETS ITS OWN INSTANT. Both JUCE's wheel handler and this repository's in-drag
+    // one dedupe on `eventTime` (a host can send the same notch twice), so a fixture that stamped
+    // one instant would land exactly one notch of any burst and prove nothing.
+    auto stamp = [&] { return juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 7); };
+    auto mev = [&] (juce::Component* c, float x, float y, float dx, float dy, bool dragged, bool held)
+    {
+        const auto t = stamp();
+        return juce::MouseEvent (src, { x, y },
+                                 held ? juce::ModifierKeys::leftButtonModifier : juce::ModifierKeys(),
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, c, c, t, { dx, dy }, t, 1, dragged);
+    };
+    auto wheelOf = [] (float dx, float dy)
+    {
+        juce::MouseWheelDetails w;
+        w.deltaX = dx; w.deltaY = dy;
+        w.isReversed = false; w.isSmooth = false; w.isInertial = false;
+        return w;
+    };
+    auto plainOf = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    // Everything the multiband display can edit, as one reading -- so "the pointed control did not
+    // move" is asked of the whole control rather than of one parameter that happened not to be the
+    // one under the cursor.
+    auto mbState = [&] { return std::array<float, 4> { plainOf (wLoP), plainOf (fLoP),
+                                                       plainOf (bandsP),
+                                                       plainOf (apvts.getParameter (pid::mbSolo)) }; };
+    const float dkx = 0.5f * (float) driveK->getWidth(), dky = 0.5f * (float) driveK->getHeight();
+    const float imx = 0.5f * (float) im->getWidth(),     imy = 0.5f * (float) im->getHeight();
+
+    auto clearHistory = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
+
+    // ---- LEG A: a knob's drag keeps the wheel when the cursor is over the multiband display ----
+    {
+        clearHistory();
+        const auto mb0 = mbState();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, true));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, true));
+        const float held = plainOf (driveP);
+        im->mouseWheelMove (mev (im, imx, imy, dkx, dky, false, true), wheelOf (0.0f, 0.6f));
+        const float afterNotch = plainOf (driveP);
+        const auto  mb1 = mbState();
+        driveK->mouseDrag (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, true));
+        const float afterMore = plainOf (driveP);
+        driveK->mouseUp   (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg A] press on Drive, pointer over the display: Drive %.3f -> %.3f -> %.3f\n",
+                     (double) held, (double) afterNotch, (double) afterMore);
+        check (! juce::exactlyEqual (afterNotch, held),
+               "leg A: the notch reached the knob that owns the press, not the display under the pointer");
+        check (mb1 == mb0, "leg A: ...and the display it pointed at did not move at all");
+        check (! juce::exactlyEqual (afterMore, afterNotch),
+               "leg A: ...and the drag carried on from the value the notch produced");
+        check (proc.canUndo(), "leg A: the interaction is undoable");
+        proc.undo(); proc.pollUndoCoalesce();
+        check (! proc.canUndo(), "leg A: ...as ONE step");
+    }
+
+    // ---- LEG B: the same for a LINEAR slider, whose drag maps absolutely -----------------------
+    {
+        clearHistory();
+        const float mw = (float) monoK->getWidth(), mh = 0.5f * (float) monoK->getHeight();
+        const float drive0 = plainOf (driveP);
+        monoK->mouseDown (mev (monoK, 0.25f * mw, mh, 0.25f * mw, mh, false, true));
+        monoK->mouseDrag (mev (monoK, 0.45f * mw, mh, 0.25f * mw, mh, true, true));
+        const float held = plainOf (monoP);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky, 0.25f * mw, mh, false, true), wheelOf (0.0f, 0.6f));
+        const float afterNotch = plainOf (monoP);
+        monoK->mouseUp (mev (monoK, 0.45f * mw, mh, 0.25f * mw, mh, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg B] press on Mono Maker, pointer over Drive: Mono %.1f -> %.1f Hz,"
+                     " Drive %.3f -> %.3f\n", (double) held, (double) afterNotch,
+                     (double) drive0, (double) plainOf (driveP));
+        check (! juce::exactlyEqual (afterNotch, held),
+               "leg B: the notch reached the slider that owns the press");
+        check (juce::exactlyEqual (plainOf (driveP), drive0),
+               "leg B: ...and the knob it pointed at did not move");
+    }
+
+    // ---- LEG C: a MultiBand BANDWIDTH drag keeps the wheel outside the display ------------------
+    //      ...and the notch is a HORIZONTAL trackpad one, which is the whole of the finding.
+    {
+        clearHistory();
+        setPlain (bandsP, 1.0f);
+        setPlain (wLoP, 1.0f);
+        proc.pollUndoCoalesce();
+        // The width line is found rather than assumed: at width 1.0 it sits in the middle of the
+        // lane, but the lane is not the middle of the component.
+        float wy = -1.0f;
+        for (float y = 4.0f; y < (float) im->getHeight() - 4.0f; y += 1.0f)
+        {
+            im->mouseMove (mev (im, imx, y, imx, y, false, false));
+            if (im->getTooltip() == juce::String ("Band width")) { wy = y; break; }
+        }
+        check (wy > 0.0f, "leg C: the band's width line is findable");
+        const float drive0 = plainOf (driveP);
+        im->mouseDown (mev (im, imx, wy, imx, wy, false, true));
+        im->mouseDrag (mev (im, imx, wy - 10.0f, imx, wy, true, true));
+        im->mouseDrag (mev (im, imx, wy - 25.0f, imx, wy, true, true));
+        // THE CURSOR REALLY TRAVELS TO THE KNOB. A held press receives every mouse move, inside
+        // its own bounds and outside them, so the honest way to put the pointer over another
+        // control is to DRAG it there. Teleporting it would leave this display's cursor-space
+        // anchor (`dragGrabDY`) describing a position the press was never told about, and the
+        // wheel would then re-anchor against a cursor that had never been reported -- a fixture
+        // error whose symptom looks exactly like a product one.
+        const auto  out  = im->getLocalPoint (driveK, juce::Point<float> (dkx, dky));
+        im->mouseDrag (mev (im, out.x, out.y, imx, wy, true, true));
+        const float held = plainOf (wLoP);
+        // Off whichever rail the exit left it on: a notch FURTHER INTO a rail performs no edit by
+        // ADR-0052 and would prove nothing about the axis. `deltaX` positive reads as a downward
+        // vertical one (`wheelDominantDelta` negates it), so it lowers the width.
+        const float ax   = held > 1.0f ? 0.6f : -0.6f;
+        const float step = held > 1.0f ? 12.0f : -12.0f;
+        // The cursor is now OVER THE DRIVE KNOB, and the gesture is sideways.
+        driveK->mouseWheelMove (mev (driveK, dkx, dky, imx, wy, false, true), wheelOf (ax, 0.0f));
+        const float afterNotch = plainOf (wLoP);
+        im->mouseDrag (mev (im, out.x, out.y + step, imx, wy, true, true));
+        const float afterMore = plainOf (wLoP);
+        im->mouseUp   (mev (im, out.x, out.y + step, imx, wy, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg C] press on Bandwidth, pointer over Drive, HORIZONTAL notch:"
+                     " width %.3f -> %.3f -> %.3f; Drive %.3f -> %.3f\n",
+                     (double) held, (double) afterNotch, (double) afterMore,
+                     (double) drive0, (double) plainOf (driveP));
+        check (! juce::exactlyEqual (afterNotch, held),
+               "leg C: a horizontal notch outside the display still steers the Bandwidth it is holding");
+        check (juce::exactlyEqual (plainOf (driveP), drive0),
+               "leg C: ...and the knob under the pointer did not move");
+        check (! juce::exactlyEqual (afterMore, afterNotch),
+               "leg C: ...and the drag carried on from the value the notch produced");
+    }
+
+    // The split handle, found the way leg C finds the width line: by the affordance the component
+    // itself reports, not by recomputing its geometry here. `setContextTooltip` names a hovered
+    // handle "Drag to change the split frequency" (SpectrumImager.cpp, `hoverHandle`).
+    auto findSplitHandleX = [&] () -> float
+    {
+        for (float x = 4.0f; x < (float) im->getWidth() - 4.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (im, x, imy, x, imy, false, false));
+            if (im->getTooltip().containsIgnoreCase ("split frequency")) return x;
+        }
+        return -1.0f;
+    };
+    // WHAT IS REALLY UNDER A POINT OF THIS DISPLAY'S. `juce::Component::getComponentAt` answers
+    // nullptr for a component that has never been made visible, and an editor built for a test has
+    // no peer to make its ROOT one -- so the hit-test is spelled out here, by the rule the real one
+    // uses: descend into a child that passes clicks to its children, answer one that accepts them
+    // itself, and fall back to the editor, which is where a scroll over bare background arrives.
+    auto componentAt = [&] (juce::Point<float> pInImager) -> juce::Component*
+    {
+        std::function<juce::Component* (juce::Component*, juce::Point<float>)> descend;
+        descend = [&] (juce::Component* c, juce::Point<float> p) -> juce::Component*
+        {
+            for (int i = c->getNumChildComponents(); --i >= 0;)
+            {
+                auto* k = c->getChildComponent (i);
+                if (! k->isVisible()) continue;
+                const auto kp = p - k->getPosition().toFloat();
+                if (! k->getLocalBounds().toFloat().contains (kp)) continue;
+                bool clicks = false, kids = false;
+                k->getInterceptsMouseClicks (clicks, kids);
+                if (kids) if (auto* d = descend (k, kp)) return d;
+                if (clicks) return k;
+            }
+            return nullptr;
+        };
+        auto* found = descend (ed, ed->getLocalPoint (im, pInImager));
+        return found != nullptr ? found : static_cast<juce::Component*> (ed);
+    };
+    // ...and the notch is driven through THAT component's own handler, so a component with no wheel
+    // handler exercises exactly what a real scroll there would: `juce::Component::mouseWheelMove`
+    // walking the event up to the nearest enabled ancestor (juce_Component.cpp:2316-2321), which is
+    // a pure component-tree walk and needs no peer.
+    auto wheelAtDisplayPoint = [&] (juce::Point<float> pInImager, juce::MouseWheelDetails w,
+                                    juce::Point<float> down) -> juce::Component*
+    {
+        auto* under = componentAt (pInImager);
+        if (under == nullptr) return nullptr;
+        const auto local = under->getLocalPoint (im, pInImager);
+        under->mouseWheelMove (mev (under, local.x, local.y, down.x, down.y, false, true), w);
+        return under;
+    };
+
+    // ---- LEG D: the same for a MultiBand SPLIT FREQUENCY drag ----------------------------------
+    //      ...and the pointer is over something that is NOT A CONTROL, which is most of this
+    //      editor's surface and the one case the per-control register does not reach on its own: a
+    //      caption, a toggle or the panel background overrides no wheel handler, so JUCE walks the
+    //      event up to the editor. The notch must still arrive at the split being dragged.
+    {
+        clearHistory();
+        setPlain (bandsP, 2.0f);
+        proc.pollUndoCoalesce();
+        const float hx = findSplitHandleX();
+        check (hx > 0.0f, "leg D: a crossover handle is findable");
+        const float drive0 = plainOf (driveP);
+        const float hy = imy;
+        im->mouseDown (mev (im, hx, hy, hx, hy, false, true));
+        im->mouseDrag (mev (im, hx + 12.0f, hy, hx, hy, true, true));
+        // The cursor travels OUT through the top of the frame, as a real drag -- 12 px, which is
+        // outside this display and well inside the 50 px margin at which a split drag freezes for
+        // the merge affordance. Leg K holds the frozen case on its own.
+        const auto  out = juce::Point<float> (imx, -12.0f);
+        im->mouseDrag (mev (im, out.x, out.y, hx, hy, true, true));
+        const float held = plainOf (fLoP);
+        auto* under = wheelAtDisplayPoint (out, wheelOf (0.6f, 0.0f), { hx, hy });
+        check (under != nullptr && under != im,
+               "leg D: the exit point really is over something other than the display");
+        // ...and over something that owns NO wheel handler of its own, so the only route the notch
+        // can have taken is the editor backstop.
+        check (under != nullptr && dynamic_cast<juce::Slider*> (under) == nullptr
+                                && dynamic_cast<anamorph::gui::SpectrumImager*> (under) == nullptr,
+               "leg D: ...and over something that is not one of the wheel-owning controls");
+        const float afterNotch = plainOf (fLoP);
+        im->mouseDrag (mev (im, out.x - 12.0f, out.y, hx, hy, true, true));
+        const float afterMore = plainOf (fLoP);
+        im->mouseUp   (mev (im, out.x - 12.0f, out.y, hx, hy, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg D] press on the split, pointer outside the display over \"%s\","
+                     " HORIZONTAL notch: split %.1f -> %.1f -> %.1f Hz; Drive %.3f -> %.3f\n",
+                     under != nullptr ? under->getName().toRawUTF8() : "(nothing)",
+                     (double) held, (double) afterNotch, (double) afterMore,
+                     (double) drive0, (double) plainOf (driveP));
+        check (! juce::exactlyEqual (afterNotch, held),
+               "leg D: a horizontal notch outside the display still steers the split it is holding");
+        check (juce::exactlyEqual (plainOf (driveP), drive0),
+               "leg D: ...and nothing else in the editor moved");
+        check (! juce::exactlyEqual (afterMore, afterNotch),
+               "leg D: ...and the drag carried on from the value the notch produced");
+    }
+
+    // ---- LEG K: a split drag FROZEN for the merge affordance owns the notch and adds nothing ----
+    //      Dragged more than 70 px sideways or 50 px vertically outside the frame, a split drag
+    //      marks its band for removal on release and FREEZES, so that the split is recomputed
+    //      purely from the cursor when it returns. Before the register a notch could not reach
+    //      that state at all -- JUCE hit-tests the pointer, and the pointer is over somebody else.
+    //      It can now, and the press must own it WITHOUT creeping the split or re-anchoring it.
+    {
+        clearHistory();
+        setPlain (bandsP, 2.0f);
+        proc.pollUndoCoalesce();
+        const float hx = findSplitHandleX();
+        check (hx > 0.0f, "leg K: a crossover handle is findable");
+        const float drive0 = plainOf (driveP);
+        const float hy = imy;
+        im->mouseDown (mev (im, hx, hy, hx, hy, false, true));
+        im->mouseDrag (mev (im, hx + 12.0f, hy, hx, hy, true, true));
+        const auto far = juce::Point<float> (imx, -60.0f);   // past the 50 px merge margin
+        im->mouseDrag (mev (im, far.x, far.y, hx, hy, true, true));
+        const float frozen = plainOf (fLoP);
+        auto* under = wheelAtDisplayPoint (far, wheelOf (0.6f, 0.0f), { hx, hy });
+        const float afterNotch = plainOf (fLoP);
+        check (under != nullptr && dynamic_cast<juce::Slider*> (under) == nullptr
+                                && dynamic_cast<anamorph::gui::SpectrumImager*> (under) == nullptr,
+               "leg K: the notch really did have to travel through the editor backstop");
+        // ...and back inside: the freeze is still a freeze, so the split goes to the CURSOR.
+        im->mouseDrag (mev (im, imx, hy, hx, hy, true, true));
+        const float back = plainOf (fLoP);
+        im->mouseUp   (mev (im, imx, hy, hx, hy, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg K] frozen split (%.0f px above the frame, under \"%s\"):"
+                     " %.1f -> %.1f Hz, then %.1f on return\n",
+                     -(double) far.y, under != nullptr ? under->getName().toRawUTF8() : "(nothing)",
+                     (double) frozen, (double) afterNotch, (double) back);
+        check (juce::exactlyEqual (afterNotch, frozen),
+               "leg K: a notch does not creep a split the drag has frozen for the merge");
+        check (juce::exactlyEqual (plainOf (driveP), drive0),
+               "leg K: ...and it does not reach anything under the pointer either");
+        check (! juce::exactlyEqual (back, frozen),
+               "leg K: ...and the drag recovers exactly as it did before, from the cursor");
+    }
+
+    // ---- LEG E: the control under the pointer records nothing, not even a gesture ---------------
+    {
+        clearHistory();
+        CountGestures g;
+        auto* widP = apvts.getParameter (pid::width);
+        auto* widK = findSliderFor (widP);
+        check (widK != nullptr, "leg E: a second knob is findable");
+        if (widK != nullptr)
+        {
+            const float wid0 = plainOf (widP);
+            widP->addListener (&g);
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, true));
+            driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, true));
+            for (int i = 0; i < 3; ++i)
+                widK->mouseWheelMove (mev (widK, 0.5f * (float) widK->getWidth(),
+                                           0.5f * (float) widK->getHeight(), dkx, dky, false, true),
+                                      wheelOf (0.0f, 0.6f));
+            driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, true));
+            widP->removeListener (&g);
+            proc.pollUndoCoalesce();
+            std::printf ("  [leg E] three notches over Width while Drive holds the press:"
+                         " Width %.4f -> %.4f, gestures opened %d\n",
+                         (double) wid0, (double) plainOf (widP), g.opens);
+            check (juce::exactlyEqual (plainOf (widP), wid0),
+                   "leg E: the control under the pointer is untouched while another press is held");
+            check (g.opens == 0 && g.closes == 0,
+                   "leg E: ...and no host change gesture is opened on it either");
+        }
+    }
+
+    // ---- LEG F: the KNOB boundary regression --------------------------------------------------
+    //      Drag to half the range, wheel back to the bottom without releasing, then keep dragging
+    //      up. The remaining travel must still reach the TOP. Before round 29 the offset was added
+    //      after JUCE's own clamp, so the press was capped at the offset -- exactly the reported
+    //      "stuck around 50%".
+    {
+        clearHistory();
+        setPlain (driveP, (float) driveP->convertFrom0to1 (0.0f));
+        proc.pollUndoCoalesce();
+        const double sens = (double) driveK->getMouseDragSensitivity();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, true));
+        driveK->mouseDrag (mev (driveK, dkx, dky - (float) (sens * 0.5), dkx, dky, true, true));
+        const double half = driveK->valueToProportionOfLength (driveK->getValue());
+        // ...down to the bottom, one notch at a time, inside the press.
+        for (int i = 0; i < 24 && driveK->getValue() > driveK->getMinimum(); ++i)
+            driveK->mouseWheelMove (mev (driveK, dkx, dky - (float) (sens * 0.5), dkx, dky, false, true),
+                                    wheelOf (0.0f, -1.0f));
+        const double atBottom = driveK->valueToProportionOfLength (driveK->getValue());
+        // ...and then a FULL range of further travel from where the wheel left the cursor.
+        driveK->mouseDrag (mev (driveK, dkx, dky - (float) (sens * 1.5), dkx, dky, true, true));
+        const double reached = driveK->valueToProportionOfLength (driveK->getValue());
+        driveK->mouseUp (mev (driveK, dkx, dky - (float) (sens * 1.5), dkx, dky, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg F] knob: drag to %.3f, wheel to %.3f, then a full range of drag reaches"
+                     " %.3f (was capped at the wheel offset before round 29)\n",
+                     half, atBottom, reached);
+        check (half > 0.4 && half < 0.6, "leg F: the drag really did reach half the range");
+        check (atBottom < 1.0e-6, "leg F: ...and the wheel really did take it to the bottom");
+        check (reached > 0.999,
+               "leg F: ...and the remaining drag still reaches the TOP, with no travel lost to the notch");
+    }
+
+    // ---- LEG G: the SLIDER boundary regression, on the absolute linear mapping ------------------
+    {
+        clearHistory();
+        const float mh = 0.5f * (float) monoK->getHeight();
+        const double span = std::abs ((double) monoK->getPositionOfValue (monoK->getMaximum())
+                                      - (double) monoK->getPositionOfValue (monoK->getMinimum()));
+        check (span > 10.0, "leg G: the linear slider has a measurable travel");
+        monoK->mouseDown (mev (monoK, 1.0f, mh, 1.0f, mh, false, true));
+        monoK->mouseDrag (mev (monoK, 1.0f + 0.5f * (float) span, mh, 1.0f, mh, true, true));
+        const double half = monoK->valueToProportionOfLength (monoK->getValue());
+        for (int i = 0; i < 24 && monoK->getValue() > monoK->getMinimum(); ++i)
+            monoK->mouseWheelMove (mev (monoK, 1.0f + 0.5f * (float) span, mh, 1.0f, mh, false, true),
+                                   wheelOf (0.0f, -1.0f));
+        const double atBottom = monoK->valueToProportionOfLength (monoK->getValue());
+        monoK->mouseDrag (mev (monoK, 1.0f + 1.5f * (float) span, mh, 1.0f, mh, true, true));
+        const double reached = monoK->valueToProportionOfLength (monoK->getValue());
+        monoK->mouseUp (mev (monoK, 1.0f + 1.5f * (float) span, mh, 1.0f, mh, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg G] slider: drag to %.3f, wheel to %.3f, then a full travel reaches %.3f\n",
+                     half, atBottom, reached);
+        check (half > 0.35 && half < 0.65, "leg G: the drag really did reach about half the range");
+        check (atBottom < 1.0e-6, "leg G: ...and the wheel really did take it to the bottom");
+        check (reached > 0.999, "leg G: ...and the remaining drag still reaches the TOP");
+    }
+
+    // ---- LEG H: the MultiBand parameters are VERIFIED, not assumed, and not modified ------------
+    //      The user's observation is that Bandwidth and split frequency do NOT have the defect.
+    //      They do not, and the reason is structural: both anchor in CURSOR space
+    //      (`dragGrabDY = e.position.y - widthToY (want)`, `dragGrabDX = e.position.x - landed`)
+    //      and the clamp is applied once, to the final target -- so a notch moves the anchor and
+    //      the whole remaining travel survives. Nothing about them is changed for symmetry.
+    {
+        clearHistory();
+        setPlain (bandsP, 1.0f);
+        setPlain (wLoP, 1.0f);
+        proc.pollUndoCoalesce();
+        float wy = -1.0f;
+        for (float y = 4.0f; y < (float) im->getHeight() - 4.0f; y += 1.0f)
+        {
+            im->mouseMove (mev (im, imx, y, imx, y, false, false));
+            if (im->getTooltip() == juce::String ("Band width")) { wy = y; break; }
+        }
+        check (wy > 0.0f, "leg H: the band's width line is findable");
+        im->mouseDown (mev (im, imx, wy, imx, wy, false, true));
+        im->mouseDrag (mev (im, imx, wy - 10.0f, imx, wy, true, true));
+        im->mouseDrag (mev (im, imx, wy - 30.0f, imx, wy, true, true));
+        const float dragged = plainOf (wLoP);
+        for (int i = 0; i < 40 && plainOf (wLoP) > 0.0f; ++i)
+            im->mouseWheelMove (mev (im, imx, wy - 30.0f, imx, wy, false, true), wheelOf (0.0f, -1.0f));
+        const float atBottom = plainOf (wLoP);
+        im->mouseDrag (mev (im, imx, wy - 30.0f - (float) im->getHeight(), imx, wy, true, true));
+        const float reached = plainOf (wLoP);
+        im->mouseUp (mev (im, imx, wy - 30.0f - (float) im->getHeight(), imx, wy, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg H] bandwidth: drag to %.3f, wheel to %.3f, then a full lane of drag"
+                     " reaches %.3f (max 2.000)\n",
+                     (double) dragged, (double) atBottom, (double) reached);
+        check (dragged > 1.0f, "leg H: the drag really did raise the bandwidth");
+        check (atBottom < 1.0e-6f, "leg H: ...and the wheel really did take it to the bottom");
+        check (reached > 1.999f,
+               "leg H: ...and the remaining drag still reaches the TOP -- the defect is absent here");
+    }
+
+    // ---- LEG I: the axis, on both control families ----------------------------------------------
+    {
+        clearHistory();
+        const float d0 = plainOf (driveP);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky, dkx, dky, false, false), wheelOf (0.0f, 0.6f));
+        const float dVert = plainOf (driveP);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky, dkx, dky, false, false), wheelOf (-0.6f, 0.0f));
+        const float dHorz = plainOf (driveP);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky, dkx, dky, false, false), wheelOf (-0.6f, 0.1f));
+        const float dMixed = plainOf (driveP);
+        check (! juce::exactlyEqual (dVert, d0),    "leg I: a vertical notch moves a knob");
+        check (! juce::exactlyEqual (dHorz, dVert), "leg I: ...a horizontal-only one does too");
+        check (! juce::exactlyEqual (dMixed, dHorz), "leg I: ...and a mixed one takes the dominant axis");
+
+        setPlain (bandsP, 1.0f); setPlain (wLoP, 1.0f);
+        proc.pollUndoCoalesce();
+        float wy = -1.0f;
+        for (float y = 4.0f; y < (float) im->getHeight() - 4.0f; y += 1.0f)
+        {
+            im->mouseMove (mev (im, imx, y, imx, y, false, false));
+            if (im->getTooltip() == juce::String ("Band width")) { wy = y; break; }
+        }
+        check (wy > 0.0f, "leg I: the band's width line is findable");
+        const float w0 = plainOf (wLoP);
+        im->mouseWheelMove (mev (im, imx, wy, imx, wy, false, false), wheelOf (0.0f, -0.6f));
+        const float wVert = plainOf (wLoP);
+        im->mouseWheelMove (mev (im, imx, wy, imx, wy, false, false), wheelOf (0.6f, 0.0f));
+        const float wHorz = plainOf (wLoP);
+        std::printf ("  [leg I] display: %.3f -> %.3f (vertical) -> %.3f (horizontal only)\n",
+                     (double) w0, (double) wVert, (double) wHorz);
+        check (! juce::exactlyEqual (wVert, w0),
+               "leg I: a vertical notch moves the multiband bandwidth");
+        check (! juce::exactlyEqual (wHorz, wVert),
+               "leg I: ...and a HORIZONTAL-only trackpad notch moves it too, which it never did before");
+    }
+
+    // ---- LEG L: the notch moves the drag's ANCHOR, not merely its value -------------------------
+    //      THE DISCRIMINATOR LEGS F AND G CANNOT BE. A full further range of drag saturates at the
+    //      rail whether or not the notch was banked, so both of them pass just as well against an
+    //      implementation that DISCARDS the notch as against one that carries it. Here the cursor
+    //      comes back to the exact point it was pressed at, so the drag's own contribution is zero
+    //      by construction and everything left over is the notch's: the press value plus what the
+    //      wheel moved, or -- if the anchor never moved with it -- the press value alone.
+    {
+        clearHistory();
+        setPlain (driveP, (float) driveP->convertFrom0to1 (0.0f));
+        proc.pollUndoCoalesce();
+        const double sens = (double) driveK->getMouseDragSensitivity();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, true));
+        const double atPress = driveK->valueToProportionOfLength (driveK->getValue());
+        driveK->mouseDrag (mev (driveK, dkx, dky - (float) (sens * 0.25), dkx, dky, true, true));
+        const double v1 = driveK->valueToProportionOfLength (driveK->getValue());
+        for (int i = 0; i < 3; ++i)
+            driveK->mouseWheelMove (mev (driveK, dkx, dky - (float) (sens * 0.25), dkx, dky, false, true),
+                                    wheelOf (0.0f, 1.0f));
+        const double v2 = driveK->valueToProportionOfLength (driveK->getValue());
+        driveK->mouseDrag (mev (driveK, dkx, dky, dkx, dky, true, true));   // back to the press point
+        const double back = driveK->valueToProportionOfLength (driveK->getValue());
+        driveK->mouseUp   (mev (driveK, dkx, dky, dkx, dky, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg L] knob: press %.3f, drag %.3f, wheel %.3f, back at the press point %.3f"
+                     " (the notch's own %.3f, never the bare press's %.3f)\n",
+                     atPress, v1, v2, back, atPress + (v2 - v1), atPress);
+        check (v2 > v1 + 0.05, "leg L: the notches really did raise the knob");
+        check (std::abs (back - (atPress + (v2 - v1))) < 0.01,
+               "leg L: the round trip leaves exactly the notch behind -- the anchor moved with it");
+
+        // ...and the same on the ABSOLUTE linear mapping, where the anchor is a cursor position
+        // rather than a press value: `prop (x0 + wheelDragPx)` must be `prop (x0) + (v2 - v1)`.
+        const float mh = 0.5f * (float) monoK->getHeight();
+        const double span = std::abs ((double) monoK->getPositionOfValue (monoK->getMaximum())
+                                      - (double) monoK->getPositionOfValue (monoK->getMinimum()));
+        // INSIDE THE SLIDER REGION, not at the component's edge: an absolute drag clamps its
+        // proportion to [0, 1], so a press left of the region records a value whose proportion has
+        // already been clamped, and the round trip below would then be measured from a position the
+        // arithmetic never had. `getPositionOfValue` names the region's own ends.
+        const float x0 = (float) monoK->getPositionOfValue (monoK->getMinimum())
+                       + 0.05f * (float) span;
+        monoK->mouseDown (mev (monoK, x0, mh, x0, mh, false, true));
+        const double sPress = monoK->valueToProportionOfLength (monoK->getValue());
+        monoK->mouseDrag (mev (monoK, x0 + 0.25f * (float) span, mh, x0, mh, true, true));
+        const double s1 = monoK->valueToProportionOfLength (monoK->getValue());
+        for (int i = 0; i < 3; ++i)
+            monoK->mouseWheelMove (mev (monoK, x0 + 0.25f * (float) span, mh, x0, mh, false, true),
+                                   wheelOf (0.0f, 1.0f));
+        const double s2 = monoK->valueToProportionOfLength (monoK->getValue());
+        monoK->mouseDrag (mev (monoK, x0, mh, x0, mh, true, true));
+        const double sBack = monoK->valueToProportionOfLength (monoK->getValue());
+        monoK->mouseUp   (mev (monoK, x0, mh, x0, mh, true, true));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg L] slider: press %.3f, drag %.3f, wheel %.3f, back at the press point %.3f"
+                     " (the notch's own %.3f)\n", sPress, s1, s2, sBack, sPress + (s2 - s1));
+        check (s2 > s1 + 0.05, "leg L: the notches really did raise the slider");
+        check (std::abs (sBack - (sPress + (s2 - s1))) < 0.01,
+               "leg L: ...and the absolute mapping keeps the notch through the round trip too");
+    }
+
+    // ---- LEG J: no-op inputs have no side effects (ADR-0052, preserved) --------------------------
+    {
+        clearHistory();
+        setPlain (bandsP, 1.0f); setPlain (wLoP, 1.0f);
+        proc.pollUndoCoalesce();
+        const auto mb0 = mbState();
+        const float d0  = plainOf (driveP);
+        const bool  undo0 = proc.canUndo();
+
+        // J1 -- both axes zero, on both control families and with no press in flight.
+        im->mouseWheelMove (mev (im, imx, imy, imx, imy, false, false), wheelOf (0.0f, 0.0f));
+        driveK->mouseWheelMove (mev (driveK, dkx, dky, dkx, dky, false, false), wheelOf (0.0f, 0.0f));
+        // J2 -- axis values that normalise to nothing: below the display's own 1e-4 threshold.
+        im->mouseWheelMove (mev (im, imx, imy, imx, imy, false, false), wheelOf (1.0e-6f, 1.0e-6f));
+        proc.pollUndoCoalesce();
+        check (mbState() == mb0 && juce::exactlyEqual (plainOf (driveP), d0),
+               "leg J: an empty or sub-threshold wheel event moves nothing");
+        check (proc.canUndo() == undo0, "leg J: ...and records no undo step");
+
+        // J3 -- a wheel over another control while a press is held: no gesture, no step, nothing.
+        CountGestures g;
+        wLoP->addListener (&g);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, true));
+        im->mouseWheelMove (mev (im, imx, imy, dkx, dky, false, true), wheelOf (0.0f, 0.0f));
+        driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, true));
+        wLoP->removeListener (&g);
+        proc.pollUndoCoalesce();
+        check (mbState() == mb0, "leg J: a null notch posted to a held press changes nothing");
+        check (g.opens == 0 && g.closes == 0, "leg J: ...and opens no gesture on the pointed control");
+
+        // J4 -- and the register does not strand: with the press over, an ordinary scroll works.
+        const auto mbBefore = mbState();
+        im->mouseWheelMove (mev (im, imx, imy, imx, imy, false, false), wheelOf (0.0f, -0.6f));
+        proc.pollUndoCoalesce();
+        check (! (mbState() == mbBefore),
+               "leg J: ...and a standalone scroll after the release still edits what it points at");
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 106 -- a notch inside a VELOCITY drag (round 30, Devin
+//  `src/PluginEditor.h:R822-828`, "velocity drags distort wheel offsets").
+//
+//  JUCE HAS TWO DRAG MAPPINGS AND THEY ARE NOT THE SAME SHAPE. `handleAbsoluteDrag`
+//  is affine in the cursor -- `prop (valueOnMouseDown) + mouseDiff / pixelsForFullDragExtent`
+//  -- which is what round 29's pixel offset relies on. `handleVelocityDrag` is an
+//  INTEGRATOR: it adds `speed` to `prop (valueWhenLastDragged)` on every event, where
+//  `speed` is a sine curve of `|e.position - mousePosWhenLastDragged|`
+//  (juce_Slider.cpp:815-852). Two consequences, and this test measures both:
+//
+//    1. `Pimpl::setValue` NEVER writes `valueWhenLastDragged` -- every write to it is
+//       at juce_Slider.cpp:762, :812, :843/846, :887 and :941, and not one of them is
+//       reachable from `Slider::setValue`. So a notch that writes the value leaves the
+//       integrator behind, and the next drag event recomputes from the STALE base:
+//       the notch is not distorted, it is DISCARDED.
+//    2. `mousePosWhenLastDragged = e.position` (juce_Slider.cpp:969) stores whatever
+//       position was handed in, so round 29's shift is banked into JUCE's own
+//       reference -- and the FIRST event after a notch sees a spurious `mouseDiff` of
+//       the whole offset, pushed through the velocity curve.
+//
+//  REACHING VELOCITY MODE IS NOT EXOTIC. `isAbsoluteDragMode` is
+//  `isVelocityBased == (userKeyOverridesVelocity && mods.testFlags (modifierToSwapModes))`
+//  (juce_Slider.cpp:1184) and Anamorph never changes the defaults -- `isVelocityBased`
+//  false, `userKeyOverridesVelocity` true, `modifierToSwapModes`
+//  `ctrlAltCommandModifiers` -- so ANY of ctrl/alt/command held during a drag switches
+//  the mapping. This test uses `commandModifier` because it is the one that is portable:
+//  on macOS `popupMenuClickModifier` is `rightButtonModifier | ctrlModifier`, so a
+//  ctrl-drag there opens the popup menu instead, while `commandModifier` IS
+//  `ctrlModifier` on Windows and Linux and the Command flag on macOS.
+// ---------------------------------------------------------------------------
+static void testANotchInsideAVelocityDrag()
+{
+    std::printf ("State test 106: a notch inside a velocity drag (R822-828)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the velocity-drag probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* monoP  = apvts.getParameter (pid::monoMakerFreq);
+    auto* driveK = findSliderFor (driveP);
+    auto* monoK  = findSliderFor (monoP);
+    check (driveP && driveK && monoP && monoK, "the Drive knob and the Mono-Maker slider are findable");
+    if (! (driveP && driveK && monoP && monoK)) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    int seq = 0;
+    auto stamp = [&] { return juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 7); };
+    auto mev = [&] (juce::Component* c, float x, float y, float dx, float dy,
+                    bool dragged, juce::ModifierKeys m)
+    {
+        const auto t = stamp();
+        return juce::MouseEvent (src, { x, y }, m, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 c, c, t, { dx, dy }, t, 1, dragged);
+    };
+    auto wheelOf = [] (float dx, float dy)
+    {
+        juce::MouseWheelDetails w;
+        w.deltaX = dx; w.deltaY = dy;
+        w.isReversed = false; w.isSmooth = false; w.isInertial = false;
+        return w;
+    };
+    const auto plainHeld = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
+    // THE PORTABLE VELOCITY MODIFIER -- see the header. `commandModifier` is inside
+    // `ctrlAltCommandModifiers` on every platform and inside `popupMenuClickModifier` on none.
+    const auto velocHeld = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                             | juce::ModifierKeys::commandModifier);
+
+    const float dkx = 0.5f * (float) driveK->getWidth(), dky = 0.5f * (float) driveK->getHeight();
+    auto propOf = [&] (juce::Slider* s) { return s->valueToProportionOfLength (s->getValue()); };
+    auto clearHistory = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
+    auto zero = [&] (juce::Slider* s, juce::RangedAudioParameter* p)
+    { p->setValueNotifyingHost (0.0f); proc.pollUndoCoalesce(); (void) s; };
+
+    // ---- LEG A: the velocity branch really is the one the modifier reaches -------------------
+    //      Proved by DIFFERENCE rather than by reading a private flag: the same cursor travel
+    //      produces a different value with the modifier held than without it.
+    double plainReached = 0.0, velocReached = 0.0;
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, plainHeld));
+        for (int i = 1; i <= 4; ++i)
+            driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f * (float) i, dkx, dky, true, plainHeld));
+        plainReached = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, plainHeld));
+        proc.pollUndoCoalesce();
+
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, velocHeld));
+        for (int i = 1; i <= 4; ++i)
+            driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f * (float) i, dkx, dky, true, velocHeld));
+        velocReached = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+
+        std::printf ("  [leg A] same 40 px of travel: absolute %.4f, with the velocity modifier %.4f\n",
+                     plainReached, velocReached);
+        check (plainReached > 0.0, "leg A: the absolute drag moved the knob");
+        check (! juce::approximatelyEqual (plainReached, velocReached),
+               "leg A: ...and the modifier really does select a DIFFERENT mapping (velocity)");
+
+        // THE UPGRADE TRIPWIRE for the `float-divide-by-zero` disposition (round 31, Devin
+        // `src/PluginEditor.h:R909`). Reaching the velocity branch at all depends on JUCE's
+        // second disjunct being false, and it is false because `sliderRegionSize` is 0 for a
+        // rotary and `(end - start) / 0` is `+inf`. The member is private; what IS visible is
+        // the same span through `getPositionOfValue`, which `dragIsVelocity` reads for exactly
+        // this reason. If a future JUCE gives a rotary a linear region, this check fails HERE --
+        // next to the behaviour that depends on it -- instead of the division quietly starting
+        // to return a finite number and flipping coarse-interval knobs into absolute mode.
+        const double region = std::abs ((double) driveK->getPositionOfValue (driveK->getMaximum())
+                                      - (double) driveK->getPositionOfValue (driveK->getMinimum()));
+        std::printf ("  [leg A] the rotary reports a linear region of %.1f px"
+                     " (0 is what makes JUCE's own divisor 0)\n", region);
+        check (juce::exactlyEqual (region, 0.0),
+               "leg A: a rotary still has no linear region -- the +inf branch is still the live one");
+    }
+
+    // ---- LEG B: the clean velocity run, which supplies the expectation for leg C --------------
+    //      Velocity is an integrator, so the increment a given cursor delta produces depends only
+    //      on that delta -- the same four events give the same four increments whatever the value
+    //      they start from. Leg C reuses them as the arithmetic it must satisfy.
+    double stepAfter3 = 0.0, propAfter2 = 0.0, propAfter3 = 0.0;
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, velocHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, velocHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, velocHeld));
+        propAfter2 = propOf (driveK);
+        driveK->mouseDrag (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, velocHeld));
+        propAfter3 = propOf (driveK);
+        stepAfter3 = propAfter3 - propAfter2;
+        driveK->mouseUp (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg B] clean velocity run: after 2 events %.4f, after 3 %.4f"
+                     " (the third event is worth %.4f)\n", propAfter2, propAfter3, stepAfter3);
+        check (stepAfter3 > 1.0e-4, "leg B: a velocity event with a constant cursor delta moves the knob");
+    }
+
+    // ---- LEG C: THE REPRODUCTION -- the same run with one notch in the middle -----------------
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, velocHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, velocHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, velocHeld));
+        const double beforeNotch = propOf (driveK);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky - 20.0f, dkx, dky, false, velocHeld),
+                                wheelOf (0.0f, 1.0f));
+        const double afterNotch = propOf (driveK);
+        driveK->mouseDrag (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, velocHeld));
+        const double afterMore = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+
+        // THE EXPECTATION, stated as arithmetic rather than as a constant: the drag must carry on
+        // from the value the WHEEL produced, so the third event is worth what it was worth in the
+        // clean run of leg B and nothing else.
+        const double expected = juce::jlimit (0.0, 1.0, afterNotch + stepAfter3);
+        std::printf ("  [leg C] velocity + notch: %.4f -> notch -> %.4f -> next drag %.4f"
+                     " (expected %.4f, error %+.4f)\n",
+                     beforeNotch, afterNotch, afterMore, expected, afterMore - expected);
+        check (juce::approximatelyEqual (beforeNotch, propAfter2),
+               "leg C: the run really is leg B's up to the notch");
+        check (afterNotch > beforeNotch + 1.0e-4, "leg C: the notch itself moved the knob");
+        check (std::abs (afterMore - expected) < 5.0e-4,
+               "leg C: ...and the next drag event continued from the value the notch produced");
+    }
+
+    // ---- LEG D: the boundary, on the velocity path ---------------------------------------------
+    //      The round-29 rule for the absolute path -- drag out, wheel back to a rail, and the
+    //      remaining travel still reaches the far end -- asked of the integrator.
+    //
+    //      THE CURSOR DELTAS ARE BIG ON PURPOSE. `handleVelocityDrag` clamps the speed to
+    //      `maxSpeed = jmax (200, sliderRegionSize)` and its sine curve saturates at
+    //      `0.2 * velocityModeSensitivity` per event, so at 10 px an event is worth ~0.0019 of the
+    //      range and a boundary this leg could read would take five hundred of them. At 200 px it
+    //      is worth ~0.2, which is what makes "one more event after the notch" a number this leg
+    //      can compare against.
+    {
+        const float step = 200.0f;
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, velocHeld));
+        for (int i = 1; i <= 4; ++i)
+            driveK->mouseDrag (mev (driveK, dkx, dky - step * (float) i, dkx, dky, true, velocHeld));
+        const double climbed = propOf (driveK);
+        for (int i = 0; i < 24 && propOf (driveK) > 0.0; ++i)
+            driveK->mouseWheelMove (mev (driveK, dkx, dky - step * 4.0f, dkx, dky, false, velocHeld),
+                                    wheelOf (0.0f, -1.0f));
+        const double atBottom = propOf (driveK);
+        // ONE more event. This is the discriminator: it must be worth ONE event's travel measured
+        // from the value the WHEEL left behind, not from the height the drag had reached before it.
+        driveK->mouseDrag (mev (driveK, dkx, dky - step * 5.0f, dkx, dky, true, velocHeld));
+        const double oneMore = propOf (driveK);
+        for (int i = 6; i <= 16; ++i)
+            driveK->mouseDrag (mev (driveK, dkx, dky - step * (float) i, dkx, dky, true, velocHeld));
+        const double reached = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - step * 16.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg D] velocity boundary: climbed to %.4f, wheeled to %.4f,"
+                     " one more event gives %.4f, then a long climb reaches %.4f\n",
+                     climbed, atBottom, oneMore, reached);
+        check (climbed > 0.5, "leg D: the velocity drag really did climb");
+        check (atBottom < 1.0e-6, "leg D: ...and the wheel really did take it to the bottom");
+        check (oneMore < 0.5,
+               "leg D: ...and the next event resumes from the BOTTOM, not from the height the drag had");
+        check (reached > 0.999, "leg D: ...and the remaining travel still reaches the TOP");
+    }
+
+
+    // ---- THE MODIFIER-TRANSITION MATRIX (round 31, Devin `src/PluginEditor.h:R1045-1047`) -------
+    //
+    //  WHICH MAPPING THE NEXT EVENT TAKES IS NOT KNOWN WHEN THE NOTCH ARRIVES. `Pimpl::mouseDrag`
+    //  asks THAT event's own modifiers (`isAbsoluteDragMode (e.mods)`, juce_Slider.cpp:928), and
+    //  the user can press or release ctrl/alt/command between the notch and the next move without
+    //  moving the mouse at all. Round 30 chose the bank from `lastDragMode` -- the mapping the
+    //  PREVIOUS event took -- so a transition put the notch in the bank the next event does not
+    //  read, and the contribution was silently dropped (and the other bank kept it, to be spent
+    //  later if the user changed the modifier back). Legs E-J are the six transitions §1 names.
+    //
+    //  THE ARITHMETIC THEY ALL USE. `handleVelocityDrag`'s `speed` is a function of `|mouseDiff|`
+    //  ALONE (juce_Slider.cpp:822-834), so one event with a 10 px delta is worth leg B's
+    //  `stepAfter3` wherever in the range it happens -- which is what makes "continued from the
+    //  value the notch produced" an equation rather than an inequality.
+    //
+    //  AND THE TOLERANCE IS THE INTERVAL GRID rather than a round number: `Slider::setValue`
+    //  snaps to `getInterval()`, so a value read back may sit up to one step away from the
+    //  arithmetic. Two steps of it is still three orders of magnitude smaller than the error
+    //  these legs exist to catch (a whole notch, 0.15 of Drive's range).
+    const double grain = driveK->getInterval() / (driveK->getMaximum() - driveK->getMinimum());
+    const double tol   = 2.0 * grain;
+    std::printf ("  [legs E-J] the interval grid is %.6f of the range; tolerance %.6f\n", grain, tol);
+
+    // ---- LEG E: absolute -> notch -> the modifier goes DOWN -> drag (transition A) --------------
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, plainHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, plainHeld));
+        const double beforeNotch = propOf (driveK);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky - 10.0f, dkx, dky, false, plainHeld),
+                                wheelOf (0.0f, 1.0f));
+        const double afterNotch = propOf (driveK);
+        // ...the modifier goes down HERE, with the cursor where the notch left it.
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, velocHeld));
+        const double afterMore = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+        const double expected = juce::jlimit (0.0, 1.0, afterNotch + stepAfter3);
+        std::printf ("  [leg E] absolute -> notch -> velocity modifier: %.4f -> %.4f -> %.4f"
+                     " (expected %.4f, error %+.4f)\n",
+                     beforeNotch, afterNotch, afterMore, expected, afterMore - expected);
+        check (afterNotch > beforeNotch + 1.0e-4, "leg E: the notch moved the knob");
+        check (std::abs (afterMore - expected) < tol,
+               "leg E: ...and the first VELOCITY event continued from the value the notch produced");
+    }
+
+    // ---- LEG F: velocity -> notch -> the modifier comes UP -> drag (transition B) ---------------
+    //      The absolute mapping re-anchors at the press (`prop (valueOnMouseDown) + mouseDiff /
+    //      pixelsForFullDragExtent`, juce_Slider.cpp:790-806), so the invariant with a cursor back
+    //      at the press point is exact: the knob must read the press value PLUS the notch, and the
+    //      whole remaining travel must still be there. Round 29 measured the same thing on a drag
+    //      that never left the absolute mapping (State test 105 leg L).
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, velocHeld));
+        const double atPress = propOf (driveK);
+        driveK->mouseDrag (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, velocHeld));
+        const double beforeNotch = propOf (driveK);
+        driveK->mouseWheelMove (mev (driveK, dkx, dky - 40.0f, dkx, dky, false, velocHeld),
+                                wheelOf (0.0f, 1.0f));
+        const double afterNotch = propOf (driveK);
+        const double notchWorth = afterNotch - beforeNotch;
+        // ...the modifier comes up HERE, and the cursor goes back to where the press was.
+        driveK->mouseDrag (mev (driveK, dkx, dky, dkx, dky, true, plainHeld));
+        const double backAtPress = propOf (driveK);
+        for (int i = 1; i <= 8; ++i)
+            driveK->mouseDrag (mev (driveK, dkx, dky - 40.0f * (float) i, dkx, dky, true, plainHeld));
+        const double reached = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 320.0f, dkx, dky, true, plainHeld));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg F] velocity -> notch -> absolute: press %.4f, drag %.4f, notch %.4f,"
+                     " back at the press point %.4f (expected %.4f), then a full range reaches %.4f\n",
+                     atPress, beforeNotch, afterNotch, backAtPress, atPress + notchWorth, reached);
+        check (notchWorth > 1.0e-4, "leg F: the notch moved the knob");
+        check (std::abs (backAtPress - (atPress + notchWorth)) < tol,
+               "leg F: ...and the ABSOLUTE mapping still carries it after the transition");
+        check (reached > 0.999, "leg F: ...and the remaining travel still reaches the top");
+    }
+
+    // ---- LEG G: every modifier the swap reads (transition C) ------------------------------------
+    //      `isAbsoluteDragMode` tests `mods.testFlags (modifierToSwapModes)` and `testFlags` is ANY
+    //      of the flags, so ctrl, alt and command each swap the mapping on their own. Alt is the
+    //      interesting one: on a KNOB it is also the reset modifier -- but only at `mouseDown`, and
+    //      this leg presses it in the middle of a drag, which is exactly §1's transition.
+    {
+        const int flags[3] = { juce::ModifierKeys::ctrlModifier,
+                               juce::ModifierKeys::altModifier,
+                               juce::ModifierKeys::commandModifier };
+        const char* names[3] = { "ctrl", "alt", "command" };
+        for (int i = 0; i < 3; ++i)
+        {
+            const auto swapped = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier | flags[i]);
+            clearHistory();
+            zero (driveK, driveP);
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, plainHeld));
+            driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, plainHeld));
+            driveK->mouseWheelMove (mev (driveK, dkx, dky - 10.0f, dkx, dky, false, plainHeld),
+                                    wheelOf (0.0f, 1.0f));
+            const double afterNotch = propOf (driveK);
+            driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, swapped));
+            const double afterMore = propOf (driveK);
+            driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, swapped));
+            proc.pollUndoCoalesce();
+            const double expected = juce::jlimit (0.0, 1.0, afterNotch + stepAfter3);
+            std::printf ("  [leg G] %s: notch %.4f -> next drag %.4f (expected %.4f)\n",
+                         names[i], afterNotch, afterMore, expected);
+            check (std::abs (afterMore - expected) < tol,
+                   "leg G: every swap modifier continues from the value the notch produced");
+        }
+    }
+
+    // ---- LEG H: the modifier changed BEFORE the notch, not after (transition D) -----------------
+    //      The mirror of leg E. The notch is worth the same either way -- `wheelTargetValue` reads
+    //      the range and the wheel, not the mapping -- and the event after it continues from it in
+    //      both orders. Round 30 passed this order and failed leg E's, which is the asymmetry
+    //      `lastDragMode` introduced.
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, plainHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, plainHeld));
+        const double beforeNotch = propOf (driveK);
+        // ...the modifier goes down BEFORE the notch, and the notch is delivered with it held.
+        driveK->mouseWheelMove (mev (driveK, dkx, dky - 10.0f, dkx, dky, false, velocHeld),
+                                wheelOf (0.0f, 1.0f));
+        const double afterNotch = propOf (driveK);
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, velocHeld));
+        const double afterMore = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+        const double expected = juce::jlimit (0.0, 1.0, afterNotch + stepAfter3);
+        std::printf ("  [leg H] modifier down BEFORE the notch: %.4f -> %.4f -> %.4f (expected %.4f)\n",
+                     beforeNotch, afterNotch, afterMore, expected);
+        check (std::abs (afterMore - expected) < tol,
+               "leg H: the notch is worth the same whichever side of it the modifier moves");
+    }
+
+    // ---- LEG I: the pointer is somewhere else entirely (transitions E and F) --------------------
+    //      The press owns the notch wherever the cursor is (ADR-0053), so the transition must
+    //      behave identically when the notch is delivered to ANOTHER control and when the drag
+    //      events carry positions outside this knob. Both at once here, which is the harder case.
+    {
+        const float outX = (float) driveK->getWidth() + 60.0f, outY = -45.0f;
+        const float wkx = 0.5f * (float) monoK->getWidth(), wky = 0.5f * (float) monoK->getHeight();
+        const double mono0 = monoK->getValue();
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, plainHeld));
+        driveK->mouseDrag (mev (driveK, outX, outY, dkx, dky, true, plainHeld));
+        const double beforeNotch = propOf (driveK);
+        monoK->mouseWheelMove (mev (monoK, wkx, wky, dkx, dky, false, plainHeld), wheelOf (0.0f, 1.0f));
+        const double afterNotch = propOf (driveK);
+        driveK->mouseDrag (mev (driveK, outX, outY - 10.0f, dkx, dky, true, velocHeld));
+        const double afterMore = propOf (driveK);
+        driveK->mouseUp (mev (driveK, outX, outY - 10.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+        const double expected = juce::jlimit (0.0, 1.0, afterNotch + stepAfter3);
+        std::printf ("  [leg I] pointer outside, notch delivered to the Mono slider:"
+                     " %.4f -> %.4f -> %.4f (expected %.4f); Mono %.1f -> %.1f\n",
+                     beforeNotch, afterNotch, afterMore, expected, mono0, monoK->getValue());
+        check (afterNotch > beforeNotch + 1.0e-4, "leg I: the press took the notch from another control");
+        check (juce::exactlyEqual (monoK->getValue(), mono0), "leg I: ...and the pointed-at control never moved");
+        check (std::abs (afterMore - expected) < tol,
+               "leg I: ...and the transition still continued from the value the notch produced");
+    }
+
+    // ---- LEG J: the notch is applied ONCE, not once per mapping ---------------------------------
+    //      The absolute branch hands JUCE a SHIFTED position, and `mousePosWhenLastDragged =
+    //      e.position` (juce_Slider.cpp:969) stores whatever it was handed -- so an absolute event
+    //      after a notch banks the whole pixel offset into the integrator's own reference. The
+    //      first velocity event then reads a `mouseDiff` of (physical travel + the offset) and
+    //      bends it through the speed curve: the notch, already applied, arrives a second time as
+    //      a kick. One event of physical travel must be worth ONE event.
+    {
+        clearHistory();
+        zero (driveK, driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, plainHeld));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, plainHeld));
+        driveK->mouseWheelMove (mev (driveK, dkx, dky - 10.0f, dkx, dky, false, plainHeld),
+                                wheelOf (0.0f, 1.0f));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, plainHeld));   // absolute, shifted
+        const double beforeSwap = propOf (driveK);
+        driveK->mouseDrag (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, velocHeld));   // 10 px of travel
+        const double afterSwap = propOf (driveK);
+        driveK->mouseUp (mev (driveK, dkx, dky - 30.0f, dkx, dky, true, velocHeld));
+        proc.pollUndoCoalesce();
+        const double expected = juce::jlimit (0.0, 1.0, beforeSwap + stepAfter3);
+        std::printf ("  [leg J] absolute -> notch -> absolute -> velocity: %.4f -> %.4f"
+                     " (expected %.4f, error %+.4f)\n",
+                     beforeSwap, afterSwap, expected, afterSwap - expected);
+        check (std::abs (afterSwap - expected) < tol,
+               "leg J: 10 px of travel is worth one event, not one event plus the banked notch");
+    }
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 107 -- an active press owns the wheel even when it has nothing to
+//  add it to (round 30, Devin `src/gui/SpectrumImager.cpp:R3302-3304`,
+//  "ownerless presses retarget their wheel").
+//
+//  THE TWO STATES ROUND 29 TREATED AS ONE:
+//
+//      no active press owns this event                      -> the pointer decides
+//      an active press owns it and has NO editable target   -> the press decides, and decides nothing
+//
+//  An Alt-click reset held down, a press on the display's blank area, an add the band
+//  count refused, a click that started no drag: each of them OWNS the interaction and
+//  none of them holds a value a notch can be added to. Round 29 let all of them fall
+//  through to the pointer -- `standaloneWheel`, or JUCE's own handler with the held
+//  button laundered out by `sendWheelToJuce` -- so the control under the cursor moved
+//  while the user was holding something else.
+//
+//  EVERY LEG HERE IS "NOTHING MOVED", which is the hardest kind of assertion to trust,
+//  so each one also carries a POSITIVE control: the same gesture with the button
+//  released does move the thing the leg says did not move. Without that a leg would
+//  pass against a fixture that had simply stopped delivering events.
+// ---------------------------------------------------------------------------
+static void testAPressWithNoTargetStillOwnsTheWheel()
+{
+    std::printf ("State test 107: an ownerless press still owns the wheel (R3302-3304)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the ownerless-press probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s  = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* widP   = apvts.getParameter (pid::width);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* driveK = findSliderFor (driveP);
+    auto* widK   = findSliderFor (widP);
+    check (im != nullptr && im->getWidth() > 300 && driveP && driveK && widP && widK && wLoP && bandsP,
+           "the display, the Drive and Width knobs and the multiband parameters are findable");
+    if (! (im != nullptr && im->getWidth() > 300 && driveP && driveK && widP && widK && wLoP && bandsP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    int seq = 0;
+    auto stamp = [&] { return juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 7); };
+    auto mev = [&] (juce::Component* c, float x, float y, float dx, float dy,
+                    bool dragged, juce::ModifierKeys m)
+    {
+        const auto t = stamp();
+        return juce::MouseEvent (src, { x, y }, m, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 c, c, t, { dx, dy }, t, 1, dragged);
+    };
+    auto wheelOf = [] (float dx, float dy)
+    {
+        juce::MouseWheelDetails w;
+        w.deltaX = dx; w.deltaY = dy;
+        w.isReversed = false; w.isSmooth = false; w.isInertial = false;
+        return w;
+    };
+    const auto none  = juce::ModifierKeys();
+    const auto held  = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
+    const auto altHeld = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                           | juce::ModifierKeys::altModifier);
+    auto plainOf = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+
+    const float dkx = 0.5f * (float) driveK->getWidth(), dky = 0.5f * (float) driveK->getHeight();
+    const float wkx = 0.5f * (float) widK->getWidth(),   wky = 0.5f * (float) widK->getHeight();
+    const float imx = 0.5f * (float) im->getWidth(),     imy = 0.5f * (float) im->getHeight();
+    auto clearHistory = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
+    auto mbState = [&] { return std::array<float, 3> { plainOf (wLoP), plainOf (bandsP),
+                                                       plainOf (apvts.getParameter (pid::mbSolo)) }; };
+
+    // An IDLE point of the display: one the component itself reports no affordance for, which is
+    // what "blank area" means to the press that lands on it.
+    float blankY = -1.0f;
+    for (float y = 4.0f; y < (float) im->getHeight() - 4.0f; y += 1.0f)
+    {
+        im->mouseMove (mev (im, 6.0f, y, 6.0f, y, false, none));
+        if (im->getTooltip().isEmpty()) { blankY = y; break; }
+    }
+
+    // ---- LEG A: an Alt-click RESET, held, with the pointer on another control -------------------
+    {
+        clearHistory();
+        setPlain (driveP, 3.0f);
+        setPlain (widP, 1.4f);
+        proc.pollUndoCoalesce();
+        CountGestures g;
+        widP->addListener (&g);
+        const float wid0 = plainOf (widP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, altHeld));   // reset fires here
+        const float driveAfterReset = plainOf (driveP);
+        for (int i = 0; i < 3; ++i)
+            widK->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, altHeld), wheelOf (0.0f, 0.6f));
+        const float widDuring = plainOf (widP);
+        // ...and over the RESET KNOB ITSELF, which is the case round 29 left open: the register
+        // answered "not somebody else's press" and the knob's own tail then handed it to JUCE.
+        for (int i = 0; i < 3; ++i)
+            driveK->mouseWheelMove (mev (driveK, dkx, dky, dkx, dky, false, altHeld), wheelOf (0.0f, 0.6f));
+        const float driveDuring = plainOf (driveP);
+        driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, altHeld));
+        widP->removeListener (&g);
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg A] Alt-reset held: Drive %.3f -> %.3f (reset) -> %.3f (3 notches),"
+                     " Width %.4f -> %.4f, gestures on Width %d\n",
+                     3.0, (double) driveAfterReset, (double) driveDuring,
+                     (double) wid0, (double) widDuring, g.opens);
+        check (juce::exactlyEqual (plainOf (widP), wid0),
+               "leg A: the control the pointer is over is untouched while the reset press is held");
+        check (g.opens == 0 && g.closes == 0, "leg A: ...and no host change gesture opens on it");
+        check (juce::exactlyEqual (driveDuring, driveAfterReset),
+               "leg A: ...and the reset press's OWN knob is untouched too -- it has no drag to add to");
+        // THE POSITIVE CONTROL: with the button up, the same gesture moves Width.
+        const float widBefore = plainOf (widP);
+        widK->mouseWheelMove (mev (widK, wkx, wky, wkx, wky, false, none), wheelOf (0.0f, 0.6f));
+        proc.pollUndoCoalesce();
+        check (! juce::exactlyEqual (plainOf (widP), widBefore),
+               "leg A: control -- with no press held, the same notch does move it");
+    }
+
+    // ---- LEG B: a press that claimed NOTHING at all ---------------------------------------------
+    //      A button held over something that owns no wheel press -- a caption, a toggle, the panel
+    //      background. The register is empty and a button is down, which is the state round 29
+    //      answered with "the pointer decides".
+    {
+        clearHistory();
+        setPlain (widP, 1.2f);
+        setPlain (wLoP, 1.0f);
+        setPlain (bandsP, 1.0f);
+        proc.pollUndoCoalesce();
+        const float wid0 = plainOf (widP);
+        const auto  mb0  = mbState();
+        for (int i = 0; i < 3; ++i)
+            widK->mouseWheelMove (mev (widK, wkx, wky, wkx, wky, false, held), wheelOf (0.0f, 0.6f));
+        im->mouseWheelMove (mev (im, imx, imy, imx, imy, false, held), wheelOf (0.0f, -0.6f));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg B] a held button with nothing claimed: Width %.4f -> %.4f, display %s\n",
+                     (double) wid0, (double) plainOf (widP), mbState() == mb0 ? "still" : "MOVED");
+        check (juce::exactlyEqual (plainOf (widP), wid0),
+               "leg B: a knob under the pointer does not move for a press that claimed nothing");
+        check (mbState() == mb0, "leg B: ...and neither does the multiband display");
+        check (! proc.canUndo(), "leg B: ...and nothing became undoable");
+    }
+
+    // ---- LEG C: a MultiBand press on the display's blank area ------------------------------------
+    {
+        clearHistory();
+        setPlain (bandsP, 1.0f);
+        setPlain (wLoP, 1.0f);
+        proc.pollUndoCoalesce();
+        check (blankY > 0.0f, "leg C: an idle point of the display is findable");
+        const auto mb0   = mbState();
+        const float wid0 = plainOf (widP);
+        // ALT, AND THE POINT MATTERS LESS THAN THE BRANCH. `SpectrumImager::mouseDown` claims the
+        // wheel at the top for every press and then takes the Alt branch, which resets a split or a
+        // width if the cursor is on one and otherwise returns having latched NO identifier at all
+        // -- `dragBand`, `dragHandle`, `soloPressBand` and `pressDeleteBand` all stay -1. That is
+        // the press this leg is about: it owns the interaction and holds nothing to add a notch to.
+        // A plain press on the same point would latch the band under the cursor and be a width
+        // drag, which is leg D's case, not this one.
+        im->mouseDown (mev (im, 6.0f, blankY, 6.0f, blankY, false, altHeld));
+        for (int i = 0; i < 3; ++i)   // ...over the display itself
+            im->mouseWheelMove (mev (im, imx, imy, 6.0f, blankY, false, altHeld), wheelOf (0.0f, -0.6f));
+        const auto mbDuring = mbState();
+        for (int i = 0; i < 3; ++i)   // ...and over a knob
+            widK->mouseWheelMove (mev (widK, wkx, wky, 6.0f, blankY, false, altHeld), wheelOf (0.0f, 0.6f));
+        const float widDuring = plainOf (widP);
+        im->mouseUp (mev (im, 6.0f, blankY, 6.0f, blankY, false, altHeld));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg C] blank-area press held: display %s, Width %.4f -> %.4f\n",
+                     mbDuring == mb0 ? "still" : "MOVED", (double) wid0, (double) widDuring);
+        check (mbDuring == mb0,
+               "leg C: a press that latched no identifier does not let the pointer edit the display");
+        check (juce::exactlyEqual (widDuring, wid0), "leg C: ...nor a knob elsewhere");
+        // THE POSITIVE CONTROL, and it is also §3's leg E: after the release the pointer decides again.
+        const auto mbBefore = mbState();
+        im->mouseWheelMove (mev (im, imx, imy, imx, imy, false, none), wheelOf (0.0f, -0.6f));
+        proc.pollUndoCoalesce();
+        check (! (mbState() == mbBefore),
+               "leg C: control -- once the press is released, a standalone scroll edits the display again");
+    }
+
+    // ---- LEG D: a press that DOES own an editable target keeps the wheel ------------------------
+    //      The other half of the rule, restated here so the matrix is complete in one place.
+    {
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        setPlain (widP, 1.2f);
+        proc.pollUndoCoalesce();
+        const float wid0 = plainOf (widP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        const float held0 = plainOf (driveP);
+        widK->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, held), wheelOf (0.0f, 0.6f));
+        const float driveAfter = plainOf (driveP);
+        driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg D] a real drag keeps the wheel: Drive %.3f -> %.3f, Width %.4f -> %.4f\n",
+                     (double) held0, (double) driveAfter, (double) wid0, (double) plainOf (widP));
+        check (! juce::exactlyEqual (driveAfter, held0),
+               "leg D: the notch reaches the knob that owns the press");
+        check (juce::exactlyEqual (plainOf (widP), wid0), "leg D: ...and not the one under the pointer");
+    }
+
+    // ---- LEG E: the §8 matrix, on the VELOCITY mapping -------------------------------------------
+    //      Vertical and horizontal notches, pointer inside the control and over another one, with
+    //      the velocity modifier held. `commandModifier` is the portable one -- see State test 106.
+    {
+        const auto veloc  = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                              | juce::ModifierKeys::commandModifier);
+        for (int axis = 0; axis < 2; ++axis)
+        {
+            const auto w = axis == 0 ? wheelOf (0.0f, 1.0f) : wheelOf (-1.0f, 0.0f);
+            for (int where = 0; where < 2; ++where)   // 0 = pointer on the knob, 1 = on another one
+            {
+                clearHistory();
+                setPlain (driveP, 2.0f);
+                setPlain (widP, 1.2f);
+                proc.pollUndoCoalesce();
+                const float wid0 = plainOf (widP);
+                driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, veloc));
+                driveK->mouseDrag (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, veloc));
+                const float before = plainOf (driveP);
+                if (where == 0) driveK->mouseWheelMove (mev (driveK, dkx, dky - 40.0f, dkx, dky, false, veloc), w);
+                else            widK  ->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, veloc), w);
+                const float afterNotch = plainOf (driveP);
+                driveK->mouseDrag (mev (driveK, dkx, dky - 80.0f, dkx, dky, true, veloc));
+                const float afterMore = plainOf (driveP);
+                driveK->mouseUp (mev (driveK, dkx, dky - 80.0f, dkx, dky, true, veloc));
+                proc.pollUndoCoalesce();
+                check (! juce::exactlyEqual (afterNotch, before),
+                       "leg E: a velocity drag takes the notch on both axes, pointer inside or out");
+                check (! juce::exactlyEqual (afterMore, afterNotch),
+                       "leg E: ...and the drag carries on from the value the notch produced");
+                check (juce::exactlyEqual (plainOf (widP), wid0),
+                       "leg E: ...and the control under the pointer never moves");
+            }
+        }
+        std::printf ("  [leg E] velocity x {vertical, horizontal} x {pointer inside, pointer elsewhere}:"
+                     " four runs, the press took every notch\n");
+    }
+
+    // ---- LEG F: the Persistence reveal still arms, and only on a standalone scroll ---------------
+    //      Round 30 replaced the editor's `MouseListener` on that bar with a callback the knob
+    //      raises, because a listener is offered the same event a second time. The observable is
+    //      the reveal's own arming, which the editor exposes through nothing -- so this leg checks
+    //      the property that matters instead: the bar is a knob with no APVTS parameter, so a
+    //      scroll of it records no undo step, and a notch during another control's press must not
+    //      reach it at all.
+    {
+        clearHistory();
+        juce::Slider* bar = nullptr;
+        for (auto* s : sliders)
+            if (s != driveK && s != widK
+                && juce::exactlyEqual (s->getMinimum(), 0.0) && juce::exactlyEqual (s->getMaximum(), 1.0)
+                && juce::exactlyEqual (s->getInterval(), 0.001))
+                bar = s;
+        check (bar != nullptr, "leg F: the Settings Persistence bar is findable");
+        if (bar != nullptr)
+        {
+            const double b0 = bar->getValue();
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+            driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            for (int i = 0; i < 3; ++i)
+                bar->mouseWheelMove (mev (bar, 4.0f, 4.0f, dkx, dky, false, held), wheelOf (0.0f, 0.6f));
+            const double bDuring = bar->getValue();
+            driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            bar->mouseWheelMove (mev (bar, 4.0f, 4.0f, 4.0f, 4.0f, false, none), wheelOf (0.0f, 0.6f));
+            const double bAfter = bar->getValue();
+            proc.pollUndoCoalesce();
+            std::printf ("  [leg F] Persistence bar: %.4f -> %.4f while a press is held -> %.4f after it\n",
+                         b0, bDuring, bAfter);
+            check (juce::exactlyEqual (bDuring, b0),
+                   "leg F: the Persistence bar does not move for a notch that belongs to another press");
+            check (! juce::exactlyEqual (bAfter, bDuring),
+                   "leg F: ...and a standalone scroll of it still works");
+        }
+    }
+
+    // ---- LEG G: an Alt-click RESET is a press, not a drag ---------------------------------------
+    //  Round 30 suspected a defect here and DISPROVED it; this leg is what pins the answer, because
+    //  the answer is JUCE's and a JUCE upgrade could take it away. The Alt branch of
+    //  `Knob::mouseDown` returns without calling `juce::Slider::mouseDown`, which is the only call
+    //  that clears `Pimpl::useDragEvents` -- `Pimpl::mouseUp` leaves it set -- so after any
+    //  completed ordinary press, `Pimpl::mouseDrag` really does run its body on the next drag with
+    //  the anchors of the press before last. It writes NOTHING, because `~ScopedDragNotification`
+    //  has already set `sliderBeingDragged = -1` (`sendDragEnd`, juce_Slider.cpp:396-399) and all
+    //  three of that function's stores are behind a `sliderBeingDragged == 0 / 1 / 2` test. So no
+    //  parameter is written outside a gesture, and the value the reset wrote stands.
+    {
+        clearHistory();
+        // A COMPLETED ORDINARY PRESS FIRST -- that is what leaves JUCE's drag state live.
+        setPlain (driveP, 5.0f);
+        proc.pollUndoCoalesce();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        driveK->mouseUp   (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        setPlain (driveP, 5.0f);
+        proc.pollUndoCoalesce();
+
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, altHeld));   // the reset fires
+        const float afterReset = plainOf (driveP);
+        driveK->mouseDrag (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, altHeld));
+        const float afterDrag = plainOf (driveP);
+        driveK->mouseUp   (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, altHeld));
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg G] Alt-reset put Drive at %.4f; a 40 px drag after it leaves %.4f\n",
+                     afterReset, afterDrag);
+        check (juce::exactlyEqual (afterDrag, afterReset),
+               "leg G: a drag after an Alt-click reset moves nothing -- JUCE never saw that press");
+
+        setPlain (driveP, 5.0f);
+        proc.pollUndoCoalesce();
+        const float p0 = plainOf (driveP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, held));
+        const float p1 = plainOf (driveP);
+        driveK->mouseUp   (mev (driveK, dkx, dky - 40.0f, dkx, dky, true, held));
+        proc.pollUndoCoalesce();
+        check (! juce::exactlyEqual (p1, p0), "leg G: ...and an ordinary press still drags");
+    }
+
+    // ---- LEG H: a value-box press the branch DECLINES still owns the wheel -----------------------
+    //  The second ownerless hole of the same shape as leg C's: `ValueBox::mouseDown` claims only
+    //  inside the branch that takes over the parent knob's drag, so a double click, a press on a
+    //  non-rotary parent or one while the editor is open claims NOTHING -- and before round 30 the
+    //  notch then went to whatever the pointer was over.
+    {
+        juce::Label* box = nullptr;
+        for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+            if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i))) box = l;
+        check (box != nullptr, "leg H: the Drive knob's value box is findable");
+        if (box != nullptr)
+        {
+            clearHistory();
+            setPlain (widP, 1.4f);
+            proc.pollUndoCoalesce();
+            const float w0 = plainOf (widP);
+            const auto t = stamp();
+            const juce::MouseEvent twoClicks (src, { 4.0f, 4.0f }, held, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                              box, box, t, { 4.0f, 4.0f }, t, 2, false);
+            // Through the `MouseListener` base: `Label` declares its handlers protected, and this
+            // is the same virtual JUCE's own dispatch calls.
+            auto* boxAsListener = static_cast<juce::MouseListener*> (box);
+            boxAsListener->mouseDown (twoClicks);   // declined: `getNumberOfClicks() < 2` is false
+            for (int i = 0; i < 3; ++i)
+                widK->mouseWheelMove (mev (widK, wkx, wky, 4.0f, 4.0f, false, held), wheelOf (0.0f, 0.6f));
+            const float wDuring = plainOf (widP);
+            boxAsListener->mouseUp (mev (box, 4.0f, 4.0f, 4.0f, 4.0f, false, none));
+            widK->mouseWheelMove (mev (widK, wkx, wky, wkx, wky, false, none), wheelOf (0.0f, 0.6f));
+            const float wAfter = plainOf (widP);
+            proc.pollUndoCoalesce();
+            std::printf ("  [leg H] Width %.4f -> %.4f under a declined value-box press -> %.4f after it\n",
+                         w0, wDuring, wAfter);
+            check (juce::exactlyEqual (wDuring, w0),
+                   "leg H: a value-box press the branch declined still silences the wheel");
+            check (! juce::exactlyEqual (wAfter, wDuring),
+                   "leg H: ...and a standalone scroll of the same knob still works");
+        }
+    }
+
+
+    // ---- LEGS I-N: ONE COMPONENT, ONE ACTIVE DRAG (round 32, Devin `src/gui/LookAndFeel.cpp:R106-110`)
+    //
+    //  THE MISMATCH ROUND 31 EXPOSED. The register can hold a claim per device; the COMPONENT holds
+    //  one drag. `juce::Slider::Pimpl` has one `valueOnMouseDown`, one `mouseDragStartPos`, one
+    //  `sliderBeingDragged`, and `sendDragEnd` puts that last one back to -1 on the FIRST release
+    //  (juce_Slider.cpp:396-399) -- so after any release the component has no drag at all, whatever
+    //  else is still physically held. A second device's claim that outlives it points at a control
+    //  with nothing to add a notch to: `takeWheelNotch` returns false, and the event is CONSUMED
+    //  anyway under round 30's rule. The notch is not misapplied; it disappears.
+    //
+    //  THE OWNER'S RULE (round 32): the first accepted press establishes the component's drag AND
+    //  its wheel ownership, a second device establishes no second claim on that same component, and
+    //  no claim survives the end of that component's shared drag. These legs measure all three
+    //  against the REAL editor and the REAL parameters -- not a counter.
+    {
+        using anamorph::gui::WheelPointer;
+        const WheelPointer mousePtr = anamorph::gui::wheelPointerOf (src);
+        const WheelPointer fingerA { (int) juce::MouseInputSource::InputSourceType::touch, 0 };
+        auto* driveOwner = dynamic_cast<anamorph::gui::WheelDragOwner*> (driveK);
+        auto* widOwner   = dynamic_cast<anamorph::gui::WheelDragOwner*> (widK);
+        check (driveOwner != nullptr && widOwner != nullptr,
+               "legs I-N: the knobs really are `WheelDragOwner`s (the register's delivery type)");
+
+        // Leave the table in a known state: an ordinary button-up scroll is what clears a cell.
+        auto clearTable = [&]
+        {
+            for (auto p : { mousePtr, fingerA })
+                (void) anamorph::gui::wheelTakenByAnyPress (*widK, widOwner,
+                                                            mev (widK, wkx, wky, wkx, wky, false, none),
+                                                            wheelOf (0.0f, 0.0f), p);
+        };
+
+        // ---- LEG I (§4 A + F): the single-device path, unchanged ------------------------------
+        {
+            clearTable();
+            clearHistory();
+            setPlain (driveP, 2.0f);
+            setPlain (widP, 1.2f);
+            proc.pollUndoCoalesce();
+            const float wid0 = plainOf (widP);
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+            driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            const float driveHeld = plainOf (driveP);
+            widK->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, held), wheelOf (0.0f, 0.6f));
+            const float driveNotched = plainOf (driveP);
+            driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            widK->mouseWheelMove (mev (widK, wkx, wky, wkx, wky, false, none), wheelOf (0.0f, 0.6f));
+            const float widAfter = plainOf (widP);
+            proc.pollUndoCoalesce();
+            std::printf ("  [leg I] one device: Drive %.3f -> notch %.3f (Width still %.4f),"
+                         " then after mouse-up a scroll moves Width to %.4f\n",
+                         driveHeld, driveNotched, wid0, widAfter);
+            check (! juce::exactlyEqual (driveNotched, driveHeld),
+                   "leg I: the held press takes the notch (round 29/30, unchanged)");
+            check (! juce::exactlyEqual (widAfter, wid0),
+                   "leg I: ...and standalone scrolling resumes after the release");
+        }
+
+        // ---- LEG J (§4 B): a second device establishes NO second claim ------------------------
+        {
+            clearTable();
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));   // A presses first
+            const bool aHolds = anamorph::gui::dragWheelHolder (mousePtr) == driveK;
+            const bool bAccepted = anamorph::gui::claimDragWheel (*driveK, *driveOwner, fingerA);
+            const bool bHolds = anamorph::gui::dragWheelHolder (fingerA) == driveK;
+            check (! bAccepted, "leg J: the second device's press is REFUSED, not merely unclaimed");
+            std::printf ("  [leg J] after A then B pressed the same knob: A holds %s, B holds %s\n",
+                         aHolds ? "it" : "nothing", bHolds ? "IT TOO" : "nothing");
+            check (aHolds, "leg J: the first press owns the component's drag and its wheel");
+            check (! bHolds,
+                   "leg J: ...and the second device establishes no second claim on that component");
+            driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, held));
+        }
+
+        // ---- LEGS K and L (§4 C + D): after ANY release, no claim on that component survives ---
+        //      THE DISCRIMINATOR IS A PARAMETER, and it took a second try to find one. "Was the
+        //      event consumed?" cannot answer this: round 30's approved rule already consumes a
+        //      wheel that arrives with a button down and nothing claimed, so both the defect and
+        //      the fix consume it. "Did the released knob move?" cannot answer it either -- a claim
+        //      pointing at a knob whose drag has ended is INERT, because `takeWheelNotch` refuses
+        //      while `getThumbBeingDragged()` is negative.
+        //
+        //      What is NOT inert is the same stale claim once the component is dragged AGAIN. The
+        //      first press ends, the second press starts a live drag, and the stale claim -- held by
+        //      a device that is not the one dragging -- now delivers into it. So these legs press
+        //      the knob a second time and measure whether a notch from the OTHER device steers it.
+        for (int order = 0; order < 2; ++order)
+        {
+            clearTable();
+            clearHistory();
+            setPlain (driveP, 2.0f);
+            setPlain (widP, 1.2f);
+            proc.pollUndoCoalesce();
+
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));   // A's real press
+            (void) anamorph::gui::claimDragWheel (*driveK, *driveOwner, fingerA);   // B, refused
+
+            if (order == 0) driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, held));
+            else            anamorph::gui::releaseDragWheel (*driveK);           // B lets go first
+            const bool bClaimGone = anamorph::gui::dragWheelHolder (fingerA) == nullptr;
+
+            // A presses again and really drags: the component now HAS a live drag.
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+            driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            const float beforeStale = plainOf (driveP);
+            // B scrolls -- its own button down, its pointer over Width, and it is holding nothing.
+            (void) anamorph::gui::wheelTakenByAnyPress
+                       (*widK, widOwner, mev (widK, wkx, wky, wkx, wky, false, held),
+                        wheelOf (0.0f, 0.6f), fingerA);
+            const float afterStale = plainOf (driveP);
+            // ...and the POSITIVE CONTROL, the same notch from the device that IS holding it.
+            widK->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, held), wheelOf (0.0f, 0.6f));
+            const float afterOwner = plainOf (driveP);
+            driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            anamorph::gui::releaseDragWheel (*driveK);
+            proc.pollUndoCoalesce();
+
+            std::printf ("  [leg %s] %s released first: B's claim %s; on A's NEXT drag,"
+                         " B's notch moves Drive %.3f -> %.3f, A's own moves it -> %.3f\n",
+                         order == 0 ? "K" : "L", order == 0 ? "A" : "B",
+                         bClaimGone ? "gone" : "STILL LIVE", beforeStale, afterStale, afterOwner);
+            check (bClaimGone,
+                   "legs K/L: no claim on the component survives the end of its shared drag");
+            check (juce::exactlyEqual (afterStale, beforeStale),
+                   "legs K/L: ...so a device that is not holding the knob cannot steer a later drag of it");
+            check (! juce::exactlyEqual (afterOwner, afterStale),
+                   "legs K/L: ...while the device that IS holding it still can");
+        }
+
+        // ---- LEG M: the release path on a real knob, and where destruction is covered -----------
+        //      State test 108 leg F is §4 E: a holder destroyed mid-press reads back as nothing
+        //      through the `SafePointer`, and its device's wheel reaches nobody. That is the
+        //      lifetime half. This is the ordinary half on a real editor knob: a press registers,
+        //      and its own release ends it.
+        {
+            clearTable();
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+            check (anamorph::gui::dragWheelHolder (mousePtr) == driveK, "leg M: the press is registered");
+            driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, held));
+            std::printf ("  [leg M] after the press ended: holder %s\n",
+                         anamorph::gui::dragWheelHolder (mousePtr) == nullptr ? "null" : "STALE");
+            check (anamorph::gui::dragWheelHolder (mousePtr) == nullptr,
+                   "leg M: ...and its own release ends it");
+        }
+
+        // ---- LEG N: the ordinary rule is untouched ---------------------------------------------
+        //      A live press still owns the wheel wherever the pointer is (round 29/30). Stated
+        //      again HERE because legs J-L narrow who may hold a claim, and a narrowing that also
+        //      broke this would look like a pass everywhere else.
+        {
+            clearTable();
+            clearHistory();
+            setPlain (driveP, 2.0f);
+            setPlain (widP, 1.2f);
+            proc.pollUndoCoalesce();
+            const float wid0 = plainOf (widP);
+            driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+            driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            const float before = plainOf (driveP);
+            widK->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, held), wheelOf (0.0f, 0.6f));
+            const float after = plainOf (driveP);
+            driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+            proc.pollUndoCoalesce();
+            std::printf ("  [leg N] a LIVE press still takes the notch from under the pointer:"
+                         " Drive %.3f -> %.3f, Width %.4f -> %.4f\n",
+                         before, after, wid0, plainOf (widP));
+            check (! juce::exactlyEqual (after, before), "leg N: the live press still gets the notch");
+            check (juce::exactlyEqual (plainOf (widP), wid0),
+                   "leg N: ...and the control under the pointer still does not move");
+        }
+    }
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 108 -- one press per POINTING DEVICE (round 30, Devin
+//  `src/gui/LookAndFeel.cpp:R16`, "process-wide register assumes one pointer").
+//
+//  THE REGISTER IS PROCESS-WIDE AND THAT PART IS RIGHT -- two Anamorph instances in one
+//  host share one table on purpose, because it is the DEVICE that holds a press, not the
+//  editor. What was wrong is that it held ONE cell for the whole process. JUCE does not
+//  model a single pointer: `MouseInputSourceList` is an array, each entry owns its own
+//  `buttonState`, and on Linux every window masks XI_TouchBegin/Update/End with no
+//  plug-in-side opt-out, so a finger is a live source alongside the mouse. A finger
+//  landing on the display would evict the claim the mouse's own drag had made, and the
+//  mouse's next notch would steer whatever the finger was on.
+//
+//  DRIVEN THROUGH THE REGISTER'S OWN OVERLOADS, not through the editor, and that is
+//  forced rather than chosen: nothing public creates a second `MouseInputSource`
+//  (`MouseInputSourceList::addSource` is private and reached only from a peer, which a
+//  test-built editor does not have), so the device cannot be varied through a
+//  `MouseEvent`. The register therefore names its key as a value -- `WheelPointer`, the
+//  (type, index) pair that IS the identity `getOrCreateMouseInputSource` matches on --
+//  and the legs below drive that key directly. The one inch not covered this way is
+//  `wheelPointerOf`, a two-line accessor, and leg G pins it against the real source.
+// ---------------------------------------------------------------------------
+static void testOnePressPerPointingDevice()
+{
+    std::printf ("State test 108: the wheel register is per pointing device (LookAndFeel R16)\n");
+
+    using anamorph::gui::WheelPointer;
+    using anamorph::gui::claimDragWheel;
+    using anamorph::gui::releaseDragWheel;
+    using anamorph::gui::dragWheelHolder;
+    using anamorph::gui::wheelTakenByAnyPress;
+
+    struct CountingOwner : anamorph::gui::WheelDragOwner
+    {
+        int notches = 0;
+        bool takeWheelNotch (const juce::MouseEvent&, const juce::MouseWheelDetails&) override
+        { ++notches; return true; }
+    };
+
+    const WheelPointer mouse { (int) juce::MouseInputSource::InputSourceType::mouse, 0 };
+    const WheelPointer fingerA { (int) juce::MouseInputSource::InputSourceType::touch, 0 };
+    const WheelPointer fingerB { (int) juce::MouseInputSource::InputSourceType::touch, 1 };
+
+    juce::Component cA, cB;
+    cA.setBounds (0, 0, 60, 60);
+    cB.setBounds (100, 0, 60, 60);
+    CountingOwner ownerA, ownerB;
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    int seq = 0;
+    auto ev = [&] (juce::Component& c, juce::ModifierKeys m)
+    {
+        const auto t = juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 7);
+        return juce::MouseEvent (src, { 5.0f, 5.0f }, m, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 &c, &c, t, { 5.0f, 5.0f }, t, 1, false);
+    };
+    juce::MouseWheelDetails wheel;
+    wheel.deltaX = 0.0f; wheel.deltaY = 0.6f;
+    wheel.isReversed = false; wheel.isSmooth = false; wheel.isInertial = false;
+
+    const auto none = juce::ModifierKeys();
+    const auto held = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
+
+    // The table is a process-wide static and other tests have pressed things, so start from a
+    // known state: an ordinary button-up scroll is what clears a device's cell in production.
+    for (auto p : { mouse, fingerA, fingerB })
+        (void) wheelTakenByAnyPress (cA, nullptr, ev (cA, none), wheel, p);
+
+    // ---- LEG A: a second device's press does not evict the first's claim ----------------------
+    {
+        check (claimDragWheel (cA, ownerA, mouse), "leg A: the mouse's press on A is accepted");
+        check (claimDragWheel (cB, ownerB, fingerA), "leg A: ...and the finger's on B is too");
+        const bool kept = dragWheelHolder (mouse) == &cA && dragWheelHolder (fingerA) == &cB;
+        ownerA.notches = ownerB.notches = 0;
+        const bool took = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, mouse);
+        std::printf ("  [leg A] mouse holds %s, finger holds %s; the mouse's notch went to "
+                     "A x%d, B x%d\n",
+                     dragWheelHolder (mouse) == &cA ? "A" : "??",
+                     dragWheelHolder (fingerA) == &cB ? "B" : "??",
+                     ownerA.notches, ownerB.notches);
+        check (kept, "leg A: a finger's claim does not overwrite the mouse's");
+        check (took, "leg A: the mouse's own press still consumes its wheel");
+        check (ownerA.notches == 1 && ownerB.notches == 0,
+               "leg A: ...and the notch reaches the control the MOUSE is holding");
+
+        // POSITIVE CONTROL: the same call named for the finger reaches the finger's control.
+        ownerA.notches = ownerB.notches = 0;
+        (void) wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, fingerA);
+        check (ownerB.notches == 1 && ownerA.notches == 0,
+               "leg A: ...and a notch from the FINGER reaches the control the finger is holding");
+    }
+
+    // ---- LEG B: another device's button-up scroll does not clear a live claim ------------------
+    {
+        ownerA.notches = ownerB.notches = 0;
+        const bool freed = ! wheelTakenByAnyPress (cA, nullptr, ev (cA, none), wheel, fingerB);
+        std::printf ("  [leg B] an idle third device scrolled; mouse still holds %s, finger %s\n",
+                     dragWheelHolder (mouse) == &cA ? "A" : "nothing",
+                     dragWheelHolder (fingerA) == &cB ? "B" : "nothing");
+        check (freed, "leg B: a device with no button down leaves the event to the pointer");
+        check (dragWheelHolder (mouse) == &cA && dragWheelHolder (fingerA) == &cB,
+               "leg B: ...and clears nobody else's claim");
+    }
+
+    // ---- LEG C: a device's own button-up scroll still self-heals ITS cell ----------------------
+    {
+        const bool freed = ! wheelTakenByAnyPress (cA, nullptr, ev (cA, none), wheel, mouse);
+        std::printf ("  [leg C] the mouse scrolled with no button; mouse holds %s, finger %s\n",
+                     dragWheelHolder (mouse) == nullptr ? "nothing" : "??",
+                     dragWheelHolder (fingerA) == &cB ? "B" : "nothing");
+        check (freed && dragWheelHolder (mouse) == nullptr,
+               "leg C: a stranded claim dies on the owning device's next ordinary scroll");
+        check (dragWheelHolder (fingerA) == &cB,
+               "leg C: ...and the other device's live press survives it (KI-028's self-heal)");
+    }
+
+    // ---- LEG D: the EVENT-LESS cleanup is keyed on the control alone ---------------------------
+    //      `SpectrumImager::cancelActiveDrag` and `ValueBox::abortDragGesture` run from the
+    //      editor's 24 Hz reconcile with no event and so no device to name. What they say is that
+    //      the CONTROL has abandoned its gesture -- it holds one anchor, so once that is gone it
+    //      has nothing to add a notch to for any device -- and that is the one place a broad clear
+    //      is right. Legs H and I are the ordinary release, which is not this.
+    {
+        releaseDragWheel (cB);
+        std::printf ("  [leg D] after the control's gesture ended, finger holds %s\n",
+                     dragWheelHolder (fingerA) == nullptr ? "nothing" : "??");
+        check (dragWheelHolder (fingerA) == nullptr,
+               "leg D: a release ends the claim whichever device made it");
+
+        // ...AND THERE IS ONLY EVER ONE TO END (round 32). Three devices pressing one control do
+        // not make three claims: the first owns the component's single drag and the other two are
+        // given nothing, so the one release leaves the table empty either way. Round 31 asserted
+        // the same emptiness here for the opposite reason -- it believed three cells existed and
+        // that a broad clear reached them all.
+        check (claimDragWheel (cB, ownerB, fingerA), "leg D: the first press is accepted");
+        check (! claimDragWheel (cB, ownerB, fingerB), "leg D: the second is refused");
+        check (! claimDragWheel (cB, ownerB, mouse),   "leg D: ...and so is the third");
+        std::printf ("  [leg D] three devices pressed one control: %s / %s / %s\n",
+                     dragWheelHolder (fingerA) == &cB ? "HOLDS" : "nothing",
+                     dragWheelHolder (fingerB) == &cB ? "HOLDS" : "nothing",
+                     dragWheelHolder (mouse)   == &cB ? "HOLDS" : "nothing");
+        check (dragWheelHolder (fingerA) == &cB,
+               "leg D: the first of them owns the control's one drag");
+        check (dragWheelHolder (fingerB) == nullptr && dragWheelHolder (mouse) == nullptr,
+               "leg D: ...and the other two establish no claim on it at all");
+        releaseDragWheel (cB);
+        check (dragWheelHolder (fingerA) == nullptr && dragWheelHolder (fingerB) == nullptr
+                 && dragWheelHolder (mouse) == nullptr,
+               "leg D: ...and one release leaves the table empty");
+    }
+
+    // ---- LEG E: a held button that claimed nothing still swallows, per device ------------------
+    {
+        ownerA.notches = ownerB.notches = 0;
+        const bool took = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, fingerB);
+        std::printf ("  [leg E] a claimless held device: consumed=%d, delivered A x%d B x%d\n",
+                     (int) took, ownerA.notches, ownerB.notches);
+        check (took, "leg E: the round-30 rule holds per device -- a held button consumes");
+        check (ownerA.notches == 0 && ownerB.notches == 0,
+               "leg E: ...and nothing is moved by it");
+    }
+
+    // ---- LEG F: a holder destroyed mid-press cannot be reached through the table ---------------
+    {
+        {
+            juce::Component doomed;
+            CountingOwner ownerD;
+            check (claimDragWheel (doomed, ownerD, mouse), "leg F: the claim is accepted");
+            check (dragWheelHolder (mouse) == &doomed, "leg F: the claim is registered");
+        }
+        ownerA.notches = 0;
+        const bool took = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, mouse);
+        std::printf ("  [leg F] after the holder was destroyed: holder=%s, consumed=%d, A x%d\n",
+                     dragWheelHolder (mouse) == nullptr ? "null" : "DANGLING",
+                     (int) took, ownerA.notches);
+        check (dragWheelHolder (mouse) == nullptr,
+               "leg F: a destroyed holder reads back as nothing (SafePointer)");
+        check (took && ownerA.notches == 0,
+               "leg F: ...and its device's wheel is still swallowed, reaching nobody");
+        (void) wheelTakenByAnyPress (cA, nullptr, ev (cA, none), wheel, mouse);   // leave it clean
+    }
+
+    // ---- LEG G: the key really is what the real source reports ---------------------------------
+    {
+        const auto p = anamorph::gui::wheelPointerOf (src);
+        std::printf ("  [leg G] the main mouse source keys as (type %d, index %d)\n", p.type, p.index);
+        check (p == mouse, "leg G: the main mouse source is the (mouse, 0) key the legs used");
+        check (p != fingerA && p != fingerB, "leg G: ...and is not any touch key");
+    }
+
+    // ---- LEGS H AND I: ONE COMPONENT, ONE ACTIVE DRAG -----------------------------------------
+    //      Round 32, Devin `src/gui/LookAndFeel.cpp:R106-110`, and the owner's decision: the first
+    //      accepted press establishes the component's drag AND its wheel ownership, a second device
+    //      establishes no second claim on that same component, and no claim survives the end of that
+    //      component's shared drag. Both orders, because the two used to differ.
+    //
+    //      THIS REPLACES ROUND 31'S LEGS H AND I, which asserted that a second device KEEPS its
+    //      claim when the first releases. That was the right answer to the wrong question: the
+    //      register could hold a second claim, the COMPONENT could not hold a second drag, and the
+    //      survivor's claim then pointed at a control with nothing to give it -- and steered that
+    //      control's NEXT drag. The registry consequence is measured here; the parameter one is
+    //      State test 107 legs K and L.
+    for (int order = 0; order < 2; ++order)
+    {
+        const char* leg = order == 0 ? "H" : "I";
+
+        check (claimDragWheel (cB, ownerB, mouse), "legs H/I: A's press on the control is accepted");
+        check (! claimDragWheel (cB, ownerB, fingerA),
+               "legs H/I: ...and B's press on the same control is REFUSED, not merely unclaimed");
+        const bool onlyA = dragWheelHolder (mouse) == &cB && dragWheelHolder (fingerA) == nullptr;
+
+        ownerA.notches = ownerB.notches = 0;
+        // B scrolls with its own button down and the pointer over the other control. It holds
+        // nothing, so round 30's rule consumes the event and delivers it to NOBODY -- and THAT is
+        // the discriminator: a second claim would have delivered it to a control B is not dragging.
+        const bool tookB = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, fingerA);
+        const int deliveredToB = ownerB.notches;
+
+        // ...and A, which does hold it, still gets its own notch.
+        ownerA.notches = ownerB.notches = 0;
+        (void) wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, mouse);
+        const int deliveredToA = ownerB.notches;
+
+        releaseDragWheel (cB);                   // whichever of them released, the drag is over
+        const bool bothGone = dragWheelHolder (mouse) == nullptr
+                                && dragWheelHolder (fingerA) == nullptr;
+
+        std::printf ("  [leg %s] A then B pressed one control: only A holds it %s;"
+                     " B's notch consumed=%d delivered x%d, A's delivered x%d; after the release %s\n",
+                     leg, onlyA ? "yes" : "NO", (int) tookB, deliveredToB, deliveredToA,
+                     bothGone ? "nothing is held" : "SOMETHING IS STILL HELD");
+        check (onlyA, "legs H/I: the second device establishes no claim on a component already held");
+        check (tookB && deliveredToB == 0,
+               "legs H/I: ...its wheel is consumed by the held-button rule and delivered to nobody");
+        check (deliveredToA == 1, "legs H/I: ...while the owner's own notch still reaches the control");
+        check (bothGone, "legs H/I: ...and the release of that control's drag leaves no claim behind");
+    }
+
+    // ---- LEG K: ONE DEVICE IS ONE CELL, WHICHEVER EDITOR THE CONTROL IS IN ---------------------
+    //      §3 and §4 of round 31, both answered by the same measurement. The register is a
+    //      file-local static, so two Anamorph instances in one host share it -- and that is the
+    //      design, not an oversight: the table is keyed by the DEVICE, and a device has exactly one
+    //      press at a time whatever window it is in. `cA` and `cB` stand in for two editors here.
+    //
+    //      §3: the second instance's press REPLACES this device's claim rather than coexisting
+    //      with it, and the first instance's control becomes unreachable through the table. That is
+    //      what "the live press" means; there is no cell for the other instance to corrupt.
+    //      §4: and it is the same cell, reused. `claimDragWheel` looks the key up first and only
+    //      appends when it is new, so presses do not accumulate rows -- the row count is bounded by
+    //      the DEVICE IDENTITIES JUCE can mint, which is one `mouse`, one `pen` and one `touch` per
+    //      simultaneous finger with the slot freed at TouchEnd and the lowest free slot reused
+    //      (juce_MultiTouchMapper.h:46-62), under JUCE's own `touchIndex < 100` assertion
+    //      (juce_MouseInputSourceList.h:67-89).
+    {
+        check (claimDragWheel (cA, ownerA, mouse), "leg K: \"instance 1\" takes the mouse's press");
+        check (claimDragWheel (cB, ownerB, mouse),
+               "leg K: ...and the same device's next press, in \"instance 2\", is accepted too");
+        ownerA.notches = ownerB.notches = 0;
+        const bool took = wheelTakenByAnyPress (cA, &ownerA, ev (cA, held), wheel, mouse);
+        std::printf ("  [leg K] the same device pressed a second editor's control: it holds %s;"
+                     " delivered A x%d B x%d\n",
+                     dragWheelHolder (mouse) == &cB ? "the second" : "the FIRST",
+                     ownerA.notches, ownerB.notches);
+        check (dragWheelHolder (mouse) == &cB, "leg K: one device holds exactly one control at a time");
+        check (took && ownerB.notches == 1 && ownerA.notches == 0,
+               "leg K: ...the live press, and the other editor's control is unreachable through it");
+        releaseDragWheel (cB);
+        check (dragWheelHolder (mouse) == nullptr && dragWheelHolder (fingerA) == nullptr
+                 && dragWheelHolder (fingerB) == nullptr,
+               "leg K: ...and the release of that control's drag leaves the table empty again");
+    }
+
+    // ---- LEG L: A LOST RELEASE MUST NOT LEAVE A DEVICE HOLDING TWO CONTROLS --------------------
+    //      The one path on which `claimDragWheel`'s first line is load-bearing, and the mutation
+    //      suite found it by surviving: clearing this device's own previous cell is redundant when
+    //      the new claim is granted -- the same cell is overwritten a line later -- so it only
+    //      matters when the new claim is REFUSED, and that only happens when the device already had
+    //      a stale cell. Which is KI-028's class exactly: a release that never arrived (a window
+    //      closing under the cursor, a host swallowing the up event) leaves the old claim behind,
+    //      and the device's next press then lands on a control someone else is holding.
+    //
+    //      Without the clear the device keeps pointing at the FIRST control -- whose drag ended
+    //      when its own `mouseUp` did arrive -- and its notches are delivered into that dead drag,
+    //      which is the very thing this round exists to stop.
+    {
+        check (claimDragWheel (cA, ownerA, fingerA), "leg L: B presses one control...");
+        check (claimDragWheel (cB, ownerB, mouse),   "leg L: ...A presses another");
+        // B's release never arrives. B now presses the control A is holding.
+        check (! claimDragWheel (cB, ownerB, fingerA),
+               "leg L: ...and B's press on the control A holds is refused");
+        std::printf ("  [leg L] after a lost release and a press on a held control: B holds %s\n",
+                     dragWheelHolder (fingerA) == nullptr ? "nothing"
+                       : dragWheelHolder (fingerA) == &cA ? "ITS STALE CONTROL" : "the held one");
+        check (dragWheelHolder (fingerA) == nullptr,
+               "leg L: a refused claim still ends the device's own previous one");
+        check (dragWheelHolder (mouse) == &cB, "leg L: ...and does not disturb the control's owner");
+        releaseDragWheel (cA);
+        releaseDragWheel (cB);
+    }
+
+    // ---- LEG J: a release names the control as well as the device ------------------------------
+    //      The component test is the older half of the rule (a value box's press and its parent
+    //      knob's are one click to everything but JUCE's routing), and it still holds with the
+    //      device key beside it: the wrong control cannot hand back a claim it never made.
+    {
+        check (claimDragWheel (cB, ownerB, mouse), "leg J: the claimant's press is accepted");
+        releaseDragWheel (cA);                   // the control that did NOT claim it
+        std::printf ("  [leg J] a foreign control released the mouse: it still holds %s\n",
+                     dragWheelHolder (mouse) == &cB ? "the claimant" : "NOTHING");
+        check (dragWheelHolder (mouse) == &cB,
+               "leg J: only the control that claimed the wheel can hand it back");
+        releaseDragWheel (cB);
+        check (dragWheelHolder (mouse) == nullptr, "leg J: ...and the claimant's own release does");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 109 -- an UNWIRED PresetManager runs its commands synchronously
+//  (round 32, Devin `src/StateCommandGate.h:R163-172`, "unwired preset commands
+//  never run").
+//
+//  THE CONFIGURATION IS DOCUMENTED, NOT HYPOTHETICAL. `PresetManager::stateCommand`
+//  is a non-owning pointer whose declaration says: *"Null in a manager no processor
+//  wired up, in which case every command runs synchronously exactly as it did before
+//  round 25."* `stateCommandAdmission` implements that by handing the gate a
+//  default-built `StateCommandHooks` under a comment that reads *"no processor: admit
+//  everything"*. Both statements were false from round 28 until round 32: the gate read
+//  `soundReplacement == nullptr` as a failed try-lock and fell through to `defer`, whose
+//  `enqueue` is also empty -- so `saveUser` answered `OpResult::deferred`, no file was
+//  written, and the completion was never called. Nothing was queued; the command was
+//  dropped.
+//
+//  WHY IT DID NOT SHOW UP IN THE PLUG-IN. `AnamorphAudioProcessor` wires the hooks in its
+//  constructor (`presets.stateCommand = &stateCommandHooks;`), so every command the
+//  editor issues takes the configured path. The broken one is the path the class
+//  advertises to anything that builds a manager without a processor -- which is exactly
+//  what this test does, and what the next caller would have done.
+// ---------------------------------------------------------------------------
+static void testAnUnwiredPresetManagerRunsSynchronously()
+{
+    std::printf ("State test 109: an unwired PresetManager runs synchronously (R163-172)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+
+    // The manager under test: the processor's APVTS, and NO hooks. This is the standalone shape.
+    anamorph::PresetManager standalone { proc.getAPVTS() };
+    check (true, "the standalone manager constructs from an APVTS alone");
+
+    const juce::String name = "__r32Standalone__";
+    const auto file = anamorph::PresetManager::presetDirectory()
+                          .getChildFile (name + anamorph::PresetManager::fileSuffix());
+    file.deleteFile();
+
+    // ---- LEG A: the save runs NOW, writes the file, and reports once ------------------------
+    {
+        int completions = 0;
+        bool reported = false;
+        const auto r = standalone.saveUser (name, [&] (bool ok) { ++completions; reported = ok; });
+        std::printf ("  [leg A] saveUser: result %s, completion calls %d (said %s), file %s\n",
+                     r == anamorph::PresetManager::OpResult::completed ? "completed"
+                       : r == anamorph::PresetManager::OpResult::deferred ? "DEFERRED" : "failed",
+                     completions, reported ? "true" : "false",
+                     file.existsAsFile() ? "written" : "MISSING");
+        check (r == anamorph::PresetManager::OpResult::completed,
+               "leg A: an unwired manager decides the save NOW rather than queueing it");
+        check (completions == 1 && reported, "leg A: ...and reports its result exactly once");
+        check (file.existsAsFile(), "leg A: ...and the file is actually on disk");
+    }
+
+    // ---- LEG B: and so does the OTHER admitted command that takes a file ---------------------
+    //      `loadFile` passes through the same `stateCommandAdmission`, so it failed the same way.
+    {
+        int completions = 0;
+        bool reported = false;
+        const auto r = standalone.loadFile (file, [&] (bool ok) { ++completions; reported = ok; });
+        std::printf ("  [leg B] loadFile: result %s, completion calls %d (said %s), selection \"%s\"\n",
+                     r == anamorph::PresetManager::OpResult::completed ? "completed"
+                       : r == anamorph::PresetManager::OpResult::deferred ? "DEFERRED" : "failed",
+                     completions, reported ? "true" : "false",
+                     standalone.currentName().toRawUTF8());
+        check (r == anamorph::PresetManager::OpResult::completed,
+               "leg B: the load is decided now too");
+        check (completions == 1 && reported, "leg B: ...and reports once");
+        check (standalone.currentName() == name,
+               "leg B: ...and the manager really did adopt the preset it loaded");
+    }
+
+    // ---- LEG C: the relative command, which returns nothing and could only drop silently ------
+    {
+        standalone.refresh();
+        const auto before = standalone.currentName();
+        standalone.step (1);
+        const auto after = standalone.currentName();
+        std::printf ("  [leg C] step(+1): \"%s\" -> \"%s\" (list %d entr%s)\n",
+                     before.toRawUTF8(), after.toRawUTF8(),
+                     standalone.entries().size(), standalone.entries().size() == 1 ? "y" : "ies");
+        // The list contents depend on what else is in the user preset folder, so the assertion is
+        // the one that holds either way: a step that had somewhere to go went there, and a step
+        // that did not left the selection alone. What must NEVER happen is the command vanishing
+        // while the list has more than one row.
+        check (standalone.entries().size() <= 1 || after != before,
+               "leg C: a relative command with somewhere to go is not dropped");
+    }
+
+    // ---- LEG D: THE CONFIGURED PATH IS UNCHANGED ---------------------------------------------
+    //      The whole point of the fix is that it touches only the null-lock configuration. The
+    //      processor's own manager has the hooks wired, so it still takes the try/defer path --
+    //      measured here by the thing that only a configured gate can do: refuse while a user
+    //      transaction is open, and run the command later at the boundary.
+    {
+        auto& wired = proc.getPresets();
+        const auto wiredName = juce::String ("__r32Wired__");
+        const auto wiredFile = anamorph::PresetManager::presetDirectory()
+                                   .getChildFile (wiredName + anamorph::PresetManager::fileSuffix());
+        wiredFile.deleteFile();
+        int completions = 0;
+        bool reported = false;
+        anamorph::PresetManager::OpResult r {};
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            r = wired.saveUser (wiredName, [&] (bool ok) { ++completions; reported = ok; });
+            std::printf ("  [leg D] inside a user transaction: result %s, completion calls %d,"
+                         " file %s\n",
+                         r == anamorph::PresetManager::OpResult::deferred ? "deferred" : "NOT deferred",
+                         completions, wiredFile.existsAsFile() ? "written" : "not yet");
+            check (r == anamorph::PresetManager::OpResult::deferred,
+                   "leg D: a CONFIGURED gate still defers while a transaction is open");
+            check (completions == 0 && ! wiredFile.existsAsFile(),
+                   "leg D: ...and nothing has happened yet");
+        }
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg D] after the boundary: completion calls %d (said %s), file %s\n",
+                     completions, reported ? "true" : "false",
+                     wiredFile.existsAsFile() ? "written" : "MISSING");
+        check (completions == 1 && reported && wiredFile.existsAsFile(),
+               "leg D: ...and the deferred save then runs at the boundary, exactly as before");
+        wiredFile.deleteFile();
+    }
+
+    file.deleteFile();
+}
+
+// ---------------------------------------------------------------------------
+//  State test 110 -- A REFUSED PRESS ESTABLISHES NOTHING (round 33, Devin
+//  `src/gui/LookAndFeel.cpp:R101-103`, "rejected second press steals drag").
+//
+//  WHAT ROUND 32 LEFT HALF-DONE. `claimDragWheel` refused a second device's claim on a component
+//  that already had one -- and returned `void`. The refusal was invisible to the caller, so the
+//  rejected press ran the whole of its `mouseDown` anyway, and that is where a component's ONE
+//  shared drag is actually established:
+//
+//      juce::Slider::Pimpl::mouseDown  mouseDragStartPos = mousePosWhenLastDragged = e.position (:856)
+//                                      currentDrag.reset()  -- ENDS the first device's gesture  (:857)
+//                                      sliderBeingDragged = getThumbIndexAt (e)                 (:878)
+//                                      valueOnMouseDown = valueWhenLastDragged = <live value>   (:887-889)
+//                                      currentDrag = <a SECOND ScopedDragNotification>          (:899)
+//      SpectrumImager::mouseDown       gestureBands, the gesture sound, dragBand, bandAnchorX,
+//                                      soloPressBand, the pending delete
+//      ValueBox::mouseDown             downProp, and its own ScopedDragNotification
+//
+//  So the first device went on dragging from the SECOND device's anchor, with the first device's
+//  host gesture already closed. Round 33 returns the answer -- `[[nodiscard]] bool` -- and every
+//  caller asks before it writes anything.
+//
+//  ...AND A PRESS IS NOT ONLY ITS `mouseDown`. Proving the above from source (§1) found the same
+//  rejected press still reaching the owner's state through its other two events, which the owner's
+//  rule forbids in the same words: `Pimpl::mouseDrag` runs on the OWNER's `useDragEvents` and
+//  `sliderBeingDragged` and writes the parameter from the RIVAL's cursor (juce_Slider.cpp:906-970),
+//  and `Pimpl::mouseUp` ends with an unconditional `currentDrag.reset()` (:997) -- the owner's host
+//  gesture, closed by the device that was refused the drag. `SpectrumImager::mouseUp` is worse
+//  again: it fires the ON-RELEASE ACTIONS latched by the press it is not (a solo toggle, a band
+//  removal). Legs C and E measure all of it.
+//
+//  DRIVEN WITH THE REGISTER RELABELLED, which is forced rather than chosen and for the reason
+//  State test 108 gives: nothing public mints a second `MouseInputSource`, so every real event this
+//  suite can send carries the (mouse, 0) key. The component's drag state is NOT per device --
+//  `Pimpl` holds one `valueOnMouseDown`, one `mouseDragStartPos`, one `sliderBeingDragged` for the
+//  component, and the display and the value box hold one anchor each the same way -- so seeding it
+//  through the real mouse and then naming a finger as the register's holder produces exactly the
+//  state production reaches when the finger pressed first: one live drag on the component, one cell
+//  naming the finger, and the real mouse arriving as a rival. `wheelPointerOf` is pinned against
+//  the real source by State test 108 leg G.
+//
+//  AND THE MEASUREMENT IS A REFERENCE RUN, not a threshold. Leg C runs the identical press-drag-
+//  drag-release twice, the second time with a rival's whole press spliced into the middle, and
+//  demands the two parameters be EXACTLY equal. A rejected press that moved the anchor by one pixel
+//  fails it; so does one that closed the gesture, because the reference's second drag is inside a
+//  gesture and the contaminated one's would not be.
+// ---------------------------------------------------------------------------
+static void testARefusedPressEstablishesNothing()
+{
+    std::printf ("State test 110: a refused press establishes nothing (R101-103)\n");
+
+    using anamorph::gui::WheelPointer;
+    using anamorph::gui::claimDragWheel;
+    using anamorph::gui::releaseDragWheel;
+    using anamorph::gui::dragWheelHolder;
+    using anamorph::gui::wheelTakenByAnyPress;
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+    if (auto* k = apvts.getParameter (pid::monoMakerOn))  k->setValueNotifyingHost (k->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the refused-press probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s  = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* widP   = apvts.getParameter (pid::width);
+    auto* monoP  = apvts.getParameter (pid::monoMakerFreq);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* driveK = findSliderFor (driveP);
+    auto* widK   = findSliderFor (widP);
+    auto* monoK  = findSliderFor (monoP);
+
+    // THE VALUE BOX IS THE SLIDER'S OWN TEXT-BOX CHILD (`AnamorphLookAndFeel::createSliderTextBox`
+    // returns one for every knob), and it is found by the interface that makes it one of the three
+    // drag implementations rather than by position among the children.
+    // Held as a `juce::Component*`: `juce::Label` re-declares the mouse handlers `protected`, and
+    // the calls below are the ones JUCE itself makes, through the base class.
+    juce::Component* vb = nullptr;
+    juce::Label* vbLabel = nullptr;               // for `isBeingEdited()`, which Label makes public
+    anamorph::gui::DragGestureOwner* vbOwner = nullptr;
+    if (driveK != nullptr)
+        for (int i = 0; i < driveK->getNumChildComponents(); ++i)
+            if (auto* l = dynamic_cast<juce::Label*> (driveK->getChildComponent (i)))
+                if (auto* d = dynamic_cast<anamorph::gui::DragGestureOwner*> (l))
+                { vb = l; vbLabel = l; vbOwner = d; }
+
+    auto* driveOwner = dynamic_cast<anamorph::gui::WheelDragOwner*> (driveK);
+    auto* monoOwner  = dynamic_cast<anamorph::gui::WheelDragOwner*> (monoK);
+    auto* widOwner   = dynamic_cast<anamorph::gui::WheelDragOwner*> (widK);
+    auto* imOwner    = dynamic_cast<anamorph::gui::WheelDragOwner*> (im);
+
+    check (im != nullptr && im->getWidth() > 300 && driveP && driveK && widP && widK
+             && monoP && monoK && loP && vb != nullptr && vbOwner != nullptr
+             && driveOwner && monoOwner && widOwner && imOwner,
+           "the display, the two knob styles, a value box and the multiband split are findable");
+    if (! (im != nullptr && im->getWidth() > 300 && driveP && driveK && widP && widK
+           && monoP && monoK && loP && vb != nullptr && vbOwner != nullptr
+           && driveOwner && monoOwner && widOwner && imOwner))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    // THE TWO DRAG MAPPINGS, BOTH COVERED. A rotary knob takes `handleVelocityDrag`, whose anchor
+    // is `mousePosWhenLastDragged`; a `LinearHorizontal` one takes `handleAbsoluteDrag`, whose
+    // anchor is `mouseDragStartPos` and `valueOnMouseDown`. `Pimpl::mouseDown` re-seeds all three
+    // in one line (:856, :887-889), so a rejected press corrupts either -- but they fail
+    // DIFFERENTLY (the absolute one jumps to the rival's x; the velocity one loses its integrator
+    // reference), and a fix covering only one would pass a suite that only measured one.
+    check (monoK->getSliderStyle() == juce::Slider::LinearHorizontal,
+           "the Mono Maker frequency slider is the ABSOLUTE-mapping control this test needs");
+
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    const WheelPointer mousePtr = anamorph::gui::wheelPointerOf (src);
+    const WheelPointer fingerA { (int) juce::MouseInputSource::InputSourceType::touch, 0 };
+
+    int seq = 0;
+    auto stamp = [&] { return juce::Time::getCurrentTime() + juce::RelativeTime::milliseconds (++seq * 7); };
+    auto mev = [&] (juce::Component* c, float x, float y, float dx, float dy,
+                    bool dragged, juce::ModifierKeys m)
+    {
+        const auto t = stamp();
+        return juce::MouseEvent (src, { x, y }, m, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 c, c, t, { dx, dy }, t, 1, dragged);
+    };
+    auto wheelOf = [] (float dx, float dy)
+    {
+        juce::MouseWheelDetails w;
+        w.deltaX = dx; w.deltaY = dy;
+        w.isReversed = false; w.isSmooth = false; w.isInertial = false;
+        return w;
+    };
+    const auto none = juce::ModifierKeys();
+    const auto held = juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
+    auto plainOf = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto clearHistory = [&] { while (proc.canUndo()) proc.undo(); proc.pollUndoCoalesce(); };
+
+    const float dkx = 0.5f * (float) driveK->getWidth(), dky = 0.5f * (float) driveK->getHeight();
+    const float mkx = 0.5f * (float) monoK->getWidth(),  mky = 0.5f * (float) monoK->getHeight();
+    const float wkx = 0.5f * (float) widK->getWidth(),   wky = 0.5f * (float) widK->getHeight();
+    const float vbx = 0.5f * (float) vb->getWidth(),     vby = 0.5f * (float) vb->getHeight();
+    const float imW = (float) im->getWidth(),            laneY = 0.5f * (float) im->getHeight();
+
+    // The table is a process-wide static and other tests have pressed things: an ordinary
+    // button-up scroll is what clears a device's cell in production, so that is what starts here.
+    auto clearTable = [&]
+    {
+        for (auto p : { mousePtr, fingerA })
+            (void) wheelTakenByAnyPress (*widK, widOwner, mev (widK, wkx, wky, wkx, wky, false, none),
+                                         wheelOf (0.0f, 0.0f), p);
+    };
+
+    // THE RELABEL, and both directions of it. Neither call touches a single drag field: the
+    // register holds (device -> component) cells and nothing else, so this changes only WHICH
+    // DEVICE the component's one live drag is recorded as belonging to. See the header.
+    auto ownedByFinger = [&] (juce::Component& c, anamorph::gui::WheelDragOwner& o)
+    {
+        releaseDragWheel (c);
+        check (claimDragWheel (c, o, fingerA), "the first device's claim on the control is made");
+    };
+    auto ownedByMouse = [&] (juce::Component& c, anamorph::gui::WheelDragOwner& o)
+    {
+        releaseDragWheel (c);
+        (void) claimDragWheel (c, o, mousePtr);
+    };
+
+    // ---- LEG A: the original device starts the component's one drag ---------------------------
+    {
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        CountGestures g; driveP->addListener (&g);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        const int thumb = driveK->getThumbBeingDragged();
+        const bool holds = dragWheelHolder (mousePtr) == driveK;
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        const float moved = plainOf (driveP);
+        driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        driveP->removeListener (&g);
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg A] the first press: thumb=%d, holder=%s, Drive 2.000 -> %.4f,"
+                     " gesture opens=%d closes=%d\n",
+                     thumb, holds ? "the knob" : "NOTHING", moved, g.opens, g.closes);
+        check (thumb >= 0, "leg A: the press starts the component's one drag");
+        check (holds, "leg A: ...and the device that made it holds the component");
+        check (! juce::exactlyEqual (moved, 2.0f), "leg A: ...and the drag moves the parameter");
+        check (g.opens == 1 && g.closes == 1, "leg A: ...inside exactly one host change gesture");
+    }
+
+    // ---- LEG B: a second device's press is REFUSED at every drag implementation ----------------
+    //      §5: the three classes that hold drag state are covered one by one, because the fix is
+    //      one line in each of them and a miss in one is invisible in the others.
+    {
+        // ---- B1: the rotary knob (velocity mapping) -------------------------------------------
+        clearTable();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, held));
+        ownedByFinger (*driveK, *driveOwner);
+        const int  thumb0 = driveK->getThumbBeingDragged();
+        const float drive0 = plainOf (driveP);
+        driveK->mouseDown (mev (driveK, dkx + 30.0f, dky + 30.0f, dkx + 30.0f, dky + 30.0f, false, held));
+        std::printf ("  [leg B1] rotary knob, rival press: mouse holds %s, finger holds %s,"
+                     " thumb %d -> %d, Drive %.4f -> %.4f\n",
+                     dragWheelHolder (mousePtr) == nullptr ? "nothing" : "IT",
+                     dragWheelHolder (fingerA) == driveK ? "it still" : "NOTHING",
+                     thumb0, driveK->getThumbBeingDragged(), drive0, plainOf (driveP));
+        check (dragWheelHolder (mousePtr) == nullptr,
+               "leg B1: the refused press acquires no second wheel claim");
+        check (dragWheelHolder (fingerA) == driveK,
+               "leg B1: ...and does not evict the device that holds the drag");
+        check (driveK->getThumbBeingDragged() == thumb0,
+               "leg B1: ...and does not touch `sliderBeingDragged`");
+        check (juce::exactlyEqual (plainOf (driveP), drive0),
+               "leg B1: ...and moves no parameter");
+        ownedByMouse (*driveK, *driveOwner);
+        driveK->mouseUp (mev (driveK, dkx, dky - 10.0f, dkx, dky, true, held));
+        releaseDragWheel (*driveK);
+
+        // ---- B2: the linear knob (absolute mapping) -------------------------------------------
+        clearTable();
+        setPlain (monoP, 120.0f);
+        proc.pollUndoCoalesce();
+        monoK->mouseDown (mev (monoK, mkx, mky, mkx, mky, false, held));
+        monoK->mouseDrag (mev (monoK, mkx + 6.0f, mky, mkx, mky, true, held));
+        ownedByFinger (*monoK, *monoOwner);
+        const int  mThumb0 = monoK->getThumbBeingDragged();
+        const float mono0  = plainOf (monoP);
+        monoK->mouseDown (mev (monoK, mkx + 40.0f, mky, mkx + 40.0f, mky, false, held));
+        std::printf ("  [leg B2] linear knob, rival press: mouse holds %s, thumb %d -> %d,"
+                     " MonoFreq %.4f -> %.4f\n",
+                     dragWheelHolder (mousePtr) == nullptr ? "nothing" : "IT",
+                     mThumb0, monoK->getThumbBeingDragged(), mono0, plainOf (monoP));
+        check (dragWheelHolder (mousePtr) == nullptr && dragWheelHolder (fingerA) == monoK,
+               "leg B2: the absolute-mapping control refuses it the same way");
+        check (monoK->getThumbBeingDragged() == mThumb0 && juce::exactlyEqual (plainOf (monoP), mono0),
+               "leg B2: ...and neither its thumb nor its parameter moves");
+        ownedByMouse (*monoK, *monoOwner);
+        monoK->mouseUp (mev (monoK, mkx + 6.0f, mky, mkx, mky, true, held));
+        releaseDragWheel (*monoK);
+
+        // ---- B3: the value box ----------------------------------------------------------------
+        //      Its drag state is `downProp` and a `ScopedDragNotification`, both private; the
+        //      observable is the parent knob's `dragging` property, which its press sets in the
+        //      same branch, and the parameter its drag would write.
+        clearTable();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        vb->mouseDown (mev (vb, vbx, vby, vbx, vby, false, held));
+        const bool boxHolds = dragWheelHolder (mousePtr) == vb;
+        const bool flagOn   = (bool) driveK->getProperties().getWithDefault ("dragging", false);
+        ownedByFinger (*vb, *vbOwner);
+        const float box0 = plainOf (driveP);
+        vb->mouseDown (mev (vb, vbx, vby + 20.0f, vbx, vby + 20.0f, false, held));
+        std::printf ("  [leg B3] value box: own press holds=%d flag=%d; rival press ->"
+                     " mouse holds %s, Drive %.4f -> %.4f\n",
+                     (int) boxHolds, (int) flagOn,
+                     dragWheelHolder (mousePtr) == nullptr ? "nothing" : "IT",
+                     box0, plainOf (driveP));
+        check (boxHolds && flagOn, "leg B3: the value box's own press claims and shows the drag");
+        check (dragWheelHolder (mousePtr) == nullptr && dragWheelHolder (fingerA) == vb,
+               "leg B3: ...and a rival press on it establishes nothing");
+        check (juce::exactlyEqual (plainOf (driveP), box0),
+               "leg B3: ...and moves no parameter");
+        ownedByMouse (*vb, *vbOwner);
+        vb->mouseUp (mev (vb, vbx, vby, vbx, vby, false, held));
+        releaseDragWheel (*vb);
+
+        // ---- B4: the multiband display --------------------------------------------------------
+        clearTable();
+        setPlain (loP, 180.0f);
+        proc.pollUndoCoalesce();
+        float hx = -1.0f;
+        for (float x = 4.0f; x < imW - 4.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (im, x, laneY, x, laneY, false, none));
+            if (im->getTooltip() == juce::String ("Drag to change the split frequency")) { hx = x; break; }
+        }
+        check (hx > 0.0f, "leg B4: a crossover handle was located on the display");
+        if (hx > 0.0f)
+        {
+            im->mouseDown (mev (im, hx, laneY, hx, laneY, false, held));
+            im->mouseDrag (mev (im, hx + 10.0f, laneY, hx, laneY, true, held));
+            ownedByFinger (*im, *imOwner);
+            const float lo0 = plainOf (loP);
+            im->mouseDown (mev (im, hx + 120.0f, laneY, hx + 120.0f, laneY, false, held));
+            std::printf ("  [leg B4] display, rival press: mouse holds %s, finger holds %s,"
+                         " split %.3f -> %.3f\n",
+                         dragWheelHolder (mousePtr) == nullptr ? "nothing" : "IT",
+                         dragWheelHolder (fingerA) == im ? "it still" : "NOTHING",
+                         lo0, plainOf (loP));
+            check (dragWheelHolder (mousePtr) == nullptr && dragWheelHolder (fingerA) == im,
+                   "leg B4: the display refuses a rival press the same way");
+            check (juce::exactlyEqual (plainOf (loP), lo0),
+                   "leg B4: ...and it moves no parameter");
+
+            // ...AND THE OWNER'S GESTURE IS STILL THE ONE IT STARTED. This is the half M190
+            // survived on: the display's press latches `gestureBands`, `dragHandle`, `dragBand`,
+            // `bandAnchorX` and `soloPressBand`, and a rival press 120 px away re-latches every one
+            // of them to whatever is under IT. The rival's own later events are refused, so nothing
+            // shows until the OWNER drags again -- and then it is dragging the rival's identifiers.
+            // Measured as "the owner still moves the split it was moving, and only that one".
+            const float midBefore = plainOf (apvts.getParameter (pid::mbFreqMid));
+            const float hiBefore  = plainOf (apvts.getParameter (pid::mbFreqHigh));
+            ownedByMouse (*im, *imOwner);   // from here the events are the OWNER's again
+            im->mouseDrag (mev (im, hx + 30.0f, laneY, hx, laneY, true, held));
+            const float loOwner = plainOf (loP);
+            std::printf ("  [leg B4] ...and the owner's next drag moves split %.3f -> %.3f"
+                         " (mid %.3f, high %.3f unchanged)\n",
+                         lo0, loOwner, plainOf (apvts.getParameter (pid::mbFreqMid)),
+                         plainOf (apvts.getParameter (pid::mbFreqHigh)));
+            check (! juce::exactlyEqual (loOwner, lo0),
+                   "leg B4: ...while the OWNER's next drag still moves the split it was dragging");
+            check (juce::exactlyEqual (plainOf (apvts.getParameter (pid::mbFreqMid)), midBefore)
+                     && juce::exactlyEqual (plainOf (apvts.getParameter (pid::mbFreqHigh)), hiBefore),
+                   "leg B4: ...and moves no OTHER split, which a re-latched gesture would");
+            im->mouseUp (mev (im, hx + 30.0f, laneY, hx, laneY, true, held));
+            releaseDragWheel (*im);
+        }
+        proc.pollUndoCoalesce();
+
+        // ---- B5: a rival's DOUBLE CLICK is part of the same refused press ----------------------
+        //      JUCE delivers `mouseDoubleClick` as its own callback after the `mouseDown` that was
+        //      refused, and both of ours write a parameter outright: the knob's is the reset, the
+        //      display's is `resetCrossover`/`resetParam`. The value box's opens its inline editor,
+        //      and `isBeingEdited()` is what the OWNER's own `mouseDrag` tests before it writes --
+        //      so that one stops the first device's drag without touching a single anchor.
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        setPlain (loP, 180.0f);
+        proc.pollUndoCoalesce();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        ownedByFinger (*driveK, *driveOwner);
+        const float dblDrive0 = plainOf (driveP);
+        driveK->mouseDoubleClick (mev (driveK, dkx, dky, dkx, dky, false, held));
+        const float dblDrive1 = plainOf (driveP);
+        ownedByMouse (*driveK, *driveOwner);
+        driveK->mouseUp (mev (driveK, dkx, dky, dkx, dky, false, held));
+        releaseDragWheel (*driveK);
+
+        ownedByFinger (*vb, *vbOwner);
+        vb->mouseDown (mev (vb, vbx, vby, vbx, vby, false, held));
+        const bool editedAfterDown = vbLabel->isBeingEdited();
+        vb->mouseDoubleClick (mev (vb, vbx, vby, vbx, vby, false, held));
+        const bool editedAfterDbl = vbLabel->isBeingEdited();
+        releaseDragWheel (*vb);
+
+        float dblLo0 = 0.0f, dblLo1 = 0.0f;
+        if (hx > 0.0f)
+        {
+            im->mouseDown (mev (im, hx, laneY, hx, laneY, false, held));
+            ownedByFinger (*im, *imOwner);
+            dblLo0 = plainOf (loP);
+            im->mouseDoubleClick (mev (im, hx, laneY, hx, laneY, false, held));
+            dblLo1 = plainOf (loP);
+            ownedByMouse (*im, *imOwner);
+            im->mouseUp (mev (im, hx, laneY, hx, laneY, false, held));
+            releaseDragWheel (*im);
+        }
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg B5] rival double clicks: knob reset %.4f -> %.4f, box editing"
+                     " after down=%d after double=%d, split %.3f -> %.3f\n",
+                     dblDrive0, dblDrive1, (int) editedAfterDown, (int) editedAfterDbl,
+                     dblLo0, dblLo1);
+        check (juce::exactlyEqual (dblDrive1, dblDrive0),
+               "leg B5: a rival's double click does not reset a knob another device is dragging");
+        check (! editedAfterDown && ! editedAfterDbl,
+               "leg B5: ...and does not open the editor on a value box another device is dragging");
+        if (hx > 0.0f)
+            check (juce::exactlyEqual (dblLo1, dblLo0),
+                   "leg B5: ...and does not reset a split on a display another device is dragging");
+        clearHistory();
+        proc.pollUndoCoalesce();
+    }
+
+    // ---- LEG I (§5): the rival's DRAG and RELEASE, per drag implementation ----------------------
+    //      Legs C and E measure the whole refused press on the knob, where the exact-continuation
+    //      reference lives. The value box and the display hold their own anchors and their own
+    //      release actions, so each gets the same two events measured in its own terms: the drag
+    //      must write no parameter, and the release must leave the owner holding what it held.
+    {
+        // ---- I1: the value box ----------------------------------------------------------------
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        vb->mouseDown (mev (vb, vbx, vby, vbx, vby, false, held));       // the owner's press
+        ownedByFinger (*vb, *vbOwner);
+        const float box0 = plainOf (driveP);
+        const bool flagBefore = (bool) driveK->getProperties().getWithDefault ("dragging", false);
+        vb->mouseDrag (mev (vb, vbx, vby - 60.0f, vbx, vby, true, held));
+        const float boxAfterDrag = plainOf (driveP);
+        vb->mouseUp (mev (vb, vbx, vby - 60.0f, vbx, vby, true, held));
+        const bool flagAfter = (bool) driveK->getProperties().getWithDefault ("dragging", false);
+        const bool stillOwned = dragWheelHolder (fingerA) == vb;
+        std::printf ("  [leg I1] value box, rival drag+release: Drive %.4f -> %.4f, dragging flag"
+                     " %d -> %d, owner still holds %s\n",
+                     box0, boxAfterDrag, (int) flagBefore, (int) flagAfter,
+                     stillOwned ? "it" : "NOTHING");
+        check (juce::exactlyEqual (boxAfterDrag, box0),
+               "leg I1: a refused press's drag writes nothing through the value box's anchor");
+        check (flagBefore && flagAfter,
+               "leg I1: ...and its release does not close the owner's gesture");
+        check (stillOwned, "leg I1: ...nor hand back the owner's claim");
+        ownedByMouse (*vb, *vbOwner);
+        vb->mouseUp (mev (vb, vbx, vby, vbx, vby, false, held));
+        releaseDragWheel (*vb);
+        check (! (bool) driveK->getProperties().getWithDefault ("dragging", false),
+               "leg I1: ...while the OWNER's own release does close it");
+        clearHistory();
+        proc.pollUndoCoalesce();
+
+        // ---- I2: the multiband display ---------------------------------------------------------
+        setPlain (loP, 180.0f);
+        proc.pollUndoCoalesce();
+        clearTable();
+        float hx = -1.0f;
+        for (float x = 4.0f; x < imW - 4.0f; x += 1.0f)
+        {
+            im->mouseMove (mev (im, x, laneY, x, laneY, false, none));
+            if (im->getTooltip() == juce::String ("Drag to change the split frequency")) { hx = x; break; }
+        }
+        if (hx > 0.0f)
+        {
+            im->mouseDown (mev (im, hx, laneY, hx, laneY, false, held));
+            im->mouseDrag (mev (im, hx + 8.0f, laneY, hx, laneY, true, held));
+            ownedByFinger (*im, *imOwner);
+            const float lo0 = plainOf (loP);
+            im->mouseDrag (mev (im, hx + 140.0f, laneY, hx, laneY, true, held));   // the rival's
+            const float loAfterDrag = plainOf (loP);
+            im->mouseUp (mev (im, hx + 140.0f, laneY, hx, laneY, true, held));     // the rival's
+            const bool stillOwnedIm = dragWheelHolder (fingerA) == im;
+            // ...and the OWNER's gesture is intact, which only its own next drag can show.
+            ownedByMouse (*im, *imOwner);
+            im->mouseDrag (mev (im, hx + 20.0f, laneY, hx, laneY, true, held));
+            const float loOwnerDrag = plainOf (loP);
+            im->mouseUp (mev (im, hx + 20.0f, laneY, hx, laneY, true, held));
+            releaseDragWheel (*im);
+            proc.pollUndoCoalesce();
+            std::printf ("  [leg I2] display, rival drag+release: split %.3f -> %.3f, owner still"
+                         " holds %s, and the owner's next drag moves it to %.3f\n",
+                         lo0, loAfterDrag, stillOwnedIm ? "it" : "NOTHING", loOwnerDrag);
+            check (juce::exactlyEqual (loAfterDrag, lo0),
+                   "leg I2: a refused press's drag moves no split on the display it was refused");
+            check (stillOwnedIm,
+                   "leg I2: ...and its release does not hand back the owner's claim");
+            check (! juce::exactlyEqual (loOwnerDrag, loAfterDrag),
+                   "leg I2: ...while the owner's own gesture is still live and still moves it");
+        }
+        clearHistory();
+        proc.pollUndoCoalesce();
+    }
+
+    // ---- LEG C: THE ORIGINAL DEVICE CONTINUES DRAGGING -- the primary regression ---------------
+    //      Two identical runs, the second with a rival's WHOLE press (down, drag, up) spliced into
+    //      the middle, and the two parameters must be bit-for-bit equal. This is the assertion the
+    //      whole round exists for: an anchor moved by one pixel, a `valueOnMouseDown` re-read, a
+    //      host gesture closed early -- each of them changes the second drag's result, and none of
+    //      them is visible in "was the claim refused?".
+    for (int style = 0; style < 2; ++style)
+    {
+        auto* K   = style == 0 ? driveK : monoK;
+        auto* O   = style == 0 ? driveOwner : monoOwner;
+        auto* P   = style == 0 ? driveP : monoP;
+        const float kx = style == 0 ? dkx : mkx, ky = style == 0 ? dky : mky;
+        const float start = style == 0 ? 2.0f : 120.0f;
+        // Along the axis each mapping actually reads: vertical for the rotary, horizontal for the
+        // linear one, so both runs really do travel.
+        const float d1x = style == 0 ? 0.0f : 6.0f,  d1y = style == 0 ? -12.0f : 0.0f;
+        const float d2x = style == 0 ? 0.0f : 26.0f, d2y = style == 0 ? -34.0f : 0.0f;
+
+        // `rivalWrote` is the §2 assertion leg C was missing until M194 survived: the rival's own
+        // `mouseDrag` and `mouseUp` must write NO parameter. The continuation check alone cannot
+        // see that -- a rival write followed by a velocity integrator that lands back on the same
+        // value reads as a pass -- and "must not alter the parameter" is a statement about the
+        // rival's events, not only about what the owner reaches afterwards.
+        float rivalWrote = 0.0f;
+        auto run = [&] (bool withRival, int* thumbBefore, int* thumbAfter, CountGestures* g) -> float
+        {
+            clearTable();
+            clearHistory();
+            setPlain (P, start);
+            proc.pollUndoCoalesce();
+            if (g != nullptr) P->addListener (g);
+            K->mouseDown (mev (K, kx, ky, kx, ky, false, held));
+            K->mouseDrag (mev (K, kx + d1x, ky + d1y, kx, ky, true, held));
+            if (withRival)
+            {
+                ownedByFinger (*K, *O);
+                if (thumbBefore != nullptr) *thumbBefore = K->getThumbBeingDragged();
+                // The rival's entire press, 60 px away from the anchor the owner is dragging from.
+                const float rx = kx + 60.0f, ry = ky + 40.0f;
+                const float beforeRival = plainOf (P);
+                K->mouseDown (mev (K, rx, ry, rx, ry, false, held));
+                K->mouseDrag (mev (K, rx + 25.0f, ry + 25.0f, rx, ry, true, held));
+                K->mouseUp   (mev (K, rx + 25.0f, ry + 25.0f, rx, ry, true, held));
+                rivalWrote = plainOf (P) - beforeRival;
+                if (thumbAfter != nullptr) *thumbAfter = K->getThumbBeingDragged();
+                ownedByMouse (*K, *O);
+            }
+            K->mouseDrag (mev (K, kx + d2x, ky + d2y, kx, ky, true, held));
+            const float out = plainOf (P);
+            K->mouseUp (mev (K, kx + d2x, ky + d2y, kx, ky, true, held));
+            releaseDragWheel (*K);
+            if (g != nullptr) P->removeListener (g);
+            proc.pollUndoCoalesce();
+            return out;
+        };
+
+        CountGestures clean, dirty;
+        const float refValue = run (false, nullptr, nullptr, &clean);
+        int tBefore = -99, tAfter = -99;
+        const float gotValue = run (true, &tBefore, &tAfter, &dirty);
+
+        // ...AND THE FULL REMAINING RANGE. The same two runs taken to the far end of the travel:
+        // a re-anchored drag reaches a different place, and a drag whose `valueOnMouseDown` was
+        // re-read part-way through cannot reach the end at all.
+        auto far = [&] (bool withRival) -> float
+        {
+            clearTable();
+            clearHistory();
+            setPlain (P, start);
+            proc.pollUndoCoalesce();
+            K->mouseDown (mev (K, kx, ky, kx, ky, false, held));
+            K->mouseDrag (mev (K, kx + d1x, ky + d1y, kx, ky, true, held));
+            if (withRival)
+            {
+                ownedByFinger (*K, *O);
+                const float rx = kx + 60.0f, ry = ky + 40.0f;
+                K->mouseDown (mev (K, rx, ry, rx, ry, false, held));
+                K->mouseDrag (mev (K, rx + 25.0f, ry + 25.0f, rx, ry, true, held));
+                K->mouseUp   (mev (K, rx + 25.0f, ry + 25.0f, rx, ry, true, held));
+                ownedByMouse (*K, *O);
+            }
+            for (int i = 1; i <= 12; ++i)
+                K->mouseDrag (mev (K, kx + 40.0f * (float) i * (style == 0 ? 0.0f : 1.0f),
+                                   ky - 40.0f * (float) i * (style == 0 ? 1.0f : 0.0f),
+                                   kx, ky, true, held));
+            const float out = plainOf (P);
+            K->mouseUp (mev (K, kx, ky, kx, ky, true, held));
+            releaseDragWheel (*K);
+            proc.pollUndoCoalesce();
+            return out;
+        };
+        const float refFar = far (false);
+        const float gotFar = far (true);
+
+        std::printf ("  [leg C/%s] continuation %.6f vs %.6f, full travel %.6f vs %.6f,"
+                     " thumb %d -> %d, gesture opens %d/%d closes %d/%d, the rival's own three"
+                     " events moved the parameter by %.6f\n",
+                     style == 0 ? "velocity" : "absolute",
+                     (double) refValue, (double) gotValue, (double) refFar, (double) gotFar,
+                     tBefore, tAfter, clean.opens, dirty.opens, clean.closes, dirty.closes,
+                     (double) rivalWrote);
+        check (! juce::exactlyEqual (refValue, start),
+               "leg C: the reference run really moved the parameter (the leg has a signal)");
+        check (juce::exactlyEqual (gotValue, refValue),
+               "leg C: the owner's drag continues from its OWN anchor -- no jump to the rival's press");
+        check (juce::exactlyEqual (gotFar, refFar),
+               "leg C: ...and the whole remaining travel is still available to it");
+        check (tAfter == tBefore,
+               "leg C: ...because the rival's press never touched `sliderBeingDragged`");
+        check (dirty.opens == clean.opens && dirty.closes == clean.closes,
+               "leg C: ...nor opened or closed a host change gesture of its own");
+        check (juce::exactlyEqual (rivalWrote, 0.0f),
+               "leg C: ...and the rival's own drag and release wrote no parameter at all");
+    }
+
+    // ---- LEG D: the owner's WHEEL is still routed to the drag it is making ---------------------
+    //      Round 29/30's rule, restated against a component that has just refused a rival: the
+    //      device holding the press gets the notch wherever its cursor is, and the refused device
+    //      gets nothing -- its event is still CONSUMED (round 30), it simply reaches nobody.
+    {
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        setPlain (widP, 1.2f);
+        proc.pollUndoCoalesce();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        ownedByFinger (*driveK, *driveOwner);
+        driveK->mouseDown (mev (driveK, dkx + 60.0f, dky + 40.0f, dkx + 60.0f, dky + 40.0f, false, held));
+        const float wid0 = plainOf (widP);
+        const float beforeOwner = plainOf (driveP);
+        const bool ownerTook = wheelTakenByAnyPress (*widK, widOwner,
+                                                     mev (widK, wkx, wky, wkx, wky, false, held),
+                                                     wheelOf (0.0f, 0.6f), fingerA);
+        const float afterOwner = plainOf (driveP);
+        const bool rivalTook = wheelTakenByAnyPress (*widK, widOwner,
+                                                     mev (widK, wkx, wky, wkx, wky, false, held),
+                                                     wheelOf (0.0f, 0.6f), mousePtr);
+        const float afterRival = plainOf (driveP);
+        std::printf ("  [leg D] owner's notch: consumed=%d Drive %.4f -> %.4f; rival's:"
+                     " consumed=%d -> %.4f; Width %.4f -> %.4f\n",
+                     (int) ownerTook, beforeOwner, afterOwner, (int) rivalTook, afterRival,
+                     wid0, plainOf (widP));
+        check (ownerTook && ! juce::exactlyEqual (afterOwner, beforeOwner),
+               "leg D: the holding device's notch still reaches the drag it is making");
+        check (rivalTook && juce::exactlyEqual (afterRival, afterOwner),
+               "leg D: ...and the refused device's is swallowed, reaching nobody");
+        check (juce::exactlyEqual (plainOf (widP), wid0),
+               "leg D: ...and the control under the pointer is moved by neither");
+        ownedByMouse (*driveK, *driveOwner);
+        driveK->mouseUp (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        releaseDragWheel (*driveK);
+        proc.pollUndoCoalesce();
+    }
+
+    // ---- LEG E: BOTH RELEASE ORDERS ------------------------------------------------------------
+    //      E1 the rival lets go first -- which must end nothing, because the drag is not its own;
+    //      E2 the owner lets go first -- which ends everything, and leaves the rival's later
+    //      release with nothing to end. The two used to differ, and both used to be wrong: a
+    //      rival's `mouseUp` reached `Pimpl::mouseUp`'s unconditional `currentDrag.reset()`
+    //      (juce_Slider.cpp:997) and `releaseDragWheel`, so the refused press closed the owner's
+    //      host gesture and freed the owner's claim.
+    {
+        // ---- E1: the rival releases while the owner is still dragging -------------------------
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        CountGestures g; driveP->addListener (&g);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        ownedByFinger (*driveK, *driveOwner);
+        const int thumbLive = driveK->getThumbBeingDragged();
+        driveK->mouseDown (mev (driveK, dkx + 60.0f, dky + 40.0f, dkx + 60.0f, dky + 40.0f, false, held));
+        driveK->mouseUp   (mev (driveK, dkx + 60.0f, dky + 40.0f, dkx + 60.0f, dky + 40.0f, false, held));
+        const int  thumbAfter = driveK->getThumbBeingDragged();
+        const bool stillHeld  = dragWheelHolder (fingerA) == driveK;
+        const int  closesAfter = g.closes;
+        std::printf ("  [leg E1] the rival released first: thumb %d -> %d, owner still holds %s,"
+                     " gesture closes %d\n",
+                     thumbLive, thumbAfter, stillHeld ? "it" : "NOTHING", closesAfter);
+        check (thumbAfter == thumbLive,
+               "leg E1: a refused press's release does not end the owner's drag");
+        check (stillHeld,
+               "leg E1: ...and does not hand back a claim that is not its own");
+        check (closesAfter == 0,
+               "leg E1: ...and does not close the owner's host change gesture");
+        ownedByMouse (*driveK, *driveOwner);
+        driveK->mouseUp (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        driveP->removeListener (&g);
+        std::printf ("  [leg E1] ...and the OWNER's release then ends it: thumb %d, holder %s,"
+                     " gesture opens=%d closes=%d\n",
+                     driveK->getThumbBeingDragged(),
+                     dragWheelHolder (mousePtr) == nullptr ? "null" : "STALE", g.opens, g.closes);
+        check (driveK->getThumbBeingDragged() < 0 && dragWheelHolder (mousePtr) == nullptr,
+               "leg E1: ...while the owner's own release ends both");
+        check (g.opens == 1 && g.closes == 1,
+               "leg E1: ...with exactly one host gesture over the whole episode");
+        releaseDragWheel (*driveK);
+        proc.pollUndoCoalesce();
+
+        // ---- E2: the owner releases first, and the rival's later release finds nothing ---------
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        CountGestures g2; driveP->addListener (&g2);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        ownedByFinger (*driveK, *driveOwner);
+        driveK->mouseDown (mev (driveK, dkx + 60.0f, dky + 40.0f, dkx + 60.0f, dky + 40.0f, false, held));
+        releaseDragWheel (*driveK);                  // the OWNER lets go (its device cannot send it)
+        const bool freed = dragWheelHolder (fingerA) == nullptr && dragWheelHolder (mousePtr) == nullptr;
+        const float afterOwnerRelease = plainOf (driveP);
+        driveK->mouseUp (mev (driveK, dkx + 60.0f, dky + 40.0f, dkx + 60.0f, dky + 40.0f, false, held));
+        driveP->removeListener (&g2);
+        std::printf ("  [leg E2] the owner released first: table %s; the rival's later release"
+                     " left Drive %.4f -> %.4f, closes=%d\n",
+                     freed ? "empty" : "STILL HELD", afterOwnerRelease, plainOf (driveP), g2.closes);
+        check (freed, "leg E2: the owner's release empties the component's claim");
+        check (juce::exactlyEqual (plainOf (driveP), afterOwnerRelease),
+               "leg E2: ...and the rival's later release writes no parameter of its own");
+        check (g2.closes <= g2.opens,
+               "leg E2: ...and closes no gesture that was never opened");
+        proc.pollUndoCoalesce();
+    }
+
+    // ---- LEG F: the ORDINARY single-device path, unchanged -------------------------------------
+    //      Every leg above is a "nothing happened" assertion, which is the kind a broken fixture
+    //      passes. This is the positive control for all of them: one device, no rival, the whole
+    //      press-drag-wheel-release cycle, and everything moves.
+    {
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        setPlain (widP, 1.2f);
+        proc.pollUndoCoalesce();
+        CountGestures g; driveP->addListener (&g);
+        const float wid0 = plainOf (widP);
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        const bool claimed = dragWheelHolder (mousePtr) == driveK;
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        const float dragged = plainOf (driveP);
+        widK->mouseWheelMove (mev (widK, wkx, wky, dkx, dky, false, held), wheelOf (0.0f, 0.6f));
+        const float notched = plainOf (driveP);
+        driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        const bool freed = dragWheelHolder (mousePtr) == nullptr;
+        widK->mouseWheelMove (mev (widK, wkx, wky, wkx, wky, false, none), wheelOf (0.0f, 0.6f));
+        driveP->removeListener (&g);
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg F] one device: claim=%d Drive 2.000 -> %.4f -> %.4f, released=%d,"
+                     " Width %.4f -> %.4f, opens=%d closes=%d\n",
+                     (int) claimed, dragged, notched, (int) freed, wid0, plainOf (widP),
+                     g.opens, g.closes);
+        check (claimed && freed, "leg F: the single-device claim lifecycle is unchanged");
+        check (! juce::exactlyEqual (dragged, 2.0f) && ! juce::exactlyEqual (notched, dragged),
+               "leg F: ...the drag moves the value and the in-press notch adds to it");
+        check (! juce::exactlyEqual (plainOf (widP), wid0),
+               "leg F: ...and standalone scrolling resumes after the release");
+        check (g.opens == 1 && g.closes == 1, "leg F: ...inside exactly one host gesture");
+    }
+
+    // ---- LEG G: a DUPLICATE press from the OWNING device is not its own rival -------------------
+    //      §3. The register keys on the device, and the refusal scans for a cell holding this
+    //      component -- so without the `mine` clear at the top of `claimDragWheel` the holder would
+    //      find ITSELF and be refused. That would break re-entrant and duplicate `mouseDown`s,
+    //      which JUCE really does deliver (a value box's press and its parent knob's are the same
+    //      click to everything except routing).
+    {
+        clearTable();
+        check (claimDragWheel (*driveK, *driveOwner, mousePtr),
+               "leg G: the owning device's first press is accepted");
+        check (claimDragWheel (*driveK, *driveOwner, mousePtr),
+               "leg G: ...and its duplicate press is accepted AGAIN, not refused as a rival");
+        check (dragWheelHolder (mousePtr) == driveK,
+               "leg G: ...leaving exactly one holder, which is that device");
+        check (! claimDragWheel (*driveK, *driveOwner, fingerA),
+               "leg G: ...while a DIFFERENT device is still refused");
+
+        // ...and the real handler agrees: a second real `mouseDown` re-anchors, exactly as JUCE
+        // intends (`Pimpl::mouseDown` re-seeds the anchor on every press it accepts).
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        const bool stillHolds = dragWheelHolder (mousePtr) == driveK;
+        driveK->mouseDrag (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        const float after = plainOf (driveP);
+        driveK->mouseUp (mev (driveK, dkx, dky - 20.0f, dkx, dky, true, held));
+        releaseDragWheel (*driveK);
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg G] a duplicate real press: holder=%d, and the drag after it moves"
+                     " Drive 2.000 -> %.4f\n", (int) stillHolds, after);
+        check (stillHolds, "leg G: the duplicate real press keeps the device's own claim");
+        check (! juce::exactlyEqual (after, 2.0f),
+               "leg G: ...and the drag that follows it still works");
+    }
+
+    // ---- LEG H (§5): a handler with NO drag state of its own cannot mutate another's ------------
+    //      The editor-level press handlers -- `ABControl::mouseDown`, `Backdrop::mouseDown`, the
+    //      modal shield's empty one -- hold no anchor, are not `WheelDragOwner`s and never call
+    //      `claimDragWheel`. They cannot reach another component's drag because the register is
+    //      keyed BY COMPONENT: their press writes no cell, and nothing they do names the control
+    //      that is being dragged. Measured rather than asserted: the A/B control is pressed (a real
+    //      state-replacing action) in the middle of a drag another device owns, and the drag's
+    //      continuation must still match its own reference.
+    {
+        // `ABControl` is a private nested type, so it is found by the tooltip the editor gives it
+        // (`src/PluginEditor.cpp:345`) -- and the two negative casts state what makes it the case
+        // §5 asks about: it is neither a `juce::Slider` nor a `WheelDragOwner`, so it holds no drag
+        // state and never calls `claimDragWheel`.
+        juce::Component* ab = nullptr;
+        std::function<void (juce::Component*)> findAB = [&] (juce::Component* c)
+        {
+            for (int i = 0; i < c->getNumChildComponents(); ++i)
+            {
+                auto* k = c->getChildComponent (i);
+                if (ab == nullptr
+                    && dynamic_cast<juce::Slider*> (k) == nullptr
+                    && dynamic_cast<anamorph::gui::WheelDragOwner*> (k) == nullptr)
+                    if (auto* t = dynamic_cast<juce::SettableTooltipClient*> (k))
+                        if (t->getTooltip() == juce::String ("A/B Compare")) ab = k;
+                findAB (k);
+            }
+        };
+        findAB (ed);
+        check (ab != nullptr,
+               "leg H: an editor-level press handler with no drag state of its own was found");
+
+        clearTable();
+        clearHistory();
+        setPlain (driveP, 2.0f);
+        proc.pollUndoCoalesce();
+        driveK->mouseDown (mev (driveK, dkx, dky, dkx, dky, false, held));
+        driveK->mouseDrag (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        ownedByFinger (*driveK, *driveOwner);
+        const int thumbLive = driveK->getThumbBeingDragged();
+        const float beforeAB = plainOf (driveP);
+        if (ab != nullptr)
+            ab->mouseDown (mev (ab, 4.0f, 4.0f, 4.0f, 4.0f, false, held));
+        // The A/B toggle DOES move Drive -- that is its own job, a whole-sound swap, and it is
+        // governed by the state-replacement rules (ADR-0036) rather than by this one. What leg H
+        // asserts is the thing §5 asks about: the live drag on ANOTHER component, and the register.
+        std::printf ("  [leg H] after the editor-level press: thumb %d -> %d, holder %s,"
+                     " Drive %.4f -> %.4f (the A/B slot swap's own doing)\n",
+                     thumbLive, driveK->getThumbBeingDragged(),
+                     dragWheelHolder (fingerA) == driveK ? "unchanged" : "MOVED",
+                     beforeAB, plainOf (driveP));
+        check (driveK->getThumbBeingDragged() == thumbLive,
+               "leg H: a press with no drag state of its own leaves the live drag alone");
+        check (dragWheelHolder (fingerA) == driveK && dragWheelHolder (mousePtr) == nullptr,
+               "leg H: ...and writes no cell in the register");
+        ownedByMouse (*driveK, *driveOwner);
+        driveK->mouseUp (mev (driveK, dkx, dky - 12.0f, dkx, dky, true, held));
+        releaseDragWheel (*driveK);
+        clearHistory();
+        proc.pollUndoCoalesce();
+    }
+
+    clearTable();
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 111 -- NESTED NOTIFICATIONS KEEP THE USER'S ENDPOINT (round 34,
+//  Devin `src/PluginEditor.h:R256-262`, "nested notifications lose user endpoint").
+// ---------------------------------------------------------------------------
+static void testNestedNotificationsKeepTheUserEndpoint()
+{
+    std::printf ("State test 111: nested notifications keep the user endpoint (R256-262)\n");
+
+    using Req = AnamorphAudioProcessor::AttachmentRequest;
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the nested-notification probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    // A IS A COMBO BOX, and that is the whole reason this defect reaches an endpoint. A slider's
+    // gesture closes from `sliderDragEnded`, AFTER every `sliderValueChanged` hook, so its witness
+    // has already declared by then. A `ComboBoxParameterAttachment` (and a `ButtonParameterAttachment`)
+    // calls `setValueAsCompleteGesture`: begin, write, END, all inside the control's own callback --
+    // so the close runs BETWEEN the witness's before and after hooks, with nothing declared, and
+    // reads the REQUEST the before hook armed. That is what round 20 built the request for, and it
+    // is what a nested notification could take away.
+    std::vector<juce::Slider*> sliders;
+    juce::ComboBox* algoBox = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            if (auto* b = dynamic_cast<juce::ComboBox*> (k))
+                if (algoBox == nullptr && b->getNumItems() == 4
+                    && b->getItemText (0) == juce::String ("Haas")) algoBox = b;
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* algoP = apvts.getParameter (pid::algorithm);
+    auto* widP  = apvts.getParameter (pid::width);
+    auto* widK  = findSliderFor (widP);
+    check (algoBox != nullptr && algoP != nullptr && widP != nullptr && widK != nullptr,
+           "the Widen Algorithm combo (A) and the Width knob (B) are findable");
+    if (! (algoBox != nullptr && algoP != nullptr && widP != nullptr && widK != nullptr))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    // THE REQUEST, READ WITHOUT DISTURBING IT. `noteAttachmentRequest` returns whatever was armed
+    // and writes a new one only when it is given a parameter, so a null parameter is a pure read of
+    // the live slot -- which is what these legs need at seven points inside one call stack.
+    auto reqOf = [&] { return proc.noteAttachmentRequest (nullptr, 0.0f); };
+    const int aIdx = algoP->getParameterIndex(), bIdx = widP->getParameterIndex();
+    auto name = [&] (Req r) -> juce::String
+    {
+        if (r.index < 0) return "none";
+        if (r.index == aIdx) return "A@" + juce::String (r.norm, 4);
+        if (r.index == bIdx) return "B@" + juce::String (r.norm, 4);
+        return "other#" + juce::String (r.index);
+    };
+    auto idxOf   = [&] { return juce::roundToInt (algoP->convertFrom0to1 (algoP->getValue())); };
+    auto setIdx  = [&] (int i) { algoP->setValueNotifyingHost (algoP->convertTo0to1 ((float) i)); };
+    auto plainW  = [&] { return widP->convertFrom0to1 (widP->getValue()); };
+    auto settle  = [&] { proc.pollUndoCoalesce(); while (proc.canUndo()) proc.undo();
+                         proc.pollUndoCoalesce(); };
+
+    struct Relay final : juce::AudioProcessorParameter::Listener
+    {
+        std::function<void()> action;
+        bool armed = false, fired = false;
+        void parameterValueChanged (int, float) override
+        { if (armed && ! fired && action) { fired = true; action(); } }
+        void parameterGestureChanged (int, bool) override {}
+    };
+
+    // ---- THE SHARED SCENARIO ------------------------------------------------------------------
+    //      One user selection on A, with a nested B notification inside A's attachment write --
+    //      optionally recursing into B, optionally with a host write and a host POLL at the most
+    //      dangerous point there is. Every leg below is this run with a different combination, and
+    //      every leg ends by reading the Undo/Redo endpoint rather than an internal slot.
+    struct Trace
+    {
+        Req aArmed {}, bOuterArmed {}, bInnerArmed {}, afterInner {}, afterOuter {}, afterAHook {};
+        int hostIndex = -1, startIndex = -1, endIndex = -1, undoIndex = -1, redoIndex = -1;
+        bool haveStep = false;
+        float widthEnd = 0.0f;
+    };
+
+    auto run = [&] (bool recurse, bool hostWriteAndPoll, int userPick) -> Trace
+    {
+        Trace t;
+        setIdx (0);
+        widP->setValueNotifyingHost (widP->convertTo0to1 (1.0f));
+        settle();
+        t.startIndex = idxOf();
+
+        Relay onA, onBOuter, onBProbe;
+        onBProbe.action = [&] { t.bInnerArmed = reqOf(); };   // the RECURSIVE pass's own request
+        onBOuter.action = [&]
+        {
+            t.bOuterArmed = reqOf();      // B's outer request, armed by B's own before hook
+            if (recurse)
+            {
+                onBProbe.armed = true;
+                widK->setValue (1.6, juce::sendNotificationSync);   // B -> B, the recursion
+                onBProbe.armed = false;
+            }
+            t.afterInner = reqOf();
+            if (hostWriteAndPoll)
+            {
+                // A's gesture is open, A's attachment has written, and A's close has not run yet.
+                // Index 1 is neither where A started (0) nor what A picks, so all three stay
+                // distinguishable -- and the poll is the host pumping its message loop right here,
+                // which is the opportunity that turns a lost request into a committed endpoint.
+                setIdx (1);
+                t.hostIndex = idxOf();
+                proc.pollUndoCoalesce();
+            }
+        };
+        onA.action = [&]
+        {
+            t.aArmed = reqOf();           // A's own request, armed by A's before hook
+            onBOuter.armed = true;
+            widK->setValue (1.3, juce::sendNotificationSync);       // A -> B
+            onBOuter.armed = false;
+            t.afterOuter = reqOf();   // ...what A's close, one call later, is about to read
+        };
+
+        algoP->addListener (&onA);
+        widP->addListener (&onBOuter);
+        widP->addListener (&onBProbe);
+        onA.armed = true;
+        algoBox->setSelectedItemIndex (userPick, juce::sendNotificationSync);
+        onA.armed = false;
+        t.afterAHook = reqOf();
+        proc.pollUndoCoalesce();
+        algoP->removeListener (&onA);
+        widP->removeListener (&onBOuter);
+        widP->removeListener (&onBProbe);
+
+        t.endIndex = idxOf();
+        t.widthEnd = plainW();
+        t.haveStep = proc.canUndo();
+        if (t.haveStep) { proc.undo(); t.undoIndex = idxOf(); proc.redo(); t.redoIndex = idxOf(); }
+        return t;
+    };
+
+    // ---- LEG A: A -> B, one level of nesting --------------------------------------------------
+    {
+        const auto t = run (false, true, 3);
+        std::printf ("  [leg A] A armed %s, B armed %s, after B %s;"
+                     " start %d user 3 host %d -> undo %d redo %d\n",
+                     name (t.aArmed).toRawUTF8(), name (t.bOuterArmed).toRawUTF8(),
+                     name (t.afterOuter).toRawUTF8(), t.startIndex, t.hostIndex,
+                     t.undoIndex, t.redoIndex);
+        check (t.aArmed.index == aIdx && t.bOuterArmed.index == bIdx,
+               "leg A: each control armed its own request");
+        check (t.afterOuter.index == aIdx && juce::exactlyEqual (t.afterOuter.norm, t.aArmed.norm),
+               "leg A: B's completion restores A's request exactly");
+        check (t.haveStep && t.undoIndex == t.startIndex && t.redoIndex == 3,
+               "leg A: ...and the Undo step belongs to A's own selection");
+    }
+
+    // ---- LEG B: A -> B -> B, the recursive case (the primary Devin scenario) -------------------
+    {
+        const auto t = run (true, true, 3);
+        std::printf ("  [leg B] A armed %s | B outer %s | B recursive %s | after recursive %s"
+                     " | after outer %s | after A's hook %s\n",
+                     name (t.aArmed).toRawUTF8(), name (t.bOuterArmed).toRawUTF8(),
+                     name (t.bInnerArmed).toRawUTF8(), name (t.afterInner).toRawUTF8(),
+                     name (t.afterOuter).toRawUTF8(), name (t.afterAHook).toRawUTF8());
+        std::printf ("  [leg B] start %d, user selected 3, host wrote %d, A ended at %d;"
+                     " step=%d undo->%d redo->%d\n",
+                     t.startIndex, t.hostIndex, t.endIndex, (int) t.haveStep,
+                     t.undoIndex, t.redoIndex);
+        check (t.aArmed.index == aIdx, "leg B: A's before hook armed A's own request");
+        check (t.bOuterArmed.index == bIdx, "leg B: the nested B notification armed B's request");
+        check (t.bInnerArmed.index == bIdx && ! juce::exactlyEqual (t.bInnerArmed.norm, t.bOuterArmed.norm),
+               "leg B: ...and the recursive B notification armed its OWN, distinct from the outer's");
+        check (t.afterInner.index == bIdx && juce::exactlyEqual (t.afterInner.norm, t.bOuterArmed.norm),
+               "leg B: the recursive completion restores the OUTER B request exactly");
+        check (t.afterOuter.index == aIdx && juce::exactlyEqual (t.afterOuter.norm, t.aArmed.norm),
+               "leg B: the outer completion restores A's request exactly -- this is R256-262");
+        check (t.haveStep, "leg B: the user's selection recorded an Undo step");
+        check (t.undoIndex == t.startIndex, "leg B: Undo returns to where the user started");
+        check (t.redoIndex == 3,
+               "leg B: ...and Redo goes to what the USER selected, not what the host wrote");
+    }
+
+    // ---- LEG C: the host's poll opportunity, with and without it ------------------------------
+    //      The same recursive run twice: once with the host write and the nested poll at the
+    //      dangerous point, once without either. The endpoint must be the same both times -- which
+    //      is the statement that the host cannot reach it, rather than that it happens not to.
+    {
+        const auto withHost = run (true, true,  3);
+        const auto clean    = run (true, false, 3);
+        std::printf ("  [leg C] with a re-entrant host write + poll: redo %d; without: redo %d\n",
+                     withHost.redoIndex, clean.redoIndex);
+        check (clean.haveStep && clean.redoIndex == 3,
+               "leg C: the clean recursive run records the user's own endpoint");
+        check (withHost.redoIndex == clean.redoIndex,
+               "leg C: ...and a host write plus a nested poll at A's close cannot change it");
+        check (withHost.hostIndex == 1 && clean.hostIndex == -1,
+               "leg C: ...with the two runs really differing in whether the host wrote at all");
+    }
+
+    // ---- LEG D: sequential, NON-nested notifications ------------------------------------------
+    //      The ordinary path, unchanged: two selections in a row with nothing nested inside either.
+    {
+        setIdx (0);
+        settle();
+        const Req beforeAll = reqOf();
+        algoBox->setSelectedItemIndex (2, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+        const Req betweenTwo = reqOf();
+        const int afterFirst = idxOf();
+        algoBox->setSelectedItemIndex (1, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+        const int afterSecond = idxOf();
+        const bool step2 = proc.canUndo();
+        int u1 = -1, u2 = -1;
+        if (step2) { proc.undo(); u1 = idxOf(); if (proc.canUndo()) { proc.undo(); u2 = idxOf(); } }
+        std::printf ("  [leg D] sequential: 0 -> %d -> %d, undo %d then %d;"
+                     " request before %s, between %s\n",
+                     afterFirst, afterSecond, u1, u2,
+                     name (beforeAll).toRawUTF8(), name (betweenTwo).toRawUTF8());
+        check (afterFirst == 2 && afterSecond == 1,
+               "leg D: two sequential selections both land where the user put them");
+        check (step2 && u1 == 2 && u2 == 0,
+               "leg D: ...and each is its own Undo step, in order");
+        check (betweenTwo.index == beforeAll.index
+                 && juce::exactlyEqual (betweenTwo.norm, beforeAll.norm),
+               "leg D: a completed notification RESTORES what it replaced, nested or not");
+        settle();
+    }
+
+    // ---- LEG E: two separate user gestures cannot leak into each other -------------------------
+    //      Gesture 1 is the nested-and-recursive one; gesture 2 is an ordinary selection made
+    //      afterwards. Gesture 2's endpoint must be its own, with nothing of gesture 1's depth
+    //      stack surviving into it.
+    {
+        const auto first = run (true, true, 3);
+        const int  mid   = idxOf();
+        const Req  beforeSecond = reqOf();
+        algoBox->setSelectedItemIndex (2, juce::sendNotificationSync);
+        proc.pollUndoCoalesce();
+        const Req afterSecond = reqOf();
+        const int end2 = idxOf();
+        int u1 = -1, r1 = -1;
+        if (proc.canUndo()) { proc.undo(); u1 = idxOf(); proc.redo(); r1 = idxOf(); }
+        std::printf ("  [leg E] gesture 1 ended at %d, gesture 2 at %d; undo %d redo %d;"
+                     " request after gesture 2 %s\n", mid, end2, u1, r1,
+                     name (afterSecond).toRawUTF8());
+        check (first.redoIndex == 3, "leg E: gesture 1 kept its own endpoint");
+        check (end2 == 2 && r1 == 2,
+               "leg E: ...and gesture 2's endpoint is gesture 2's, not gesture 1's");
+        // ...and nothing of gesture 1's depth stack survived into gesture 2: gesture 2 restored
+        // exactly what it found, which is what gesture 1 had already restored before it.
+        check (afterSecond.index == beforeSecond.index
+                 && juce::exactlyEqual (afterSecond.norm, beforeSecond.norm),
+               "leg E: ...and gesture 2 restored exactly what it found, carrying nothing forward");
+        settle();
+    }
+
+    // ---- LEG F: the no-op and empty-request paths, unchanged -----------------------------------
+    //      Selecting the index that is already selected notifies nothing, so no request is armed
+    //      and no step is recorded -- the ADR-0052 no-op semantics this round must not disturb.
+    {
+        setIdx (2);
+        settle();
+        const Req before = reqOf();
+        const int startIdx = idxOf();
+        algoBox->setSelectedItemIndex (2, juce::sendNotificationSync);   // the same one again
+        proc.pollUndoCoalesce();
+        const Req after = reqOf();
+        const bool anyStep = proc.canUndo();
+        std::printf ("  [leg F] re-selecting the live index %d: step=%d;"
+                     " request %s -> %s\n", startIdx, (int) anyStep,
+                     name (before).toRawUTF8(), name (after).toRawUTF8());
+        check (idxOf() == startIdx, "leg F: a no-op selection changes no value");
+        check (! anyStep, "leg F: ...and records no Undo step");
+        check (after.index == before.index && juce::exactlyEqual (after.norm, before.norm),
+               "leg F: ...and leaves the request slot exactly as it found it");
+        settle();
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+
+// ---------------------------------------------------------------------------
+//  State test 112 -- A RECURSIVE SAME-CONTROL NOTIFICATION KEEPS THE LATEST
+//  ENDPOINT (round 35, Devin `src/PluginEditor.h:R280-281`,
+//  "recursive slider loses latest endpoint").
+// ---------------------------------------------------------------------------
+static void testRecursiveNotificationKeepsTheLatestEndpoint()
+{
+    std::printf ("State test 112: recursive same-control notification endpoint (R280-281)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the recursive-notification probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    std::vector<juce::Slider*> sliders;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* k = c->getChildComponent (i);
+            if (auto* s = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+            walk (k);
+        }
+    };
+    walk (ed);
+
+    auto findSliderFor = [&] (juce::RangedAudioParameter* p) -> juce::Slider*
+    {
+        if (p == nullptr) return nullptr;
+        const float was = p->getValue();
+        std::vector<double> before;
+        before.reserve (sliders.size());
+        for (auto* s : sliders) before.push_back (s->getValue());
+        p->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+        juce::Slider* found = nullptr; int hits = 0;
+        for (size_t i = 0; i < sliders.size(); ++i)
+            if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { found = sliders[i]; ++hits; }
+        p->setValueNotifyingHost (was);
+        return hits == 1 ? found : nullptr;
+    };
+
+    auto* widP = apvts.getParameter (pid::width);
+    auto* widK = findSliderFor (widP);
+    check (widP != nullptr && widK != nullptr, "the Width knob is findable");
+    if (widP == nullptr || widK == nullptr) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto plainW = [&] { return widP->convertFrom0to1 (widP->getValue()); };
+    auto settle = [&] { proc.pollUndoCoalesce(); while (proc.canUndo()) proc.undo();
+                        proc.pollUndoCoalesce(); };
+
+    const auto source = juce::Desktop::getInstance().getMainMouseSource();
+    auto mev = [&] (float x, float y)
+    {
+        return juce::MouseEvent (source, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                 widK, widK, juce::Time::getCurrentTime(),
+                                 { x, y }, juce::Time::getCurrentTime(), 1, false);
+    };
+
+
+    struct Relay final : juce::AudioProcessorParameter::Listener
+    {
+        std::function<void()> action;
+        bool armed = false, fired = false;
+        void parameterValueChanged (int, float) override
+        { if (armed && ! fired && action) { fired = true; action(); } }
+        void parameterGestureChanged (int, bool) override {}
+    };
+
+    struct Trace
+    {
+        float outerWas = 0.0f, atReentry = 0.0f, atOuterExit = 0.0f, afterUp = 0.0f;
+        double sliderAtReentry = 0.0, sliderAtOuterExit = 0.0;
+        float endW = 0.0f, undoW = -1.0f, redoW = -1.0f;
+        bool  reentered = false, step = false;
+    };
+
+    // 0 = no re-entry at all; 1 = the same CONTROL is driven again (Devin's recursion);
+    // 2 = the PARAMETER is written again, which re-enters the control through the attachment's
+    //     own echo -- a notification of this control whose attachment write is suppressed.
+    auto run = [&] (int mode, double recurseTo, float hostNorm) -> Trace
+    {
+        Trace t;
+        widP->setValueNotifyingHost (widP->convertTo0to1 (1.0f));
+        settle();
+
+        Relay r;
+        r.action = [&]
+        {
+            t.atReentry       = widP->getValue();
+            t.sliderAtReentry = widK->getValue();
+            if (mode == 1) widK->setValue (recurseTo, juce::sendNotificationSync);
+            if (mode == 2) widP->setValueNotifyingHost (hostNorm);
+        };
+        widP->addListener (&r);
+
+        t.outerWas = widP->getValue();
+        const float cx = 0.5f * (float) widK->getWidth();
+        const float cy = 0.5f * (float) widK->getHeight();
+        widK->mouseDown (mev (cx, cy));
+        r.armed = (mode != 0); r.fired = false;
+        widK->setValue (1.3, juce::sendNotificationSync);
+        r.armed = false;
+        t.reentered       = r.fired;
+        t.atOuterExit     = widP->getValue();
+        t.sliderAtOuterExit = widK->getValue();
+        widK->mouseUp (mev (cx, cy));
+        t.afterUp = widP->getValue();
+        proc.pollUndoCoalesce();
+        t.endW = plainW();
+        t.step = proc.canUndo();
+        if (t.step) { proc.undo(); t.undoW = plainW(); proc.redo(); t.redoW = plainW(); }
+        widP->removeListener (&r);
+        settle();
+        return t;
+    };
+
+    // ---- LEG A: the recursion Devin names -- the same control driven again inside its own
+    //      notification. The user's action ends at 1.6, and 1.6 is what Redo must restore: the
+    //      outer notification's `produced` is a LIVE read of the control, and by the time it runs
+    //      the attachment has already echoed the OUTER write (1.3) back into the knob.
+    {
+        const auto t = run (1, 1.6, 0.0f);
+        std::printf ("  [leg A] outer wasNorm %.4f, re-entry at param %.4f / knob %.4f;"
+                     " knob at outer exit %.4f, param %.4f\n",
+                     t.outerWas, t.atReentry, t.sliderAtReentry, t.sliderAtOuterExit, t.atOuterExit);
+        std::printf ("  [leg A] end %.4f, step=%d, undo->%.4f redo->%.4f\n",
+                     t.endW, (int) t.step, t.undoW, t.redoW);
+        check (t.reentered, "leg A: the recursive same-control notification really happened");
+        check (std::abs (t.sliderAtOuterExit - 1.3) < 1.0e-4
+                 && ! juce::exactlyEqual (t.atOuterExit, t.outerWas),
+               "leg A: ...and the outer hook reads the knob at ITS value while the parameter holds"
+               " the newer one");
+        check (t.step && juce::approximatelyEqual (t.undoW, 1.0f),
+               "leg A: the press records one step, from where the user started");
+        check (juce::approximatelyEqual (t.redoW, 1.6f),
+               "leg A: ...and Redo restores the LATEST value the action produced, not the outer's");
+    }
+
+    // ---- LEG B: a re-entrant write of the PARAMETER during the user's own notification.
+    //      The attachment echoes it into the knob, which is a nested notification of this control
+    //      whose own write is suppressed -- so its `before` hook records the parameter as it then
+    //      stands. Sharing one `wasNorm` with the enclosing notification makes the user's press
+    //      read as having produced nothing at all.
+    {
+        const auto t = run (2, 0.0, 0.9f);
+        std::printf ("  [leg B] outer wasNorm %.4f, re-entrant write -> %.4f;"
+                     " knob at outer exit %.4f, param %.4f; end %.4f\n",
+                     t.outerWas, t.atOuterExit, t.sliderAtOuterExit, t.atOuterExit, t.endW);
+        std::printf ("  [leg B] step=%d, undo->%.4f redo->%.4f\n",
+                     (int) t.step, t.undoW, t.redoW);
+        check (t.reentered, "leg B: the re-entrant parameter write really happened");
+        check (juce::approximatelyEqual (t.atOuterExit, 0.9f),
+               "leg B: ...and it, not the user, is what the parameter holds at the outer hook");
+        check (t.step, "leg B: the user's press still records a step of its own");
+        check (juce::approximatelyEqual (t.undoW, 1.0f),
+               "leg B: ...from where the user started");
+        check (juce::approximatelyEqual (t.redoW, 1.3f),
+               "leg B: ...and Redo restores what the USER asked for, not the re-entrant write");
+    }
+
+    // ---- LEG C: no re-entry at all. The ordinary press, unchanged. ------------------------------
+    {
+        const auto t = run (0, 0.0, 0.0f);
+        std::printf ("  [leg C] plain press: step=%d, undo->%.4f redo->%.4f\n",
+                     (int) t.step, t.undoW, t.redoW);
+        check (! t.reentered, "leg C: nothing re-entered");
+        check (t.step && juce::approximatelyEqual (t.undoW, 1.0f)
+                 && juce::approximatelyEqual (t.redoW, 1.3f),
+               "leg C: a plain press keeps its own endpoint exactly as it always has");
+    }
+
+    // ---- LEG D: a host push with NO press at all still creates no step ---------------------------
+    {
+        widP->setValueNotifyingHost (widP->convertTo0to1 (1.0f));
+        settle();
+        widP->setValueNotifyingHost (widP->convertTo0to1 (1.7f));
+        proc.pollUndoCoalesce();
+        const bool any = proc.canUndo();
+        std::printf ("  [leg D] a bare host push to %.4f: step=%d\n", plainW(), (int) any);
+        check (! any, "leg D: host automation with no press is not an undoable user edit");
+        settle();
+    }
+
+    // ---- LEG E: two presses in a row, the first recursive -- nothing of the first press's
+    //      frame stack survives into the second.
+    {
+        const auto first  = run (1, 1.6, 0.0f);
+        const auto second = run (0, 0.0, 0.0f);
+        std::printf ("  [leg E] press 1 redo->%.4f; press 2 step=%d redo->%.4f\n",
+                     first.redoW, (int) second.step, second.redoW);
+        check (juce::approximatelyEqual (first.redoW, 1.6f),
+               "leg E: the recursive press kept its own latest endpoint");
+        check (second.step && juce::approximatelyEqual (second.redoW, 1.3f),
+               "leg E: ...and the next press states its own, carrying nothing forward");
+    }
+
+    // ---- LEG F: the UNARMED INITIAL UPDATE'S request, and why nothing can read it ---------------
+    //      Constructing the editor arms a request from the attachment's own `sendInitialUpdate`,
+    //      which fires while only `before` is listening: that notification has no completion, so
+    //      nothing puts the register back and one parameter stays named from construction onwards.
+    //      Reported by this project in round 34; investigated to a disposition in round 35.
+    {
+        const auto stale = proc.noteAttachmentRequest (nullptr, 0.0f);   // a pure, non-mutating read
+        const auto& ps = proc.getParameters();
+        auto* named = (stale.index >= 0 && stale.index < ps.size()) ? ps[stale.index] : nullptr;
+        std::printf ("  [leg F] the register names index %d (%s) at %.4f with no notification open\n",
+                     stale.index, named != nullptr ? named->getName (24).toRawUTF8() : "-", stale.norm);
+        check (stale.index >= 0 && named != nullptr,
+               "leg F: non-vacuity -- a request really does stand with no notification open");
+
+        // The ONE read of the register is the batch close, and only for an episode that is owned,
+        // undeclared and unrefused. A user gesture on the very parameter it names DECLARES, so the
+        // close takes the user's value. Measured rather than assumed.
+        auto* namedRanged = dynamic_cast<juce::RangedAudioParameter*> (named);
+        auto* namedK = findSliderFor (namedRanged);
+        std::printf ("  [leg F] ...and it has %s of its own\n",
+                     namedK != nullptr ? "a slider" : "no slider");
+        if (namedRanged != nullptr && namedK != nullptr)
+        {
+            settle();
+            const double target = namedK->getValue() < 0.5 * (namedK->getMinimum() + namedK->getMaximum())
+                                ? namedK->getMaximum() : namedK->getMinimum();
+            const float startNorm = namedRanged->getValue();
+            const float cx = 0.5f * (float) namedK->getWidth();
+            const float cy = 0.5f * (float) namedK->getHeight();
+            auto ev = [&] { return juce::MouseEvent (source, { cx, cy },
+                                                     juce::ModifierKeys::leftButtonModifier,
+                                                     1.0f, 0.0f, 0.0f, 0.0f, 0.0f, namedK, namedK,
+                                                     juce::Time::getCurrentTime(), { cx, cy },
+                                                     juce::Time::getCurrentTime(), 1, false); };
+            namedK->mouseDown (ev());
+            namedK->setValue (target, juce::sendNotificationSync);
+            namedK->mouseUp (ev());
+            proc.pollUndoCoalesce();
+            const float endNorm = namedRanged->getValue();
+            const bool  step    = proc.canUndo();
+            float redoNorm = -1.0f;
+            if (step) { proc.undo(); proc.redo(); redoNorm = namedRanged->getValue(); }
+            std::printf ("  [leg F] a user gesture on it: %.4f -> %.4f, step=%d, redo->%.4f"
+                         " (the construction-time request holds %.4f)\n",
+                         startNorm, endNorm, (int) step, redoNorm, stale.norm);
+            check (step && juce::approximatelyEqual (redoNorm, endNorm),
+                   "leg F: a user gesture on the named parameter takes its OWN endpoint");
+            check (! juce::approximatelyEqual (endNorm, stale.norm),
+                   "leg F: ...non-vacuity -- and not the construction-time value by coincidence");
+            settle();
+        }
+
+        // THE DECISIVE ONE. Index 17 is a BOOLEAN driven by a ToggleButton, and a
+        // `ButtonParameterAttachment` calls `setValueAsCompleteGesture` -- begin, write, END inside
+        // the control's own callback -- so its close is exactly the close that reads the register,
+        // and it runs between the witness's two hooks. If the construction-time request could ever
+        // be read, this is where. It cannot: the `before` hook arms a FRESH request for the value
+        // the user just asked for, so the close prefers that one.
+        {
+            std::vector<juce::Button*> buttons;
+            std::function<void (juce::Component*)> walkB = [&] (juce::Component* c)
+            {
+                for (int i = 0; i < c->getNumChildComponents(); ++i)
+                {
+                    auto* k = c->getChildComponent (i);
+                    if (auto* b = dynamic_cast<juce::Button*> (k)) buttons.push_back (b);
+                    walkB (k);
+                }
+            };
+            walkB (ed);
+            juce::Button* namedB = nullptr;
+            if (namedRanged != nullptr)
+            {
+                const float was = namedRanged->getValue();
+                std::vector<bool> before;
+                before.reserve (buttons.size());
+                for (auto* b : buttons) before.push_back (b->getToggleState());
+                namedRanged->setValueNotifyingHost (was < 0.5f ? 1.0f : 0.0f);
+                int hits = 0;
+                for (size_t i = 0; i < buttons.size(); ++i)
+                    if (buttons[i]->getToggleState() != before[i]) { namedB = buttons[i]; ++hits; }
+                namedRanged->setValueNotifyingHost (was);
+                if (hits != 1) namedB = nullptr;
+            }
+            check (namedB != nullptr, "leg F: the named parameter's own toggle is findable");
+            if (namedB != nullptr && namedRanged != nullptr)
+            {
+                namedRanged->setValueNotifyingHost (stale.norm);   // start AT the stale value
+                settle();
+                const float startNorm = namedRanged->getValue();
+                namedB->setToggleState (! namedB->getToggleState(), juce::sendNotificationSync);
+                proc.pollUndoCoalesce();
+                const float endNorm = namedRanged->getValue();
+                const bool  step    = proc.canUndo();
+                float undoNorm = -1.0f, redoNorm = -1.0f;
+                if (step) { proc.undo(); undoNorm = namedRanged->getValue();
+                            proc.redo(); redoNorm = namedRanged->getValue(); }
+                std::printf ("  [leg F] a user click on its toggle: %.4f -> %.4f, step=%d,"
+                             " undo->%.4f redo->%.4f (the stale request holds %.4f)\n",
+                             startNorm, endNorm, (int) step, undoNorm, redoNorm, stale.norm);
+                check (step, "leg F: the click records a step");
+                check (juce::approximatelyEqual (redoNorm, endNorm),
+                       "leg F: ...whose Redo endpoint is what the USER asked for");
+                check (! juce::approximatelyEqual (redoNorm, stale.norm),
+                       "leg F: ...and is NOT the construction-time request the register still holds");
+                settle();
+            }
+        }
+
+        // ...and an unrelated control's whole gesture leaves the residual exactly as it found it:
+        // every completed notification restores what it replaced, so the register comes back.
+        widP->setValueNotifyingHost (widP->convertTo0to1 (1.0f));
+        settle();
+        (void) run (0, 0.0, 0.0f);
+        const auto again = proc.noteAttachmentRequest (nullptr, 0.0f);
+        check (again.index == stale.index && juce::exactlyEqual (again.norm, stale.norm),
+               "leg F: an unrelated control's complete gesture leaves the residual exactly as it was");
+        settle();
+    }
+
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+
+// ---------------------------------------------------------------------------
+//  State test 113 -- THE PUMPED TIMER'S APVTS ACQUISITION IS NEVER BARE
+//  (round 35, Devin `src/PluginProcessor.cpp:R1601-1602`, "host callback
+//  deadlocks timer polling"; RISK-009).
+//
+//  THE CHAIN AS REPORTED, and the one step of it this leg set measures rather
+//  than argues:
+//      a host-started parameter callback holds JUCE's `listenerLock`
+//      -> the host pumps the editor timer inside it
+//      -> `insideDispatch()` is FALSE, because it answers for a dispatch this
+//         plug-in started and a host's raises no depth of ours
+//      -> the tick reaches `pollUndoCoalesceAdopted`
+//      -> which reaches `apvts.copyState()` and its `valueTreeChanging` lock
+//      -> while a concurrent restore holds `valueTreeChanging` and waits for
+//         that same `listenerLock`.
+//
+//  Every step but the last is TRUE and is asserted below (legs A-C). The last
+//  is where the chain breaks, and the reason is ADR-0036 section 31 rather than
+//  a reachability argument: every thread that can hold `valueTreeChanging` while
+//  waiting for a `listenerLock` must take `soundReplacement` FIRST -- both
+//  `replaceState` sites are inside it (`applyStatePreservingView`,
+//  `applySoundTree`) and so is the host-thread `copyState` in
+//  `copyStateWithRawValues`. The poll body holds `soundReplacement` across its
+//  own `copyState`, so no such thread can be holding the APVTS lock at that
+//  instant. Leg D measures the refusal when the lock is already taken; leg E
+//  runs the real three-way interleave and measures the restore PARKED at
+//  `soundReplacement` with the parameters untouched -- which is exactly
+//  "it holds no APVTS lock".
+// ---------------------------------------------------------------------------
+static void testThePumpedTimerNeverBaresTheApvtsLock()
+{
+    std::printf ("State test 113: the pumped timer's APVTS acquisition is never bare (R1601-1602)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc  = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    auto* carrierP = apvts.getParameter (pid::bypass);
+    auto* widthP   = apvts.getParameter (pid::width);
+    const auto* lock = proc.stateCommandHooks.soundReplacement;
+    check (carrierP != nullptr && widthP != nullptr && lock != nullptr,
+           "the probe's parameters and the replacement lock are wired");
+    if (carrierP == nullptr || widthP == nullptr || lock == nullptr) return;
+
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };   // RAW: a host's write
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+
+    HostPumpedCommand seat;
+    seat.index = carrierP->getParameterIndex();
+    proc.addListener (&seat);
+
+    // A HOST's own gesture: raw `juce::` calls throughout, so the plug-in's dispatch depth stays at
+    // zero for the whole extent while JUCE holds the carrier's `listenerLock` across it.
+    auto hostGestureDelivering = [&] (std::function<void()> command)
+    {
+        seat.pumped = std::move (command);
+        seat.fired = 0; seat.toFire = 1; seat.elapsedMs = 0.0; seat.pluginDepthRaised = false;
+        carrierP->beginChangeGesture();
+        carrierP->setValueNotifyingHost (carrierP->getValue() > 0.5f ? 0.0f : 1.0f);
+        carrierP->endChangeGesture();                 // <- the seat fires from inside this
+    };
+
+    std::atomic<int> pollBodies { 0 }, captures { 0 }, capturesWithLockHeld { 0 };
+
+    proc.seams.insidePollBody = [&]
+    { if (juce::MessageManager::existsAndIsCurrentThread()) pollBodies.fetch_add (1); };
+
+    // THE MEASUREMENT: at the one instant `copyStateWithRawValues` is about to take the APVTS lock,
+    // ask a SECOND thread whether `soundReplacement` is available. A failed `tryEnter` there is the
+    // whole of step E -- it says no other thread can be inside `replaceState`, which is the only
+    // place `valueTreeChanging` is held while a `listenerLock` is wanted.
+    proc.seams.insideDurableCapture = [&]
+    {
+        if (! juce::MessageManager::existsAndIsCurrentThread()) return;   // a host-thread save: not ours
+        captures.fetch_add (1);
+        std::atomic<bool> got { false };
+        std::thread probe ([&] { if (lock->tryEnter()) { got.store (true); lock->exit(); } });
+        probe.join();
+        if (! got.load()) capturesWithLockHeld.fetch_add (1);
+    };
+
+    // ---- LEG A: NO TIMER RE-ENTRY -- inside a dispatch THIS plug-in started --------------------
+    {
+        setPlain (widthP, 0.80f);
+        const int p0 = pollBodies.load(), c0 = captures.load();
+        {
+            const anamorph::param::ScopedDispatch ours;   // what every bracketed write looks like
+            proc.pollUndoCoalesceFromTimer();
+        }
+        const int p1 = pollBodies.load(), c1 = captures.load();
+        proc.pollUndoCoalesceFromTimer();                 // ...and the very next tick does the work
+        const int p2 = pollBodies.load(), c2 = captures.load();
+        std::printf ("  [leg A] inside our own dispatch: poll bodies +%d, APVTS captures +%d;"
+                     " outside it: +%d / +%d\n", p1 - p0, c1 - c0, p2 - p1, c2 - c1);
+        check (p1 == p0 && c1 == c0,
+               "leg A: inside a dispatch this plug-in started the tick does NOTHING -- no poll, no copy");
+        check (p2 > p1 && c2 > c1,
+               "leg A: non-vacuity -- the identical call outside that extent reaches both");
+    }
+
+    // ---- LEG B: SAFE TIMER RE-ENTRY -- inside a dispatch the HOST started -----------------------
+    //      Devin's step B, measured: `insideDispatch()` reads zero here, so the guard does not
+    //      refuse and the tick really does reach the poll body and the APVTS copy (steps C and D).
+    {
+        setPlain (widthP, 0.90f);
+        const int p0 = pollBodies.load(), c0 = captures.load();
+        hostGestureDelivering ([&proc] { proc.pollUndoCoalesceFromTimer(); });
+        const int p1 = pollBodies.load(), c1 = captures.load();
+        std::printf ("  [leg B] host-started dispatch: plug-in depth raised %s; took %.1f ms;"
+                     " poll bodies +%d, APVTS captures +%d\n",
+                     seat.pluginDepthRaised ? "YES" : "no", seat.elapsedMs, p1 - p0, c1 - c0);
+        check (seat.fired > 0, "leg B: non-vacuity -- the tick really ran inside the host's dispatch");
+        check (! seat.pluginDepthRaised,
+               "leg B: `insideDispatch()` reads ZERO in a host-started dispatch -- the finding's step B");
+        check (p1 > p0, "leg B: ...so the pumped tick reaches `pollUndoCoalesceAdopted` -- step C");
+        check (c1 > c0, "leg B: ...and that body reaches `apvts.copyState()` -- step D");
+    }
+
+    // ---- LEG C: ...AND EVERY ONE OF THOSE ACQUISITIONS HELD `soundReplacement` -------------------
+    {
+        std::printf ("  [leg C] APVTS captures on this thread: %d, of which with the replacement"
+                     " lock already held: %d\n", captures.load(), capturesWithLockHeld.load());
+        check (captures.load() > 0, "leg C: non-vacuity -- the APVTS lock was taken at all");
+        check (capturesWithLockHeld.load() == captures.load(),
+               "leg C: every APVTS acquisition this tick makes runs INSIDE `soundReplacement`"
+               " -- the acquisition the finding calls bare is not bare");
+    }
+
+    // ---- LEG D: A REPLACEMENT ALREADY IN FLIGHT -- the tick refuses, and does not wait -----------
+    {
+        setPlain (widthP, 1.10f);
+        const float before = plainOf (widthP);
+        const int c0 = captures.load();
+        {
+            HeldReplacement held (proc);
+            check (held.parked.load(),
+                   "leg D: non-vacuity -- a NON-ANNOUNCING holder really owns soundReplacement");
+            hostGestureDelivering ([&proc] { proc.pollUndoCoalesceFromTimer(); });
+            std::printf ("  [leg D] with the lock held elsewhere: took %.1f ms, APVTS captures +%d\n",
+                         seat.elapsedMs, captures.load() - c0);
+            check (seat.fired > 0, "leg D: non-vacuity -- the tick ran");
+            check (seat.elapsedMs < 250.0, "leg D: ...and did not WAIT for the replacement lock");
+            check (captures.load() == c0,
+                   "leg D: ...and took no APVTS lock at all: a failed try consumes nothing");
+            check (! held.done.load (std::memory_order_acquire),
+                   "leg D: non-vacuity -- the holder held the lock throughout");
+        }
+        check (std::abs (plainOf (widthP) - before) < 1.0e-3f, "leg D: nothing was consumed");
+    }
+
+    // ---- LEG E: THE WHOLE TRIPLE -- host dispatch + pumped tick + a CONCURRENT RESTORE -----------
+    //      The restore is the production one: an off-message-thread `setStateInformation`, which
+    //      announces, then installs the sound UNDER `soundReplacement` and only then reaches
+    //      `apvts.replaceState`. Parked at that first acquisition it holds no APVTS lock, which is
+    //      the step the reported chain needs and cannot have.
+    {
+        setPlain (widthP, 1.90f);
+        juce::MemoryBlock blob;
+        proc.getStateInformation (blob);
+        setPlain (widthP, 1.00f);
+        proc.pollUndoCoalesce();
+        const float parkedWidthExpected = plainOf (widthP);
+
+        std::atomic<bool> go { false }, restoreDone { false }, sawRestoreDone { false };
+        std::atomic<float> widthWhileParked { -1.0f };
+        std::atomic<bool>  parkedOnce { false };
+
+        std::thread restorer ([&]
+        {
+            while (! go.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            proc.setStateInformation (blob.getData(), (int) blob.getSize());
+            restoreDone.store (true, std::memory_order_release);
+        });
+
+        proc.seams.insideDurableCapture = [&]
+        {
+            if (! juce::MessageManager::existsAndIsCurrentThread()) return;
+            captures.fetch_add (1);
+            if (parkedOnce.exchange (true)) return;          // park exactly once
+            go.store (true, std::memory_order_release);
+            std::this_thread::sleep_for (std::chrono::milliseconds (120));
+            widthWhileParked.store (widthP->convertFrom0to1 (widthP->getValue()));
+            sawRestoreDone.store (restoreDone.load (std::memory_order_acquire));
+        };
+
+        setPlain (widthP, 1.05f);                             // dirty, so the poll body runs
+        hostGestureDelivering ([&proc] { proc.pollUndoCoalesceFromTimer(); });
+        restorer.join();
+
+        std::printf ("  [leg E] while the tick held the lock: restore finished %s, width %.4f"
+                     " (expected the pre-restore %.4f); tick took %.1f ms\n",
+                     sawRestoreDone.load() ? "YES" : "no", (double) widthWhileParked.load(),
+                     (double) 1.05f, seat.elapsedMs);
+        check (parkedOnce.load(), "leg E: non-vacuity -- the tick really reached the APVTS capture");
+        check (! sawRestoreDone.load(),
+               "leg E: the concurrent restore is PARKED at `soundReplacement` while the tick holds it");
+        check (std::abs (widthWhileParked.load() - 1.05f) < 1.0e-3f,
+               "leg E: ...so it has not entered `apvts.replaceState` and holds NO APVTS lock");
+        check (restoreDone.load (std::memory_order_acquire),
+               "leg E: ...and both sides complete -- the reported cyclic wait cannot form");
+        juce::ignoreUnused (parkedWidthExpected);
+
+        proc.seams.insideDurableCapture = nullptr;
+        check (d2::waitFor ([&] { proc.pollUndoCoalesceFromTimer(); return proc.deferredCommandCount() == 0; }),
+               "leg E: the harness settles");
+    }
+
+    proc.seams.insidePollBody = nullptr;
+    proc.seams.insideDurableCapture = nullptr;
+    proc.removeListener (&seat);
+}
+
+// ---------------------------------------------------------------------------
+//  State test 104 -- a save completion may only touch the dialog it BELONGS TO
+//  (round 28b, Devin `src/PluginEditor.cpp:R405-406`, "canceled save closes
+//  newer dialog").
+//
+//  Round 27 made the save's answer asynchronous: a save issued from inside a user
+//  transaction is queued and the dialog waits for the completion. That completion
+//  captured a `SafePointer`, which answers EDITOR LIFETIME -- and the question a
+//  cancelled-then-reopened dialog asks is a different one. Cancel the dialog, open
+//  it again, and the FIRST save's completion lands on the SECOND save's dialog:
+//  closing it, or painting "SAVE FAILED" across it, or taking its focus, for a file
+//  operation the user has already dismissed.
+//
+//  THE OWNER'S RULING, and the shape of the fix: cancelling the dialog cancels the
+//  UI ASSOCIATION, not the file operation. A write already queued still runs and its
+//  result is still processed internally -- the preset list and the dirty mark really
+//  did change -- while nothing about a dialog that belongs to a LATER attempt may be
+//  touched. Identity is a `uint32` attempt counter (`saveAttempt`), cleared by every
+//  show and every hide, which is the smallest thing that answers "is this still the
+//  one".
+//
+//  THE DIALOG IS DRIVEN THE WAY A USER DRIVES IT: the panel is found by walking the
+//  editor for the text field whose own panel also carries a Save and a Cancel button,
+//  and the buttons are invoked through their `onClick`. The deferral is the production
+//  one -- a save issued inside a `ScopedUserTransaction` is queued by the admission and
+//  runs when the transaction closes -- so no seam and no timing is involved anywhere.
+//  A failing write is produced portably by leaving a DIRECTORY where the file must go:
+//  `replaceWithText` cannot move a file onto a directory on any supported platform.
+// ---------------------------------------------------------------------------
+static void testSaveCompletionBelongsToItsOwnAttempt()
+{
+    std::printf ("State test 104: a save completion only touches the dialog it belongs to (R405-406)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the save-dialog probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    // The dialog's parts, by shape rather than by name: the panel that owns a text field AND a
+    // "Save" button AND a "Cancel" button is the Save overlay and nothing else in this editor is.
+    juce::Component*  panel     = nullptr;
+    juce::TextEditor* nameEd    = nullptr;
+    juce::Label*      title     = nullptr;
+    juce::TextButton* okBtn     = nullptr;
+    juce::TextButton* cancelBtn = nullptr;
+    juce::TextButton* presetBtn = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        juce::TextEditor* te = nullptr;
+        juce::TextButton* ok = nullptr; juce::TextButton* cancel = nullptr;
+        juce::Label*      lb = nullptr;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* t = dynamic_cast<juce::TextEditor*> (kid)) te = t;
+            if (auto* l = dynamic_cast<juce::Label*> (kid))      lb = l;
+            if (auto* b = dynamic_cast<juce::TextButton*> (kid))
+            {
+                if (b->getButtonText() == "Save")   ok = b;
+                if (b->getButtonText() == "Cancel") cancel = b;
+                if (b->getComponentID() == "presetname") presetBtn = b;
+            }
+        }
+        if (panel == nullptr && te != nullptr && ok != nullptr && cancel != nullptr)
+        { panel = c; nameEd = te; title = lb; okBtn = ok; cancelBtn = cancel; }
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+            walk (c->getChildComponent (i));
+    };
+    walk (ed);
+    check (panel != nullptr && nameEd != nullptr && title != nullptr
+               && okBtn != nullptr && cancelBtn != nullptr,
+           "the Save overlay and its four parts were found");
+    check (presetBtn != nullptr, "the preset-name display was found (the internal half's observable)");
+    if (panel == nullptr || nameEd == nullptr || title == nullptr
+        || okBtn == nullptr || cancelBtn == nullptr || presetBtn == nullptr)
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    const auto dir    = anamorph::PresetManager::presetDirectory();
+    const auto suffix = anamorph::PresetManager::fileSuffix();
+    auto fileFor = [&] (const juce::String& n) { return dir.getChildFile (n + suffix); };
+
+    const juce::String nameA  = "__AnamorphR405A__";
+    const juce::String nameB  = "__AnamorphR405B__";
+    const juce::String nameC  = "__AnamorphR405C__";
+    const juce::String nameD1 = "__AnamorphR405D1__", nameD2 = "__AnamorphR405D2__";
+    const juce::String nameE1 = "__AnamorphR405E1__", nameE2 = "__AnamorphR405E2__";
+    const juce::String nameF  = "__AnamorphR405F__";
+    for (const auto& n : { nameA, nameB, nameC, nameD1, nameD2, nameE1, nameE2, nameF })
+        fileFor (n).deleteRecursively();
+
+    // ---- LEG A: the ordinary deferred save, whose completion DOES own the dialog ---------------
+    {
+        ed->showSavePreset (true);
+        nameEd->setText (nameA, false);
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            okBtn->onClick();
+            check (title->getText() == "SAVING...", "leg A: the dialog says SAVING... while it waits");
+            check (panel->isVisible(), "leg A: ...and stays open");
+            check (! fileFor (nameA).existsAsFile(), "leg A: ...and nothing is written yet");
+        }   // <- the transaction closes: the flush runs the queued save
+        std::printf ("  [leg A] after the boundary: dialog %s, file %s\n",
+                     panel->isVisible() ? "open" : "closed",
+                     fileFor (nameA).existsAsFile() ? "written" : "absent");
+        check (! panel->isVisible(), "leg A: its own completion closed it");
+        check (fileFor (nameA).existsAsFile(), "leg A: ...and the preset really was written");
+    }
+
+    // ---- LEG B: a deferred save that FAILS, whose completion also owns the dialog --------------
+    {
+        auto blocked = fileFor (nameB);
+        blocked.deleteRecursively();
+        check (blocked.createDirectory(), "leg B: a directory stands where the file must go");
+        // NOT EMPTY, and that is the whole of it: `replaceWithText` deletes the target before it
+        // moves the temporary in, and JUCE's delete removes an empty directory quite happily -- so
+        // an empty one is not an obstacle at all. A directory with a file in it cannot be removed
+        // and cannot be replaced, on every platform this ships to.
+        check (blocked.getChildFile ("occupied").create().wasOk(),
+               "leg B: ...and it is not empty, so it cannot simply be deleted");
+        ed->showSavePreset (true);
+        nameEd->setText (nameB, false);
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            okBtn->onClick();
+        }
+        std::printf ("  [leg B] after the boundary: dialog %s, title \"%s\"\n",
+                     panel->isVisible() ? "open" : "closed", title->getText().toRawUTF8());
+        check (panel->isVisible(), "leg B: a failed save leaves its own dialog open");
+        check (title->getText() == "SAVE FAILED", "leg B: ...and says so, in the approved wording");
+        check (nameEd->getText() == nameB, "leg B: ...with the name still there to correct");
+        ed->showSavePreset (false);
+        blocked.deleteRecursively();
+    }
+
+    // ---- LEG C: cancelled while queued -- the WRITE is not cancelled, the DIALOG is ------------
+    {
+        ed->showSavePreset (true);
+        nameEd->setText (nameC, false);
+        const auto displayBefore = presetBtn->getButtonText();
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            okBtn->onClick();
+            cancelBtn->onClick();                       // the UI association ends here
+            check (! panel->isVisible(), "leg C: the dialog is closed");
+        }   // <- ...and the queued write still runs
+        std::printf ("  [leg C] file %s, preset display \"%s\" (was \"%s\")\n",
+                     fileFor (nameC).existsAsFile() ? "written" : "absent",
+                     presetBtn->getButtonText().toRawUTF8(), displayBefore.toRawUTF8());
+        check (fileFor (nameC).existsAsFile(),
+               "leg C: cancelling the dialog did NOT cancel the file operation");
+        check (! panel->isVisible(), "leg C: ...and the completion re-opened nothing");
+        check (proc.getPresets().currentName() == nameC, "leg C: ...the save selected what it wrote");
+        // The display ABBREVIATES anything too wide for the bar (consonant skeleton, then a hard
+        // clip), so the assertion is that it MOVED and still names this preset -- not that it is
+        // the raw string, which for a harness-length name it never is.
+        check (presetBtn->getButtonText() != displayBefore && presetBtn->getButtonText().contains ("R405C"),
+               "leg C: ...and the result was still processed internally: the display followed it");
+    }
+
+    // ---- LEG D: a cancelled attempt's SUCCESS must not close a newer dialog --------------------
+    {
+        ed->showSavePreset (true);
+        nameEd->setText (nameD1, false);
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            okBtn->onClick();                 // attempt 1, queued
+            cancelBtn->onClick();             // ...cancelled
+            ed->showSavePreset (true);        // ...and a NEW dialog opened
+            nameEd->setText (nameD2, false);
+        }   // <- attempt 1 completes HERE, against a dialog that is not its own
+        std::printf ("  [leg D] newer dialog %s, title \"%s\", name \"%s\"; old file %s\n",
+                     panel->isVisible() ? "open" : "CLOSED", title->getText().toRawUTF8(),
+                     nameEd->getText().toRawUTF8(),
+                     fileFor (nameD1).existsAsFile() ? "written" : "absent");
+        check (panel->isVisible(), "leg D: the newer dialog is still open");
+        check (title->getText() == "SAVE PRESET", "leg D: ...wearing its own title, not an outcome");
+        check (nameEd->getText() == nameD2, "leg D: ...and its own name");
+        check (fileFor (nameD1).existsAsFile(), "leg D: the cancelled attempt's file was still written");
+        check (! fileFor (nameD2).existsAsFile(), "leg D: the newer attempt has not been asked for yet");
+
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            okBtn->onClick();                 // attempt 2, which DOES own the dialog
+        }
+        check (! panel->isVisible(), "leg D: the newer attempt's own completion closes it");
+        check (fileFor (nameD2).existsAsFile(), "leg D: ...and writes its file");
+    }
+
+    // ---- LEG E: a cancelled attempt's FAILURE must not mark a newer dialog ---------------------
+    {
+        auto blocked = fileFor (nameE1);
+        blocked.deleteRecursively();
+        check (blocked.createDirectory(), "leg E: a directory stands where the older file must go");
+        check (blocked.getChildFile ("occupied").create().wasOk(),
+               "leg E: ...and it is not empty, so the write cannot replace it");
+
+        ed->showSavePreset (true);
+        nameEd->setText (nameE1, false);
+        const auto freshOutline = nameEd->findColour (juce::TextEditor::outlineColourId);
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+            okBtn->onClick();                 // attempt 1, queued, and doomed
+            cancelBtn->onClick();
+            ed->showSavePreset (true);
+            nameEd->setText (nameE2, false);
+        }   // <- attempt 1 FAILS here, against a dialog that is not its own
+        std::printf ("  [leg E] newer dialog %s, title \"%s\", outline %s\n",
+                     panel->isVisible() ? "open" : "CLOSED", title->getText().toRawUTF8(),
+                     nameEd->findColour (juce::TextEditor::outlineColourId) == freshOutline
+                         ? "untouched" : "REPAINTED");
+        check (panel->isVisible(), "leg E: the newer dialog is still open");
+        check (title->getText() == "SAVE PRESET",
+               "leg E: ...and is not wearing the older attempt's SAVE FAILED");
+        check (nameEd->findColour (juce::TextEditor::outlineColourId) == freshOutline,
+               "leg E: ...nor its warning outline");
+        check (nameEd->getText() == nameE2, "leg E: ...and its name is untouched");
+        ed->showSavePreset (false);
+        blocked.deleteRecursively();
+    }
+
+    // ---- LEG F: the editor goes away while the save is queued ---------------------------------
+    //  The `SafePointer` half, which the identity check must not have weakened: the write still
+    //  happens and the completion touches nothing. LAST, because it destroys the editor.
+    {
+        AnamorphAudioProcessor::ScopedUserTransaction tx (proc);
+        ed->showSavePreset (true);
+        nameEd->setText (nameF, false);
+        okBtn->onClick();
+        proc.editorBeingDeleted (ed);
+        delete ed;
+        ed = nullptr; panel = nullptr; nameEd = nullptr; title = nullptr;
+        okBtn = nullptr; cancelBtn = nullptr; presetBtn = nullptr;
+    }   // <- the queued write runs with no editor at all
+    check (fileFor (nameF).existsAsFile(),
+           "leg F: the queued write completed after the editor went away");
+
+    for (const auto& n : { nameA, nameB, nameC, nameD1, nameD2, nameE1, nameE2, nameF })
+        fileFor (n).deleteRecursively();
+    // A failed `replaceWithText` leaves its temporary sibling behind; sweep the harness's own.
+    for (const auto& leftover : dir.findChildFiles (juce::File::findFilesAndDirectories, false,
+                                                    "__AnamorphR405*"))
+        leftover.deleteRecursively();
+}
+
 static void testABandMoveDerivesItsOriginsFromTheRecord()
 {
     std::printf ("State test 84: a band move derives its origins from the record it proved\n");
@@ -19639,17 +30317,21 @@ static int runSoloAliasProbe (int iterations)
     bool flip = false;
     std::thread automation ([&]
     {
-        while (! quit.load (std::memory_order_acquire))
+        while (! quit.load (std::memory_order_seq_cst))
         {
-            while (phase.load (std::memory_order_acquire) == 1)
+            // ROUND 27, the shared lane handshake: publish `writing` BEFORE reading `phase`, both
+            // `seq_cst`. The whole argument -- and the 50 us forcing that measured the old order
+            // leaking one late write into the next iteration's press -- is written out at the
+            // first lane of this kind (`--split-snapshot-probe`'s, above).
+            writing.store (true, std::memory_order_seq_cst);
+            while (phase.load (std::memory_order_seq_cst) == 1)
             {
-                writing.store (true, std::memory_order_release);
                 const int n = spin.load (std::memory_order_relaxed);
                 for (int i = 0; i < n; ++i) std::atomic_signal_fence (std::memory_order_acq_rel);
                 flip = ! flip;
                 setPlain (bandsP, flip ? 4.0f : 2.0f);   // the ABA generator, count only
             }
-            writing.store (false, std::memory_order_release);
+            writing.store (false, std::memory_order_seq_cst);
         }
     });
 
@@ -19662,8 +30344,8 @@ static int runSoloAliasProbe (int iterations)
         im->mouseDown (mev (aliasX, soloY));
         if (laneOn)
         {
-            phase.store (0, std::memory_order_release);
-            while (writing.load (std::memory_order_acquire)) { }
+            phase.store (0, std::memory_order_seq_cst);
+            while (writing.load (std::memory_order_seq_cst)) { }   // seq_cst: see the lane above
             setPlain (bandsP, 2.0f);   // the release happens at the topology the press SAW, or is refused
         }
         im->mouseUp (mev (aliasX, soloY));
@@ -19706,6 +30388,2910 @@ static int runSoloAliasProbe (int iterations)
     proc.editorBeingDeleted (ed);
     delete ed;
     return aliased == 0 ? 0 : 1;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 96 -- round 23. THE BARE BRACKETS THAT ARE ANAMORPH'S OWN.
+//
+//  Devin's review finding names `src/PluginProcessor.cpp:R1117-1119` -- the batch close's live
+//  read of the parameter -- and describes it as a GENERIC HOST EDITOR bug: the host opens a
+//  gesture, writes A, automation writes B, the close reads B and Redo lands on B.
+//
+//  THE REPORTED SCENARIO IS NOT REACHABLE, AND THE MEASUREMENT SAYS SO. No JUCE plug-in wrapper
+//  calls `beginChangeGesture`/`endChangeGesture` INBOUND on a plug-in's parameters:
+//    grep -rnE '(\.|->)(begin|end)ChangeGesture' build/_deps/juce-src/modules/juce_audio_plugin_client/
+//  returns 0 across VST3, AU, AUv3, AAX, LV2, VST2, Standalone and Unity; all 14 "ChangeGesture"
+//  hits in that tree are the OUTBOUND `audioProcessorParameterChangeGestureBegin/End` overrides
+//  (the plug-in telling the host). LV2 goes further and discards a host touch outright
+//  (`void gesture (LV2_URID, bool) const noexcept {}`). A host cannot open a gesture on us, so the
+//  round-22 comment that justified keeping the live read -- "a host's own generic editor brackets
+//  `setValueNotifyingHost` in a begin/end pair through the wrapper" -- was FALSE, and it
+//  contradicted this very file's own correct statement 79 lines above it.
+//
+//  BUT THE DEFECT IS REAL, AND IT IS OURS. Two first-party paths open a change gesture and declare
+//  nothing, so the live read decides their endpoint -- which is whatever a host lane left in the
+//  parameter during the bracket:
+//    * `AnamorphAudioProcessor::applyAutoGain` -- the editor's "Apply Gain" button. A bare
+//      begin/setValueNotifyingHost/end on Output Gain, and another on Level Match. It is the one
+//      bare store round 21 never brought under `storeOwned`'s read-back shape, because it does not
+//      live in the imager. Legs A and B.
+//    * `Knob`'s Alt-click and double-click resets, whose ADR-0052 guard `resetWouldMove()` compares
+//      the SLIDER's value to the default rather than the PARAMETER's. The two can disagree -- a
+//      parameter written without notifying its listeners leaves the slider stale -- and then the
+//      reset opens a gesture, JUCE drops the write because the parameter already holds the value,
+//      and nothing is declared. Leg C.
+//
+//  ADR-0008: a user Undo/Redo step may contain only values that user action actually produced.
+// ---------------------------------------------------------------------------
+static void testAnamorphsOwnBareBracketsDeclareTheirEndpoint()
+{
+    std::printf ("State test 96: Anamorph's own bare brackets declare their endpoint (R1117-1119, ADR-0008)\n");
+
+    auto plainOf = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto near    = [] (float a, float b) { return std::abs (a - b) < 1.0e-3f; };
+
+    // ---- LEG A: Apply Gain answered re-entrantly by a host lane -----------------------
+    //  The host writes the SAME parameter from inside Apply's own `setValueNotifyingHost`. Before
+    //  round 23 the close read the parameter live and found the host sitting in it, so the host's
+    //  value became the user's `after` and therefore the destination of the user's Redo.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto& apvts = proc.getAPVTS();
+        auto* ogP = apvts.getParameter (pid::outputGain);
+        check (ogP != nullptr, "leg A: Output Gain exists");
+        if (ogP != nullptr)
+        {
+            ogP->setValueNotifyingHost (ogP->convertTo0to1 (6.0f));
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+
+            const float userStart = plainOf (ogP);
+            const float hostTo    = -11.5f;
+            check (! near (userStart, hostTo), "leg A: the two values the leg distinguishes are distinct");
+
+            WriteFromInsideAStoreQuietly poke;
+            poke.target = ogP;
+            poke.to     = hostTo;
+            poke.armed  = true;
+            ogP->addListener (&poke);
+            proc.applyAutoGain();
+            ogP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg A: non-vacuity -- the host answered Apply's own write, re-entrantly");
+            check (near (plainOf (ogP), hostTo), "leg A: ...and the host's value is what is live afterwards");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                const float afterUndo = plainOf (ogP);
+                proc.redo();
+                const float afterRedo = plainOf (ogP);
+                std::printf ("  [leg A] a step was recorded: Undo -> %.4f, Redo -> %.4f"
+                             " (the user started at %.4f, the host wrote %.4f)\n",
+                             (double) afterUndo, (double) afterRedo,
+                             (double) userStart, (double) hostTo);
+                check (! near (afterRedo, hostTo),
+                       "leg A: the host's re-entrant answer is NOT the user's Redo destination");
+            }
+            else
+            {
+                std::printf ("  [leg A] the refused Apply recorded no step, so the host's %.4f is in none\n",
+                             (double) hostTo);
+                check (true, "leg A: an Apply whose store did not stand records no user step");
+            }
+        }
+    }
+
+    // ---- LEG B: the control -- an uninterrupted Apply is still one undoable user step ----
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto& apvts = proc.getAPVTS();
+        auto* ogP = apvts.getParameter (pid::outputGain);
+        if (ogP != nullptr)
+        {
+            ogP->setValueNotifyingHost (ogP->convertTo0to1 (6.0f));
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+
+            const float userStart = plainOf (ogP);
+            proc.applyAutoGain();
+            proc.pollUndoCoalesce();
+            const float applied = plainOf (ogP);
+
+            check (! near (applied, userStart), "leg B: non-vacuity -- Apply moved Output Gain");
+            check (proc.canUndo(), "leg B: an uninterrupted Apply is one undoable user step");
+            if (proc.canUndo())
+            {
+                proc.undo();
+                check (near (plainOf (ogP), userStart), "leg B: Undo returns the value the user had");
+                proc.redo();
+                check (near (plainOf (ogP), applied),
+                       "leg B: Redo restores the value Apply produced, not a live read");
+            }
+        }
+    }
+
+    // ---- LEG C: a Knob reset whose guard answered on a stale slider ---------------------
+    //  `resetWouldMove()` asks the SLIDER. A parameter written without notifying leaves the slider
+    //  stale, so the guard says "this reset moves something" while the parameter is already sitting
+    //  on the default. The gesture opens, JUCE's attachment drops the write (the parameter holds
+    //  that value already), and nothing is declared -- the `ep == 1` state. A host lane writing at
+    //  the gesture's CLOSE is then the only value the close can see.
+    {
+        AnamorphAudioProcessor proc;
+        proc.prepareToPlay (48000.0, 512);
+        auto& apvts = proc.getAPVTS();
+        auto* raw = proc.createEditor();
+        auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        check (ed != nullptr, "leg C: the editor constructs");
+        if (ed == nullptr) { delete raw; return; }
+
+        std::vector<juce::Slider*> sliders;
+        std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+        {
+            for (int i = 0; i < c->getNumChildComponents(); ++i)
+            {
+                auto* k = c->getChildComponent (i);
+                if (auto* s = dynamic_cast<juce::Slider*> (k)) sliders.push_back (s);
+                walk (k);
+            }
+        };
+        walk (ed);
+
+        auto* driveP = apvts.getParameter (pid::drive);
+        juce::Slider* driveK = nullptr;
+        if (driveP != nullptr)
+        {
+            const float was = driveP->getValue();
+            std::vector<double> before;
+            before.reserve (sliders.size());
+            for (auto* s : sliders) before.push_back (s->getValue());
+            driveP->setValueNotifyingHost (was < 0.5f ? 0.75f : 0.25f);
+            int hits = 0;
+            for (size_t i = 0; i < sliders.size(); ++i)
+                if (! juce::exactlyEqual (sliders[i]->getValue(), before[i])) { driveK = sliders[i]; ++hits; }
+            driveP->setValueNotifyingHost (was);
+            if (hits != 1) driveK = nullptr;
+        }
+        check (driveP != nullptr && driveK != nullptr, "leg C: the Drive knob is findable");
+
+        if (driveP != nullptr && driveK != nullptr)
+        {
+            // Put the SLIDER well off the default, then move the PARAMETER onto the default
+            // WITHOUT notifying: the attachment never hears it, so the slider stays where it is.
+            driveP->setValueNotifyingHost (driveP->convertTo0to1 (9.0f));
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float sliderShows = (float) driveK->getValue();
+            driveP->setValue (driveP->getDefaultValue());          // quiet: the slider does not follow
+            const float deflt = driveP->convertFrom0to1 (driveP->getDefaultValue());
+            check (! near (sliderShows, deflt),
+                   "leg C: non-vacuity -- the slider and the parameter really do disagree");
+
+            const float hostTo = 4.25f;
+            check (! near (hostTo, deflt) && ! near (hostTo, sliderShows),
+                   "leg C: the three values the leg distinguishes are distinct");
+
+            WriteOnGestureClose poke;
+            poke.target = driveP;
+            poke.to     = hostTo;
+            poke.armed  = true;
+            driveP->addListener (&poke);
+            const float cx = (float) driveK->getWidth() * 0.5f, cy = (float) driveK->getHeight() * 0.5f;
+            const auto  t  = juce::Time::getCurrentTime();
+            const juce::MouseEvent alt (juce::Desktop::getInstance().getMainMouseSource(), { cx, cy },
+                                        juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier
+                                                            | juce::ModifierKeys::altModifier),
+                                        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, driveK, driveK,
+                                        t, { cx, cy }, t, 1, false);
+            driveK->mouseDown (alt);
+            driveK->mouseUp (alt);
+            driveP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg C: non-vacuity -- the reset really did bracket a gesture");
+            if (poke.fired)
+            {
+                check (near (plainOf (driveP), hostTo), "leg C: the host's value is what is live");
+                if (proc.canUndo())
+                {
+                    proc.undo();
+                    proc.redo();
+                    check (! near (plainOf (driveP), hostTo),
+                           "leg C: the host's value is NOT the user's Redo destination");
+                }
+                else
+                {
+                    check (true, "leg C: the reset that moved nothing records no step");
+                }
+            }
+        }
+
+        proc.editorBeingDeleted (ed);
+        delete ed;
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 97 -- round 23. THE TWO SURVIVORS ROUND 22 LEFT UNCLAIMED
+//  (M87 and M88), each killed by the leg it never had.
+//
+//  Round 22 recorded both as unkilled rather than as equivalent, and gave the
+//  reason in each case: "no pair of seams in this suite can place a thread in
+//  that window" (M87) and "the suite drives the poll directly, so no leg
+//  observes which door the editor picks" (M88). Both reasons were about the
+//  HARNESS, not about the code, and both turn out to be wrong -- which is why
+//  they were kept as open survivors instead of being argued away.
+//
+//  LEG A -- the deferred baseline (M87). `syncCommitted (mayBlock = false)`
+//  may fail its try on `soundReplacement` and leave `committed` describing the
+//  session the adoption has just REPLACED; it raises `committedNeedsResync`
+//  instead, and the repair is the FIRST line of `pollUndoCoalesceAdopted`,
+//  ahead of every branch that pushes. Nothing else repairs it. An undo entry
+//  carries `committed.name / .baseline / .selection` as its `before` end
+//  (`applyUndoEntry`), so without that repair the next ordinary gesture pushes
+//  a step whose `before` names the PRE-restore session, and one Undo moves the
+//  preset identity to a session the user never left.
+//
+//  The window round 22 could not reach is reached through
+//  `seams.afterRestoreTake`, which fires AFTER the take's own acquisition has
+//  been released and BEFORE the tail that snapshots -- so a NON-ANNOUNCING
+//  holder parked from there (the durable capture behind a host save, §25) is
+//  still holding when `syncCommitted` makes its try, and the take it could not
+//  have blocked has already succeeded. Parking it BEFORE the door instead is a
+//  different test: there the take fails and nothing is adopted at all, which
+//  is State test 95's own subject.
+//
+//  LEG B -- the door the shipped editor picks (M88). ADR-0036 §26 made both
+//  TIMER doors non-blocking because a timer runs as a MESSAGE-QUEUE CONSUMER
+//  and can therefore be inside a host's pump with a parameter's `listenerLock`
+//  held (RISK-009). The editor's 24 Hz tick is one of those consumers, and
+//  round 22 could only assert by inspection that it goes through
+//  `pollUndoCoalesceFromTimer`. It can be driven for real:
+//  `juce::Timer::callPendingTimersSynchronously()` runs every DUE timer on
+//  this thread with no message loop, and the editor's tick is one of them.
+//  With a non-announcing capture parked, the correct door reaches neither the
+//  drain's acquisition nor the poll body; the blocking door waits for both.
+//  `seams.insidePollBody` distinguishes them without a stopwatch -- the
+//  processor's OWN 20 Hz timer only drains and never polls, so a poll-body
+//  entry during these calls can have come from nowhere but the editor.
+// ---------------------------------------------------------------------------
+static void testTheDeferredBaselineAndTheDoorTheEditorPicks()
+{
+    std::printf ("State test 97: a deferred baseline is repaired before any entry is built from it, and the editor's tick never waits (M87, M88)\n");
+
+    const auto ownerThread = std::this_thread::get_id();
+
+    // ---- LEG A: the repair at the top of the poll body (M87) -------------------------
+    {
+        const auto R = d2::author ("D2-R23-A", 0.31f, 0.31f, 0, 1);
+
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "width", 0.62f);
+        p.pollUndoCoalesce();
+
+        const auto beforeName = p.getPresets().currentName();
+        check (beforeName != R.name, "leg A: non-vacuity -- the session the restore replaces is a DIFFERENT one");
+
+        // The restore is handed over from a host thread and left in the cell.
+        std::thread restoring ([&] { p.setStateInformation (R.blob.getData(), (int) R.blob.getSize()); });
+        restoring.join();
+        check (p.getPresets().currentName() == beforeName, "leg A: the restore is pending, not adopted");
+
+        // A non-announcing holder, armed from between the take and the tail.
+        std::atomic<bool> parked { false }, releaseSave { false };
+        std::atomic<int>  saveWaited { -1 };
+        std::unique_ptr<std::thread> saver;
+        juce::MemoryBlock hostSave;
+        p.seams.insideDurableCapture = [&]
+        {
+            if (std::this_thread::get_id() == ownerThread) return;   // the owner's own captures pass through
+            parked.store (true);
+            int waited = 0;
+            for (; waited < 4000 && ! releaseSave.load(); ++waited)
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            saveWaited.store (waited);
+        };
+        p.seams.afterRestoreTake = [&]
+        {
+            if (saver != nullptr) return;                            // once: the drain runs to a fixed point
+            saver = std::make_unique<std::thread> ([&] { hostSave = d2::saveOf (p); });
+            for (int i = 0; i < 4000 && ! parked.load(); ++i)
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        };
+
+        p.pollUndoCoalesceFromTimer();
+        p.seams.afterRestoreTake = nullptr;
+        check (parked.load(), "leg A: the capture is open across the adoption's baseline snapshot");
+        releaseSave.store (true);
+        if (saver != nullptr) saver->join();
+        p.seams.insideDurableCapture = nullptr;
+        check (saveWaited.load() > 0, "leg A: non-vacuity -- the snapshot really met a held lock");
+
+        // The restore itself is whole: only the BASELINE was deferred, never the session.
+        check (p.getPresets().currentName() == R.name, "leg A: the restore was adopted whole");
+        checkNear ((double) rawOf (p, "width"), 0.31, 1.0e-6, "leg A: ...with its own sound");
+
+        // One ordinary gesture, and the Undo that reads the entry's `before` end.
+        if (auto* drive = p.getAPVTS().getParameter ("drive"))
+        {
+            drive->beginChangeGesture();
+            drive->setValueNotifyingHost (0.61f);
+            drive->endChangeGesture();
+        }
+        p.pollUndoCoalesce();
+        check (p.canUndo(), "leg A: the gesture after the deferred adoption is undoable");
+        p.undo();
+        check (p.getPresets().currentName() == R.name,
+               "leg A: undoing it stays inside the restored session -- the deferred baseline was repaired first");
+        checkNear ((double) rawOf (p, "width"), 0.31, 1.0e-6,
+                   "leg A: ...and the sound it undoes into is the restore's, not the session before it");
+    }
+
+    // ---- LEG B: the shipped editor tick takes the non-blocking door (M88) ------------
+    {
+        const auto R = d2::author ("D2-R23-B", 0.37f, 0.37f, 0, 1);
+
+        const auto owned = std::make_unique<AnamorphAudioProcessor>();
+        auto& p = *owned;
+        p.prepareToPlay (48000.0, 512);
+        setRaw (p, "width", 0.62f);
+        p.pollUndoCoalesce();
+
+        auto* raw = p.createEditor();
+        auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        check (ed != nullptr, "leg B: the editor constructs, and its 24 Hz tick with it");
+        if (ed == nullptr) { delete raw; return; }
+
+        // WHY A WITNESS TIMER AND NOT A SLEEP. `callPendingTimersSynchronously` runs the timers
+        // that are DUE, and due-ness is decided by the TimerThread, which -- with no message loop
+        // consuming its `CallTimersMessage` -- re-posts on a 300 ms wait and so advances the
+        // countdowns in coarse steps. A fixed sleep therefore fires the editor's tick only
+        // sometimes: measured, a 100 ms sleep missed it entirely and the leg passed vacuously
+        // under the mutation it exists for. This timer is started immediately after the editor's,
+        // at the same rate, so the two are due in the same pass and its count is an exact witness
+        // that a 24 Hz pass RAN -- and the pass is what the measurement below is about.
+        struct TickWitness final : public juce::Timer
+        {
+            std::atomic<int> n { 0 };
+            void timerCallback() override { n.fetch_add (1); }
+        };
+        TickWitness witness;
+        witness.startTimerHz (24);
+
+        std::thread restoring ([&] { p.setStateInformation (R.blob.getData(), (int) R.blob.getSize()); });
+        restoring.join();
+        check (p.getPresets().currentName() != R.name, "leg B: the restore is pending, not adopted");
+
+        std::atomic<bool> parked { false }, releaseSave { false };
+        std::atomic<int>  saveWaited { -1 };
+        std::atomic<int>  pollBodies { 0 };
+        juce::MemoryBlock hostSave;
+        p.seams.insideDurableCapture = [&]
+        {
+            if (std::this_thread::get_id() == ownerThread) return;
+            parked.store (true);
+            int waited = 0;
+            for (; waited < 4000 && ! releaseSave.load(); ++waited)
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            saveWaited.store (waited);
+        };
+        // Only `pollUndoCoalesceAdopted` fires this, and of the two timers the processor owns here
+        // only the EDITOR's reaches it -- `AnamorphAudioProcessor::timerCallback` drains and never
+        // polls. So a poll-body entry on this thread can have come from nowhere but the editor.
+        p.seams.insidePollBody = [&] { if (std::this_thread::get_id() == ownerThread) pollBodies.fetch_add (1); };
+
+        std::thread saver ([&] { hostSave = d2::saveOf (p); });
+        for (int i = 0; i < 4000 && ! parked.load(); ++i)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        check (parked.load(), "leg B: a host save is parked inside the durable capture, holding the lock");
+
+        // WHY THE TICK HAS WORK TO DO, which is not automatic and is the other half of the leg. A
+        // parked replacement alone proves nothing: `pollUndoCoalesceAdopted` early-returns when the
+        // sound generation has not moved and no gesture commit is pending, and in THAT state neither
+        // door reaches a lock, so both builds measure 0 ms. Here the work is the PENDING RESTORE
+        // put in the cell above -- the blocking door's drain takes `soundReplacement` for the take
+        // itself, so the contention is on the very first thing the tick does.
+
+        // Drive passes until one actually runs, and time each pass rather than the waiting.
+        int worstPassMs = 0;
+        for (int spins = 0; spins < 400 && witness.n.load() == 0; ++spins)
+        {
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            const auto c0 = std::chrono::steady_clock::now();
+            juce::Timer::callPendingTimersSynchronously();
+            worstPassMs = juce::jmax (worstPassMs, (int) std::chrono::duration_cast<std::chrono::milliseconds> (
+                                                       std::chrono::steady_clock::now() - c0).count());
+        }
+        std::printf ("  [test 97] the slowest 24 Hz pass with a restore pending and the capture open took %d ms\n", worstPassMs);
+        check (witness.n.load() > 0, "leg B: non-vacuity -- a 24 Hz pass really ran while the capture was open");
+        check (worstPassMs < 1000, "leg B: the editor's tick did not wait for the durable capture (ADR-0036 §26)");
+        check (pollBodies.load() == 0, "leg B: ...and reached no poll body behind the held lock");
+        check (p.getPresets().currentName() != R.name, "leg B: ...and consumed nothing (§27)");
+
+        releaseSave.store (true);
+        saver.join();
+        p.seams.insideDurableCapture = nullptr;
+        check (saveWaited.load() > 0, "leg B: non-vacuity -- the capture really was open across the pass");
+
+        // ...and the same tick, with nothing held, is what adopts it: the door is reached.
+        witness.n.store (0);
+        for (int spins = 0; spins < 400 && (witness.n.load() == 0 || pollBodies.load() == 0); ++spins)
+        {
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            juce::Timer::callPendingTimersSynchronously();
+        }
+        p.seams.insidePollBody = nullptr;
+        check (pollBodies.load() > 0, "leg B: non-vacuity -- the editor's tick does reach the poll body");
+        check (p.getPresets().currentName() == R.name, "leg B: ...and adopts the restore once the lock is free");
+        checkNear ((double) rawOf (p, "width"), 0.37, 1.0e-6, "leg B: ...whole, with its own sound");
+
+        witness.stopTimer();
+        p.editorBeingDeleted (ed);
+        delete ed;
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 98 -- round 24, Devin R1092. A MULTIBAND TOPOLOGY CHANGE IS ONE
+//  USER ACTION, SO IT IS ONE UNDO STEP.
+//
+//  `addBandAt` and `removeBand` are not one write. Each is a plan computed from a
+//  snapshot and then applied as six to nine `setValueNotifyingHost` calls -- the solo
+//  word, the widths, the splits, and the count last (ADR-0040) -- and TWO of those
+//  stores bracket a change gesture of their own: `setSoloMask` at the front and
+//  `setBands` at the back. The front one CLOSES, in the middle of the transaction.
+//
+//  What a close does, at `PluginProcessor.cpp:R1092`: `--openGestures` reaches zero and
+//  `pendingGestureCommit` is raised. Both of the poll's eligibility tests are then
+//  satisfied while the rest of the burst has not run -- so a poll landing THERE commits
+//  an undo step built from a topology that is half old and half new, and the remaining
+//  stores go into a second step after it.
+//
+//  THE POLL CAN LAND THERE, and the door is the one JUCE dispatches LAST.
+//  `AudioProcessorParameter::endChangeGesture` notifies every
+//  `AudioProcessorParameter::Listener` first -- the processor among them, which is what
+//  drops `openGestures` -- and only then the `finalListener`, which is
+//  `AudioProcessor::ParameterChangeForwarder` and which fans out to every
+//  `AudioProcessorListener`, i.e. to the HOST
+//  (juce_AudioProcessorParameter.cpp:102-108, juce_AudioProcessor.cpp:1476-1487).
+//  A host that pumps its message loop from that callback -- the same seat State test 94
+//  legs F and G use, and the seat RISK-009 and ADR-0036 section 26 are written for --
+//  lets the editor's 24 Hz tick run, and all that tick does is poll
+//  (`PluginEditor.cpp`, `pollUndoCoalesceFromTimer`). The processor's bookkeeping has
+//  already run by then. Nothing in this leg is test-only: the press is the shipped
+//  `mouseDown`, the transaction is the shipped `addBandAt`, and the pump is a host
+//  behaviour JUCE's own documentation warns about.
+// ---------------------------------------------------------------------------
+namespace {
+struct PumpFromGestureEnd final : public juce::AudioProcessorListener
+{
+    AnamorphAudioProcessor* proc = nullptr;
+    bool armed = false;
+    int  pumps = 0;
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int) override
+    {
+        if (! armed || proc == nullptr) return;
+        ++pumps;
+        proc->pollUndoCoalesceFromTimer();   // the editor's tick, reached through the host's pump
+    }
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
+    void audioProcessorChanged (juce::AudioProcessor*,
+                                const juce::AudioProcessorListener::ChangeDetails&) override {}
+};
+} // namespace
+
+static void testATopologyChangeIsOneUndoStep()
+{
+    std::printf ("State test 98: a multiband topology change is one user action, so it is one undo step (R1092)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the topology-transaction probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        { auto* k = c->getChildComponent (i);
+          if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+          walk (k); }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "the imager is laid out");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* wLoP   = apvts.getParameter (pid::mbWidthLow);
+    auto* wMidP  = apvts.getParameter (pid::mbWidthMid);
+    check (bandsP && soloP && loP && midP && hiP && wLoP && wMidP, "the multiband parameters exist");
+    if (! (bandsP && soloP && loP && midP && hiP && wLoP && wMidP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    const float W = (float) im->getWidth(), H = (float) im->getHeight();
+    auto hover = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseMove (juce::MouseEvent (src, { x, y }, juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto pressAt = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseDown (juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto altPressAt = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseDown (juce::MouseEvent (src, { x, y },
+                                         juce::ModifierKeys::leftButtonModifier | juce::ModifierKeys::altModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto dragFrom = [&] (float dx, float dy, float tx, float ty)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseDown (juce::MouseEvent (src, { dx, dy }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { dx, dy }, t, 1, false));
+        im->mouseDrag (juce::MouseEvent (src, { tx, ty }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { dx, dy }, t, 1, true));
+    };
+    auto releaseAt = [&] (float x, float y, float dx, float dy)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseUp (juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                       1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { dx, dy }, t, 1, true));
+    };
+    auto near = [] (float a, float b) { return std::abs (a - b) < 1.0e-3f; };
+    const float laneY = 0.5f * H;
+    auto findSplitX = [&] (float y) -> float
+    {
+        for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+        { hover (x, y);
+          if (im->getTooltip() == juce::String ("Drag to change the split frequency")) return x; }
+        return -1.0f;
+    };
+
+    // A two-band layout with band 1 SOLOED. The solo word is what makes the transaction's first
+    // store a real move: `addBandAt` renumbers the mask for the new count, and an insertion to the
+    // LEFT of the existing split shifts band 1's bit from 0x2 to 0x4. With no band soloed the mask
+    // store writes the value already there and the intermediate state is invisible -- which is why
+    // this leg solos one, not to be exotic but to make the first store observable at all.
+    auto arm = [&]
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 2.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 6000.0f); setPlain (hiP, 12000.0f);
+        setPlain (soloP, 2.0f);                    // band 1
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+    };
+
+    // Three bands with band 2 soloed, for the removal leg: `removeBand` compacts the mask, so
+    // merging band 1 away moves band 2's bit from 0x4 down to 0x2 and the first store is real.
+    auto arm3 = [&]
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 3.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 6000.0f); setPlain (hiP, 12000.0f);
+        setPlain (wLoP, 1.3f); setPlain (wMidP, 0.7f);
+        setPlain (soloP, 4.0f);                    // band 2
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+    };
+
+    // The x at which the shipped affordance says a click adds a band, found the way State test 86
+    // finds it -- by asking the component, not by computing a layout.
+    auto findAddX = [&] (float y) -> float
+    {
+        for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+        { hover (x, y);
+          if (im->getTooltip() == juce::String ("Click to add a band split")) return x; }
+        return -1.0f;
+    };
+
+    PumpFromGestureEnd host;
+    host.proc = &proc;
+    proc.addListener (&host);
+
+    const float addY = 0.25f * H;
+
+    // ---- LEG A: the control -- no pump, one add, one step ----------------------------
+    {
+        arm();
+        const float ax = findAddX (addY);
+        check (ax >= 0.0f, "leg A: the add affordance is findable");
+        if (ax >= 0.0f)
+        {
+            const float b0 = plainOf (bandsP), s0 = plainOf (soloP);
+            const float l0 = plainOf (loP), m0 = plainOf (midP), h0 = plainOf (hiP);
+            host.armed = false;
+            pressAt (ax, addY);
+            im->cancelActiveDrag();
+            proc.pollUndoCoalesce();
+
+            check (! juce::exactlyEqual (plainOf (bandsP), b0), "leg A: the click added a band");
+            const float b1 = plainOf (bandsP), s1 = plainOf (soloP);
+            check (proc.canUndo(), "leg A: the add is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (bandsP), b0), "leg A: one Undo puts the count back");
+            check (juce::exactlyEqual (plainOf (soloP),  s0), "leg A: ...and the solo word with it");
+            check (juce::exactlyEqual (plainOf (loP), l0) && juce::exactlyEqual (plainOf (midP), m0)
+                   && juce::exactlyEqual (plainOf (hiP), h0), "leg A: ...and every split");
+            check (! proc.canUndo(), "leg A: ...in ONE step");
+            proc.redo();
+            check (juce::exactlyEqual (plainOf (bandsP), b1) && juce::exactlyEqual (plainOf (soloP), s1),
+                   "leg A: Redo restores the whole post-add topology");
+        }
+    }
+
+    // ---- LEG B: the host pumps from the inner gesture close ---------------------------
+    {
+        arm();
+        const float ax = findAddX (addY);
+        check (ax >= 0.0f, "leg B: the add affordance is findable");
+        if (ax >= 0.0f)
+        {
+            const float b0 = plainOf (bandsP), s0 = plainOf (soloP);
+            const float l0 = plainOf (loP), m0 = plainOf (midP), h0 = plainOf (hiP);
+            host.pumps = 0; host.armed = true;
+            pressAt (ax, addY);
+            im->cancelActiveDrag();
+            host.armed = false;
+            proc.pollUndoCoalesce();
+
+            check (host.pumps > 0, "leg B: non-vacuity -- the host really pumped from a gesture end");
+            check (! juce::exactlyEqual (plainOf (bandsP), b0), "leg B: the click added a band");
+            const float b1 = plainOf (bandsP), s1 = plainOf (soloP);
+
+            check (proc.canUndo(), "leg B: the add is undoable");
+            proc.undo();
+            std::printf ("  [leg B] after ONE Undo: bands %.0f (started %.0f), solo 0x%X (started 0x%X),"
+                         " more undo available: %s\n",
+                         (double) plainOf (bandsP), (double) b0,
+                         (unsigned) juce::roundToInt (plainOf (soloP)), (unsigned) juce::roundToInt (s0),
+                         proc.canUndo() ? "yes" : "no");
+            check (juce::exactlyEqual (plainOf (bandsP), b0), "leg B: one Undo puts the count back");
+            check (juce::exactlyEqual (plainOf (soloP),  s0),
+                   "leg B: ...and the solo word with it -- no half-old, half-new topology");
+            check (juce::exactlyEqual (plainOf (loP), l0) && juce::exactlyEqual (plainOf (midP), m0)
+                   && juce::exactlyEqual (plainOf (hiP), h0), "leg B: ...and every split");
+            check (! proc.canUndo(), "leg B: ...in ONE step, exactly as without the pump");
+            proc.redo();
+            check (juce::exactlyEqual (plainOf (bandsP), b1) && juce::exactlyEqual (plainOf (soloP), s1),
+                   "leg B: Redo restores the whole user-produced post-add topology");
+        }
+    }
+
+    // ---- LEG C: the sibling -- a REMOVAL under the same pump --------------------------
+    //  `removeBand` is the same nine-store transaction with the same `setSoloMask` at the front,
+    //  and it is reached by the shipped drag-out-to-delete gesture (#18): press a split handle,
+    //  drag far above the plot (mouseDrag's `out` test is y < -50), release.
+    {
+        arm3();
+        const float hx = findSplitX (laneY);
+        check (hx >= 0.0f, "leg C: a split handle is findable at three bands");
+        if (hx >= 0.0f)
+        {
+            const float b0 = plainOf (bandsP), s0 = plainOf (soloP);
+            const float l0 = plainOf (loP), m0 = plainOf (midP), h0 = plainOf (hiP);
+            const float w0 = plainOf (wLoP), w1 = plainOf (wMidP);
+            host.pumps = 0; host.armed = true;
+            dragFrom (hx, laneY, hx, -100.0f);      // arm the removal
+            releaseAt (hx, -100.0f, hx, laneY);     // ...and take it
+            host.armed = false;
+            proc.pollUndoCoalesce();
+
+            check (host.pumps > 0, "leg C: non-vacuity -- the host pumped from a gesture end");
+            check (! juce::exactlyEqual (plainOf (bandsP), b0), "leg C: the release removed a band");
+            check (! juce::exactlyEqual (plainOf (soloP),  s0), "leg C: ...and renumbered the solo word");
+            const float b1 = plainOf (bandsP), s1 = plainOf (soloP);
+            check (proc.canUndo(), "leg C: the removal is undoable");
+            proc.undo();
+            check (juce::exactlyEqual (plainOf (bandsP), b0) && juce::exactlyEqual (plainOf (soloP), s0),
+                   "leg C: one Undo puts the count AND the solo word back together");
+            check (juce::exactlyEqual (plainOf (loP), l0) && juce::exactlyEqual (plainOf (midP), m0)
+                   && juce::exactlyEqual (plainOf (hiP), h0), "leg C: ...and every split");
+            check (juce::exactlyEqual (plainOf (wLoP), w0) && juce::exactlyEqual (plainOf (wMidP), w1),
+                   "leg C: ...and every width the merge moved");
+            check (! proc.canUndo(), "leg C: ...in ONE step");
+            proc.redo();
+            check (juce::exactlyEqual (plainOf (bandsP), b1) && juce::exactlyEqual (plainOf (soloP), s1),
+                   "leg C: Redo restores the whole post-removal topology");
+        }
+    }
+
+    // ---- LEG D: host automation inside the transaction is in NO user step -------------
+    //  The transaction holds the poll open for longer than it used to, so the first question to
+    //  ask of it is whether that window has become a place for somebody else's writes to be
+    //  collected. It has not, and the reason is ADR-0008's, not this round's: an entry carries
+    //  only parameters the user's own batch DECLARED, and a host lane declares nothing. The probe
+    //  writes Drive -- a parameter no topology store touches -- from inside the burst.
+    {
+        arm();
+        const float ax = findAddX (addY);
+        check (ax >= 0.0f, "leg D: the add affordance is findable");
+        auto* driveP = apvts.getParameter (pid::drive);
+        check (driveP != nullptr, "leg D: Drive exists");
+        if (ax >= 0.0f && driveP != nullptr)
+        {
+            const float d0 = plainOf (driveP);
+            const float dHost = juce::exactlyEqual (d0, 7.5f) ? 3.5f : 7.5f;
+            WriteFromInsideAStoreQuietly poke;   // a host lane, answering the burst's own dispatch
+            poke.target = driveP;
+            poke.to     = dHost;
+            poke.armed  = true;
+            soloP->addListener (&poke);          // armed on the transaction's FIRST store
+            host.pumps = 0; host.armed = true;
+            pressAt (ax, addY);
+            im->cancelActiveDrag();
+            host.armed = false;
+            soloP->removeListener (&poke);
+            proc.pollUndoCoalesce();
+
+            check (poke.fired, "leg D: non-vacuity -- the host wrote inside the transaction");
+            check (near (plainOf (driveP), dHost), "leg D: ...and its value is what is live");
+            check (proc.canUndo(), "leg D: the add is still one undoable step");
+            proc.undo();
+            check (near (plainOf (driveP), dHost),
+                   "leg D: Undo of the topology action leaves the host's Drive exactly where it is");
+            check (! proc.canUndo(), "leg D: ...and there is no second step holding it");
+            proc.redo();
+            check (near (plainOf (driveP), dHost), "leg D: Redo does not reinstall it either");
+            setPlain (driveP, d0);
+            proc.pollUndoCoalesce();
+        }
+    }
+
+    // ---- LEG E: an action that performs no edit creates no history --------------------
+    //  Four bands is the cap, so `addBandAt` returns -1 having stored nothing. The transaction
+    //  still opens and closes -- the scope is the function's, not the store's -- and the point of
+    //  the leg is that opening one costs nothing: no gesture, no step, no pending commit left
+    //  standing for the next unrelated edit to inherit.
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 6000.0f); setPlain (hiP, 12000.0f);
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        check (! proc.canUndo(), "leg E: the no-op leg starts with no history");
+
+        const float b0 = plainOf (bandsP);
+        host.pumps = 0; host.armed = true;
+        for (float x = 4.0f; x < W - 4.0f; x += 7.0f) { hover (x, addY); pressAt (x, addY); im->cancelActiveDrag(); }
+        host.armed = false;
+        proc.pollUndoCoalesce();
+        check (juce::exactlyEqual (plainOf (bandsP), b0), "leg E: the cap refused every add");
+        check (! proc.canUndo(), "leg E: ...and a refused topology action records nothing");
+    }
+
+    // ---- LEG F: the wider class -- a crossover reset and its spread -------------------
+    //  `resetCrossover` stores the primary INSIDE a gesture, closes it, and only then calls
+    //  `spreadSplits` to push the neighbours out of the way. That close is the same commit point,
+    //  and a poll landing on it recorded the primary alone -- which is R515's defect (round 15)
+    //  arriving through a different door. Alt-click is the shipped path (`mouseDown`, ADR-0045).
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 4.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 2400.0f); setPlain (hiP, 2900.0f);  // crowded
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+
+        const float l0 = plainOf (loP), m0 = plainOf (midP), h0 = plainOf (hiP);
+        const float hx = findSplitX (laneY);
+        check (hx >= 0.0f, "leg F: a split handle is findable");
+        if (hx >= 0.0f)
+        {
+            host.pumps = 0; host.armed = true;
+            altPressAt (hx, laneY);
+            im->cancelActiveDrag();
+            host.armed = false;
+            proc.pollUndoCoalesce();
+
+            const int moved = (juce::exactlyEqual (plainOf (loP),  l0) ? 0 : 1)
+                            + (juce::exactlyEqual (plainOf (midP), m0) ? 0 : 1)
+                            + (juce::exactlyEqual (plainOf (hiP),  h0) ? 0 : 1);
+            std::printf ("  [leg F] the Alt-click reset moved %d of the three splits\n", moved);
+            check (moved >= 2, "leg F: non-vacuity -- the reset spread its neighbours too");
+            if (moved >= 2)
+            {
+                check (proc.canUndo(), "leg F: the reset is undoable");
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (loP), l0) && juce::exactlyEqual (plainOf (midP), m0)
+                       && juce::exactlyEqual (plainOf (hiP), h0),
+                       "leg F: one Undo puts the primary AND every neighbour it pushed back");
+                check (! proc.canUndo(), "leg F: ...in ONE step");
+            }
+        }
+    }
+
+    // ---- LEG G: Apply Gain, the same shape outside the imager --------------------------
+    //  Round 23 gave `applyAutoGain` two read-back stores, each bracketing a gesture of its own.
+    //  The FIRST one's close is a commit point, so a pumping host used to put Output Gain in one
+    //  undo step and Level Match in the next -- one button press, two steps. Found by this round's
+    //  own sweep rather than reported, in code round 23 wrote.
+    {
+        auto* ogP    = apvts.getParameter (pid::outputGain);
+        auto* matchP = apvts.getParameter (pid::autoGainMatch);
+        check (ogP != nullptr && matchP != nullptr, "leg G: Apply Gain's two parameters exist");
+        if (ogP != nullptr && matchP != nullptr)
+        {
+            while (proc.canUndo()) proc.undo();
+            setPlain (ogP, 6.0f);
+            matchP->setValueNotifyingHost (1.0f);
+            proc.pollUndoCoalesce();
+            while (proc.canUndo()) proc.undo();
+            proc.pollUndoCoalesce();
+            const float g0 = plainOf (ogP), m0 = matchP->getValue();
+
+            host.pumps = 0; host.armed = true;
+            proc.applyAutoGain();
+            host.armed = false;
+            proc.pollUndoCoalesce();
+
+            check (host.pumps > 0, "leg G: non-vacuity -- the host pumped from Apply's first close");
+            const bool movedG = ! juce::exactlyEqual (plainOf (ogP), g0);
+            const bool movedM = ! juce::exactlyEqual (matchP->getValue(), m0);
+            check (movedG && movedM, "leg G: non-vacuity -- Apply moved both of its parameters");
+            if (movedG && movedM)
+            {
+                check (proc.canUndo(), "leg G: Apply is undoable");
+                proc.undo();
+                check (juce::exactlyEqual (plainOf (ogP), g0) && juce::exactlyEqual (matchP->getValue(), m0),
+                       "leg G: one Undo puts BOTH of Apply's parameters back");
+                check (! proc.canUndo(), "leg G: ...in ONE step");
+            }
+        }
+    }
+    proc.removeListener (&host);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 99 -- round 25, Devin R1279-1283. A STATE-REPLACING COMMAND MUST NOT
+//  RUN INSIDE A USER TRANSACTION.
+//
+//  Round 24 stopped the undo POLL from committing half a topology. It did not stop a
+//  whole COMMAND from replacing the state underneath one. The window is the same
+//  window: a topology burst's stores dispatch synchronously to the host, a host that
+//  pumps its message loop from one of those callbacks dispatches whatever UI events
+//  are queued, and the editor's Undo button is one of them. `undo()` then runs on the
+//  message thread, RE-ENTRANTLY, with `userTransactionDepth > 0` and a half-applied
+//  topology in the parameters -- and it does not merely read: it installs an entry's
+//  `before` end, retakes `committed` from the LIVE (half-applied) sound, clears
+//  `openGestures` and `pendingGestureCommit`, and calls `resetBatchOwnership()`.
+//
+//  THE CORRUPTION IS THE OWNERSHIP WIPE, not the value restore. When the burst
+//  resumes, the stores it has ALREADY issued have had their declarations erased, and
+//  the ones still to come declare into a fresh batch. `setBands` then closes its
+//  gesture, and the step the next poll commits describes only the tail of the action.
+//  One Undo of THAT step restores a layout no completed action ever produced -- which
+//  is R1092's defect exactly, reached through the door round 24 did not close.
+// ---------------------------------------------------------------------------
+namespace {
+// The host seat, with the COMMAND left open. Every leg below arms it with a different user command
+// -- Undo, Redo, a preset step, an A/B switch, an A/B Copy -- because the question is never about
+// one command: it is about what a state replacement does to a transaction. `toFire` is a count
+// rather than a flag so one leg can dispatch TWO commands from a single pumped close, which is the
+// only way to see what a queue does with more than one.
+struct CommandFromGestureEnd final : public juce::AudioProcessorListener
+{
+    std::function<void()> command;
+    int  index  = -1;         // only this parameter's close is the host's cue
+    int  toFire = 0;
+    int  fired  = 0;
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
+    {
+        if (toFire <= 0 || i != index || ! command) return;
+        const int n = toFire; toFire = 0;            // cleared FIRST: the command may itself close
+        for (int k = 0; k < n; ++k) { ++fired; command(); }   // a gesture and re-enter this
+    }
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
+    void audioProcessorChanged (juce::AudioProcessor*,
+                                const juce::AudioProcessorListener::ChangeDetails&) override {}
+};
+} // namespace
+
+static void testAStateReplacingCommandWaitsForTheTransaction()
+{
+    std::printf ("State test 99: a state-replacing command does not run inside a user transaction (R1279-1283)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the re-entrant-command probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        { auto* k = c->getChildComponent (i);
+          if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+          walk (k); }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "the imager is laid out");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* driveP = apvts.getParameter (pid::drive);
+    check (bandsP && soloP && loP && midP && hiP && driveP, "the probe's parameters exist");
+    if (! (bandsP && soloP && loP && midP && hiP && driveP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto near     = [] (float a, float b) { return std::abs (a - b) < 1.0e-3f; };
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    const float W = (float) im->getWidth(), H = (float) im->getHeight();
+    auto hover = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseMove (juce::MouseEvent (src, { x, y }, juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto pressAt = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseDown (juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto findAddX = [&] (float y) -> float
+    {
+        for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+        { hover (x, y);
+          if (im->getTooltip() == juce::String ("Click to add a band split")) return x; }
+        return -1.0f;
+    };
+    // A real user edit, so the undo stack has something for the nested Undo to pop. A bare
+    // begin/write/end is the harness's own stand-in for a user edit (ADR-0008 round 23: no host
+    // wrapper opens a gesture, so this shape is the suite's, not a format's).
+    auto userEditDrive = [&] (float to)
+    {
+        driveP->beginChangeGesture();
+        setPlain (driveP, to);
+        driveP->endChangeGesture();
+        proc.pollUndoCoalesce();
+    };
+
+    const float addY = 0.25f * H;
+
+    CommandFromGestureEnd host;
+    host.index   = soloP->getParameterIndex();   // the transaction's FIRST store is the solo word
+    host.command = [&proc] { proc.undo(); };     // legs A-B, G: the user's Undo
+    proc.addListener (&host);
+
+    // Two bands with band 1 SOLOED, exactly as State test 98: the insertion is to the LEFT of the
+    // only split, so `addBandAt` renumbers band 1's bit from 0x2 to 0x4 and the burst's first store
+    // is a real move whose gesture really closes.
+    auto arm = [&] (float driveStart, float driveEdit)
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 2.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 6000.0f); setPlain (hiP, 12000.0f);
+        setPlain (soloP, 2.0f);                     // band 1
+        setPlain (driveP, driveStart);
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        userEditDrive (driveEdit);                  // ...and ONE undoable user edit on the stack
+        check (proc.canUndo(), "the probe starts with exactly one undoable edit");
+    };
+
+    // A WHOLE OTHER SESSION, for leg I: four bands, its own splits, a solo word only four bands
+    // can carry (0x8), and its own preset identity, so every field of it is distinguishable from
+    // anything the two-band add could produce.
+    juce::MemoryBlock restoreBlob;
+    {
+        const auto authored = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        auto& a  = *authored;
+        a.prepareToPlay (48000.0, 512);
+        auto& ap = a.getAPVTS();
+        auto set = [&ap] (const char* id, float v)
+                   { if (auto* p = ap.getParameter (id)) p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+        set (pid::advancedMode, 1.0f);
+        set (pid::mbEnable,     1.0f);
+        set (pid::mbFreqLow,  300.0f); set (pid::mbFreqMid, 1500.0f); set (pid::mbFreqHigh, 9000.0f);
+        set (pid::mbBands,      4.0f);
+        set (pid::mbSolo,       8.0f);                                      // band 3 only
+        a.getPresets().setMeta ("r25-restore", "r25-restore-id",
+                                anamorph::PresetManager::Selection());
+        restoreBlob = d2::saveOf (a);
+    }
+
+    // ---- LEG A: the control -- the same Undo, with no transaction running --------------
+    //  The command itself is not the defect and must keep working exactly as it does today.
+    {
+        arm (3.0f, 9.0f);
+        check (near (plainOf (driveP), 9.0f), "leg A: the user edit stands");
+        host.toFire = 0;
+        proc.undo();
+        check (near (plainOf (driveP), 3.0f), "leg A: an ordinary Undo restores the value before it");
+        check (! proc.canUndo(), "leg A: ...and that was the only step");
+        proc.redo();
+        check (near (plainOf (driveP), 9.0f), "leg A: Redo puts it back");
+    }
+
+    // ---- LEG B: the Undo arrives from inside the transaction ---------------------------
+    {
+        arm (3.0f, 9.0f);
+        const float b0 = plainOf (bandsP), s0 = plainOf (soloP);
+        const float l0 = plainOf (loP), m0 = plainOf (midP), h0 = plainOf (hiP);
+
+        const float ax = findAddX (addY);
+        check (ax >= 0.0f, "leg B: the add affordance is findable");
+        if (ax >= 0.0f)
+        {
+            host.fired = 0; host.toFire = 1;
+            pressAt (ax, addY);                     // the shipped Add-band click
+            im->cancelActiveDrag();
+            host.toFire = 0;
+            proc.pollUndoCoalesce();
+
+            check (host.fired > 0, "leg B: non-vacuity -- the Undo really fired from inside the burst");
+            std::printf ("  [leg B] after the interrupted Add: bands %.0f (started %.0f),"
+                         " solo 0x%X (started 0x%X), Drive %.2f, undo depth %s\n",
+                         (double) plainOf (bandsP), (double) b0,
+                         (unsigned) juce::roundToInt (plainOf (soloP)),
+                         (unsigned) juce::roundToInt (s0),
+                         (double) plainOf (driveP), proc.canUndo() ? "non-empty" : "empty");
+
+            // THE INVARIANT. Whatever order the two user actions are resolved in, every state the
+            // user can reach by pressing Undo must be one a completed action produced. The add is
+            // all-or-nothing: the count and the solo word move together or neither moves.
+            auto topologyIsCoherent = [&] (const char* whenSaid)
+            {
+                const int    bands = juce::roundToInt (plainOf (bandsP));
+                const int    mask  = juce::roundToInt (plainOf (soloP));
+                const bool   added = bands != juce::roundToInt (b0);
+                const bool   maskMoved = mask != juce::roundToInt (s0);
+                const bool   ok = (added == maskMoved);
+                if (! ok)
+                    std::printf ("  [leg B] %s: bands %d and solo 0x%X disagree"
+                                 " (started bands %d, solo 0x%X)\n",
+                                 whenSaid, bands, (unsigned) mask,
+                                 juce::roundToInt (b0), (unsigned) juce::roundToInt (s0));
+                return ok;
+            };
+
+            check (topologyIsCoherent ("immediately after the click"),
+                   "leg B: the state the click leaves is a whole topology, not half of one");
+
+            // ...and every state on the way back out of the history is whole too.
+            int steps = 0;
+            bool everyStepCoherent = true;
+            while (proc.canUndo() && steps < 8)
+            {
+                proc.undo(); ++steps;
+                if (! topologyIsCoherent ("after an Undo")) everyStepCoherent = false;
+            }
+            std::printf ("  [leg B] %d Undo step(s) unwound; Drive ended at %.2f\n",
+                         steps, (double) plainOf (driveP));
+            check (everyStepCoherent,
+                   "leg B: every state Undo can reach is a whole topology, never a mixed one");
+            check (juce::exactlyEqual (plainOf (loP), l0) && juce::exactlyEqual (plainOf (midP), m0)
+                   && juce::exactlyEqual (plainOf (hiP), h0),
+                   "leg B: unwinding the history returns every split to where it started");
+            check (near (plainOf (driveP), 3.0f),
+                   "leg B: ...and Drive to the value before the user's own edit -- the Undo the"
+                   " host dispatched was honoured, not dropped");
+        }
+    }
+
+    // ---- THE ORDERING, stated as its own check ------------------------------------------
+    //  Leg B's numbers already contain the answer, but the answer is the whole design decision
+    //  and an accident would read the same, so it is asserted rather than inferred. Two orders
+    //  were possible at the transaction's end:
+    //
+    //    (a) commit the transaction's step, THEN run the command  -- Drive stays at the user's
+    //        own 9.00 and the Undo pops the Add;
+    //    (b) run the command, THEN commit                         -- the Undo pops the DRIVE step
+    //        (Drive 3.00) and the Add's step is left standing on top of it (bands 3).
+    //
+    //  (a) is what this implements, and (b) is what the check below refuses: a step whose `before`
+    //  endpoints were recorded before a state replacement must never be pushed after one.
+    {
+        arm (3.0f, 9.0f);
+        const float ax0 = findAddX (addY);
+        check (ax0 >= 0.0f, "ordering: the add affordance is findable");
+        if (ax0 >= 0.0f)
+        {
+            host.command = [&proc] { proc.undo(); };
+            host.fired = 0; host.toFire = 1;
+            pressAt (ax0, addY);
+            im->cancelActiveDrag();
+            host.toFire = 0;
+            proc.pollUndoCoalesce();
+            check (host.fired > 0, "ordering: non-vacuity -- the command fired inside the burst");
+            check (near (plainOf (driveP), 9.0f),
+                   "ordering: the transaction's own step is committed BEFORE the deferred command,"
+                   " so the Undo pops the Add and the user's own earlier edit is untouched");
+            check (juce::roundToInt (plainOf (bandsP)) == 2,
+                   "ordering: ...and the Add it popped is gone, not left standing on top");
+            check (proc.canUndo(),
+                   "ordering: ...with the earlier edit still there to undo next");
+        }
+    }
+
+    // ---- LEG C: the transaction + a re-entrant REDO ---------------------------------------
+    //  A Redo needs a redo stack, so the leg undoes its own edit first. The outcome is the one
+    //  the model already gives without any re-entrancy at all: the Add is a NEW user action, and
+    //  `pollUndoCoalesceAdopted` clears the redo stack when it pushes one
+    //  (`abUndo[abActive].redo.clear()`, "a new user action invalidates the redo stack"). So the
+    //  deferred Redo runs and finds nothing -- which is EXECUTION, not a drop: press Undo, make a
+    //  new edit, press Redo, and nothing happens today either. What must not happen is the Redo
+    //  reaching into the middle of the Add.
+    {
+        arm (3.0f, 9.0f);
+        proc.undo();
+        check (near (plainOf (driveP), 3.0f), "leg C: the leg starts with a redoable step");
+        const float bC = plainOf (bandsP), sC = plainOf (soloP);
+        const float ax1 = findAddX (addY);
+        check (ax1 >= 0.0f, "leg C: the add affordance is findable");
+        if (ax1 >= 0.0f)
+        {
+            host.command = [&proc] { proc.redo(); };
+            host.fired = 0; host.toFire = 1;
+            pressAt (ax1, addY);
+            im->cancelActiveDrag();
+            host.toFire = 0;
+            proc.pollUndoCoalesce();
+            check (host.fired > 0, "leg C: non-vacuity -- the Redo really fired inside the burst");
+            const bool added = juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bC);
+            const bool maskMoved = juce::roundToInt (plainOf (soloP)) != juce::roundToInt (sC);
+            check (added == maskMoved, "leg C: the Add is whole -- the Redo did not land inside it");
+            std::printf ("  [leg C] after the interrupted Add with a Redo pending:"
+                         " bands %.0f, solo 0x%X, Drive %.2f\n",
+                         (double) plainOf (bandsP),
+                         (unsigned) juce::roundToInt (plainOf (soloP)), (double) plainOf (driveP));
+            proc.undo();
+            const bool added2 = juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bC);
+            const bool maskMoved2 = juce::roundToInt (plainOf (soloP)) != juce::roundToInt (sC);
+            check (added2 == maskMoved2, "leg C: ...and the state one Undo reaches is whole too");
+        }
+    }
+
+    // ---- LEG D: the transaction + a re-entrant PRESET STEP ---------------------------------
+    //  A preset load replaces the whole sound. It reaches the message thread the same way: the
+    //  editor's prev/next buttons are ordinary `onClick`s.
+    if (proc.getPresets().entries().size() >= 2)
+    {
+        arm (3.0f, 9.0f);
+        const juce::String name0 = proc.getPresets().currentName();
+        const float bD = plainOf (bandsP), sD = plainOf (soloP);
+        const float ax2 = findAddX (addY);
+        check (ax2 >= 0.0f, "leg D: the add affordance is findable");
+        if (ax2 >= 0.0f)
+        {
+            host.command = [&proc] { proc.getPresets().step (+1); };
+            host.fired = 0; host.toFire = 1;
+            pressAt (ax2, addY);
+            im->cancelActiveDrag();
+            host.toFire = 0;
+            proc.pollUndoCoalesce();
+            check (host.fired > 0, "leg D: non-vacuity -- the preset step fired inside the burst");
+            std::printf ("  [leg D] preset \"%s\" -> \"%s\"; bands %.0f, solo 0x%X\n",
+                         name0.toRawUTF8(), proc.getPresets().currentName().toRawUTF8(),
+                         (double) plainOf (bandsP),
+                         (unsigned) juce::roundToInt (plainOf (soloP)));
+            check (proc.getPresets().currentName() != name0,
+                   "leg D: the preset command was HONOURED, not dropped");
+            // ...AND THE ADD IS STILL A STEP OF ITS OWN UNDERNEATH IT. This is the preset half of
+            // the ordering, and it is the same mechanism leg E measures for A/B: the load's
+            // `onAboutToLoad` hook calls `pollUndoCoalesceAdopted()` to flush a settled edit
+            // before the jump, and while a transaction is running that flush SKIPS (round 24) --
+            // so a load allowed to run inside one does not reorder the Add's step, it deletes it.
+            // The history after this leg must read [Drive edit][Add][preset switch].
+            check (proc.canUndo(), "leg D: the preset switch is undoable");
+            if (proc.canUndo())
+            {
+                proc.undo();                       // ...back out of the preset
+                const bool added1 = juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bD);
+                const bool maskMoved1 = juce::roundToInt (plainOf (soloP)) != juce::roundToInt (sD);
+                check (added1 == maskMoved1,
+                       "leg D: undoing back out of the preset reaches a whole topology, not a mixed one");
+                check (added1, "leg D: ...which is the one the completed Add produced");
+                check (proc.canUndo(), "leg D: ...and the Add is a step of its own beneath it");
+                if (proc.canUndo())
+                {
+                    proc.undo();                   // ...and back out of the Add
+                    check (juce::roundToInt (plainOf (bandsP)) == juce::roundToInt (bD)
+                           && juce::roundToInt (plainOf (soloP)) == juce::roundToInt (sD),
+                           "leg D: ...whose Undo returns the WHOLE topology it changed");
+                }
+            }
+        }
+    }
+    else
+    {
+        check (true, "leg D: skipped -- fewer than two presets are available in this environment");
+    }
+
+    // ---- LEG E: the transaction + a re-entrant A/B SWITCH and COPY --------------------------
+    {
+        for (int variant = 0; variant < 2; ++variant)
+        {
+            arm (3.0f, 9.0f);
+            const float bE = plainOf (bandsP), sE = plainOf (soloP);
+            const int   slot0 = proc.abActiveSlot();
+            const float ax3 = findAddX (addY);
+            check (ax3 >= 0.0f, "leg E: the add affordance is findable");
+            if (ax3 < 0.0f) continue;
+            host.command = (variant == 0) ? std::function<void()> ([&proc] { proc.abToggle(); })
+                                          : std::function<void()> ([&proc] { proc.abCopyToOther(); });
+            host.fired = 0; host.toFire = 1;
+            pressAt (ax3, addY);
+            im->cancelActiveDrag();
+            host.toFire = 0;
+            proc.pollUndoCoalesce();
+            check (host.fired > 0, "leg E: non-vacuity -- the A/B command fired inside the burst");
+            const bool added = juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bE);
+            const bool maskMoved = juce::roundToInt (plainOf (soloP)) != juce::roundToInt (sE);
+            check (added == maskMoved,
+                   variant == 0 ? "leg E: an A/B switch leaves a whole topology, never half of one"
+                                : "leg E: an A/B Copy leaves a whole topology, never half of one");
+            if (variant == 0)
+            {
+                check (proc.abActiveSlot() != slot0, "leg E: ...and the switch was HONOURED, not dropped");
+                // AND THE TRANSACTION'S OWN STEP SURVIVED IT, which is the half of the ordering
+                // that only an A/B switch can test. `abSwitchToAdopted` calls `syncCommitted()`
+                // ("the switch itself isn't undoable"), and `syncCommitted` clears
+                // `pendingGestureCommit` -- so a switch allowed to run BEFORE the transaction's
+                // commit does not merely reorder the two, it DELETES the step: the user's Add
+                // stops being undoable at all. Undo and Redo hide this, because their own
+                // `pollUndoCoalesce()` commits the step on the way in; the A/B paths have no such
+                // flush, which is exactly why the order is stated in `endUserTransaction` rather
+                // than left to each command.
+                proc.abToggle();                       // back to the slot the Add happened on
+                check (proc.abActiveSlot() == slot0, "leg E: ...and back again");
+                check (proc.canUndo(), "leg E: the Add is still undoable after the switch and back");
+                if (proc.canUndo())
+                {
+                    proc.undo();
+                    check (juce::roundToInt (plainOf (bandsP)) == juce::roundToInt (bE)
+                           && juce::roundToInt (plainOf (soloP)) == juce::roundToInt (sE),
+                           "leg E: ...and undoing it returns the WHOLE topology the Add changed");
+                }
+            }
+            else
+                check (proc.abActiveSlot() == slot0, "leg E: ...and a Copy does not move the active slot");
+        }
+        // Put the A/B state back where the rest of the test expects it.
+        while (proc.abActiveSlot() != 0) proc.abToggle();
+    }
+
+    // ---- LEG F: NESTED transactions -- only the outermost boundary releases ------------------
+    //  The imager's add raises the depth to 2 inside the processor's own scope. A command
+    //  dispatched from the inner burst must wait for the OUTER scope, not for the add's.
+    {
+        arm (3.0f, 9.0f);
+        const float bF = plainOf (bandsP), sF = plainOf (soloP);
+        const float ax4 = findAddX (addY);
+        check (ax4 >= 0.0f, "leg F: the add affordance is findable");
+        if (ax4 >= 0.0f)
+        {
+            bool sawInsideOuter = false;
+            {
+                const AnamorphAudioProcessor::ScopedUserTransaction outer (proc);
+                host.command = [&proc] { proc.undo(); };
+                host.fired = 0; host.toFire = 1;
+                pressAt (ax4, addY);          // depth 2 inside `addBandAt`, 1 when it returns
+                im->cancelActiveDrag();
+                host.toFire = 0;
+                // The inner transaction has ended. If the release were keyed on ANY 
+                // transaction ending rather than the outermost, the Undo would already have run.
+                sawInsideOuter = near (plainOf (driveP), 9.0f)
+                                 && juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bF);
+            }
+            proc.pollUndoCoalesce();
+            check (host.fired > 0, "leg F: non-vacuity -- the command fired inside the inner burst");
+            check (sawInsideOuter,
+                   "leg F: the inner transaction's end released NOTHING -- the add still stands and"
+                   " the command has not run");
+            const bool added = juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bF);
+            const bool maskMoved = juce::roundToInt (plainOf (soloP)) != juce::roundToInt (sF);
+            check (added == maskMoved, "leg F: ...and once the OUTER scope closes the state is whole");
+            check (near (plainOf (driveP), 9.0f),
+                   "leg F: ...with the deferred Undo having popped the Add, not the earlier edit");
+        }
+    }
+
+    // ---- LEG G: TWO commands from one pumped close -----------------------------------------
+    //  Both must run, in the order the user gave them. Two Undos: the first pops the Add, the
+    //  second pops the earlier Drive edit.
+    {
+        arm (3.0f, 9.0f);
+        const float bG = plainOf (bandsP), sG = plainOf (soloP);
+        const float ax5 = findAddX (addY);
+        check (ax5 >= 0.0f, "leg G: the add affordance is findable");
+        if (ax5 >= 0.0f)
+        {
+            host.command = [&proc] { proc.undo(); };
+            host.fired = 0; host.toFire = 2;      // the user clicked Undo twice inside the pump
+            pressAt (ax5, addY);
+            im->cancelActiveDrag();
+            host.toFire = 0;
+            proc.pollUndoCoalesce();
+            check (host.fired == 2, "leg G: non-vacuity -- BOTH Undos fired inside the burst");
+            std::printf ("  [leg G] after two deferred Undos: bands %.0f, solo 0x%X, Drive %.2f,"
+                         " more undo: %s\n",
+                         (double) plainOf (bandsP),
+                         (unsigned) juce::roundToInt (plainOf (soloP)),
+                         (double) plainOf (driveP), proc.canUndo() ? "yes" : "no");
+            const bool added = juce::roundToInt (plainOf (bandsP)) != juce::roundToInt (bG);
+            const bool maskMoved = juce::roundToInt (plainOf (soloP)) != juce::roundToInt (sG);
+            check (added == maskMoved, "leg G: the topology is whole");
+            check (juce::roundToInt (plainOf (bandsP)) == juce::roundToInt (bG),
+                   "leg G: the first Undo popped the Add");
+            check (near (plainOf (driveP), 3.0f),
+                   "leg G: ...and the SECOND ran too, popping the earlier edit -- neither was"
+                   " coalesced away");
+        }
+    }
+
+    // ---- LEG H: with NOTHING deferred, round 24's timing is unchanged ------------------------
+    //  The flush is gated on the queue being non-empty precisely so an ordinary Add still leaves
+    //  its commit to the poll that follows the press. If it committed eagerly at the end of
+    //  `addBandAt`, click-to-add-and-then-drag would stop being one undo step.
+    {
+        arm (3.0f, 9.0f);
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        check (! proc.canUndo(), "leg H: the leg starts with an empty history");
+        const float ax6 = findAddX (addY);
+        check (ax6 >= 0.0f, "leg H: the add affordance is findable");
+        if (ax6 >= 0.0f)
+        {
+            host.fired = 0; host.toFire = 0;       // nothing deferred
+            pressAt (ax6, addY);
+            check (! proc.canUndo(),
+                   "leg H: with nothing deferred the transaction's end commits NOTHING by itself");
+            im->cancelActiveDrag();
+            proc.pollUndoCoalesce();
+            check (proc.canUndo(), "leg H: ...the poll after the press is still what records it");
+            proc.undo();
+            check (! proc.canUndo(), "leg H: ...as exactly one step");
+        }
+    }
+
+
+    // ---- LEG I: the one re-entrant state replacement that is NOT deferred --------------------
+    //  The round-25 sweep found a ninth entry in the command matrix that the eight legs above do
+    //  not cover: `adoptPendingHostState`. It is reachable inside a transaction exactly as the
+    //  user commands are -- the host pumps from inside a burst's store, a 20 Hz tick runs, and
+    //  `pollUndoCoalesceFromTimer` DRAINS THE CELL BEFORE it reaches round 24's guard -- but it is
+    //  deliberately NOT queued behind `deferWhileUserTransactionActive`, and this leg is the
+    //  evidence for that decision rather than a gap in it.
+    //
+    //  IT IS REFUSED RATHER THAN QUEUED, and this leg is the measurement that settled which.
+    //  Written first as an assertion that the truncation would be coherent, it FAILED, and the
+    //  failure is the finding: `bands 3, solo 0x4` after the click and `bands 2 with solo 0x4`
+    //  after one Undo of the recorded step -- R1092's mixed topology, reached through the
+    //  adoption. The reason the burst did not abort is ADR-0036 section 12: `reinstallRestoredSound`
+    //  deliberately SKIPS the sound half when `soundSetGen` has not moved since the decode (the
+    //  user edited the restored session rather than replacing it), so the adoption changed no
+    //  parameter the burst's guards test, ran its TAIL anyway, and `syncCommitted()` wiped the
+    //  transaction's `pendingGestureCommit` and batch ownership from under it.
+    //
+    //  A RESTORE CANNOT BE LOST BY REFUSING, which is why it needs no queue: the cell keeps it
+    //  whole, nothing is consumed, and the next door adopts it -- this same timer 50 ms later, or
+    //  the user action that follows. A deferred user COMMAND has to be queued because dropping it
+    //  loses something the user asked for; a refused drain drops nothing. The refusal is scoped to
+    //  the non-blocking (timer) arm, the class already contracted to come back later.
+    {
+        arm (3.0f, 9.0f);
+        const juce::String nameBefore = proc.getPresets().currentName();
+
+        int          bandsBeforeAdopt = -1, bandsAfterAdopt = -1;
+        juce::String nameBeforeAdopt, nameAfterAdopt;
+
+        // THE HANDOVER HAPPENS FIRST, AND OFF THE MESSAGE THREAD -- but NOT from inside the
+        // burst. A host-thread `setStateInformation` installs the restored sound on that
+        // thread and leaves only the decoded TAIL in the cell, so joining it from inside a
+        // gesture-end callback deadlocks the harness rather than the product: JUCE holds the
+        // parameter's `listenerLock` across the listener call
+        // (juce_AudioProcessorParameter.cpp:100-108), and the restoring thread's
+        // `apvts.replaceState` needs that same lock to write mbSolo. Measured under gdb:
+        // message thread in `std::thread::join()` at `setSoloMask`'s close, host thread in
+        // `sendValueChangedMessageToListeners` waiting on mbSolo. No host produces that shape
+        // -- one that pumps from a gesture end does not also block the pump on a thread of its
+        // own that is writing the same parameter -- so the leg reproduces the PRODUCTION shape
+        // instead: the restore arrived earlier, on its own thread, and is still sitting in the
+        // cell when the message thread reaches a door RE-ENTRANTLY.
+        d2::offMessageThread ([&] { d2::restoreFrom (proc, restoreBlob); });
+
+        // The install above put the restored sound live. Put the two-band layout the click
+        // needs back WITHOUT polling -- every poll drains the cell -- so the press below runs
+        // against the same topology every other leg uses while the restore waits, unadopted.
+        // ADR-0036 section 27's `reinstallRestoredSound` exists for exactly this interleaving:
+        // the adoption re-installs the decode's own sound rather than stamping its metadata
+        // over whatever the message thread did in between.
+        setPlain (bandsP, 2.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 6000.0f); setPlain (hiP, 12000.0f);
+        setPlain (soloP, 2.0f);
+
+        const float ax7 = findAddX (addY);
+        check (ax7 >= 0.0f, "leg I: the add affordance is findable");
+        if (ax7 >= 0.0f)
+        {
+            host.fired = 0; host.toFire = 1;
+            host.command = [&]
+            {
+                bandsBeforeAdopt = juce::roundToInt (plainOf (bandsP));
+                nameBeforeAdopt  = proc.getPresets().currentName();
+                // The pump the host is running dispatches the editor's 20 Hz tick, whose FIRST
+                // line is the drain. Re-entrant, inside the burst, ahead of round 24's guard.
+                proc.pollUndoCoalesceFromTimer();
+                bandsAfterAdopt  = juce::roundToInt (plainOf (bandsP));
+                nameAfterAdopt   = proc.getPresets().currentName();
+            };
+            pressAt (ax7, addY);                    // the shipped Add-band click
+            im->cancelActiveDrag();
+            host.toFire  = 0;
+            host.command = [&proc] { proc.undo(); };   // back to the legs' default command
+            proc.pollUndoCoalesce();
+
+            check (host.fired > 0, "leg I: non-vacuity -- the pumped tick really ran from inside the burst");
+            std::printf ("  [leg I] inside the burst: bands %d -> %d, preset '%s' ->"
+                         " '%s'; after the press: bands %.0f, solo 0x%X, splits %.0f/%.0f/%.0f,"
+                         " preset '%s'\n",
+                         bandsBeforeAdopt, bandsAfterAdopt,
+                         nameBeforeAdopt.toRawUTF8(), nameAfterAdopt.toRawUTF8(),
+                         (double) plainOf (bandsP),
+                         (unsigned) juce::roundToInt (plainOf (soloP)),
+                         (double) plainOf (loP), (double) plainOf (midP), (double) plainOf (hiP),
+                         proc.getPresets().currentName().toRawUTF8());
+
+            // THE INVARIANT, in three parts.
+            //
+            // 1. NOTHING WAS ADOPTED INSIDE THE TRANSACTION. Neither half: not the sound the
+            //    section-12 guard would have skipped anyway, and -- the part that mattered -- not
+            //    the TAIL, whose `syncCommitted()` is what wiped the burst's bookkeeping.
+            check (bandsBeforeAdopt == 2 && bandsAfterAdopt == 2,
+                   "leg I: the re-entrant tick changed no parameter under the open transaction");
+            check (nameBeforeAdopt == nameBefore && nameAfterAdopt == nameBefore,
+                   "leg I: ...and did not run the restore's TAIL either -- nothing was consumed");
+
+            // 2. THE RESTORE WAS NOT DROPPED. Refusing costs it one door, not its existence: the
+            //    poll after the press is that door, and the session it names is live.
+            check (proc.getPresets().currentName() == juce::String ("r25-restore"),
+                   "leg I: the refused restore was adopted at the very next door, whole");
+
+            // 3. THE ADD IS ONE WHOLE ACTION. Three bands and the remapped 0x4 go together; the
+            //    pre-guard measurement recorded a step that named only the count.
+            check (juce::roundToInt (plainOf (bandsP)) == 3
+                       && juce::roundToInt (plainOf (soloP)) == 4,
+                   "leg I: the burst completed as one coherent topology under the pumped tick");
+
+            // ...and no state on the way out of the history is a mixed topology. This is the
+            // oracle that FAILED before the guard: it reported `undo step 1 left bands 2 with
+            // solo 0x4`, a word naming band 2 in a two-band layout.
+            int steps = 0;
+            bool everyStepWhole = true;
+            while (proc.canUndo() && steps < 8)
+            {
+                proc.undo(); ++steps;
+                const int bands = juce::roundToInt (plainOf (bandsP));
+                const int mask  = juce::roundToInt (plainOf (soloP));
+                if (mask != 0 && mask >= (1 << bands))     // a bit no band of this count can own
+                {
+                    everyStepWhole = false;
+                    std::printf ("  [leg I] undo step %d left bands %d with solo 0x%X\n",
+                                 steps, bands, (unsigned) mask);
+                }
+            }
+            std::printf ("  [leg I] %d undo step(s) unwound after the truncated transaction\n", steps);
+            check (everyStepWhole,
+                   "leg I: every state on the way out of the history is a whole topology");
+        }
+    }
+
+    // ---- LEG J: a command deferred by a transaction a COMMAND itself started ------------------
+    //  The flush runs each command with the depth back at zero, so a command is free to open a
+    //  transaction of its own -- its stores dispatch to the host, the host pumps, and the user's
+    //  next click is an ordinary multi-store action. A command deferred INTO that inner
+    //  transaction cannot be run by it: the inner 1 -> 0 close finds `runningDeferredCommands`
+    //  raised and returns. If the outer flush walked its queue once and returned, that command
+    //  would sit in the list until some LATER user transaction happened to close -- which, for a
+    //  user who performs no further multi-store action, is never. "Nothing is dropped" has to
+    //  mean bounded, so the flush drains instead of flushing once. This leg is that loop's only
+    //  coverage, and it is deliberately built out of the same pieces the shipped path uses.
+    {
+        arm (3.0f, 9.0f);                      // history: [ the Drive edit ]
+        const float ax8 = findAddX (addY);
+        check (ax8 >= 0.0f, "leg J: the add affordance is findable");
+        if (ax8 >= 0.0f)
+        {
+            bool queuedOuter = false, queuedInner = false;
+            host.fired = 0; host.toFire = 1;
+            host.command = [&]
+            {
+                // Queued by the BURST, so the outer flush is what walks it.
+                queuedOuter = ! proc.admitStateCommand ([&]
+                {
+                    // ...and this runs at depth 0, so the scope below is an ordinary transaction.
+                    AnamorphAudioProcessor::ScopedUserTransaction inner (proc);
+                    queuedInner = ! proc.admitStateCommand ([&proc] { proc.undo(); }).admitted();
+                }).admitted();
+            };
+            pressAt (ax8, addY);               // the shipped Add-band click
+            im->cancelActiveDrag();
+            host.toFire  = 0;
+            host.command = [&proc] { proc.undo(); };   // back to the legs' default command
+            proc.pollUndoCoalesce();
+
+            check (host.fired > 0 && queuedOuter,
+                   "leg J: non-vacuity -- the burst queued the probe's command");
+            check (queuedInner,
+                   "leg J: ...and the transaction that command started queued one of its own");
+            std::printf ("  [leg J] after the nested deferral: bands %.0f, solo 0x%X, Drive %.2f\n",
+                         (double) plainOf (bandsP),
+                         (unsigned) juce::roundToInt (plainOf (soloP)),
+                         (double) plainOf (driveP));
+
+            // THE INVARIANT. The stranded Undo ran, at this boundary, without a further user
+            // action: it popped the Add -- the newest step, committed first by the same flush --
+            // so the topology is back to two bands with its own solo word, and the Drive edit
+            // underneath it is untouched and still undoable.
+            check (juce::roundToInt (plainOf (bandsP)) == 2
+                       && juce::roundToInt (plainOf (soloP)) == 2,
+                   "leg J: the command stranded in the inner transaction still ran, whole");
+            check (near (plainOf (driveP), 9.0f),
+                   "leg J: ...exactly one step, so the edit under the Add stands");
+            check (proc.canUndo(), "leg J: ...and that edit is still undoable");
+        }
+    }
+    proc.removeListener (&host);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 100 -- round 26, Devin R651. THE DEFERRED FLUSH IS A DOOR, AND A
+//  DOOR MAY NOT WAIT FOR A WHOLE-SOUND REPLACEMENT.
+//
+//  Round 25 put `pollUndoCoalesce()` -- the BLOCKING door -- at the transaction's outermost
+//  `1 -> 0` boundary, on the argument that "every transaction this runs under is a user action on
+//  the message thread". That argument is about who STARTED the action. The cycle is about what is
+//  ON THE STACK:
+//
+//    message thread   holds listenerLock(P)   -> host pumps -> Add-band click -> transaction
+//                     -> transaction closes   -> flush -> pollUndoCoalesce -> currentStateSet
+//                     -> copyStateWithRawValues -> WAITS for soundReplacement
+//    another thread   HOLDS soundReplacement  -> apvts.replaceState -> setValueNotifyingHost
+//                     -> WAITS for listenerLock(P)
+//
+//  JUCE holds the parameter's `listenerLock` across the WHOLE dispatch -- the plug-in's listeners
+//  and the `finalListener` alike (juce_AudioProcessorParameter.cpp:101-108 for a gesture end) --
+//  so a host that pumps from that callback runs everything the pump delivers with the lock held.
+//  `copyStateWithRawValues` has carried the matching rule since round 18: *nothing that takes this
+//  lock may run from a parameter listener callback*. The flush broke it.
+//
+//  WHAT THIS TEST CLOSES, AND WHAT IT DELIBERATELY DOES NOT. It closes the half that is this
+//  plug-in's to fix: the message thread must never WAIT for `soundReplacement` from this door. The
+//  holder it parks is a non-announcing one -- an off-thread `getStateInformation`, which reaches
+//  `copyStateWithRawValues` (ADR-0036 section 25) and needs no `listenerLock` of its own -- so the
+//  cycle is never actually CLOSED here and no mutation of the fix can hang the suite. The other
+//  half is not in doubt and is not re-measured: `applySoundTree` holds the lock across
+//  `apvts.replaceState`, and round 25 captured that thread under gdb doing exactly this, blocked
+//  in `sendValueChangedMessageToListeners` on a parameter's `listenerLock`.
+// ---------------------------------------------------------------------------
+namespace {
+// The host seat for round 26: a pump that delivers a WHOLE user interaction, not a command. This
+// is the nesting R651 needs and round 25's probe did not have -- there the transaction was the
+// outer thing and the pumped command was inner; here the listener dispatch is the outer thing and
+// the entire transaction runs inside it.
+struct PumpedUserInteraction final : public juce::AudioProcessorListener
+{
+    std::function<void()> pumped;
+    int    index    = -1;
+    int    toFire   = 0;
+    int    fired    = 0;
+    double elapsedMs = 0.0;
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
+    {
+        if (toFire <= 0 || i != index || ! pumped) return;
+        toFire = 0; ++fired;                       // cleared FIRST: the pump re-enters this
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        pumped();
+        elapsedMs = juce::Time::getMillisecondCounterHiRes() - t0;
+    }
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
+    void audioProcessorChanged (juce::AudioProcessor*,
+                                const juce::AudioProcessorListener::ChangeDetails&) override {}
+};
+} // namespace
+
+static void testTheDeferredFlushNeverWaitsForAReplacement()
+{
+    std::printf ("State test 100: the deferred-command flush never waits for a whole-sound replacement (R651)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+    if (auto* a = apvts.getParameter (pid::advancedMode)) a->setValueNotifyingHost (a->convertTo0to1 (1.0f));
+    if (auto* m = apvts.getParameter (pid::mbEnable))     m->setValueNotifyingHost (m->convertTo0to1 (1.0f));
+
+    auto* raw = proc.createEditor();
+    auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+    check (ed != nullptr, "the editor constructs for the R651 probe");
+    if (ed == nullptr) { delete raw; return; }
+
+    anamorph::gui::SpectrumImager* im = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        { auto* k = c->getChildComponent (i);
+          if (auto* si = dynamic_cast<anamorph::gui::SpectrumImager*> (k)) im = si;
+          walk (k); }
+    };
+    walk (ed);
+    check (im != nullptr && im->getWidth() > 300, "the imager is laid out");
+    if (im == nullptr || im->getWidth() <= 300) { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto* bandsP = apvts.getParameter (pid::mbBands);
+    auto* soloP  = apvts.getParameter (pid::mbSolo);
+    auto* loP    = apvts.getParameter (pid::mbFreqLow);
+    auto* midP   = apvts.getParameter (pid::mbFreqMid);
+    auto* hiP    = apvts.getParameter (pid::mbFreqHigh);
+    auto* driveP = apvts.getParameter (pid::drive);
+    check (bandsP && soloP && loP && midP && hiP && driveP, "the probe's parameters exist");
+    if (! (bandsP && soloP && loP && midP && hiP && driveP))
+    { proc.editorBeingDeleted (ed); delete ed; return; }
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto near     = [] (float a, float b) { return std::abs (a - b) < 1.0e-3f; };
+    const auto src = juce::Desktop::getInstance().getMainMouseSource();
+    const float W = (float) im->getWidth(), H = (float) im->getHeight();
+    auto hover = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseMove (juce::MouseEvent (src, { x, y }, juce::ModifierKeys(),
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto pressAt = [&] (float x, float y)
+    {
+        const auto t = juce::Time::getCurrentTime();
+        im->mouseDown (juce::MouseEvent (src, { x, y }, juce::ModifierKeys::leftButtonModifier,
+                                         1.0f, 0.0f, 0.0f, 0.0f, 0.0f, im, im, t, { x, y }, t, 1, false));
+    };
+    auto findAddX = [&] (float y) -> float
+    {
+        for (float x = 4.0f; x < W - 4.0f; x += 1.0f)
+        { hover (x, y);
+          if (im->getTooltip() == juce::String ("Click to add a band split")) return x; }
+        return -1.0f;
+    };
+    const float addY = 0.25f * H;
+
+    // THE TWO SEATS. `outer` is the host pumping from a knob's gesture-end -- the dispatch whose
+    // `listenerLock` is held for everything below it. `inner` is the same seat State test 99 uses,
+    // one level down: the Add burst's own solo store, from which the queued Undo click arrives.
+    PumpedUserInteraction outer, inner;
+    outer.index = driveP->getParameterIndex();
+    inner.index = soloP->getParameterIndex();
+    inner.pumped = [&proc] { proc.undo(); };          // deferred: the transaction is open
+    proc.addListener (&outer);
+    proc.addListener (&inner);
+
+    auto arm = [&] (float driveStart, float driveEdit)
+    {
+        while (proc.canUndo()) proc.undo();
+        im->cancelActiveDrag();
+        setPlain (bandsP, 2.0f);
+        setPlain (loP, 2000.0f); setPlain (midP, 6000.0f); setPlain (hiP, 12000.0f);
+        setPlain (soloP, 2.0f);                     // band 1
+        setPlain (driveP, driveStart);
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        driveP->beginChangeGesture();               // ...and ONE undoable user edit on the stack
+        setPlain (driveP, driveEdit);
+        driveP->endChangeGesture();
+        proc.pollUndoCoalesce();
+        check (proc.canUndo(), "the probe starts with exactly one undoable edit");
+    };
+
+    // The OUTER trigger: a bare knob gesture whose CLOSE is where the host pumps. Nothing about it
+    // is special -- it is the shape every slider release has.
+    auto driveTheOuterGesture = [&] (float to)
+    {
+        driveP->beginChangeGesture();
+        setPlain (driveP, to);
+        driveP->endChangeGesture();                 // <- `outer` fires from inside this
+    };
+
+    // ---- LEG A: the pumped transaction, with NOTHING holding the replacement lock ----------
+    //  The control. The nesting R651 needs is built here and measured; with no contention the
+    //  flush completes at the boundary exactly as round 25 left it.
+    {
+        arm (3.0f, 9.0f);
+        const float ax = findAddX (addY);
+        check (ax >= 0.0f, "leg A: the add affordance is findable");
+        if (ax >= 0.0f)
+        {
+            outer.pumped = [&] { inner.fired = 0; inner.toFire = 1; pressAt (ax, addY);
+                                 im->cancelActiveDrag(); inner.toFire = 0; };
+            outer.fired = 0; outer.toFire = 1;
+            driveTheOuterGesture (11.0f);
+            proc.pollUndoCoalesce();
+
+            check (outer.fired > 0 && inner.fired > 0,
+                   "leg A: non-vacuity -- the whole transaction really ran inside the knob's dispatch");
+            std::printf ("  [leg A] pumped transaction took %.1f ms; bands %.0f, solo 0x%X, Drive %.2f\n",
+                         outer.elapsedMs, (double) plainOf (bandsP),
+                         (unsigned) juce::roundToInt (plainOf (soloP)), (double) plainOf (driveP));
+            const int bandsA = juce::roundToInt (plainOf (bandsP));
+            const int maskA  = juce::roundToInt (plainOf (soloP));
+            check (maskA == 0 || maskA < (1 << bandsA),
+                   "leg A: the state the pumped transaction leaves is a whole topology");
+        }
+    }
+
+    // ---- LEG B: THE DEFECT. The same, with another thread HOLDING soundReplacement -----------
+    //  The holder is an off-message-thread `getStateInformation`, parked inside
+    //  `copyStateWithRawValues` with the section-24 lock held (ADR-0036 section 25, and the seam's
+    //  own documented contract: it is the ONLY way to park a NON-ANNOUNCING holder). It never
+    //  wants a `listenerLock`, so the cycle is not closed and a mutation of the fix FAILS this leg
+    //  instead of hanging the suite.
+    {
+        arm (3.0f, 9.0f);
+        const float ax = findAddX (addY);
+        check (ax >= 0.0f, "leg B: the add affordance is findable");
+        if (ax >= 0.0f)
+        {
+            std::atomic<bool> holderParked { false }, releaseHolder { false }, holderDone { false };
+            proc.seams.insideDurableCapture = [&]
+            {
+                if (juce::MessageManager::existsAndIsCurrentThread()) return;  // ours pass through
+                if (holderParked.exchange (true)) return;                      // park exactly once
+                while (! releaseHolder.load (std::memory_order_acquire))
+                    std::this_thread::sleep_for (std::chrono::milliseconds (2));
+            };
+            std::thread holder ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb);
+                                      holderDone.store (true, std::memory_order_release); });
+
+            for (int waited = 0; waited < 2000 && ! holderParked.load(); waited += 2)
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+            check (holderParked.load(),
+                   "leg B: non-vacuity -- a NON-ANNOUNCING holder really owns soundReplacement");
+
+            // THE WATCHDOG, AND IT IS WHAT MAKES THIS LEG A TEST RATHER THAN A HANG. On the fixed
+            // tree the flush refuses and returns in microseconds, and this thread's release is
+            // simply the tidy-up. On a tree where the flush WAITS, the message thread is stuck
+            // holding mbDrive's `listenerLock` with no one to wake it -- so the release is put on a
+            // timer of the HARNESS's, not the product's: the wait ends at `kWatchdogMs`, the leg
+            // FAILS on the elapsed-time assertion below, and the suite goes on. Measured on the
+            // pre-fix tree: the pumped transaction took the full watchdog period.
+            constexpr int kWatchdogMs = 400;
+            std::thread watchdog ([&]
+            {
+                for (int waited = 0; waited < kWatchdogMs; waited += 5)
+                    std::this_thread::sleep_for (std::chrono::milliseconds (5));
+                releaseHolder.store (true, std::memory_order_release);
+            });
+
+            outer.pumped = [&] { inner.fired = 0; inner.toFire = 1; pressAt (ax, addY);
+                                 im->cancelActiveDrag(); inner.toFire = 0; };
+            outer.fired = 0; outer.toFire = 1; outer.elapsedMs = 0.0;
+            driveTheOuterGesture (11.0f);           // the whole scenario, under contention
+
+            const double blockedMs = outer.elapsedMs;
+            std::printf ("  [leg B] with the replacement lock HELD, the pumped transaction took"
+                         " %.1f ms (holder still parked: %s)\n",
+                         blockedMs, holderDone.load() ? "no" : "yes");
+
+            check (outer.fired > 0 && inner.fired > 0,
+                   "leg B: non-vacuity -- the transaction and its deferred command really ran");
+            check (! holderDone.load (std::memory_order_acquire),
+                   "leg B: non-vacuity -- the holder was STILL holding the lock throughout");
+
+            // THE INVARIANT. The message thread is inside `endChangeGesture`, so JUCE holds
+            // mbDrive's `listenerLock`. It must not be the waiting half of anything. 250 ms is a
+            // hundred times the whole scenario's uncontended cost and a fiftieth of the smallest
+            // real wait the unfixed tree produces (it waits until the holder is released below).
+            check (blockedMs < 250.0,
+                   "leg B: the flush did NOT wait for the replacement lock from inside the dispatch");
+
+            releaseHolder.store (true, std::memory_order_release);
+            watchdog.join();
+            holder.join();
+            proc.seams.insideDurableCapture = nullptr;   // cleared AFTER the join
+
+            // ...AND NOTHING WAS DROPPED. The refusal left the transaction's step pending and the
+            // command queued; the very next door does both, in round 25's order.
+            proc.pollUndoCoalesce();
+            const int bandsB = juce::roundToInt (plainOf (bandsP));
+            const int maskB  = juce::roundToInt (plainOf (soloP));
+            std::printf ("  [leg B] after the next door: bands %d, solo 0x%X, Drive %.2f, more undo: %s\n",
+                         bandsB, (unsigned) maskB, (double) plainOf (driveP),
+                         proc.canUndo() ? "yes" : "no");
+            check (maskB == 0 || maskB < (1 << bandsB),
+                   "leg B: ...and the state it lands on is a whole topology, never half of one");
+            check (near (plainOf (loP), 2000.0f) || bandsB != 2,
+                   "leg B: ...with the splits the completed action produced");
+        }
+    }
+
+    // ---- LEG C: a refused flush is retried by the TIMER door too, not only by a user action ---
+    //  Without this the queue would strand whenever the user's next action never comes.
+    {
+        arm (3.0f, 9.0f);
+        std::atomic<bool> holderParked { false }, releaseHolder { false };
+        proc.seams.insideDurableCapture = [&]
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread()) return;
+            if (holderParked.exchange (true)) return;
+            while (! releaseHolder.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        std::thread holder ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb); });
+        for (int waited = 0; waited < 2000 && ! holderParked.load(); waited += 2)
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        std::thread watchdog ([&]                       // same harness watchdog as leg B
+        {
+            for (int waited = 0; waited < 400; waited += 5)
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            releaseHolder.store (true, std::memory_order_release);
+        });
+
+        bool queued = false;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            queued = ! proc.admitStateCommand ([&proc] { proc.undo(); }).admitted();
+        }                                            // <- the flush, refused by the held lock
+        check (queued, "leg C: the command was queued by the open transaction");
+        check (near (plainOf (driveP), 9.0f),
+               "leg C: ...and the refused flush ran NOTHING while the lock was held");
+
+        releaseHolder.store (true, std::memory_order_release);
+        watchdog.join();
+        holder.join();
+        proc.seams.insideDurableCapture = nullptr;
+
+        proc.pollUndoCoalesceFromTimer();            // the 20/24 Hz door, and it is the retry
+        check (near (plainOf (driveP), 3.0f),
+               "leg C: the TIMER door retried the refused flush -- the Undo ran, unprompted");
+    }
+
+    // ---- LEG D: MORE THAN ONE command, and a NESTED transaction, across a refusal -------------
+    //  The refusal happens before the queue is touched, so it is command-agnostic by construction
+    //  -- but "by construction" is what a mutation deletes. This leg holds the lock, queues a Redo
+    //  and an A/B switch from one open transaction with an inner transaction nested inside it, and
+    //  asserts that the inner close released nothing, the outer close released nothing either
+    //  while the lock was held, and the retry then ran BOTH in the order they were given.
+    {
+        arm (3.0f, 9.0f);
+        proc.undo();                                  // ...so there is a Redo to do
+        check (near (plainOf (driveP), 3.0f) && proc.canRedo(), "leg D: a Redo is available");
+
+        std::atomic<bool> holderParked { false }, releaseHolder { false };
+        proc.seams.insideDurableCapture = [&]
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread()) return;
+            if (holderParked.exchange (true)) return;
+            while (! releaseHolder.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        std::thread holder ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb); });
+        for (int waited = 0; waited < 2000 && ! holderParked.load(); waited += 2)
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        std::thread watchdog ([&]
+        {
+            for (int waited = 0; waited < 400; waited += 5)
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            releaseHolder.store (true, std::memory_order_release);
+        });
+
+        std::vector<int> ran;                         // the ORDER, recorded by the commands themselves
+        int slotBefore = proc.abActiveSlot();
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction outerTx (proc);
+            const bool q1 = ! proc.admitStateCommand ([&] { ran.push_back (1); proc.redo(); }).admitted();
+            {
+                AnamorphAudioProcessor::ScopedUserTransaction innerTx (proc);
+                const bool q2 = ! proc.admitStateCommand ([&] { ran.push_back (2); proc.abToggle(); }).admitted();
+                check (q1 && q2, "leg D: both commands were queued by the open transactions");
+            }                                          // <- the INNER close: releases nothing, ever
+            check (ran.empty(), "leg D: the inner transaction's close released nothing");
+        }                                              // <- the OUTER close: refused by the held lock
+        check (ran.empty(), "leg D: ...and the outer close released nothing either, the lock being held");
+        check (near (plainOf (driveP), 3.0f) && proc.abActiveSlot() == slotBefore,
+               "leg D: nothing was applied while the lock was held");
+
+        releaseHolder.store (true, std::memory_order_release);
+        watchdog.join();
+        holder.join();
+        proc.seams.insideDurableCapture = nullptr;
+
+        proc.pollUndoCoalesce();                       // the retry door
+        std::printf ("  [leg D] after the retry: %d command(s) ran, order %s; Drive %.2f, slot %d -> %d\n",
+                     (int) ran.size(), (ran.size() == 2 && ran[0] == 1 && ran[1] == 2) ? "preserved" : "WRONG",
+                     (double) plainOf (driveP), slotBefore, proc.abActiveSlot());
+        check (ran.size() == 2 && ran[0] == 1 && ran[1] == 2,
+               "leg D: both commands ran at the retry, in the order the user gave them");
+        check (proc.abActiveSlot() != slotBefore,
+               "leg D: ...and the A/B switch really happened, so neither was dropped");
+    }
+
+    // ---- LEG E: a command queued by a command must not JUMP THE QUEUE --------------------------
+    //  The re-entrancy guard's only observable job. The flush moves its queue into a local before
+    //  running anything, so a re-entrant flush that finds the list empty is invisible -- which is
+    //  why M115 survived its first run with only ONE command in flight. With TWO already queued and
+    //  a THIRD queued by the first one's own transaction, the difference is an ordering violation
+    //  you can read off the list: guarded gives 1, 2, 3; unguarded runs the third at the inner
+    //  close and gives 1, 3, 2.
+    {
+        arm (3.0f, 9.0f);
+        std::vector<int> ran;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction outerTx (proc);
+            const bool q1 = ! proc.admitStateCommand ([&]
+            {
+                ran.push_back (1);
+                AnamorphAudioProcessor::ScopedUserTransaction fromCommand (proc);
+                (void) proc.admitStateCommand ([&] { ran.push_back (3); }).admitted();
+            }).admitted();                                    // <- this one opens a transaction of its own
+            const bool q2 = ! proc.admitStateCommand ([&] { ran.push_back (2); }).admitted();
+            check (q1 && q2, "leg E: both of the transaction's own commands were queued");
+        }                                          // <- the flush
+
+        std::printf ("  [leg E] order: ");
+        for (int v : ran) std::printf ("%d ", v);
+        std::printf ("(expected 1 2 3)\n");
+        check (ran.size() == 3 && ran[0] == 1 && ran[1] == 2 && ran[2] == 3,
+               "leg E: the command a command queued runs AFTER the ones already in front of it");
+    }
+
+    proc.removeListener (&inner);
+    proc.removeListener (&outer);
+    proc.editorBeingDeleted (ed);
+    delete ed;
+}
+
+// ---------------------------------------------------------------------------
+//  State test 101 -- round 27, Devin R1390. A TIMER RETRY MAY DECIDE THAT WORK IS
+//  READY. IT MAY NOT DO THE WORK.
+//
+//  Round 26 closed the edge R651 named -- the flush's own preliminary poll no longer WAITS for
+//  `soundReplacement` -- and wrote down, in ADR-0036 section 29, the half it did not close:
+//
+//      "Those acquisitions of the commands' own are still BLOCKING, and
+//       `pollUndoCoalesceFromTimer` is now one of the two doors that runs them -- so a tick
+//       reached from a host's pump can still block."
+//
+//  R1390 is that sentence, reported. The try-lock proves nothing about the command, because the
+//  command acquires AFTER the try is released:
+//
+//    message thread   holds listenerLock(P) -> host pumps -> the 20 Hz tick runs
+//                     -> flushDeferredCommands -> try SUCCEEDS and is RELEASED
+//                     -> the deferred Undo runs -> applyStatePreservingView
+//                     -> WAITS for soundReplacement
+//    another thread   HOLDS soundReplacement -> apvts.replaceState -> setValueNotifyingHost
+//                     -> WAITS for listenerLock(P)
+//
+//  THE OWNER-APPROVED ANSWER, implemented in `flushDeferredCommands` and measured here: a door
+//  runs commands only when this thread is provably OUTSIDE a parameter listener's dynamic extent
+//  (`anamorph::param::insideDispatch`, src/ParameterDispatch.h). Outside it the message thread
+//  holds no `listenerLock`, so a blocking acquisition cannot be half of any cycle.
+//
+//  WHAT EACH LEG IS FOR. Leg A is the DEFECT and the only one that needs threads: it measures
+//  that a timer retry reached from inside a dispatch does not wait, with a real holder parked
+//  inside the command's own blocking acquisition. Legs B-I asssert the same invariant without
+//  threads, by the observable that distinguishes the two trees directly -- whether a deferred
+//  command RAN while the message thread was inside the dispatch -- across every command class,
+//  ordering, nesting and the transaction-first rule. Leg B is a PRESERVATION leg: it passes on
+//  both trees, because round 26's try already answers it, and it is here so a later change cannot
+//  quietly take round 26's guarantee away while satisfying round 27's.
+//
+//  THE HOLDER IS NON-ANNOUNCING, exactly as in State test 100: an off-thread `getStateInformation`
+//  parked inside `copyStateWithRawValues` (ADR-0036 section 25) never wants a `listenerLock`, so
+//  the cycle is never actually closed and a mutation of the fix FAILS leg A instead of hanging
+//  the suite. A harness watchdog releases it at 400 ms.
+// ---------------------------------------------------------------------------
+namespace {
+// The host seat for round 27: a pump that delivers a TIMER TICK. R1390 is about the retry door,
+// so the thing pumped in is `pollUndoCoalesceFromTimer` itself and nothing else.
+struct TimerRetrySeat final : public juce::AudioProcessorListener
+{
+    std::function<void()> pumped;
+    int    index     = -1;
+    int    toFire    = 0;
+    int    fired     = 0;
+    double elapsedMs = 0.0;
+    bool   pumping   = false;      // "the message thread is inside the dispatch right now"
+    bool   onValue   = false;      // leg J pumps from a VALUE dispatch, not a gesture end
+    void fire (int i)
+    {
+        if (toFire <= 0 || (index >= 0 && i != index) || ! pumped) return;
+        toFire = 0; ++fired;                       // cleared FIRST: the pump re-enters this
+        const juce::ScopedValueSetter<bool> inside (pumping, true);
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        pumped();
+        elapsedMs = juce::Time::getMillisecondCounterHiRes() - t0;
+    }
+    void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int i) override
+    { if (! onValue) fire (i); }
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int i, float) override
+    { if (onValue) fire (i); }
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int) override {}
+    void audioProcessorChanged (juce::AudioProcessor*,
+                                const juce::AudioProcessorListener::ChangeDetails&) override {}
+};
+} // namespace
+
+static void testATimerRetryNeverRunsACommandInsideADispatch()
+{
+    std::printf ("State test 101: a timer retry never runs a blocking command from inside a parameter dispatch (R1390)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& apvts = proc.getAPVTS();
+
+    auto* driveP = apvts.getParameter (pid::drive);
+    auto* widthP = apvts.getParameter (pid::width);
+    check (driveP != nullptr && widthP != nullptr, "the probe's parameters exist");
+    if (driveP == nullptr || widthP == nullptr) return;
+
+    auto plainOf  = [] (juce::RangedAudioParameter* p) { return p->convertFrom0to1 (p->getValue()); };
+    auto setPlain = [] (juce::RangedAudioParameter* p, float v)
+                    { p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    auto near     = [] (float a, float b) { return std::abs (a - b) < 1.0e-3f; };
+
+    TimerRetrySeat seat;
+    seat.index = driveP->getParameterIndex();
+    proc.addListener (&seat);
+
+    // One undoable user edit on the stack, and nothing pending anywhere.
+    auto arm = [&] (float from, float to)
+    {
+        while (proc.canUndo()) proc.undo();
+        setPlain (driveP, from);
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        driveP->beginChangeGesture();
+        setPlain (driveP, to);
+        driveP->endChangeGesture();                  // the seat is disarmed here (toFire == 0)
+        proc.pollUndoCoalesce();
+        check (proc.canUndo() && near (plainOf (driveP), to),
+               "the probe starts with exactly one undoable edit");
+    };
+
+    // The dispatch this test is about: a bare knob gesture whose CLOSE is where the host pumps.
+    //
+    // AND IT GOES THROUGH `anamorph::param`, WHICH IS THE POINT AND NOT A CONVENIENCE. In
+    // production every parameter write this plug-in makes goes through those wrappers -- the
+    // imager's `beginGesture`/`endGesture`, the editor's Alt-click reset, `applyAutoGain`, both
+    // whole-sound replacements -- and `scripts/check-dispatch.py` fails the build on one that does
+    // not. A raw `driveP->endChangeGesture()` here would be a dispatch NO PART of this plug-in
+    // ever starts, so the depth would read zero and the leg would measure nothing: that is exactly
+    // what the first run of this test did, and it is why the call is spelled this way. Leg J drives
+    // the same invariant through a REAL editor control instead, so the wiring is proven and not
+    // merely assumed.
+    auto pumpFromGestureEnd = [&] (float to, std::function<void()> whilePumping)
+    {
+        seat.pumped = std::move (whilePumping);
+        seat.fired = 0; seat.toFire = 1; seat.elapsedMs = 0.0;
+        anamorph::param::beginChangeGesture (driveP);
+        anamorph::param::setValueNotifyingHost (driveP, driveP->convertTo0to1 (to));
+        anamorph::param::endChangeGesture (driveP);   // <- `seat` fires from inside this
+        seat.toFire = 0;
+    };
+
+    // ---- LEG A: THE DEFECT, measured. A timer retry inside a dispatch must not WAIT -----------
+    {
+        arm (3.0f, 9.0f);
+
+        // Queue an Undo and leave it queued: the transaction's own close is refused by a holder,
+        // exactly as State test 100 leg C does it, so the queue survives into the pumped tick.
+        std::atomic<bool> parkedA { false }, releaseA { false };
+        proc.seams.insideDurableCapture = [&]
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread()) return;
+            if (parkedA.exchange (true)) return;
+            while (! releaseA.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        std::thread holderA ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb); });
+        for (int waited = 0; waited < 2000 && ! parkedA.load(); waited += 2)
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        check (parkedA.load(), "leg A: non-vacuity -- the queue really survives a refused close");
+
+        bool ranWhilePumping = false, ranAtAll = false;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            (void) proc.admitStateCommand ([&]
+            { ranAtAll = true; ranWhilePumping = ranWhilePumping || seat.pumping; proc.undo(); }).admitted();
+        }
+        releaseA.store (true, std::memory_order_release);
+        holderA.join();
+        proc.seams.insideDurableCapture = nullptr;
+        check (near (plainOf (driveP), 9.0f), "leg A: the refused close ran nothing");
+
+        // THE SECOND HOLDER, and this is the one R1390 is about. It is parked from inside the
+        // COMMAND's own path -- `applyStatePreservingView`'s last instant before it takes the
+        // replacement lock -- so on a tree that runs the command here the message thread blocks
+        // while JUCE holds Drive's `listenerLock`. The holder needs no listener lock of its own,
+        // so nothing actually deadlocks and the watchdog is only a bound.
+        std::atomic<bool> parkedB { false }, releaseB { false }, seamFired { false };
+        std::thread holderB;
+        proc.seams.beforeSoundReplacementWrites = [&]
+        {
+            if (seamFired.exchange (true)) return;                      // arm exactly once
+            holderB = std::thread ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb); });
+            for (int waited = 0; waited < 2000 && ! parkedB.load(); waited += 2)
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        proc.seams.insideDurableCapture = [&]
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread()) return;
+            if (parkedB.exchange (true)) return;
+            while (! releaseB.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        constexpr int kWatchdogMs = 400;
+        std::thread watchdog ([&]
+        {
+            for (int waited = 0; waited < kWatchdogMs; waited += 5)
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            releaseB.store (true, std::memory_order_release);
+        });
+
+        pumpFromGestureEnd (11.0f, [&proc] { proc.pollUndoCoalesceFromTimer(); });
+
+        const double blockedMs = seat.elapsedMs;
+        std::printf ("  [leg A] the pumped timer retry took %.1f ms; the command ran inside the"
+                     " dispatch: %s\n", blockedMs, ranWhilePumping ? "YES" : "no");
+        check (seat.fired > 0, "leg A: non-vacuity -- the timer retry really ran inside the dispatch");
+
+        // THE INVARIANT. JUCE holds Drive's `listenerLock` for the whole of `endChangeGesture`, so
+        // nothing reached from inside it may wait. 250 ms is a hundred times the uncontended cost
+        // of the whole scenario and well under the watchdog the unfixed tree waits out.
+        check (blockedMs < 250.0,
+               "leg A: the timer retry did NOT wait for the replacement lock from inside the dispatch");
+        check (! ranWhilePumping,
+               "leg A: ...because no deferred command ran inside the parameter dispatch at all");
+
+        releaseB.store (true, std::memory_order_release);
+        watchdog.join();
+        if (holderB.joinable()) holderB.join();
+        proc.seams.beforeSoundReplacementWrites = nullptr;
+        proc.seams.insideDurableCapture = nullptr;
+
+        // ...AND NOTHING WAS DROPPED. The very next door -- outside the dispatch -- does the work.
+        // The Undo pops the PUMPED gesture (9 -> 11), which is the newest step, so Drive returns
+        // to 9 and the armed 3 -> 9 edit is still there to undo. That ordering is leg I's subject;
+        // here it is only the evidence that the command really ran.
+        check (! ranAtAll, "leg A: non-vacuity -- the command had not run before the next door");
+        proc.pollUndoCoalesceFromTimer();
+        std::printf ("  [leg A] after the next door (outside the dispatch): Drive %.2f, ran: %s\n",
+                     (double) plainOf (driveP), ranAtAll ? "yes" : "NO");
+        check (ranAtAll && near (plainOf (driveP), 9.0f),
+               "leg A: the Undo the retry refused ran at the next safe boundary, unprompted");
+        check (proc.canUndo(), "leg A: ...and it popped the pumped gesture, not the whole history");
+    }
+
+    // ---- LEG B: PRESERVATION -- a concurrent restore still makes the re-entrant path refuse ----
+    //  Round 26's try answers this one, so it passes on both trees by design. It is here so a
+    //  later change cannot satisfy round 27 while taking round 26's guarantee away.
+    {
+        arm (3.0f, 9.0f);
+        std::atomic<bool> parked { false }, release { false };
+        proc.seams.insideDurableCapture = [&]
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread()) return;
+            if (parked.exchange (true)) return;
+            while (! release.load (std::memory_order_acquire))
+                std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        };
+        std::thread holder ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb); });
+        for (int waited = 0; waited < 2000 && ! parked.load(); waited += 2)
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        check (parked.load(), "leg B: non-vacuity -- a NON-ANNOUNCING holder really owns the lock");
+        std::thread watchdog ([&]
+        {
+            for (int waited = 0; waited < 400; waited += 5)
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            release.store (true, std::memory_order_release);
+        });
+
+        pumpFromGestureEnd (11.0f, [&proc] { proc.pollUndoCoalesceFromTimer(); });
+        const double blockedMs = seat.elapsedMs;
+        std::printf ("  [leg B] with the replacement lock HELD, the pumped tick took %.1f ms\n", blockedMs);
+        check (seat.fired > 0, "leg B: non-vacuity -- the pumped tick really ran");
+        check (blockedMs < 250.0, "leg B: the re-entrant timer path did not wait for the holder");
+
+        release.store (true, std::memory_order_release);
+        watchdog.join(); holder.join();
+        proc.seams.insideDurableCapture = nullptr;
+    }
+
+    // ---- LEGS C-F: EVERY COMMAND CLASS EXECUTES ONLY AT THE SAFE BOUNDARY ----------------------
+    //  Same shape four times, over the four families of state-replacing command R1279-1283's
+    //  matrix names. No threads: the observable that separates the two trees is whether the
+    //  command RAN while the message thread was inside the dispatch, and that is exact.
+    {
+        struct Case { const char* leg; const char* what; std::function<void (AnamorphAudioProcessor&)> run; };
+        const Case cases[] = {
+            { "C", "Undo",    [] (AnamorphAudioProcessor& p) { p.undo(); } },
+            { "D", "Redo",    [] (AnamorphAudioProcessor& p) { p.redo(); } },
+            { "E", "A/B",     [] (AnamorphAudioProcessor& p) { p.abToggle(); } },
+            { "F", "preset",  [] (AnamorphAudioProcessor& p) { p.getPresets().load (0); } },
+        };
+
+        for (const auto& c : cases)
+        {
+            arm (3.0f, 9.0f);
+            if (juce::String (c.what) == "Redo") { proc.undo(); proc.pollUndoCoalesce(); }
+
+            bool ranInside = false, ranAtAll = false;
+            const int  slotBefore  = proc.abActiveSlot();
+            const float driveBefore = plainOf (driveP);
+
+            pumpFromGestureEnd (11.0f, [&]
+            {
+                AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+                const bool queued = ! proc.admitStateCommand ([&]
+                { ranAtAll = true; ranInside = ranInside || seat.pumping; c.run (proc); }).admitted();
+                check (queued, "the command was queued by the open transaction");
+            });                                   // <- the transaction CLOSES inside the dispatch
+
+            check (seat.fired > 0, "non-vacuity -- the whole transaction really ran inside the dispatch");
+            check (! ranInside, "the deferred command did NOT run inside the parameter dispatch");
+            check (! ranAtAll,  "...so it did not run at all while the extent was open");
+
+            proc.pollUndoCoalesce();              // the next door, outside the dispatch
+            std::printf ("  [leg %s] %s: ran inside the dispatch: %s; ran at the next door: %s\n",
+                         c.leg, c.what, ranInside ? "YES" : "no", ranAtAll ? "yes" : "NO");
+            check (ranAtAll, "...and it ran at the next safe boundary, so nothing was dropped");
+            // ...and it really DID something, so the leg cannot pass on a command that no-oped.
+            const bool moved = ! near (plainOf (driveP), driveBefore)
+                            || proc.abActiveSlot() != slotBefore
+                            || proc.getPresets().currentName().isNotEmpty();
+            check (moved, "...and the command actually took effect");
+        }
+    }
+
+    // ---- LEG G: MORE THAN ONE COMMAND, in the order the user gave them -------------------------
+    {
+        arm (3.0f, 9.0f);
+        proc.undo(); proc.pollUndoCoalesce();      // ...so there is a Redo to do
+        std::vector<int> ran;
+        const int slotBefore = proc.abActiveSlot();
+
+        pumpFromGestureEnd (11.0f, [&]
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            (void) proc.admitStateCommand ([&] { ran.push_back (1); proc.redo(); }).admitted();
+            (void) proc.admitStateCommand ([&] { ran.push_back (2); proc.abToggle(); }).admitted();
+        });
+        check (ran.empty(), "leg G: neither command ran inside the dispatch");
+
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg G] order at the safe boundary: ");
+        for (int v : ran) std::printf ("%d ", v);
+        std::printf ("(expected 1 2)\n");
+        check (ran.size() == 2 && ran[0] == 1 && ran[1] == 2,
+               "leg G: both ran at the safe boundary, in the order the user gave them");
+        check (proc.abActiveSlot() != slotBefore, "leg G: ...and the A/B switch really happened");
+    }
+
+    // ---- LEG H: a command deferred BY a deferred command is not stranded ------------------------
+    {
+        arm (3.0f, 9.0f);
+        std::vector<int> ran;
+        pumpFromGestureEnd (11.0f, [&]
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            (void) proc.admitStateCommand ([&]
+            {
+                ran.push_back (1);
+                AnamorphAudioProcessor::ScopedUserTransaction fromCommand (proc);
+                (void) proc.admitStateCommand ([&] { ran.push_back (3); }).admitted();
+            }).admitted();
+            (void) proc.admitStateCommand ([&] { ran.push_back (2); }).admitted();
+        });
+        check (ran.empty(), "leg H: nothing ran inside the dispatch");
+
+        proc.pollUndoCoalesce();
+        std::printf ("  [leg H] order: ");
+        for (int v : ran) std::printf ("%d ", v);
+        std::printf ("(expected 1 2 3)\n");
+        check (ran.size() == 3 && ran[0] == 1 && ran[1] == 2 && ran[2] == 3,
+               "leg H: the nested enqueue ran too, and behind the ones already in front of it");
+    }
+
+    // ---- LEG I: the transaction's OWN undo step is committed BEFORE the deferred command --------
+    //  Round 25's ordering, re-asserted at the new boundary: the step the completed transaction
+    //  produced must already be on the stack when the command runs, or the command's Undo pops
+    //  something the user never finished.
+    //  AND THE OBSERVABLE IS THE STEP, NOT THE VALUE. The first version of this leg asked whether
+    //  the transaction's WIDTH had moved by the time the command ran, and that is true whether or
+    //  not the step was committed first -- the parameter is written either way. It therefore did
+    //  not kill the mutation that commits the history AFTER the commands (M124); State test 99
+    //  leg E did, because `abToggle` has no poll of its own while `undo()` does, and round 25's
+    //  own note says exactly that. So this leg empties the history first, defers a command with no
+    //  internal poll, and asks the command whether ANY step exists yet: with nothing armed, the
+    //  only step that can exist is the one the transaction just produced.
+    {
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        check (! proc.canUndo(), "leg I: the history really is empty before the transaction");
+
+        bool sawOwnStep = false, ran = false;
+        const float widthStart = plainOf (widthP);
+        pumpFromGestureEnd (11.0f, [&]
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            // A real edit inside the transaction, so the transaction HAS a step of its own.
+            anamorph::param::beginChangeGesture (widthP);
+            anamorph::param::setValueNotifyingHost (widthP, widthP->convertTo0to1 (1.6f));
+            anamorph::param::endChangeGesture (widthP);
+            (void) proc.admitStateCommand ([&]
+            { ran = true; sawOwnStep = proc.canUndo(); proc.abToggle(); }).admitted();
+        });
+
+        proc.pollUndoCoalesce();                   // the safe boundary: step first, then the command
+        std::printf ("  [leg I] the command ran with the transaction's own step already on the"
+                     " stack: %s (ran: %s)\n", sawOwnStep ? "yes" : "NO", ran ? "yes" : "no");
+        check (ran, "leg I: non-vacuity -- the deferred command really ran");
+        check (sawOwnStep,
+               "leg I: the transaction's own Undo step was committed BEFORE the command ran");
+        // ...and it is the transaction's step, not something else: undoing on this slot returns
+        // the Width the transaction changed.
+        while (proc.abActiveSlot() != 0) proc.abToggle();
+        proc.pollUndoCoalesce();
+        proc.undo();
+        std::printf ("  [leg I] after one Undo: Width %.3f (started %.3f)\n",
+                     (double) plainOf (widthP), (double) widthStart);
+        check (near (plainOf (widthP), widthStart),
+               "leg I: ...and that step is the transaction's own edit");
+    }
+
+    // ---- LEG I2: THE SAME ORDER, AT THE OTHER BOUNDARY ----------------------------------------
+    //  Leg I above closes its transaction INSIDE the dispatch, so the flush refuses and the work
+    //  happens at the retry door -- where `pollUndoCoalesce` commits the step before it calls the
+    //  flush at all. The ordering is therefore correct there for a reason OUTSIDE the flush, and a
+    //  mutation of the flush's own internal order is invisible to it (measured: M124 passes leg I
+    //  and is killed by State test 99 leg E instead). This leg closes the transaction with the
+    //  depth at zero, so the flush runs its own loop and its internal order is the only thing
+    //  deciding the answer.
+    {
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        while (proc.canUndo()) proc.undo();
+        proc.pollUndoCoalesce();
+        check (! proc.canUndo(), "leg I2: the history really is empty before the transaction");
+
+        bool sawOwnStep = false, ran = false;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            anamorph::param::beginChangeGesture (widthP);
+            anamorph::param::setValueNotifyingHost (widthP, widthP->convertTo0to1 (1.7f));
+            anamorph::param::endChangeGesture (widthP);
+            // `abToggle` on purpose: it has no `pollUndoCoalesce` of its own, so nothing but the
+            // flush's own order can put the transaction's step on the stack before it runs.
+            (void) proc.admitStateCommand ([&]
+            { ran = true; sawOwnStep = proc.canUndo(); proc.abToggle(); }).admitted();
+        }                                          // <- the flush runs HERE, at depth zero
+        std::printf ("  [leg I2] the flush's own order put the step first: %s (ran: %s)\n",
+                     sawOwnStep ? "yes" : "NO", ran ? "yes" : "no");
+        check (ran, "leg I2: non-vacuity -- the command ran at the transaction's own close");
+        check (sawOwnStep,
+               "leg I2: the flush commits the transaction's step BEFORE it runs the commands");
+        while (proc.abActiveSlot() != 0) proc.abToggle();
+        proc.pollUndoCoalesce();
+    }
+
+    // ---- LEG J: THE ONE BRACKET `check-dispatch.py` CANNOT SEE -------------------------------
+    //  Every raw parameter call in `src/` is wrapped, and the lint proves it. JUCE's OWN
+    //  attachment write is not in `src/` at all: `SliderParameterAttachment` calls
+    //  `setValueNotifyingHost` from inside its own listener callback, and the only thing that can
+    //  bracket it is `AttachmentWitness`, which already straddles it for round 18's reasons. So
+    //  the straddle is tested here, through a real editor and a real control, because nothing
+    //  static can.
+    //
+    //  IT ALSO PINS THE LEAK THIS ROUND FOUND. The straddle raises in the BEFORE hook and lowers
+    //  in the AFTER one, and `attachSlider` registers `before`, constructs the attachment, then
+    //  registers `after` -- so the attachment's own `sendInitialUpdate()` fired the before hook
+    //  with no after hook to balance it. The depth stood at 14 from the moment the editor was
+    //  built and every deferred command refused forever. The first check below is that, exactly.
+    {
+        auto* raw = proc.createEditor();
+        auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        check (ed != nullptr, "leg J: the editor constructs");
+        if (ed == nullptr) { delete raw; }
+        else
+        {
+            check (! anamorph::param::insideDispatch(),
+                   "leg J: building the editor leaves the dispatch depth at zero");
+
+            juce::Slider* knob = nullptr;
+            std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+            {
+                for (int i = 0; i < c->getNumChildComponents(); ++i)
+                { auto* k = c->getChildComponent (i);
+                  if (knob == nullptr)
+                      if (auto* sl = dynamic_cast<juce::Slider*> (k))
+                          if (sl->getMaximum() > sl->getMinimum()) knob = sl;
+                  walk (k); }
+            };
+            walk (ed);
+            check (knob != nullptr, "leg J: a parameter-backed slider is findable");
+
+            if (knob != nullptr)
+            {
+                arm (3.0f, 9.0f);
+
+                // Queue a command and leave it queued, exactly as leg A does.
+                std::atomic<bool> parked { false }, release { false };
+                proc.seams.insideDurableCapture = [&]
+                {
+                    if (juce::MessageManager::existsAndIsCurrentThread()) return;
+                    if (parked.exchange (true)) return;
+                    while (! release.load (std::memory_order_acquire))
+                        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+                };
+                std::thread holder ([&] { juce::MemoryBlock mb; proc.getStateInformation (mb); });
+                for (int waited = 0; waited < 2000 && ! parked.load(); waited += 2)
+                    std::this_thread::sleep_for (std::chrono::milliseconds (2));
+
+                bool ranInside = false, ranAtAll = false;
+                {
+                    AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+                    (void) proc.admitStateCommand ([&]
+                    { ranAtAll = true; ranInside = ranInside || seat.pumping; proc.undo(); }).admitted();
+                }
+                release.store (true, std::memory_order_release);
+                holder.join();
+                proc.seams.insideDurableCapture = nullptr;
+                check (! ranAtAll, "leg J: non-vacuity -- the refused close left the command queued");
+
+                // THE ATTACHMENT WRITE. `sendNotificationSync` runs the control's listener list on
+                // this stack: the before hook, then JUCE's attachment (which writes the parameter
+                // and dispatches), then the after hook. The seat pumps a timer retry from inside
+                // the VALUE dispatch, which is where a host pumping a slider release really is.
+                seat.onValue = true;
+                seat.index   = -1;                   // whichever parameter this control is bound to
+                seat.pumped  = [&proc] { proc.pollUndoCoalesceFromTimer(); };
+                seat.fired = 0; seat.toFire = 1;
+                const double target = knob->getValue() < 0.5 * (knob->getMinimum() + knob->getMaximum())
+                                    ? knob->getMaximum() : knob->getMinimum();
+                knob->setValue (target, juce::sendNotificationSync);
+                seat.toFire = 0; seat.onValue = false; seat.index = driveP->getParameterIndex();
+
+                std::printf ("  [leg J] the attachment write pumped a tick: fired %d; the command"
+                             " ran inside it: %s\n", seat.fired, ranInside ? "YES" : "no");
+                check (seat.fired > 0,
+                       "leg J: non-vacuity -- the timer retry really ran inside the attachment's write");
+                check (! ranInside,
+                       "leg J: the attachment's own parameter write is a dispatch too, so nothing ran");
+                check (! anamorph::param::insideDispatch(),
+                       "leg J: ...and the straddle balanced: the depth is back to zero");
+
+                proc.pollUndoCoalesce();
+                check (ranAtAll, "leg J: the command ran at the next safe boundary, so nothing was dropped");
+            }
+
+            proc.editorBeingDeleted (ed);
+            delete ed;
+            check (! anamorph::param::insideDispatch(),
+                   "leg J: destroying the editor leaves the dispatch depth at zero");
+        }
+    }
+
+    proc.removeListener (&seat);
+}
+
+// ---------------------------------------------------------------------------
+//  State test 102 -- round 27, Devin R640. QUEUED IS NOT DONE.
+//
+//  Round 25 made `saveUser` and `loadFile` deferrable -- they replace state, so they may not run
+//  inside a multi-store user transaction -- and returned `true` when the work had merely been
+//  QUEUED, with the deferred re-entry written `(void) saveUser (rawName)`. Three things followed
+//  from that one `true`:
+//
+//    * the editor's `if (saveUser (...)) { showSavePreset (false); ... }` closed the Save dialog
+//      on a save that had not happened;
+//    * the write's own failure -- a read-only preset folder, a full disk, a name that resolves to
+//      a degenerate path -- was discarded by the `(void)`, so it reached nobody;
+//    * `loadFile` did the same for a file that turned out not to be an Anamorph preset: the
+//      editor swept the knobs and refreshed the display for a load that was later refused.
+//
+//  THE OWNER-APPROVED CONTRACT, measured here. A synchronous result means the operation really
+//  completed. Anything that cannot complete synchronously reports its FINAL result through
+//  `onComplete`, exactly once, and the initiating UI stays pending until it arrives. Failures that
+//  are knowable without touching the disk -- an empty or illegal name, a file that does not parse
+//  -- are decided BEFORE anything is queued (section 9), so the deferred half of a load cannot
+//  fail at all and the deferred half of a save can only fail in I/O.
+// ---------------------------------------------------------------------------
+static void testADeferredPresetOperationReportsItsRealResult()
+{
+    std::printf ("State test 102: a deferred preset operation reports its real result, not its queueing (R640)\n");
+
+    const auto owned = std::make_unique<AnamorphAudioProcessor>();
+    auto& proc = *owned;
+    proc.prepareToPlay (48000.0, 512);
+    auto& presets = proc.getPresets();
+    using Op = anamorph::PresetManager::OpResult;
+
+    const juce::String stem = "__AnamorphR640Harness__";
+    auto dir  = anamorph::PresetManager::presetDirectory();
+    auto fileFor = [&] (const juce::String& n)
+    { return dir.getChildFile (n + anamorph::PresetManager::fileSuffix()); };
+    // Nothing here ever touches a name a user could have: every file this test makes carries the
+    // harness stem and is removed below, and the one deliberately-unwritable path is a DIRECTORY
+    // this test creates and deletes.
+    juce::StringArray made;
+    auto cleanUp = [&]
+    {
+        for (const auto& n : made)
+        { auto f = fileFor (n); f.deleteFile(); f.deleteRecursively(); }
+        made.clear();
+    };
+
+    // ---- LEG A: NORMAL SYNCHRONOUS SUCCESS ---------------------------------------------------
+    {
+        const juce::String name = stem + "A";
+        made.add (name);
+        int calls = 0; bool said = false;
+        const auto r = presets.saveUser (name, [&] (bool ok) { ++calls; said = ok; });
+        std::printf ("  [leg A] sync save: result %s, completion calls %d, said %s, file on disk %s\n",
+                     r == Op::completed ? "completed" : r == Op::failed ? "failed" : "deferred",
+                     calls, said ? "true" : "false", fileFor (name).existsAsFile() ? "yes" : "no");
+        check (r == Op::completed, "leg A: a save that really happened reports completed");
+        check (calls == 1 && said, "leg A: ...and the completion said so, exactly once");
+        check (fileFor (name).existsAsFile(), "leg A: ...and the file is on disk");
+    }
+
+    // ---- LEG B: SYNCHRONOUS VALIDATION FAILURE, and NOTHING IS QUEUED -------------------------
+    //  An empty or whitespace-only name is a property of the argument, so it is answered now --
+    //  and answered now EVEN INSIDE A TRANSACTION, which is the half of section 9 that matters:
+    //  a name the API would always reject must not be carried into a queue to be rejected later.
+    {
+        int calls = 0; bool said = true;
+        const auto r = presets.saveUser ("   ", [&] (bool ok) { ++calls; said = ok; });
+        check (r == Op::failed, "leg B: an illegal name fails synchronously");
+        check (calls == 1 && ! said, "leg B: ...and the completion says false, exactly once");
+
+        int inTxCalls = 0; bool inTxSaid = true;
+        Op inTx = Op::completed;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            inTx = presets.saveUser ("", [&] (bool ok) { ++inTxCalls; inTxSaid = ok; });
+        }
+        std::printf ("  [leg B] illegal name inside a transaction: %s, completion calls %d\n",
+                     inTx == Op::failed ? "failed" : inTx == Op::deferred ? "deferred" : "completed",
+                     inTxCalls);
+        check (inTx == Op::failed,
+               "leg B: ...and an open transaction does not turn a bad name into queued work");
+        check (inTxCalls == 1 && ! inTxSaid, "leg B: ...the completion still said false, once");
+    }
+
+    // ---- LEG C: DEFERRED SUCCESS. The caller stays pending, then is told it worked ------------
+    {
+        const juce::String name = stem + "C";
+        made.add (name);
+        fileFor (name).deleteFile();
+        int calls = 0; bool said = false;
+        Op r = Op::completed;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            r = presets.saveUser (name, [&] (bool ok) { ++calls; said = ok; });
+            check (r == Op::deferred, "leg C: a save inside a transaction reports deferred");
+            check (calls == 0, "leg C: ...and says NOTHING yet -- queued is not done");
+            check (! fileFor (name).existsAsFile(), "leg C: ...and has written nothing yet");
+        }                                          // <- the transaction closes: the flush runs it
+        std::printf ("  [leg C] after the boundary: completion calls %d, said %s, file %s\n",
+                     calls, said ? "true" : "false", fileFor (name).existsAsFile() ? "yes" : "no");
+        check (calls == 1 && said, "leg C: the completion arrived once, with the real answer");
+        check (fileFor (name).existsAsFile(), "leg C: ...and the file really was written");
+    }
+
+    // ---- LEG D: DEFERRED I/O FAILURE. The failure the `(void)` used to swallow ----------------
+    //  The write is made to fail deterministically and portably: a DIRECTORY is created at the
+    //  exact path the save will try to write, so `replaceWithText` cannot succeed. No permissions,
+    //  no platform-specific path tricks, and nothing outside the harness stem.
+    {
+        const juce::String name = stem + "D";
+        made.add (name);
+        auto target = fileFor (name);
+        target.deleteFile();
+        // A NON-EMPTY directory, not an empty one: `File::replaceWithText` writes a temp sibling
+        // and moves it onto the target, and a move onto an EMPTY directory is allowed to succeed
+        // on some platforms (measured here: it did, and the leg passed vacuously). A directory
+        // with a child in it cannot be replaced by a file anywhere.
+        check (target.createDirectory(), "leg D: the target directory is created");
+        check (target.getChildFile ("occupied").replaceWithText ("x"),
+               "leg D: ...and is non-empty, so nothing can move a file onto it");
+
+        int calls = 0; bool said = true;
+        Op r = Op::completed;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            r = presets.saveUser (name, [&] (bool ok) { ++calls; said = ok; });
+            check (r == Op::deferred, "leg D: the save is queued, the disk not yet consulted");
+            check (calls == 0, "leg D: ...and nothing is claimed while it waits");
+        }
+        std::printf ("  [leg D] after the boundary: completion calls %d, said %s\n",
+                     calls, said ? "true" : "false");
+        check (calls == 1, "leg D: the completion arrived exactly once");
+        check (! said, "leg D: ...and it reported the I/O FAILURE, which used to be discarded");
+        check (! target.existsAsFile(), "leg D: ...and nothing was written");
+    }
+
+    // ---- LEG E: A LOAD'S ONLY FAILURE IS SYNCHRONOUS, TRANSACTION OR NOT ----------------------
+    //  Section 9 in its strongest form: the parse decides "is this an Anamorph preset" from the
+    //  BYTES, which is knowable without any plug-in state, so it is decided before anything is
+    //  queued -- and the deferred half then has no failure mode left to discard.
+    {
+        auto foreign = juce::File::createTempFile (".anamorph");
+        foreign.replaceWithText ("<NOTANAMORPH><PARAM id=\"drive\" value=\"5\"/></NOTANAMORPH>");
+
+        int calls = 0; bool said = true;
+        const auto sync = presets.loadFile (foreign, [&] (bool ok) { ++calls; said = ok; });
+        check (sync == Op::failed, "leg E: a foreign-rooted file fails synchronously");
+        check (calls == 1 && ! said, "leg E: ...and the completion says false, once");
+
+        int txCalls = 0; bool txSaid = true;
+        Op txResult = Op::completed;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            txResult = presets.loadFile (foreign, [&] (bool ok) { ++txCalls; txSaid = ok; });
+        }
+        std::printf ("  [leg E] foreign file inside a transaction: %s, completion calls %d\n",
+                     txResult == Op::failed ? "failed" : txResult == Op::deferred ? "deferred" : "completed",
+                     txCalls);
+        check (txResult == Op::failed,
+               "leg E: ...and an open transaction does not defer a file that cannot be read");
+        check (txCalls == 1 && ! txSaid, "leg E: ...the completion still said false, once");
+        foreign.deleteFile();
+    }
+
+    // ---- LEG F: THE RE-ENTRANT PATH, which is the one the architecture is actually about ------
+    //  Not a hand-made transaction: the whole save is issued from inside a parameter dispatch the
+    //  host pumped, which is the shape R1279-1283 and R1390 are both about. The completion must
+    //  still arrive, and still only when the work is done.
+    {
+        const juce::String name = stem + "F";
+        made.add (name);
+        fileFor (name).deleteFile();
+
+        auto* driveP = proc.getAPVTS().getParameter (pid::drive);
+        check (driveP != nullptr, "leg F: the probe parameter exists");
+        if (driveP != nullptr)
+        {
+            TimerRetrySeat seat;
+            seat.index = driveP->getParameterIndex();
+            proc.addListener (&seat);
+
+            int calls = 0; bool said = false; Op r = Op::completed;
+            seat.pumped = [&]
+            {
+                AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+                r = presets.saveUser (name, [&] (bool ok) { ++calls; said = ok; });
+            };
+            seat.fired = 0; seat.toFire = 1;
+            anamorph::param::beginChangeGesture (driveP);
+            anamorph::param::setValueNotifyingHost (driveP, driveP->convertTo0to1 (7.0f));
+            anamorph::param::endChangeGesture (driveP);
+            seat.toFire = 0;
+
+            check (seat.fired > 0, "leg F: non-vacuity -- the save really was issued from a dispatch");
+            check (r == Op::deferred, "leg F: it was queued, not done");
+            check (calls == 0, "leg F: ...and nothing was claimed inside the dispatch");
+
+            proc.pollUndoCoalesce();               // the safe boundary, outside the dispatch
+            std::printf ("  [leg F] after the safe boundary: completion calls %d, said %s, file %s\n",
+                         calls, said ? "true" : "false", fileFor (name).existsAsFile() ? "yes" : "no");
+            check (calls == 1 && said, "leg F: the completion arrived once, with the real answer");
+            check (fileFor (name).existsAsFile(), "leg F: ...and the file really was written");
+            proc.removeListener (&seat);
+        }
+    }
+
+    // ---- LEG G: MORE THAN ONE QUEUED OPERATION -- order, and one completion each --------------
+    {
+        const juce::String n1 = stem + "G1", n2 = stem + "G2";
+        made.add (n1); made.add (n2);
+        fileFor (n1).deleteFile(); fileFor (n2).deleteFile();
+
+        std::vector<int> order;
+        int c1 = 0, c2 = 0;
+        {
+            AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+            presets.saveUser (n1, [&] (bool ok) { order.push_back (1); c1 += ok ? 1 : 0; });
+            presets.saveUser (n2, [&] (bool ok) { order.push_back (2); c2 += ok ? 1 : 0; });
+            check (order.empty(), "leg G: neither completion fired while the transaction was open");
+        }
+        std::printf ("  [leg G] completion order: ");
+        for (int v : order) std::printf ("%d ", v);
+        std::printf ("(expected 1 2); both files: %s\n",
+                     (fileFor (n1).existsAsFile() && fileFor (n2).existsAsFile()) ? "yes" : "NO");
+        check (order.size() == 2 && order[0] == 1 && order[1] == 2,
+               "leg G: both completions arrived, in the order the user gave the saves");
+        check (c1 == 1 && c2 == 1, "leg G: ...each exactly once, and each said success");
+        check (fileFor (n1).existsAsFile() && fileFor (n2).existsAsFile(),
+               "leg G: ...and both files really were written");
+    }
+
+    // ---- LEG H: THE EDITOR CAN DIE WHILE THE WORK WAITS ---------------------------------------
+    //  The lifecycle constraint the architecture really has, stated rather than invented: there is
+    //  no cancellation. A queued command is never dropped (that is R1279-1283's rule), so the
+    //  completion WILL run -- and it may run after the editor that asked for it has gone. The
+    //  editor's own completions therefore capture a `juce::Component::SafePointer` and return when
+    //  it is null, which is the pattern already used for the OS file chooser. This leg builds a
+    //  real editor, queues a save from it, destroys the editor, and then reaches the boundary: the
+    //  completion must run and must touch nothing that has been destroyed. ASan, UBSan and
+    //  valgrind all run this suite, so "touches nothing destroyed" is checked by them, not merely
+    //  asserted here.
+    {
+        const juce::String name = stem + "H";
+        made.add (name);
+        fileFor (name).deleteFile();
+
+        auto* raw = proc.createEditor();
+        auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        check (ed != nullptr, "leg H: the editor constructs");
+        if (ed == nullptr) { delete raw; }
+        else
+        {
+            int calls = 0; bool said = false;
+            juce::Component::SafePointer<AnamorphAudioProcessorEditor> safe (ed);
+            {
+                AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+                presets.saveUser (name, [&calls, &said, safe] (bool ok)
+                {
+                    ++calls; said = ok;
+                    if (safe == nullptr) return;          // the editor went away: touch nothing
+                    // Any member touch would do; this one is public and cheap. The point of the
+                    // leg is that it does NOT happen, and that the sanitizers agree.
+                    safe->abortAbandonedDragGestures();
+                });
+                check (calls == 0, "leg H: the save is queued while the editor is still alive");
+
+                proc.editorBeingDeleted (ed);
+                delete ed;                                 // ...and the editor dies FIRST
+            }                                              // <- then the boundary runs the save
+            std::printf ("  [leg H] editor destroyed before the boundary: completion calls %d,"
+                         " said %s, safe pointer null: %s\n",
+                         calls, said ? "true" : "false", safe == nullptr ? "yes" : "NO");
+            check (safe == nullptr, "leg H: non-vacuity -- the editor really was destroyed");
+            check (calls == 1 && said,
+                   "leg H: the completion still ran, and reported the real result");
+            check (fileFor (name).existsAsFile(), "leg H: ...and the save really happened");
+        }
+    }
+
+    // ---- LEG I: THE DIALOG ITSELF, end to end ------------------------------------------------
+    //  Legs A-H are about the API's contract. This one is about the sentence the finding actually
+    //  reported: "dialog closes / success UI happens". It drives the REAL Save button on a REAL
+    //  editor and watches the REAL backdrop, because the defect was visible there and nowhere else
+    //  -- `if (saveUser (...)) { showSavePreset (false); ... }` closed the panel on a queued save.
+    {
+        const juce::String name = stem + "I";
+        made.add (name);
+        fileFor (name).deleteFile();
+
+        auto* raw = proc.createEditor();
+        auto* ed  = dynamic_cast<AnamorphAudioProcessorEditor*> (raw);
+        check (ed != nullptr, "leg I: the editor constructs");
+        if (ed == nullptr) { delete raw; }
+        else
+        {
+            juce::TextButton* saveBtn = nullptr;
+            std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+            {
+                for (int i = 0; i < c->getNumChildComponents(); ++i)
+                { auto* k = c->getChildComponent (i);
+                  if (saveBtn == nullptr)
+                      if (auto* b = dynamic_cast<juce::TextButton*> (k))
+                          if (b->getButtonText() == "Save") saveBtn = b;
+                  walk (k); }
+            };
+            walk (ed);
+            check (saveBtn != nullptr, "leg I: the Save button is findable");
+
+            auto* backdrop = saveBtn != nullptr ? saveBtn->getParentComponent() : nullptr;
+            juce::TextEditor* nameField = nullptr;
+            if (backdrop != nullptr)
+                for (int i = 0; i < backdrop->getNumChildComponents(); ++i)
+                    if (auto* te = dynamic_cast<juce::TextEditor*> (backdrop->getChildComponent (i)))
+                        nameField = te;
+            check (backdrop != nullptr && nameField != nullptr,
+                   "leg I: ...and so are the panel it sits on and the name field");
+
+            if (saveBtn != nullptr && backdrop != nullptr && nameField != nullptr)
+            {
+                backdrop->setVisible (true);       // the panel as the user sees it, open
+                nameField->setText (name, false);
+
+                {
+                    AnamorphAudioProcessor::ScopedUserTransaction t (proc);
+                    if (saveBtn->onClick) saveBtn->onClick();
+                    std::printf ("  [leg I] with the save QUEUED: panel visible %s, Save enabled %s,"
+                                 " file %s\n",
+                                 backdrop->isVisible() ? "yes" : "NO",
+                                 saveBtn->isEnabled() ? "yes" : "no",
+                                 fileFor (name).existsAsFile() ? "YES" : "no");
+                    check (backdrop->isVisible(),
+                           "leg I: the panel is STILL OPEN while the save is only queued");
+                    check (! saveBtn->isEnabled(),
+                           "leg I: ...and Save is disabled, so one click is one save");
+                    check (! fileFor (name).existsAsFile(),
+                           "leg I: ...and nothing has been written yet");
+                }                                  // <- the boundary: the save actually happens
+
+                std::printf ("  [leg I] after the boundary: panel visible %s, file %s\n",
+                             backdrop->isVisible() ? "yes" : "no",
+                             fileFor (name).existsAsFile() ? "yes" : "NO");
+                check (! backdrop->isVisible(),
+                       "leg I: the panel closes when the save has really happened");
+                check (fileFor (name).existsAsFile(), "leg I: ...and the file is on disk");
+                check (saveBtn->isEnabled(), "leg I: ...and Save is usable again");
+            }
+
+            proc.editorBeingDeleted (ed);
+            delete ed;
+        }
+    }
+
+    cleanUp();
 }
 
 int main (int argc, char* argv[])
@@ -19857,6 +33443,7 @@ int main (int argc, char* argv[])
     testOverlappingReplacementsCannotMixTwoSessions();
     testObsoleteRestoreCannotReassertOverNewerOne();
     testDurableCaptureNeverRecordsTwoReplacements();
+    testARestoreIsConsumedOnlyWhenItsSoundCanGoWithIt();
     testLegacySlotIsCanonicalAtTheBoundary();
     testBandRiseDuringDragKeepsUncapturedSplits();
     testStaleOutwardDragRemovesNothing();
@@ -19872,12 +33459,39 @@ int main (int argc, char* argv[])
     testAPositionalLatchIsVoidOnceItsTopologyMoves();
     testADerivationAnswersUnderTheTopologyItWasGiven();
     testTheFarSideOfACoupledCommitIsCoveredByItsCaller();
-    testAWheelTickFinishesAHeldPress();
+    testAWheelNotchInsideAPressBelongsToIt();
     testThePlanAndTheProofAreOneReading();
     testTheAddTargetAnswersUnderOneTopology();
     testACancellationClosesEachGestureOnce();
+    testAnamorphsOwnBareBracketsDeclareTheirEndpoint();
+    testTheDeferredBaselineAndTheDoorTheEditorPicks();
+    testATopologyChangeIsOneUndoStep();
+    testAStateReplacingCommandWaitsForTheTransaction();
+    testTheDeferredFlushNeverWaitsForAReplacement();
+    testATimerRetryNeverRunsACommandInsideADispatch();
+    testADeferredPresetOperationReportsItsRealResult();
+    testNoStateCommandWaitsForAReplacement();
+    testSaveCompletionBelongsToItsOwnAttempt();
+    testTheWheelBelongsToThePressItLandsIn();
+    testANotchInsideAVelocityDrag();
+    testAPressWithNoTargetStillOwnsTheWheel();
+    testOnePressPerPointingDevice();
+    testAnUnwiredPresetManagerRunsSynchronously();
+    testARefusedPressEstablishesNothing();
+    testNestedNotificationsKeepTheUserEndpoint();
+    testRecursiveNotificationKeepsTheLatestEndpoint();
+    testThePumpedTimerNeverBaresTheApvtsLock();
     testABandMoveDerivesItsOriginsFromTheRecord();
     testAPressHitTestAnswersUnderTheTopologyItProved();
+    testAScrollIsOneUndoStep();
+    testHoldingSoloAndScrollingMovesTheBand();
+    testAWheelNotchInsideAKnobPressBelongsToIt();
+    testTheABHistoryObeysItsCap();
+    testAUserStepsEndpointsBelongToTheUser();
+    testAnAttachmentEndpointBelongsToTheUser();
+    testARefusedStoreStatesNoEndpoint();
+    testACompleteGestureEndpointPrecedesThePoll();
+    testBareStoresDeclareTheirEndpointAndThePollNeverWaits();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

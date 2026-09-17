@@ -497,6 +497,23 @@ jobs:
       - name: Lint audio-path bodies (REALTIME_AUDIO_POLICY forbidden constructs)
         run: python3 scripts/check-realtime.py
 
+      # THE COVERAGE HALF OF ADR-0036 SECTION 30 (Devin R1390), and the reason it is a gate rather
+      # than a convention. `flushDeferredCommands` refuses to run a blocking deferred command while
+      # this thread is inside a parameter listener's dynamic extent, and it learns that from a
+      # depth the `anamorph::param` wrappers raise. ONE raw `p->setValueNotifyingHost (v)` anywhere
+      # in `src/` is a dispatch the depth does not see -- the guard then reads zero at exactly the
+      # moment it must read one, and the deadlock is back with every test still green. The property
+      # is syntactic (those three JUCE methods are non-virtual, so a call is spelled out or does not
+      # exist), which is why a text scan can own it completely.
+      #
+      # It does NOT cover JUCE's own attachment write, which is not in `src/` at all; that one is
+      # bracketed by `AttachmentWitness` and regression-tested by State test 101 leg J.
+      - name: Dispatch lint self-test (the lint still fires, and still ignores prose)
+        run: python3 scripts/check-dispatch.py --self-test
+
+      - name: Lint parameter dispatches (every write raises the extent depth, ADR-0036 §30)
+        run: python3 scripts/check-dispatch.py
+
       # Same rule, and this checker needs it MOST: the other three only report,
       # while this one REWRITES governed documents under `--fix`. A defect here
       # does not merely fail to catch drift — it replaces a correct anchor with a
@@ -1230,6 +1247,25 @@ jobs:
       # build directory), so one lineage here holds two builds' worth.
       CCACHE_MAXSIZE: 800M
       CCACHE_COMPILERCHECK: content
+      # THE IGNORELIST IS PART OF THE COMPILATION, AND ccache DOES NOT KNOW THAT.
+      # `-fsanitize-ignorelist=` decides, at compile time, which functions get
+      # instrumented -- but ccache 4.9.1 (the runner image's) has special handling
+      # only for the OLD `-fsanitize-blacklist=` spelling. The new one is hashed as
+      # a plain argument string, so editing the FILE while its PATH stays the same
+      # is invisible: the next build is a cache hit and reuses objects compiled
+      # under the previous list.
+      #
+      # THAT IS NOT A THEORY. Round 30 added a `[float-divide-by-zero]` section for
+      # `juce_Slider.cpp`, verified it in both directions locally, and the
+      # sanitizers job still failed on the very check the section names
+      # (run 35136379451). Reproduced here with ccache 4.9.1: compile the unity TU
+      # with the section absent, add it, recompile -- HIT, and the stale object
+      # still traps. With this variable set, the same sequence MISSES and the
+      # rebuilt object is silent.
+      #
+      # `extra_files_to_hash` is ccache's own mechanism for exactly this: files
+      # that affect the output but do not appear in the preprocessed source.
+      CCACHE_EXTRAFILES: ${{ github.workspace }}/scripts/ubsan-ignorelist.txt
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

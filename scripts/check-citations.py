@@ -383,9 +383,275 @@ DELIBERATE_REAIMS = {
     # sixth time, :629 -> :657. Six hit-test helpers gain defaulted arguments and
     # the reasoning above `dragCrossoverTo` grows with them; a pure insertion again,
     # so still one entry, still by hand, and the document's own anchor moves with it.
+    #
+    # 2026-09-12 (ADR-0053, the wheel): a SEVENTH re-derivation, :657 -> :665. Three
+    # wheel-step constants join the file header above every function in it. A pure
+    # insertion once more -- and the seventh consecutive one, which is the running
+    # cost this entry was kept visible to show. The entry is still one line by hand
+    # and the aim check is still what caught the drift: the declaration's target is
+    # resolved against the current file on every run, so leaving it at :657 would
+    # have silenced the drift of everything else in this document rather than only
+    # its own.
+    #
+    # 2026-09-13 (ADR-0053 round 12): an EIGHTH re-derivation, :657 -> :704, and the first that
+    # does not simply follow the declaration. `dragCrossoverTo` gained a defaulted `float* landedX`
+    # out-parameter, so the DECLARATION line is the one this change rewrote -- and the sentence in
+    # the document is not about the declaration, it is about the live `bandCount()` read. The aim
+    # moves to that line (`const int M = (n >= 0 ? ... : bandCount()) - 1;`), which is what the
+    # citation was always claiming and which this change did not touch. Re-aiming onto the thing a
+    # citation is actually about is cheaper than declaring the declaration volatile, and it leaves
+    # the ordinary drift check watching it.
     ("docs/DOCUMENTATION_COVERAGE.md",
-     "src/gui/SpectrumImager.cpp:399",
-     "src/gui/SpectrumImager.cpp:657"): "dragCrossoverTo",
+     "src/gui/SpectrumImager.cpp:657",
+     "src/gui/SpectrumImager.cpp:725"): "bandCount",
+    #
+    # 2026-09-13 (ADR-0053 round 12), SIX AT ONCE AND ALL ONE CAUSE, which is why they are listed
+    # together rather than argued one by one. The round's own hunks -- one seam, the poll's edge
+    # sample, and a comment block that grew -- shifted `PluginProcessor.h` and `.cpp` under six
+    # `FUTURE_RISKS.md` anchors that were re-derived in the SAME change set. Against `origin/main`
+    # the line map carries them and no declaration is needed; against the PUSH PREDECESSOR it
+    # cannot, because that commit already holds this round's source and only the DOCUMENT moved.
+    # That is the case this table exists for: a re-aim is textually indistinguishable from drift,
+    # and these are re-aims. Each one's target symbol is named below and `verify_reaim_targets`
+    # resolves it against the current file on every run, so a number computed before the file
+    # settled fails here rather than going quiet.
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.h:246-249",
+     "src/PluginProcessor.h:496-499"): "parameterValueChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.h:390",
+     "src/PluginProcessor.h:701"): "parameterValueChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.h:325",
+     "src/PluginProcessor.h:611"): "UndoStacks",
+
+    # 2026-09-13 (round 14, ADR-0008 as amended): THREE ENTRIES, all for spans this change EDITED
+    # rather than moved, which is exactly the case a declaration is for -- the line map returns
+    # `None` for an edited span and reports it UNMAPPABLE instead of inventing a number.
+    #   * `parameterGestureChanged` gains the per-batch ownership record, so its whole body is an
+    #     edited span and the three citations into it (`docs/FUTURE_RISKS.md` twice, the coverage
+    #     record once) are re-aimed by hand. The claims are unchanged -- the counter, the two ints,
+    #     the zero-crossing latch -- and the token is checked at the new spelling.
+    #   * `UndoStacks` itself: the line's TEXT changed (`std::vector<StateSet>` ->
+    #     `std::vector<UndoEntry>`), which is why the entry above could no longer carry it.
+    # The BASE spelling is origin/main's, not this branch's: the key is the transition the drift
+    # check actually sees, and the check runs against `origin/main`.
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:812-825",
+     "src/PluginProcessor.cpp:1402-1578"): "parameterGestureChanged",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/PluginProcessor.cpp:812-825",
+     "src/PluginProcessor.cpp:1402-1578"): "parameterGestureChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:812-826",
+     "src/PluginProcessor.cpp:1402-1579"): "parameterGestureChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.h:250",
+     "src/PluginProcessor.h:611"): "UndoStacks",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1869-1968",
+     "src/PluginProcessor.cpp:2991-3090"): "setStateInformation",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1869",
+     "src/PluginProcessor.cpp:2991"): "setStateInformation",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1405",
+     "src/PluginProcessor.cpp:2527"): "abActive",
+
+    # 2026-09-15 (round 21, ADR-0036 §26): ONE ENTRY, for a span this change EDITED rather than
+    # moved. ADR-0008's "Source:" line brackets the whole custom-undo block, from its banner comment
+    # to `syncCommitted`, and round 21 changed `syncCommitted` itself -- it takes `mayBlock` now, so
+    # that the adoption reached from a TIMER can try the replacement lock instead of waiting on it.
+    # An edited span is what the line map returns `None` for, so it is UNMAPPABLE rather than
+    # drifted and no `--fix` can carry it: the two ends were re-derived by hand from the banner and
+    # from the function they name, and `verify_reaim_targets` re-resolves the token below against
+    # the current file on every run.
+    # 2026-09-15 (round 24, ADR-0008 R1092): ONE ENTRY, for a span this change EDITED rather than
+    # moved. ADR-0010's "Related code" cites the undo poll's gesture guard, and the guard grew a
+    # second term (`|| userTransactionDepth > 0`), so the cited lines no longer read as they did and
+    # the ordinary mapping reports UNMAPPABLE rather than inventing a number. The sentence the
+    # citation supports -- that the host-hidden Settings controls are not APVTS parameters and so are
+    # not what the poll is looking at -- is unchanged and still true, so the anchor is re-aimed by
+    # hand onto the same guard at its new spelling and the transition declared here. `922 -> 943` in
+    # the same anchor is a plain move that came along with it.
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:922, 1251-1254",
+     "src/PluginProcessor.cpp:1327, 1772-1776"): "openGestures",
+    # ...and the SAME transition declared from the branch's OTHER base. `preflight.sh` runs the gate
+    # against `origin/main`, the merge base and `HEAD~1`, and a declaration is keyed on the
+    # TRANSITION, so the entry above answers only for the `HEAD~1` base this round pushes from. The
+    # origin/main spelling is a different pair for the same anchor and the same edit, and leaving it
+    # undeclared is what let an anchor ship stale once already (see the header): one base went green
+    # while another did not, and the green one was the one that got read.
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:737, 870-873",
+     "src/PluginProcessor.cpp:1327, 1772-1776"): "openGestures",
+    # 2026-09-15 (round 26): THE SAME ENTRY, RE-AIMED, not a second one. Round 26 inserted comment
+    # lines above `syncCommitted` in `PluginProcessor.cpp`, so the ADR's span end moved 713 -> 810
+    # while its two ends kept naming the same banner and the same function. That is ordinary drift
+    # for the DOCUMENT -- every base in play maps it, which is why no base reports it -- but it is
+    # fatal for the DECLARATION, whose new spelling is a literal string the document must still
+    # carry. It stopped carrying `469-713` and section 9 of the self-test failed on it, exactly as
+    # the header says it should: an entry naming a string no document contains is excusing nothing.
+    # The entry is re-aimed rather than deleted because the base it was written for (an earlier push
+    # on this branch, which is what CI's `github.event.before` can still be) carries `426-565` and
+    # neither spelling of the pair is behind it -- the run's own note says "keep it".
+    ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
+     "src/PluginProcessor.cpp:426-565",
+     "src/PluginProcessor.cpp:523-983"): "syncCommitted",
+
+    # ROUND 30 (d75a4c8 -> this push), and the same shape as the round-28 entries above: the SOURCE
+    # did not move within this push, so every re-anchor below is indistinguishable from drift to the
+    # push-predecessor check. Rounds 29 and 30 moved `PluginEditor.cpp`, `PluginEditor.h` and
+    # `LookAndFeel.cpp` without re-deriving the documents in the same commit; this change set does
+    # the re-derivation, and `d75a4c8` is what `github.event.before` names when it runs. Each target
+    # is checked against the CURRENT file by `verify_reaim_targets` on every run, so a number that is
+    # wrong here fails rather than going quiet.
+    ("EULA.md",
+     "src/PluginEditor.h:1021",
+     "src/PluginEditor.h:1343"): "aboutLink",
+    ("PRIVACY.md",
+     "src/PluginEditor.h:1021",
+     "src/PluginEditor.h:1343"): "aboutLink",
+    ("PRIVACY.md",
+     "src/PluginEditor.cpp:2221",
+     "src/PluginEditor.cpp:2230"): "createDirectory",
+    ("TRADEMARKS.md",
+     "src/PluginEditor.h:1021",
+     "src/PluginEditor.h:1343"): "aboutLink",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/LookAndFeel.cpp:1005-1014",
+     "src/gui/LookAndFeel.cpp:1208-1217"): "layoutTooltip",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/LookAndFeel.cpp:435",
+     "src/gui/LookAndFeel.cpp:589"): "getComponentID",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/gui/LookAndFeel.cpp:328",
+     "src/gui/LookAndFeel.cpp:482"): "Rectangle",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/PluginEditor.cpp:2221",
+     "src/PluginEditor.cpp:2230"): "createDirectory",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/PluginEditor.h:1021",
+     "src/PluginEditor.h:1343"): "aboutLink",
+    ("docs/KNOWN_ISSUES.md",
+     "src/gui/LookAndFeel.cpp:623-626",
+     "src/gui/LookAndFeel.cpp:777-780"): "getPopupMenuFont",
+    ("docs/KNOWN_ISSUES.md",
+     "src/PluginEditor.cpp:2319-2327",
+     "src/PluginEditor.cpp:2328-2336"): "focusSaveNameField",
+    ("docs/KNOWN_ISSUES.md",
+     "src/PluginEditor.cpp:2275",
+     "src/PluginEditor.cpp:2284"): "focusSaveNameField",
+    ("docs/KNOWN_ISSUES.md",
+     "src/PluginEditor.cpp:2257-2327",
+     "src/PluginEditor.cpp:2266-2336"): "focusSaveNameField",
+    ("docs/POSTMORTEMS.md",
+     "src/PluginEditor.cpp:1865-1869",
+     "src/PluginEditor.cpp:1874-1878"): "cursorOverPopup",
+    ("docs/POSTMORTEMS.md",
+     "src/PluginEditor.cpp:1577-1580",
+     "src/PluginEditor.cpp:1586-1589"): "cursorOverPopup",
+    ("docs/architecture/THREAD_MODEL.md",
+     "src/PluginEditor.cpp:759",
+     "src/PluginEditor.cpp:771"): "startTimerHz",
+    ("docs/architecture/THREAD_MODEL.md",
+     "src/PluginEditor.cpp:1981-1982",
+     "src/PluginEditor.cpp:1990-1991"): "triggerRepaint",
+    ("docs/architecture/THREAD_MODEL.md",
+     "src/PluginEditor.cpp:762-768",
+     "src/PluginEditor.cpp:774-780"): "VBlankAttachment",
+    ("docs/architecture/THREAD_MODEL.md",
+     "src/PluginEditor.cpp:759, 1497-1677",
+     "src/PluginEditor.cpp:771, 1506-1686"): "abortAbandonedDragGestures",
+    ("docs/architecture/THREAD_MODEL.md",
+     "src/PluginEditor.cpp:776-778",
+     "src/PluginEditor.cpp:788-790"): "meterVBlank",
+    ("docs/procedures/CI_CD.md",
+     "src/gui/LookAndFeel.cpp:328",
+     "src/gui/LookAndFeel.cpp:482"): "Rectangle",
+    ("tests/state_tests.cpp",
+     "src/PluginEditor.cpp:2567",
+     "src/PluginEditor.cpp:2576"): "multiBar",
+
+    # ROUND 28, SECOND PUSH (71d3614), and the entries below exist because a re-anchor is
+    # INDISTINGUISHABLE FROM DRIFT when the SOURCE did not move. `a6773cd` shipped the round-28
+    # source with eight document anchors still aimed at the pre-round-28 lines; CI's push-predecessor
+    # check caught them and they were re-derived in `71d3614`, which touches documents ONLY. From
+    # `a6773cd` as the base the source is byte-identical, so every one of those re-derivations reads
+    # as a document that moved its anchor for no reason -- which is exactly what this table is for.
+    # Each target below is checked against the CURRENT file by `verify_reaim_targets` on every run,
+    # so a number that was wrong when it was written fails here rather than going quiet.
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/PluginEditor.cpp:2373-2398",
+     "src/PluginEditor.cpp:2425-2450"): "oversampleBox",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/PluginEditor.cpp:2175",
+     "src/PluginEditor.cpp:2230"): "createDirectory",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1247-1424",
+     "src/PluginProcessor.cpp:1402-1579"): "parameterGestureChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PluginProcessor.cpp:1247-1423",
+     "src/PluginProcessor.cpp:1402-1578"): "parameterGestureChanged",
+    ("docs/FUTURE_RISKS.md",
+     "src/PresetManager.cpp:776",
+     "src/PresetManager.cpp:844"): "copyState",
+    ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
+     "src/PluginProcessor.cpp:470-847",
+     "src/PluginProcessor.cpp:523-983"): "syncCommitted",
+    #
+    # 2026-09-13 (round 13) declared a re-aim of RISK-012's poll citation, `:963-1035` ->
+    # `:980-1039`, onto the `sig != committedSig` gate. ROUND 14 DELETED IT, because round 14
+    # deleted the citation: RISK-012 is RESOLVED and its rewritten entry points at ADR-0008's
+    # amendment rather than at a line of the poll. A declaration whose new spelling the document no
+    # longer contains is dead, and this file's own rule -- an entry that matches nothing silently
+    # widens what a future report can be absorbed by -- says delete it rather than re-aim it at
+    # something the sentence is not about. The self-test caught it, which is what that test is for.
+    #
+    # 2026-09-15 (round 27): FOUR OF THE ENTRIES ABOVE ARE RE-AIMED, not replaced and not joined by
+    # new ones. `1210-1386` / `1210-1387` (three entries, `parameterGestureChanged`) and `469-810`
+    # (ADR-0008's `Source:` bracket) are spellings their documents stopped carrying when this
+    # round's source growth moved them on -- and an entry naming a string no document contains
+    # excuses nothing, which is exactly what section 9 of the self-test says out loud. Their bases
+    # are unchanged; only the far end moved.
+    #
+    # 2026-09-15 (round 27, ADR-0036 section 30): THREE ENTRIES, ONE CAUSE, and the cause is the
+    # bracket itself. Round 27 rewrote every raw `p->setValueNotifyingHost (v)` /
+    # `p->beginChangeGesture()` / `p->endChangeGesture()` into the `anamorph::param::` wrapper that
+    # raises the dispatch depth `flushDeferredCommands` reads. Three citations aim AT those exact
+    # lines, so for them this is an EDITED span, not a moved one: the line map returns `None` and
+    # the run reports UNMAPPABLE rather than inventing a number, which is precisely the case a
+    # declaration is for. Each sentence is unchanged and still true -- PREfast's `C6001` on the
+    # view-param restore loop, the imager's owned-store shape, and ADR-0010's point that the
+    # host-hidden Settings controls are not what the undo poll's gesture guard is looking at -- so
+    # each anchor is re-aimed by hand onto the same statement at its new spelling. The target
+    # symbols below are resolved against the current file on every run, so a number computed before
+    # the file settled fails here rather than going quiet.
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/PluginProcessor.cpp:923",
+     "src/PluginProcessor.cpp:1115"): "viewParams",
+    # ...and the SAME transition from the branch's OTHER two bases, which both carry `:526`. A
+    # declaration is keyed on the PAIR, so the entry above answers only for the base that carries
+    # `:923`; leaving the older spelling undeclared is what let an anchor ship stale once already
+    # (see the header) -- one base goes green while another does not, and the green one is the one
+    # that gets read. `origin/main` and the merge base are the same commit for this anchor, so one
+    # entry covers both.
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/PluginProcessor.cpp:526",
+     "src/PluginProcessor.cpp:1115"): "viewParams",
+    ("docs/FUTURE_RISKS.md",
+     "src/gui/SpectrumImager.cpp:898-913",
+     "src/gui/SpectrumImager.cpp:899-914"): "beginChangeGesture",
+    # ...and ADR-0010's, whose anchor is a PAIR: the notifying write the wrapper replaced, and the
+    # poll's gesture guard, which merely moved. One end edited is enough to make the whole anchor
+    # unmappable, so the entry carries both ends at their re-derived spellings. The two entries
+    # above it in this table declare the SAME final spelling from the branch's two older bases; this
+    # one answers for the base CI compares against when the push predecessor is this round's own
+    # first commit.
+    ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
+     "src/PluginProcessor.cpp:1135, 1483-1487",
+     "src/PluginProcessor.cpp:1327, 1772-1776"): "openGestures",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

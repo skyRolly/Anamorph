@@ -1,6 +1,7 @@
 #include "PresetManager.h"
 
 #include "SerializedNumber.h"   // the shared malformed-value predicate (both restore paths)
+#include "ParameterDispatch.h"  // ADR-0036 round 27 (R1390): every host-notifying write is bracketed
 #include <cmath>   // std::isfinite -- the non-finite guards on the restore paths
 
 namespace anamorph
@@ -185,7 +186,7 @@ juce::String PresetManager::soundSig() const
 void PresetManager::resetSolo()
 {
     if (auto* sp = apvts.getParameter (pid::mbSolo))
-        sp->setValueNotifyingHost (sp->getDefaultValue());
+        anamorph::param::setValueNotifyingHost (sp, sp->getDefaultValue());
 }
 
 // ONE AT A TIME (§24). This is HALF of the factory apply -- the overrides in loadAdopted are
@@ -200,7 +201,7 @@ void PresetManager::applyDefaults()
             if (! pid::isPresetExcluded (wid->paramID))
             {
                 if (++written == 4 && insideReplacement) insideReplacement();
-                p->setValueNotifyingHost (p->getDefaultValue());
+                anamorph::param::setValueNotifyingHost (p, p->getDefaultValue());
             }
     resetSolo();
 }
@@ -317,7 +318,7 @@ void PresetManager::applySoundTree (const juce::ValueTree& state)
                 if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
                 {
                     if (++written == 4 && insideReplacement) insideReplacement();
-                    rp->setValueNotifyingHost (normalisedFromSavedTree (*rp, state, wid->paramID));
+                    anamorph::param::setValueNotifyingHost (rp, normalisedFromSavedTree (*rp, state, wid->paramID));
                 }
     resetSolo();
     if (noteReplaced) noteReplaced();   // completion, published before the scope closes (§24)
@@ -479,15 +480,27 @@ juce::String PresetManager::soundSignatureForSavedTree (const juce::AudioProcess
 
 void PresetManager::load (int index)
 {
-    // The drain that used to sit inside `onAboutToLoad`, hoisted here in round 16 (§23) so it
-    // runs BEFORE anything is derived rather than after. It is unchanged for this absolute
-    // caller -- the row is the one the user named -- and it is what `step` no longer repeats.
-    if (adoptPending) adoptPending();
+    // ADR-0008 round 25 (R1279-1283), ADR-0036 round 28 (R802-807): not inside a user transaction,
+    // not inside a dispatch of ours, and not while a whole-sound replacement is in flight. The gate
+    // also carries the drain that used to be the next statement -- hoisted into `load` in round 16
+    // (§23) so it runs BEFORE anything is derived rather than after -- with the non-blocking arm.
+    // The replacement lock is HELD from here to the end of the load, which is what makes
+    // `applyDefaults`' and `applySoundTree`'s own acquisitions free recursive re-entries.
+    const auto admit = stateCommandAdmission ([this, index] { load (index); });
+    if (! admit.admitted()) return;
     loadAdopted (index);
 }
 
 void PresetManager::loadAdopted (int index)
 {
+    // ADR-0008 round 25 (R1279-1283), round 28: guarded separately because it is public and both
+    // `load` and `step` reach the row through it; when they deferred, this runs with nothing to
+    // defer, and when they did not, its acquisition is their lock re-entered on the same thread.
+    // NO DRAIN (`drainFirst == false`), which is the whole of what "Adopted" names: `step` derived
+    // its row from the session the outer drain established, and draining again here would adopt a
+    // restore AFTER that row was chosen and load it onto the wrong session (§23).
+    const auto admit = stateCommandAdmission ([this, index] { loadAdopted (index); }, /*drainFirst*/ false);
+    if (! admit.admitted()) return;
     if (index < 0 || index >= list.size()) return;
     const auto& e = list.getReference (index);
 
@@ -540,7 +553,7 @@ void PresetManager::loadAdopted (int index)
             // identity the selection is about to adopt, so the two can never disagree (#4).
             for (const auto& o : factory->set)
                 if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (o.id)))
-                    rp->setValueNotifyingHost (rp->convertTo0to1 (o.value));
+                    anamorph::param::setValueNotifyingHost (rp, rp->convertTo0to1 (o.value));
             if (noteReplaced) noteReplaced();   // completion, published before the scope closes (§24)
         }
         // The resolver mirrors the two writes above: an override's value where the table
@@ -571,15 +584,91 @@ void PresetManager::loadAdopted (int index)
     if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
 }
 
-bool PresetManager::loadFile (const juce::File& f)
+// ROUND 27 (Devin R640). THE PARSE IS SYNCHRONOUS, THE APPLY MAY BE DEFERRED, AND THE CALLER IS
+// TOLD WHICH.
+//
+// Round 25's version returned `true` when it had merely QUEUED the load, with the deferred
+// re-entry written `(void) loadFile (f)` -- so a file that turned out to be another plug-in's
+// preset was refused into a void while the editor had already swept the knobs and refreshed the
+// display for a load that never happened.
+//
+// The split is what makes the contract honest rather than a promise. "Is this an Anamorph preset"
+// is knowable NOW -- it is a property of the bytes, not of the plug-in's state -- so it is decided
+// before anything is queued (section 9), and the half that remains cannot fail. Parsing before the
+// deferral is also one read instead of two, and the parsed tree IS the preset: a file edited in the
+// meantime cannot change what the user asked to load.
+//
+// THE DRAIN STAYS WHERE IT WAS. `adoptPending` runs at the instant the apply happens, not when the
+// command is queued, so a host restore arriving during the transaction is still adopted before the
+// preset lands on it (ADR-0036 sections 18 and 23).
+PresetManager::OpResult PresetManager::loadFile (const juce::File& f,
+                                                 std::function<void (bool)> onComplete)
 {
-    if (adoptPending) adoptPending();   // as `load`: the drain `onAboutToLoad` used to carry (§23)
-
-    // Unparsable OR foreign-rooted -> false, and nothing is touched: the chooser
-    // can point at any file on the machine, so this is the path a user is most
-    // likely to hand another plug-in's preset to (ER-STATE-24).
+    // Unparsable OR foreign-rooted -> failed, and nothing is touched: the chooser can point at any
+    // file on the machine, so this is the path a user is most likely to hand another plug-in's
+    // preset to (ER-STATE-24). Decided here, before any queuing, because it is decidable here.
     auto sound = parseSoundFile (f);
-    if (! sound.isValid()) return false;
+    if (! sound.isValid())
+    {
+        if (onComplete) onComplete (false);
+        return OpResult::failed;
+    }
+
+    // ADR-0008 round 25 (R1279-1283): the OS-chooser load is the same state-replacing command by
+    // another door, so it waits for an open user transaction exactly as Undo does.
+    // COPIED, NOT MOVED, and the test that found this is State test 102 leg A. An init-capture is
+    // evaluated when the LAMBDA is constructed -- which happens before `deferIfBusy` is called and
+    // regardless of what it answers -- so `cb = std::move (onComplete)` emptied `onComplete` even
+    // on the path that then ran synchronously, and the synchronous caller was told nothing at all.
+    // A `std::function` copy is cheap and cannot do that.
+    // ROUND 28: the retry re-enters `applyParsedFileAdmitted`, NOT `applyParsedFile` directly. A
+    // deferred command is run by the processor's flush, which holds nothing -- so a retry that
+    // called the body straight would reach `applySoundTree`'s blocking acquisition with no
+    // admission of its own, which is the R802 door by a second entrance.
+    const auto admit = stateCommandAdmission ([this, f, sound, cb = onComplete]
+                                              { applyParsedFileAdmitted (f, sound, cb); });
+    if (! admit.admitted()) return OpResult::deferred;
+
+    applyParsedFile (f, sound);
+    if (onComplete) onComplete (true);
+    return OpResult::completed;
+}
+
+// Everything `loadFile` used to do once the bytes had proved themselves. One body, so the deferred
+// path and the synchronous one cannot drift.
+// ROUND 28 (R802-807). The deferred half of `loadFile`, and the admission is retaken rather than
+// assumed: a queued command runs from `flushDeferredCommands`, which holds no replacement lock of
+// its own by the time it calls out. Refused again, this re-queues itself through the gate and the
+// completion is NOT called -- the operation is still pending, and R640's contract is that the
+// completion reports the FINAL result exactly once, not once per attempt.
+void PresetManager::applyParsedFileAdmitted (const juce::File& f, const juce::ValueTree& sound,
+                                             const std::function<void (bool)>& completion)
+{
+    const auto admit = stateCommandAdmission ([this, f, sound, completion]
+                                              { applyParsedFileAdmitted (f, sound, completion); });
+    if (! admit.admitted()) return;
+
+    applyParsedFile (f, sound);
+    if (completion) completion (true);
+}
+
+// The same for the deferred save, with the same admission `saveUser` takes -- the bare APVTS
+// acquisition inside `writeUserPreset` is there whichever door reaches it.
+void PresetManager::writeUserPresetAdmitted (const juce::String& legalName,
+                                             const std::function<void (bool)>& completion)
+{
+    const auto admit = stateCommandAdmission ([this, legalName, completion]
+                                              { writeUserPresetAdmitted (legalName, completion); });
+    if (! admit.admitted()) return;
+
+    const bool ok = writeUserPreset (legalName);
+    if (completion) completion (ok);
+}
+
+void PresetManager::applyParsedFile (const juce::File& f, const juce::ValueTree& sound)
+{
+    // ROUND 28: the drain that was here is the admission's, taken at `loadFile`'s top (or at the
+    // top of the deferred retry) -- before the lock, never underneath it.
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
     applySoundTree (sound);
     if (beforeStateCapture) beforeStateCapture();   // test seam: after the apply, before the baseline
@@ -591,18 +680,27 @@ bool PresetManager::loadFile (const juce::File& f)
     sigAtLoad = soundSignatureAfterLoading (apvts, sound);   // from the bytes, no live read (§18, KI-029; §19)
     if (onMetaChanged) onMetaChanged();
     if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
-    return true;
 }
 
 void PresetManager::step (int delta)
 {
+    // ADR-0008 round 25 (R1279-1283): deferred at the OUTERMOST entry point on purpose -- a step
+    // is relative, so re-running `step` later re-derives the row from the state it lands on,
+    // while deferring the absolute load it computes would carry a mid-transaction row forward.
+    // The seam fires from INSIDE the admission, between its drain and its try (§23): that is the
+    // window this test seam exists for -- a restore arriving after the fixed point, which the step
+    // must therefore NOT act on.
+    const auto admit = stateCommandAdmission ([this, delta] { step (delta); }, /*drainFirst*/ true,
+                                              [this] { if (beforeRelativeTarget) beforeRelativeTarget(); });
+    if (! admit.admitted()) return;
     if (list.isEmpty()) return;
     // The step is RELATIVE to the current row, so the current row must be the authoritative
     // one: a pending host restore that moves the selection is adopted before it is read (D-2
     // round 10, §18). Without this, "next" from a session that had just been replaced landed
     // on the row after the OLD selection -- the same stale-derivation shape as the A/B toggle.
-    if (adoptPending) adoptPending();
-    if (beforeRelativeTarget) beforeRelativeTarget();   // test seam: land a restore HERE
+    // ROUND 28: that drain -- and the seam that used to be the next line -- are the admission's,
+    // two statements above and still the FIRST thing this command does, which is the only property
+    // §18 needs of them.
 
     // ...AND THE SELECTION MUST STILL BE THAT ONE WHEN THE ROW IS LOADED (§23, round 16). The
     // drain above was not enough on its own while `load` drained again on the way in, and the
@@ -618,11 +716,70 @@ void PresetManager::step (int delta)
     loadAdopted (((from + delta) % n + n) % n);
 }
 
-bool PresetManager::saveUser (const juce::String& rawName)
+// ROUND 27 (Devin R640). A NAME IS JUDGED NOW; A DISK IS JUDGED WHEN IT IS WRITTEN.
+//
+// Round 25's version deferred FIRST and returned `true`, so the editor closed the Save dialog on a
+// save that had not happened -- and the deferred re-entry was written `(void) saveUser (rawName)`,
+// so when the write later failed (a read-only preset folder, a full disk, a name that resolves to
+// a degenerate path -- see the tilde note below) nothing anywhere learned of it. The user had a
+// closed dialog, an unchanged preset list, and no error.
+//
+// SO THE TWO KINDS OF FAILURE ARE SEPARATED (section 9). An illegal or empty name is a property of
+// the ARGUMENT: knowable now, answered now, nothing queued. Everything else is a property of the
+// FILESYSTEM at the moment of writing, which is exactly what cannot be known in advance -- so it
+// travels on `onComplete`, and the initiating UI stays pending until it arrives.
+PresetManager::OpResult PresetManager::saveUser (const juce::String& rawName,
+                                                 std::function<void (bool)> onComplete)
 {
+    // The one failure that is decidable without touching the disk.
     const juce::String name = juce::File::createLegalFileName (rawName.trim());
-    if (name.isEmpty()) return false;
+    if (name.isEmpty())
+    {
+        if (onComplete) onComplete (false);
+        return OpResult::failed;
+    }
 
+    // ADR-0008 round 25 (R1279-1283): a save writes no parameter, but the processor's `onSaved`
+    // hook calls `syncCommitted`, which clears `pendingGestureCommit` -- so a save arriving
+    // inside a transaction silently deletes that transaction's undo step. Deferred like the
+    // loads, and for the better outcome too: the file then records the COMPLETED action.
+    // Copied, not moved: see the note in `loadFile`. Moving here emptied the completion on the
+    // synchronous path too, because the capture is evaluated before `deferIfBusy` answers.
+    // ROUND 28 (R802-807), AND THE LOCK IS TAKEN EVEN THOUGH A SAVE REPLACES NOTHING. `saveUser`
+    // writes no parameter, so §24's mutual exclusion is not what it needs it for -- what it needs
+    // is the APVTS lock underneath it. `writeUserPreset`'s capture calls `apvts.copyState()`, which
+    // opens `ScopedLock lock (valueTreeChanging)`, and that is the ONE bare acquisition of the APVTS
+    // lock in this tree: every other one sits inside `soundReplacement` already. Reached from a
+    // pumped click it is the same cycle by the other lock -- this thread holds a parameter's
+    // `listenerLock` and waits for `valueTreeChanging`, while a host thread inside
+    // `AudioProcessorValueTreeState::replaceState` holds `valueTreeChanging` and waits for that
+    // `listenerLock`. Holding `soundReplacement` closes it because every thread that can hold
+    // `valueTreeChanging` while waiting for a `listenerLock` must take `soundReplacement` FIRST:
+    // both of this plug-in's `replaceState` sites are inside it (PluginProcessor.cpp
+    // `applyStatePreservingView`, `applySoundTree`) and so is the host-thread `copyState` in
+    // `copyStateWithRawValues`. That invariant is now a rule rather than an accident -- ADR-0036
+    // §31 states it, and it is what this line depends on.
+    //
+    // THE COST IS A FILE WRITE UNDER THE LOCK, and it is stated rather than hidden: a host thread's
+    // `setStateInformation` waits for as long as this save takes. A user preset is a few kilobytes
+    // of XML and the lock is already held across every preset LOAD; the alternative is a residual
+    // deadlock on a door the user presses by hand.
+    //
+    // The retry re-enters `writeUserPresetAdmitted` so a deferred save is admitted like any other.
+    const auto admit = stateCommandAdmission ([this, name, cb = onComplete]
+                                              { writeUserPresetAdmitted (name, cb); });
+    if (! admit.admitted()) return OpResult::deferred;
+
+    const bool ok = writeUserPreset (name);
+    if (onComplete) onComplete (ok);
+    return ok ? OpResult::completed : OpResult::failed;
+}
+
+// Everything `saveUser` used to do once the name had proved itself. `legalName` has already been
+// through `createLegalFileName` and is non-empty, so the deferred execution re-derives nothing --
+// the name the user typed is the name that gets written, whenever the write happens.
+bool PresetManager::writeUserPreset (const juce::String& name)
+{
     auto dir = presetDirectory();
     if (! dir.createDirectory()) return false;
 

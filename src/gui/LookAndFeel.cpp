@@ -1,7 +1,227 @@
 #include "LookAndFeel.h"
 
+#include <vector>
+
 namespace anamorph::gui
 {
+
+// ============================================================================================
+//  THE WHEEL-OWNERSHIP REGISTER (ADR-0053, round 29). See the declaration in LookAndFeel.h for
+//  why it exists and why there is one cell PER POINTING DEVICE.
+//
+//  MESSAGE-THREAD ONLY, like every mouse handler that touches it, and a file-local static rather
+//  than a member of anything: an editor-owned register would be a set of cells only one of which
+//  could ever be non-empty for a given device -- and the one that mattered would be whichever
+//  editor the press landed in, which is exactly what the cell for that device names. Two Anamorph
+//  instances open in one host share this table and want to: one finger or one mouse is holding one
+//  control somewhere, and it is the DEVICE, not the editor, that says which.
+//
+//  ROUND 30 (Devin `src/gui/LookAndFeel.cpp:R16`): one cell was one cell too few. `MouseInputSource`
+//  is not a singleton -- `MouseInputSourceList` is an array, each entry owns its own `buttonState`,
+//  and Linux creates a `touch` source per finger alongside the live `mouse` source with no
+//  plug-in-side opt-out (the header carries the per-platform citations). A finger landing on the
+//  multiband display would evict the claim the mouse's own drag had made, and the mouse's next
+//  notch would steer whatever the finger was on. The cells are keyed by the device that claimed
+//  them, so a device can neither take nor clear another device's press.
+//
+//  ROUND 31, AND THE TWO QUESTIONS THE SHARED TABLE RAISES, BOTH ANSWERED FROM SOURCE:
+//
+//  * ACROSS PLUG-IN INSTANCES (Devin `src/gui/LookAndFeel.cpp:36`). Two instances in one host share
+//    this static -- one process, one copy -- and they share `juce::Desktop`'s source list with it,
+//    so a device has the SAME identity in both. That is the reason the sharing is harmless rather
+//    than a defect: the key is the device, and a device has exactly one press at a time. Its button
+//    state lives in its own `MouseInputSourceImpl` and JUCE routes every event during a drag to the
+//    component that press captured, so a second press by the same device cannot begin in another
+//    editor before the first ends. If one ever did, the later claim would replace the earlier --
+//    which is the live press, and the right answer. Neither instance can touch a cell it did not
+//    claim: `releaseDragWheel` checks the component, and `claimDragWheel` only ever writes this
+//    device's own. An editor destroyed mid-press leaves a `SafePointer` that reads back null, and
+//    the cell is reused by the next press or emptied by the next button-up scroll. State test 108
+//    legs F and K.
+//
+//  * WITHOUT BOUND (Devin `src/gui/LookAndFeel.cpp:36`, the registry-lifetime question). Cells are
+//    emptied and never erased, so the question is whether the KEYS are bounded -- and they are, by
+//    JUCE's own identity model rather than by anything here. `getOrCreateMouseInputSource` keeps
+//    exactly one `mouse` source and one `pen` source, matched on TYPE alone, so replugging a mouse
+//    or adding a second one mints no new key; touch sources are matched on (type, finger slot) under
+//    JUCE's own `jassert (0 <= touchIndex && touchIndex < 100)`
+//    (juce_MouseInputSourceList.h:67-89). The slot itself is RECYCLED: `MultiTouchMapper` hands out
+//    the lowest free index and `clearTouch` frees it at TouchEnd (juce_MultiTouchMapper.h:46-62,
+//    juce_XWindowSystem_linux.cpp:4176, :4207), so the high-water mark is the number of SIMULTANEOUS
+//    fingers, not the number of touches in the session. The table's hard ceiling is therefore 102
+//    rows in a process that cannot exist, and two or three in one that can -- allocated once, on the
+//    message thread, and reused for the rest of the session. It is not a leak, and it is not worth a
+//    lifecycle mechanism that would have to run somewhere.
+// ============================================================================================
+namespace
+{
+    struct WheelClaim
+    {
+        WheelPointer pointer;
+        juce::Component::SafePointer<juce::Component> holder;
+        WheelDragOwner* owner = nullptr;
+    };
+
+    // ONE ENTRY PER DEVICE THE PROCESS HAS EVER SEEN PRESS SOMETHING -- a handful, and never
+    // erased, only emptied. So the allocation happens once per device in the process's life, on
+    // the message thread, and the lookup below is a scan of two or three elements.
+    std::vector<WheelClaim> dragWheelClaims;
+
+    WheelClaim* findClaim (WheelPointer p) noexcept
+    {
+        for (auto& c : dragWheelClaims)
+            if (c.pointer == p)
+                return &c;
+
+        return nullptr;
+    }
+}
+
+bool claimDragWheel (juce::Component& c, WheelDragOwner& o, WheelPointer p)
+{
+    auto* mine = findClaim (p);
+
+    // THIS DEVICE'S PREVIOUS PRESS IS OVER, by the fact that it is making this one. One device
+    // cannot hold two controls at once, so its old cell is cleared before anything else is decided
+    // -- including on the path below that declines to give it a new one.
+    if (mine != nullptr) { mine->holder = nullptr; mine->owner = nullptr; }
+
+    // ONE COMPONENT, ONE ACTIVE DRAG (round 32, owner decision; Devin
+    // `src/gui/LookAndFeel.cpp:R106-110`). The register can key a claim per device; the COMPONENT
+    // cannot. `juce::Slider::Pimpl` has ONE `valueOnMouseDown`, ONE `mouseDragStartPos` and ONE
+    // `sliderBeingDragged`, and the multiband display and the value box each hold one anchor the
+    // same way -- so a second device pressing a control that is already held establishes no second
+    // drag, whatever the register says. Round 31 keyed the RELEASE per device, which is the same
+    // mismatch seen from the other end: it kept a claim alive past the release that ended the one
+    // drag the component had, and that claim then steered the component's NEXT drag on behalf of a
+    // device that was not making it (State tests 107 legs K and L).
+    //
+    // So the second press is not given a claim. The first accepted press owns the component's drag
+    // and its wheel until that drag ends, which is what `releaseDragWheel` below now says.
+    //
+    // ...AND THE ANSWER IS RETURNED, WHICH IS THE WHOLE OF ROUND 33 (Devin
+    // `src/gui/LookAndFeel.cpp:R101-103`). Refusing the claim was never enough: the caller went on
+    // to run the rest of its `mouseDown` regardless, and THAT is where a component's shared drag
+    // lives -- `juce::Slider::Pimpl::mouseDown` re-seeds `valueOnMouseDown`, `mouseDragStartPos`
+    // and `sliderBeingDragged` and opens a second host gesture; `SpectrumImager` latches
+    // `dragBand`/`bandAnchorX`/`gestureBands`; `ValueBox` overwrites `downProp` and its
+    // `ScopedDragNotification`. The rejected press therefore took the drag it had just been
+    // refused the wheel for, and the first device's claim ended up pointing at the second
+    // device's anchor. The decision has to reach the caller, so it is returned, and it is
+    // `[[nodiscard]]`: a caller that forgets to ask does not compile.
+    //
+    // TRUE ALSO FOR THE DEVICE THAT ALREADY OWNS IT. `mine` is cleared above before this scan, so
+    // a re-claim by the holder finds no cell naming `c` and is granted -- a duplicate or re-entrant
+    // `mouseDown` from the owning device is not its own rival (State test 110 leg G).
+    for (auto& cell : dragWheelClaims)
+        if (cell.holder.getComponent() == &c)
+            return false;
+
+    if (mine != nullptr) { mine->holder = &c; mine->owner = &o; return true; }
+
+    dragWheelClaims.push_back ({ p, juce::Component::SafePointer<juce::Component> (&c), &o });
+    return true;
+}
+
+void releaseDragWheel (const juce::Component& c)
+{
+    // THE COMPONENT'S SHARED DRAG HAS ENDED, so nothing may still be claiming it (round 32, owner
+    // decision). There is at most one such cell -- `claimDragWheel` above refuses to make a second
+    // -- and clearing by component rather than by device is the STATEMENT of that invariant: a
+    // register entry pointing at a control with no drag is the contradiction this exists to
+    // prevent, and it cannot be reached by taking the wrong argument.
+    //
+    // ...ONLY THE CONTROL WHOSE DRAG IT IS. A release from anything else would let a press that
+    // never owned the wheel hand it back on behalf of the one that does -- and the two overlap in
+    // the ordinary case, because a value box's press and its parent knob's are the same click to
+    // everything except JUCE's routing. That half of the rule is round 30's and is unchanged.
+    //
+    // WHY IT IS NOT KEYED ON THE RELEASING DEVICE, which round 31 made it: the component has one
+    // drag, `sendDragEnd` puts `sliderBeingDragged` back to -1 on the FIRST release
+    // (juce_Slider.cpp:396-399), and every other control here drops its single anchor the same way.
+    // After any release there is no drag for any device, so a per-device release could only ever
+    // leave a cell behind that named a control with nothing to give it.
+    for (auto& cell : dragWheelClaims)
+        if (cell.holder.getComponent() == &c)
+        {
+            cell.holder = nullptr;
+            cell.owner  = nullptr;
+        }
+}
+
+juce::Component* dragWheelHolder (WheelPointer p) noexcept
+{
+    auto* cell = findClaim (p);
+    return cell != nullptr ? cell->holder.getComponent() : nullptr;
+}
+
+bool dragWheelHeldByOther (const juce::Component& c, WheelPointer p) noexcept
+{
+    // The same scan `claimDragWheel` makes, minus its write and minus the clear of this device's
+    // own cell -- which is why the pointer comparison is here instead: the holder asking about
+    // itself is not its own rival, and must go on running its own drag's events. See the
+    // declaration for the three places a refused press still reached the owner's state.
+    for (auto& cell : dragWheelClaims)
+        if (cell.holder.getComponent() == &c && cell.pointer != p)
+            return true;
+
+    return false;
+}
+
+bool wheelTakenByAnyPress (juce::Component& self, WheelDragOwner* selfOwner,
+                           const juce::MouseEvent& e, const juce::MouseWheelDetails& w,
+                           WheelPointer p)
+{
+    auto* cell = findClaim (p);
+
+    // A WHEEL WITH NO BUTTON DOWN CAN NEVER BELONG TO A PRESS, so this is also where a stranded
+    // claim dies: a release that never arrived (KI-028's class) would otherwise leave the register
+    // pointing at a control that is no longer holding anything, and every later scroll would be
+    // posted to it. The first ordinary scroll clears it, which is the same self-healing shape the
+    // editor's stuck-drag reconcile has -- without needing a tick to run.
+    //
+    // THE BUTTON TEST IS ALREADY PER-DEVICE and needs no help: `MouseEvent::mods` for a wheel comes
+    // from `MouseInputSourceImpl::getCurrentModifiers()`, which is the global modifiers with the
+    // mouse buttons stripped and only THIS source's buttons put back
+    // (juce_MouseInputSourceImpl.h:59-64). So a scroll from the mouse while a finger holds a
+    // control reads as button-up here, and clears the mouse's own cell -- not the finger's.
+    //
+    // ...AND IT IS THE ONLY `false` THIS FUNCTION HAS (round 30). Everything below returns true:
+    // while a button is down the press decides, and a press that decides nothing has still decided.
+    if (! e.mods.isAnyMouseButtonDown())
+    {
+        if (cell != nullptr) { cell->holder = nullptr; cell->owner = nullptr; }
+        return false;
+    }
+
+    auto* holder = cell != nullptr ? cell->holder.getComponent() : nullptr;
+    auto* owner  = (holder == &self) ? selfOwner : (holder != nullptr ? cell->owner : nullptr);
+
+    // THE HOLDER'S OWN COORDINATES, because its anchor arithmetic is in them: every drag in this
+    // editor reconstructs its value from `e.position` and an offset captured at the press, and the
+    // cursor being outside the control is exactly the case this exists for -- an out-of-bounds
+    // position is what an ordinary `mouseDrag` already carries once the cursor has left.
+    // `holder == &self` needs no translation; it is already in them.
+    //
+    // NO DUPLICATE FILTER HERE, and that is a decision rather than an omission. Round 30 tried one,
+    // keyed on `eventTime` the way JUCE's own is (`Slider::Pimpl::mouseWheelMove`,
+    // `lastMouseWheelTime`), and it swallowed real bursts: `juce::Time::getCurrentTime()` has
+    // millisecond resolution and a smooth trackpad delivers several notches inside one, so a
+    // register-wide filter refuses the second, third and fourth of them. State tests 80 legs F and
+    // G measured exactly that. The owners that need the filter (the knob and the value box, whose
+    // one-interval floor makes a repeat move FURTHER than a standalone notch would) keep their own,
+    // where it guards a floor rather than a delivery -- and the double DELIVERY it would otherwise
+    // have had to answer for is removed at its source instead: the editor no longer listens to
+    // `scopePersistK`'s wheel events (see `Knob::onStandaloneWheel`).
+    if (owner != nullptr)
+        owner->takeWheelNotch (holder == &self ? e : e.getEventRelativeTo (holder), w);
+
+    // SWALLOWED EITHER WAY, and that is the round-30 rule. `false` from an owner means it had
+    // nothing to add the notch to; a null owner means this device's press claimed nothing at all.
+    // Neither makes the event free: while the button is held, no control moves but the one being
+    // held by the device that is scrolling.
+    return true;
+}
 
 AnamorphLookAndFeel::AnamorphLookAndFeel()
 {
@@ -787,6 +1007,9 @@ namespace
     struct ValueBox : public juce::Label, public DragGestureOwner
     {
         double downProp = 0.0;
+        // The knob's twin (ADR-0053, round 11): JUCE dedupes wheel events on their timestamp
+        // because a notch moves by at least one interval, and this path now floors the same way.
+        juce::Time lastNotchTime;
 
         // Host change gesture held for the whole press, exactly as the knob's own
         // drag does (Slider begins its gesture on mouseDown too): without it the
@@ -801,7 +1024,37 @@ namespace
 
         void mouseDown (const juce::MouseEvent& e) override
         {
-            if (auto* s = rotaryParent (getParentComponent()); s != nullptr && e.getNumberOfClicks() < 2 && ! isBeingEdited())
+            // ADR-0053 round 29: this press owns the wheel until it is released, wherever the
+            // cursor goes. Asked HERE rather than for every press, because a press this branch
+            // declines -- a double click, one on a non-rotary parent -- takes over no drag and has
+            // no anchor to add a notch to.
+            //
+            // AND IT IS ASKED BEFORE ANYTHING IS WRITTEN (round 32 owner rule, round 33 fix). This
+            // box's drag state is `downProp` and the `ScopedDragNotification`, and until round 33
+            // both were overwritten one line ABOVE the claim -- so a second device's press replaced
+            // the first's anchor and opened a second host gesture before the register was even
+            // consulted. A refused press now establishes nothing at all.
+            //
+            // ...AND A RIVAL'S PRESS STOPS BEFORE THE `Label` FORWARD AS WELL. That call opens the
+            // inline editor on a single or double click, and `isBeingEdited()` is exactly what the
+            // OWNER's `mouseDrag` below tests before it writes -- so letting it through would stop
+            // the first device's drag as surely as overwriting its anchor would. Asked as its own
+            // question because the claim below also declines for reasons that are NOT a rival (a
+            // double click, a non-rotary parent, an open editor), and those must still forward.
+            if (dragWheelHeldByOther (*this, wheelPointerOf (e.source))) return;
+            // ...WHICH MAKES THE CLAIM'S ANSWER BELOW REDUNDANT HERE, and the mutation suite says
+            // so: M189 replaces `&& claimDragWheel (...)` with `&& (claimDragWheel (...), true)`
+            // and no test can tell. It is EQUIVALENT rather than uncovered. `claimDragWheel` clears
+            // this device's own cell before it scans, so it returns false exactly when some cell
+            // with a DIFFERENT pointer names this component -- which is `dragWheelHeldByOther`,
+            // which the line above has already answered false; nothing between the two touches the
+            // register (`rotaryParent`, `getNumberOfClicks` and `isBeingEdited` are reads). The
+            // call is still the WRITE that registers this press, so it stays; consuming its value
+            // in the condition is how a `[[nodiscard]]` is honoured, and it keeps this branch
+            // correct on its own if the guard above ever moves.
+            if (auto* s = rotaryParent (getParentComponent());
+                s != nullptr && e.getNumberOfClicks() < 2 && ! isBeingEdited()
+                  && claimDragWheel (*this, *this, wheelPointerOf (e.source)))
             {
                 downProp = s->valueToProportionOfLength (s->getValue());
                 dragGesture = std::make_unique<juce::Slider::ScopedDragNotification> (*s);
@@ -812,8 +1065,23 @@ namespace
         }
         void mouseUp (const juce::MouseEvent& e) override
         {
+            // A RELEASE ENDS ONLY THE DRAG IT BELONGS TO (round 33). `abortDragGesture` speaks for
+            // the BOX -- it closes the box's host gesture and hands back the box's claim -- so a
+            // rival's release reaching it would end the gesture another device is mid-drag in.
+            // "Someone else holds it", not "I hold it": an emptied cell (KI-028's self-heal) must
+            // still let this box's own release through. See `dragWheelHeldByOther`.
+            if (dragWheelHeldByOther (*this, wheelPointerOf (e.source))) return;
             abortDragGesture(); // close the host gesture before anything else reacts
             juce::Label::mouseUp (e);
+        }
+
+        // ...AND NEITHER DOES A RIVAL'S DOUBLE CLICK OPEN THE EDITOR ON A BOX ANOTHER DEVICE IS
+        // DRAGGING. `juce::Label::mouseDoubleClick` calls `showEditor`, and `isBeingEdited()` gates
+        // the owner's `mouseDrag`; the override exists only to ask the question first.
+        void mouseDoubleClick (const juce::MouseEvent& e) override
+        {
+            if (dragWheelHeldByOther (*this, wheelPointerOf (e.source))) return;
+            juce::Label::mouseDoubleClick (e);
         }
 
         // The release that never came (KI-028). Identical to what mouseUp does,
@@ -821,8 +1089,12 @@ namespace
         // ONE body, so an abandoned press and a real one cannot diverge. Idempotent:
         // resetting a null unique_ptr is a no-op and the property write is a store,
         // so the editor's reconcile may call this on every tick.
+        // ONE BODY, and round 32 made it one again. Round 31 split it so a `mouseUp` could name its
+        // device; under "one component, one drag" there is nothing for the two entries to disagree
+        // about -- both say this box's gesture is over, and that is a statement about the box.
         void abortDragGesture() override
         {
+            releaseDragWheel (*this);   // ADR-0053 round 29: the press is over, wherever it ended
             dragGesture.reset();
             if (auto* s = dynamic_cast<juce::Slider*> (getParentComponent()))
             {
@@ -832,6 +1104,10 @@ namespace
         }
         void mouseDrag (const juce::MouseEvent& e) override
         {
+            // A REFUSED PRESS DRAGS NOTHING (round 33). `downProp` is the OWNER's anchor, so the
+            // mapping below would write the owner's parameter from a rival's cursor -- the same
+            // defect as overwriting the anchor, reached one event later.
+            if (dragWheelHeldByOther (*this, wheelPointerOf (e.source))) return;
             // Directly map vertical drag to the value (respecting any skew). This
             // is robust regardless of event routing -- the previous forwarding
             // approach didn't take (feedback #28).
@@ -842,6 +1118,53 @@ namespace
             }
             else
                 juce::Label::mouseDrag (e);
+        }
+        // ADR-0053. A NOTCH INSIDE THIS BOX'S OWN DRAG BELONGS TO THAT DRAG. Without this override
+        // the event walks up to the parent Slider -- juce::Component::mouseWheelMove forwards to the
+        // nearest enabled ancestor -- and JUCE discards it there, because its wheel handler refuses
+        // to act while any mouse button is down. The drag maps `downProp + (-dragY) / 180.0` afresh
+        // on every mouse move and never reads the live value back, so writing the value alone would
+        // be erased by the next move: the notch has to move `downProp`, which is this box's anchor.
+        //
+        // Measured from the LIVE proportion and clamped, so a notch past a rail moves `downProp` by
+        // nothing and banks no dead travel. The write lands inside the ScopedDragNotification this
+        // press already holds, so the whole drag-plus-notch interaction stays ONE undo step.
+        //
+        // With no drag in flight the event is forwarded exactly as before, and the parent knob's own
+        // override gives it the standalone scroll's undo grouping -- so the knob and the number
+        // under it are ONE control for Undo, which is what they are for the user.
+        void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
+            // ADR-0053 round 30: ONE question, and it answers for this box's own press as well as
+            // for somebody else's. Past it there is no press in flight anywhere, which is the only
+            // state in which the pointer decides.
+            if (wheelTakenByAnyPress (*this, this, e, w)) return;
+            juce::Label::mouseWheelMove (e, w);
+        }
+
+        // The body of the branch above, reachable by the PARENT too: the box drag leaves the box
+        // within a few pixels of travel, so most of a drag's notches are delivered to the knob and
+        // it asks its children through this (ADR-0053). It never forwards the event onward -- the
+        // knob's ask would come straight back through `Label::mouseWheelMove` if it did.
+        bool takeWheelNotch (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
+        {
+            auto* s = rotaryParent (getParentComponent());
+            if (dragGesture == nullptr || s == nullptr || isBeingEdited()) return false;
+            if (e.eventTime == lastNotchTime) return true;   // JUCE's duplicate filter, see the knob's
+            lastNotchTime = e.eventTime;
+            // The knob's own in-drag branch and this one are the same notch on the same slider,
+            // so they ask the same function what JUCE would do with it -- floor included, which
+            // is what makes a sub-interval notch move the box instead of vanishing (round 11).
+            const double v0     = s->getValue();
+            const double target = anamorph::gui::wheelTargetValue (*s, w, v0);
+            if (juce::exactlyEqual (target, v0)) return true;  // ADR-0052: no edit, no side effects
+            const double base = s->valueToProportionOfLength (v0);
+            s->setValue (target, juce::sendNotificationSync);
+            // What ACTUALLY moved, read back after the snap -- the anchor must not bank travel the
+            // slider refused, or the next drag event applies it as a jump. ...and the drag carries
+            // on from here.
+            downProp += s->valueToProportionOfLength (s->getValue()) - base;
+            return true;
         }
         void editorShown (juce::TextEditor* ed) override
         {

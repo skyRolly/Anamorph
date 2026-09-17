@@ -8,6 +8,15 @@ hard-stop item under `docs/policies/ARCHITECTURE_REVIEW_GATE.md`, put to human r
 request rather than decided by a green build, and approved. The reasoning it was approved on is the
 *Architecture Review Gate* section below, unchanged.
 
+**Extended by [ADR-0053](ADR-0053-a-wheel-belongs-to-the-interaction-it-lands-in.md) (2026-09-12),
+which applies this rule to a branch that did not exist when this was written: a notch while a Band
+Solo button is held now MOVES the band, and at one band there is no band to move -- `beginBandMove`
+leaves both pins at -1 and `moveBand` returns having written and opened nothing. Converting the press
+into a "move" regardless would swallow the solo click on release for no gain whatsoever, which is
+this ADR's own defect shape in a new place. Note that ADR-0053 supersedes the ADR-0041 Consequences
+line this ADR re-affirms ("a wheel tick FINISHES a held press"); the ADR-0041 DECISION that both
+depend on is unchanged.**
+
 **Clarifies [ADR-0041](ADR-0041-a-coupled-update-is-all-of-it-or-none-of-it.md) and
 [ADR-0043](ADR-0043-a-commit-carries-intent-and-a-plan-is-computed-where-it-is-used.md); supersedes
 nothing.** ADR-0041 decided that a wheel tick **finishes** a held press, because two gestures cannot
@@ -75,11 +84,82 @@ side effect* — and asked for an evidence-based decision.
 The in-source ADR-0041 comment block was reconciled rather than left stranded: it now opens by saying
 that every sentence in it is about an event that makes an edit.
 
+### Where the rule was applied next (round 11 of the ADR-0053 review)
+
+The rule was written about an event carrying no usable delta. A later review found four sites where
+the delta was real and the EDIT still was not, and each of them paid for an edit it did not make. All
+four are the same shape — the target is clamped to the value the control already holds — and all four
+are now answered by asking the write path's own question before anything is established:
+
+* **A notch at the end of a band's travel** converted the solo press into a move, opened one or two
+  host change gestures and started the hold audition, and the release then took the move branch —
+  swallowing the solo click exactly as the one-band case in this ADR's own Consequences would have.
+  The travel limits used to be knowable only by SETTING them (`beginBandMove`), which is why the
+  test could not be made first; the geometry is now a pure `bandMovePlan` both paths derive from.
+* **A standalone notch at a split's travel limit, or on a bandwidth already at 0.0 or 2.0**, opened
+  a change gesture and closed it again around a store that wrote nothing — a touch/latch punch-in
+  for an edit that never happened. Both branches now predict the no-op from the reading the tick has
+  already taken and proved (ADR-0047), against `writeCrossovers`' own half-pixel threshold, so the
+  prediction cannot drift from the write path.
+* **An in-press notch at a bandwidth rail** additionally ENGAGED the width drag that the 3 px
+  threshold had not, leaving every later one-pixel tremor writing widths.
+* **An Option/Alt-click on a knob already at its default** bracketed the reset in a host change
+  gesture and ran the sweep animation, for a `setValue` JUCE then dropped. The same question
+  (`resetWouldMove()`) is now asked before the gesture opens and again inside `doReset`, which is the
+  double-click path's half of it.
+
+**THE GUARD ASKS THE SLIDER, AND ROUND 23 CONFIRMED THAT IS RIGHT -- while finding what it costs.**
+`Knob::resetWouldMove()` compares `getValue()` (the SLIDER's value) to `resetValue`, not the
+PARAMETER's, and the comment beside it has always said so: *"Asked in VALUE space, which is the space
+`setValue` compares in."* That is the correct question for this ADR's rule, because the rule is about
+what the INTERACTION costs -- the sweep, the `vpos` seed, the gesture -- and all three are the
+control's, not the parameter's.
+
+The two can disagree, which round 23 measured rather than assumed. A parameter written without
+notifying its listeners never reaches `ParameterAttachment` at all, and an off-message-thread write
+reaches it only through `triggerAsyncUpdate`, so the slider lags the parameter by up to one
+message-loop turn. In that window the guard correctly says "this interaction moves something" while
+the parameter is already sitting on the reset value -- so the gesture opens, JUCE's attachment then
+DROPS the write (`setValueAsPartOfGesture` -> `callIfParameterValueChanged`), and the bracket closes
+having declared nothing. That is not an ADR-0052 violation: the interaction really did have something
+to do. It is an ADR-0008 attribution gap, and round 23 closes it there -- both reset paths now state a
+refusal before their close, so the batch cannot invent an endpoint from the live parameter. The guard
+is unchanged. State test 96 leg C.
+
+**A SIXTH SITE, 2026-09-15 (round 22): the multiband display's own reset** —
+`SpectrumImager::resetParam`, which the width line's double-click and Alt-click both call. It is the
+one reset that was never given this rule: it ran `onSweep` and bracketed a `setValueNotifyingHost` in
+a change gesture before it looked at the value, so a double-click on a width ALREADY at its default
+punched a host touch/latch write region and ran the sweep for an edit that never happened —
+`Knob::doReset`'s defect, on the control family this ADR's own bullets are otherwise about. Review
+finding `src/gui/SpectrumImager.cpp:R853-864`.
+
+The question is asked exactly where the other five ask it — before anything the edit would cost,
+which here means before the sweep and before the gesture opens — and it is asked in the SNAPPED space
+(`convertTo0to1 (convertFrom0to1 (getDefaultValue()))`), which is the space the store's own read-back
+proof compares in five lines below; `getDefaultValue()` alone is the wrong term for a stepped or
+skewed range and a guard on it would refuse a reset that really does move. What deliberately did NOT
+move out with it is the ADR-0045 topology re-proof: that answers a question about the WORLD which only
+becomes true once the gesture has dispatched, and it stays adjacent to the store. Regression coverage:
+State test 94 leg J (no gesture, no write, no sweep, no undo entry), with leg C as the standing control
+that a reset which does move is still one undoable user step. Mutation M90 restores the unconditional
+sweep and gesture and fails three of leg J's four checks.
+
+A fifth site was examined and left alone: the wheel latch (`scrollHandle` / `scrollBand` /
+`scrollAnchor` / `scrollBands` / `scrollFx`) is still established before the no-edit test. It is
+pointer memory rather than edit state — a `mouseMove` writes the same fields with no edit in sight —
+and its only consumers are the next tick's staleness test and re-derivation, so latching it for a
+notch that then does nothing changes no later answer.
+
 ## Consequences
 
 * A horizontal or sub-threshold wheel event no longer ends a held drag, no longer closes its host
   gesture early, no longer creates an undo step, and no longer swallows a pending click.
 * No change to any wheel event that carries a real vertical delta.
+* **A wheel event whose delta is real but whose target is clamped to the value already held is
+  treated the same way** (round 11): no gesture, no store, no engage, no audition, no repaint — and,
+  for a solo press, the click still lands on release. Same for an Alt-click reset with nothing to
+  reset. Regression coverage: State test 86 legs Q and R, State test 87 leg F, State test 88 leg K.
 
 ## Related code
 

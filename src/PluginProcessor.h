@@ -4,11 +4,13 @@
 #include "PluginParameters.h"
 #include "PresetManager.h"
 #include "InternalState.h"
+#include "StateCommandGate.h"  // anamorph::StateCommandGate (ADR-0036 section 31)
 #include "AbSlotIndex.h"          // anamorph::kNumAbSlots (single source of truth for A/B sizing)
 #include "dsp/AnamorphEngine.h"
 
 #include <memory>
 #include <functional>
+#include <vector>
 
 // ============================================================================
 //  AnamorphAudioProcessor
@@ -69,6 +71,304 @@ public:
     bool canRedo() const noexcept { return ! abUndo[abActive].redo.empty(); }
     void pollUndoCoalesce();
 
+    // ADR-0036, ROUND 21. THE TIMER'S POLL NEVER BLOCKS ON A WHOLE-SOUND REPLACEMENT, and that is
+    // a deadlock fix rather than a performance one. `soundReplacement` is taken by a HOST thread
+    // inside `applySoundTree` (an off-message-thread `setStateInformation`), which then calls
+    // `apvts.replaceState` and, inside it, waits for a parameter's `listenerLock`. The message
+    // thread reaches this poll from a TIMER -- and a timer runs from any loop that drains the
+    // message queue, including one a host pumps from its gesture-end callback, which JUCE
+    // dispatches while that same `listenerLock` is HELD. A poll that blocks there closes the
+    // cycle: host thread holds the replacement lock and wants the listener lock; message thread
+    // holds the listener lock and wants the replacement lock.
+    //
+    // TWO acquisitions are reachable from here and BOTH are handled, which is why this is not one
+    // try-lock around the whole thing:
+    //   * the DRAIN's (`adoptRestoreTail` -> `applySoundTree`), taken through
+    //     `adoptPendingHostState (false)`. It cannot be covered by a lock held out here, because
+    //     the adoption calls OUT to the host from inside itself -- a restored Oversampling
+    //     delivers the reported latency synchronously, and `AudioProcessorListener`s run on this
+    //     thread while it does. Holding a replacement lock across a host callback is the same
+    //     inversion pointing the other way, and State test 27 (ER-STATE-14) hangs on it: measured,
+    //     round 21.
+    //   * the POLL BODY's (`currentStateSet`), covered by the try-lock below. That body calls out
+    //     to nothing -- it reads parameters and copies the tree -- so the lock is safe to hold
+    //     across it, and every acquisition inside it is then a free recursive re-entry.
+    //
+    // Nothing is consumed on the way out -- `pendingRestore`, `pendingGestureCommit`, the batch
+    // vectors and `polledGen` are all untouched -- so the next tick does the work. The USER-ACTION
+    // callers of `pollUndoCoalesce` (undo, redo, a preset save) keep the blocking acquisition they
+    // have always had: they cannot be re-entered from inside a parameter dispatch, and their flush
+    // must not be skipped.
+    void pollUndoCoalesceFromTimer();
+
+    // ------------------------------------------------------------------------
+    //  A SCROLL IS ONE UNDO STEP (ADR-0053).
+    //
+    //  An undo entry holds the state from BEFORE the step it undoes, so "keep the value the whole
+    //  scroll started from and replace only where it ended" is exactly "do not push another entry,
+    //  and move the committed baseline on". That is the whole mechanism: a wheel edit NAMES the
+    //  control it belongs to for as long as its change gesture is open, the name travels with the
+    //  commit that gesture requests, and a commit whose name matches the one the most recently
+    //  recorded step carries EXTENDS that step instead of pushing a second one.
+    //
+    //  0 means "not a wheel edit", and that is what ends a chain: a drag, a typed value, an
+    //  Alt-click reset -- every other edit closes its gesture unnamed, so the next scroll starts a
+    //  fresh step, which is what "switching to another modification method creates a new step"
+    //  means here. A change that arrives with no gesture at all (host automation) ends it too.
+    //
+    //  WHY THERE IS NO INACTIVITY TIMER. The step exists from the first notch and is extended by
+    //  every notch after it, so "one Undo returns the parameter to the value it had before the
+    //  scroll" is true at EVERY instant rather than only after a dwell -- and nothing has to be
+    //  polled, timed or held open to make it so. A held-open gesture would also be the one failure
+    //  this class already knows to fear: `pollUndoCoalesceAdopted` records nothing while
+    //  `openGestures > 0`, so a gesture that is never closed stops undo recording silently.
+    //
+    //  Message-thread state, like every other member of this section.
+    void setWheelStepKey (int key) noexcept { wheelStepKey = key; }
+
+    // ADR-0008 as amended (round 14). A STORE THE PLUG-IN'S OWN UI MAKES OUTSIDE A GESTURE OF ITS
+    // OWN IS STILL THE USER'S EDIT. Nearly every write here is bracketed by a change gesture on the
+    // parameter it writes, which is the declaration an undo entry needs; the exceptions are the
+    // multiband display's coupled stores -- `SpectrumImager::storeOwned` and `setParam`, which push
+    // neighbouring splits and shifted widths inside a gesture held on ONE parameter -- and they say
+    // so by calling this instead. Without it a pushed neighbour would fall outside the very step
+    // that moved it and one Undo would leave the split row half restored. Message thread only, like
+    // every other member of this section; a no-op when no batch is pending.
+    // ROUND 17: it takes BOTH ends. `wasNorm` is what the parameter held immediately before this
+    // store -- its `before` endpoint if this store is what first takes it into the batch -- and
+    // `nowNorm` is what the store installed, which is its `after`. A store is the only place that
+    // knows either: it runs with nothing bracketed, so no gesture edge can read them for it.
+    void noteOwnedParamWrite (const juce::AudioProcessorParameter* p,
+                              float wasNorm, float nowNorm) noexcept;
+
+
+    // ADR-0008, ROUND 18. THE CONTROL THAT WROTE THE PARAMETER SAYS WHAT IT WROTE, and this is the
+    // narrow half of `noteOwnedParamWrite` for the controls that cannot bring a `before`. A JUCE
+    // parameter attachment declares ownership when its gesture OPENS and declares no value at all,
+    // so the close had nothing but a live read -- and a host write landing after the user's last
+    // attachment write and before that gesture closed became the value Redo restored (State test
+    // 91). The editor's per-control witness calls this with the value the control actually asked
+    // the parameter to take, which is exactly what `noteOwnedParamWrite` does for the imager's
+    // stores. It REFUSES to create ownership: a write the batch does not already own is not a user
+    // step's endpoint, and declaring one here would hand an undo step to the gesture-less writes
+    // ADR-0052 deliberately leaves alone.
+    void noteOwnedParamEndpoint (const juce::AudioProcessorParameter* p, float nowNorm) noexcept;
+
+    // ADR-0008, ROUND 19. A REFUSED STORE IS A POSITIVE FACT, AND THIS IS WHERE IT IS RECORDED.
+    // `SpectrumImager::storeOwned` reads its own write back and refuses the declaration when what is
+    // there is not what it installed -- the slot holds somebody else's value, so the store has
+    // produced nothing the user can be said to have made. Until round 19 the refusal said that by
+    // saying NOTHING, which is indistinguishable from a control that has not written yet: the close
+    // fell through to its live read and the replacement became the user's `after` (State test 92
+    // legs B, C and E). Recorded, the close leaves the endpoint exactly where the last thing that
+    // actually stood left it -- the value `noteFirstOwnership` seeded, or the last store that stood
+    // -- so a refusal costs the step the parameter rather than inventing an endpoint for it.
+    //
+    // It states no value, deliberately: a refused store has none to state.
+    void noteOwnedParamRefused (const juce::AudioProcessorParameter* p) noexcept;
+
+    // ADR-0008, ROUND 24 (Devin R1092). ONE USER ACTION IS ONE UNDO STEP, EVEN WHEN IT IS NINE
+    // STORES. A multiband topology change (`SpectrumImager::addBandAt` / `removeBand`), a crossover
+    // reset or a typed frequency (`resetCrossover` / `commitFreqEditor`, which store the primary and
+    // only then spread its neighbours) and the editor's Apply Gain (`applyAutoGain`, two bracketed
+    // stores) all CLOSE an inner change gesture and keep writing afterwards. The close drops
+    // `openGestures` to zero and raises `pendingGestureCommit`, which is everything the poll asks
+    // before it commits -- so a host that pumps its message loop from the gesture-end callback it
+    // has just been handed (JUCE delivers that to `AudioProcessorListener`s LAST, after the
+    // processor's own bookkeeping: juce_AudioProcessorParameter.cpp:102-108 ->
+    // juce_AudioProcessor.cpp:1476-1487) lets the editor's 24 Hz tick commit HALF the action.
+    // Measured before this round, State test 98 leg B: one Undo of one Add-band click left
+    // `bands 2, solo 0x4` -- a word naming band 2 in a two-band layout, which `SoloMonitor::process`
+    // masks away to nothing -- and a second Undo was needed to finish the job.
+    //
+    // WHAT THIS DOES AND, AS IMPORTANTLY, DOES NOT DO. While the depth is non-zero the poll SKIPS,
+    // exactly as it already skips for `openGestures > 0`: `pendingGestureCommit` is not consumed,
+    // not cleared and not discarded, the batch vectors keep accumulating, and the first poll after
+    // the transaction ends commits the whole action as ONE step with every endpoint the action
+    // produced. It is not a delay, not an inactivity timer and not a dependence on the host
+    // behaving: the scope is the transaction's own lifetime, closed by RAII on every exit including
+    // the ten early returns `addBandAt` alone has.
+    //
+    // ROUND 25 DROPPED `noexcept` FROM THE CLOSE, and the removal is the honest half of this
+    // round's change rather than a stylistic one. Round 24's body was one clamped decrement and
+    // could not throw; the close now runs `pollUndoCoalesce()` -- which copies the whole parameter
+    // tree and formats a signature -- and then arbitrary `std::function` bodies. Both allocate.
+    // The exposure itself is unchanged, because both callers are destructors (`ScopedUserTransaction`
+    // below and the imager's own scope) and a destructor is implicitly `noexcept`, so a throw
+    // terminates either way; what changes is that the declaration no longer claims otherwise.
+    void beginUserTransaction() noexcept;
+    void endUserTransaction();
+
+    // ADR-0008, ROUND 25 (Devin R1279-1283). A STATE-REPLACING COMMAND DOES NOT RUN INSIDE A USER
+    // TRANSACTION -- IT WAITS FOR ONE, AND IT IS NEVER DROPPED.
+    //
+    // Round 24 stopped the undo POLL from committing half a topology. It did not stop a whole
+    // COMMAND from replacing the state underneath one. The window is the same window: a topology
+    // burst's stores dispatch synchronously to the host, a host that pumps its message loop from
+    // one of those callbacks dispatches whatever UI events are queued, and the editor's Undo,
+    // Redo, A/B and preset buttons are among them. `undo()` then runs RE-ENTRANTLY on the message
+    // thread with a half-applied topology in the parameters, and it does not merely read: it
+    // installs an entry's `before` end, retakes `committed` from the LIVE (half-applied) sound,
+    // clears `openGestures` and `pendingGestureCommit`, and calls `resetBatchOwnership()`.
+    //
+    // THE OWNERSHIP WIPE IS THE CORRUPTION, not the value restore. The stores the burst has
+    // already issued lose their declarations; the ones still to come declare into a fresh batch;
+    // `setBands` closes its gesture and the step the next poll commits describes only the TAIL of
+    // the action. Measured before this round (State test 99 leg B): after an Add-band click
+    // interrupted this way, `bands 3, solo 0x4`, and one Undo of the recorded step gave
+    // `bands 2 and solo 0x4 disagree` -- R1092's mixed topology, through the door round 24 left
+    // open.
+    //
+    // THE CONTRACT. Every entry point that replaces a whole sound/state snapshot calls this FIRST.
+    // While a transaction is running the command is queued and `true` is returned, so the caller
+    // returns without touching anything; with no transaction running it returns `false` and the
+    // caller proceeds exactly as it always has. Nothing is dropped, nothing is coalesced away, no
+    // timer and no sleep is involved, and the nested dispatch that delivered the command is not
+    // suppressed -- the command simply happens at the next instant where the state it replaces is
+    // a state a completed user action produced.
+    // ROUND 28 REPLACED THE PREDICATE WITH AN ADMISSION (Devin R802-807, RISK-009), and the reason
+    // is that round 25's question was the wrong one to ask ALONE. `userTransactionDepth > 0` is
+    // "is a multi-store user action in flight"; it is silent about the extent R1390 named, so a
+    // pumped Undo click with NO transaction running went straight through it into
+    // `pollUndoCoalesce`'s blocking capture and `applyStatePreservingView`'s blocking replacement.
+    // That is R802 exactly, and round 27's `insideDispatch()` cannot close it either: it answers
+    // for a dispatch this plug-in started and a host's dispatch raises no depth of ours.
+    //
+    // `admitStateCommand` asks all three questions at the one door -- transaction open, own
+    // dispatch, replacement in flight -- and the third is a TRY that is HELD for the whole body, so
+    // the guarantee does not depend on being able to see the host at all. See
+    // `src/StateCommandGate.h` for the argument; `deferWhileUserTransactionActive` is gone rather
+    // than kept alongside it, so there is one door and no second spelling to forget.
+    //
+    // Use it as a scope object and check it:
+    //     const auto admit = admitStateCommand ([this] { undo(); });
+    //     if (! admit.admitted()) return;      // queued; touch nothing
+    [[nodiscard]] anamorph::StateCommandGate admitStateCommand (std::function<void()> retry,
+                                                                bool drainFirst = true,
+                                                                const std::function<void()>& afterDrain = {});
+
+    // The four answers a gate is built from, wired once in the constructor. `PresetManager` holds a
+    // pointer to this so a preset command and an Undo pass through the same door.
+    anamorph::StateCommandHooks stateCommandHooks;
+
+    // How deep in admitted commands this thread is. Message-thread only, exactly like
+    // `userTransactionDepth`; see `StateCommandHooks::nesting` for why an inner gate must not
+    // repeat the outer one's drain.
+    int stateCommandDepth = 0;
+
+    // How many commands are waiting on the FIFO. Test-facing: the regression matrix for round 28
+    // asserts both that a refused command IS queued and that a retry door empties it, and neither
+    // is observable from the outside otherwise.
+    [[nodiscard]] size_t deferredCommandCount() const noexcept { return deferredCommands.size(); }
+
+    // ADR-0036, ROUND 26 (Devin R651). THE FLUSH IS A NON-BLOCKING DOOR. See the definition for the
+    // lock cycle it closes; the rule it enforces is the one `copyStateWithRawValues` has carried
+    // since round 18 -- nothing that takes `soundReplacement` may run from a parameter listener
+    // callback -- made true by construction rather than by a reachability argument, because the
+    // door never waits. Called from the transaction's outermost close and from BOTH polls, so a
+    // refused flush is retried at the user's next action or the next 20/24 Hz tick.
+    void flushDeferredCommands();
+
+    // RAII over the pair, for the transactions that live inside this class. The imager reaches the
+    // same counter through its `onUserTransaction` callback and has a scope of its own, because it
+    // holds no processor pointer by design.
+    struct ScopedUserTransaction
+    {
+        explicit ScopedUserTransaction (AnamorphAudioProcessor& p) noexcept : proc (p)
+        { proc.beginUserTransaction(); }
+        ~ScopedUserTransaction() { proc.endUserTransaction(); }
+        AnamorphAudioProcessor& proc;
+        JUCE_DECLARE_NON_COPYABLE (ScopedUserTransaction)
+    };
+
+    // ADR-0008, ROUND 20. WHAT THE CONTROL ASKED FOR, KNOWN BEFORE THE GESTURE CAN BE POLLED.
+    // `noteOwnedParamEndpoint` above states the endpoint AFTER the write, which is early enough for
+    // a slider -- its attachment writes in one callback and closes the gesture in a later one, so
+    // the endpoint is standing before the close. It is NOT early enough for a ComboBox or a Button:
+    // JUCE's attachment does begin/write/end for those inside a SINGLE listener callback
+    // (`setValueAsCompleteGesture`), and the editor's witness is the next listener in that same
+    // pass -- so the batch becomes pollable, and its endpoint is read, while the witness is still
+    // pending. A host that pumps the message loop from its gesture-end callback (it is entered
+    // last, as the parameter's `finalListener`) gets a nested `pollUndoCoalesce` in that gap, and
+    // the entry it commits is final: `UndoEntry` stores the value, so a later declaration cannot
+    // reach it.
+    //
+    // So the control says what it is about to ask for BEFORE handing over to the attachment, and
+    // the close prefers that over its live read. It is a REQUEST, not a declaration: it states no
+    // ownership and creates no step -- a host push arms and disarms it with no gesture in between
+    // and nothing consumes it. The previous request is returned so the caller can restore it,
+    // which keeps one control's notification nested inside another's from stranding the outer one --
+    // provided the caller saves it PER NOTIFICATION DEPTH. A control whose notification is re-entered
+    // before its own restore has two saves live at once, and one slot cannot hold both (round 34).
+    struct AttachmentRequest { int index = -1; float norm = 0.0f; };
+    AttachmentRequest noteAttachmentRequest (const juce::AudioProcessorParameter* p,
+                                             float norm) noexcept;
+    void restoreAttachmentRequest (AttachmentRequest prev) noexcept;
+    // The name a parameter-backed control answers to. A parameter's index is stable for the life of
+    // the processor and unique to it, so two controls driving the SAME parameter -- a knob and the
+    // numeric box under it -- are correctly one control for this purpose. +1 keeps 0 meaning "none".
+    static int wheelStepKeyFor (const juce::AudioProcessorParameter* p) noexcept
+    { return p != nullptr ? p->getParameterIndex() + 1 : 0; }
+
+    // Names a wheel edit for the duration of its change gesture and un-names it on every exit path.
+    //
+    // WHY THE DESTRUCTOR WRITES 0 RATHER THAN RESTORING WHAT IT FOUND (round 11 asked, and the
+    // answer is that 0 IS what it found). The key is non-zero only inside one of these scopes, and
+    // no call chain in this plug-in enters one from inside another. There are three construction
+    // sites -- the knob's standalone scroll (`PluginEditor.h`), and the imager's split and width
+    // bursts, which name the same key through `SpectrumImager`'s own `ScopedWheelName` -- and no
+    // chain joins any two:
+    //   * the imager's two are mutually exclusive branches of one handler, each wrapping a single
+    //     `endGesture` call and reaching no other component;
+    //   * `juce::Slider::mouseWheelMove` hands the event to its Pimpl, which returns true whether
+    //     or not it acted, so an enabled slider with the wheel on never forwards to an ancestor;
+    //     and `juce::Component::mouseWheelMove` walks UP to the nearest enabled ancestor, never
+    //     down. Every `Knob` is a direct child of the editor or of the Settings backdrop -- never
+    //     of another `Knob`, and never of the imager, whose only children are its own overlays.
+    // So a saved-and-restored key would restore 0 at every exit this code can reach, and a
+    // restoring destructor would be a mechanism with no second caller to justify it.
+    //
+    // THE ONE INTERLEAVING THAT IS NOT STRUCTURAL, and for a notch over a DIFFERENT control
+    // restoring the key would make it WORSE rather than better: a host that pumps the OS message
+    // loop from inside `beginChangeGesture` or `setValueNotifyingHost` -- both of which the knob's
+    // scope spans -- could deliver a queued notch over another control inside this one. Follow it
+    // through. The inner notch opens its own gesture while this one is still open, so
+    // `parameterGestureChanged` counts 1 -> 2, and its close counts 2 -> 1: it latches NOTHING,
+    // because the latch runs only where the count returns to ZERO. The zero-crossing close is
+    // therefore the outer one (or, when a foreign gesture was already open, that gesture's own
+    // release), and it reads the key the inner scope's exit has just cleared -- so the batch is
+    // unnamed and the next notch starts its own step.
+    //
+    // TWO extra undo steps mid-scroll, not one, and the count is worth stating because both
+    // clauses above cost one each: the unnamed batch cannot extend (`stepKey != 0` fails), and the
+    // poll then records `lastStepWheelKey = 0`, so the notch AFTER it cannot extend either. One
+    // extra step if the interruption lands on the scroll's first notch, and one if both batches
+    // fall inside a single 24 Hz poll period and collapse.
+    //
+    // AND THE SUB-CASE THE PARAGRAPH ABOVE DOES NOT COVER: a queued notch over the SAME control.
+    // There, restoring would be strictly better -- the scroll would stay one step -- and clearing
+    // splits it. Neither policy dominates; clearing errs toward extra undo steps and restoring
+    // errs toward swallowing another control's edit, and the rule below picks the former
+    // deliberately.
+    //
+    // Restore the key and that same latch names the batch after the OUTER control -- a batch that
+    // also contains the INNER control's edit, because the inner gesture closed inside it. The next
+    // notch of the outer control would then extend a step holding somebody else's value: since
+    // round 14 an entry owns the parameters the BATCH moved, and the inner control's is one of
+    // them, so the other control's edit still travels with it. The
+    // cleared key is not a shortcut that happens to be safe; it is the answer that keeps a batch
+    // this scope cannot account for from being claimed. Recorded rather than hardened, and the
+    // reasoning written out because the first version of this paragraph got it wrong -- it argued
+    // from the disagreement rule, which never fires here, since the inner close never latches.
+    struct ScopedWheelStep
+    {
+        ScopedWheelStep (AnamorphAudioProcessor& p, int key) noexcept : proc (p) { proc.setWheelStepKey (key); }
+        ~ScopedWheelStep() noexcept { proc.setWheelStepKey (0); }
+        ScopedWheelStep (const ScopedWheelStep&) = delete;
+        ScopedWheelStep& operator= (const ScopedWheelStep&) = delete;
+        AnamorphAudioProcessor& proc;
+    };
+
     // D-2 (RISK-007), 2026-09-03. Every piece of PROGRAM state this class owns -- the
     // preset name / identity / dirty baseline, the two A/B slots and the active index,
     // the per-slot Level-Match memory, the undo history, the committed baseline and
@@ -87,7 +387,12 @@ public:
     // through pollUndoCoalesce) and because the state suite drains deterministically
     // instead of waiting a timer period. Message thread only; a no-op when nothing
     // is pending (one relaxed atomic load).
-    void adoptPendingHostState();
+    // `mayBlock` is false for the TIMER doors only (round 21), and it changes exactly one thing:
+    // the tail's re-install of the restored sound tries `soundReplacement` instead of waiting on
+    // it. The drain itself is unchanged -- it still runs to a fixed point and still applies every
+    // tail. See `pollUndoCoalesceFromTimer` for the cycle that forbids the wait, and
+    // `adoptRestoreTail` for the proof that the skip and the wait end in the same state.
+    void adoptPendingHostState (bool mayBlock = true);
 
     // THE RULE FOR RELATIVE NAVIGATION (D-2 round 16, ADR-0036 §23).
     //
@@ -106,6 +411,10 @@ public:
     // inside a parameter notification.
     void abSwitchToAdopted (int slot);        // the switch, with the drain already done
     void pollUndoCoalesceAdopted();           // the poll, with the drain already done
+    // ADR-0036 round 28 (R802-807): `PresetManager::onSaved`'s hook. The same three steps as
+    // `pollUndoCoalesce` with the one acquisition made a try, because a save is reachable from a
+    // pumped click and must not wait for `soundReplacement`. See the definition.
+    void rebaselineAfterSave();
 
     // Test seams (D-2): EMPTY in production, so each costs one null check on a
     // non-audio path. A harness installs one to run code at an ownership boundary
@@ -121,10 +430,26 @@ public:
     // loop, WITH THE LOCK HELD: a harness may sample state or arm another thread from there, but
     // must never join or wait on a thread that itself performs a whole-sound replacement, because
     // that thread is blocked on this one.
+    //
+    // `insidePollBody` fires inside `pollUndoCoalesceAdopted`, after the signature has been built
+    // and before `committed` is captured -- the window in which a host write is absorbed by the
+    // capture while the generation the poll started from does not name it. It is the only place a
+    // deterministic harness can put a write, because nothing the poll body calls re-enters a
+    // parameter write, so the race is otherwise cross-thread only (State test 86 leg U).
+    // `insideDurableCapture` (round 22) fires inside `copyStateWithRawValues`, WITH the §24
+    // replacement lock held and on WHATEVER THREAD took it -- a host thread's save reaches it
+    // through `writeState`, and so does every message-thread A/B slot, undo step and baseline.
+    // It is the ONLY way a harness can park a NON-ANNOUNCING holder of that lock, which is the
+    // contender ADR-0036 §27 is about: a restore announces its generation before it installs,
+    // so parking a restore inside `insideSoundReplacement` cannot produce the contention the
+    // adoption's own acquisition has to survive. Same contract as `insideSoundReplacement`: a
+    // harness may sample or arm from here, never join a thread that performs a whole-sound
+    // replacement or a durable capture of its own. Filter by thread -- it fires very often.
     struct Seams { std::function<void()> afterHostSaveTake, afterRestoreTake, beforeRestorePut,
                                         afterRestoreSoundApplied, beforeSoundReplacementWrites,
                                         atRelativeDecision, insideSoundReplacement,
-                                        betweenStateSetApplyAndMeta; };   // ADR-0037: proves no live read
+                                        insideDurableCapture,
+                                        betweenStateSetApplyAndMeta, insidePollBody; };   // ADR-0037: proves no live read
     Seams seams;
 
     // Auto-Gain "Apply": locks the measured loudness-match gain into Output Gain.
@@ -229,6 +554,12 @@ private:
     };
     StateSet currentStateSet();                  // current params + live preset meta
     void applyStateSet (const StateSet&);        // restore params (keeping view) + meta
+    void resetBatchOwnership();
+    // ROUND 17. THE ONE PLACE A `before` ENDPOINT IS WRITTEN, and it writes each one exactly once:
+    // the instant the pending batch first takes that parameter. A second declaration of an
+    // already-owned parameter is a no-op, which is what makes the endpoint stable against every
+    // later gesture, snapshot and automation write in the same batch.
+    void noteFirstOwnership (int index, float beforeNorm) noexcept;
 
     // Undo helpers
     static bool isViewParam (const juce::String& id) noexcept;
@@ -245,11 +576,66 @@ private:
     // apvts.copyState() with each PARAM node additively stamped with its exact raw getValue()
     // ("raw" attribute), so every saved snapshot (host state, A/B slots, undo) round-trips exactly.
     juce::ValueTree copyStateWithRawValues();
-    void syncCommitted();
 
-    struct UndoStacks { std::vector<StateSet> undo, redo; };
+    // ------------------------------------------------------------------------
+    //  ADR-0008 AS AMENDED (round 14, approved). WHAT AN UNDO ENTRY IS.
+    //
+    //  An entry used to be a whole `StateSet` snapshot, and that is what made a host automation
+    //  value part of a user's step: the snapshot behind the user's edit predates every write that
+    //  landed in the commit window, so one Undo took the automation back with the edit -- and the
+    //  REDO destination was worse, because it was manufactured from the LIVE parameters at the
+    //  moment Undo was pressed, so any automation between the step and the Undo silently became
+    //  the value the user's Redo restored (RISK-012, R983).
+    //
+    //  An entry now records WHAT THE USER'S OWN BATCH MOVED, and both ends of it. `owned` carries
+    //  one `ParamEdit` per parameter the batch declared as its own -- a parameter with a change
+    //  gesture of its own, or one the imager's coupled stores declared through
+    //  `noteOwnedParamWrite` -- with the value it held when the batch FIRST TOOK it and the latest
+    //  value its own gesture or store produced (PER PARAMETER SINCE ROUND 17). Undo writes the
+    //  `before` ends, Redo writes the `after` ends, and the SAME entry moves between the two
+    //  stacks, so the two directions cannot disagree. Everything else the live sound holds is left
+    //  exactly where it is, which is what makes a later host write survive both.
+    //
+    //  `before.params` VALID MEANS A WHOLE-STATE ENTRY, and two push sites still make them: a
+    //  preset load (`commitPresetSwitchUndoStep`) and an A/B Copy (`abCopyToOther`). Neither opens
+    //  a gesture, both wholesale-replace a sound, and there is no per-parameter attribution to be
+    //  had for either; they keep exactly the semantics they have always had. Undo history is never
+    //  serialized, so none of this reaches the Serialization Registry.
+    struct ParamEdit { int index = 0; float before = 0.0f, after = 0.0f; };  // normalised (raw) values
+    struct UndoEntry
+    {
+        std::vector<ParamEdit> owned;   // what the user's batch moved; empty on a whole-state entry
+        StateSet before, after;         // `params` valid ONLY when whole; the preset metadata always
+        bool isWhole() const noexcept { return before.isValid(); }
+    };
+    struct UndoStacks { std::vector<UndoEntry> undo, redo; };
     UndoStacks abUndo[anamorph::kNumAbSlots];
+    // ADR-0008 as amended (round 14). Install one end of an undo entry. A whole-state entry is
+    // applied exactly as it always was. A scoped one is applied by handing `applyStateSet` the LIVE
+    // state with only the entry's own parameters overwritten -- deliberately, rather than by writing
+    // those parameters directly, so the §24 replacement lock, the view-param preservation,
+    // `reassertParameters`' exact-value assert, `seams.beforeSoundReplacementWrites` and
+    // `noteWholeSoundReplaced()` all still happen on the undo path (State test 49's `undoStep` leg
+    // is the one that would stop measuring its interleaving if they did not).
+    void applyUndoEntry (const UndoEntry& e, bool toAfter);
+    // ADR-0008's history bound, in the ONE place that enforces it. The ADR's Consequences call it
+    // "a hand-rolled history with a 128-entry cap per slot", and until round 16 that cap lived as
+    // two hand-copied `push_back` / `size() > 128` / `erase (begin())` triples -- the poll's step
+    // push and the preset-switch push -- while `abCopyToOther` had neither, so repeated A/B Copies
+    // grew a slot's history without limit, and each of those entries is the expensive kind: two
+    // whole `ValueTree`s rather than a handful of `{index, before, after}` triples. `undo()` and
+    // `redo()` MOVE an entry between the two stacks rather than growing either, so they need no
+    // cap and do not call this: the undo stack they push to has just had an entry popped from it.
+    static constexpr size_t kUndoDepth = 128;
+    static void pushCapped (std::vector<UndoEntry>& stack, UndoEntry&& e);
     StateSet committed;
+    // ROUND 21 (ADR-0036 §26). SET WHEN A TIMER'S ADOPTION COULD NOT TAKE THE BASELINE, and
+    // cleared by the first door that can. `syncCommitted` copies the parameter tree under
+    // `soundReplacement`; a timer may not wait for that lock (see `pollUndoCoalesceFromTimer`),
+    // so when a host thread is mid-replacement the snapshot is skipped and this says so. Every
+    // path that can PUSH an undo entry runs through `pollUndoCoalesceAdopted`, which repairs it
+    // at its first line, so no entry is ever built on a `committed` this flag still names.
+    bool committedNeedsResync = false;
     juce::String committedSig, lastPolledSig;
     std::atomic<juce::uint32> soundParamGen { 1 }; // bumped by parameterValueChanged (S10)
     // D-2 round 5 (ADR-0036 §12). Bumped once every time the live parameters are REPLACED
@@ -323,6 +709,128 @@ private:
     // never opens a gesture, so it is never recorded.
     int  openGestures = 0;
     bool pendingGestureCommit = false;
+    // ADR-0008, ROUND 24 (Devin R1092). HOW DEEP INSIDE A MULTI-STORE USER ACTION THIS THREAD IS.
+    // `openGestures` answers "is a gesture open", and that is NOT the same question. A topology
+    // change is a plan applied as six to nine stores, two of which bracket a gesture of their own
+    // (`setSoloMask` at the front, `setBands` at the back) -- so between them `openGestures` is
+    // ZERO with `pendingGestureCommit` already raised, and a poll landing there commits a topology
+    // that is half old and half new. Message-thread-owned, exactly like the two fields above; a
+    // plain int because a transaction is a synchronous burst on one thread and nesting is only
+    // possible through re-entrancy this counter is what makes safe.
+    int  userTransactionDepth = 0;
+    // ADR-0008 round 25: the commands that arrived while it was non-zero, in the order the user
+    // gave them, and the guard that stops the flush re-entering itself. Message-thread-owned, like
+    // the depth above. A vector of `std::function` rather than an enum because a preset load
+    // carries an argument and a hand-rolled variant would be a command model this repository does
+    // not otherwise have; the allocation is on the message thread, in a user-action path, and
+    // happens only when a host actually interrupts a transaction.
+    std::vector<std::function<void()>> deferredCommands;
+    bool runningDeferredCommands = false;
+    // ADR-0036 ROUND 28b (Devin R834-835). WHERE A DEFERRAL GOES WHILE THE FLUSH IS WALKING A
+    // BATCH, AND WHICH OF THE TWO KINDS IT IS. The flush moves the queue into a local batch and
+    // runs it; a command that REFUSES admission queues its retry through the same hook a running
+    // command queues new work through, and the two need opposite treatment -- the refusal keeps the
+    // HEAD of the queue, new work goes BEHIND everything already in front of it. The queue's SIZE
+    // answers neither question, which is the defect the finding names: a running command may
+    // legitimately queue work, so a queue that comes back the same size says nothing.
+    //
+    // They are told apart by asking whether the invoked command had made any PROGRESS when the
+    // deferral happened, and there are exactly two witnesses of progress, both observable:
+    //   * `stateCommandDepth > deferredSinkDepth` -- the deferral came from underneath an admission
+    //     this command was GRANTED (`StateCommandGate::defer` runs before any `++*nesting`, so its
+    //     own refusal is seen at exactly the depth the flush invoked it at);
+    //   * `userTransactionDepth > 0` -- the command opened a transaction, which it can only do
+    //     after it has begun. The flush invokes every command with the depth at zero (its own entry
+    //     guard, and nothing between commands opens one), so a non-zero depth here is this
+    //     command's own doing. State test 100 leg E and State test 101 leg H are built on this shape: a
+    //     queued command that runs, opens a transaction of its own and queues a third command from
+    //     inside it, which must run THIRD.
+    // Neither witness present => the command did nothing and its admission refused.
+    //
+    // `deferredSink` collects everything the command queued, in order; the flag says which kind the
+    // first one was. Message-thread-owned, like the queue itself, and null outside a flush.
+    std::vector<std::function<void()>>* deferredSink = nullptr;
+    int  deferredSinkDepth = 0;
+    bool deferredSinkRefused = false;
+    // ADR-0053, the three halves of "a scroll is one undo step". `wheelStepKey` is the control a
+    // wheel edit currently in flight names; `pendingStepWheelKey` is that name LATCHED at the
+    // instant the gesture closed, because the poll that acts on it runs up to a timer period later,
+    // by which time the edit has long un-named itself and another may be in flight;
+    // `lastStepWheelKey` is the name the most recently RECORDED undo step carries, and comparing the
+    // two is the whole extend-or-push decision. 0 everywhere means "not a wheel edit".
+    int  wheelStepKey = 0;
+    int  pendingStepWheelKey = 0;
+    int  lastStepWheelKey = 0;
+    // Whether any gesture in the batch now pending has CONTRIBUTED that name -- only a gesture that
+    // actually changed a sound parameter does, which is what makes an empty press transparent to a
+    // scroll instead of ending it (ADR-0053). With `gestureOpenGen`, the sound generation sampled
+    // when the batch's first gesture opened, it is a two-word comparison per gesture rather than a
+    // signature rebuild: `soundParamGen` is already bumped by every value change.
+    bool pendingStepNamed = false;
+    juce::uint32 gestureOpenGen = 0;
+    // ...and the sound generation as of the last GESTURE EDGE -- the open of a batch, the close of
+    // a batch, or a poll. Anything that moves a sound parameter between two edges moved it outside
+    // every gesture, which is host automation by construction: it is the only writer that opens
+    // none. Both windows matter and they are different windows: the poll runs up to a timer period
+    // after the close, and the next batch can open a whole gesture before the poll ever runs. A
+    // step that carries a foreign write is nobody's scroll -- it neither extends the scroll before
+    // it nor lets the next notch extend it (ADR-0053, round 11).
+    juce::uint32 gestureEdgeGen = 0;
+    // ...latched at the OPEN side, because by the time the poll reads the counter the batch's own
+    // writes have moved it past the evidence. Message thread only, like everything else here.
+    bool foreignSinceEdge = false;
+
+    // ADR-0008 as amended (round 14), IMPLEMENTED PER PARAMETER SINCE ROUND 17. The parameters the
+    // pending batch owns, and for each of them the value it held when the batch first took it and
+    // the latest value the user's own action produced for it. `batchOwnedParam[i]` is set where the
+    // batch declared parameter i its own -- a change gesture opened on it, or `noteOwnedParamWrite`
+    // said so.
+    //
+    // THESE ARE NOT SNAPSHOTS ANY MORE, and that is the whole of the round-17 correction. They were
+    // whole-parameter-list reads taken when the batch opened and re-taken at EVERY zero-crossing
+    // close, which made three things wrong at once, all measured (State test 90):
+    //   * a second gesture's close re-read the WHOLE list, so a host write that landed between two
+    //     gestures of one batch replaced the first gesture's `after` -- Redo then restored the
+    //     automation value as though the user had produced it, and the value the user actually
+    //     produced was not recoverable from either end;
+    //   * `before` came from the batch's open rather than from the parameter's own first
+    //     ownership, so automation that moved a parameter BEFORE the user first touched it became
+    //     the value Undo restored;
+    //   * an empty press -- a click that starts no drag -- declared a parameter and the close
+    //     handed it whatever the host had written, turning pure automation into a user Undo step.
+    // Per parameter, `before` is written once at first ownership and `after` only from a value the
+    // owning gesture or store actually produced, so no later read of anything can redefine either.
+    //
+    // ROUND 18 completes the sentence above for the controls that declare NOTHING. A parameter
+    // written through a JUCE attachment used to reach the close with only bit 0 set, so the close
+    // live-read it -- and a host write landing after the user's last attachment write and before
+    // that gesture closed became the recorded `after`. The editor's `AttachmentWitness` now states
+    // the value the control asked for, through `noteOwnedParamEndpoint`, which is the same bit-1
+    // declaration a declaring store makes. State test 91.
+    //
+    // Sized ONCE in the constructor and never resized, so a gesture callback allocates nothing.
+    // SIX functions touch them, and this list is exhaustive because a fix that adds per-parameter
+    // state and misses `resetBatchOwnership` would leak it across a program-state jump: the
+    // constructor (sizing, on the host's construction thread, before anything can observe the
+    // object), `parameterGestureChanged`, `noteFirstOwnership`, `noteOwnedParamWrite`,
+    // `noteOwnedParamEndpoint`, `resetBatchOwnership` and `pollUndoCoalesceAdopted`. Every one of
+    // those but the constructor is message-thread, which is why this is NOT the
+    // `parameterValueChanged` design RISK-012 flagged as a new cross-thread path.
+    std::vector<float> batchOpenValue, batchCloseValue;
+    std::vector<char>  batchOwnedParam;
+    // ...and which parameters the CURRENT gesture episode is about. Bit 0 is "a gesture opened on
+    // it since the last zero-crossing close"; bit 1 is "a store declared its endpoint in this
+    // episode, so the close must not second-guess it with a live read"; bit 2 (round 19) is "a
+    // store on it was REFUSED this episode, so the live value is known not to be the user's and
+    // the endpoint must stay where the last thing that stood left it". Cleared at every
+    // zero-crossing close and whenever the batch is re-based. This is what keeps a closing gesture
+    // from retaking an endpoint that belongs to an earlier gesture of the same batch.
+    std::vector<char>  batchEpisodeParam;
+    // ROUND 20: the one piece of endpoint bookkeeping that is NOT per-batch, and must not be --
+    // it is armed before the gesture opens, and opening a fresh batch re-bases every vector above.
+    // At most one control notification is in flight at a time; nesting is handled by save/restore
+    // at the witness rather than by a stack here.
+    AttachmentRequest  attachRequest;
 
     StateSet abSlot[anamorph::kNumAbSlots]; // A = [0], B = [1]
     int abActive = 0;
@@ -577,8 +1085,20 @@ private:
     // decode, and by a host thread only AFTER it has announced its generation (§25).
     void installRestoredSound (RestoreDecode& d);
     bool decodeRestore (const void* data, int sizeInBytes, RestoreDecode& out);
+    // The SOUND half of an adoption (ADR-0036 §27, round 22). Re-installs the decode's own
+    // sound when some other state set has replaced the live one since the decode ran, so the
+    // metadata the tail is about to publish describes the sound underneath it. The CALLER
+    // holds `soundReplacement` across this AND the `pendingRestore.take()` that produced `d`:
+    // the two are one step, because a take that is not followed by the re-install has already
+    // emptied the cell and leaves the mixed session permanently.
+    void reinstallRestoredSound (const RestoreDecode& d);
     // The adoption tail, message thread only: today's restore tail, verbatim.
-    void adoptRestoreTail (const RestoreDecode&);
+    void adoptRestoreTail (const RestoreDecode&, bool mayBlock = true);
+    // `mayBlock` as above, and it reaches exactly one line: the baseline snapshot, which
+    // copies the parameter tree under `soundReplacement`. A timer that may not wait leaves
+    // `committed` alone and raises `committedNeedsResync`; every door into the poll body
+    // repairs it before that body can push anything.
+    void syncCommitted (bool mayBlock = true);
     // Serialize a program snapshot plus the live parameters. Any thread: the APVTS
     // copy is JUCE-locked and the snapshot is immutable.
     // `settings` is the Settings tree to write, passed separately because a save inside the

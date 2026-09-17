@@ -389,13 +389,61 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     saveNameEditor.onReturnKey = [this] { saveOkButton.triggerClick(); };
     saveNameEditor.onEscapeKey = [this] { showSavePreset (false); };
     savePresetBackdrop.addAndMakeVisible (saveNameEditor);
+    // ADR-0036 ROUND 27 (Devin R640). THE DIALOG CLOSES ON A SAVE, NOT ON A QUEUE.
+    //
+    // This used to be `if (saveUser (name)) { showSavePreset (false); ... }`, and `saveUser`
+    // returned true for a save it had merely QUEUED behind an open user transaction -- so the
+    // dialog closed, the user believed the preset was written, and the write's own failure (a
+    // read-only preset folder, a full disk) was discarded by the deferred call. The completion
+    // now carries the real answer and the dialog waits for it.
+    //
+    // `SafePointer` because the wait can outlive the editor: the deferred save runs at the next
+    // safe boundary, and a host can close the plug-in window before that boundary arrives.
+    //
+    // ROUND 28b (Devin R405-406): ...AND THE COMPLETION HAS TO KNOW WHICH SAVE IT IS THE ANSWER TO.
+    // `SafePointer` answers editor lifetime; `attempt` answers dialog identity, which is the
+    // question a cancelled-then-reopened dialog asks (see `saveAttempt` in the header). The split
+    // below is the owner's ruling made literal: the FILE half of the result is processed whatever
+    // happened to the dialog -- the preset list and the dirty mark really did change, and hiding
+    // that would be a second bug -- while every line that touches the dialog is inside the
+    // identity check.
     saveOkButton.onClick = [this]
     {
-        if (processor.getPresets().saveUser (saveNameEditor.getText()))
-        {
-            showSavePreset (false);
-            refreshPresetDisplay();
-        }
+        const auto attempt = ++nextSaveAttempt;
+        saveAttempt = attempt;
+        setSavePending (true);
+        processor.getPresets().saveUser (saveNameEditor.getText(),
+            [safeThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this), attempt] (bool ok)
+            {
+                if (safeThis == nullptr) return;   // the editor went away while the save waited
+
+                // THE INTERNAL HALF, unconditional: the write happened (or did not) regardless of
+                // what the user has since done to the dialog, and the preset display describes the
+                // session rather than the attempt.
+                if (ok) safeThis->refreshPresetDisplay();
+
+                // THE DIALOG HALF, only for the attempt that is still on screen. A completion from
+                // a cancelled attempt must not close a newer dialog, clear its pending state,
+                // overwrite its title or take its focus.
+                if (safeThis->saveAttempt != attempt)
+                    return;
+
+                safeThis->setSavePending (false);
+                if (ok)
+                {
+                    safeThis->showSavePreset (false);
+                }
+                else
+                {
+                    // The dialog STAYS OPEN with the text intact, which is the same visible
+                    // outcome the synchronous failure always had -- the save failed visibly, and
+                    // the name is still there to correct or retry.
+                    safeThis->saveNameEditor.setColour (juce::TextEditor::outlineColourId,
+                                                        colours::warn);
+                    safeThis->saveTitle.setText ("SAVE FAILED", juce::dontSendNotification);
+                    safeThis->focusSaveNameField (4);
+                }
+            });
     };
     saveCancelButton.onClick = [this] { showSavePreset (false); };
     savePresetBackdrop.addAndMakeVisible (saveOkButton);
@@ -568,6 +616,27 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     imager->onSoloPreview      = [this] (int mask) { processor.setSoloPreview (mask); };
     imager->onClearSoloPreview = [this] { processor.clearSoloPreview(); };
     imager->onSweep            = [this] { if (uiAnimOn) knobSweepTime = 0.45; };
+    // ADR-0053: a scroll over the multiband display names the split or the band it edits, so the
+    // processor keeps the whole scroll as one undo step instead of one per notch.
+    imager->onWheelStep        = [this] (const juce::AudioProcessorParameter* wheelParam)
+                                 { processor.setWheelStepKey (AnamorphAudioProcessor::wheelStepKeyFor (wheelParam)); };
+    // ADR-0008 as amended (round 14): the imager's two unbracketed stores declare the parameters
+    // they write as the user's own, so a pushed neighbour belongs to the step that moved it.
+    // Round 15: with the value the store installed, because a spread that runs after the primary's
+    // gesture has closed is past the snapshot that would otherwise have read it back.
+    imager->onOwnedWrite       = [this] (const juce::AudioProcessorParameter* owned,
+                                         float was, float now)
+                                 { processor.noteOwnedParamWrite (owned, was, now); };
+    // Round 19: and the refusal, which is the same sentence's other half -- a store that did not
+    // stand states no endpoint, and the batch's close must not invent one from the live value.
+    imager->onOwnedRefused     = [this] (const juce::AudioProcessorParameter* refused)
+                                 { processor.noteOwnedParamRefused (refused); };
+    // ADR-0008 round 24 (Devin R1092): and the LIFETIME of a multi-store user action, so the undo
+    // poll cannot commit half a topology change when a host pumps the loop from the inner gesture
+    // close in the middle of one.
+    imager->onUserTransaction  = [this] (bool begin)
+                                 { if (begin) processor.beginUserTransaction();
+                                   else       processor.endUserTransaction(); };
     imager->isSweeping         = [this] { return uiAnimOn && knobSweepTime > 0.0; };
     addAndMakeVisible (*imager);
 
@@ -640,10 +709,22 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // reset animates like every other Knob (#7).
     scopePersistK.onSweep = [this] { if (uiAnimOn) { knobSweepTime = 0.45; scopePersistK.getProperties().set ("resetSweep", true); } };
     scopePersistK.onValueChange = [this] { applyScopePersist(); };
-    // Listen for the mouse wheel ON the Persistence bar so a sustained scroll reveals the
-    // window (handled in mouseWheelMove, the single source of truth, so a single
-    // notch never triggers it) (#1).
-    scopePersistK.addMouseListener (this, false);
+    // A sustained scroll of the Persistence bar reveals the window: the first notch arms a short
+    // window, a SECOND notch inside it reveals (so a single notch never does), and a ~0.5 s dwell
+    // holds it after the last notch. Drag is handled separately and is unchanged (#1).
+    //
+    // Round 30: a callback the knob raises on a standalone scroll, NOT a mouse listener. A
+    // listener is called after the component's own handler for the same event
+    // (`Component::internalMouseWheel`), which made the wheel register see one notch twice.
+    scopePersistK.onStandaloneWheel = [this]
+    {
+        // `persistDragging` cannot be true here -- a scroll during any press is consumed by the
+        // register before it reaches the knob's standalone tail -- and the test is kept because it
+        // is what this rule MEANS, not because the routing happens to guarantee it today.
+        if (persistDragging) return;
+        if (persistScrollWindow > 0.0) persistRevealTimer = 0.5; // sustained -> reveal + dwell
+        persistScrollWindow = 0.30;                              // (re)arm the recent-change window
+    };
     // While dragging Persistence, fade the Settings overlay so the live vectorscope
     // behind it is visible (#9).
     scopePersistK.onDragStart = [this] { persistDragging = true; };
@@ -760,15 +841,29 @@ void AnamorphAudioProcessorEditor::setupRotary (juce::Slider& s, juce::Label& l,
     registerAnimated (s); // eased hover/press glow (F3)
 }
 
+AnamorphAudioProcessorEditor::AttachmentWitness*
+AnamorphAudioProcessorEditor::makeWitness (const char* id)
+{
+    auto* p = processor.getAPVTS().getParameter (id);
+    return p != nullptr ? writeWitnesses.add (new AttachmentWitness (processor, *p)) : nullptr;
+}
+
 void AnamorphAudioProcessorEditor::attachSlider (juce::Slider& s, const char* id)
 {
+    // ADR-0008 round 18: the witness straddles the attachment, so it can tell a user write (which
+    // moves the parameter inside the attachment's own callback) from a host push (which moved it
+    // before the control was touched at all). Registration ORDER is the whole mechanism.
+    auto* w = makeWitness (id);
+    if (w != nullptr) w->listenBefore (s);
     sliderAtts.add (new SliderAttachment (processor.getAPVTS(), id, s));
+    if (w != nullptr) w->listenAfter (s);
 
     auto* p = processor.getAPVTS().getParameter (id);
     if (auto* k = dynamic_cast<Knob*> (&s); k != nullptr && p != nullptr)
     {
         k->resetValue = p->getNormalisableRange().convertFrom0to1 (p->getDefaultValue()); // #6
         k->resetParam = p; // gesture-wrap resets so they land in undo/automation as ONE user edit
+        k->owner      = &processor; // ADR-0053: a standalone scroll names the control it edits
         // A RESET (double-click / Option-click) sweeps the eased position (0.6.7 #21).
         // resetSweep lets that travel play even while the reset's mouse button is still
         // held (alt-click / a double-click's 2nd press); only flagged when animations
@@ -821,7 +916,10 @@ void AnamorphAudioProcessorEditor::setupCombo (juce::ComboBox& box, const char* 
     passComboHoverThrough (box);
     allCombos.add (&box); // timer drives the hover repaint (#20)
     addAndMakeVisible (box);
+    auto* w = makeWitness (id);                       // ADR-0008 round 18, see `attachSlider`
+    if (w != nullptr) w->listenBefore (box);
     comboAtts.add (new ComboBoxAttachment (processor.getAPVTS(), id, box));
+    if (w != nullptr) w->listenAfter (box);
     registerAnimated (box); // eased hover lift (F3)
 }
 
@@ -831,7 +929,10 @@ void AnamorphAudioProcessorEditor::setupToggle (juce::ToggleButton& t, const cha
     t.setButtonText (text);
     if (tip.isNotEmpty()) t.setTooltip (tidyTip (tip));
     addAndMakeVisible (t);
+    auto* w = makeWitness (id);                       // ADR-0008 round 18, see `attachSlider`
+    if (w != nullptr) w->listenBefore (t);
     buttonAtts.add (new ButtonAttachment (processor.getAPVTS(), id, t));
+    if (w != nullptr) w->listenAfter (t);
     registerAnimated (t); // eased switch slide + hover (F3)
 }
 
@@ -996,17 +1097,31 @@ void AnamorphAudioProcessorEditor::updateMsLabels()
 }
 
 void AnamorphAudioProcessorEditor::showAbout (bool show)    { aboutBackdrop.setVisible (show);    if (show) { aboutBackdrop.toFront (false); resized(); } }
-void AnamorphAudioProcessorEditor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails&)
+void AnamorphAudioProcessorEditor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
-    // Sustained scroll of the Persistence bar reveals the window: the first notch arms a
-    // short window, a SECOND notch inside it reveals (so a single notch doesn't),
-    // and a ~0.5 s dwell holds it after the last notch. Drag is handled separately
-    // and is unchanged (#1).
-    if (e.eventComponent == &scopePersistK && ! persistDragging)
-    {
-        if (persistScrollWindow > 0.0) persistRevealTimer = 0.5; // sustained -> reveal + dwell
-        persistScrollWindow = 0.30;                              // (re)arm the recent-change window
-    }
+    // THE BACKSTOP FOR "THE PRESS DECIDES, NOT THE POINTER" (ADR-0053 round 29, owner decision).
+    //
+    // Knob, the value box and the multiband display each ask the register at the top of their own
+    // wheel handler, which covers a pointer that has wandered onto ANOTHER CONTROL. It does not
+    // cover a pointer that has wandered onto something that is not a control at all -- a caption, a
+    // toggle, the panel background -- and that is most of this editor's surface. Those components
+    // do not override `mouseWheelMove`, so `juce::Component`'s version walks the event up to the
+    // nearest enabled ancestor (juce_Component.cpp:2316-2321) and it arrives HERE, at the top of
+    // the tree, where it used to be dropped: the notch of a live drag, lost because the cursor was
+    // over a label. Asking the register here catches every such path at the one place they all
+    // converge, and costs a null check when no press is in flight.
+    //
+    // THE ONE COMPONENT THAT DOES NOT ARRIVE is `PopupShield`, whose `mouseWheelMove` is
+    // deliberately empty because consuming the gesture IS its behaviour -- and a raised shield
+    // means a pop-up menu owns the mouse, so there is no drag of ours for a notch to belong to.
+    // ...AND `nullptr` FOR THE OWNER, because the editor holds no presses of its own: it is here
+    // only to answer for the events that reach it, never to take a notch.
+    // ...AND THAT IS ALL THIS HANDLER DOES SINCE ROUND 30. The Persistence-reveal branch that used
+    // to sit here has moved to `scopePersistK.onStandaloneWheel`, because reaching it required the
+    // editor to be a `MouseListener` on that bar -- and a listener is offered the event a SECOND
+    // time, after the bar's own handler has already offered it to the register. See
+    // `Knob::onStandaloneWheel`.
+    (void) anamorph::gui::wheelTakenByAnyPress (*this, nullptr, e, w);
 }
 
 // A PopupMenu window has just been constructed through one of our look-and-feels. Track it and
@@ -1425,6 +1540,22 @@ void AnamorphAudioProcessorEditor::timerCallback()
     if (msToggle.getToggleState() != msState) // external / preset / automation change (#12/#13)
         updateMsLabels();
 
+    // ROUND 27 — THE A/B LETTER IS THE ONE INDICATOR WITH NO OTHER WAY BACK. Found by this round's
+    // sibling audit of the round-25 deferral, not by a review finding. `ABControl::paint` reads
+    // `processor.abActiveSlot()` live, and the only repaints it ever gets are its own hover/exit
+    // handlers and the editor-wide `repaint()` in its click handler — which runs BEFORE a DEFERRED
+    // `abToggle` has executed. Every other post-command read in this editor is re-run from this
+    // tick (the preset name and dirty dot at `refreshPresetDisplay`, the undo/redo enablement
+    // below), so it is stale for at most one period; this one had no such path at all, and after a
+    // deferred toggle the letter kept showing the outgoing slot until the pointer happened to
+    // cross it. One comparison per tick, repainting only when the slot really moved — the same
+    // shape as the three reconciliations above it.
+    if (const int slot = processor.abActiveSlot(); slot != lastAbSlot)
+    {
+        lastAbSlot = slot;
+        abControl.repaint();
+    }
+
     uiAnimOn = animToggle.getToggleState(); // micro-anims follow the Settings switch (F3)
 
     // Whole-window scale: follow the parameter (Settings combo, state recall, F4).
@@ -1507,7 +1638,8 @@ void AnamorphAudioProcessorEditor::timerCallback()
         if (dimOverlay.isVisible()) dimOverlay.toFront (false);
     }
 
-    processor.pollUndoCoalesce(); // fold settled sound edits into undo steps (#10-12)
+    processor.pollUndoCoalesceFromTimer(); // fold settled sound edits into undo steps (#10-12)
+                                           // ...through the door that never blocks (ADR-0036 round 21)
     undoButton.setEnabled (processor.canUndo());
     redoButton.setEnabled (processor.canRedo());
     // Wave 4: re-format the readout only when the raw published float changed.
@@ -1960,7 +2092,15 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
     // the 20 Hz adopt cannot rebuild it. Display only (the row the user clicks is an
     // ABSOLUTE index into `list`, which no adoption reorders), but wrong on screen, and
     // one call removes the exception rather than documenting it.
-    processor.adoptPendingHostState();
+    // ROUND 28 (Devin R802-807): the NON-BLOCKING arm, and the reason is that this line is
+    // reachable from a pumped click exactly as Undo is. The blocking arm waits for
+    // `soundReplacement`, which a host thread can be holding while it waits for a parameter's
+    // `listenerLock` this thread holds -- the cycle the state commands now refuse to supply. A
+    // menu cannot be deferred (it is opened synchronously and modally), so it takes the other
+    // answer: a refused drain leaves the tick on the outgoing row for the life of THIS popup and
+    // the 20 Hz adopt repairs it before the next one. Display only, bounded to one opening, and
+    // strictly better than the wait.
+    processor.adoptPendingHostState (/*mayBlock*/ false);
 
     auto& pm = processor.getPresets();
     pm.refresh();
@@ -2106,17 +2246,31 @@ void AnamorphAudioProcessorEditor::showLoadPreset()
                 // The chooser reaches any file on the machine, so this is the path most likely to
                 // be handed a foreign preset -- and the one where a duck for a refused load was
                 // most visible. The masking now comes from the load path itself (ER-GUI-06).
-                if (safeThis->processor.getPresets().loadFile (file))
-                {
-                    safeThis->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
-                    safeThis->refreshPresetDisplay();
-                }
+                // ROUND 27 (R640): the sweep and the refresh are the SUCCESS UI, so they run
+                // when the load has actually happened -- which for a load deferred behind an open
+                // user transaction is later, and for a foreign or unparsable file is never. The
+                // parse is synchronous either way, so "not an Anamorph preset" is still answered
+                // the instant the chooser closes.
+                safeThis->processor.getPresets().loadFile (file,
+                    [inner = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (safeThis)]
+                    (bool ok)
+                    {
+                        if (inner == nullptr || ! ok) return;
+                        inner->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
+                        inner->refreshPresetDisplay();
+                    });
             }
         });
 }
 
 void AnamorphAudioProcessorEditor::showSavePreset (bool show)
 {
+    // ROUND 28b (R405-406): EVERY show and EVERY hide ends the UI association with whatever save
+    // was in flight. Cancel, Escape, the backdrop dismiss and the successful close all arrive
+    // here, so this one line covers them without any of them having to remember to. The queued
+    // write is NOT cancelled -- that is the owner's ruling, and the completion still runs; it
+    // simply no longer owns the dialog.
+    saveAttempt = 0;
     savePresetBackdrop.setVisible (show);
     if (show)
     {
@@ -2125,6 +2279,7 @@ void AnamorphAudioProcessorEditor::showSavePreset (bool show)
         // The RAW name on purpose, not refreshPresetDisplay's placeholder: for a state that
         // carries no preset the right pre-fill is an empty field the user types into, never
         // "No Preset" offered as a preset file name.
+        setSavePending (false);   // round 27 (R640): a fresh dialog, never the last one's state
         saveNameEditor.setText (processor.getPresets().currentName(), false);
         focusSaveNameField (4);
     }
@@ -2157,6 +2312,19 @@ void AnamorphAudioProcessorEditor::showSavePreset (bool show)
 // message-loop passes until the grab actually STICKS. Bounded at 4 x 50 ms, and it
 // stops the moment the field reports focus, so it cannot still be running while the
 // user types.
+// ADR-0036 ROUND 27 (Devin R640). The dialog's pending state, and the two things it has to do:
+// stop a second click starting a second save while the first is still queued, and say that
+// something is happening. It is deliberately not a modal spinner -- the wait is bounded by the
+// user's own next action (the transaction they are in the middle of has to finish), so the honest
+// signal is a disabled button and a label that reads as in-progress.
+void AnamorphAudioProcessorEditor::setSavePending (bool pending)
+{
+    saveOkButton.setEnabled (! pending);
+    saveTitle.setText (pending ? "SAVING..." : "SAVE PRESET", juce::dontSendNotification);
+    if (! pending)
+        saveNameEditor.setColour (juce::TextEditor::outlineColourId, colours::outline);
+}
+
 void AnamorphAudioProcessorEditor::focusSaveNameField (int attemptsLeft)
 {
     if (! savePresetBackdrop.isVisible()) return; // dismissed meanwhile -- stop retrying

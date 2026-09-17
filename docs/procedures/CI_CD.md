@@ -221,6 +221,15 @@ edge above must not be read as release non-blocking.
   the first-party one still fails the run. The alternatives were dropping `implicit-conversion`
   outright (weakens every TU, first-party included) or not constructing the editor under sanitizers
   (removes the coverage that test exists for). The
+  **`float-divide-by-zero` carries a second, smaller exemption** (round 30, 2026-09-16): a
+  `[float-divide-by-zero]` section over `*juce_Slider.cpp` — one sub-check, one FILE rather than a
+  tree — for JUCE's own
+  `(normRange.end - normRange.start) / sliderRegionSize` at juce_Slider.cpp:929, where
+  `sliderRegionSize` is 0 for every rotary slider and the `+inf` that follows is the branch JUCE
+  intends. It is reached whenever the velocity-swap modifier is held during a knob drag, which State
+  test 106 was the first thing here ever to do. See the file's own header and ADR-0053 for the
+  mechanism, and the ccache note under **The compiler cache** for why its first push had no effect.
+  The
   full `integer` group is **deliberately absent**: its `unsigned-integer-overflow` half flags legal,
   intentional wraparound (JUCE string hash, `Random` LCG, tick arithmetic, libstdc++'s mersenne
   twister — all census-measured) and would fail the job under `halt_on_error=1` on correct
@@ -454,7 +463,7 @@ toolchain, so the move took the macOS compiler with it — **AppleClang
 `20260728.0273.1`. `CMAKE_OSX_DEPLOYMENT_TARGET=10.13` is still accepted and both slices still
 build. One measured consequence: AppleClang 21 raised
 **`-Wimplicit-int-float-conversion` at four pre-existing sites** — `src/PluginEditor.cpp:246, 247`,
-`src/gui/LookAndFeel.cpp:262` and `src/dsp/VelvetNoise.cpp:30`, each an `int` widened inside a
+`src/gui/LookAndFeel.cpp:482` and `src/dsp/VelvetNoise.cpp:30`, each an `int` widened inside a
 float expression (108 → 126 warning instances on that first job). No warning disappeared and no
 other category appeared. **All four were then fixed** in the follow-up change: each `int` operand
 now carries the explicit `(float)` cast that spells out the conversion the compiler was already
@@ -514,7 +523,21 @@ project should make lightly.
 **Why it cannot serve a wrong object.** ccache's own hash is the correctness boundary, not the cache
 key: it hashes the preprocessed source, the complete command line (every `-D`, `-I`, `-f` and
 `-arch`) and — via `CCACHE_COMPILERCHECK=content` — the bytes of the compiler binary. A GitHub cache
-key can therefore only ever cost a *hit*; it cannot manufacture a wrong one. The keys are
+key can therefore only ever cost a *hit*; it cannot manufacture a wrong one.
+
+**One exception, found the hard way (2026-09-16, round 31), and closed.** "The complete command line"
+is the command line's TEXT. An option that names a FILE whose contents change the compiler's output
+is only covered if ccache knows that option — and ccache 4.9.1, the runner image's version, has
+special handling for the older `-fsanitize-blacklist=` spelling but not for
+`-fsanitize-ignorelist=`. Same path, edited content, cache HIT, objects compiled under the previous
+list. That is not hypothetical: round 30 added a `[float-divide-by-zero]` section to
+`scripts/ubsan-ignorelist.txt`, verified it in both directions locally, and the `sanitizers` job
+failed on the very check the section names (run 35136379451). Reproduced directly with ccache 4.9.1.
+The `sanitizers` job now sets **`CCACHE_EXTRAFILES`** to that file — ccache's own
+`extra_files_to_hash`, meant for an input that affects the output without appearing in the
+preprocessed source — and the same sequence then misses and rebuilds. The general rule this leaves:
+**any future option that names a file the compiler reads must either be one ccache knows, or be added
+to `CCACHE_EXTRAFILES`.** The keys are
 deliberately coarse for that reason and do **not** hash `CMakeLists.txt`: a key that changed on
 every CMake edit would discard the cache for no correctness gain ccache is not already providing.
 Multi-arch is included — the full `-arch` **list** is hashed, so a universal object cannot be served
@@ -1076,7 +1099,7 @@ not audited, and a clean run means none of them **moved**.
 
 **Since 2026-08-21 that hole is closed for the anchors that say what they point at.** A citation
 written in this repository's own convention carries the symbol beside the line number —
-`` src/PluginProcessor.cpp:225-235 (`updateLatency`) `` — and the checker now reads that gloss and
+`` src/PluginProcessor.cpp:269-279 (`updateLatency`) `` — and the checker now reads that gloss and
 asserts the token is in the cited lines. It needs no base revision, because it is not a question
 about drift: it asks whether an anchor lands on what its own document says it lands on, in the tree
 as it is now. Exactly two gloss shapes are claimed — one backticked identifier, or one double-quoted
@@ -1345,8 +1368,15 @@ both binaries were verified green under `ulimit -s 1024` first.
 **PREfast's `C6262` numbers are not frame sizes.** The same audit measured its largest claim,
 1,280,508 bytes at state_tests.cpp:2659, against GCC's 283,968 for that function — /analyze sums a
 function's locals across disjoint sibling scopes, without the lifetime overlap a real compiler
-applies. Use `-fstack-usage`, not the alert text, when judging headroom. The 130 `C6262` alerts are
+applies. Use `-fstack-usage`, not the alert text, when judging headroom. The `C6262` alerts are
 accepted as test-only; the control that actually holds this line is the guard step, not the alert.
+
+**Re-measured for the four PR #144 wheel tests (round 16)**, because those functions are new and the
+figures above predate them: one `AnamorphAudioProcessor` automatic is `sizeof` 141,320 bytes, the
+four real frames are **284,224 / 142,688 / 142,400 / 142,464** against PREfast's
+569,696 / 432,084 / 142,296 / 426,672, and the worst of them is **27 %** of the reserve. The suite's
+maximum is unchanged at 708,480 (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`), which
+none of the four approaches. `docs/procedures/TESTING.md` carries the per-function table.
 
 ### Why the valgrind lane needs the suite's spinners paced (`sanitizers`)
 

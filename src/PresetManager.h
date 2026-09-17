@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <functional>
 #include "PluginParameters.h"
+#include "StateCommandGate.h"   // anamorph::StateCommandGate (ADR-0036 section 31)
 
 namespace anamorph
 {
@@ -218,14 +219,49 @@ public:
     static juce::String soundSignatureAfterRestoring (const juce::AudioProcessorValueTreeState&,
                                                       const juce::ValueTree& sessionSound);
 
+    // ADR-0036 ROUND 27 (Devin R640). QUEUED IS NOT DONE.
+    //
+    // THE DEFECT, in one line: round 25 made a save and a chooser-load DEFERRABLE (they replace
+    // state, so they may not run inside a multi-store user transaction) and returned `true` when
+    // the work was merely queued, on the reasoning that "reporting failure would make the editor
+    // say the file could not be read when it simply has not been read YET". The editor's
+    // `if (saveUser (...)) { showSavePreset (false); ... }` therefore closed the Save dialog on a
+    // save that had not happened, the deferred call discarded its own result (`(void) saveUser`),
+    // and an I/O failure -- a read-only preset folder, a full disk -- reached nobody at all.
+    //
+    // THE OWNER-APPROVED CONTRACT, implemented below. A synchronous result means the operation
+    // really completed; anything that cannot complete synchronously reports its FINAL result
+    // through an explicit completion, and the initiating UI stays pending until it arrives.
+    //
+    //   `onComplete`, when supplied, is called EXACTLY ONCE with the final success/failure --
+    //   synchronously, before this returns, for `completed` and `failed`; later, from the
+    //   deferred execution, for `deferred`. A caller can therefore ignore the return value
+    //   entirely and still be correct, which is what the editor does.
+    //
+    // WHY THE RETURN TYPE CHANGED RATHER THAN THE MEANING OF `true`. A scoped enum makes every
+    // caller a compile error, so no reader can carry the old reading forward by accident; it has
+    // no implicit conversion to bool, so `if (saveUser (n))` cannot compile and quietly mean
+    // "queued OR saved" again. That is the whole reason it is not a bool with a new comment.
+    enum class OpResult
+    {
+        failed,      // decided NOW, and it did not happen: the name is illegal, the file unparsable
+        completed,   // decided NOW, and it happened
+        deferred     // queued behind an open user transaction; `onComplete` reports the real answer
+    };
+
     void load (int index);                           // message thread only
     // `load` with the drain already done. `step` calls this directly: it has drained itself and
     // derived its row from what that drain established, and a second adoption here would move
     // the selection under a row already chosen (ADR-0036 §23, round 16).
     void loadAdopted (int index);
-    bool loadFile (const juce::File&);               // load an arbitrary .anamorph file (OS chooser, #3)
+    // Load an arbitrary .anamorph file (OS chooser, #3). The PARSE is synchronous even when the
+    // apply is deferred (§9): "this is not an Anamorph preset" is knowable now, so it is answered
+    // now, and the deferred half then cannot fail.
+    OpResult loadFile (const juce::File&, std::function<void (bool)> onComplete = {});
     void step (int delta);                           // prev/next with wrap-around
-    bool saveUser (const juce::String& name);        // write + select; false on IO error
+    // Write + select. The NAME check is synchronous even when the write is deferred (§9); the
+    // write itself can only fail during I/O, so that failure travels on `onComplete`.
+    OpResult saveUser (const juce::String& name, std::function<void (bool)> onComplete = {});
 
     // REMOVED in D-2 round 15 (ADR-0036 §22): `adoptRestoredState (name, sel)`, the host-restore
     // entry point for a session that carried no `presetBaseline`. It derived the baseline from a
@@ -244,6 +280,45 @@ public:
     // restore, saveUser, or construction. Empty when no processor is bracketing (safe to skip).
     std::function<void()> onAboutToLoad, onLoaded;
 
+    // ADR-0008, ROUND 25 (Devin R1279-1283). A LOAD, A STEP AND A SAVE ARE STATE-REPLACING USER
+    // COMMANDS, and one of them arriving from inside a multi-store user transaction is the same
+    // defect Undo has. The host pumps its message loop from a parameter dispatch, the preset
+    // buttons' `onClick` runs on the message thread, and a load then replaces the sound underneath
+    // a half-applied topology; a SAVE is in the class too, less obviously -- it changes no
+    // parameter, but the processor's `onSaved` hook calls `syncCommitted`, which clears
+    // `pendingGestureCommit`, and the interrupted transaction's undo step is simply gone.
+    //
+    // The processor supplies this; it returns true when it has QUEUED the command to run at the
+    // end of the transaction, in which case the caller returns having done nothing. Empty (or
+    // false) means proceed exactly as before. The lambda re-enters the PUBLIC entry point, so a
+    // relative `step` recomputes its row from the state it will actually act on rather than from
+    // the mid-transaction one -- which is ADR-0036 section 23's rule, kept.
+    // ROUND 28 (Devin R802-807) REPLACED THE PREDICATE WITH THE PROCESSOR'S OWN ADMISSION, and the
+    // paragraph above is still the reason the DEFERRAL exists -- what changed is that a transaction
+    // is no longer the only thing a preset command must wait for. A preset load is a whole-sound
+    // replacement (section 24): it blocks on the replacement lock through `applySoundTree` and
+    // `applyDefaults`, and a host that pumps its message loop from a parameter dispatch can deliver
+    // the click that starts it while a host thread holds that lock and waits for the parameter's
+    // `listenerLock`. `StateCommandGate` is the one door for that -- see `src/StateCommandGate.h` --
+    // and it also carries the DRAIN this class used to ask for separately through `adoptPending`,
+    // which is why that hook is gone: the drain must happen before the lock and never underneath it.
+    //
+    // Non-owning; the processor outlives this manager. Null in a manager no processor wired up, in
+    // which case every command runs synchronously exactly as it did before round 25.
+    const anamorph::StateCommandHooks* stateCommand = nullptr;
+
+    // Build the gate for a preset command. `retry` re-enters the PUBLIC entry point, so a relative
+    // `step` recomputes its row from the state it will actually act on rather than from the
+    // mid-transaction one -- ADR-0036 section 23's rule, kept.
+    [[nodiscard]] anamorph::StateCommandGate stateCommandAdmission (std::function<void()> retry,
+                                                                    bool drainFirst = true,
+                                                                    const std::function<void()>& afterDrain = {}) const
+    {
+        static const anamorph::StateCommandHooks unwired {};   // no processor: admit everything
+        return anamorph::StateCommandGate { stateCommand != nullptr ? *stateCommand : unwired,
+                                            std::move (retry), drainFirst, afterDrain };
+    }
+
     // Fired by saveUser() after the new name/identity/baseline are in place. A save changes no
     // parameter value, so the processor's gesture-gated coalescer never notices it and its
     // `committed` snapshot would keep the PRE-save name, baseline and identity forever -- the
@@ -258,9 +333,15 @@ public:
     // as the A/B toggle's: a relative target computed from a selection a pending restore
     // is about to replace is a decision about the wrong session, and load()'s own drain
     // (through onAboutToLoad) comes AFTER the index has been chosen, too late to help.
-    // onAboutToSave below is the save path's instance of the same rule. Empty when no
-    // processor wires it up (safe to skip: the manager then has no restores to adopt).
-    std::function<void()> adoptPending;
+    // onAboutToSave below is the save path's instance of the same rule.
+    //
+    // ROUND 28: the hook is GONE and the rule is not. `admit` above drains -- with the
+    // non-blocking arm, outside any lock, and refusing the whole command if the cell is not empty
+    // afterwards -- at the top of `load`, `loadFile` and `step`, which is where `adoptPending` was
+    // called and one statement earlier than the deferral it followed. `loadAdopted` passes
+    // `drainFirst == false` for the same reason it was never given the hook: `step` derived its row
+    // from the session the first drain established, and a second drain would move the selection
+    // under a chosen row (section 23).
 
     // Test seam: fires inside `step`, at its LAST OBSERVATION POINT -- after the drain that
     // makes the selection authoritative and before the target row is derived from it. A test
@@ -334,6 +415,24 @@ public:
     std::function<juce::uint32 ()> soundParamGeneration;
 
 private:
+    // ROUND 27 (R640): the halves the public entry points split into. `applyParsedFile` is
+    // everything `loadFile` used to do after its parse, and `writeUserPreset` everything
+    // `saveUser` used to do after its name check -- so the deferred execution and the synchronous
+    // one run the SAME code and cannot drift apart.
+    void applyParsedFile (const juce::File&, const juce::ValueTree& sound);
+    bool writeUserPreset (const juce::String& legalName);
+
+    // ROUND 28 (R802-807): the DEFERRED halves of the two above, each re-taking the admission its
+    // public entry point took. A deferred command is replayed by the processor's flush, which holds
+    // nothing and has already released its own try -- so a retry that ran the body directly would
+    // reach `applySoundTree`'s blocking acquisition unguarded, which is the finding by a second
+    // entrance. `drainFirst` is true on both: by the time a deferred command runs, the restore its
+    // first attempt could not adopt may well have arrived.
+    void applyParsedFileAdmitted (const juce::File&, const juce::ValueTree& sound,
+                                  const std::function<void (bool)>& completion);
+    void writeUserPresetAdmitted (const juce::String& legalName,
+                                  const std::function<void (bool)>& completion);
+
     // Stands in when no processor wired one up, so the ScopedLock always has an object to take.
     // Never contended in that case: without a processor there is no host restore thread.
     juce::CriticalSection fallbackSoundLock;

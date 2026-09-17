@@ -21,10 +21,14 @@
 #
 # The nesting exists only because the harness's re-entrancy doubles create it.
 # Anamorph's production listeners do not write parameters at all:
-# `AnamorphAudioProcessor::parameterValueChanged` (src/PluginProcessor.h:171-174)
-# is one relaxed `fetch_add`, `ViewGenWatcher::parameterValueChanged` (:315) the
-# same, and `parameterGestureChanged` (src/PluginProcessor.cpp:812-826) touches
-# two ints -- deliberately, and its comment records that `--d2-stress-probe` once
+# `AnamorphAudioProcessor::parameterValueChanged` (src/PluginProcessor.h:374-377)
+# is one relaxed `fetch_add`, `ViewGenWatcher::parameterValueChanged` (:579) the
+# same, and `parameterGestureChanged` (src/PluginProcessor.cpp:969-1126) touches
+# message-thread scalars, takes two relaxed loads of the same counter, and -- since
+# ADR-0008's 2026-09-13 amendment -- reads every parameter's `getValue()` into two
+# fixed vectors it owns. Those are atomic loads on the same thread: it still writes
+# no parameter and takes no lock, which is the property this paragraph rests on.
+# Deliberately, and its comment records that `--d2-stress-probe` once
 # reported exactly this detector for an APVTS/listenerLock inversion, which was
 # fixed by REMOVING the nesting rather than by a suppression. No production stack
 # can contain the symbol named below.
@@ -105,4 +109,243 @@
 #     gives `exit=0` and ONE breakdown line with two entries in the file.
 # If that assertion fires, DELETE the dead entry or restore the coverage. Do not
 # broaden the pattern: a wider entry is worse than none, for the reason above.
+#
+# SECOND ENTRY, ADDED 2026-09-14 (round 20), and it is a DIFFERENT cycle from the
+# one above -- a different pair of locks, a different pair of stacks, its own
+# report. It is written out here rather than folded into the paragraph above,
+# because its justification is WEAKER and the difference matters.
+#
+# THE CYCLE. Edge one is pure production plus JUCE: restoring state takes the
+# APVTS `valueTreeChanging` lock and, inside it,
+# `ParameterAdapter::setNormalisedValue` -> `setValueNotifyingHost` ->
+# `sendValueChangedMessageToListeners` takes a parameter's `listenerLock`
+# (juce_AudioProcessorValueTreeState.cpp:413/425/457, juce_AudioProcessorParameter.cpp:113).
+# Edge two is the reverse: `endChangeGesture` holds `listenerLock` while it calls
+# listeners and then the `finalListener` (juce_AudioProcessorParameter.cpp:103-108),
+# and State test 93's `HostSeat` -- sitting in that final seat, where a host's
+# wrapper sits -- calls `pollUndoCoalesce`, which reaches `APVTS::copyState()` and
+# takes the APVTS lock. Both orders are taken by the MAIN thread at different
+# times, so the suite cannot deadlock.
+#
+# WHY THIS IS NOT THE SAME KIND OF SUPPRESSION AS THE ONE ABOVE, said plainly.
+# The entry above absorbs a cycle whose second edge exists ONLY in the harness:
+# no production listener writes a parameter. This one does not have that defence.
+# Edge two is what a HOST does if it pumps its message loop from inside its
+# gesture-end callback -- which is exactly the scenario State test 93 exists to
+# reproduce, and is therefore reachable in a shipped build.
+#
+# ROUND 21 (2026-09-15) REWRITES THE REST OF THIS PARAGRAPH, because what it said
+# is no longer true. It used to say this entry was "a placeholder for an owner
+# decision, not a verdict that the cycle is benign", and that closing the cycle
+# needed a threading-model change nobody had authorised. That change was
+# authorised and has landed: ADR-0036 §26. The entry stays anyway, and the reason
+# is a property of the DETECTOR rather than of the code.
+#
+# WHAT THE FIX DID. The two TIMER doors into the undo poll --
+# `AnamorphAudioProcessor::timerCallback` and `pollUndoCoalesceFromTimer` -- no
+# longer block on `soundReplacement`, so the message thread can no longer wait for
+# a host thread's whole-sound replacement while it holds a parameter's
+# `listenerLock`. Three acquisitions were reachable from those doors and all three
+# are gated (the restore tail's sound re-install, `syncCommitted`'s baseline
+# snapshot, and the poll body's `currentStateSet`).
+#
+# ROUND 22 MOVED THE FIRST OF THOSE THREE, and the paragraph above is left standing
+# because what it says about BLOCKING is still exactly true. The drain's acquisition
+# now spans `pendingRestore.take()` as well as the re-install it completes, in
+# `adoptPendingHostState` rather than inside `adoptRestoreTail` (ADR-0036 §27): a
+# timer door still only TRIES, and a failed try now consumes nothing instead of
+# consuming a restore it could not finish. No door blocks that did not block before,
+# and nothing here changes -- the lock is the same lock, taken by the same threads,
+# in the same order.
+#
+# WHY THE REPORT SURVIVES IT, AND WHY THE PARAGRAPH ABOVE NAMED THE WRONG PAIR.
+# Reading the actual stacks with the suppressions off, BOTH orders of this report
+# are taken with `soundReplacement` already held -- and were before round 21 too:
+# `copyStateWithRawValues` has taken it one line above its `copyState` since round
+# 17, and `applyStatePreservingView` / `applySoundTree` take it before their
+# `replaceState`. Two threads cannot hold it at once, so the APVTS-vs-listenerLock
+# pair could never close. What the nested poll could actually deadlock on was
+# `soundReplacement` ITSELF -- waiting for it while holding a `listenerLock` a host
+# thread's `replaceState` was about to want -- and that is what round 21 fixed.
+#
+# TSan still reports this pair because its deadlock detector keeps a PAIRWISE
+# lock-order graph and does not model an outer lock that serialises both orders.
+# Measured on the fixed tree: `Matched 3 deadlock:HostSeat`.
+#
+# So this is a suppression of a report whose cycle cannot close, not a deferred
+# decision, and not the cycle that could hang. Removing the report itself would
+# mean removing the nesting -- not reading the parameter tree from inside a gesture
+# dispatch at all -- which is a larger change with no defect behind it.
+# `FUTURE_RISKS.md` RISK-009 carries the same correction, including the one place
+# the outer-lock rule is NOT observed (`PresetManager::saveUser`, which only reads
+# and so cannot join the cycle).
+#
+# It names the harness double, as the rule above requires -- `HostSeat` is a test
+# type and cannot appear in a shipped build -- so a real host-vs-host inversion on
+# these same two locks, with no harness frame in either stack, is still REPORTED.
+#
+# ROUND 27 (2026-09-15) DELETED THIS ENTRY, and the deletion is the evidence rather than a
+# tidy-up. `deadlock:HostSeat` named State test 93's host seat, which pumps the editor's tick from
+# inside `endChangeGesture`. ADR-0036 section 30 gives `pollUndoCoalesceFromTimer` a predicate --
+# `anamorph::param::insideDispatch()` -- and test 93 drives its gesture through the plug-in's own
+# wrapped writes, so the depth is non-zero when the pump arrives and the tick now does NOTHING:
+# no drain, no poll, no flush, and so no `apvts.copyState()`. The report is gone, not absorbed.
+# Measured on the round-27 tree with suppressions OFF: the whole suite raises TWO lock-order
+# reports, and neither names `HostSeat`. Per the rule above -- an entry that matches nothing
+# silently widens what a future report can be absorbed by -- it is deleted rather than kept
+# "just in case", which also makes a regression LOUD: re-opening that door brings the report back
+# with nothing left in this file to swallow it.
 deadlock:WriteFromInsideAGestureOpen
+#
+# ROUND 24 ADDS A THIRD NAME FOR THE SAME REPORT, and it is a third name rather than
+# a third finding. State test 98 (Devin R1092) drives a topology transaction with a
+# host that pumps its message loop from the gesture-end callback -- the same seat
+# `HostSeat` occupies, through a different harness type -- so the identical
+# APVTS-vs-`listenerLock` pair is reported under a stack TSan has not seen before
+# and the entries above do not match it.
+#
+# THE CYCLE CANNOT CLOSE HERE EITHER, AND THE REASON IS ONE LINE OF THE ROUND-21 FIX
+# rather than a repeat of the argument above. `pollUndoCoalesceFromTimer` takes its
+# `ScopedTryLock` on `soundReplacement` BEFORE calling the poll body and holds it
+# across the whole of it -- "every acquisition inside it becomes a free recursive
+# re-entry, and one try answers for all of them" -- so the M1 -> M0 order this
+# report names (`listenerLock`, then `copyStateWithRawValues`' `copyState`) is taken
+# with `soundReplacement` ALREADY held by that thread. The other order
+# (`applyStatePreservingView` -> `replaceState` -> a store's `listenerLock`) takes
+# `soundReplacement` first too. Two threads cannot hold it at once, so no pair of
+# threads can occupy the two ends of the cycle. Had a host thread been holding it,
+# the try would have FAILED and the poll would have returned without touching the
+# APVTS lock at all -- which is exactly what ADR-0036 section 26 was for.
+#
+# `PumpFromGestureEnd` is a test type in `tests/state_tests.cpp` and cannot appear
+# in a shipped build, so this entry obeys the same rule as the two above: a real
+# host-vs-host inversion on these two locks, with no harness frame in either stack,
+# is still REPORTED.
+#
+# ROUND 27 (2026-09-15) DELETED THIS ENTRY TOO, for the same measured reason. `PumpFromGestureEnd`
+# is State test 98's seat and it calls `pollUndoCoalesceFromTimer` directly; the gesture it pumps
+# from is the imager's own `addBandAt`, i.e. a dispatch this plug-in starts through
+# `anamorph::param::beginChangeGesture`, so the round-27 predicate reads non-zero and the tick
+# returns without touching the APVTS lock. Same measurement, same conclusion, same reason not to
+# keep a dead pattern: with suppressions off the suite raises two reports and this is not one of
+# them.
+
+# ---------------------------------------------------------------------------
+# ROUND 26 (Devin R651). `PumpedUserInteraction` is State test 100's host seat: a
+# host that pumps its message loop from a knob's gesture-end callback, delivering
+# a WHOLE user interaction (the Add-band click, its transaction and its close)
+# inside that dispatch. The report it raises is:
+#
+#   M0 => M1  main thread: `endChangeGesture` holds mbDrive's `listenerLock`, the
+#             pump runs `mouseDown` -> `addBandAt` -> `~ScopedUserTransaction` ->
+#             `flushDeferredCommands` -> `pollUndoCoalesceAdopted` ->
+#             `currentStateSet` -> `copyStateWithRawValues` ->
+#             `AudioProcessorValueTreeState::copyState` takes the APVTS lock.
+#   M1 => M0  `applyStateSet` -> `applyStatePreservingView` -> `replaceState` holds
+#             the APVTS lock -> `valueTreeRedirected` -> `setNewState` ->
+#             `setValueNotifyingHost` -> `sendValueChangedMessageToListeners`
+#             takes a parameter's `listenerLock`.
+#
+# THIS IS NOT A NEW CYCLE. It is RISK-009's round-20 escalation verbatim -- one
+# parameter's `listenerLock` against the APVTS `valueTreeChanging` lock -- reached
+# through a door round 26 added coverage for. Both orders are the MAIN thread in
+# this suite, so the suite itself cannot deadlock; in production the second order
+# is also a host thread's `installRestoredSound` -> `applySoundTree`, which is why
+# RISK-009 records it as reachable in a shipped build and refers it upward.
+#
+# WHAT ROUND 26 DID AND DID NOT CLOSE, because this entry must not be read as a
+# claim that the door is safe. `flushDeferredCommands` takes `soundReplacement`
+# with a TRY, so the edge Devin R651 names -- the message thread WAITING for
+# `soundReplacement` from inside a listener's dynamic extent -- is gone. The APVTS
+# edge above is NOT: `copyStateWithRawValues` still blocks on `apvts.copyState()`.
+# Round 21's timer doors have exactly the same residual for exactly the same
+# reason, and closing it is a threading-model change -- an ARCHITECTURE_REVIEW_GATE
+# item and an owner decision, not an agent's.
+#
+# THE ENTRY IS THE HARNESS TYPE AND NOTHING ELSE, so a real host-vs-host inversion
+# on these two locks, with no harness frame in either stack, is still REPORTED.
+# The name was chosen to share no prefix with any other entry: the first spelling,
+# `PumpFromGestureEndOf`, was absorbed by round 24's `PumpFromGestureEnd` entry,
+# and the only symptom was the matched-suppression count moving 5 -> 6.
+deadlock:PumpedUserInteraction
+
+# ---------------------------------------------------------------------------
+# ROUND 28 (Devin R802-807). A FOURTH NAME FOR THE SAME PAIR, and a fourth name
+# rather than a fourth finding.
+#
+# State test 103 delivers each state-replacing command from inside a HOST's own
+# gesture and then pumps the retry door, so the command runs from
+# `AnamorphAudioProcessor::timerCallback` -> `flushDeferredCommands` ->
+# `abSwitchTo` -> ... -> `anamorph::param::replaceState`. That takes the APVTS
+# `valueTreeChanging` lock and, inside it, a parameter's `listenerLock`
+# (juce_AudioProcessorValueTreeState.cpp:398/413/425/457,
+# juce_AudioProcessorParameter.cpp:113) -- the M0 => M1 edge of RISK-009's
+# round-20 pair, reached through a door that did not exist before round 28: the
+# processor's own 20 Hz tick did not call the flush, and ADR-0036 section 31 adds
+# that so the queue has a retry door with no editor open. No frame of either stack
+# names an existing entry, so the report is not absorbed by them.
+#
+# THE CYCLE CANNOT CLOSE ON THIS PAIR, and round 28 strengthens the round-22
+# argument rather than repeating it. Both orders are taken with `soundReplacement`
+# ALREADY held by the acquiring thread: `copyStateWithRawValues` has taken it one
+# line above its `copyState` since round 17, `applyStatePreservingView` and
+# `applySoundTree` take it before their `replaceState`, and since section 31 EVERY
+# state-replacing command holds it across its whole body -- so both ends of this
+# pair are now serialised by one lock two threads cannot hold at once. TSan reports
+# it anyway because its deadlock detector keeps a PAIRWISE lock-order graph and does
+# not model an outer lock that serialises both orders. Both orders here are the MAIN
+# thread at different times, so the suite itself cannot deadlock either.
+#
+# WHAT THIS DOES NOT CLAIM. It does not say RISK-009 is closed. What survives is a
+# DIFFERENT M1 => M0 edge that this pair's outer lock does not cover: JUCE's own
+# `AudioProcessorValueTreeState` is a 10 Hz `Timer` whose `timerCallback` blocks on
+# `valueTreeChanging` from the message thread -- inside a host-pumped dispatch it
+# holds a `listenerLock` and takes NO `soundReplacement`. That edge is in no
+# first-party file and cannot be converted to a try from here. `FUTURE_RISKS.md`
+# RISK-009 carries it and stays OPEN.
+#
+# The entry names the TEST FUNCTION, as the rule above requires: it cannot appear in
+# a shipped build, so a real host-vs-host inversion on these two locks, with no
+# harness frame in either stack, is still REPORTED.
+deadlock:testNoStateCommandWaitsForAReplacement
+
+# ---------------------------------------------------------------------------
+# ROUND 35 (Devin `src/PluginProcessor.cpp:R1601-1602`). A FIFTH NAME FOR THE SAME
+# PAIR, and it is here because the leg DELIBERATELY BUILDS the report.
+#
+# State test 113 is the measurement the finding asked for: a host-started gesture
+# holding a parameter's `listenerLock`, the editor tick pumped from inside it, and a
+# CONCURRENT production restore -- an off-message-thread `setStateInformation` --
+# running against it. Its M0 => M1 edge is
+#
+#   main thread: `endChangeGesture` holds bypass's `listenerLock`, the pump runs
+#                `pollUndoCoalesceFromTimer` -> `pollUndoCoalesceAdopted` ->
+#                `currentStateSet` -> `copyStateWithRawValues` -> `copyState` takes
+#                `valueTreeChanging`
+#
+# and its M1 => M0 edge is the restorer thread's `applySoundTree` -> `replaceState`
+# holding `valueTreeChanging` -> `valueTreeRedirected` -> `setNewState` ->
+# `setValueNotifyingHost` -> `sendValueChangedMessageToListeners` taking the
+# `listenerLock`.
+#
+# THE TWO ORDERS CANNOT BE HELD AT ONCE, and this leg set is what measures that
+# rather than asserting it. ADR-0036 section 31: every thread that can hold
+# `valueTreeChanging` while waiting for a `listenerLock` must take `soundReplacement`
+# FIRST. Leg C measures every one of the tick's APVTS acquisitions running with
+# `soundReplacement` held -- from a second thread whose `tryEnter` fails -- and leg E
+# measures the restorer PARKED at `soundReplacement` with the parameters untouched,
+# which is exactly "it is not inside `replaceState` and holds no APVTS lock". TSan
+# reports the pair anyway because its deadlock detector keeps a PAIRWISE lock-order
+# graph and does not model an outer lock that serialises both orders; the two edges
+# above are recorded at different times, with the second only after the first
+# released.
+#
+# WHAT THIS DOES NOT CLAIM. Exactly what the entry above it does not claim: RISK-009
+# stays OPEN on the edge no first-party lock covers -- JUCE's own APVTS 10 Hz
+# `Timer`, whose `timerCallback` blocks on `valueTreeChanging` from the message
+# thread while a host-pumped dispatch holds a `listenerLock` and no
+# `soundReplacement` is involved.
+#
+# The entry names the TEST FUNCTION, as the rule above requires, and shares no
+# prefix with any other entry.
+deadlock:testThePumpedTimerNeverBaresTheApvtsLock
