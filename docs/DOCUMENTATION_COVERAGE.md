@@ -13003,6 +13003,44 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 56th pass — 2026-09-17, round 36 (the dispatch lint's own lexer, and what a `'` is)
+
+**Finding — `scripts/check-dispatch.py:99`, "digit separators are treated as character literals":
+CONFIRMED, and it made the gate fail OPEN.** The stripper removed comments and literals before the
+member-call pattern ran, and read every `'` as a quote. A C++14 digit separator (`1'000`) has no
+closing `'` at all, so the scan ran to the next apostrophe ANYWHERE in the file and deleted
+everything between — including any raw `p->setValueNotifyingHost (v)` in that span, silently and
+with no diagnostic. Measured through the real `scan()`: `1'000`, `1'000.0f`, `0xFF'FF` and `.5'0f`
+each hid a following raw dispatch (1 hit expected, 0 reported). The same defect ran the other way
+too, leaking comment text back in as code: after `1'000`, the prose
+`// ... does p->setValueNotifyingHost (v)` was reported as a real call site.
+
+**It was latent, not live.** Measured over all 49 files of `src/` on `86990f5`: zero multi-line
+quote spans, so nothing in the tree was being hidden — the gate failed open only for source not yet
+written, which is exactly the source it exists to police. `src/` contains no digit separator today.
+
+**The fix is the predicate `scripts/check-realtime.py` already carries**, adopted verbatim so the
+two lints agree about what an apostrophe is: `_is_digit_separator` (walk LEFT to the start of the
+token and require it to begin a NUMBER — which separates `1'000` and `.5'0f` from the encoding
+prefixes `L'a'`, `u8'a'`, `u'a'`, `U'a'`) and `_closes_on_this_line` (a literal may not contain a
+bare newline, so prose reaching the scanner through `#error don't` is not an opener). No production
+code, no test source and no ADR moved; `check-dispatch.py` is the only file changed.
+
+**Regression coverage: 24 new `--self-test` cases, 28 → 52.** The cases that matter put the
+dispatch BETWEEN the false opener and its closer, because with the call after both, a mis-read `'`
+re-syncs at the next one and the call reappears by luck — which is why the first five mutants of
+the suite survived a weaker set. Mutation: M222–M226 killed (revert the branch; neighbours-only
+separator test; digit-start-only, rejecting `.5'0f`; drop the line-bounding half; ignore escapes in
+the line scan). M227 (drop the next-char guard) and M228 (consume the separator instead of emitting
+it) are EQUIVALENT, not survivors: every input that distinguishes M227 is rejected by the compiler
+(`1'-'`, `0x1F' '`, `1'000'.'` — checked with `g++ -std=c++17 -fsyntax-only`), and M228 differs only
+in the stripped text, which is consumed at exactly one place, the regex inside `scan`.
+
+**Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
+`source-lint` row listed the portability, realtime and citation checkers as that job's local
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:511-516` has run in
+that job since round 27.
+
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)
 
 **Finding 1 — `src/PluginEditor.h:R280-281`, "recursive slider loses latest endpoint": CONFIRMED and

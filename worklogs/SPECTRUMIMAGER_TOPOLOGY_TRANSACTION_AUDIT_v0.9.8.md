@@ -6054,3 +6054,86 @@ close IS that read and runs between the witness's two hooks — starts the param
 value, clicks its own toggle, and measures Redo → **0.0000**, the user's value. An unrelated
 control's complete gesture leaves the residual exactly as it found it.
 
+## §94. Round 36 — the dispatch lint's own lexer, and the architecture-review re-verification
+
+### The finding
+
+`scripts/check-dispatch.py:99` — *"strip_comments_and_strings treats digit separators as character
+literals. A preceding `1'000` can hide later raw parameter dispatches from the gate."* **CONFIRMED.**
+
+### Why it matters more than a lint bug usually would
+
+This lint is the COVERAGE half of ADR-0036 §30. `flushDeferredCommands` refuses to run a blocking
+deferred command while the thread is inside a parameter listener's dynamic extent, and it learns
+that from a `thread_local` depth only the `anamorph::param` wrappers raise. One raw
+`p->setValueNotifyingHost (v)` in `src/` is a dispatch the depth never sees, the guard reads zero at
+the moment it must read one, and the R1390 deadlock is back with every test green. The lint is the
+only thing that owns that property — so a lint that fails OPEN is a threading defect waiting for
+the commit that trips it.
+
+### Reconstruction, through the real `scan()`
+
+| # | source | want | round 35 | round 36 |
+|---|---|---|---|---|
+| A | `1'000;` then `p->setValueNotifyingHost (v)` | 1 | **0** | 1 |
+| B | `1'000'000;` then the same | 1 | 1 | 1 |
+| C | `1'000.0f;` then `p->beginChangeGesture ()` | 1 | **0** | 1 |
+| D | `0xFF'FF;` then `p->endChangeGesture ()` | 1 | **0** | 1 |
+| E | `.5'0f;` then a dispatch | 1 | **0** | 1 |
+| F | `1'000;` then a COMMENT naming the API, then a wrapped call | 0 | **1** | 0 |
+| G | `#error don't call this` then a dispatch | 1 | **0** | 1 |
+
+B passes on both trees for the wrong reason: an even number of separators is consumed in balanced
+pairs and the scan re-syncs. F is the same defect running the other way — comment text leaked back
+in as code and was reported as a real call site, so the gate could fail CLOSED as well as open.
+
+### Was it live?
+
+**No.** Over all 49 files of `src/` at `86990f5`, zero quote spans crossed a newline — a char
+literal cannot contain one, so any span that did would be a mis-lex. `src/` contains no digit
+separator today. The gate was failing open only for source not yet written.
+
+### The fix
+
+`scripts/check-realtime.py` already answers this exact question, for the same reason, with two
+helpers whose rationale is written out at `:244` and `:263`. Adopted verbatim rather than
+reinvented, so the two lints cannot disagree about what an apostrophe is:
+
+- `_is_digit_separator` — walk LEFT to the start of the token and require it to BEGIN A NUMBER.
+  Testing only the two neighbours is not enough: an encoded literal (`L'a'`, `u8'a'`, `u'a'`,
+  `U'a'`) puts an alphanumeric on both sides of its OPENING quote too. "Begins a number" is also not
+  "begins with a digit" — `.5'0f` is ordinary C++ and is how a DSP tolerance gets written.
+- `_closes_on_this_line` — a non-raw literal may not contain a bare newline, so an apostrophe with
+  no partner on its own line is prose (`#error don't`), not an opener.
+
+One `elif` ahead of the quote branch; the `'` is emitted as an ordinary character, which is correct
+either way, because neither a numeric token nor an English contraction contains anything
+`MEMBER_CALL` looks for. **No production code, no test source, no ADR and no threading behaviour
+moved.**
+
+### Mutation
+
+| # | mutant | verdict |
+|---|---|---|
+| M222 | revert the branch entirely (round-35 behaviour) | KILLED (7 cases) |
+| M223 | neighbours-only separator test (drop the walk-left) | KILLED |
+| M224 | digit-start only, rejecting `.5'0f` | KILLED |
+| M225 | drop the line-bounding half | KILLED (2 cases) |
+| M226 | line-bound scan ignores escapes | KILLED |
+| M227 | drop the next-char guard | **EQUIVALENT** — every distinguishing input (`1'-'`, `0x1F' '`, `1'000'.'`) is rejected by `g++ -std=c++17 -fsyntax-only`; the valid neighbours (`u8'-'`) give identical results |
+| M228 | consume the separator instead of emitting it | **EQUIVALENT** — 0 of 308 candidates differ in scan result; the stripped text is consumed at exactly one place, the regex inside `scan` |
+
+M223, M224 and M226 survived a first, weaker test set: the two halves of the predicate overlap, so
+each rescues the other when the dispatch sits AFTER the mis-read quote and its closer. The cases
+that kill them put the dispatch BETWEEN the two, with a nearby real literal (`k = 'x'`) supplying
+the closer that swallows the call. Self-test 28 → 52 cases.
+
+### §2 — architecture-review re-verification (`src/StateCommandGate.h:9`)
+
+Re-verified against the ADR rather than restated. The banner's owner ruling —
+*"The `StateCommandGate` architecture is APPROVED and is not to be redesigned"* (owner, 2026-09-16)
+— is present verbatim in ADR-0036 §32's gate-compliance table; §31's ruling stands and is reopened
+by nothing; §33 (round 35) records a verification and states in terms that **no new decision is
+taken there**. Round 36 changes no C++ at all, so the accepted architecture is untouched by
+construction. **No new approval artifact was created, and none is required.**
+
