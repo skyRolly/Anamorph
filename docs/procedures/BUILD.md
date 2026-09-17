@@ -59,7 +59,7 @@ Evidence [Verified]: scripts/build.sh:14-15.
 | `ANAMORPH_BUILD_TESTS` | ON | Build the `AnamorphTests` + `AnamorphStateTests` console apps (CMakeLists.txt:27, 530) |
 | `ANAMORPH_BUILD_STANDALONE` | ON | Add the Standalone target (CMakeLists.txt:28, 417-419) |
 | `ANAMORPH_JUCE_PATH` | "" | Use a local JUCE checkout instead of fetching (CMakeLists.txt:66, 77-79) |
-| `ANAMORPH_JUCE_TAG` | `7278278…` (= tag 9.0.2) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version (CMakeLists.txt:70-72) |
+| `ANAMORPH_JUCE_TAG` | `7278278…` (= tag 9.0.2) | JUCE git rev to fetch when no local path; `ANAMORPH_JUCE_VERSION` carries the readable version — CMakeLists.txt:70-72 (`9.0.2`) |
 | `ANAMORPH_BUILD_NUMBER` | 0 | CI build/dev number shown in the About box (CMakeLists.txt:469) |
 
 Offline build (no network) with a local JUCE:

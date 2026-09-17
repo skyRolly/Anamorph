@@ -13003,6 +13003,57 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 59th pass — 2026-09-17, round 39 (the pin gate learns to notice a stale version)
+
+Two Devin Review findings on PR #145, both confirmed, both fixed. No dependency decision reopened;
+no source, test or DSP file touched.
+
+**Finding 1 — `scripts/check-citations.py`, "pin citations lose version drift detection":
+CONFIRMED.** `VERSIONED_LINES` replaces the base text comparison on a declared line with "does the
+line still contain its stable token", and the token for `CMakeLists.txt:70` is
+`ANAMORPH_JUCE_VERSION` — present at 9.0.1, at 9.0.2 and at every version after. The suppression is
+what stops a routine bump reporting drift it did not cause; the defect is that for the JUCE pin
+**nothing picked the value back up**, so a later bump to 9.0.3 would have left six documents claiming
+9.0.2 with the gate green. (`CMakeLists.txt:14` was never in that position: its value is guarded by
+the release gate, which refuses a tag disagreeing with the CMake project version.)
+
+**The fix uses the mechanism the repository already had, not a new one.** A `VERSIONED_LINES` value
+is now `(token, guard)`, and the guard says what watches the value the token deliberately does not:
+either another gate, **named in the entry and printed on every run**, or the document's own **gloss**
+— the `` (`9.0.2`) `` a citation already carries, which `verify_glossed_anchors` resolves against the
+CURRENT source. `verify_versioned_lines` now REFUSES a gloss-guarded entry with no value-bearing
+gloss covering its line, so the suppression cannot be added without its compensating check. A gloss
+counts only when it names something the token does not and lands on the declared line — a gloss
+reading `` (`ANAMORPH_JUCE_VERSION`) `` would resolve forever and is rejected as a claim.
+**Nothing in the script needs editing at a bump**: the version lives in the documents, which is what
+a bump updates anyway.
+
+Six pin-asserting documents joined `GLOSS_CHECKED_DOCS` after the admission measurement the existing
+comment demands — across all six, **63 citations, 1 already glossed, 0 firing** — and each now
+glosses its pin citation. Historical records are untouched and stay correct: ADR-0022 and ADR-0026
+cite the same block and name 9.0.0 and 9.0.1, and a record of the past claims nothing about the
+present, so it carries no gloss and is asked for nothing.
+
+**Proof.** Self-test **184 → 205 cases**, new section 8g driving the real functions over a synthetic
+tree: a matching document passes; a bump with the document updated passes AND stays excused from the
+drift comparison; a document left on the old version is rejected by both halves; a token-restating
+gloss and a gloss whose anchor misses the declared line are both refused as claims; and the
+pre-fix behaviour, re-created as a mutant, goes silent — which is what makes the section fail if the
+detection is ever removed. Five mutants, all killed. End-to-end on the real tree: `9.0.2 → 9.0.3` in
+`CMakeLists.txt` with the documents untouched fails `--check` with **7 named errors, exit 2**.
+
+**Finding 2 — `docs/HANDOVER.md`, "current dependency handover remains stale": CONFIRMED.** The
+critical-dependencies table still gave `9.0.1` / `e18f7f5…` / ADR-0026 as the current pin. Now
+`9.0.2` / `7278278…` / ADR-0054, with the bump list gaining its fourth entry and the row carrying the
+gloss that keeps it honest. The rest of the file was scanned for current-state drift caused by this
+upgrade: none — its other JUCE mentions are historical release descriptions (the v0.9.4 9.0.0 → 9.0.1
+upgrade) and a v0.9.4-era build-status record, all correct as written and left alone.
+
+**Synced:** `scripts/check-citations.py`, `docs/procedures/TESTING.md` (the two ways a bump can fail
+the gate), `docs/HANDOVER.md`, `THIRD_PARTY_LICENSES.md`, `docs/architecture/COMPATIBILITY_MATRIX.md`,
+`docs/policies/DEPENDENCY_POLICY.md`, `docs/procedures/BUILD.md`, `docs/procedures/TROUBLESHOOTING.md`.
+No `CHANGELOG.md` change — nothing user-visible; `[0.9.8]` keeps 2026-09-18.
+
 ## 58th pass — 2026-09-17, round 38 (ADR-0054 accepted, and the build contract catches up)
 
 Final merge-readiness round for PR #145. **No dependency decision was reopened** and no source,

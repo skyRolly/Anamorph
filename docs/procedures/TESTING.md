@@ -3881,7 +3881,20 @@ concluding the gate is green. If you re-anchor a citation deliberately, declare 
 `DELIBERATE_REAIMS` in the **same change set**: the tool cannot tell a repair from a drift, so a fix
 landed on its own turns the gate red on the commit that fixed it.
 
-See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
+**A dependency bump has TWO ways to fail this gate, and they mean opposite things.** A line whose
+content changes on its own schedule — `CMakeLists.txt:14`, and the JUCE pin at `:67` and `:70` — is
+declared in `VERSIONED_LINES`, which replaces the base comparison with "does this line still contain
+its stable token". That is what stops a routine bump reporting drift it did not cause. Because the
+token is version-INDEPENDENT by construction, each such entry also names **what watches the value it
+stops watching**: either the document's own gloss (`CMakeLists.txt:70-72` (`9.0.2`) — checked against
+the current source on every run, so a bump that leaves a document behind fails it by name) or another
+gate, named in the entry and printed each run. An entry declaring the gloss guard with no
+value-bearing gloss covering its line is refused as an **unpaired suppression**. So: update the pin
+AND the documents and the gate is silent; update only the pin and it names every document still
+claiming the old version.
+
+See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`; `scripts/check-citations.py`
+(§`VERSIONED_LINES`, `versioned_line_claims`, self-test section 8g).
 
 ## Raw scanner output (SARIF artifacts)
 
