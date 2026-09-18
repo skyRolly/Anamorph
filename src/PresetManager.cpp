@@ -530,11 +530,36 @@ juce::ValueTree PresetManager::parseSoundFile (const juce::File& f) const
     // and a preset this plug-in writes is 1525 bytes.
     if (! f.existsAsFile() || f.getSize() > maxPresetBytes) return {};
 
-    // READ AS BYTES, JUDGED AS BYTES, THEN DECODED -- in that order, because the decode is where a
-    // NUL stops being visible. `loadFileAsData` also refuses a file whose length changed under the
-    // read, which the size cap above could otherwise be raced past.
+    // TEST SEAM. Between the size check and the read is where "another process replaced this file"
+    // happens, and it is the only point at which that is reproducible. Empty in production.
+    if (beforePresetRead) beforePresetRead (f);
+
+    // THE SIZE CHECK ABOVE DOES NOT BOUND THE READ, AND THAT IS THE POINT OF THIS ONE (0.9.9).
+    // `getSize()` describes the file at the instant it is asked; the read happens afterwards, and
+    // anything may have replaced the file in between -- a sync client finishing a download, an
+    // editor's save-over, another process writing the same name. `File::loadFileAsData`, which
+    // this used to call, re-stats and reads the WHOLE file (`juce_File.cpp:559-566`), so the
+    // replacement's entire content entered memory and then went on to the scans below with the cap
+    // never re-applied: the one check that exists to keep an enormous file out of memory was
+    // decided on a file that was no longer there.
+    //
+    // So the read is BOUNDED -- at most one byte past the cap, which is all that is needed to tell
+    // "at the cap" from "over it" -- and the cap is then re-applied to what actually arrived. The
+    // early rejection above is kept: it is free, it is right in the overwhelming majority of
+    // cases, and it is what stops a genuinely oversized file from being opened at all.
+    //
+    // What is NOT re-checked is `loadFileAsData`'s other rule, that the file's length was the same
+    // before and after. A file that shrank under the read now yields its new content, and a torn
+    // write is refused by the document scans below (an incomplete `<ANAMORPH>` is not one
+    // well-formed document) rather than by a length comparison -- which is the same answer, reached
+    // by the rule this boundary actually states.
+    juce::FileInputStream in (f);
+    if (! in.openedOk()) return {};
+
     juce::MemoryBlock raw;
-    if (! f.loadFileAsData (raw)) return {};
+    in.readIntoMemoryBlock (raw, (ssize_t) (maxPresetBytes + 1));
+    if ((juce::int64) raw.getSize() > maxPresetBytes) return {};
+
     if (! presetBytesAreAdmissible (raw.getData(), raw.getSize())) return {};
 
     // DECODED EXACTLY AS `loadFileAsString` DECODED IT, which is not a tidying but the point: that
@@ -762,12 +787,31 @@ PresetManager::OpResult PresetManager::load (int index, std::function<void (bool
 
 PresetManager::OpResult PresetManager::loadAdopted (int index, std::function<void (bool)> onComplete)
 {
+    // No tree in hand: the row is read here, exactly as it always was. This is the ABSOLUTE door --
+    // `load(index)`, the menu row -- and its rules are unchanged, missing-versus-corrupt included.
+    return loadAdopted (index, juce::ValueTree(), std::move (onComplete));
+}
+
+PresetManager::OpResult PresetManager::loadAdopted (int index, const juce::ValueTree& preParsed,
+                                                    std::function<void (bool)> onComplete)
+{
     // ADR-0008 round 25 (R1279-1283), round 28: guarded separately because it is public and both
     // `load` and `step` reach the row through it; when they deferred, this runs with nothing to
     // defer, and when they did not, its acquisition is their lock re-entered on the same thread.
     // NO DRAIN (`drainFirst == false`), which is the whole of what "Adopted" names: `step` derived
     // its row from the session the outer drain established, and draining again here would adopt a
     // restore AFTER that row was chosen and load it onto the wrong session (§23).
+    //
+    // THE RETRY DROPS THE CARRIED TREE ON PURPOSE (0.9.9). A deferral means the command waits for a
+    // door that may be many milliseconds away and the list may be rebuilt before it opens, so
+    // `index` may not name the row it named when the tree was parsed -- and applying that tree
+    // under this row's name would make the sound and the preset name disagree. Re-deriving from
+    // the row is the honest answer, and it is what this function did before the tree existed. The
+    // window the tree closes is the SYNCHRONOUS one inside a single `step`, which a deferral has
+    // already left behind. Unreachable from `step` in any case: the gate asks `refuseNow` before
+    // the nesting shortcut (`StateCommandGate.h`), and between `step`'s admission and this one
+    // nothing runs but this thread's own reads, so neither a user transaction nor a dispatch of
+    // ours can open in between.
     const auto admit = stateCommandAdmission ([this, index, cb = onComplete]
                                               { (void) loadAdopted (index, cb); }, /*drainFirst*/ false);
     if (! admit.admitted()) return OpResult::deferred;
@@ -807,17 +851,32 @@ PresetManager::OpResult PresetManager::loadAdopted (int index, std::function<voi
         // row goes with it. A row whose file is still on disk but is not a readable preset KEEPS
         // its row: the user can see the file, the plug-in must not quietly disagree about whether
         // it exists, and nothing here ever deletes or hides a file the user put in the folder.
-        if (! e.file.existsAsFile())
+        // CARRIED FROM THE CANDIDATE PASS (0.9.9), and then the file is not touched again at all --
+        // no second parse, and no second existence check either. `step` has already read this row
+        // and decided on it, and the tree it read IS the preset the user asked for; re-reading
+        // could only replace it with something the decision was never made about. It mirrors
+        // `applyParsedFile`, which likewise applies the tree the chooser's parse produced without
+        // asking again whether the file is still there.
+        if (preParsed.isValid())
         {
-            refresh();
-            return fail();
+            userSound = preParsed;
         }
+        else
+        {
+            // MISSING AND INVALID ARE DIFFERENT EVENTS -- see above. Both belong to the absolute
+            // door, which is the only one that reaches this branch.
+            if (! e.file.existsAsFile())
+            {
+                refresh();
+                return fail();
+            }
 
-        // Unparsable, foreign-rooted, more than one document, or structurally malformed -> the
-        // same clean no-op, resolved here so it lands before onAboutToLoad() like every other
-        // failure (ER-STATE-24, and ER-GUI-06's rule that a refused load raises no duck).
-        userSound = parseSoundFile (e.file);
-        if (! userSound.isValid()) return fail();
+            // Unparsable, foreign-rooted, more than one document, or structurally malformed -> the
+            // same clean no-op, resolved here so it lands before onAboutToLoad() like every other
+            // failure (ER-STATE-24, and ER-GUI-06's rule that a refused load raises no duck).
+            userSound = parseSoundFile (e.file);
+            if (! userSound.isValid()) return fail();
+        }
     }
 
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
@@ -878,15 +937,26 @@ PresetManager::OpResult PresetManager::loadAdopted (int index, std::function<voi
     return OpResult::completed;
 }
 
-// ADR-0055. THE ROW PREDICATE `step` DERIVES ITS SKIP FROM. Deliberately a pure question: it moves
+// ADR-0055. THE ROW CANDIDATE `step` DERIVES ITS SKIP FROM. Deliberately a pure question: it moves
 // no parameter, opens no undo bracket and takes no admission of its own, so asking it about a row
 // `step` then declines to load costs that row nothing.
-bool PresetManager::rowIsLoadable (int index) const
+//
+// 0.9.9: IT CARRIES THE TREE IT PARSED. Answering only `bool` meant the chosen row was read a
+// SECOND time inside `loadAdopted`, and between the two reads the file can change: a row that was
+// loadable when it was chosen could then fail to parse, `step` would return `failed`, and
+// navigation would stop at exactly the row the skip exists to step past. The tree the decision was
+// made from is now the tree the load applies -- the rule `loadFile` has followed since round 27,
+// where the parse also happens once, before the command is queued, because "the parsed tree IS the
+// preset: a file edited in the meantime cannot change what the user asked to load".
+PresetManager::RowCandidate PresetManager::examineRow (int index) const
 {
-    if (index < 0 || index >= list.size()) return false;
+    if (index < 0 || index >= list.size()) return {};
     const auto& e = list.getReference (index);
-    return e.isFactory ? findFactory (e.factoryId) != nullptr
-                       : parseSoundFile (e.file).isValid();
+    if (e.isFactory) return { findFactory (e.factoryId) != nullptr, {} };
+
+    auto sound = parseSoundFile (e.file);
+    const bool loadable = sound.isValid();
+    return { loadable, std::move (sound) };
 }
 
 // ROUND 27 (Devin R640). THE PARSE IS SYNCHRONOUS, THE APPLY MAY BE DEFERRED, AND THE CALLER IS
@@ -1039,8 +1109,9 @@ PresetManager::OpResult PresetManager::step (int delta, std::function<void (bool
     {
         const int target = ((from + delta * taken) % n + n) % n;
         if (target == from) break;                 // all the way round: nothing else to try
-        if (! rowIsLoadable (target)) continue;
-        return loadAdopted (target, std::move (onComplete));
+        const auto candidate = examineRow (target);
+        if (! candidate.loadable) continue;
+        return loadAdopted (target, candidate.sound, std::move (onComplete));
     }
 
     if (onComplete) onComplete (false);

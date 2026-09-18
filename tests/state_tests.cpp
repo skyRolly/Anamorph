@@ -13229,6 +13229,146 @@ static void testAPresetFileIsOneWellFormedDocument()
                       "a UTF-16 file with a zero code unit and a tail after it is refused");
     }
 
+    // ---- LEG H: THE CAP IS APPLIED TO WHAT WAS READ, NOT TO WHAT WAS STAT'ED ------------------
+    //
+    // Devin review finding. `getSize()` describes the file at the instant it is asked; the read
+    // happens afterwards, and another process can replace the file in between -- a sync client
+    // finishing a download, an editor's save-over, anything writing the same name. The read used
+    // to be `File::loadFileAsData`, which re-stats and takes the WHOLE file into memory, and the
+    // cap was never re-applied to what arrived: the check that exists to keep an enormous file out
+    // of memory was decided on a file that was no longer there.
+    //
+    // The replacement here is a VALID preset, deliberately. Anything the document scans would
+    // refuse on its own merits cannot tell a working cap from a missing one; only a file that is
+    // over the cap AND otherwise perfectly loadable can.
+    std::printf ("  H. a file that grows past the cap between the size check and the read\n");
+    {
+        auto raceFile = fileFor ("__Adr0055SizeRace__");
+
+        // THE REPLACEMENT IS BUILT SO THAT NEITHER HALF OF THE GUARD CAN HIDE BEHIND THE OTHER.
+        // A complete, valid document well UNDER the cap, then whitespace that pushes the FILE over
+        // it. Read whole it is a valid preset; read bounded at the cap it is still a valid preset
+        // followed by whitespace, which this boundary accepts. So the only thing that can refuse
+        // it is the size of what arrived -- not the bound, and not the document scans.
+        const juce::String document =
+            "<!-- " + juce::String::repeatedString ("x", 200000)
+                    + " -->\n<ANAMORPH><PARAM id=\"width\" value=\"1.9\"/></ANAMORPH>\n";
+        const juce::String huge = document + juce::String::repeatedString (" ", 80000);
+        check ((juce::int64) document.getNumBytesAsUTF8() < anamorph::PresetManager::maxPresetBytes,
+               "the replacement's DOCUMENT fits under the cap");
+        check ((juce::int64) huge.getNumBytesAsUTF8() > anamorph::PresetManager::maxPresetBytes,
+               "...while the FILE is over it");
+
+        // Control: nothing swapped, and the same small file loads. Without this the leg below
+        // could pass because the harness never worked at all.
+        check (raceFile.replaceWithText (good), "the race harness starts as a valid preset");
+        setSentinel();
+        check (pm.loadFile (raceFile) == Op::completed, "...and loads when nothing replaces it");
+
+        check (raceFile.replaceWithText (good), "the race harness is restored");
+        setSentinel();
+        const auto before = snapshot();
+        int swaps = 0;
+        pm.beforePresetRead = [&] (const juce::File& f)
+        {
+            if (f == raceFile && swaps == 0) { ++swaps; f.replaceWithText (huge); }
+        };
+        const auto answer = pm.loadFile (raceFile);
+        pm.beforePresetRead = nullptr;
+
+        check (swaps == 1, "the replacement landed in the window (the seam fired exactly once)");
+        check (raceFile.getSize() > anamorph::PresetManager::maxPresetBytes,
+               "...and the oversized file is what is on disk by the time the read happens");
+        check (answer == Op::failed, "a file that grew past the cap under the read is refused");
+        check (sameAs (before), "...and it moved nothing");
+        raceFile.deleteFile();
+    }
+
+    // ---- LEG I: THE CANDIDATE'S PRESET IS THE PRESET THAT IS LOADED ---------------------------
+    //
+    // Devin review finding. `step` read a candidate row to decide whether to skip it and then
+    // `loadAdopted` read the SAME file again to load it. Between those two reads the file can
+    // change, and a row that was loadable when it was chosen would then fail to parse -- so `step`
+    // answered `failed` and navigation stopped at exactly the row the skip exists to step past.
+    //
+    // The seam corrupts the row on its SECOND read, which is the read the fix removes. Nothing
+    // here is racing: pre-fix there IS a second read and it is corrupted; post-fix there is no
+    // second read, so the branch never fires and `readsOfB` proves it.
+    std::printf ("  I. a row that changes after the candidate pass does not stop navigation\n");
+    {
+        auto folder = anamorph::PresetManager::presetDirectory();
+        check (folder.createDirectory(), "the real preset folder is available");
+        auto fa = folder.getChildFile (juce::String ("__Adr0055StepA__") + anamorph::PresetManager::fileSuffix());
+        auto fb = folder.getChildFile (juce::String ("__Adr0055StepB__") + anamorph::PresetManager::fileSuffix());
+        auto fc = folder.getChildFile (juce::String ("__Adr0055StepC__") + anamorph::PresetManager::fileSuffix());
+
+        // Three DISTINCT valid presets, authored by the real writer, so which one landed is
+        // readable from the sound rather than only from the name.
+        float wa = 0.0f, wb = 0.0f, wc = 0.0f;
+        auto authored = [&] (float w, float& out)
+        {
+            setRaw (proc, pid::width, w);
+            out = rawOf (proc, pid::width);
+            auto xml = proc.getAPVTS().copyState().createXml();
+            return xml != nullptr ? xml->toString() : juce::String();
+        };
+        check (fa.replaceWithText (authored (0.20f, wa)), "step harness A written");
+        check (fb.replaceWithText (authored (0.60f, wb)), "step harness B written");
+        check (fc.replaceWithText (authored (1.40f, wc)), "step harness C written");
+        check (std::abs (wa - wb) > 0.1f && std::abs (wb - wc) > 0.1f,
+               "...and the three sounds are far enough apart to tell apart");
+
+        pm.refresh();
+        int ia = -1, ib = -1, ic = -1;
+        for (int i = 0; i < pm.entries().size(); ++i)
+        {
+            const auto& e = pm.entries().getReference (i);
+            if (e.name == "__Adr0055StepA__") ia = i;
+            if (e.name == "__Adr0055StepB__") ib = i;
+            if (e.name == "__Adr0055StepC__") ic = i;
+        }
+        check (ia >= 0 && ib == ia + 1 && ic == ib + 1, "the three rows are listed A, B, C in order");
+
+        if (ia >= 0 && ib > 0 && ic > 0)
+        {
+            check (pm.load (ia) == Op::completed, "row A loads");
+            checkStr (pm.currentName(), "__Adr0055StepA__", "...and is the current preset");
+
+            int readsOfB = 0;
+            pm.beforePresetRead = [&] (const juce::File& f)
+            {
+                if (f == fb && ++readsOfB == 2) f.replaceWithText (good + "<JUNK/>");
+            };
+            bool answered = false, told = false;
+            const auto r = pm.step (+1, [&] (bool ok) { answered = true; told = ok; });
+            pm.beforePresetRead = nullptr;
+
+            check (readsOfB == 1, "the chosen row is read EXACTLY ONCE");
+            check (r == Op::completed, "...so Next completes rather than stopping at it");
+            check (answered && told, "...its completion reports success, exactly once");
+            checkStr (pm.currentName(), "__Adr0055StepB__", "...and it lands on B");
+            check (std::abs (rawOf (proc, pid::width) - wb) < 1.0e-3f,
+                   "...carrying the sound the candidate pass read");
+
+            // LATER VALID ROWS STAY REACHABLE when the row really is corrupt (leg F's contract,
+            // re-asserted here against a row that this leg made unreadable).
+            check (fb.replaceWithText (good + "<JUNK/>"), "B is corrupted on disk for real");
+            check (pm.load (ia) == Op::completed, "back to A");
+            check (pm.step (+1, {}) == Op::completed, "Next steps over the corrupt B");
+            checkStr (pm.currentName(), "__Adr0055StepC__", "...and lands on C");
+
+            // ...AND THE ABSOLUTE DOOR IS UNTOUCHED: it still reads the file, and it still
+            // reports and stays. The carried tree belongs to the relative step alone.
+            const auto nameBefore = pm.currentName();
+            check (pm.load (ib) == Op::failed, "an absolute pick of the corrupt row still reports failure");
+            checkStr (pm.currentName(), nameBefore, "...and still leaves the current preset alone");
+            check (fb.existsAsFile(), "...and still never deletes the file");
+        }
+
+        fa.deleteFile(); fb.deleteFile(); fc.deleteFile();
+        pm.refresh();
+    }
+
     goodFile.deleteFile();
     dir.deleteRecursively();
 }

@@ -1775,6 +1775,51 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   uncovered statement is one assignment. Recorded rather than papered over, in the same way M15 and
   M189 are.
 
+* **Round 45 — two rules that were stated but not enforced (ADR-0055 amendment).**
+
+  Two review findings against `2953f7e`. Neither changes what a preset file may contain; both make a
+  rule hold when the filesystem moves underneath it. Both are driven through a NEW test seam,
+  `PresetManager::beforePresetRead`, which fires between `parseSoundFile`'s size check and its
+  read -- the one point at which "another process replaced this file" is reproducible at all, and
+  the reason neither leg below is a race. It is the same reasoning, and the same shape, as
+  `beforeStateCapture`; empty in every shipping path.
+
+  **State test 114 leg H -- the cap was applied to what was stat'ed, not to what was read.**
+  `getSize()` describes the file at the instant it is asked; the read happened afterwards, and
+  `File::loadFileAsData` re-stats and takes the WHOLE file into memory (`juce_File.cpp:559-566`)
+  with the cap never re-applied. The read is now bounded at one byte past the cap and the cap is
+  re-measured on what arrived. **The leg's replacement file is built so that neither half of the
+  guard can hide behind the other**: a complete valid document of ~200 KB, comfortably under the
+  cap, followed by ~80 KB of whitespace. Read whole it is a valid preset; read bounded at the cap
+  it is still a valid preset followed by whitespace, which this boundary accepts. The only thing
+  that can refuse it is the size of what arrived -- which is exactly the rule under test. A control
+  leg loads the same file unswapped, so the harness cannot pass by never having worked.
+
+  **State test 114 leg I -- the chosen row was read twice.** `step` parsed a candidate row to decide
+  whether to skip it and `loadAdopted` parsed the same file again to load it; a file that changed in
+  between turned a working skip into the wall it exists to remove. The candidate's tree is now
+  carried into the load. The leg corrupts the row on its **second** read and asserts `readsOfB == 1`
+  -- so it measures the absence of the second read directly, not merely that the step happened to
+  survive. It then asserts the sound that landed is the candidate's, that a row corrupted for real
+  is still stepped over onto C, and that the ABSOLUTE door is unchanged: `load(index)` on the
+  corrupt row still reads the file, still reports `failed`, still stays, and still never deletes it.
+
+  **Mutation coverage (M226-M231). Five killed, one recorded survivor.**
+
+  Killed: **M226** the post-read cap check removed (bound kept) -- 2; **M227** the whole pre-fix
+  read restored, `loadFileAsData` with no re-measurement -- 2; **M229** `step` no longer carries the
+  candidate's tree -- 5; **M230** `loadAdopted` ignores the tree it was handed -- 5; **M231** `step`
+  no longer skips an unloadable row -- 8. M231 is round 43's M214 under its new spelling: the anchor
+  moved from `rowIsLoadable` to `examineRow`, and the mutant it names is the same one.
+
+  **M228 SURVIVES, and it is equivalent for every finite file.** It removes the READ BOUND and
+  leaves the post-read cap check in place. Any file that is over the cap is then read whole and
+  refused by the check, so no suite assertion can separate the two: the bound's value is that the
+  oversized content never enters memory at all, and peak allocation is not something this harness
+  can observe portably. Recorded rather than papered over, in the same way M209 is -- and the bound
+  stays, because "a much larger file can enter memory before the cap is applied" is the half of the
+  finding a post-read check does not answer.
+
 * **Round 44 — the file is its bytes, and the warning has a life (ADR-0055 amendment).**
 
   Three review findings against `f03aa06`, the head that first implemented ADR-0055. All three were
@@ -3612,7 +3657,8 @@ suite's maximum frame** — that is still the pre-existing Settings test at 68 %
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
-'433548' bytes of stack"* at `tests/state_tests.cpp:13318`, which is
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:13458`
+today, this round's two new legs having moved it -- which is
 `testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not
 touch**. The same alert, byte-identical at **433548**, is in the predecessor run's SARIF on
 `0e32e65` at `state_tests.cpp:12870`, which is where that function sat before State test 114 was

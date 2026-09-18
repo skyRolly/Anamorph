@@ -156,7 +156,7 @@ final answer. On top of that contract:
   not silently move the selection somewhere else.
 - **A relative request reports and continues.** "Next" asks for the one after this, so `step` steps
   **over** a row that will not load, bounded by one pass of the list, and answers `failed` only if
-  nothing in the list loads. The row is chosen by a pure predicate (`rowIsLoadable`) rather than by
+  nothing in the list loads. The row is chosen by a pure candidate pass (`examineRow`) rather than by
   a failed load's result, so exactly one `loadAdopted` runs and it is the one that owns the
   completion.
 - **A missing file and a corrupt file are different events.** A row whose file has vanished is
@@ -208,7 +208,7 @@ used to play for a load that had been refused.
 ## Related code
 
 `src/PresetManager.cpp` — `presetBytesAreAdmissible`, `presetTextIsAdmissible`,
-`presetDocumentIsWellFormed`, `parseSoundFile`, `load`, `loadAdopted`, `step`, `rowIsLoadable`;
+`presetDocumentIsWellFormed`, `parseSoundFile`, `load`, `loadAdopted`, `step`, `examineRow`;
 `src/PresetManager.h` — `maxPresetBytes`, `maxPresetDepth`, the three loader signatures;
 `src/PluginEditor.cpp` — `presetLoadFinished`, `stepPreset`, `refreshPresetDisplay`,
 `stepMicroAnims`; `src/gui/LookAndFeel.cpp` — the `warn` property on the preset slot.
@@ -261,6 +261,37 @@ within 1.5 s of a refusal was displayed as `PRESET UNREADABLE`, its own name sup
 remainder. Success now clears the warning as well as raising the sweep: the two states describe the
 same slot, so the later one owns it.
 
+### Two rules that were stated but not enforced
+
+Neither of these changes what a preset file may contain. Both make a rule above hold when the
+filesystem moves underneath it, and both were reproduced before they were changed.
+
+**The size cap was decided on a file that was no longer there.** `getSize()` describes the file at
+the instant it is asked and the read happens afterwards, so a replacement landing in between was
+read WHOLE by `File::loadFileAsData` (`juce_File.cpp:559-566`) with the cap never re-applied. The
+read is now bounded at one byte past the cap — enough to tell "at the cap" from "over it" — and the
+cap is re-applied to what arrived. The early rejection is kept: it is free and it stops a genuinely
+oversized file from being opened at all. What is deliberately NOT re-checked is `loadFileAsData`'s
+other rule, that the length was the same before and after: a torn write is refused by the document
+scans (an incomplete `<ANAMORPH>` is not one well-formed document), which is the same answer reached
+by the rule this boundary actually states.
+
+**The skip read the chosen row twice.** `step` parsed a candidate row to decide whether to skip it,
+and `loadAdopted` then parsed the same file again to load it. Between those two reads the file can
+change, so a row that was loadable when it was chosen could fail on the second read — and `step`
+answered `failed`, stopping at exactly the row the skip exists to step past. The candidate's parsed
+tree is now carried into the load, which is the rule `loadFile` has followed since round 27: *the
+parsed tree IS the preset; a file edited in the meantime cannot change what the user asked to load.*
+The window is closed by construction rather than retried, it is one read instead of two, and the
+completion still belongs to exactly one `loadAdopted`. The ABSOLUTE door is untouched — `load(index)`
+carries no tree, still checks existence, and still keeps the missing-versus-corrupt split.
+
+A deferral drops the carried tree on purpose: it may open many milliseconds later with the list
+rebuilt, so the row is re-derived rather than loaded from a tree parsed for a possibly different
+index. It is unreachable from `step` in any case, because the gate asks `refuseNow` before its
+nesting shortcut and nothing between `step`'s admission and `loadAdopted`'s can open a transaction
+or a dispatch on this thread.
+
 ### Scope
 
 Unchanged: the accepted format, the two limits, the empty-preset ruling, the missing-versus-corrupt
@@ -284,5 +315,12 @@ The amendment adds **State test 114 leg G** — six NUL shapes refused, four enc
 refused — and **State test 115**, which drives the real top-bar button through the real
 `presetLoadFinished` and the real frame clock: the state appears, is still shown at 1.0 s, is gone
 by 1.75 s with no mouse movement and no other animation, and is cleared instantly by a load that
-succeeds. Its pre-fix behaviour was measured on `f03aa06`. Mutation record:
-`docs/procedures/TESTING.md`.
+succeeds. Its pre-fix behaviour was measured on `f03aa06`.
+
+The two enforcement fixes add **State test 114 legs H and I**, both driven through a seam that fires
+between `parseSoundFile`'s size check and its read — the one point at which "another process
+replaced this file" is reproducible at all, and the reason neither leg is a race. Leg H replaces the
+file with a valid document that fits under the cap followed by whitespace that pushes the FILE over
+it, so neither the read bound nor the document scans can refuse it and only the size of what arrived
+can. Leg I corrupts the row on its SECOND read and asserts that there is no second read. Mutation
+record: `docs/procedures/TESTING.md`.

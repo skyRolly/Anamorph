@@ -13003,6 +13003,78 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 65th pass — 2026-09-19, round 45 (two rules that were stated but not enforced)
+
+Two review findings against `2953f7e`. **Neither changes what a preset file may contain**; both make
+a rule ADR-0055 already states hold when the filesystem moves underneath it. Each was reproduced
+against the real loader before anything was changed, and ADR-0055's Decision section is untouched.
+
+**Finding 1 — `src/PresetManager.cpp:R537`, the size cap can be raced: CONFIRMED and fixed.**
+`getSize()` describes the file at the instant it is asked; the read happens afterwards, and
+`File::loadFileAsData` — which this called — re-stats and takes the WHOLE file into memory
+(`juce_File.cpp:559-566`) with the cap never re-applied. A replacement landing in that window was
+therefore read in full and went on to the scans with the one check that exists to keep an enormous
+file out of memory having been decided on a file that was no longer there. The read is now bounded
+at one byte past the cap — enough to tell "at the cap" from "over it" — and the cap is re-measured
+on what arrived. The early rejection is kept: it is free, it is right in almost every case, and it
+is what stops a genuinely oversized file from being opened at all. Deliberately NOT re-checked is
+`loadFileAsData`'s other rule, that the length was the same before and after: a torn write is
+refused by the document scans (an incomplete `<ANAMORPH>` is not one well-formed document), which is
+the same answer reached by the rule this boundary actually states.
+
+**Finding 2 — `src/PresetManager.cpp:R888-889`, the chosen row was read twice: CONFIRMED and
+fixed.** `step` parsed a candidate row to decide whether to skip it, and `loadAdopted` parsed the
+same file again to load it. A file that changed between the two reads made a row that was loadable
+when it was chosen fail on the load — so `step` answered `failed` and navigation stopped at exactly
+the row the skip exists to step past. **The candidate's parsed tree is now carried into the load**,
+which is the rule `loadFile` has followed since round 27 (*"the parsed tree IS the preset: a file
+edited in the meantime cannot change what the user asked to load"*). The window is closed by
+construction rather than retried; it is also one read instead of two, which is the lesser half of
+the reason. The declaration comment that had weighed the double read as a cost question — *"not
+worth an extra entry point to avoid"* — is corrected in place, because the question it missed was
+correctness.
+
+**What is preserved, deliberately.** Exactly one `loadAdopted` still runs per `step` and still owns
+the completion, so R640's exactly-once contract is untouched. The admission rules are unchanged,
+`drainFirst == false` included (ADR-0036 §23). The ABSOLUTE door is unchanged: `load(index)` carries
+no tree, still checks existence, still keeps the missing-versus-corrupt split, still reports and
+stays. A deferral drops the carried tree on purpose — it may open with the list rebuilt, so `index`
+may not name the row the tree was parsed for — and it is unreachable from `step` in any case,
+because the gate asks `refuseNow` before its nesting shortcut and nothing between `step`'s admission
+and `loadAdopted`'s can open a transaction or a dispatch on this thread.
+
+**A new test seam, and why one was needed.** `PresetManager::beforePresetRead` fires between
+`parseSoundFile`'s size check and its read. That is the one point at which "another process replaced
+this file" is reproducible at all, and both findings live there. A test that could only hope to land
+such a replacement by racing a real thread would be a race to lose; with the seam the interleaving
+is exact and repeatable — the same reasoning, and the same shape, as `beforeStateCapture`. Empty in
+every shipping path.
+
+**Coverage.** **State test 114 leg H** replaces the file, in that window, with a complete valid
+document of ~200 KB followed by ~80 KB of whitespace — built so that neither half of the guard can
+hide behind the other: read whole it is a valid preset, read bounded at the cap it is still a valid
+preset followed by whitespace, so only the size of what arrived can refuse it. A control leg loads
+the same file unswapped. **Leg I** corrupts a row on its SECOND read and asserts `readsOfB == 1`,
+measuring the absence of the second read directly rather than that the step happened to survive; it
+then asserts the sound that landed is the candidate's, that a row corrupted for real is still
+stepped over, and that the absolute door still reports, stays and never deletes.
+
+**Validation.** State **4 486 / 0** (was 4 457), DSP **396 / 0**, both green under `ulimit -s 1024`.
+Mutations **M226-M231: five killed, one recorded survivor.** M231 is round 43's M214 under its new
+spelling (`rowIsLoadable` → `examineRow`). **M228 survives and is equivalent for every finite file**:
+it removes the read bound but leaves the post-read cap check, so an oversized file is read whole and
+then refused — no suite assertion can separate the two, because the bound's value is that the content
+never enters memory and peak allocation is not portably observable. The bound stays, because "a much
+larger file can enter memory before the cap is applied" is the half of the finding a post-read check
+does not answer.
+
+**Documentation.** `ADR-0055` (a second amendment section on enforcement, the `examineRow` rename in
+two places, and the new legs in Evidence — the Decision section is untouched);
+`docs/architecture/SERIALIZATION_REGISTRY.md` (the size row now says when the cap is measured);
+`docs/procedures/TESTING.md` (round-45 entry). **No CHANGELOG change**: the cap, the skip and their
+enforcement are all 0.9.9, the existing entries already claim the behaviour these fixes make true,
+and 0.9.9 is unreleased. **RISK-014 unchanged** — no session-blob or A/B-payload change. [Verified]
+
 ## 64th pass — 2026-09-19, round 44 (the file is its bytes, and the warning has a life)
 
 Three review findings against `f03aa06` — the head that first implemented ADR-0055 — plus one
@@ -13041,7 +13113,8 @@ that loaded within 1.5 s of a refusal was displayed as UNREADABLE, with its own 
 for the remainder. Success now clears the warning as well as raising the sweep.
 
 **PREfast alert 209 — `Function uses '433548' bytes of stack`: NO CHANGE, and it is not this
-round's.** The alert anchors at `tests/state_tests.cpp:13318`, which is
+round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13458`
+today, which is
 `testNonFiniteParameterInStateIsRejected` — State test 17, untouched by round 43 and by this round.
 The predecessor SARIF on `0e32e65` carries the same alert, byte-identical at **433548**, at
 `state_tests.cpp:12870`, which is where that function sat before State test 114 was inserted above

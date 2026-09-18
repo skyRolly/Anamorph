@@ -92,7 +92,7 @@ fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
 same-named preset. Source: src/PresetManager.h:55-77 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
-src/PresetManager.cpp:1208-1261 (`encodeSelection` / `decodeSelection`);
+src/PresetManager.cpp:1279-1332 (`encodeSelection` / `decodeSelection`);
 src/PluginProcessor.cpp:2247-2269 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
@@ -185,7 +185,7 @@ A preset file must therefore now satisfy, in this order:
 | Stage | Rule | Why it is where it is |
 |---|---|---|
 | Bytes | **no embedded NUL** — no zero byte in UTF-8, no zero code unit or trailing half unit in UTF-16 | a `juce::String` ends at the first one, so every byte after it would be read by neither this scan nor the parser; measured on `f03aa06`, a 263-byte file holding a preset, a NUL and a second complete preset decoded to 131 bytes and loaded |
-| Bytes | at most **256 KB** (`PresetManager::maxPresetBytes`) | 172× the 1525 bytes a real preset takes; the parse reads the whole file into memory first, with no cap of its own |
+| Bytes | at most **256 KB** (`PresetManager::maxPresetBytes`), measured BEFORE the read and again on what the read produced | 172× the 1525 bytes a real preset takes; the parse reads the whole file into memory first, with no cap of its own — and the pre-read check alone was decided on a file a concurrent replacement could already have changed |
 | Bytes | **no `DOCTYPE`** | closes the hang and the arbitrary file read together; the writer never emits one |
 | Bytes | nesting at most **8** (`PresetManager::maxPresetDepth`) | 4× the two levels a real preset has, and far below the shallowest measured crash |
 | Bytes | **exactly one top-level element**, then only whitespace, comments and processing instructions | the reported case; unanswerable after the parse, which has already discarded the tail |

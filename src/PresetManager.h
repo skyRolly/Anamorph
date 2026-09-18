@@ -285,6 +285,9 @@ public:
     // derived its row from what that drain established, and a second adoption here would move
     // the selection under a row already chosen (ADR-0036 §23, round 16).
     OpResult loadAdopted (int index, std::function<void (bool)> onComplete = {});
+    // ...and with the row's preset ALREADY PARSED (0.9.9). `step` reads a candidate row to decide
+    // whether to skip it; carrying that tree into the load is what makes the decision and the load
+    // describe the SAME bytes. See the private overload below.
     // Load an arbitrary .anamorph file (OS chooser, #3). The PARSE is synchronous even when the
     // apply is deferred (§9): "this is not an Anamorph preset" is knowable now, so it is answered
     // now, and the deferred half then cannot fail.
@@ -384,6 +387,16 @@ public:
     // lands a restore here to prove the row it loads cannot come from a session the step never
     // observed. Empty in every shipping path.
     std::function<void()> beforeRelativeTarget;
+
+    // Test seam (0.9.9): fires inside `parseSoundFile`, AFTER the size check and BEFORE the read.
+    // That is the one point at which "another process replaced this file" is reproducible at all,
+    // and both of the defects this seam exists for live there: a file that grows past the size cap
+    // between the check and the read, and a row that parses on the candidate pass and no longer
+    // parses on a second one. A test that could only hope to land such a replacement by racing a
+    // real thread would be a race to lose, so the interleaving is made exact instead -- the same
+    // reasoning, and the same shape, as `beforeStateCapture`. It is handed the file so a test can
+    // act on the one read it cares about. Empty in every shipping path.
+    std::function<void (const juce::File&)> beforePresetRead;
 
     // THE OWNER'S WHOLE-SOUND REPLACEMENT LOCK (ADR-0036 §24, round 17), set by the processor at
     // construction. A preset load replaces the live sound one parameter at a time, and the sound
@@ -488,9 +501,28 @@ private:
     // commits to a row, so that the one `loadAdopted` it finally makes is the one that owns the
     // completion -- a skip loop that learned the answer from `loadAdopted`'s own result would have
     // to decide what to do with a `deferred` whose retry carries no completion. A factory row
-    // resolves its id; a user row is parsed. The chosen file is therefore read twice, which for a
-    // 1.5 KB document is not worth an extra entry point to avoid.
-    bool rowIsLoadable (int index) const;
+    // resolves its id; a user row is parsed.
+    //
+    // IT RETURNS THE PARSED TREE, AND UNTIL 0.9.9 IT RETURNED ONLY A `bool` -- with the comment
+    // here arguing that reading the chosen file twice "is not worth an extra entry point to
+    // avoid". That judgement was about COST and it missed a correctness question: between the two
+    // reads the file can change, and a row that answered `true` here could then fail to parse in
+    // `loadAdopted` -- turning a skip that was working into the wall it exists to remove. The
+    // candidate's tree is now carried into the load, so the decision and the load describe the
+    // same bytes and the window does not exist. It is also one read instead of two, which is the
+    // lesser half of the reason. A FACTORY row carries no tree: it has no file, so nothing about
+    // it can change under the step.
+    struct RowCandidate
+    {
+        bool            loadable = false;
+        juce::ValueTree sound;          // the user row's preset; invalid for a factory row
+    };
+    RowCandidate examineRow (int index) const;
+    // `loadAdopted` with the user row's preset already in hand. Private because the carried tree
+    // is only ever the one `examineRow` just produced for THIS index: a caller that supplied some
+    // other tree would load a sound the row does not name.
+    OpResult loadAdopted (int index, const juce::ValueTree& preParsed,
+                          std::function<void (bool)> onComplete);
     // Parse a preset file into its sound tree, or return an INVALID tree if the
     // file is not an Anamorph preset. Both loaders resolve through this, so the
     // root-type rule cannot hold on one path and not the other (ER-STATE-24).
