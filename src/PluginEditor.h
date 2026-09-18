@@ -114,6 +114,30 @@ public:
     // lives inside it (see `saveAttempt` below).
     void showSavePreset (bool);
 
+    // ONE ANSWER FOR EVERY PRESET LOAD, whichever door it came through -- the menu row, the
+    // prev/next buttons and `Load Preset...` all hand their completion here (0.9.9). Success
+    // sweeps the knobs to the sound that arrived AND clears any warning still on screen; failure
+    // raises the warning and moves nothing. Called from a completion, so it may run long after
+    // the click: every call site guards it with a SafePointer.
+    //
+    // PUBLIC for the same reason `showSavePreset` above is. Two of its three doors are a
+    // `juce::PopupMenu` row and an OS file chooser, which a headless suite cannot drive, and the
+    // third -- the prev/next buttons -- can no longer produce a failure to show, because `step`
+    // fails only when the WHOLE list refuses and the factory rows always load. Round 43 had to
+    // record that as an uncovered assignment (mutant M217); this is the seam that covers it.
+    // Nothing else changes: it is the same function the completions call.
+    void presetLoadFinished (bool ok);
+
+    // The two CLOCKS the preset slot runs on, public for the same reason and as a pair, because
+    // the state they carry is only visible when both can be turned. `stepMicroAnims` is driven in
+    // production by a `juce::VBlankAttachment` and `refreshPresetDisplay` by the 24 Hz
+    // `timerCallback` -- a display a headless suite does not have, and a `juce::Timer` base this
+    // class inherits privately. Both are the same functions production calls, unchanged, with no
+    // test-only behaviour inside them; `refreshPresetDisplay` is idempotent and self-gating, so
+    // an extra call can only re-render what already changed.
+    void stepMicroAnims (double dt);     // eased hover/press/toggle micro-animations (F3)
+    void refreshPresetDisplay();         // preset name + dirty mark (F2)
+
 private:
     using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;
@@ -553,18 +577,10 @@ private:
     void timerCallback() override;
     void layoutScopeArea();              // scope + meter block; re-run per frame during the reveal (#6)
     void stepMeterReveal (double dt);    // vsync-driven meter reveal animation (#6/#3)
-    void stepMicroAnims (double dt);     // eased hover/press/toggle micro-animations (F3)
     void registerAnimated (juce::Component&);
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override; // Persistence scroll reveal (#1)
     void applyUiScale();                 // whole-window XS..XL transform scale (F4)
-    void refreshPresetDisplay();         // preset name + dirty mark (F2)
     void showPresetMenu();
-    // ONE ANSWER FOR EVERY PRESET LOAD, whichever door it came through -- the menu row, the
-    // prev/next buttons and `Load Preset...` all hand their completion here (0.9.9). Success
-    // sweeps the knobs to the sound that arrived; failure raises the warning above and moves
-    // nothing. Called from a completion, so it may run long after the click: every call site
-    // guards it with a SafePointer.
-    void presetLoadFinished (bool ok);
     void stepPreset (int delta);
     void focusSaveNameField (int attemptsLeft); // deferred, verified grab (Space-vs-host fix)
     // ADR-0036 round 27 (R640): the Save dialog's PENDING state. A save that could not run
@@ -1419,7 +1435,8 @@ private:
     // and the preset that IS loaded keeps its name, its tick and its sound. Seconds, decremented
     // on the same `dt` as `knobSweepTime` so it is frame-rate independent; `presetShownWarn` joins
     // the three inputs the shaping is a pure function of, so the transition each way re-renders
-    // and a steady state still costs one comparison per tick.
+    // and a steady state still costs one comparison per tick. It is decremented ABOVE
+    // `stepMicroAnims`' idle gate, so no gate can stall it -- the reason is at that decrement.
     double presetWarnTime = 0.0;
     bool   presetShownWarn = false;
     bool  comboHoverLit = false;       // some box's "hov" property is currently set

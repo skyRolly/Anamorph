@@ -92,7 +92,7 @@ fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
 same-named preset. Source: src/PresetManager.h:55-77 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
-src/PresetManager.cpp:1154-1207 (`encodeSelection` / `decodeSelection`);
+src/PresetManager.cpp:1208-1261 (`encodeSelection` / `decodeSelection`);
 src/PluginProcessor.cpp:2247-2269 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
@@ -184,6 +184,7 @@ A preset file must therefore now satisfy, in this order:
 
 | Stage | Rule | Why it is where it is |
 |---|---|---|
+| Bytes | **no embedded NUL** — no zero byte in UTF-8, no zero code unit or trailing half unit in UTF-16 | a `juce::String` ends at the first one, so every byte after it would be read by neither this scan nor the parser; measured on `f03aa06`, a 263-byte file holding a preset, a NUL and a second complete preset decoded to 131 bytes and loaded |
 | Bytes | at most **256 KB** (`PresetManager::maxPresetBytes`) | 172× the 1525 bytes a real preset takes; the parse reads the whole file into memory first, with no cap of its own |
 | Bytes | **no `DOCTYPE`** | closes the hang and the arbitrary file read together; the writer never emits one |
 | Bytes | nesting at most **8** (`PresetManager::maxPresetDepth`) | 4× the two levels a real preset has, and far below the shallowest measured crash |
@@ -197,6 +198,11 @@ redo or an A/B apply carries it: those install a state-set tree that carries `ra
 `replaceState`, and `saveUser`'s `apvts.copyState()` writes the live tree as it stands. The loader
 still resolves a preset through `value` alone. The claim at `soundSignatureAfterRestoring` that a
 preset file never carries `raw` was false and is corrected in place.
+
+**The NUL rule is encoding-aware, not a blanket zero-byte ban**, and that distinction is load-bearing:
+every second byte of a UTF-16 preset is zero, and such a file decodes and loads (State test 114 leg G
+keeps four encodings accepted). The scan reads the bytes the way `String::createStringFromData`
+is about to, which is the same decoder `loadFileAsString` used before the guard existed.
 
 **Unchanged, and each pinned by State test 114 leg E:** a valid `<ANAMORPH>` root with genuinely
 missing `PARAM` nodes still takes the per-parameter default; a malformed `value` still falls back

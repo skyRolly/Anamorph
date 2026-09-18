@@ -37,7 +37,7 @@ path — visually identical. macOS/Windows keep GPU compositing.
 
 Evidence [Verified]:
 - Source: src/PluginEditor.cpp:307-321 (gate + rationale comment)
-- Source: src/PluginEditor.cpp:1998-1999 (`triggerRepaint` guarded by `isAttached()`)
+- Source: src/PluginEditor.cpp:2010-2011 (`triggerRepaint` guarded by `isAttached()`)
 - Partially Verified (history): CHANGELOG.md [0.8.5]; commit c924ff8
 - See `design-decisions/ADR-0011-linux-x11-cpu-render.md` for the decision record.
 

@@ -1748,6 +1748,22 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
 {
     static const juce::Identifier hovA ("hovA"), actA ("actA"), onA ("onA"), vpos ("vpos");
 
+    // ADR-0055 (0.9.9): the `PRESET UNREADABLE` state expires on the frame clock, so it lasts the
+    // same wall time whatever the display rate, and `refreshPresetDisplay` puts the real preset
+    // name back on the next 24 Hz tick.
+    //
+    // IT IS DECREMENTED HERE, ABOVE THE IDLE GATE, AND `knobSweepTime` IS NOT -- deliberately,
+    // because the two timers need different things from this function. A sweep EASES widgets, so
+    // it needs the pass below to run and is therefore one of the conditions that hold the gate
+    // open. The warning moves nothing here: it is a single text state read by `timerCallback`'s
+    // unconditional `refreshPresetDisplay`, which the gate does not guard. Left below the gate it
+    // simply STOPPED -- a refused load changes no generation and lights no widget, so a cursor
+    // outside the editor with nothing else animating sealed the gate on the very next frame and
+    // `PRESET UNREADABLE` stayed in the top bar until some unrelated animation happened to wake
+    // the pass. Putting `presetWarnTime` into the gate conditions instead would fix that too, at
+    // the cost of running the whole 44-widget poll for 1.5 s to animate nothing.
+    if (presetWarnTime > 0.0) presetWarnTime -= dt;
+
     // --- S11 idle gate -------------------------------------------------------
     // The per-widget poll exists because enter/exit events were unreliable (the
     // v0.6.1 stuck-hover fix), so it must keep evaluating whenever the mouse
@@ -1836,10 +1852,6 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     // undo / algorithm change); outside it, a value jump from the scroll wheel or
     // host automation snaps instantly so it never lags or misleads (#3).
     if (knobSweepTime > 0.0) knobSweepTime -= dt;
-    // ADR-0055 (0.9.9): the `PRESET UNREADABLE` state expires on the same clock, so it lasts the
-    // same wall time whatever the frame rate. `refreshPresetDisplay` reads it on the next tick and
-    // puts the real preset name back.
-    if (presetWarnTime > 0.0) presetWarnTime -= dt;
     const bool sweeping = uiAnimOn && knobSweepTime > 0.0;
 
     // Release-outside safety net (v0.8.12): the REAL OS button state, queried lazily -- only if a
@@ -2124,8 +2136,13 @@ void AnamorphAudioProcessorEditor::refreshPresetDisplay()
 // its sound, and the file that was refused is still on disk and still in the menu.
 void AnamorphAudioProcessorEditor::presetLoadFinished (bool ok)
 {
-    if (ok) knobSweepTime  = 0.45;   // sweep the knobs to the preset (#3)
-    else    presetWarnTime = 1.5;    // seconds; decremented on the frame clock
+    // Success CLEARS the warning rather than merely not raising one: the two states describe the
+    // same slot, so a preset that loads while a previous refusal is still on screen must take the
+    // slot back at once. Without the clear the user saw `PRESET UNREADABLE` for the remainder of
+    // the 1.5 s over a preset that had loaded, with its name suppressed the whole time.
+    if (ok) { knobSweepTime  = 0.45;   // sweep the knobs to the preset (#3)
+              presetWarnTime = 0.0; }
+    else      presetWarnTime = 1.5;    // seconds; decremented on the frame clock
     refreshPresetDisplay();
 }
 

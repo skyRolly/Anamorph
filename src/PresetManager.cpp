@@ -290,6 +290,47 @@ namespace
         return juce::CharacterFunctions::compareUpTo (p, juce::CharPointer_ASCII (lit), length) == 0;
     }
 
+    // ADR-0055 (0.9.9). THE FILE IS ITS BYTES, AND EVERY ONE OF THEM MUST REACH THE SCAN BELOW.
+    //
+    // A `juce::String` is NUL-TERMINATED, and every reader downstream walks it with a CharPointer
+    // that STOPS at the first NUL -- `presetTextIsAdmissible` and `juce::XmlDocument` alike. So a
+    // file holding a valid preset, then one 0x00, then anything at all decodes to a String whose
+    // visible content is just the preset: the scan agrees it is ONE document, and the tail is
+    // examined by nobody. Measured on `f03aa06` through the real `loadFile`: a 263-byte file
+    // holding preset A, a NUL and a COMPLETE preset B decoded to 131 bytes and LOADED, applying
+    // A -- while the same file without the NUL was refused. Trailing prose and a trailing
+    // invalid-UTF-8 tail loaded the same way. One byte of disguise defeated the whole boundary.
+    //
+    // The refusal is therefore on the bytes, BEFORE the decode, because after it the evidence is
+    // gone. It reads them the way `String::createStringFromData` is about to (juce_String.cpp
+    // :1987-2035): a UTF-16 byte-order mark selects 16-bit code units, a UTF-8 one is skipped,
+    // anything else is bytes. Scanning for a zero BYTE regardless of encoding would be simpler and
+    // wrong -- a UTF-16 preset is ASCII with a zero byte in every other position, and that file
+    // decodes and loads today, so refusing it would break a real file rather than a corrupt one.
+    bool presetBytesAreAdmissible (const void* data, size_t size)
+    {
+        const auto* bytes = static_cast<const juce::uint8*> (data);
+
+        if (size >= 2 && (juce::CharPointer_UTF16::isByteOrderMarkBigEndian (bytes)
+                           || juce::CharPointer_UTF16::isByteOrderMarkLittleEndian (bytes)))
+        {
+            // The decoder takes `size / 2 - 1` whole code units, so a trailing HALF unit is
+            // dropped without ever being read -- another byte the scan would never see.
+            if (size % 2 != 0) return false;
+
+            for (size_t i = 2; i < size; i += 2)
+                if (bytes[i] == 0 && bytes[i + 1] == 0) return false;
+
+            return true;
+        }
+
+        for (size_t i = (size >= 3 && juce::CharPointer_UTF8::isByteOrderMark (bytes)) ? 3 : 0;
+             i < size; ++i)
+            if (bytes[i] == 0) return false;
+
+        return true;
+    }
+
     // True when `text` is ONE well-delimited XML document, nested no deeper than `maxDepth`,
     // carrying no DOCTYPE, and followed by nothing but whitespace, comments and processing
     // instructions. It answers ONLY those questions: what the document says is
@@ -489,7 +530,20 @@ juce::ValueTree PresetManager::parseSoundFile (const juce::File& f) const
     // and a preset this plug-in writes is 1525 bytes.
     if (! f.existsAsFile() || f.getSize() > maxPresetBytes) return {};
 
-    const auto text = f.loadFileAsString();
+    // READ AS BYTES, JUDGED AS BYTES, THEN DECODED -- in that order, because the decode is where a
+    // NUL stops being visible. `loadFileAsData` also refuses a file whose length changed under the
+    // read, which the size cap above could otherwise be raced past.
+    juce::MemoryBlock raw;
+    if (! f.loadFileAsData (raw)) return {};
+    if (! presetBytesAreAdmissible (raw.getData(), raw.getSize())) return {};
+
+    // DECODED EXACTLY AS `loadFileAsString` DECODED IT, which is not a tidying but the point: that
+    // function is `readEntireStreamAsString` -> `MemoryOutputStream::toString` -> this same call
+    // (juce_File.cpp:568-576, juce_InputStream.cpp:241-246, juce_MemoryOutputStream.cpp:207-210),
+    // so a byte-order mark and a UTF-16 preset still read precisely as they did before this guard.
+    // `MemoryBlock::toString` would NOT do: it is `String::fromUTF8`, which keeps a UTF-8 mark as a
+    // character and cannot read UTF-16 at all. The cast is bounded by the size check above.
+    const auto text = juce::String::createStringFromData (raw.getData(), (int) raw.getSize());
     if (! presetTextIsAdmissible (text, maxPresetDepth)) return {};
 
     // PARSED FROM THE TEXT, NOT FROM THE FILE, and that is a second guard rather than a tidying:

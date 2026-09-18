@@ -6946,7 +6946,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2637),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2654),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -13131,8 +13131,249 @@ static void testAPresetFileIsOneWellFormedDocument()
         pm.refresh();
     }
 
+    // ---- LEG G: THE FILE IS ITS BYTES -- AN EMBEDDED NUL HIDES THE REST OF IT ------------------
+    //
+    // Devin review finding on the round-43 boundary, reproduced before it was fixed. A
+    // `juce::String` is NUL-terminated and every reader below walks it with a CharPointer that
+    // stops at the first NUL -- `presetTextIsAdmissible` and `juce::XmlDocument` alike. So the
+    // shapes leg A and leg B refuse came straight back through if one 0x00 was placed in front of
+    // them. Measured on `f03aa06` through the real `loadFile`: a 263-byte file holding this
+    // preset, a NUL and a COMPLETE second preset decoded to 131 bytes and LOADED, applying the
+    // first -- the very file leg A rejects, wearing one byte of disguise.
+    //
+    // The refusal is now on the bytes, before the decode, which is why these legs write BYTES: a
+    // `juce::String` literal cannot carry an interior NUL through `replaceWithText`.
+    std::printf ("  G. a NUL byte cannot hide the rest of the file\n");
+    {
+        auto writeBytes = [&] (const juce::File& f, const std::string& bytes)
+        {
+            f.deleteFile();
+            juce::FileOutputStream os (f);
+            const bool wrote = os.openedOk() && os.write (bytes.data(), bytes.size());
+            os.flush();
+            return wrote && f.getSize() == (juce::int64) bytes.size();
+        };
+        auto refusesBytes = [&] (const juce::String& name, const std::string& bytes, const char* what)
+        {
+            auto f = fileFor (name);
+            check (writeBytes (f, bytes), (juce::String ("harness bytes written: ") + name).toRawUTF8());
+            const auto before = snapshot();
+            check (pm.loadFile (f) == Op::failed, what);
+            check (sameAs (before), (juce::String ("...and it moved nothing: ") + what).toRawUTF8());
+            f.deleteFile();
+        };
+        auto acceptsBytes = [&] (const juce::String& name, const std::string& bytes, const char* what)
+        {
+            auto f = fileFor (name);
+            check (writeBytes (f, bytes), (juce::String ("harness bytes written: ") + name).toRawUTF8());
+            check (pm.loadFile (f) == Op::completed, what);
+            f.deleteFile();
+        };
+        // ASCII text -> UTF-16 with a byte-order mark, which is what makes the guard
+        // encoding-aware rather than a blanket "no zero byte anywhere" rule: every second byte of
+        // a UTF-16 preset IS zero, and such a file decodes and loads.
+        auto toUtf16 = [] (const std::string& ascii, bool bigEndian)
+        {
+            std::string out;
+            if (bigEndian) { out += (char) 0xFE; out += (char) 0xFF; }
+            else           { out += (char) 0xFF; out += (char) 0xFE; }
+            for (char c : ascii)
+            {
+                if (bigEndian) { out += (char) 0; out += c; }
+                else           { out += c; out += (char) 0; }
+            }
+            return out;
+        };
+
+        const std::string body = good.toStdString();
+        auto second = juce::ValueTree ("ANAMORPH");
+        {
+            auto w = juce::ValueTree ("PARAM");
+            w.setProperty ("id", pid::width, nullptr);
+            w.setProperty ("value", 0.125, nullptr);
+            second.appendChild (w, nullptr);
+        }
+        const std::string tail = second.createXml()->toString().toStdString();
+        std::string invalidUtf8; for (int i = 0; i < 8; ++i) invalidUtf8 += (char) (0xF0 + i);
+
+        setSentinel();
+        refusesBytes ("__Adr0055NulThenDoc__",  body + std::string (1, '\0') + tail,
+                      "a valid preset, a NUL and a SECOND complete preset is refused");
+        refusesBytes ("__Adr0055NulThenText__", body + std::string (1, '\0') + "extra bytes\n",
+                      "a valid preset, a NUL and trailing bytes is refused");
+        refusesBytes ("__Adr0055NulThenBin__",  body + std::string (1, '\0') + invalidUtf8,
+                      "...including a tail that is not even valid UTF-8");
+        refusesBytes ("__Adr0055NulInside__",
+                      "<ANAMORPH><PARAM id=\"width\" value=\"1.5\"/>" + std::string (1, '\0')
+                          + "</ANAMORPH>",
+                      "a NUL truncating the document mid-way is refused");
+        refusesBytes ("__Adr0055NulOnly__", std::string (1, '\0'), "a file that is one NUL is refused");
+        refusesBytes ("__Adr0055NulLead__", std::string (1, '\0') + body,
+                      "a NUL BEFORE the document is refused too");
+
+        // Compatibility: every encoding that loaded before the guard still loads. These are the
+        // legs that would have caught a blanket zero-byte rule.
+        acceptsBytes ("__Adr0055Utf8Plain__", body, "the same preset without the NUL still loads");
+        acceptsBytes ("__Adr0055Utf8Bom__",   std::string ("\xEF\xBB\xBF") + body,
+                      "a UTF-8 byte-order mark still loads");
+        acceptsBytes ("__Adr0055Utf16Le__",   toUtf16 (body, false), "a UTF-16 LE preset still loads");
+        acceptsBytes ("__Adr0055Utf16Be__",   toUtf16 (body, true),  "a UTF-16 BE preset still loads");
+
+        // ...and the two UTF-16 shapes that hide bytes are refused on the same principle: the
+        // decoder takes whole code units, so a trailing half unit is dropped unread, and a zero
+        // code unit terminates the decoded text exactly as a NUL byte does in UTF-8.
+        refusesBytes ("__Adr0055Utf16Odd__", toUtf16 (body, false) + std::string (1, 'A'),
+                      "a UTF-16 file with a trailing half code unit is refused");
+        refusesBytes ("__Adr0055Utf16Nul__",
+                      toUtf16 (body, false) + std::string (2, '\0') + toUtf16 (tail, false).substr (2),
+                      "a UTF-16 file with a zero code unit and a tail after it is refused");
+    }
+
     goodFile.deleteFile();
     dir.deleteRecursively();
+}
+
+// ---------------------------------------------------------------------------
+// 115. The PRESET UNREADABLE state has a LIFE: it appears, it ends by itself,
+//      and a load that succeeds takes the slot back at once.
+//
+//      Two Devin review findings on the round-43 editor half, both reproduced
+//      before they were fixed.
+//
+//      EXPIRY. `presetWarnTime` counts down on the frame clock, and the
+//      decrement used to sit BELOW `stepMicroAnims`' two idle-gate early
+//      returns. That gate seals when the cursor is outside the editor, no
+//      button is held, no sweep is open, the previous pass settled dark and no
+//      generation or tracked value moved -- and a REFUSED load satisfies every
+//      one of those: it changes no parameter, so no generation moves, and it
+//      lights no widget. The warning therefore stopped counting on the very
+//      next frame and stayed in the top bar until some unrelated animation
+//      happened to wake the pass. The decrement now runs above the gate, which
+//      is where it belongs: the warning is a text state read by the 24 Hz
+//      `timerCallback`, not something the 44-widget pass below animates.
+//
+//      SUCCESS. `presetLoadFinished(true)` set the sweep and left
+//      `presetWarnTime` alone, so a preset that loaded while a previous
+//      refusal was still on screen was shown as UNREADABLE for the rest of the
+//      1.5 s, with its own name suppressed.
+//
+//      WHAT THIS TEST CAN AND CANNOT REACH. It drives the two functions the
+//      display layer actually uses -- `presetLoadFinished`, which every load
+//      door hands its completion to, and `stepMicroAnims`, which the
+//      VBlankAttachment drives once per frame in production. It cannot click
+//      the preset menu row or the OS file chooser (a PopupMenu window and a
+//      native dialog), which is why those two functions are public; see the
+//      note on their declarations. Everything asserted below is read from the
+//      real top-bar button by its component ID, never from a private field.
+static void testThePresetUnreadableStateExpiresByItself()
+{
+    std::printf ("State test 115: PRESET UNREADABLE appears, expires on its own clock, and yields to success\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& pm = proc.getPresets();
+
+    auto* rawEd = proc.createEditor();
+    auto* ed    = dynamic_cast<AnamorphAudioProcessorEditor*> (rawEd);
+    check (ed != nullptr, "editor constructs for the preset-warning probe");
+    if (ed == nullptr) { delete rawEd; return; }
+
+    juce::TextButton* slot = nullptr;
+    std::function<void (juce::Component*)> walk = [&] (juce::Component* c)
+    {
+        if (slot != nullptr) return;
+        for (int i = 0; i < c->getNumChildComponents(); ++i)
+        {
+            auto* kid = c->getChildComponent (i);
+            if (auto* b = dynamic_cast<juce::TextButton*> (kid))
+                if (b->getComponentID() == "presetname") { slot = b; return; }
+            walk (kid);
+            if (slot != nullptr) return;
+        }
+    };
+    walk (ed);
+    check (slot != nullptr, "the top-bar preset slot is found by its component ID");
+    if (slot == nullptr) { proc.editorBeingDeleted (rawEd); delete rawEd; return; }
+
+    const double frame = 1.0 / 60.0;                       // one 60 Hz display frame
+    auto tick   = [&] { ed->refreshPresetDisplay(); };   // what the 24 Hz timerCallback does here
+    auto frames = [&] (int n) { for (int i = 0; i < n; ++i) ed->stepMicroAnims (frame); };
+    auto warned = [&] { return (bool) slot->getProperties().getWithDefault ("warn", false); };
+
+    // A real preset in the slot, so the name the warning must give back is a name and not a
+    // placeholder. `load` is the absolute door the menu row uses; the editor answers it the same
+    // way the menu row's completion does.
+    check (pm.entries().size() > 0, "the preset list has at least one row");
+    check (pm.load (0) == anamorph::PresetManager::OpResult::completed, "a factory row loads");
+    ed->presetLoadFinished (true);
+    const juce::String baseName = slot->getButtonText();
+    check (baseName != "PRESET UNREADABLE", "the slot starts out showing a preset, not a warning");
+    check (! warned(), "...and carries no warn flag");
+
+    // Settle the micro-animation pass so its idle gate is CLOSED -- which is the condition the
+    // expiry defect needed, not an incidental detail. Without this the pass would still be easing
+    // values and would run every frame regardless.
+    frames (20);
+
+    // ---- LEG A: A REFUSED LOAD SHOWS THE STATE -------------------------------------------------
+    std::printf ("  A. a refused load shows PRESET UNREADABLE\n");
+    ed->presetLoadFinished (false);
+    checkStr (slot->getButtonText(), "PRESET UNREADABLE", "a refused load puts the warning in the slot");
+    check (warned(), "...and sets the warn colour flag the LookAndFeel reads");
+    checkStr (pm.currentName(), baseName, "...while the preset that IS loaded keeps its name");
+
+    // ---- LEG B: IT EXPIRES WITH NO INTERACTION AND NO OTHER ANIMATION --------------------------
+    //
+    // No mouse move, no click, no parameter write, no sweep: only the frame clock. One second in
+    // it must still be showing (the duration is 1.5 s, and a warning that vanished early would be
+    // as wrong as one that never vanished); by 1.75 s it must be gone.
+    std::printf ("  B. it expires on the frame clock alone -- no mouse, no clicks, no other animation\n");
+    frames (60);                                            // 1.00 s
+    tick();
+    checkStr (slot->getButtonText(), "PRESET UNREADABLE", "one second in, the warning is still shown");
+    check (warned(), "...and still flagged");
+
+    frames (45);                                            // 1.75 s total
+    tick();
+    checkStr (slot->getButtonText(), baseName, "by 1.75 s the slot is back to the preset name");
+    check (! warned(), "...and the warn flag is clear");
+
+    // It stays cleared: the timer does not run negative into a second warning.
+    frames (120);
+    tick();
+    checkStr (slot->getButtonText(), baseName, "...and it stays cleared");
+
+    // ---- LEG C: A LOAD THAT SUCCEEDS TAKES THE SLOT BACK AT ONCE -------------------------------
+    //
+    // No frames are driven between the refusal and the success, which is the point: the clear is
+    // immediate, not something the next 1.5 s of frame clock eventually does.
+    std::printf ("  C. a successful load clears a warning that is still on screen\n");
+    ed->presetLoadFinished (false);
+    checkStr (slot->getButtonText(), "PRESET UNREADABLE", "the warning is raised again");
+    ed->presetLoadFinished (true);
+    checkStr (slot->getButtonText(), baseName, "a load that succeeded restores the preset name immediately");
+    check (! warned(), "...and clears the warn flag with it");
+
+    // ...and nothing about it lingers: a full warning's worth of frames later the slot is the same.
+    frames (120);
+    tick();
+    checkStr (slot->getButtonText(), baseName, "...with no delayed warning arriving afterwards");
+    check (! warned(), "...and no delayed flag either");
+
+    // ---- LEG D: THE ORDINARY PATH IS UNCHANGED -------------------------------------------------
+    std::printf ("  D. a run of successful loads never shows the warning\n");
+    for (int i = 0; i < 3; ++i)
+    {
+        check (pm.step (+1, {}) != anamorph::PresetManager::OpResult::failed, "a step over valid rows succeeds");
+        ed->presetLoadFinished (true);
+        frames (5);
+        tick();
+        check (! warned(), "...and raises no warning");
+        check (slot->getButtonText() != "PRESET UNREADABLE", "...and leaves a preset name in the slot");
+    }
+
+    proc.editorBeingDeleted (rawEd);
+    delete rawEd;
 }
 
 static void testTooltipSourceOfTruth()
@@ -34029,6 +34270,7 @@ int main (int argc, char* argv[])
     testACompleteGestureEndpointPrecedesThePoll();
     testBareStoresDeclareTheirEndpointAndThePollNeverWaits();
     testAPresetFileIsOneWellFormedDocument();
+    testThePresetUnreadableStateExpiresByItself();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

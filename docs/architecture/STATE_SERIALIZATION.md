@@ -6,7 +6,7 @@ How session state is saved and restored. The field-level ledger is in
 
 Evidence [Verified]: src/PluginProcessor.cpp:2658-2744 (`getStateInformation`), :1226-1485
 (`decodeRestore` + `setStateInformation`), :980-999 (the `writeSelection` / `readSelection` helpers);
-src/PresetManager.cpp:1154-1207 (`encodeSelection` / `decodeSelection`).
+src/PresetManager.cpp:1208-1261 (`encodeSelection` / `decodeSelection`).
 
 ## On-disk schema (`getStateInformation`)
 
@@ -165,7 +165,7 @@ Evidence [Verified]: src/PluginProcessor.cpp (`getStateInformation` / `setStateI
 | **v0.2**: root *is* the APVTS tree | `setStateInformation` else-branch `apvts.replaceState` | :700-705 |
 | **pre-0.6.4**: A/B slots stored params only (`slotA`/`slotB`) | `readSlot` legacy-key fallback | :688-692 (within `readSlot`, :652-693) |
 | **pre-0.8.4**: Oversampling/view were APVTS params (no `ANAMORPH_INTERNAL`) | `migrateFromLegacyApvts` | :628-631; InternalState.h:106-128 |
-| **pre-0.9.2**: no indicator identity in the session | `decodeSelection` yields `unknown` → name fallback | src/PresetManager.cpp:1190-1207; :128-131 |
+| **pre-0.9.2**: no indicator identity in the session | `decodeSelection` yields `unknown` → name fallback | src/PresetManager.cpp:1244-1261; :128-131 |
 
 ## View-parameter preservation on restore
 

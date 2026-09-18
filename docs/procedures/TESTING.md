@@ -1775,6 +1775,65 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   uncovered statement is one assignment. Recorded rather than papered over, in the same way M15 and
   M189 are.
 
+* **Round 44 — the file is its bytes, and the warning has a life (ADR-0055 amendment).**
+
+  Three review findings against `f03aa06`, the head that first implemented ADR-0055. All three were
+  reproduced through the real code before anything was changed.
+
+  **State test 114 gains leg G — an embedded NUL.** `parseSoundFile` read the file with
+  `loadFileAsString` and scanned the result, and a `juce::String` ENDS at the first NUL: every
+  reader below -- the ADR's own pre-scan and `juce::XmlDocument` alike -- walks it with a
+  CharPointer that stops there. One 0x00 therefore hid the rest of the file from the boundary, and
+  the shapes legs A and B refuse came straight back. Measured on `f03aa06` through the real
+  `loadFile`: a **263-byte** file holding a preset, a NUL and a COMPLETE second preset decoded to
+  **131 bytes** and LOADED, applying the first -- the same file without the NUL was refused. Leg G
+  refuses six shapes (NUL then a document, NUL then text, NUL then a tail that is not valid UTF-8,
+  a NUL truncating the document, a file that is one NUL, a NUL before the document) and, just as
+  importantly, keeps four ACCEPTED: plain UTF-8, UTF-8 with a byte-order mark, UTF-16 LE and
+  UTF-16 BE. Those four are what make the guard encoding-aware rather than a blanket zero-byte ban
+  -- every second byte of a UTF-16 preset is zero -- and they are the legs that fail if it ever
+  becomes one. Two UTF-16 shapes that hide bytes (a zero code unit, a trailing half code unit) are
+  refused on the same principle.
+
+  **State test 115 -- the `PRESET UNREADABLE` state's lifecycle, and the round-43 coverage gap.**
+  Two defects. `presetWarnTime` counted down BELOW `stepMicroAnims`' idle-gate early returns, and a
+  refused load satisfies every condition that gate seals on (it changes no generation and lights no
+  widget), so with the cursor outside the editor the warning stopped counting on the next frame and
+  stayed in the top bar indefinitely. And `presetLoadFinished(true)` did not clear it, so a preset
+  that loaded within 1.5 s of a refusal was shown as UNREADABLE, its own name suppressed, for the
+  remainder. Four legs, all read from the REAL top-bar button found by its component ID
+  (`presetname`): **A** a refused load shows the state and the loaded preset keeps its name; **B**
+  with no mouse movement, no click and no other animation it is still shown at 1.00 s and gone by
+  1.75 s -- the leg that pins the duration in both directions, and the one that needs the gate to
+  be sealed, which is why it drives 20 settling frames first; **C** a success clears it with no
+  frames driven at all, so the clear is immediate rather than eventual; **D** a run of successful
+  loads never raises it.
+
+  **What the harness reaches, and what it cannot.** Round 43 recorded M217 as an uncovered
+  assignment because the failure arm is reached from a `juce::PopupMenu` row and an OS file chooser,
+  and the ‹ › buttons cannot produce a failure (`step` fails only when the WHOLE list refuses, and
+  the factory rows always load). That is still true of those doors. What changed is the seam:
+  `presetLoadFinished`, `stepMicroAnims` and `refreshPresetDisplay` are now public, for the reason
+  `showSavePreset` and `abortAbandonedDragGestures` already are -- they are the same functions
+  production calls, and their production drivers (a menu window, a `VBlankAttachment`, a privately
+  inherited `juce::Timer`) do not exist in a headless suite. **M217 is now killed.** Still out of
+  reach and deliberately not faked: the menu row and the chooser themselves, the warn COLOUR (a
+  `LookAndFeel` paint decision -- the test asserts the `warn` property the paint reads), and the
+  0.45 s sweep, which has no observable other than the private timer.
+
+  **Mutation coverage (M217-M225). All nine killed.**
+
+  **M217** delete the editor's failure arm (the round-43 survivor) -- 5 failing checks. **M218**
+  remove the byte scan entirely -- 6. **M219** remove its UTF-8 NUL loop, keeping the UTF-16 half --
+  4. **M220** allow a zero UTF-16 code unit -- 1. **M221** allow a trailing half code unit -- 1.
+  **M222** make the guard encoding-blind, so any zero byte refuses -- 2, all of them the UTF-16
+  acceptance legs, which is the proof the rule is not over-broad. **M223** decode with
+  `MemoryBlock::toString` (`String::fromUTF8`) instead of `String::createStringFromData` -- 3, which
+  is the proof that the decode really is the one `loadFileAsString` used. **M224** put the warning
+  decrement back below the idle gate -- the exact pre-fix code, two edits -- 3 failing checks, all
+  in leg B, which is what makes leg B a regression rather than a description. **M225** stop clearing
+  the warning on success -- 2, in leg C.
+
 * **Round 34 — a nested notification keeps its own depth's request.**
 
   **State test 111** (`src/PluginEditor.h:R256-262`). `AttachmentWitness` saved the previous
@@ -3551,6 +3610,24 @@ artefact this section already documents; test 87's claim is the one that happens
 which is the control that says the tool is not simply wrong everywhere. **None of the four raises the
 suite's maximum frame** — that is still the pre-existing Settings test at 68 % — and both binaries
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
+
+**Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
+'433548' bytes of stack"* at `tests/state_tests.cpp:13318`, which is
+`testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not
+touch**. The same alert, byte-identical at **433548**, is in the predecessor run's SARIF on
+`0e32e65` at `state_tests.cpp:12870`, which is where that function sat before State test 114 was
+inserted above it; only the line moved, which re-keys a Code Scanning alert and makes it read as
+new. It is the sum-across-siblings artefact again: three `AnamorphAudioProcessor` automatics
+(3 x 141,320 = 423,960) in scopes where only two are ever live at once, plus about 9.6 KB of other
+locals. Measured with `g++ -fstack-usage` on ninja's own compile line, the real frame is
+**289,360** bytes -- **27.6 %** of the Windows 1 MB reserve, and well under the suite maximum,
+which is still the pre-existing Settings test at **709,600** (67.7 %). Both binaries run green
+under `ulimit -s 1024`. **No change was made**, on the rule this section already states: the alert
+text is not a frame size, and the control that holds this line is the guard step. Round 44's own
+two functions were measured on the same run and raise nothing:
+`testAPresetFileIsOneWellFormedDocument` is **143,360** and
+`testThePresetUnreadableStateExpiresByItself` is **142,096** -- one processor each, 13.7 % and
+13.5 %.
 
 **Re-measured for round 23's two new tests, on the same compile line.** State test 96
 (`testAnamorphsOwnBareBracketsDeclareTheirEndpoint`) is **142,112** bytes — three

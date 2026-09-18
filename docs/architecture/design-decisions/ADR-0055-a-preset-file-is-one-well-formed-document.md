@@ -82,6 +82,10 @@ in both directions.
 
 **Before the parser**, on the bytes, because everything in this half detonates inside it:
 
+0. **Every byte of the file reaches the scan.** Added by the amendment below. A file carrying a
+   NUL — a zero byte in UTF-8, a zero code unit in UTF-16, or a trailing half code unit — is
+   refused, because a `juce::String` ends at the first one and everything after it would be
+   validated by nobody.
 1. **Size.** A file larger than **256 KB** is refused (`PresetManager::maxPresetBytes`) — 172× a real
    preset.
 2. **No `DOCTYPE`.** Refused outright. This closes the hang and the arbitrary file read together,
@@ -174,9 +178,10 @@ used to play for a load that had been refused.
 
 - **Files this plug-in has ever written still load.** The writer is unchanged; ADR-0024's rule that
   user preset files are byte-for-byte what 0.9.1 wrote is untouched, because nothing here writes.
-- **Four shapes that used to load now do not:** a file containing more than one document, a file with
-  anything but whitespace or comments after the root, a structurally malformed document, and a
-  value-less `PARAM`. Each is a corrupt file by the format's own definition.
+- **Five shapes that used to load now do not:** a file containing more than one document, a file with
+  anything but whitespace or comments after the root, a structurally malformed document, a
+  value-less `PARAM`, and (per the amendment) a file whose bytes continue past a NUL. Each is a
+  corrupt file by the format's own definition.
 - **A preset subtree lifted out of a session by hand still loads**, because `raw` is accepted.
 - **ER-STATE-24 is unchanged and re-affirmed**: the root test still runs, still refuses a foreign
   root, and still runs before any per-parameter fallback can reinterpret the document.
@@ -202,11 +207,65 @@ used to play for a load that had been refused.
 
 ## Related code
 
-`src/PresetManager.cpp` — `presetTextIsAdmissible`, `presetDocumentIsWellFormed`, `parseSoundFile`,
-`load`, `loadAdopted`, `step`, `rowIsLoadable`; `src/PresetManager.h` — `maxPresetBytes`,
-`maxPresetDepth`, the three loader signatures; `src/PluginEditor.cpp` — `presetLoadFinished`,
-`stepPreset`, `refreshPresetDisplay`; `src/gui/LookAndFeel.cpp` — the `warn` property on the preset
-slot.
+`src/PresetManager.cpp` — `presetBytesAreAdmissible`, `presetTextIsAdmissible`,
+`presetDocumentIsWellFormed`, `parseSoundFile`, `load`, `loadAdopted`, `step`, `rowIsLoadable`;
+`src/PresetManager.h` — `maxPresetBytes`, `maxPresetDepth`, the three loader signatures;
+`src/PluginEditor.cpp` — `presetLoadFinished`, `stepPreset`, `refreshPresetDisplay`,
+`stepMicroAnims`; `src/gui/LookAndFeel.cpp` — the `warn` property on the preset slot.
+
+## Amendment — 2026-09-18: the file is its bytes, and the warning has a life
+
+Three review findings against the head that first implemented this ADR (`f03aa06`), all three
+reproduced before anything was changed. None reopens a decision above; each closes a hole in
+carrying one out.
+
+### The boundary read a String, and a String ends at the first NUL
+
+`parseSoundFile` read the file with `loadFileAsString` and scanned the result. A `juce::String` is
+NUL-terminated, and every reader below walks it with a CharPointer that stops at the first NUL —
+this ADR's own pre-scan and `juce::XmlDocument` alike. One 0x00 therefore made the rest of the file
+invisible to the boundary **and** to the parser, so the shapes ruled out above came straight back:
+
+| Input | Behaviour on `f03aa06` |
+|---|---|
+| Preset A, one NUL, complete preset B (263 bytes) | **accepted** — decoded to 131 bytes, A applied |
+| A valid preset, one NUL, trailing prose | **accepted**, the tail unseen |
+| A valid preset, one NUL, a tail that is not even valid UTF-8 | **accepted**, the tail unseen |
+| The same files **without** the NUL | correctly refused, by rule 4 above |
+
+The refusal is on the bytes and before the decode, because after the decode the evidence is gone.
+It is **encoding-aware** rather than a blanket "no zero byte": it reads the bytes the way
+`String::createStringFromData` is about to (`juce_String.cpp:1987-2035`), so a UTF-16 preset — every
+second byte of which is zero — still loads, while a zero *code unit* or a trailing half code unit in
+one is refused for the same reason a NUL byte is in UTF-8. The decode is then spelled
+`String::createStringFromData`, which is exactly what `loadFileAsString` was doing
+(`juce_File.cpp:568-576` → `juce_InputStream.cpp:241-246` → `juce_MemoryOutputStream.cpp:207-210`),
+so no legitimate encoding reads differently than it did.
+
+### The `PRESET UNREADABLE` state could not expire
+
+`presetWarnTime` counted down below `stepMicroAnims`' two idle-gate early returns. That gate seals
+when the cursor is outside the editor, no button is held, no sweep is open, the pass settled dark
+and no generation or tracked value moved — and a refused load satisfies every one of them, because
+it changes no parameter and lights no widget. The warning therefore stopped counting on the next
+frame and stayed in the top bar until some unrelated animation happened to wake the pass. The
+decrement now runs **above** the gate. The asymmetry with `knobSweepTime`, which stays inside the
+gate conditions, is deliberate: a sweep *eases widgets* and needs that pass to run, while the
+warning is a text state the 24 Hz `timerCallback` reads, so holding the 44-widget poll open for
+1.5 s would animate nothing.
+
+### A load that succeeded left the previous refusal on screen
+
+`presetLoadFinished(true)` set the sweep and left `presetWarnTime` alone, so a preset that loaded
+within 1.5 s of a refusal was displayed as `PRESET UNREADABLE`, its own name suppressed, for the
+remainder. Success now clears the warning as well as raising the sweep: the two states describe the
+same slot, so the later one owns it.
+
+### Scope
+
+Unchanged: the accepted format, the two limits, the empty-preset ruling, the missing-versus-corrupt
+split, the no-dialog/no-delete rules, and RISK-014 — the host session blob and the A/B slot payload
+were not touched and remain a separate, compatibility-gated question.
 
 ## Evidence + confidence
 
@@ -218,4 +277,12 @@ cap), eleven preserved tolerances, and the list contract including the bounded s
 directions and the missing-versus-corrupt split. State test 18 is rewritten for the new rule and
 gains the session-path leg; State test 35 drives its refusal through the absolute door and gains a
 leg for the skip. The pre-fix behaviour of every leg was measured on `0e32e65` before the guard
-existed. Mutation record: `docs/procedures/TESTING.md`.
+existed.
+
+The amendment adds **State test 114 leg G** — six NUL shapes refused, four encodings still accepted
+(plain UTF-8, UTF-8 with a mark, UTF-16 LE and BE), and the two UTF-16 shapes that hide bytes
+refused — and **State test 115**, which drives the real top-bar button through the real
+`presetLoadFinished` and the real frame clock: the state appears, is still shown at 1.0 s, is gone
+by 1.75 s with no mouse movement and no other animation, and is cleared instantly by a load that
+succeeds. Its pre-fix behaviour was measured on `f03aa06`. Mutation record:
+`docs/procedures/TESTING.md`.

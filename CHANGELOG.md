@@ -31,7 +31,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   fragment of another plug-in's document, or stray text in the middle. Anamorph either loads the
   whole preset you saved or tells you it cannot, and there is no longer a third outcome where it
   silently picks one of two answers. Decision: ADR-0055. Regression coverage: State test 114.
-  Evidence: PR #145. [Verified]
+  Evidence: PR #149. [Verified]
 - **Some damaged preset files could crash or freeze the plug-in, and cannot any more.** Three shapes
   reached the XML reader before Anamorph could inspect them at all. A file nested a few thousand
   elements deep — around 21 KB of text — crashed the plug-in outright on a typical Windows host. A
@@ -41,27 +41,27 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   while loading. All three are now refused on sight, before the file is parsed, and none of them can
   be produced by saving a preset from Anamorph. A preset file is also now capped at 256 KB, roughly
   170 times the size of a real one, so an enormous file cannot be pulled into memory whole.
-  Decision: ADR-0055. Regression coverage: State test 114. Evidence: PR #145. [Verified]
+  Decision: ADR-0055. Regression coverage: State test 114. Evidence: PR #149. [Verified]
 - **A preset that fails to load now says so, instead of nothing happening.** Choosing
   **Load Preset…** and picking a file Anamorph cannot read looked exactly like a click that had been
   ignored. The same was true from the preset list: a damaged preset already in your user presets
   simply did nothing when you selected it. The preset slot in the top bar now shows
   **PRESET UNREADABLE** for a moment, in the same warning style the Save dialog already uses — no
   pop-up window — and the preset you had loaded stays loaded, with its name, its tick and its sound
-  untouched. Evidence: PR #145. [Verified]
+  untouched. Evidence: PR #149. [Verified]
 - **A damaged preset no longer blocks the ‹ › buttons.** With an unreadable preset sitting between
   two good ones, pressing **next** targeted it, failed silently, and left you exactly where you
   were — so pressing next again targeted the same broken preset, and every preset beyond it was
   unreachable in both directions. Next and previous now step **over** a preset they cannot read and
   land on the next one that works. Picking a preset directly from the list still stays where you
-  are and reports the failure, because there you named that one preset. Evidence: PR #145.
+  are and reports the failure, because there you named that one preset. Evidence: PR #149.
   [Verified]
 - **An unreadable preset keeps its place in the list, and your file is never touched.** Anamorph
   does not delete, rename, move or hide a preset file it cannot read — it is your file, it is plain
   text, and it may well be repairable by hand or by whatever put it there. It stays in the menu and
   says why it will not load. The one exception is a preset whose file has actually been deleted or
   moved since the menu was built: that row is describing something that is no longer there, so it
-  disappears on the next rescan. Evidence: PR #145. [Verified]
+  disappears on the next rescan. Evidence: PR #149. [Verified]
 
 ## [0.9.8] — 2026-09-18
 

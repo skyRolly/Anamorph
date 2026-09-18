@@ -955,7 +955,7 @@ accounts for all four observed controls. The box is placed `h + 8` above the cur
 (`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1211-1220`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2486-2511`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2503-2528`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1475,7 +1475,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2291"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2308"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -1483,10 +1483,10 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
-declared, and `--fix` moved all three from `src/PluginEditor.h:609` to `:223` in this change set.
+declared, and `--fix` moved all three from `src/PluginEditor.h:625` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:1350`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:1366`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1496,7 +1496,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:1350`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:1366`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1506,7 +1506,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:1350"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:1366"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -13002,6 +13002,80 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 64th pass — 2026-09-19, round 44 (the file is its bytes, and the warning has a life)
+
+Three review findings against `f03aa06` — the head that first implemented ADR-0055 — plus one
+static-analysis item. Every one was reproduced or measured before anything was changed.
+
+**Finding 1 — `src/PresetManager.cpp:492`, an embedded NUL bypasses the boundary: CONFIRMED and
+fixed.** `parseSoundFile` read the file with `loadFileAsString` and scanned the resulting
+`juce::String`, and a `juce::String` ENDS at the first NUL: `CharPointer_UTF8::isValidString`
+returns `true` there (`juce_CharPointer_UTF8.h:438-447`) and every reader below walks the buffer
+with a CharPointer that stops there — the ADR's own pre-scan and `juce::XmlDocument` alike. So one
+0x00 made the rest of the file invisible to the boundary. Measured through the real `loadFile`: a
+**263-byte** file holding a preset, a NUL and a COMPLETE second preset decoded to **131 bytes** and
+LOADED, applying the first; the same file without the NUL was refused, as were trailing prose and a
+trailing invalid-UTF-8 tail once the NUL was removed. The guard is now on the BYTES, before the
+decode, and it is **encoding-aware** rather than a blanket zero-byte ban: it reads them the way
+`String::createStringFromData` is about to (`juce_String.cpp:1987-2035`), so a UTF-16 preset — every
+second byte of which is zero — still loads, while a zero code unit or a trailing half code unit in
+one is refused for the same reason a NUL byte is in UTF-8. The decode is spelled
+`String::createStringFromData`, which is exactly what `loadFileAsString` was doing
+(`juce_File.cpp:568-576` → `juce_InputStream.cpp:241-246` → `juce_MemoryOutputStream.cpp:207-210`),
+so no legitimate encoding reads differently than before the guard existed.
+
+**Finding 2 — `src/PluginEditor.cpp:R1842`, the warning timer could stop forever: CONFIRMED and
+fixed.** `presetWarnTime` was decremented BELOW `stepMicroAnims`' two idle-gate early returns, and a
+refused load satisfies every condition that gate seals on: it writes no parameter, so no generation
+and no fingerprint moves, and it lights no widget. With the cursor outside the editor and nothing
+else animating, the gate closed on the very next frame and `PRESET UNREADABLE` stayed in the top bar
+until some unrelated animation happened to wake the pass. The decrement now runs ABOVE the gate.
+The asymmetry with `knobSweepTime`, which stays IN the gate conditions, is deliberate and is stated
+at the decrement: a sweep eases widgets and needs that pass, while the warning is a text state the
+24 Hz `timerCallback` reads, so holding the 44-widget poll open for 1.5 s would animate nothing.
+
+**Finding 3 — `src/PluginEditor.cpp:R2127-2128`, a successful load left a stale warning: CONFIRMED
+and fixed.** `presetLoadFinished(true)` set the sweep and left `presetWarnTime` alone, so a preset
+that loaded within 1.5 s of a refusal was displayed as UNREADABLE, with its own name suppressed,
+for the remainder. Success now clears the warning as well as raising the sweep.
+
+**PREfast alert 209 — `Function uses '433548' bytes of stack`: NO CHANGE, and it is not this
+round's.** The alert anchors at `tests/state_tests.cpp:13318`, which is
+`testNonFiniteParameterInStateIsRejected` — State test 17, untouched by round 43 and by this round.
+The predecessor SARIF on `0e32e65` carries the same alert, byte-identical at **433548**, at
+`state_tests.cpp:12870`, which is where that function sat before State test 114 was inserted above
+it: only the line moved, which re-keys a Code Scanning alert and makes it read as new. The number is
+the documented sum-across-siblings artefact — three `AnamorphAudioProcessor` automatics
+(3 × 141,320) in scopes where only two are ever live. Measured with `g++ -fstack-usage`, the real
+frame is **289,360** bytes, **27.6 %** of the Windows 1 MB reserve, under the pre-existing suite
+maximum of **709,600** (67.7 %), and both binaries run green under `ulimit -s 1024`. Nothing was
+moved to the heap to silence it. Round 44's own two functions measure **143,360** and **142,096**.
+
+**A drift this round found in its own predecessor's work.** All five `[0.9.9]` CHANGELOG entries
+read *Evidence: PR #145*. PR #145 merged mid-round-43 and the round's commits were rebased onto the
+new `main` and opened as **PR #149**, so no 0.9.9 commit is in #145 — confirmed with
+`git merge-base --is-ancestor`. Corrected to #149; nothing else in the entries changed, because the
+fixes above make their existing claims true rather than altering them, and 0.9.9 is unreleased, so a
+defect introduced and fixed inside it is not a change between releases.
+
+**Test seams.** `presetLoadFinished`, `stepMicroAnims` and `refreshPresetDisplay` are now public, for
+the reason `showSavePreset` and `abortAbandonedDragGestures` already are and with the same kind of
+note on the declarations: their production drivers are a `juce::PopupMenu` row, an OS file chooser,
+a `VBlankAttachment` and a privately inherited `juce::Timer`, none of which exists in a headless
+suite. Same functions, same callers, no test-only behaviour. This closes the coverage gap round 43
+had to record.
+
+**Validation.** State **4 457 / 0** (was 4 397), DSP **396 / 0**, both green under `ulimit -s 1024`.
+Mutations **M217–M225, all nine killed** — including M217, the round-43 survivor, and M224, which is
+the exact pre-fix decrement placement. M204–M216 are unaffected by this round and were not re-run.
+
+**Documentation.** `ADR-0055` (an Amendment section, rule 0 in the pre-parser list, five-shapes
+consequence, Related code, Evidence); `docs/architecture/SERIALIZATION_REGISTRY.md` (the NUL row in
+the boundary table, and why the rule is encoding-aware); `docs/procedures/TESTING.md` (round-44
+entry, and the alert-209 measurement beside the existing C6262 disposition); `CHANGELOG.md` (the
+five evidence references). **RISK-014 is unchanged**: the host session blob and the A/B slot payload
+were not touched. [Verified]
 
 ## 63rd pass — 2026-09-19, round 43 (a preset file is one well-formed document, and 0.9.9)
 

@@ -57,7 +57,7 @@ and `tests/` by name:
 |---|---|
 | `AudioDeviceSelectorComponent::getMidiInputSelectorListBox` removed | **None.** The symbol appears nowhere in `src/` or `tests/`. Anamorph builds no device-selector UI of its own; the Standalone wrapper's is JUCE's. |
 | `OpenGLImageType::create()` now honours `Image::SingleChannel` | **None.** `OpenGLImageType` and `getFrameBufferFrom` appear nowhere in the tree. |
-| `OpenGLContext::setImageCacheSize()` now counts bytes, not pixels (default raised 8 MB → 32 MB so behaviour is unchanged) | **None.** Anamorph's whole use of the class is `setContinuousRepainting`, `attachTo`, `detach`, `isAttached` and `triggerRepaint` (`src/PluginEditor.cpp:307, 321, 794, 1998-1999`); it never sets a cache size, so it takes the unchanged default. |
+| `OpenGLContext::setImageCacheSize()` now counts bytes, not pixels (default raised 8 MB → 32 MB so behaviour is unchanged) | **None.** Anamorph's whole use of the class is `setContinuousRepainting`, `attachTo`, `detach`, `isAttached` and `triggerRepaint` (`src/PluginEditor.cpp:307, 321, 794, 2010-2011`); it never sets a cache size, so it takes the unchanged default. |
 
 ## The one flag that had to be pinned
 
