@@ -405,6 +405,30 @@ click-free (short duck) and form **one undo step**, so you can undo a preset loa
 Ten factory presets ship built in: *Default, Gentle Width, Mono To Stereo, Vocal Air,
 Synth Dimension, Drum Spread, Bass Guard, Tape Chorus, Wide Master, Super Wide*.
 
+### 7.1.1 When a preset will not load
+
+A preset file Anamorph cannot read is **refused rather than partly applied**, and it says so:
+the preset slot shows **PRESET UNREADABLE** for a moment, in the same warning style the Save
+dialog uses. No pop-up window appears, and the preset you already had stays loaded — same name,
+same checkmark, same sound.
+
+This covers a file that has been damaged rather than merely written by something else: two
+presets saved into one file, anything appended after the preset, a control listed twice with
+different values, or content that is not a preset at all. Anamorph either loads the whole preset
+you saved or tells you it cannot.
+
+An unreadable preset **keeps its place in the list and its file is never touched** — not deleted,
+renamed, moved or hidden. It is your file, it is plain text, and whatever produced it may be able
+to repair it. Two things follow:
+
+- Picking it **directly** from the menu reports the failure and leaves you where you are, because
+  you asked for that one preset.
+- **‹ ›** step **over** it and land on the next preset that loads, so one damaged file never
+  blocks the ones past it.
+
+A preset whose file has actually been deleted or moved is different: that row is describing
+something that is no longer there, so it disappears from the menu on the next rescan.
+
 ### 7.2 Saving and managing
 
 "Save Preset…" opens a name dialog (Return saves, Esc cancels). Saving over an existing

@@ -13062,8 +13062,7 @@ acceptance conditions, the `raw` correction, and the value-less `PARAM` narrowin
 preserves); `FUTURE_RISKS.md` (**RISK-014** — the host session blob and the A/B slot payload reach
 the same parser and were scoped out by the owner for separate compatibility review — plus the
 RISK-001 correction); `TESTING.md` (State test 114's six legs, the two rewritten tests, M204-M217);
-`CHANGELOG.md` **`[0.9.9]` — 2026-09-19, five Fixed entries**, with `CMakeLists.txt`, `README.md`
-and `HANDOVER.md` following; this entry. **A gate item**: the Architecture Review Gate was triggered
+`docs/user/USER_MANUAL.md` §7.1.1 (new — what a refused preset looks like, that the file is never touched, and why a direct pick stops where ‹ › steps over); `CHANGELOG.md` **`[0.9.9]` — 2026-09-19, five Fixed entries**, with `CMakeLists.txt`, `README.md` and `HANDOVER.md` following; this entry. **A gate item**: the Architecture Review Gate was triggered
 and cleared by the owner's instruction, recorded in ADR-0055's Status. [Verified]
 
 ## 62nd pass — 2026-09-18, round 42 (the pin's last present-tense claims, in the places the gate cannot see)
