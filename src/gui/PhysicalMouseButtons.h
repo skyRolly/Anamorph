@@ -7,7 +7,7 @@
 //  JUCE's cached event state.
 //
 //  This exists because JUCE's own realtime query does not answer it on macOS.
-//  In the pinned JUCE 9.0.1, `getNativeRealtimeModifiers` on macOS
+//  In the pinned JUCE 9.0.2, `getNativeRealtimeModifiers` on macOS
 //  (juce_NSViewComponentPeer_mac.mm:302-307) refreshes only the KEYBOARD flags
 //  via `[NSEvent modifierFlags]` and then returns `ModifierKeys::currentModifiers`
 //  -- whose mouse-button bits are the cached ones JUCE maintains from events it

@@ -1330,7 +1330,7 @@ The consequence is concrete and must not be re-forgotten: the JUCE tree **is** e
 the results, and **is** uploaded, so those alerts stand on the dashboard.
 
 **The triage rule for both scanners.** An alert whose path begins with `build/_deps/` is
-third-party JUCE. JUCE is pin-locked to 9.0.1 and review-gated (`docs/policies/DEPENDENCY_POLICY.md`),
+third-party JUCE. JUCE is pin-locked to 9.0.2 and review-gated (`docs/policies/DEPENDENCY_POLICY.md`),
 so such an alert is **accepted, not fixed here** — a JUCE change is an ADR-scoped dependency bump,
 never an alert-driven edit. Genuinely removing them from the dashboard would mean relocating the
 FetchContent tree outside the workspace, or post-filtering the SARIF before upload. Both are Build

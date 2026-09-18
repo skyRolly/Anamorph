@@ -13003,6 +13003,70 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 62nd pass — 2026-09-18, round 42 (the pin's last present-tense claims, in the places the gate cannot see)
+
+One Devin stale-documentation finding naming two locations. One was already correct on the current
+head; the other was real. The sweep it required found two more of the same kind in `src/`. No
+dependency decision reopened, no gate logic changed, no historical record rewritten.
+
+**`docs/HANDOVER.md:104` — ALREADY CORRECT, no change made.** The critical-dependencies row on
+`517162a` reads `` `9.0.2` — immutable commit `7278278…` — CMakeLists.txt:71 (`7278278`)
+(FetchContent, `CMakeLists.txt:70-72` (`9.0.2`), ADR-0054) ``, carrying both value claims the gate
+compares. It was corrected in round 39 and the finding names a state the head no longer has. The
+row was re-read rather than trusted, and left alone.
+
+**`docs/procedures/CI_CD.md:1333` — CONFIRMED and corrected.** The CodeQL/PREfast triage rule read
+*"JUCE is pin-locked to 9.0.1 and review-gated"*. That is a present-tense assertion about the
+current pin, and the current pin is `9.0.2` / `72782788ce18c2d4d760b28e0921d6ffc6431102`
+(`CMakeLists.txt:70-71`). One token corrected and nothing else: the whole triage paragraph was
+re-read against the §3 consistency list first — the pin/commit semantics ("pin-locked", by immutable
+SHA), the `DEPENDENCY_POLICY.md` reference, the accepted-not-fixed interpretation of a
+`build/_deps/` alert, and the statement that a JUCE change is an ADR-scoped dependency bump are all
+still true and are untouched. The `2ed512c6` measurement in the table above it is a dated result on a
+named commit — a record, not a current-state claim — and stays.
+
+**Two more present-tense claims about the pin, found by the sweep and measured before being
+touched.** Both are in `src/` comments, and the sweep's rule was the one the round set: correct an
+occurrence only where source and context prove it describes the CURRENT repository state.
+
+* `src/gui/PhysicalMouseButtons.h:10` said *"In the pinned JUCE 9.0.1"*. Re-measured against the
+  pinned checkout (`build/_deps/juce-src` at `72782788…`, confirmed by `git rev-parse`):
+  `getNativeRealtimeModifiers` still refreshes only the keyboard flags and returns
+  `ModifierKeys::currentModifiers` at `juce_NSViewComponentPeer_mac.mm:302-307`, and
+  `[NSEvent pressedMouseButtons]` is still at `:1867`. The mechanism, the line numbers and KI-013's
+  premise are unchanged at 9.0.2; only the version stamp was stale.
+* `src/dsp/RealtimeAnnotations.h:41` said *"JUCE 9.0.1 carries no annotations of its own (measured:
+  zero occurrences in the pinned checkout)"*. Re-measured at the same checkout: **zero**
+  `clang::nonblocking` / `clang::nonallocating` occurrences across `modules/`. ADR-0029's rule and the
+  52-warning figure stand.
+
+**What was deliberately NOT touched.** `src/PluginProcessor.cpp:1221` records a dated act of checking
+("CORRECTED 2026-08-31 … after checking the pinned JUCE 9.0.1"); `build.yml:1210` records the
+2026-08-18 leak retest on the configuration it names; `build.yml:2682` already says "the JUCE 9.0.1
+pin this repository carried until ADR-0054"; `README.md:28` describes the 0.9.4 release;
+`THIRD_PARTY_LICENSES.md:23` explains that the dependency list "carried the inline list through
+9.0.1"; the `worklogs/` JUCE 9.0.1 and C++23 records, `ENGINEERING_REVIEW_PROGRAMME.md`, and
+ADR-0012 / ADR-0022 / ADR-0026 are all records of what was true when they were written. None was
+rewritten, and ADR-0026's `CMakeLists.txt:70-72` (`ANAMORPH_JUCE_VERSION "9.0.1"`) citation still
+resolves through the drift suppression.
+
+**Validation.** Newly executed: the two JUCE re-measurements above; a live end-to-end re-proof that
+the gate still catches a stale current-pin document (`9.0.2` → `9.0.20` in `CMakeLists.txt` with the
+documents untouched → **exit 2, seven documents named individually**, tree restored); `preflight.sh`
+(**4265 checks, 0 failures**, rerun because `src/` comments changed); `check-docs` 143 files clean;
+portability, realtime and dispatch lints; `check-citations --self-test` **242 cases**; and
+`check-citations --check` against `HEAD`, the merge base and the predecessor `517162a`. Reused: the
+round-41 mutation verdicts N13–N20 — no citation-gate logic changed this round, so nothing that
+suite attacks moved.
+
+**No `CHANGELOG.md` change** — nothing user-visible; `[0.9.8]` keeps 2026-09-18.
+
+**Informational, recorded rather than acted on:** `docs/procedures/CI_CD.md` is not in
+`GLOSS_CHECKED_DOCS`, so this sentence's value was not — and still is not — watched by the citation
+gate; the same is true of the two `src/` comments, which the gate reads as cited *targets* rather
+than as claims. Admitting `CI_CD.md` would be cheap (measured: 8 citations, 1 glossed, 0 firing) but
+it is a scope decision for the owner, not a repair of this finding.
+
 ## 61st pass — 2026-09-18, round 41 (a watcher is not a warrant: every pin document answers for its own claim)
 
 One Devin Review bug and one Devin investigation on PR #145. The bug is confirmed and fixed; the
