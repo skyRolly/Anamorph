@@ -13003,6 +13003,80 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 61st pass — 2026-09-18, round 41 (a watcher is not a warrant: every pin document answers for its own claim)
+
+One Devin Review bug and one Devin investigation on PR #145. The bug is confirmed and fixed; the
+investigation resolves as a current-state correction. No dependency decision reopened; no source,
+test or DSP file touched.
+
+**Finding 1 — `scripts/check-citations.py:R925-940`, "prefix bumps leave pin documents stale":
+CONFIRMED, and reproduced on the pre-fix tree before anything was changed.** The guard had two
+layers that were not held to the same standard. `versioned_line_claims` compared EXACTLY, but it
+only ever asked an existential question — *does some opted-in document still name this line's live
+value* — while `glossed_problems_in`, which is what validates an individual gloss, still resolved by
+**substring containment against the cited text**. With two documents citing the pin, that is a false
+negative with no contradiction in it: the updated document supplies the line's watcher, the stale one
+resolves because `9.0.2` IS a substring of a source reading `9.0.20`, and the run is green with
+documentation that is wrong. Measured pre-fix, three shapes passed that should fail — the reported
+prefix case, a tag claim truncated below the abbreviation floor, and an interior slice of the live
+object id. A fourth shape (two stale documents, no watcher left) did fail, but as an unpaired
+suppression on the LINE, naming no document — so even the failure did not say which file to edit.
+
+**Fix — the smallest join that lets both questions be asked with one set of semantics.** A new
+`guarded_claim_targets(tracked, anchors)` returns the `GLOSS_GUARD` lines a citation's anchors cover,
+with each line's assigned value and its configured comparison; `gloss_after` is the one spelling of
+the parenthetical extraction. `versioned_line_claims` is rebuilt over that join and keeps answering
+"is this line watched at all". `glossed_problems_in` now uses it too: a gloss covering a guarded line
+is compared with `claim_matches` against the value the line **assigns**, and a citation spanning both
+guarded lines carries one gloss, so it must match one of the lines it covers — a stale claim matches
+neither, which is the case that has to fail. Everything else keeps the containment test, which is the
+right one for an ordinary symbol gloss. **No new table, no second source of truth, and no literal
+version or SHA in the script**: `EXACT`, `ABBREV_HEX`, `MIN_ABBREV`, `source_value`, the
+`VERSIONED_LINES` shape, the delegated and restating guards and the historical-record semantics are
+all unchanged.
+
+**One deliberate strictness change, recorded rather than slipped in.** A gloss naming only the token
+— `` (`ANAMORPH_JUCE_VERSION`) `` — used to resolve silently and merely fail to pay; in an opted-in
+document it is now a finding, because a variable name is not the value assigned to it. Self-test case
+(G) previously asserted that silence and now asserts the report.
+
+**Historical records are untouched, and the case proves the boundary is the opt-in rather than the
+words:** the same sentence that passes in a record outside `GLOSS_CHECKED_DOCS` is reported when it
+appears inside an opted-in document (case O). ADR-0022 and ADR-0026 keep naming 9.0.0 and 9.0.1 and
+keep resolving through the drift suppression.
+
+**Proof.** Self-test **225 → 242 cases**, new block (I)–(O) driving the real functions over a
+synthetic tree with **two** opted-in documents, which is the configuration in which the defect can
+exist at all: both current; the reported case with the stale document named and the innocent one
+explicitly not named; the reverse prefix ordering; the tag's below-floor abbreviation and interior
+slice; a stale tag reported against the document that holds it; two stale documents producing two
+per-document reports; and the historical record. Every case asserts WHICH document is named, never a
+count. Against the pre-fix implementation the new block fails on (J) and (L) — the two shapes
+containment could not see — while (K), (M), (N) and (O) are preservation coverage that already held.
+**Mutations N13–N20, all eight killed**: the global watcher as the only requirement; the guarded
+branch present but never reporting; containment restored inside it; comparison against the wrong
+guarded line; the version validated but not the tag; a line's existing watcher excusing every other
+document; a prefix accepted for `EXACT`; and only the first stale document reported.
+
+**Finding 2 — `docs/REPOSITORY_MAP.md:10`, "repository map retains JUCE 9.0.1": CURRENT, not
+historical, and corrected.** The line is a tree-block entry describing what `CMakeLists.txt` does
+now — "Build: JUCE FetchContent (9.0.1, pinned by commit SHA)" — in a document whose own header calls
+it a map of per-component responsibilities; every sibling entry is present tense, and nothing marks
+this one as a record of a past state. Now `9.0.2`, with the format preserved and no dependency detail
+added. The rest of the file was swept for related staleness: no other version number and no commit id
+anywhere in it. The sweep did find a second, adjacent defect — the file's own description of the
+citation gate still said "the eight architecture documents in `GLOSS_CHECKED_DOCS`" (fourteen since
+round 39) and described `VERSIONED_LINES` as a bare token check on `CMakeLists.txt:14` alone. Both
+corrected, because this round is what makes them wrong.
+
+**Synced:** `scripts/check-citations.py`; `docs/REPOSITORY_MAP.md`; `docs/procedures/TESTING.md` (the
+two questions the gate asks and why neither substitutes for the other); `docs/procedures/CI_CD.md`
+(fourteen documents, 60 glossed citations, 13 of them value-compared). The `GLOSS_CHECKED_DOCS`
+admission comment carries the new measurement the strictness change demands — across all fourteen
+documents, **166 citations, 60 glossed, 13 guarded, 0 firing**, so the stricter comparison adds no
+false positive to a correct tree. No `CHANGELOG.md` change — nothing user-visible; `[0.9.8]` keeps
+2026-09-18.
+
 ## 60th pass — 2026-09-18, round 40 (one pin, two assertions, two guards)
 
 One Devin Review finding on PR #145, `scripts/check-citations.py:R846-853`, **"pin guard accepts

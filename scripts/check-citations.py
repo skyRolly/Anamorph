@@ -890,6 +890,44 @@ def anchor_still_right(tracked, base_src, now_src, a, b, a2, b2):
     return True
 
 
+def gloss_after(text, span):
+    """The gloss a citation carries, or None. ONE spelling of the extraction.
+
+    Both the pairing side (`versioned_line_claims`) and the per-citation side
+    (`glossed_problems_in`) need the same parenthetical, and a second spelling of
+    it is a second set of citation semantics waiting to disagree with the first.
+    """
+    m = GLOSS.match(text[span[1]:span[1] + 200])
+    return (m.group(1) or m.group(2)) if m else None
+
+
+def guarded_claim_targets(tracked, anchors):
+    """The `GLOSS_GUARD` lines this citation's anchors COVER, with live values.
+
+    `[(line, token, value, compare), ...]`, empty for a citation that touches no
+    guarded line. It is the join between "which suppression is live here" and
+    "what is this document claiming", and it exists so that BOTH sides of the
+    guard ask it the same way.
+
+    ADDED 2026-09-18 for a false negative that survived the previous round: the
+    pairing side already compared exactly, but it only ever asked whether SOME
+    document named the live value, and the per-citation side
+    (`glossed_problems_in`) still resolved a gloss by substring containment
+    against the cited lines. So one updated document supplied the watcher while
+    another current-pin document kept a stale claim -- `9.0.2` against a source
+    reading `9.0.20`, which containment calls a match -- and the tree was green
+    with documentation that was wrong. Existence of a watcher is not correctness
+    of a claim, and this function is what lets both be required.
+    """
+    out = []
+    for (path, line), (token, guard, compare) in VERSIONED_LINES.items():
+        if path != tracked or guard != GLOSS_GUARD:
+            continue
+        if any(lo <= line <= (hi if hi else lo) for lo, hi in anchors):
+            out.append((line, token, source_value(path, line, token), compare))
+    return sorted(out)
+
+
 def versioned_line_claims():
     """Which glossed citations WATCH the value on each `GLOSS_GUARD` line.
 
@@ -912,32 +950,32 @@ def versioned_line_claims():
         `(`ANAMORPH_JUCE_VERSION`)` is still refused, now for the plain reason
         that a variable name is not the value assigned to it.
 
+    EXISTENCE, NOT CORRECTNESS -- and the difference is a finding, not a nuance.
+    This function answers "is this line watched by someone", which is what makes
+    an unpaired suppression visible. It cannot answer "is each document right",
+    because a document with a stale claim simply does not appear in the list, and
+    a second, updated document puts something there anyway. That is exactly how a
+    stale pin document survived a green run until 2026-09-18. The per-citation
+    half lives in `glossed_problems_in`, over the same `guarded_claim_targets`
+    join, so the two ask their different questions with one set of semantics.
+
     READS THE CURRENT TREE ONLY, no base revision, like its two siblings.
     """
-    claims = {}
-    for (path, line), (token, guard, compare) in VERSIONED_LINES.items():
-        if guard != GLOSS_GUARD:
+    claims = {(path, line): []
+              for (path, line), (_token, guard, _cmp) in VERSIONED_LINES.items()
+              if guard == GLOSS_GUARD}
+    for doc in GLOSS_CHECKED_DOCS:
+        try:
+            text = read(doc)
+        except OSError:
             continue
-        claims[(path, line)] = found = []
-        value = source_value(path, line, token)
-        if value is None:
-            continue
-        for doc in GLOSS_CHECKED_DOCS:
-            try:
-                text = read(doc)
-            except OSError:
+        for whole, tracked, span, anchors in citations(text):
+            gloss = gloss_after(text, span)
+            if gloss is None:
                 continue
-            for whole, tracked, span, anchors in citations(text):
-                if tracked != path:
-                    continue
-                if not any(lo <= line <= (hi if hi else lo) for lo, hi in anchors):
-                    continue
-                m = GLOSS.match(text[span[1]:span[1] + 200])
-                if not m:
-                    continue
-                gloss = m.group(1) or m.group(2)
+            for line, _token, value, compare in guarded_claim_targets(tracked, anchors):
                 if claim_matches(gloss, value, compare):
-                    found.append((doc, whole, gloss))
+                    claims[(tracked, line)].append((doc, whole, gloss))
     return claims
 
 
@@ -1083,6 +1121,13 @@ def verify_versioned_lines():
 # RE-MEASURED 2026-09-18, after each of the six gained a second claim (the object
 # id, which used to ride on the version's gloss and is now asserted on its own
 # line): 54 citations, 14 glossed, 0 firing. Still no false positive.
+#
+# AND MEASURED AGAIN the same day, when the per-citation comparison on a guarded
+# line stopped being containment -- the change that can only ADD findings, so the
+# number that matters is how many it adds to a correct tree. Across all fourteen
+# documents: 166 citations, 60 glossed, 13 of them landing on a guarded line and
+# therefore compared by value, 0 firing. The other 47 glosses are ordinary symbol
+# claims and keep the containment test, which is the right one for them.
 GLOSS_CHECKED_DOCS = (
     "docs/architecture/ARCHITECTURE.md",
     "docs/architecture/LATENCY_MODEL.md",
@@ -1243,6 +1288,18 @@ def verify_glossed_anchors():
     anchor that is a weak claim. It is still strictly stronger than the nothing
     that was there before, and it is the strongest claim available without
     turning a substring test into a parser.
+
+    EXCEPT ON A GUARDED LINE, WHERE THE WEAK FORM IS NOT GOOD ENOUGH (2026-09-18).
+    A gloss covering a `GLOSS_GUARD` line is a claim about a value the gate is
+    deliberately no longer comparing, and containment accepts a stale one:
+    `9.0.2` IS somewhere in a source reading `9.0.20`, as is any truncated or
+    interior piece of an object id. `glossed_problems_in` therefore compares
+    those glosses with the entry's own matcher against the value the line
+    assigns. The line-level check next door (`verify_versioned_lines`) asks a
+    DIFFERENT question -- does anything still watch this line at all -- and
+    neither answer substitutes for the other: with two documents citing the pin,
+    the updated one supplied the watcher while the stale one resolved by
+    containment, and the run was green with documentation that was wrong.
     """
     problems = []
     for doc in GLOSS_CHECKED_DOCS:
@@ -1270,11 +1327,38 @@ def glossed_problems_in(doc, text):
     that is exactly when it would stop proving anything.
     """
     problems = []
-    for whole, _tracked, span, _anchors in citations(text):
-        m = GLOSS.match(text[span[1]:span[1] + 200])
-        if not m:
+    for whole, tracked, span, anchors in citations(text):
+        expect = gloss_after(text, span)
+        if expect is None:
             continue
-        expect = m.group(1) or m.group(2)
+
+        # A GLOSS THAT COVERS A GUARDED LINE IS A CLAIM ABOUT THAT LINE'S VALUE,
+        # and is compared as one -- by the entry's own matcher, against the value
+        # the line ASSIGNS, not by containment against the cited text.
+        #
+        # Containment is right for the ordinary case below (is this token
+        # somewhere in the span the anchor names) and WRONG here, which is the
+        # 2026-09-18 finding: with the source reading `9.0.20`, a document
+        # claiming `9.0.2` "resolved", so a second, updated document could supply
+        # the line's watcher while this one stayed stale and the run went green.
+        # The same hole swallowed a truncated or interior piece of an object id.
+        # Existence of a watcher somewhere is not correctness of a claim here.
+        #
+        # A citation spanning BOTH guarded lines carries one gloss and cannot
+        # name two values, so the requirement is that it match one of the lines
+        # it covers -- and a stale claim matches neither, which is the case that
+        # has to fail.
+        targets = guarded_claim_targets(tracked, anchors)
+        if targets:
+            if any(claim_matches(expect, value, compare)
+                   for _line, _token, value, compare in targets):
+                continue
+            problems.append((doc, whole, expect, "; ".join(
+                f"{tracked}:{line} assigns {value!r} to {token}"
+                + (f" (compared {compare})" if compare else "")
+                for line, token, value, compare in targets)))
+            continue
+
         target = reaim_target_text(whole)
         if target is None:
             problems.append((doc, whole, expect, "the cited file could not be read"))
@@ -2356,15 +2440,23 @@ def self_test():
               all(d != "ADR-OLD.md"
                   for v in versioned_line_claims().values() for d, _w, _g in v), True)
 
-        # (G) A TOKEN-ONLY GLOSS. `(`PIN_VERSION`)` resolves forever; a variable
-        #     name is not the value assigned to it.
+        # (G) A TOKEN-ONLY GLOSS. `(`PIN_VERSION`)` names the variable, not the
+        #     value assigned to it, so it establishes no claim -- and since
+        #     2026-09-18 it is also a FINDING rather than merely a non-payment.
+        #     Before that the containment resolver said "the token is in the
+        #     cited text" and let it through silently; a gloss that covers a
+        #     guarded line is a claim about that line's value and is now compared
+        #     as one. This case previously asserted the silence, and the change
+        #     of expectation is the point: an opted-in current document citing a
+        #     guarded line has to say what the line assigns.
         tree["PINDOC.md"] = ("The pin is PIN.cmake:2 (`PIN_VERSION`), "
                              f"commit — PIN.cmake:3 (`{SHA_A[:7]}`).\n")
-        check("G — a gloss naming only the token still resolves",
-              verify_glossed_anchors(), [])
-        check("G — …but establishes no value-bearing claim",
+        check("G — a gloss naming only the token is reported, not resolved",
+              [(d, w, e) for d, w, e, _why in verify_glossed_anchors()],
+              [("PINDOC.md", "PIN.cmake:2", "PIN_VERSION")])
+        check("G — …and establishes no value-bearing claim",
               len(versioned_line_claims()[("PIN.cmake", 2)]), 0)
-        check("G — …so the version line is reported unpaired",
+        check("G — …so the version line is reported unpaired as well",
               [(pth, ln) for pth, ln, _t, _w in verify_versioned_lines()], [("PIN.cmake", 2)])
 
         # (H) THE PRIMARY REGRESSION, isolated: the document's ONLY claim is the
@@ -2374,6 +2466,121 @@ def self_test():
               [(pth, ln) for pth, ln, _t, _w in verify_versioned_lines()], [("PIN.cmake", 3)])
         check("H — the version line is paired by it, so the failure is the tag's alone",
               len(versioned_line_claims()[("PIN.cmake", 2)]), 1)
+
+        # ------------------------------------------------------------------
+        # TWO CURRENT DOCUMENTS, AND THE HOLE BETWEEN "SOMETHING WATCHES THIS
+        # LINE" AND "THIS DOCUMENT IS RIGHT" (2026-09-18).
+        #
+        # Everything above has ONE opted-in document, so the global watcher and
+        # the individual claim were the same fact and the difference could not
+        # show. Devin's case needs two: one document updated by the bump, one
+        # left behind. Pre-fix, `versioned_line_claims` found the updated one and
+        # `glossed_problems_in` resolved the stale one by containment -- `9.0.2`
+        # IS a substring of a source reading `9.0.20` -- so the run was green
+        # with a document that was wrong. These cases fail against that
+        # implementation and are the reason the per-citation comparison exists.
+        #
+        # Each one asserts WHICH DOCUMENT is named, never a count: reporting
+        # "one problem" would pass just as well if the gate blamed the innocent
+        # document, and the operator has to know which file to edit.
+        saved_docs4 = GLOSS_CHECKED_DOCS
+        globals()["GLOSS_CHECKED_DOCS"] = ("PINDOC.md", "PINDOC2.md")
+        try:
+            def stale_report():
+                return sorted((d, w, e) for d, w, e, _why in verify_glossed_anchors())
+
+            # (I) BOTH CURRENT. The baseline the rest is measured against.
+            tree["PIN.cmake"] = source("9.0.20", SHA_A)
+            tree["PINDOC.md"] = doc("9.0.20", SHA_A[:7])
+            tree["PINDOC2.md"] = doc("9.0.20", SHA_A[:7])
+            check("I — two documents that both match the source pass", clean(), True)
+            check("I — and both are counted as watchers of the version line",
+                  sorted(d for d, _w, _g in versioned_line_claims()[("PIN.cmake", 2)]),
+                  ["PINDOC.md", "PINDOC2.md"])
+
+            # (J) THE REPORTED CASE. Source 9.0.20; one document says 9.0.20,
+            #     the other still says 9.0.2. Containment called that a match.
+            tree["PINDOC2.md"] = doc("9.0.2", SHA_A[:7])
+            check("J — a stale prefix claim is NOT hidden by a current document",
+                  stale_report(), [("PINDOC2.md", "PIN.cmake:2", "9.0.2")])
+            check("J — the version line still HAS a watcher, so the line-level "
+                  "check alone would have passed",
+                  len(versioned_line_claims()[("PIN.cmake", 2)]), 1)
+            check("J — …and the innocent document is not blamed",
+                  all(d != "PINDOC.md" for d, _w, _e in stale_report()), True)
+
+            # (K) THE OTHER DIRECTION of the prefix pair: source 9.0.2, the stale
+            #     document says 9.0.20. Neither ordering may be accepted.
+            tree["PIN.cmake"] = source("9.0.2", SHA_A)
+            tree["PINDOC.md"] = doc("9.0.2", SHA_A[:7])
+            tree["PINDOC2.md"] = doc("9.0.20", SHA_A[:7])
+            check("K — 9.0.20 claimed against a source of 9.0.2 is reported",
+                  stale_report(), [("PINDOC2.md", "PIN.cmake:2", "9.0.20")])
+
+            # (L) THE SAME HOLE ON THE OBJECT ID, which has an ABBREVIATION
+            #     policy and must not lose it to containment: a 6-character
+            #     prefix is below `MIN_ABBREV`, and an interior slice is not a
+            #     prefix at all. Both are substrings of the live id.
+            tree["PINDOC2.md"] = doc("9.0.2", SHA_A[:6])
+            check("L — a below-floor abbreviation is reported, not contained",
+                  stale_report(), [("PINDOC2.md", "PIN.cmake:3", SHA_A[:6])])
+            tree["PINDOC2.md"] = doc("9.0.2", SHA_A[8:20])
+            check("L — an interior slice of the live id is reported too",
+                  stale_report(), [("PINDOC2.md", "PIN.cmake:3", SHA_A[8:20])])
+            check("L — …and the tag line still has its watcher from the other doc",
+                  [d for d, _w, _g in versioned_line_claims()[("PIN.cmake", 3)]],
+                  ["PINDOC.md"])
+
+            # (M) A CURRENT VERSION WITH A STALE TAG, across two documents: the
+            #     version claims are both right and neither pays for the id.
+            tree["PIN.cmake"] = source("9.0.3", SHA_B)
+            tree["PINDOC.md"] = doc("9.0.3", SHA_B[:7])
+            tree["PINDOC2.md"] = doc("9.0.3", SHA_A[:7])
+            check("M — a stale tag is reported against the document that holds it",
+                  stale_report(), [("PINDOC2.md", "PIN.cmake:3", SHA_A[:7])])
+            check("M — …and the version line is reported by nobody",
+                  [e for _d, w, e in stale_report() if w == "PIN.cmake:2"], [])
+
+            # (N) EVERY STALE DOCUMENT IS NAMED, not the first one found.
+            tree["PINDOC.md"] = doc("9.0.2", SHA_A[:7])
+            tree["PINDOC2.md"] = doc("9.0.2", SHA_A[:7])
+            check("N — two stale documents produce two reports, one per document",
+                  stale_report(),
+                  [("PINDOC.md", "PIN.cmake:2", "9.0.2"),
+                   ("PINDOC.md", "PIN.cmake:3", SHA_A[:7]),
+                   ("PINDOC2.md", "PIN.cmake:2", "9.0.2"),
+                   ("PINDOC2.md", "PIN.cmake:3", SHA_A[:7])])
+            check("N — and with no watcher left, the line-level check fires too",
+                  [(pth, ln) for pth, ln, _t, _w in verify_versioned_lines()],
+                  [("PIN.cmake", 2), ("PIN.cmake", 3)])
+
+            # (O) HISTORICAL RECORDS ARE UNAFFECTED BY ALL OF IT. The strictness
+            #     is a property of being opted in, not of citing the line: the
+            #     record below names the old version beside two current
+            #     documents that are correct, and is asked for nothing.
+            tree["PIN.cmake"] = source("9.0.2", SHA_A)
+            tree["PINDOC.md"] = doc("9.0.2", SHA_A[:7])
+            tree["PINDOC2.md"] = doc("9.0.2", SHA_A[:7])
+            record = "When this was written the pin was 9.0.1 — PIN.cmake:2 (`9.0.1`).\n"
+            tree["ADR-OLD.md"] = record
+            check("O — the current documents pass", clean(), True)
+            check("O — and the historical record is never asked: it is not opted in",
+                  [d for d, _w, _e in stale_report() if d == "ADR-OLD.md"], [])
+            check("O — …its anchor still resolves through the drift suppression",
+                  anchor_still_right("PIN.cmake",
+                                     {"PIN.cmake": source("9.0.1", SHA_B).split("\n")},
+                                     {"PIN.cmake": source("9.0.2", SHA_A).split("\n")},
+                                     2, None, 2, None), True)
+            check("O — …and the SAME text inside an opted-in document does fail, "
+                  "so the difference is the opt-in and not the words",
+                  [(d, w, e) for d, w, e, _why in glossed_problems_in("PINDOC2.md", record)],
+                  [("PINDOC2.md", "PIN.cmake:2", "9.0.1")])
+        finally:
+            globals()["GLOSS_CHECKED_DOCS"] = saved_docs4
+            tree.pop("PINDOC2.md", None)
+            tree.pop("ADR-OLD.md", None)
+            tree["PIN.cmake"] = source("9.0.2", SHA_A)
+            tree["PINDOC.md"] = doc("9.0.2", SHA_A[:7])
 
         # ABBREVIATION IS SYNTAX, NOT SLACK. A short prefix, a non-hex claim and a
         # wrong id are all refused; git's own 7-character abbreviation is not.

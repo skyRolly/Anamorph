@@ -3900,6 +3900,16 @@ claims, e.g. `CMakeLists.txt:70-72` (`9.0.2`) beside `CMakeLists.txt:71` (`72782
 pays for the other: a bump that moves the object id with the version, documented by a document that
 updates only the version, fails on the tag alone.
 
+**And every document answers for its own claim.** A gloss that covers a guarded line is compared to
+the value that line assigns, by that entry's matcher — not by the substring test the gate uses for
+ordinary symbol glosses. The two halves are separate questions and both are asked: the line-level
+check asks whether ANY document still watches the value (an unpaired suppression if none does), and
+the per-citation check asks whether THIS document is right. Before 2026-09-18 only the first was
+exact, so one updated document supplied the watcher while another kept a stale claim that
+containment accepted — `9.0.2` is a substring of `9.0.20`, and a truncated or interior piece of an
+object id is a substring of the live one. A stale document is now named individually, and every
+stale document is named, not just the first.
+
 So: update the pin AND the documents and the gate is silent; update only the pin and it names every
 document still claiming an old value, and which value.
 

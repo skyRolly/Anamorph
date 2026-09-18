@@ -1108,8 +1108,13 @@ source string, alone in the parentheses — so prose like `(24 Hz timer)` assert
 having an assertion invented for it.
 
 It is **opt-in per document** (`GLOSS_CHECKED_DOCS`), and the list names documents rather than
-anchors so it holds no line numbers and cannot itself go stale. Eight architecture documents are in
-it, carrying 43 glossed citations. Measured when it was written (seven documents then): 20 glossed
+anchors so it holds no line numbers and cannot itself go stale. Fourteen documents are in it — the
+eight architecture documents, and the six that assert the JUCE pin — carrying 60 glossed citations,
+13 of which land on a `VERSIONED_LINES` guarded line and are therefore compared to the value that
+line ASSIGNS, by the entry's own matcher, rather than by the containment test the other 47 use.
+That distinction is the 2026-09-18 correction: containment let a document claiming `9.0.2` resolve
+against a source reading `9.0.20`, so a second, updated document could satisfy the line's watcher
+while the first stayed stale and the run went green. Measured when it was written (seven documents then): 20 glossed
 citations across them, **5 firing, all 5 genuine
 defects, 0 false positives** — anchors that were fully qualified, parsed, and green at 342/342 while
 pointing at unrelated code (`ScopedNoDenormals` cited 10 lines early, `isBusesLayoutSupported` 53,
