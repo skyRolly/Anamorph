@@ -431,7 +431,8 @@ re-deriving.
 State test 27's first leg is **deterministic** since round 12, and it says exactly what it proves.
 It uses a barrier the product itself provides: `AudioProcessor::setLatencySamples()` notifies its
 `AudioProcessorListener`s synchronously, from inside the call, whenever the reported value changes
-(pinned JUCE 9.0.1, `juce_AudioProcessor.cpp:415-436`), and the listener lock is released before
+(pinned JUCE 9.0.2, `juce_AudioProcessor.cpp:415-436` — that file is byte-identical across the
+9.0.1 → 9.0.2 bump, ADR-0054), and the listener lock is released before
 each callback — so a test listener can hold a delivery open while a real off-message thread makes
 a second request *inside* it, with no test hook in production code and no timing race. A build that
 clears the request flag AFTER delivering fails it (measured in round 12: `next tick -> 4, expected
@@ -3880,7 +3881,40 @@ concluding the gate is green. If you re-anchor a citation deliberately, declare 
 `DELIBERATE_REAIMS` in the **same change set**: the tool cannot tell a repair from a drift, so a fix
 landed on its own turns the gate red on the commit that fixed it.
 
-See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`.
+**A dependency bump has TWO ways to fail this gate, and they mean opposite things.** A line whose
+content changes on its own schedule — `CMakeLists.txt:14`, and the JUCE pin at `:67`, `:70` and
+`:71` — is declared in `VERSIONED_LINES`, which replaces the base comparison with "does this line
+still contain its stable token". That is what stops a routine bump reporting drift it did not cause.
+Because the token is version-INDEPENDENT by construction, each entry also names **what watches the
+value it stops watching**: the document's own gloss, another gate (named in the entry and printed
+each run), or — for a line that merely restates another — the line it restates. An entry declaring
+the gloss guard with no value-bearing gloss covering its line is refused as an **unpaired
+suppression**.
+
+**The pin is TWO independently asserted values and each is guarded on its own line.**
+`ANAMORPH_JUCE_VERSION` (`:70`) is compared **exactly** — `9.0.2` and `9.0.20` are different values —
+and `ANAMORPH_JUCE_TAG` (`:71`) as an **abbreviated object id**: the claim must be hexadecimal, at
+least 7 characters (git's own abbreviation) and a prefix of the source value, so `7278278…` is the
+same value and a different id is not. A document asserting the current pin therefore carries both
+claims, e.g. `CMakeLists.txt:70-72` (`9.0.2`) beside `CMakeLists.txt:71` (`7278278`). One claim never
+pays for the other: a bump that moves the object id with the version, documented by a document that
+updates only the version, fails on the tag alone.
+
+**And every document answers for its own claim.** A gloss that covers a guarded line is compared to
+the value that line assigns, by that entry's matcher — not by the substring test the gate uses for
+ordinary symbol glosses. The two halves are separate questions and both are asked: the line-level
+check asks whether ANY document still watches the value (an unpaired suppression if none does), and
+the per-citation check asks whether THIS document is right. Before 2026-09-18 only the first was
+exact, so one updated document supplied the watcher while another kept a stale claim that
+containment accepted — `9.0.2` is a substring of `9.0.20`, and a truncated or interior piece of an
+object id is a substring of the live one. A stale document is now named individually, and every
+stale document is named, not just the first.
+
+So: update the pin AND the documents and the gate is silent; update only the pin and it names every
+document still claiming an old value, and which value.
+
+See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`; `scripts/check-citations.py`
+(§`VERSIONED_LINES`, `versioned_line_claims`, self-test section 8g).
 
 ## Raw scanner output (SARIF artifacts)
 

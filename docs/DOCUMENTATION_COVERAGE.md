@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3406` and `.github/workflows/build.yml:3491`, this round being
+`.github/workflows/build.yml:3407` and `.github/workflows/build.yml:3492`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -1894,7 +1894,7 @@ subject, and the second is a stale COUNT rather than the placement claim.
 
 **The CI-target report was investigated and required no change.** It read the visible diff as adding
 only three `option()` declarations and asked whether `AnamorphFuzzState`, `AnamorphBench` and
-`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:603-621`, `:560-577` and `:597-623`
+`AnamorphDspDump` resolve to anything. They do: `CMakeLists.txt:613-632`, `:560-577` and `:597-623`
 define them, the last including the target-scoped `-fsanitize=fuzzer` the workflow comment relies
 on. Verified by building rather than by reading — all three configure and compile from the same
 option and compiler flags CI passes (JUCE supplied from the already-fetched checkout rather than
@@ -2209,7 +2209,7 @@ way and deliberately left — `CODE_STYLE.md:10` and `TESTING_POLICY.md:9` cite 
 be exhaustive.
 
 **The continuation gap is left open deliberately.** Bringing these under the gate means the
-comma-list spelling (`CMakeLists.txt:496-497, 527-528, 569-570`), which the tool does accept — but
+comma-list spelling (`CMakeLists.txt:496-497, 535-537, 578-580`), which the tool does accept — but
 each continuation here carries its own annotation naming *which* line it is (`:162`
 (`-Wl,-dead_strip`, Apple), `:108` (`/OPT:REF`, MSVC)), and the comma-list form has nowhere to put
 them. Widening the recogniser to follow continuations is a change to the gate's scope rather than to
@@ -2965,7 +2965,7 @@ happened. Another sits two lines from a sibling reference in the *same* historic
 already been protected, so a `--fix` would have rewritten half a paired record and frozen the other
 half. The discriminator that survives: **is the number the subject of the sentence, or a pointer to a
 thing?** Exactly one `CMakeLists.txt` citation in this document is the latter — "*it is*
-`CMakeLists.txt:531-540`", present tense, where re-anchoring preserves truth — and it is deliberately
+`CMakeLists.txt:540-549`", present tense, where re-anchoring preserves truth — and it is deliberately
 left live so the gate still demonstrably checks real evidence here.
 
 Verified by mutation rather than by reading: a line inserted into `CMakeLists.txt` above all of them,
@@ -2990,7 +2990,7 @@ Review found two anchors the previous round missed, both below its insertion poi
 to the new gate for the same reason: they are spelled as **bare continuations**
 (`` `path/to/file:188-199` … `:292-301` ``), which the parser only recognises in the
 `path:a,b,c` form. `ADR-0001`'s "tests link the core" pointed at `juce::juce_opengl` inside the
-*plugin*'s link block; it is `CMakeLists.txt:531-540`. `BUILD.md`'s compile-definition list cited
+*plugin*'s link block; it is `CMakeLists.txt:540-549`. `BUILD.md`'s compile-definition list cited
 `:277-284` while listing `ANAMORPH_BUILD_NUMBER` — a definition that range no longer contains, since
 scoping moved it to `:274-275`; widened to `:274-284`, deliberately as **one** anchor, because a
 citation whose anchor *count* changes lands in the "review by hand" branch no declaration can excuse.
@@ -9976,7 +9976,7 @@ allocator/deallocator pair closed. Tests are not edited for a dashboard.
 **One CI control was widened, because its exclusion rested on a false premise.** The Windows-parity
 stack guard (`.github/workflows/build.yml`) ran the state suite alone, justified by "the DSP suite
 holds no processors". True of `AnamorphAudioProcessor` — `AnamorphTests` compiles
-`tests/dsp_tests.cpp` alone (CMakeLists.txt:523-525) — and the wrong test: `dsp_tests.cpp` declares
+`tests/dsp_tests.cpp` alone (CMakeLists.txt:531-533) — and the wrong test: `dsp_tests.cpp` declares
 `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests (:119, :189, :268, :304 …), at
 28% of the reserve. The step now runs both binaries; both were verified green under
 `ulimit -s 1024` first, so this arms a tripwire rather than introducing a failure.
@@ -13002,6 +13002,360 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 62nd pass — 2026-09-18, round 42 (the pin's last present-tense claims, in the places the gate cannot see)
+
+One Devin stale-documentation finding naming two locations. One was already correct on the current
+head; the other was real. The sweep it required found two more of the same kind in `src/`. No
+dependency decision reopened, no gate logic changed, no historical record rewritten.
+
+**`docs/HANDOVER.md:104` — ALREADY CORRECT, no change made.** The critical-dependencies row on
+`517162a` reads `` `9.0.2` — immutable commit `7278278…` — CMakeLists.txt:71 (`7278278`)
+(FetchContent, `CMakeLists.txt:70-72` (`9.0.2`), ADR-0054) ``, carrying both value claims the gate
+compares. It was corrected in round 39 and the finding names a state the head no longer has. The
+row was re-read rather than trusted, and left alone.
+
+**`docs/procedures/CI_CD.md:1333` — CONFIRMED and corrected.** The CodeQL/PREfast triage rule read
+*"JUCE is pin-locked to 9.0.1 and review-gated"*. That is a present-tense assertion about the
+current pin, and the current pin is `9.0.2` / `72782788ce18c2d4d760b28e0921d6ffc6431102`
+(`CMakeLists.txt:70-71`). One token corrected and nothing else: the whole triage paragraph was
+re-read against the §3 consistency list first — the pin/commit semantics ("pin-locked", by immutable
+SHA), the `DEPENDENCY_POLICY.md` reference, the accepted-not-fixed interpretation of a
+`build/_deps/` alert, and the statement that a JUCE change is an ADR-scoped dependency bump are all
+still true and are untouched. The `2ed512c6` measurement in the table above it is a dated result on a
+named commit — a record, not a current-state claim — and stays.
+
+**Two more present-tense claims about the pin, found by the sweep and measured before being
+touched.** Both are in `src/` comments, and the sweep's rule was the one the round set: correct an
+occurrence only where source and context prove it describes the CURRENT repository state.
+
+* `src/gui/PhysicalMouseButtons.h:10` said *"In the pinned JUCE 9.0.1"*. Re-measured against the
+  pinned checkout (`build/_deps/juce-src` at `72782788…`, confirmed by `git rev-parse`):
+  `getNativeRealtimeModifiers` still refreshes only the keyboard flags and returns
+  `ModifierKeys::currentModifiers` at `juce_NSViewComponentPeer_mac.mm:302-307`, and
+  `[NSEvent pressedMouseButtons]` is still at `:1867`. The mechanism, the line numbers and KI-013's
+  premise are unchanged at 9.0.2; only the version stamp was stale.
+* `src/dsp/RealtimeAnnotations.h:41` said *"JUCE 9.0.1 carries no annotations of its own (measured:
+  zero occurrences in the pinned checkout)"*. Re-measured at the same checkout: **zero**
+  `clang::nonblocking` / `clang::nonallocating` occurrences across `modules/`. ADR-0029's rule and the
+  52-warning figure stand.
+
+**What was deliberately NOT touched.** `src/PluginProcessor.cpp:1221` records a dated act of checking
+("CORRECTED 2026-08-31 … after checking the pinned JUCE 9.0.1"); `build.yml:1210` records the
+2026-08-18 leak retest on the configuration it names; `build.yml:2682` already says "the JUCE 9.0.1
+pin this repository carried until ADR-0054"; `README.md:28` describes the 0.9.4 release;
+`THIRD_PARTY_LICENSES.md:23` explains that the dependency list "carried the inline list through
+9.0.1"; the `worklogs/` JUCE 9.0.1 and C++23 records, `ENGINEERING_REVIEW_PROGRAMME.md`, and
+ADR-0012 / ADR-0022 / ADR-0026 are all records of what was true when they were written. None was
+rewritten, and ADR-0026's `CMakeLists.txt:70-72` (`ANAMORPH_JUCE_VERSION "9.0.1"`) citation still
+resolves through the drift suppression.
+
+**Validation.** Newly executed: the two JUCE re-measurements above; a live end-to-end re-proof that
+the gate still catches a stale current-pin document (`9.0.2` → `9.0.20` in `CMakeLists.txt` with the
+documents untouched → **exit 2, seven documents named individually**, tree restored); `preflight.sh`
+(**4265 checks, 0 failures**, rerun because `src/` comments changed); `check-docs` 143 files clean;
+portability, realtime and dispatch lints; `check-citations --self-test` **242 cases**; and
+`check-citations --check` against `HEAD`, the merge base and the predecessor `517162a`. Reused: the
+round-41 mutation verdicts N13–N20 — no citation-gate logic changed this round, so nothing that
+suite attacks moved.
+
+**No `CHANGELOG.md` change** — nothing user-visible; `[0.9.8]` keeps 2026-09-18.
+
+**Informational, recorded rather than acted on:** `docs/procedures/CI_CD.md` is not in
+`GLOSS_CHECKED_DOCS`, so this sentence's value was not — and still is not — watched by the citation
+gate; the same is true of the two `src/` comments, which the gate reads as cited *targets* rather
+than as claims. Admitting `CI_CD.md` would be cheap (measured: 8 citations, 1 glossed, 0 firing) but
+it is a scope decision for the owner, not a repair of this finding.
+
+## 61st pass — 2026-09-18, round 41 (a watcher is not a warrant: every pin document answers for its own claim)
+
+One Devin Review bug and one Devin investigation on PR #145. The bug is confirmed and fixed; the
+investigation resolves as a current-state correction. No dependency decision reopened; no source,
+test or DSP file touched.
+
+**Finding 1 — `scripts/check-citations.py:R925-940`, "prefix bumps leave pin documents stale":
+CONFIRMED, and reproduced on the pre-fix tree before anything was changed.** The guard had two
+layers that were not held to the same standard. `versioned_line_claims` compared EXACTLY, but it
+only ever asked an existential question — *does some opted-in document still name this line's live
+value* — while `glossed_problems_in`, which is what validates an individual gloss, still resolved by
+**substring containment against the cited text**. With two documents citing the pin, that is a false
+negative with no contradiction in it: the updated document supplies the line's watcher, the stale one
+resolves because `9.0.2` IS a substring of a source reading `9.0.20`, and the run is green with
+documentation that is wrong. Measured pre-fix, three shapes passed that should fail — the reported
+prefix case, a tag claim truncated below the abbreviation floor, and an interior slice of the live
+object id. A fourth shape (two stale documents, no watcher left) did fail, but as an unpaired
+suppression on the LINE, naming no document — so even the failure did not say which file to edit.
+
+**Fix — the smallest join that lets both questions be asked with one set of semantics.** A new
+`guarded_claim_targets(tracked, anchors)` returns the `GLOSS_GUARD` lines a citation's anchors cover,
+with each line's assigned value and its configured comparison; `gloss_after` is the one spelling of
+the parenthetical extraction. `versioned_line_claims` is rebuilt over that join and keeps answering
+"is this line watched at all". `glossed_problems_in` now uses it too: a gloss covering a guarded line
+is compared with `claim_matches` against the value the line **assigns**, and a citation spanning both
+guarded lines carries one gloss, so it must match one of the lines it covers — a stale claim matches
+neither, which is the case that has to fail. Everything else keeps the containment test, which is the
+right one for an ordinary symbol gloss. **No new table, no second source of truth, and no literal
+version or SHA in the script**: `EXACT`, `ABBREV_HEX`, `MIN_ABBREV`, `source_value`, the
+`VERSIONED_LINES` shape, the delegated and restating guards and the historical-record semantics are
+all unchanged.
+
+**One deliberate strictness change, recorded rather than slipped in.** A gloss naming only the token
+— `` (`ANAMORPH_JUCE_VERSION`) `` — used to resolve silently and merely fail to pay; in an opted-in
+document it is now a finding, because a variable name is not the value assigned to it. Self-test case
+(G) previously asserted that silence and now asserts the report.
+
+**Historical records are untouched, and the case proves the boundary is the opt-in rather than the
+words:** the same sentence that passes in a record outside `GLOSS_CHECKED_DOCS` is reported when it
+appears inside an opted-in document (case O). ADR-0022 and ADR-0026 keep naming 9.0.0 and 9.0.1 and
+keep resolving through the drift suppression.
+
+**Proof.** Self-test **225 → 242 cases**, new block (I)–(O) driving the real functions over a
+synthetic tree with **two** opted-in documents, which is the configuration in which the defect can
+exist at all: both current; the reported case with the stale document named and the innocent one
+explicitly not named; the reverse prefix ordering; the tag's below-floor abbreviation and interior
+slice; a stale tag reported against the document that holds it; two stale documents producing two
+per-document reports; and the historical record. Every case asserts WHICH document is named, never a
+count. Against the pre-fix implementation the new block fails on (J) and (L) — the two shapes
+containment could not see — while (K), (M), (N) and (O) are preservation coverage that already held.
+**Mutations N13–N20, all eight killed**: the global watcher as the only requirement; the guarded
+branch present but never reporting; containment restored inside it; comparison against the wrong
+guarded line; the version validated but not the tag; a line's existing watcher excusing every other
+document; a prefix accepted for `EXACT`; and only the first stale document reported.
+
+**Finding 2 — `docs/REPOSITORY_MAP.md:10`, "repository map retains JUCE 9.0.1": CURRENT, not
+historical, and corrected.** The line is a tree-block entry describing what `CMakeLists.txt` does
+now — "Build: JUCE FetchContent (9.0.1, pinned by commit SHA)" — in a document whose own header calls
+it a map of per-component responsibilities; every sibling entry is present tense, and nothing marks
+this one as a record of a past state. Now `9.0.2`, with the format preserved and no dependency detail
+added. The rest of the file was swept for related staleness: no other version number and no commit id
+anywhere in it. The sweep did find a second, adjacent defect — the file's own description of the
+citation gate still said "the eight architecture documents in `GLOSS_CHECKED_DOCS`" (fourteen since
+round 39) and described `VERSIONED_LINES` as a bare token check on `CMakeLists.txt:14` alone. Both
+corrected, because this round is what makes them wrong.
+
+**Synced:** `scripts/check-citations.py`; `docs/REPOSITORY_MAP.md`; `docs/procedures/TESTING.md` (the
+two questions the gate asks and why neither substitutes for the other); `docs/procedures/CI_CD.md`
+(fourteen documents, 60 glossed citations, 13 of them value-compared). The `GLOSS_CHECKED_DOCS`
+admission comment carries the new measurement the strictness change demands — across all fourteen
+documents, **166 citations, 60 glossed, 13 guarded, 0 firing**, so the stricter comparison adds no
+false positive to a correct tree. No `CHANGELOG.md` change — nothing user-visible; `[0.9.8]` keeps
+2026-09-18.
+
+## 60th pass — 2026-09-18, round 40 (one pin, two assertions, two guards)
+
+One Devin Review finding on PR #145, `scripts/check-citations.py:R846-853`, **"pin guard accepts
+stale values": CONFIRMED in both of its parts**, both reproduced on the pre-fix tree before any code
+was changed. No dependency decision reopened; no source, test or DSP file touched.
+
+**Defect 1 — one gloss stood in for two independent assertions.** Round 39 gave `CMakeLists.txt:70`
+a gloss guard, and the six pin documents glossed their citations with the readable version. But the
+same documents also assert the immutable commit id, which lives on a DIFFERENT declared line
+(`CMakeLists.txt:71`, `ANAMORPH_JUCE_TAG`) and was in `VERSIONED_LINES` under no guard at all.
+Measured pre-fix as case H — version moved to 9.0.3 and the documents updated, tag moved and the
+documents NOT updated — the run came back clean: every document named a commit that no longer
+belonged to the pinned version, and the gate said nothing. A value-bearing gloss on one assertion
+was paying for the other.
+
+**Defect 2 — the claim comparison was containment, not identity.** `verify_glossed_anchors` asks
+whether the glossed token appears in the line, so a source reading `9.0.20` satisfies a document
+claiming `9.0.2`. Measured pre-fix as case D: `PASSES (BUG)`. The prefix case is exactly the one a
+version bump produces.
+
+**Fix — the smallest model that makes each assertion carry its own weight.** A `VERSIONED_LINES`
+value is now `(token, guard, compare)`, and the table names both declared lines:
+`ANAMORPH_JUCE_VERSION` at 70 compared `EXACT`, `ANAMORPH_JUCE_TAG` at 71 compared `ABBREV_HEX`.
+`source_value` reads the value ASSIGNED on the declared line — the first quoted string after the
+token — so the comparison is against the value, never against the rest of the line; `claim_matches`
+then decides identity. `EXACT` is string equality, which is what separates `9.0.2` from `9.0.20`.
+`ABBREV_HEX` accepts git's own abbreviation of an object id — hex, at least `MIN_ABBREV = 7` digits,
+a prefix of the full id — because `7278278…` is how the documents write that id; it normalises
+spelling, it does not weaken the value, and the floor has its own cases. Line 67's prose restates
+line 70's version rather than declaring one, so it is modelled as
+`("restates", ("CMakeLists.txt", 70))` and cross-checked against that line's live value instead of
+being asked for a gloss it cannot have.
+
+**The source stays the only source.** No version and no SHA is written into the script; every run
+re-reads both assignments out of `CMakeLists.txt`, so a bump edits the documents — which a bump
+updates anyway — and nothing else. **Historical records stay valid**: the gloss is opt-in, ADR-0022
+and ADR-0026 cite the same block naming 9.0.0 and 9.0.1, carry no gloss, and are asked for nothing
+(asserted as case F). The round-36 pairing rule is unchanged: a gloss-guarded entry with no
+value-bearing gloss covering its line is still a hard failure, and a delegated entry still prints the
+gate it defers to — now alongside the live value and the comparison kind.
+
+**Proof.** Self-test **205 → 225 cases**. Section 8g rewritten as cases A–H over a synthetic tree —
+matching documents; both values bumped with documents updated; documents left behind on either value
+alone; correct version with stale tag; correct tag with stale version; the `9.0.2` / `9.0.20` prefix;
+the historical record that claims nothing — plus the abbreviation floor, the assignment extractor,
+the restatement form, a gloss whose anchor misses the declared line, and the delegation rendering. A
+structural case derives the pin assignment lines from the real `CMakeLists.txt` by regex, so a moved
+`set(...)` fails the suite rather than silently unguarding a value. **Mutations N1–N12, all twelve
+killed**, among them: delete the tag entry; guard the version only; guard the tag only; make `EXACT`
+containment; make `EXACT` a prefix test; drop the per-line anchor test; accept a stale tag whenever
+the version is current, and its mirror; compare against the whole line instead of the assigned value;
+drop the abbreviation floor; restatement by containment; and N12, the full revert to round-36
+semantics. End-to-end on the real tree (`CMakeLists.txt` edited, then restored): both values moved
+with the documents stale → errors on both citations, exit 2; the tag alone moved → the tag claim
+fails independently in all six documents while every version claim still passes, exit 2;
+`9.0.2 → 9.0.20` → exit 2.
+
+**No self-referential suppression.** No `VERSIONED_LINES` entry names a script, and
+`scripts/check-citations.py` is not in `TRACKED`, so the new guard cannot excuse a citation of
+itself. The `GLOSS_CHECKED_DOCS` admission was re-measured as the comment demands — across the
+member documents, **54 citations, 14 glossed, 0 firing**.
+
+**Synced:** `scripts/check-citations.py`; `docs/procedures/TESTING.md` (the two guards, exact versus
+abbreviated comparison, and that one claim never pays for the other); and the six pin documents,
+each of which now carries a tag claim beside its version claim — `THIRD_PARTY_LICENSES.md`,
+`docs/HANDOVER.md`, `docs/architecture/COMPATIBILITY_MATRIX.md`, `docs/policies/DEPENDENCY_POLICY.md`,
+`docs/procedures/BUILD.md`, `docs/procedures/TROUBLESHOOTING.md`. No `CHANGELOG.md` change — nothing
+user-visible; `[0.9.8]` keeps 2026-09-18.
+
+## 59th pass — 2026-09-17, round 39 (the pin gate learns to notice a stale version)
+
+Two Devin Review findings on PR #145, both confirmed, both fixed. No dependency decision reopened;
+no source, test or DSP file touched.
+
+**Finding 1 — `scripts/check-citations.py`, "pin citations lose version drift detection":
+CONFIRMED.** `VERSIONED_LINES` replaces the base text comparison on a declared line with "does the
+line still contain its stable token", and the token for `CMakeLists.txt:70` is
+`ANAMORPH_JUCE_VERSION` — present at 9.0.1, at 9.0.2 and at every version after. The suppression is
+what stops a routine bump reporting drift it did not cause; the defect is that for the JUCE pin
+**nothing picked the value back up**, so a later bump to 9.0.3 would have left six documents claiming
+9.0.2 with the gate green. (`CMakeLists.txt:14` was never in that position: its value is guarded by
+the release gate, which refuses a tag disagreeing with the CMake project version.)
+
+**The fix uses the mechanism the repository already had, not a new one.** A `VERSIONED_LINES` value
+is now `(token, guard)`, and the guard says what watches the value the token deliberately does not:
+either another gate, **named in the entry and printed on every run**, or the document's own **gloss**
+— the `` (`9.0.2`) `` a citation already carries, which `verify_glossed_anchors` resolves against the
+CURRENT source. `verify_versioned_lines` now REFUSES a gloss-guarded entry with no value-bearing
+gloss covering its line, so the suppression cannot be added without its compensating check. A gloss
+counts only when it names something the token does not and lands on the declared line — a gloss
+reading `` (`ANAMORPH_JUCE_VERSION`) `` would resolve forever and is rejected as a claim.
+**Nothing in the script needs editing at a bump**: the version lives in the documents, which is what
+a bump updates anyway.
+
+Six pin-asserting documents joined `GLOSS_CHECKED_DOCS` after the admission measurement the existing
+comment demands — across all six, **63 citations, 1 already glossed, 0 firing** — and each now
+glosses its pin citation. Historical records are untouched and stay correct: ADR-0022 and ADR-0026
+cite the same block and name 9.0.0 and 9.0.1, and a record of the past claims nothing about the
+present, so it carries no gloss and is asked for nothing.
+
+**Proof.** Self-test **184 → 205 cases**, new section 8g driving the real functions over a synthetic
+tree: a matching document passes; a bump with the document updated passes AND stays excused from the
+drift comparison; a document left on the old version is rejected by both halves; a token-restating
+gloss and a gloss whose anchor misses the declared line are both refused as claims; and the
+pre-fix behaviour, re-created as a mutant, goes silent — which is what makes the section fail if the
+detection is ever removed. Five mutants, all killed. End-to-end on the real tree: `9.0.2 → 9.0.3` in
+`CMakeLists.txt` with the documents untouched fails `--check` with **7 named errors, exit 2**.
+
+**Finding 2 — `docs/HANDOVER.md`, "current dependency handover remains stale": CONFIRMED.** The
+critical-dependencies table still gave `9.0.1` / `e18f7f5…` / ADR-0026 as the current pin. Now
+`9.0.2` / `7278278…` / ADR-0054, with the bump list gaining its fourth entry and the row carrying the
+gloss that keeps it honest. The rest of the file was scanned for current-state drift caused by this
+upgrade: none — its other JUCE mentions are historical release descriptions (the v0.9.4 9.0.0 → 9.0.1
+upgrade) and a v0.9.4-era build-status record, all correct as written and left alone.
+
+**Synced:** `scripts/check-citations.py`, `docs/procedures/TESTING.md` (the two ways a bump can fail
+the gate), `docs/HANDOVER.md`, `THIRD_PARTY_LICENSES.md`, `docs/architecture/COMPATIBILITY_MATRIX.md`,
+`docs/policies/DEPENDENCY_POLICY.md`, `docs/procedures/BUILD.md`, `docs/procedures/TROUBLESHOOTING.md`.
+No `CHANGELOG.md` change — nothing user-visible; `[0.9.8]` keeps 2026-09-18.
+
+## 58th pass — 2026-09-17, round 38 (ADR-0054 accepted, and the build contract catches up)
+
+Final merge-readiness round for PR #145. **No dependency decision was reopened** and no source,
+test or DSP file was touched.
+
+**ADR-0054 is `Accepted`.** The owner completed and signed off both human acts on **2026-09-17** —
+the Architecture Review (approved as implemented, `JUCE_USE_MP3AUDIOFORMAT=0` pin included) and the
+`DEPENDENCY_POLICY.md` rule-2 **Level-5 manual audition**, with **no regression reported**. The
+ADR's "Outstanding (owner)" section is replaced by a section that records the two sign-offs and
+says explicitly that **no audition observation is written down because none was reported** —
+inventing one would make the record say more than the owner did. `ADR_INDEX.md`, the
+`DEPENDENCY_POLICY.md` compliance log and `worklogs/JUCE902_UPGRADE_v0.9.8.md` §6 were moved to the
+same state; no historical measurement or date was rewritten.
+
+**Review finding — `docs/procedures/BUILD.md`, "build contract remains stale": CONFIRMED and
+fixed.** Two migration-caused defects, both real: the build-options table still gave
+`ANAMORPH_JUCE_TAG` as `e18f7f5…` (= tag 9.0.1) after the pin had moved, and the §Compile
+definitions inventory — the section that calls itself *part of the build contract* — omitted
+`JUCE_USE_MP3AUDIOFORMAT=0` entirely, so the one definition the bump ADDED was the one the contract
+did not list. The row now reads `7278278…` (= tag 9.0.2); the inventory lists the definition in its
+source order and explains that it is the one entry which **restates a former default rather than
+overriding a live one**, with the other five targets named. Every CMake line reference in the file
+was re-verified against the current tree (`:27`, `:28`, `:66`, `:70-72`, `:77-79`, `:81-89`,
+`:413-419`, `:469`, `:491-509`, `:530`) and the rest of `BUILD.md` was swept for further migration
+drift — none found; the `libegl-dev`/"required since JUCE 9" note is still true at 9.0.2.
+
+**No `CHANGELOG.md` entry, and the decision is evidence-based rather than habitual.**
+`CHANGELOG_POLICY.md` rule 3 admits user-visible changes only. The completed audition reported **no
+regression**, and no observation of a user-visible change exists anywhere in the repository to
+classify; the headless side already proves engine output and reported latency bit-identical across
+32 scenarios. Nothing user-visible is established, so nothing is written — a dependency-version
+bullet would be exactly the generic maintenance language the policy excludes. `[0.9.8]` keeps its
+commissioned date, **2026-09-18**.
+
+## 57th pass — 2026-09-17, round 37 (the dependency refresh: JUCE 9.0.2, and the two pins that did not move)
+
+**Commissioned:** update every updatable dependency, JUCE and Clang included, to the latest stable;
+move the changes into 0.9.8; re-date 0.9.8 to 2026-09-18.
+
+**JUCE 9.0.1 → 9.0.2 — TAKEN, and it is a gated Build System change (ADR-0054, written
+`Proposed` in this pass and `Accepted` by the owner the same day — see the 58th).**
+`72782788ce18c2d4d760b28e0921d6ffc6431102`, the lightweight tag's own commit. Rule-2 evidence: the
+committed twin-dump harness built from one source tree against both checkouts with otherwise
+identical flags — **32 scenarios bit-identical including reported latencies**, `--self-check` green
+on both sides, run twice. The mechanism: `juce_dsp` and `juce_audio_processors` are byte-identical
+between the tags apart from their module `version:` field, and every JUCE file this repository cites
+by path and line was compared and is identical, so the citations survive the bump verbatim rather
+than by assumption. The first-party warning census is identical too — 9 instances on both sides,
+differing only in ninja's emission order.
+
+**The one thing that was not inert, and it was not in `BREAKING_CHANGES.md`.**
+`JUCE_USE_MP3AUDIOFORMAT` defaults **1** from 9.0.2 (it was **0** through 9.0.1), and the same edit
+deleted the patent/IP disclaimer beside it. Anamorph links `juce_audio_utils`, so the decoder would
+have been compiled into every shipped binary — dead code, since the tree calls no `AudioFormat` API
+at all — and it would have falsified `THIRD_PARTY_LICENSES.md`'s shipped sentence *"Anamorph
+therefore ships no MP3 decoder."* The flag is now pinned to 0 on all six targets. **The flag is the
+no-op; its omission would have been the change.**
+
+**Licence re-verification found real deltas, and they are benign.** Of the twelve licence files
+`THIRD_PARTY_LICENSES.md` cites, ten are byte-identical; the FLAC and Ogg Vorbis files differ by a
+**deletion-only** 21-line JUCE preamble that moved into new `JUCE_CHANGES.txt` / `JUCE_UPSTREAM.txt`
+companions — `tail -n +22 <old>` is byte-identical to each new file, so no term changed. Separately,
+**JUCE's authoritative dependency list left `LICENSE.md` for a new SPDX SBOM, `JUCE.spdx.json`**;
+`THIRD_PARTY_LICENSES.md` names that list both as its inventory's provenance and in its
+"re-verify after a bump" instruction, and both now point at the SBOM.
+
+**Clang stays 22, GCC stays 16 — measured, not assumed.** ADR-0033's lift condition is an
+apt.llvm.org `-23` suite rebuilt from a 23.x **release** tag. Every suite (noble, resolute, plucky)
+carries `1:23.1.2~++20260916012804+21a77e7bb6bf` — a pre-release snapshot built from a commit that
+is no release tag at all (`llvmorg-23.1.2` does not exist; the 23.x releases are `ea7d852a` and
+`6dfe1677`). `setup-llvm-apt.sh` would exit 1, which is the guard working. The same pass confirmed
+the 22 pin is already the newest installable *release* build (`ca7933e47d3a` = `llvmorg-22.1.8^{}`)
+and that GCC's newest release, 16.2.0, is still inside the floating `gcc:16` tag.
+
+**Actions:** `github/codeql-action` v4.37.9 → v4.38.0 on all three refs. Every other action pin was
+measured against its upstream tag list and is already newest.
+
+**Synced:** `CMakeLists.txt` (pin + the MP3 flag), `DEPENDENCY_POLICY.md` (table, version-lock
+reasoning, rule 3's doc-sync list, two compliance-log entries), `THIRD_PARTY_LICENSES.md`, `NOTICE`,
+`TRADEMARKS.md`, `README.md`, `COMMERCIAL_STATUS.md`, `BUILD.md`, `TROUBLESHOOTING.md`, `CI_CD.md`,
+`TESTING.md`, `LATENCY_MODEL.md`, `REALTIME_SAFETY_AUDIT.md`, `THREADING_POLICY.md`,
+`KNOWN_ISSUES.md`, `FUTURE_RISKS.md`, `dependabot.yml`, `build.yml`, `codeql.yml`, `msvc.yml`,
+ADR-0054 + `ADR_INDEX.md`, `worklogs/JUCE902_UPGRADE_v0.9.8.md`. A measurement dated against an older
+tree kept its date and gained the re-verification; it was not rewritten as if it had been taken now.
+
+**No `CHANGELOG.md` bullet** (rule 3 — by measurement nothing user-visible changed); `[0.9.8]` is
+re-dated **2026-09-18** as commissioned.
+
+**The two human acts this round could not perform** were the human Architecture Review and the
+rule-2 **Level-5 manual audition** — three modules on paths Anamorph uses did change
+(`juce_opengl`, `juce_graphics`'s text shaping in `juce_SimpleShapedText.cpp`, glyph-cluster
+counting, and `juce_gui_basics`'s popup-menu accessible focus) and no headless gate covers what
+they look like. **Both were completed by the owner on 2026-09-17**; the 58th pass records the
+acceptance.
+
 
 ## 56th pass — 2026-09-17, round 36 (the dispatch lint's own lexer, and what a `'` is)
 

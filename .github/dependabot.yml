@@ -3,7 +3,7 @@
 # github-actions is the ONLY Dependabot-supported ecosystem in this repo, and
 # that is a finding about the tree rather than a default. Of the 33 ecosystems
 # Dependabot supports, none covers what this repository actually depends on:
-# JUCE 9.0.1 arrives through CMake FetchContent pinned to the release tag's
+# JUCE 9.0.2 arrives through CMake FetchContent pinned to the release tag's
 # IMMUTABLE commit SHA (ADR-0022) and CMake is not an ecosystem; the only C/C++
 # ecosystem is `vcpkg`, which bumps a `builtin-baseline` SHA in a `vcpkg.json`
 # this repository does not have. The pinned Clang major, the apt/brew packages

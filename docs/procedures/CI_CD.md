@@ -277,7 +277,8 @@ edge above must not be read as release non-blocking.
   `ANAMORPH_EFFECTS_CANARY` call to an allocating helper fails the step by name — *not* a call to
   `applyWidth`, which this page named until 2026-08-19: its definition is visible in that TU, so
   Clang infers its effects and the driver's own call to it is clean), while over `AnamorphEngine.cpp` it emits **52**
-  from JUCE calls whose definitions the TU cannot see — JUCE 9.0.1 carries no annotations of its own.
+  from JUCE calls whose definitions the TU cannot see — JUCE carries no annotations of its own
+  (measured at 9.0.1; re-verified at the 9.0.2 pin, ADR-0054).
   So the flag is enabled exactly where it is signal and stays off where it is noise; ADR-0029 §3
   records both measurements and the boundary between them.
   That TU is compiled **twice**, and the second compile is this gate's liveness proof: a clean
@@ -1107,8 +1108,13 @@ source string, alone in the parentheses — so prose like `(24 Hz timer)` assert
 having an assertion invented for it.
 
 It is **opt-in per document** (`GLOSS_CHECKED_DOCS`), and the list names documents rather than
-anchors so it holds no line numbers and cannot itself go stale. Eight architecture documents are in
-it, carrying 43 glossed citations. Measured when it was written (seven documents then): 20 glossed
+anchors so it holds no line numbers and cannot itself go stale. Fourteen documents are in it — the
+eight architecture documents, and the six that assert the JUCE pin — carrying 60 glossed citations,
+13 of which land on a `VERSIONED_LINES` guarded line and are therefore compared to the value that
+line ASSIGNS, by the entry's own matcher, rather than by the containment test the other 47 use.
+That distinction is the 2026-09-18 correction: containment let a document claiming `9.0.2` resolve
+against a source reading `9.0.20`, so a second, updated document could satisfy the line's watcher
+while the first stayed stale and the run went green. Measured when it was written (seven documents then): 20 glossed
 citations across them, **5 firing, all 5 genuine
 defects, 0 false positives** — anchors that were fully qualified, parsed, and green at 342/342 while
 pointing at unrelated code (`ScopedNoDenormals` cited 10 lines early, `isBusesLayoutSupported` 53,
@@ -1324,7 +1330,7 @@ The consequence is concrete and must not be re-forgotten: the JUCE tree **is** e
 the results, and **is** uploaded, so those alerts stand on the dashboard.
 
 **The triage rule for both scanners.** An alert whose path begins with `build/_deps/` is
-third-party JUCE. JUCE is pin-locked to 9.0.1 and review-gated (`docs/policies/DEPENDENCY_POLICY.md`),
+third-party JUCE. JUCE is pin-locked to 9.0.2 and review-gated (`docs/policies/DEPENDENCY_POLICY.md`),
 so such an alert is **accepted, not fixed here** — a JUCE change is an ADR-scoped dependency bump,
 never an alert-driven edit. Genuinely removing them from the dashboard would mean relocating the
 FetchContent tree outside the workspace, or post-filtering the SARIF before upload. Both are Build
@@ -1356,7 +1362,7 @@ processors on the heap (`docs/procedures/TESTING.md`). Both suites additionally 
 
 **Both suites, since 2026-09-07.** The step used to run the state suite alone, justified by "the DSP
 suite holds no processors". That is true only of `AnamorphAudioProcessor` — `AnamorphTests` compiles
-`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:523-525), so it cannot construct one — and it
+`tests/dsp_tests.cpp` and nothing else (CMakeLists.txt:531-533), so it cannot construct one — and it
 is the wrong test: what overflows a frame is a large automatic, not that particular class, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP

@@ -6,7 +6,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 | Dependency | Pin | Mechanism | Evidence |
 |---|---|---|---|
-| **JUCE** | **9.0.1**, pinned by **immutable commit SHA** `e18f7f506c0b96f2c738a0bcd7fe6467a5005ad8` | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:70-72, 81-89 |
+| **JUCE** | **9.0.2**, pinned by **immutable commit SHA** `72782788ce18c2d4d760b28e0921d6ffc6431102` — CMakeLists.txt:71 (`72782788ce18c2d4d760b28e0921d6ffc6431102`) | CMake `FetchContent` (`GIT_SHALLOW`), overridable via `-DANAMORPH_JUCE_PATH` | CMakeLists.txt:70-72, 81-89 (`9.0.2`) |
 | **pluginval** | latest release (download) | `scripts/run-pluginval.sh` | scripts/run-pluginval.sh:475-482 |
 | **C++ standard** | C++23 | `CMAKE_CXX_STANDARD 23`, extensions off (ADR-0027) | CMakeLists.txt:16-18 |
 | **Clang** (the Linux **release** build `linux`, plus `merge-check`, the sanitizer, realtime and fuzz jobs) | **major pinned — 22**, upstream stable and **asserted to be the release build**: `setup-llvm-apt.sh` carries the `llvmorg-<version>` tag commit per major and refuses both an unrecorded major and a build from any other commit (ADR-0028 sets the rule; **ADR-0033** adds the assertion and records why 23 is not yet adoptable) | `ANAMORPH_CLANG_VERSION`, the single authority, consumed by every consuming job's install, their ccache lineages and `--clang-major`. Installed from **apt.llvm.org** by `scripts/setup-llvm-apt.sh`, which verifies the signing key by fingerprint and installs `clang-<n>`, `lld-<n>` and `libclang-rt-<n>-dev` together so the LTO link is version-matched by construction. **Since ADR-0030 this toolchain SHIPS the Linux artifact**, so a bump is no longer exempt from rules 2–3 | .github/workflows/build.yml:120-122 |
@@ -17,7 +17,7 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
 
 ## Version-lock reasoning
 
-- **JUCE is pinned to an exact IMMUTABLE commit** (`e18f7f5…` = tag 9.0.1; `ANAMORPH_JUCE_VERSION`
+- **JUCE is pinned to an exact IMMUTABLE commit** (`7278278…` = tag 9.0.2; `ANAMORPH_JUCE_VERSION`
   carries the human-readable version), not a branch, `latest`, or a mutable tag *name* — since the
   v0.8.13 cycle the SHA pin also protects against an upstream re-pointed tag (ADR-0022). JUCE is
   the framework for the entire DSP (oversampling, Linkwitz-Riley filters, `dsp::AudioBlock`),
@@ -26,6 +26,12 @@ Repository Governance Policy. Third-party dependency locking and upgrade safety.
   host code), and the parameter/state ABI. The pin makes builds reproducible and keeps the audited
   behaviour stable. Evidence [Verified]: CMakeLists.txt:70-72, 81-89; the X11 dependency is
   documented in ADR-0011.
+- **One `JUCE_*` module default is pinned because upstream changed it under the product.**
+  `JUCE_USE_MP3AUDIOFORMAT` defaulted to 0 through 9.0.1 and defaults to **1** from 9.0.2. Anamorph
+  pins it to **0** on all six targets that carry the `JUCE_*` contract, which keeps the shipped
+  binary's content and `THIRD_PARTY_LICENSES.md`'s "ships no MP3 decoder" claim as they were: the
+  flag is the no-op, the omission would have been the change. Rule 5 governs it from here.
+  Evidence [Verified]: CMakeLists.txt:505, 536, 579, 619, 660, 701; ADR-0054.
 
 ## Update mechanisms
 
@@ -70,13 +76,66 @@ repository ever grows a real package manifest.
    **and the two shipped attribution documents**: `THIRD_PARTY_LICENSES.md` *and* `NOTICE` both state
    the pinned JUCE version/commit, and both must move with the pin. (Added 2026-08-31: the 9.0.0 → 9.0.1
    bump's doc-sync list named only THIRD_PARTY_LICENSES + TRADEMARKS, so `NOTICE` shipped a wrong
-   pin line for a full version — ER-DOC-02.)
+   pin line for a full version — ER-DOC-02.) **The 9.0.1 → 9.0.2 bump found six more homes for the
+   pin** and they are named here so the next one does not have to re-derive them: `README.md`,
+   `docs/procedures/BUILD.md`, `docs/procedures/TROUBLESHOOTING.md`, `.github/dependabot.yml`,
+   `TRADEMARKS.md` and `docs/COMMERCIAL_STATUS.md`. `grep -rn "JUCE 9\.0\." --include='*.md'` finds
+   the set; a measurement dated against an older tree keeps its date and gains the re-verification,
+   it is not rewritten.
 4. Prefer the offline path (`-DANAMORPH_JUCE_PATH`) for reproducibility in restricted CI.
-5. `JUCE_*` compile flags in `CMakeLists.txt:496-501` (no webview, no curl, no splash, strict
+5. `JUCE_*` compile flags in `CMakeLists.txt:496-509` (no webview, no curl, no splash, strict
    ref-counted pointer) are part of the dependency contract; changing them is a build change.
 
 ## Compliance log
 
+- **JUCE 9.0.1 → 9.0.2** — recorded in **ADR-0054** (v0.9.8 cycle; **`Accepted`** — the human
+  Architecture Review and the rule-2 **Level-5 manual audition** were both completed and signed off
+  by the owner on **2026-09-17**, on top of the headless evidence below. No audition observation is
+  recorded beyond completion, because none was reported; no regression was reported either, which is
+  the other half of why rule 3 admits no changelog entry here).
+  **Zero C++ source changes**, and **one build change**: `JUCE_USE_MP3AUDIOFORMAT=0` is now pinned
+  explicitly on all six targets, because 9.0.2 flips that module default 0 → 1 (and drops the
+  patent/IP disclaimer beside it), which would otherwise have compiled an unused MP3 decoder into
+  every shipped binary and falsified `THIRD_PARTY_LICENSES.md`'s standing *"Anamorph therefore ships
+  no MP3 decoder"*. No build-**dependency** change: all fifteen module declarations Anamorph builds
+  moved only their `version:` field, so `setup-linux.sh` is untouched. Exposure: the single 9.0.2
+  breaking change (`AudioDeviceSelectorComponent::getMidiInputSelectorListBox` removed) and the two
+  the 9.0.2 tree adds retroactively under its `Version 9.0.1` heading (`OpenGLImageType::create()`
+  honouring `SingleChannel`; `setImageCacheSize()` counting bytes) were each checked **by name**
+  against `src/` and `tests/` and none appears. Rule-2 verification: the committed twin-dump harness
+  built from one source tree against both checkouts with otherwise identical flags — **32 scenarios
+  bit-identical including reported latencies**, `--self-check` green on both sides, and the run
+  repeated after the MP3 pin with the same result. The mechanism behind that: **`juce_dsp` and
+  `juce_audio_processors` are byte-identical between the tags apart from their module `version:`
+  field**, which is also why the repository's citations into JUCE internals survive verbatim
+  (`juce_AudioProcessor.cpp`, `juce_AudioProcessorParameter.h`, `juce_AudioProcessorValueTreeState.{h,cpp}`,
+  `juce_Oversampling.cpp`, `juce_FilterDesign.cpp`, `juce_MouseInputSource.cpp`, `juce_Desktop.cpp`,
+  `juce_Slider.cpp`, `juce_StandaloneFilterWindow.h` — all compared, all identical). Rule-3
+  re-verification: latency reporting (inside the twin dump) and session reload (state suite)
+  unchanged; **all twelve licence files `THIRD_PARTY_LICENSES.md` cites re-compared** — ten
+  byte-identical, and the FLAC and Ogg Vorbis files differ by a **deletion-only** 21-line JUCE
+  preamble that moved into the new `JUCE_CHANGES.txt` / `JUCE_UPSTREAM.txt` companions, with no
+  licence term changed. **JUCE's authoritative dependency list moved** from the inline list in
+  `LICENSE.md` to a new SPDX SBOM, `JUCE.spdx.json`; `THIRD_PARTY_LICENSES.md` re-points both the
+  inventory's provenance and its "how to re-verify next time" step at the SBOM. Rule 5: the
+  `JUCE_*` flags are otherwise untouched. No `CHANGELOG.md` entry (rule 3 — not user-visible: by
+  measurement nothing the user can hear or see through the host changed).
+- **Clang major 22 → 23 — RE-MEASURED 2026-09-17; still blocked; the pin stays 22.** ADR-0033's
+  lift condition is *an apt.llvm.org `-23` suite rebuilt from `ea7d852a` (or a later 23.x release
+  tag)*, and it is **not met**. Measured against the live `Packages.gz` of three suites: noble,
+  resolute and plucky all carry
+  `1:23.1.2~++20260916012804+21a77e7bb6bf` for `clang-23`, `lld-23` and `libclang-rt-23-dev` alike
+  (they differ only in build timestamp) — a **pre-release snapshot of 23.1.2 built from
+  `21a77e7bb6bf`**, which is **no release tag at all**: the 23.x releases are `llvmorg-23.1.0` =
+  `ea7d852a…` and `llvmorg-23.1.1` = `6dfe1677…`, and `llvmorg-23.1.2` does not exist. The `~++`
+  in the Debian version is upstream's own marker for exactly that. `setup-llvm-apt.sh` would
+  therefore exit 1 naming both commits, which is the guard working as designed rather than an
+  obstacle to route around. The measurement also confirms the **current** pin is at the newest
+  installable *release* build: noble-22 is `1:22.1.8~++20260714014902+ca7933e47d3a`, and
+  `ca7933e47d3a` **is** `llvmorg-22.1.8^{}`, which is the newest 22.x release tag. **GCC** was
+  checked in the same pass and needs nothing: the newest upstream release is **16.2.0**, still
+  major 16, which the floating `gcc:16` tag already tracks. Rules 2–3 have nothing to act on — no
+  toolchain moved. No `CHANGELOG.md` entry.
 - **Clang major 22 → 23 — EVALUATED AND NOT TAKEN; the pin stays 22.** Recorded in **ADR-0033**
   (`Accepted` 2026-08-30). ADR-0028's revisit trigger fired — LLVM **23.1.0** released 2026-08-25 —
   and the move was prepared, measured and then **blocked on availability**, which is the outcome

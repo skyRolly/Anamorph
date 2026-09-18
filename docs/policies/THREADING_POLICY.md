@@ -257,7 +257,8 @@ replacement on one thread passes through it (ADR-0036 §24 records that residual
 
 One contract is load-bearing and is stated rather than assumed: **the host serializes its own state
 calls** (never two at once). Rounds 4–6 verified it against every wrapper this repository builds at the
-pinned JUCE 9.0.1, from primary evidence (ADR-0036 §11). **Round 8 re-verified the disposition mechanically against the current tree** — no Anamorph caller of
+then-pinned JUCE 9.0.1, from primary evidence (ADR-0036 §11); every one of those wrapper files is
+byte-identical at the 9.0.2 pin, so the evidence carries across unchanged (ADR-0054). **Round 8 re-verified the disposition mechanically against the current tree** — no Anamorph caller of
 either state function, no `std::thread` / `juce::Thread` / `callAsync` / thread pool anywhere in
 `src/` (the only schedulers are the editor's 24 Hz and the processor's 20 Hz message-thread timers),
 the host-side members touched at exactly four sites inside the two off-thread branches, and the

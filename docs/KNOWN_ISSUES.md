@@ -664,7 +664,7 @@ no control — that part works. What it cannot do is un-count that click. If the
 sees `getNumberOfMultipleClicks() == 2` and JUCE calls its `mouseDoubleClick`. On a knob that means a
 reset-to-default or the numeric entry box, from what the user experienced as a first click.
 
-**Mechanism, from the pinned JUCE 9.0.1.** The multi-click run lives on the *input source*, not on a
+**Mechanism, from the pinned JUCE 9.0.2.** The multi-click run lives on the *input source*, not on a
 component. `MouseInputSourceImpl::registerMouseDown` records only position, time, buttons, touch flag
 and peer id (`juce_MouseInputSourceImpl.h:581-599`), and `canBePartOfMultipleClickWith` (`:565`)
 compares exactly those — the **target component is not part of the comparison**. Registration happens
@@ -702,7 +702,7 @@ Since v0.9.3 the editor cancels an open drop-down or right-click menu when the p
 hidden, when the editor is destroyed, or when the user switches to another application. **The third
 of those does not happen on Linux.** The first two work normally there.
 
-**Mechanism, from the pinned JUCE 9.0.1.** The app-switch branch asks
+**Mechanism, from the pinned JUCE 9.0.2.** The app-switch branch asks
 `juce::Process::isForegroundProcess()`. On Linux that is
 `LinuxComponentPeer::isActiveApplication` (`juce_Windowing_linux.cpp:687`), a static initialised to
 `false` (`:678`) and assigned **only** `true`, from `grabFocus()` on a successful X11 focus grab
@@ -892,7 +892,8 @@ a single output bit.
 > were re-instrumented onto in the same change.
 
 **Filed 2026-08-31 (engineering-review round 1, finding ER-RT-01; confirmed by two independent
-adversarial verifications against the pinned JUCE 9.0.1 tree).**
+adversarial verifications against the then-pinned JUCE 9.0.1 tree; `juce_MouseInputSource.cpp` and
+`juce_Desktop.cpp` are byte-identical at the 9.0.2 pin — ADR-0054).**
 
 The processor registers itself as the APVTS listener for `pid::drive` and `pid::algorithm`
 (`src/PluginProcessor.cpp:34-35`), and `parameterChanged` → `updateLatency()` →

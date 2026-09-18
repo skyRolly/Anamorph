@@ -936,7 +936,7 @@ mitigation. Do not invent risks to fill the template.
   the AGPLv3 arm — the commercial JUCE tier must be in place before commercial distribution. A
   third strand —
   the Steinberg VST 3 trademark/distribution review — is separate again (the SDK *code* is MIT in
-  JUCE 9.0.1; the VST name and plug-in distribution terms are not covered by that grant).
+  JUCE 9.0.2; the VST name and plug-in distribution terms are not covered by that grant).
 - **Impact:** Blocks a commercial release outright, and leaves even a free release legally
   ambiguous for anyone who downloads, redistributes or contributes. Third-party **attribution**
   is a different obligation and is already discharged (`NOTICE` + `THIRD_PARTY_LICENSES.md`

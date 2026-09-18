@@ -18,7 +18,7 @@ not accept and which those entries predate. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [0.9.8] — 2026-09-17
+## [0.9.8] — 2026-09-18
 
 ### Changed
 - **Scrolling while you drag now adds to the drag instead of interrupting it — on every knob,

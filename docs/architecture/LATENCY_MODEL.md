@@ -55,7 +55,9 @@ genuinely not running).
 
 `getLatencySamples()` returns `latency2/4/8` for the selected factor, and 0 for Off. The concrete
 sample counts depend on JUCE's half-band filter orders (1/2/3 for 2×/4×/8×) and the sample rate;
-they are computed at `prepare()` time, not hard-coded. Measured at 48 kHz on the pinned JUCE 9.0.1:
+they are computed at `prepare()` time, not hard-coded. Measured at 48 kHz on JUCE 9.0.1 and proven
+unchanged at the pinned 9.0.2 by ADR-0054's twin dump, which hashes the reported latency beside the
+output:
 **2× = 4, 4× = 6, 8× = 6** samples (Test 52 prints the row; Test 38's landing census records the
 same three numbers and notes that 4× and 8× are equal, so an x4 → x8 switch moves no latency).
 
