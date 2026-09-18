@@ -13003,6 +13003,75 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 60th pass — 2026-09-18, round 40 (one pin, two assertions, two guards)
+
+One Devin Review finding on PR #145, `scripts/check-citations.py:R846-853`, **"pin guard accepts
+stale values": CONFIRMED in both of its parts**, both reproduced on the pre-fix tree before any code
+was changed. No dependency decision reopened; no source, test or DSP file touched.
+
+**Defect 1 — one gloss stood in for two independent assertions.** Round 39 gave `CMakeLists.txt:70`
+a gloss guard, and the six pin documents glossed their citations with the readable version. But the
+same documents also assert the immutable commit id, which lives on a DIFFERENT declared line
+(`CMakeLists.txt:71`, `ANAMORPH_JUCE_TAG`) and was in `VERSIONED_LINES` under no guard at all.
+Measured pre-fix as case H — version moved to 9.0.3 and the documents updated, tag moved and the
+documents NOT updated — the run came back clean: every document named a commit that no longer
+belonged to the pinned version, and the gate said nothing. A value-bearing gloss on one assertion
+was paying for the other.
+
+**Defect 2 — the claim comparison was containment, not identity.** `verify_glossed_anchors` asks
+whether the glossed token appears in the line, so a source reading `9.0.20` satisfies a document
+claiming `9.0.2`. Measured pre-fix as case D: `PASSES (BUG)`. The prefix case is exactly the one a
+version bump produces.
+
+**Fix — the smallest model that makes each assertion carry its own weight.** A `VERSIONED_LINES`
+value is now `(token, guard, compare)`, and the table names both declared lines:
+`ANAMORPH_JUCE_VERSION` at 70 compared `EXACT`, `ANAMORPH_JUCE_TAG` at 71 compared `ABBREV_HEX`.
+`source_value` reads the value ASSIGNED on the declared line — the first quoted string after the
+token — so the comparison is against the value, never against the rest of the line; `claim_matches`
+then decides identity. `EXACT` is string equality, which is what separates `9.0.2` from `9.0.20`.
+`ABBREV_HEX` accepts git's own abbreviation of an object id — hex, at least `MIN_ABBREV = 7` digits,
+a prefix of the full id — because `7278278…` is how the documents write that id; it normalises
+spelling, it does not weaken the value, and the floor has its own cases. Line 67's prose restates
+line 70's version rather than declaring one, so it is modelled as
+`("restates", ("CMakeLists.txt", 70))` and cross-checked against that line's live value instead of
+being asked for a gloss it cannot have.
+
+**The source stays the only source.** No version and no SHA is written into the script; every run
+re-reads both assignments out of `CMakeLists.txt`, so a bump edits the documents — which a bump
+updates anyway — and nothing else. **Historical records stay valid**: the gloss is opt-in, ADR-0022
+and ADR-0026 cite the same block naming 9.0.0 and 9.0.1, carry no gloss, and are asked for nothing
+(asserted as case F). The round-36 pairing rule is unchanged: a gloss-guarded entry with no
+value-bearing gloss covering its line is still a hard failure, and a delegated entry still prints the
+gate it defers to — now alongside the live value and the comparison kind.
+
+**Proof.** Self-test **205 → 225 cases**. Section 8g rewritten as cases A–H over a synthetic tree —
+matching documents; both values bumped with documents updated; documents left behind on either value
+alone; correct version with stale tag; correct tag with stale version; the `9.0.2` / `9.0.20` prefix;
+the historical record that claims nothing — plus the abbreviation floor, the assignment extractor,
+the restatement form, a gloss whose anchor misses the declared line, and the delegation rendering. A
+structural case derives the pin assignment lines from the real `CMakeLists.txt` by regex, so a moved
+`set(...)` fails the suite rather than silently unguarding a value. **Mutations N1–N12, all twelve
+killed**, among them: delete the tag entry; guard the version only; guard the tag only; make `EXACT`
+containment; make `EXACT` a prefix test; drop the per-line anchor test; accept a stale tag whenever
+the version is current, and its mirror; compare against the whole line instead of the assigned value;
+drop the abbreviation floor; restatement by containment; and N12, the full revert to round-36
+semantics. End-to-end on the real tree (`CMakeLists.txt` edited, then restored): both values moved
+with the documents stale → errors on both citations, exit 2; the tag alone moved → the tag claim
+fails independently in all six documents while every version claim still passes, exit 2;
+`9.0.2 → 9.0.20` → exit 2.
+
+**No self-referential suppression.** No `VERSIONED_LINES` entry names a script, and
+`scripts/check-citations.py` is not in `TRACKED`, so the new guard cannot excuse a citation of
+itself. The `GLOSS_CHECKED_DOCS` admission was re-measured as the comment demands — across the
+member documents, **54 citations, 14 glossed, 0 firing**.
+
+**Synced:** `scripts/check-citations.py`; `docs/procedures/TESTING.md` (the two guards, exact versus
+abbreviated comparison, and that one claim never pays for the other); and the six pin documents,
+each of which now carries a tag claim beside its version claim — `THIRD_PARTY_LICENSES.md`,
+`docs/HANDOVER.md`, `docs/architecture/COMPATIBILITY_MATRIX.md`, `docs/policies/DEPENDENCY_POLICY.md`,
+`docs/procedures/BUILD.md`, `docs/procedures/TROUBLESHOOTING.md`. No `CHANGELOG.md` change — nothing
+user-visible; `[0.9.8]` keeps 2026-09-18.
+
 ## 59th pass — 2026-09-17, round 39 (the pin gate learns to notice a stale version)
 
 Two Devin Review findings on PR #145, both confirmed, both fixed. No dependency decision reopened;

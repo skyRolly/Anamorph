@@ -30,7 +30,7 @@ the list inside `LICENSE.md`), then re-run the symbol probes against a fresh Rel
 [`docs/policies/DEPENDENCY_POLICY.md`](docs/policies/DEPENDENCY_POLICY.md).
 
 Pinned version at the time of writing: **JUCE 9.0.2**, commit
-`72782788ce18c2d4d760b28e0921d6ffc6431102`. Paths below are relative to that checkout
+`72782788ce18c2d4d760b28e0921d6ffc6431102` — CMakeLists.txt:71 (`72782788ce18c2d4d760b28e0921d6ffc6431102`). Paths below are relative to that checkout
 (`build/_deps/juce-src/` in a local build) unless stated otherwise.
 
 ---

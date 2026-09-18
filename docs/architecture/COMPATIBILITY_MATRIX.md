@@ -93,7 +93,7 @@ without test evidence.`
 
 | Dependency | Pin | Status | Evidence |
 |---|---|---|---|
-| JUCE | **9.0.2** — immutable commit `7278278…` (FetchContent, `GIT_SHALLOW`; ADR-0022, ADR-0026, ADR-0054) | **Verified** | CMakeLists.txt:70-72, 81-89 (`9.0.2`) |
+| JUCE | **9.0.2** — immutable commit `7278278…` (FetchContent, `GIT_SHALLOW`; ADR-0022, ADR-0026, ADR-0054) | **Verified** | CMakeLists.txt:70-72, 81-89 (`9.0.2`), CMakeLists.txt:71 (`7278278`) |
 | C++ standard | C++23 (`CMAKE_CXX_STANDARD 23`; ADR-0027) | **Verified** | CMakeLists.txt:16-18 |
 | pluginval | latest release (downloaded by script) | **Verified** | scripts/run-pluginval.sh:477 |
 

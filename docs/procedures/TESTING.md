@@ -3882,16 +3882,26 @@ concluding the gate is green. If you re-anchor a citation deliberately, declare 
 landed on its own turns the gate red on the commit that fixed it.
 
 **A dependency bump has TWO ways to fail this gate, and they mean opposite things.** A line whose
-content changes on its own schedule — `CMakeLists.txt:14`, and the JUCE pin at `:67` and `:70` — is
-declared in `VERSIONED_LINES`, which replaces the base comparison with "does this line still contain
-its stable token". That is what stops a routine bump reporting drift it did not cause. Because the
-token is version-INDEPENDENT by construction, each such entry also names **what watches the value it
-stops watching**: either the document's own gloss (`CMakeLists.txt:70-72` (`9.0.2`) — checked against
-the current source on every run, so a bump that leaves a document behind fails it by name) or another
-gate, named in the entry and printed each run. An entry declaring the gloss guard with no
-value-bearing gloss covering its line is refused as an **unpaired suppression**. So: update the pin
-AND the documents and the gate is silent; update only the pin and it names every document still
-claiming the old version.
+content changes on its own schedule — `CMakeLists.txt:14`, and the JUCE pin at `:67`, `:70` and
+`:71` — is declared in `VERSIONED_LINES`, which replaces the base comparison with "does this line
+still contain its stable token". That is what stops a routine bump reporting drift it did not cause.
+Because the token is version-INDEPENDENT by construction, each entry also names **what watches the
+value it stops watching**: the document's own gloss, another gate (named in the entry and printed
+each run), or — for a line that merely restates another — the line it restates. An entry declaring
+the gloss guard with no value-bearing gloss covering its line is refused as an **unpaired
+suppression**.
+
+**The pin is TWO independently asserted values and each is guarded on its own line.**
+`ANAMORPH_JUCE_VERSION` (`:70`) is compared **exactly** — `9.0.2` and `9.0.20` are different values —
+and `ANAMORPH_JUCE_TAG` (`:71`) as an **abbreviated object id**: the claim must be hexadecimal, at
+least 7 characters (git's own abbreviation) and a prefix of the source value, so `7278278…` is the
+same value and a different id is not. A document asserting the current pin therefore carries both
+claims, e.g. `CMakeLists.txt:70-72` (`9.0.2`) beside `CMakeLists.txt:71` (`7278278`). One claim never
+pays for the other: a bump that moves the object id with the version, documented by a document that
+updates only the version, fails on the tag alone.
+
+So: update the pin AND the documents and the gate is silent; update only the pin and it names every
+document still claiming an old value, and which value.
 
 See `CI_CD.md`. Evidence [Verified]: `.github/workflows/build.yml`; `scripts/check-citations.py`
 (§`VERSIONED_LINES`, `versioned_line_claims`, self-test section 8g).

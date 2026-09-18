@@ -739,6 +739,77 @@ DELIBERATE_REAIMS = {
 # so it carries no gloss and is asked for nothing.
 GLOSS_GUARD = "gloss"
 
+# HOW A DOCUMENTATION CLAIM IS COMPARED WITH THE VALUE READ FROM THE SOURCE.
+#
+# ADDED 2026-09-18, and the defect that forced it was a false NEGATIVE in the
+# guard this file added the day before: the claim was tested with `in`, so
+# `9.0.2` "matched" a source reading `9.0.20`, and the guard was keyed to ONE
+# line, so a pin whose VERSION was current and whose TAG was stale passed with
+# nothing reported. Substring containment is not value equality, and one line's
+# value is not another line's.
+#
+#   EXACT       string equality. `9.0.2` and `9.0.20` are different values, and
+#               that is the whole point.
+#   ABBREV_HEX  a git object id, which this repository's documents ABBREVIATE by
+#               long-standing convention (`7278278…`). The claim must be
+#               hexadecimal, at least `MIN_ABBREV` characters, and a PREFIX of
+#               the source value. That is syntax normalisation, not value
+#               weakening: a wrong object id is not a prefix of the right one,
+#               and 7 characters is git's own default abbreviation.
+EXACT = "exact"
+ABBREV_HEX = "abbrev-hex"
+MIN_ABBREV = 7
+
+
+def source_value(path, line, token):
+    """The value ASSIGNED on a declared line, read exactly — or None.
+
+    One shape, deliberately: a CMake `set(TOKEN "value" ...)`, from which this
+    takes the first double-quoted string AFTER the token. That is the assignment
+    the pin actually is, and reading it here is what keeps the source
+    authoritative — there is no copy of the version or the object id in this
+    file, and a bump therefore edits nothing here.
+
+    Returns None when the line is not an assignment of that token, which the
+    caller reports rather than treats as "no claim needed".
+    """
+    try:
+        lines = read(path).split("\n")
+    except OSError:
+        return None
+    if not 1 <= line <= len(lines):
+        return None
+    text = lines[line - 1]
+    at = text.find(token)
+    if at < 0:
+        return None
+    m = re.search(r'"([^"]*)"', text[at + len(token):])
+    return m.group(1) if m else None
+
+
+def claim_matches(claim, value, compare):
+    """Does a documentation claim name THIS value? No substring containment."""
+    if not claim or value is None:
+        return False
+    if compare == EXACT:
+        return claim == value
+    if compare == ABBREV_HEX:
+        low = claim.lower()
+        return (len(low) >= MIN_ABBREV
+                and all(c in "0123456789abcdef" for c in low)
+                and value.lower().startswith(low))
+    return False
+
+
+def restated_ok(line_text, value):
+    """Does a comment restate `value` as a WHOLE value, not as a prefix of one?
+
+    `9.0.2` must not be satisfied by a line reading `9.0.20`, which is the same
+    mistake one level down from `claim_matches`.
+    """
+    return re.search(rf"(?<![\w.]){re.escape(value)}(?![\w.])", line_text) is not None
+
+
 VERSIONED_LINES = {
     # The project version's value is guarded by the RELEASE GATE, not by a gloss:
     # `release.yml:61-63` parses `project(Anamorph VERSION x.y.z ...)` out of this
@@ -746,7 +817,8 @@ VERSIONED_LINES = {
     # refuses a tag whose version has no `## [x.y.z]` CHANGELOG section. A stale
     # version claim about line 14 therefore cannot reach a release.
     ("CMakeLists.txt", 14): ("project(Anamorph VERSION",
-                             "release.yml:61-63, 92-97 (tag == project VERSION == CHANGELOG entry)"),
+                             "release.yml:61-63, 92-97 (tag == project VERSION == CHANGELOG entry)",
+                             None),
     # The JUCE pin, added 2026-09-17 by the 9.0.1 -> 9.0.2 bump (ADR-0054), for
     # exactly the reason line 14 is here: these two lines CARRY a version, so
     # every bump edits them, and thirteen documents cite the block by a span
@@ -755,11 +827,25 @@ VERSIONED_LINES = {
     # must "re-aim by hand" onto the line numbers they already have -- and the
     # only spelling that would satisfy `DELIBERATE_REAIMS` is the one it
     # refuses, because a key naming the same spelling twice declares that
-    # nothing moved. Only the two lines an anchor actually ENDS on are declared:
-    # :71 (the SHA) is inside every cited span and is compared by no endpoint,
-    # so declaring it would turn off a check nothing is asking about.
-    ("CMakeLists.txt", 67): ("pinned by the tag's IMMUTABLE commit SHA", GLOSS_GUARD),
-    ("CMakeLists.txt", 70): ("ANAMORPH_JUCE_VERSION", GLOSS_GUARD),
+    # nothing moved. (This paragraph originally declared only the two lines an
+    # anchor ENDS on and said :71 needed none, "because it is compared by no
+    # endpoint". True about the DRIFT comparison and exactly the blind spot the
+    # next paragraph closes: a line nothing compares is a line nothing checks.)
+    # THE PIN IS TWO INDEPENDENTLY ASSERTED VALUES, AND EACH IS GUARDED ON ITS
+    # OWN LINE (2026-09-18). One gloss on a span covering both used to pay for
+    # both, so a bump that moved the version and the object id together, with a
+    # document that updated only the version, passed. `:70` and `:71` are now
+    # separate entries with separate comparisons, and a document asserting the
+    # current pin has to make BOTH claims.
+    #
+    # `:67` is the odd one and is modelled as what it is: a COMMENT that restates
+    # `:70`'s version. It asserts no value of its own, so it carries no claim
+    # requirement — but the restatement is checked against `:70`'s extracted
+    # value, so the comment cannot go stale silently either.
+    ("CMakeLists.txt", 67): ("pinned by the tag's IMMUTABLE commit SHA",
+                             ("restates", ("CMakeLists.txt", 70)), None),
+    ("CMakeLists.txt", 70): ("ANAMORPH_JUCE_VERSION", GLOSS_GUARD, EXACT),
+    ("CMakeLists.txt", 71): ("ANAMORPH_JUCE_TAG", GLOSS_GUARD, ABBREV_HEX),
 }
 
 
@@ -794,7 +880,8 @@ def anchor_still_right(tracked, base_src, now_src, a, b, a2, b2):
             continue
         if lo == hi and (tracked, lo) in VERSIONED_LINES:
             # [0] is the token; [1] is the guard that watches the value the token
-            # deliberately does not, and is verified by `verify_versioned_lines`.
+            # deliberately does not, [2] how a claim about it is compared. Both
+            # are verified by `verify_versioned_lines`.
             if VERSIONED_LINES[(tracked, lo)][0] in line_of(now_src[tracked], hi):
                 continue
             return False
@@ -813,28 +900,28 @@ def versioned_line_claims():
     A gloss only counts when it is VALUE-BEARING, which is two conditions and
     both are needed:
 
-      * it appears in the declared LINE (not merely somewhere in the cited span),
-        so it is a claim about the line whose comparison was switched off; and
-      * it is NOT part of the declared token. `(`ANAMORPH_JUCE_VERSION`)` would
-        resolve forever and watch exactly what the token already watches -- the
-        original defect wearing a gloss. What has to be named is the part the
-        token is deliberately not about, which for a versioned line is the
-        version.
+      * the citation's anchor COVERS the declared line, so it is a claim about
+        the line whose comparison was switched off, not about a neighbour that
+        happens to share the span; and
+      * the gloss EQUALS the value assigned on that line, under the entry's own
+        comparison (`claim_matches`). Equality, not containment: the predicate
+        used to be `gloss in line_text and gloss not in token`, under which
+        `9.0.2` "matched" a source reading `9.0.20`, and a claim about the
+        version paid for the object id on the next line. Both are false
+        negatives in a guard whose only job is to catch a stale claim.
+        `(`ANAMORPH_JUCE_VERSION`)` is still refused, now for the plain reason
+        that a variable name is not the value assigned to it.
 
     READS THE CURRENT TREE ONLY, no base revision, like its two siblings.
     """
     claims = {}
-    for (path, line), (token, guard) in VERSIONED_LINES.items():
+    for (path, line), (token, guard, compare) in VERSIONED_LINES.items():
         if guard != GLOSS_GUARD:
             continue
         claims[(path, line)] = found = []
-        try:
-            src = read(path).split("\n")
-        except OSError:
+        value = source_value(path, line, token)
+        if value is None:
             continue
-        if not 1 <= line <= len(src):
-            continue
-        line_text = src[line - 1]
         for doc in GLOSS_CHECKED_DOCS:
             try:
                 text = read(doc)
@@ -849,7 +936,7 @@ def versioned_line_claims():
                 if not m:
                     continue
                 gloss = m.group(1) or m.group(2)
-                if gloss and gloss in line_text and gloss not in token:
+                if claim_matches(gloss, value, compare):
                     found.append((doc, whole, gloss))
     return claims
 
@@ -861,8 +948,14 @@ def delegated_versioned_lines():
     indistinguishable from no guard at all, which is how the JUCE pin's value
     went unwatched for a whole round.
     """
-    return sorted((path, line, guard)
-                  for (path, line), (_token, guard) in VERSIONED_LINES.items()
+    def spell(guard):
+        if isinstance(guard, tuple) and guard and guard[0] == "restates":
+            other = guard[1]
+            return f"it restates {other[0]}:{other[1]}, which carries the guard"
+        return guard
+
+    return sorted((path, line, spell(guard))
+                  for (path, line), (_token, guard, _cmp) in VERSIONED_LINES.items()
                   if guard != GLOSS_GUARD)
 
 
@@ -884,7 +977,7 @@ def verify_versioned_lines():
     """
     problems = []
     claims = versioned_line_claims()
-    for (path, line), (token, guard) in sorted(VERSIONED_LINES.items()):
+    for (path, line), (token, guard, compare) in sorted(VERSIONED_LINES.items()):
         try:
             text = read(path)
         except OSError as exc:
@@ -898,11 +991,42 @@ def verify_versioned_lines():
             problems.append((path, line, token,
                              f"the line reads: {lines[line - 1].strip()[:70]!r}"))
             continue
-        if guard == GLOSS_GUARD and not claims.get((path, line)):
+
+        # A RESTATING LINE asserts no value of its own, so it needs no claim --
+        # but it must still agree with the line it restates, as a WHOLE value.
+        if isinstance(guard, tuple) and guard and guard[0] == "restates":
+            other = guard[1]
+            other_entry = VERSIONED_LINES.get(other)
+            if other_entry is None:
+                problems.append((path, line, token,
+                                 f"it restates {other[0]}:{other[1]}, which is not declared"))
+                continue
+            value = source_value(other[0], other[1], other_entry[0])
+            if value is None:
+                problems.append((path, line, token,
+                                 f"{other[0]}:{other[1]} assigns no readable value to "
+                                 f"{other_entry[0]!r}, so the restatement cannot be checked"))
+            elif not restated_ok(lines[line - 1], value):
+                problems.append((path, line, token,
+                                 f"it restates {other[0]}:{other[1]}, which now assigns "
+                                 f"{value!r} — this line does not say that"))
+            continue
+
+        if guard != GLOSS_GUARD:
+            continue
+
+        value = source_value(path, line, token)
+        if value is None:
             problems.append((path, line, token,
-                             "UNPAIRED SUPPRESSION — the entry declares the gloss guard, but no "
-                             "value-bearing glossed citation in GLOSS_CHECKED_DOCS covers this "
-                             "line, so a change to the value it carries would go unnoticed"))
+                             "the line assigns no readable value, so no claim about it can be "
+                             "compared — a gloss-guarded entry must name an assignment"))
+            continue
+        if not claims.get((path, line)):
+            problems.append((path, line, token,
+                             f"UNPAIRED SUPPRESSION — the source assigns {value!r}, and no "
+                             f"glossed citation in GLOSS_CHECKED_DOCS covering this line names "
+                             f"that value under {compare} comparison. Either no document asserts "
+                             f"it, or the ones that do are STALE"))
     return problems
 
 
@@ -955,6 +1079,10 @@ def verify_versioned_lines():
 # already glossed (`BUILD.md` -> `CMakeLists.txt:1` (`cmake_minimum_required(VERSION 3.22)`)),
 # and 0 firing. So admitting them costs no false positive today and the only
 # claims they make are the ones added deliberately with this change.
+#
+# RE-MEASURED 2026-09-18, after each of the six gained a second claim (the object
+# id, which used to ride on the version's gloss and is now asserted on its own
+# line): 54 citations, 14 glossed, 0 firing. Still no false positive.
 GLOSS_CHECKED_DOCS = (
     "docs/architecture/ARCHITECTURE.md",
     "docs/architecture/LATENCY_MODEL.md",
@@ -2118,17 +2246,21 @@ def self_test():
     check("a clean --fix succeeds", fix_exit_code(0, []), 0)
     check("an unmappable citation alone still fails --fix", fix_exit_code(1, []), 2)
 
-    # --- 8g. A VERSIONED LINE'S *VALUE* IS STILL WATCHED ----------------------
-    # THE DEFECT THIS PINS, in one sentence: the token half of a `VERSIONED_LINES`
-    # entry is version-INDEPENDENT by construction -- that is exactly what stops a
-    # routine bump failing -- so on its own it lets every document keep claiming
-    # the PREVIOUS version with this gate green. `ANAMORPH_JUCE_VERSION` is on
-    # line 70 at 9.0.1, at 9.0.2 and at every version after.
+    # --- 8g. EVERY ASSERTED PIN VALUE IS GUARDED, AND COMPARED EXACTLY --------
+    # TWO DEFECTS ARE PINNED HERE, both false NEGATIVES in the guard added the
+    # day before this section was rewritten:
     #
-    # The whole section runs on a SYNTHETIC tree, through the real functions, with
-    # `read` substituted the way section 8d substitutes `verify_reaim_targets`.
-    # A test that could only run over the real repository would have to be
-    # rewritten at the next bump, which is the property being argued against here.
+    #   1. ONE GLOSS PAID FOR TWO VALUES. The pin is two independent assignments
+    #      -- a readable version and an immutable object id -- and the guard was
+    #      keyed to the version's line alone. A bump that moved both, documented
+    #      by a document that updated only the version, passed with nothing
+    #      reported. That is the Devin regression, case (H) below.
+    #   2. CONTAINMENT WAS MISTAKEN FOR EQUALITY. `gloss in line_text` made
+    #      `9.0.2` "match" a source reading `9.0.20`, case (D).
+    #
+    # Driven over a SYNTHETIC tree through the real functions, with `read`
+    # substituted the way section 8d substitutes `verify_reaim_targets`, so the
+    # cases survive the next real bump unchanged.
     saved_read = globals()["read"]
     saved_vl3, saved_docs3, saved_tracked3 = (dict(VERSIONED_LINES),
                                               GLOSS_CHECKED_DOCS, TRACKED)
@@ -2137,100 +2269,158 @@ def self_test():
         globals()["read"] = lambda path: tree[path] if path in tree else saved_read(path)
         globals()["TRACKED"] = TRACKED + ("PIN.cmake",)
         globals()["GLOSS_CHECKED_DOCS"] = ("PINDOC.md",)
-        VERSIONED_LINES.clear()
-        VERSIONED_LINES[("PIN.cmake", 2)] = ("PIN_VERSION", GLOSS_GUARD)
 
-        def source(v):
-            return f'# the pin\nset(PIN_VERSION "{v}" CACHE STRING "readable version")\n'
+        SHA_A = "abcdef0123456789abcdef0123456789abcdef01"
+        SHA_B = "1234567890abcdef1234567890abcdef12345678"
 
-        def doc(claimed):
-            return f"The pin is {claimed} — PIN.cmake:2 (`{claimed}`).\n"
+        def declare():
+            VERSIONED_LINES.clear()
+            VERSIONED_LINES[("PIN.cmake", 2)] = ("PIN_VERSION", GLOSS_GUARD, EXACT)
+            VERSIONED_LINES[("PIN.cmake", 3)] = ("PIN_TAG", GLOSS_GUARD, ABBREV_HEX)
 
-        # (a) TODAY. The document's claim matches the source: nothing to report,
-        #     from either half of the pairing.
-        tree["PIN.cmake"], tree["PINDOC.md"] = source("1.0.0"), doc("1.0.0")
-        check("a pin whose documentation matches passes the gloss check",
+        def source(v, sha):
+            return ("# the pin\n"
+                    f'set(PIN_VERSION "{v}" CACHE STRING "readable version")\n'
+                    f'set(PIN_TAG "{sha}" CACHE STRING "commit of tag {v}")\n')
+
+        def doc(v_claim, sha_claim):
+            return (f"The pin is {v_claim} — PIN.cmake:2 (`{v_claim}`), "
+                    f"commit — PIN.cmake:3 (`{sha_claim}`).\n")
+
+        def clean():
+            return not verify_versioned_lines() and not verify_glossed_anchors()
+
+        declare()
+
+        # (A) MATCHING VERSION AND MATCHING TAG.
+        tree["PIN.cmake"], tree["PINDOC.md"] = source("9.0.2", SHA_A), doc("9.0.2", SHA_A[:7])
+        check("A — a document matching both asserted values passes", clean(), True)
+        check("A — and each line is watched on its own",
+              (len(versioned_line_claims()[("PIN.cmake", 2)]),
+               len(versioned_line_claims()[("PIN.cmake", 3)])), (1, 1))
+
+        # (B) VERSION UPDATED, TAG STALE — the shape Devin reported. The version
+        #     claim is live and must NOT pay for the object id.
+        tree["PIN.cmake"] = source("9.0.3", SHA_B)
+        tree["PINDOC.md"] = doc("9.0.3", SHA_A[:7])
+        check("B — a stale tag fails even though the version is current", clean(), False)
+        check("B — the version stays paired…",
+              len(versioned_line_claims()[("PIN.cmake", 2)]), 1)
+        check("B — …and the TAG is the line reported unpaired",
+              [(pth, ln) for pth, ln, _t, _w in verify_versioned_lines()], [("PIN.cmake", 3)])
+
+        # (C) TAG UPDATED, VERSION STALE — the mirror, and it must fail on the
+        #     version alone.
+        tree["PINDOC.md"] = doc("9.0.2", SHA_B[:7])
+        check("C — a stale version fails even though the tag is current", clean(), False)
+        check("C — the tag stays paired…",
+              len(versioned_line_claims()[("PIN.cmake", 3)]), 1)
+        check("C — …and the VERSION is the line reported unpaired",
+              [(pth, ln) for pth, ln, _t, _w in verify_versioned_lines()], [("PIN.cmake", 2)])
+
+        # (D) 9.0.2 CLAIMED, 9.0.20 ASSIGNED. Containment says yes; equality says
+        #     no, and equality is the correct answer.
+        tree["PIN.cmake"] = source("9.0.20", SHA_A)
+        tree["PINDOC.md"] = doc("9.0.2", SHA_A[:7])
+        check("D — a claim of 9.0.2 does not match a source of 9.0.20", clean(), False)
+        check("D — the mismatch is on the version line",
+              [(pth, ln) for pth, ln, _t, _w in verify_versioned_lines()], [("PIN.cmake", 2)])
+        check("D — and the predicate itself says so",
+              claim_matches("9.0.2", "9.0.20", EXACT), False)
+
+        # (E) THE OTHER DIRECTION. Containment already rejected this one; it is
+        #     asserted so a "fix" that swapped the operands cannot pass.
+        tree["PIN.cmake"] = source("9.0.2", SHA_A)
+        tree["PINDOC.md"] = doc("9.0.20", SHA_A[:7])
+        check("E — a claim of 9.0.20 does not match a source of 9.0.2", clean(), False)
+        check("E — and the predicate itself says so",
+              claim_matches("9.0.20", "9.0.2", EXACT), False)
+
+        # (F) A HISTORICAL RECORD IS NOT A CURRENT CLAIM. ADR-0022 and ADR-0026
+        #     cite this block and name 9.0.0 and 9.0.1 on purpose. They are not
+        #     opted in to the gloss check, so they carry no claim and are asked
+        #     for nothing -- and their citations keep resolving, because the
+        #     drift suppression is what `VERSIONED_LINES` is for.
+        tree["PIN.cmake"] = source("9.0.2", SHA_A)
+        tree["PINDOC.md"] = doc("9.0.2", SHA_A[:7])
+        tree["ADR-OLD.md"] = "At the time this was written the pin was 9.0.1 — PIN.cmake:2-3.\n"
+        check("F — the current documents still pass", clean(), True)
+        check("F — a historical record naming 9.0.1 is asked for nothing",
+              glossed_problems_in("ADR-OLD.md", tree["ADR-OLD.md"]), [])
+        check("F — …and its anchor is still excused from the drift comparison",
+              anchor_still_right("PIN.cmake",
+                                 {"PIN.cmake": source("9.0.1", SHA_B).split("\n")},
+                                 {"PIN.cmake": source("9.0.2", SHA_A).split("\n")},
+                                 2, None, 2, None), True)
+        check("F — and a historical record is NOT counted as a current claim",
+              all(d != "ADR-OLD.md"
+                  for v in versioned_line_claims().values() for d, _w, _g in v), True)
+
+        # (G) A TOKEN-ONLY GLOSS. `(`PIN_VERSION`)` resolves forever; a variable
+        #     name is not the value assigned to it.
+        tree["PINDOC.md"] = ("The pin is PIN.cmake:2 (`PIN_VERSION`), "
+                             f"commit — PIN.cmake:3 (`{SHA_A[:7]}`).\n")
+        check("G — a gloss naming only the token still resolves",
               verify_glossed_anchors(), [])
-        check("...and its suppression is paired", verify_versioned_lines(), [])
-        check("...by exactly one value-bearing gloss",
+        check("G — …but establishes no value-bearing claim",
+              len(versioned_line_claims()[("PIN.cmake", 2)]), 0)
+        check("G — …so the version line is reported unpaired",
+              [(pth, ln) for pth, ln, _t, _w in verify_versioned_lines()], [("PIN.cmake", 2)])
+
+        # (H) THE PRIMARY REGRESSION, isolated: the document's ONLY claim is the
+        #     version, and it is correct. The tag must still fail.
+        tree["PINDOC.md"] = "The pin is 9.0.2 — PIN.cmake:2-3 (`9.0.2`).\n"
+        check("H — a correct version gloss does not pay for the object id",
+              [(pth, ln) for pth, ln, _t, _w in verify_versioned_lines()], [("PIN.cmake", 3)])
+        check("H — the version line is paired by it, so the failure is the tag's alone",
               len(versioned_line_claims()[("PIN.cmake", 2)]), 1)
 
-        # (b) A ROUTINE BUMP, DOCUMENTED. The source line necessarily changed and
-        #     the document moved with it. This is requirement 1: no false drift.
-        #     `anchor_still_right` is driven on the same call shape both check
-        #     paths use, with the line's text different on the two sides.
-        tree["PIN.cmake"], tree["PINDOC.md"] = source("1.0.1"), doc("1.0.1")
-        check("a documented bump reports nothing", verify_glossed_anchors(), [])
-        check("...and is still excused from the drift comparison",
-              anchor_still_right("PIN.cmake",
-                                 {"PIN.cmake": source("1.0.0").split("\n")},
-                                 {"PIN.cmake": source("1.0.1").split("\n")},
-                                 2, None, 2, None), True)
+        # ABBREVIATION IS SYNTAX, NOT SLACK. A short prefix, a non-hex claim and a
+        # wrong id are all refused; git's own 7-character abbreviation is not.
+        check("an abbreviated object id is the same value",
+              claim_matches(SHA_A[:7], SHA_A, ABBREV_HEX), True)
+        check("…the full id too", claim_matches(SHA_A, SHA_A, ABBREV_HEX), True)
+        check("…but a 6-character prefix is below git's own abbreviation",
+              claim_matches(SHA_A[:6], SHA_A, ABBREV_HEX), False)
+        check("…a different id is not a prefix", claim_matches(SHA_B[:7], SHA_A, ABBREV_HEX), False)
+        check("…and a non-hex claim is not an object id",
+              claim_matches("9.0.2xx", SHA_A, ABBREV_HEX), False)
+        check("an object id is NOT compared by containment",
+              claim_matches(SHA_A[8:20], SHA_A, ABBREV_HEX), False)
 
-        # (c) THE FINDING. The source moved on and the document did not. This is
-        #     requirement 2, and BOTH halves catch it independently: the gloss no
-        #     longer resolves, and the line's suppression is left with no
-        #     value-bearing claim at all.
-        tree["PINDOC.md"] = doc("1.0.0")
-        stale = verify_glossed_anchors()
-        check("documentation left on the old version is REJECTED", len(stale), 1)
-        check("...naming what it still claims", stale[0][2], "1.0.0")
-        check("...and the suppression is reported unpaired",
-              len(verify_versioned_lines()), 1)
-        check("...as an unpaired suppression, not as a missing token",
-              "UNPAIRED" in verify_versioned_lines()[0][3], True)
+        # THE VALUE IS READ FROM THE ASSIGNMENT, not from the line.
+        check("the extractor takes the assigned value",
+              source_value("PIN.cmake", 2, "PIN_VERSION"), "9.0.2")
+        check("…the tag's too", source_value("PIN.cmake", 3, "PIN_TAG"), SHA_A)
+        check("…and a line that assigns nothing yields None",
+              source_value("PIN.cmake", 1, "PIN_VERSION"), None)
 
-        # (d) THE MUTATION. Reduce the entry to what it was before this change --
-        #     a stable token and no guard on the value -- over the SAME stale
-        #     document. Everything above goes quiet, which is the defect, and is
-        #     why these cases fail if the pairing is ever removed.
-        VERSIONED_LINES[("PIN.cmake", 2)] = ("PIN_VERSION", "nothing watches it")
-        check("MUTANT — token-only: the stale claim stops being reported",
-              verify_versioned_lines(), [])
-        globals()["GLOSS_CHECKED_DOCS"] = ()
-        check("MUTANT — and with the document un-opted-in, nothing reports it at all",
-              verify_glossed_anchors(), [])
-        globals()["GLOSS_CHECKED_DOCS"] = ("PINDOC.md",)
-        VERSIONED_LINES[("PIN.cmake", 2)] = ("PIN_VERSION", GLOSS_GUARD)
+        # A RESTATING LINE carries no claim of its own but must agree, as a WHOLE
+        # value -- `9.0.2` is not satisfied by a comment reading `9.0.20`.
+        VERSIONED_LINES[("PIN.cmake", 1)] = ("# the pin",
+                                             ("restates", ("PIN.cmake", 2)), None)
+        tree["PINDOC.md"] = doc("9.0.2", SHA_A[:7])
+        tree["PIN.cmake"] = "# the pin 9.0.2\n" + source("9.0.2", SHA_A).split("\n", 1)[1]
+        check("a comment that restates the version agrees", verify_versioned_lines(), [])
+        tree["PIN.cmake"] = "# the pin 9.0.20\n" + source("9.0.2", SHA_A).split("\n", 1)[1]
+        check("a restatement of 9.0.20 does not satisfy a value of 9.0.2",
+              [(pth, ln) for pth, ln, _t, _w in verify_versioned_lines()], [("PIN.cmake", 1)])
+        check("…and the delegation is printed rather than hidden",
+              [g for _p, _l, g in delegated_versioned_lines() if "restates" in g] != [], True)
+        del VERSIONED_LINES[("PIN.cmake", 1)]
 
-        # (e) A GLOSS THAT ONLY RESTATES THE TOKEN IS NOT A GUARD. `(`PIN_VERSION`)`
-        #     resolves forever, so accepting it would be the original defect with a
-        #     gloss painted on it. The claim has to name the part the token is
-        #     deliberately not about.
-        tree["PINDOC.md"] = "The pin is PIN.cmake:2 (`PIN_VERSION`).\n"
-        check("a gloss naming only the token still resolves", verify_glossed_anchors(), [])
-        check("...but does NOT count as watching the value",
-              len(versioned_line_claims()[("PIN.cmake", 2)]), 0)
-        check("...so the suppression is still reported unpaired",
-              len(verify_versioned_lines()), 1)
-
-        # (f) A GLOSS ON A NEIGHBOURING LINE DOES NOT PAY FOR THIS ONE. The claim
-        #     must land on the declared line, not merely inside the cited span --
-        #     otherwise a wide anchor would satisfy every declaration it covers.
-        tree["PINDOC.md"] = "Header at PIN.cmake:1-2 (`the pin`).\n"
-        check("a gloss matching only a neighbouring line does not pair the entry",
-              len(versioned_line_claims()[("PIN.cmake", 2)]), 0)
-
-        # (h) AND IT MUST BE A CLAIM ABOUT *THIS* LINE, not merely a string that
-        #     happens to occur on it. Here the gloss names the live version but
-        #     the citation anchors line 1, so the author is saying what is on line
-        #     1 -- which is not a statement about the line whose comparison was
-        #     switched off. Dropping the anchor test would accept it, and this is
-        #     the case that notices: `(f)` above cannot, because its anchor `1-2`
-        #     does cover the declared line.
-        tree["PINDOC.md"] = "Header at PIN.cmake:1 (`1.0.1`).\n"
+        # A GLOSS WHOSE ANCHOR MISSES THE DECLARED LINE pays for nothing, even
+        # when the value it names is the right one.
+        tree["PIN.cmake"] = source("9.0.2", SHA_A)
+        tree["PINDOC.md"] = "Header at PIN.cmake:1 (`9.0.2`).\n"
         check("a gloss whose anchor misses the declared line does not pair it",
               len(versioned_line_claims()[("PIN.cmake", 2)]), 0)
-        check("...even though the value it names IS on the declared line",
-              "1.0.1" in tree["PIN.cmake"].split("\n")[1], True)
 
-        # (g) A DELEGATED GUARD IS COUNTABLE, never silent -- the state the JUCE
-        #     pin was in is precisely a delegation nobody could see.
-        VERSIONED_LINES[("PIN.cmake", 2)] = ("PIN_VERSION", "guarded by the release gate")
+        # A DELEGATED GUARD IS COUNTABLE, never silent.
+        VERSIONED_LINES[("PIN.cmake", 2)] = ("PIN_VERSION", "guarded by the release gate", None)
         check("a delegated guard is reported for the operator to read",
-              delegated_versioned_lines(), [("PIN.cmake", 2, "guarded by the release gate")])
-        check("...and a gloss-guarded entry is not in that list",
-              [e for e in delegated_versioned_lines() if e[2] == GLOSS_GUARD], [])
+              [e for e in delegated_versioned_lines() if e[:2] == ("PIN.cmake", 2)],
+              [("PIN.cmake", 2, "guarded by the release gate")])
     finally:
         globals()["read"] = saved_read
         globals()["TRACKED"] = saved_tracked3
@@ -2246,6 +2436,22 @@ def self_test():
     # a table edit that drops the last watcher fails the self-test too.
     check("every gloss-guarded line in the real table has a live watcher",
           [k for k, v in versioned_line_claims().items() if not v], [])
+
+    # AND EVERY ASSERTED PIN VALUE IS DECLARED, found by reading the pin block
+    # rather than by listing line numbers here -- the shape that lets an entry be
+    # DELETED without anything noticing, which is the whole defect this section
+    # exists for. Only the variable names are named here; the values stay in
+    # `CMakeLists.txt`.
+    pin_assignments = sorted(
+        n for n, line in enumerate(read("CMakeLists.txt").split("\n"), start=1)
+        if re.match(r"\s*set\(ANAMORPH_JUCE_(VERSION|TAG)\b", line))
+    check("the JUCE pin assigns two independent values", len(pin_assignments), 2)
+    check("...and every one of them is declared with its own exact-value guard",
+          [n for n in pin_assignments
+           if VERSIONED_LINES.get(("CMakeLists.txt", n), (None, None, None))[1] != GLOSS_GUARD
+           or VERSIONED_LINES[("CMakeLists.txt", n)][2] not in (EXACT, ABBREV_HEX)], [])
+    check("...and the two guards are not the same comparison",
+          len({VERSIONED_LINES[("CMakeLists.txt", n)][2] for n in pin_assignments}), 2)
 
     # ...AND THE WIRING, not only the two helpers. Pinning the helpers alone left
     # the actual defect reachable: restoring `if reaim_problems:` at the call
@@ -2347,22 +2553,22 @@ def self_test():
     saved_vl = dict(VERSIONED_LINES)
     try:
         VERSIONED_LINES.clear()
-        VERSIONED_LINES[("CMakeLists.txt", 14)] = ("project(Anamorph VERSION", "elsewhere")
+        VERSIONED_LINES[("CMakeLists.txt", 14)] = ("project(Anamorph VERSION", "elsewhere", None)
         check("the declared line is live on the real tree", verify_versioned_lines(), [])
 
         # It must FAIL when the line stops being what it claims -- otherwise the
         # entry is an exemption rather than a substituted assertion.
         VERSIONED_LINES.clear()
-        VERSIONED_LINES[("CMakeLists.txt", 14)] = ("this-token-is-not-on-line-14", "elsewhere")
+        VERSIONED_LINES[("CMakeLists.txt", 14)] = ("this-token-is-not-on-line-14", "elsewhere", None)
         check("a token that is not there is reported", len(verify_versioned_lines()), 1)
 
         # Out-of-range and unreadable are findings, never tracebacks -- the same
         # rule section 8c applies to the gloss list.
         VERSIONED_LINES.clear()
-        VERSIONED_LINES[("CMakeLists.txt", 10 ** 7)] = ("x", "elsewhere")
+        VERSIONED_LINES[("CMakeLists.txt", 10 ** 7)] = ("x", "elsewhere", None)
         check("a line past the end of the file is reported", len(verify_versioned_lines()), 1)
         VERSIONED_LINES.clear()
-        VERSIONED_LINES[("no/such/file.txt", 1)] = ("x", "elsewhere")
+        VERSIONED_LINES[("no/such/file.txt", 1)] = ("x", "elsewhere", None)
         check("an unreadable file is reported, not raised", len(verify_versioned_lines()), 1)
     finally:
         VERSIONED_LINES.clear()
@@ -2400,7 +2606,7 @@ def self_test():
     saved_vl2 = dict(VERSIONED_LINES)
     try:
         VERSIONED_LINES.clear()
-        VERSIONED_LINES[("F", 1)] = ("VERSION", "elsewhere")
+        VERSIONED_LINES[("F", 1)] = ("VERSION", "elsewhere", None)
         # `line_of` takes a LIST of lines, which is the shape both check paths
         # hand it (`base_src`/`now_src` hold split sources).
         base = {"F": ["project(X VERSION 1.0)", "name X"]}
