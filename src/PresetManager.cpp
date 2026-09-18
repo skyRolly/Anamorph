@@ -263,6 +263,171 @@ namespace
     }
 }
 
+namespace
+{
+    // ADR-0055. THE BYTE-LEVEL HALF OF THE PRESET BOUNDARY.
+    //
+    // It steps over every XML shape that may legally contain a `<` or a `>` -- a comment, a CDATA
+    // section, a processing instruction (which is also how the `<?xml ... ?>` declaration arrives),
+    // and a quoted attribute value -- because miscounting any of them would refuse a legitimate
+    // preset, and a guard that rejects real files is worse than the hole it closes.
+
+    // Advance past the next occurrence of `terminator`. False means the construct never ended,
+    // which is not a document worth handing to a parser.
+    bool skipPast (juce::String::CharPointerType& p, const char* terminator, int length)
+    {
+        for (; ! p.isEmpty(); ++p)
+            if (juce::CharacterFunctions::compareUpTo (p, juce::CharPointer_ASCII (terminator), length) == 0)
+            {
+                p += length;
+                return true;
+            }
+        return false;
+    }
+
+    bool startsWith (juce::String::CharPointerType p, const char* lit, int length)
+    {
+        return juce::CharacterFunctions::compareUpTo (p, juce::CharPointer_ASCII (lit), length) == 0;
+    }
+
+    // True when `text` is ONE well-delimited XML document, nested no deeper than `maxDepth`,
+    // carrying no DOCTYPE, and followed by nothing but whitespace, comments and processing
+    // instructions. It answers ONLY those questions: what the document says is
+    // `presetDocumentIsWellFormed`'s job, and what its values mean is `normalisedFromSavedTree`'s.
+    bool presetTextIsAdmissible (const juce::String& text, int maxDepth)
+    {
+        auto p = text.getCharPointer();
+        int  depth = 0;
+        bool sawRoot = false, rootClosed = false;
+
+        while (! p.isEmpty())
+        {
+            const auto c = *p;
+
+            if (c != '<')
+            {
+                // Character data. Inside an element it is merely content this format does not use
+                // (and which `presetDocumentIsWellFormed` refuses by name); OUTSIDE every element
+                // only whitespace may appear, and that single rule is what refuses a second
+                // document's prose, a trailing sentence and a trailing run of binary alike.
+                if (depth == 0 && ! juce::CharacterFunctions::isWhitespace (c)) return false;
+                ++p;
+                continue;
+            }
+
+            if (startsWith (p, "<!--", 4))
+            {
+                p += 4;
+                if (! skipPast (p, "-->", 3)) return false;
+                continue;
+            }
+            if (startsWith (p, "<![CDATA[", 9))
+            {
+                if (depth == 0) return false;          // a CDATA section outside every element
+                p += 9;
+                if (! skipPast (p, "]]>", 3)) return false;
+                continue;
+            }
+            if (p[1] == '?')                           // `<?xml ... ?>`, and any other instruction
+            {
+                p += 2;
+                if (! skipPast (p, "?>", 2)) return false;
+                continue;
+            }
+            if (p[1] == '!')                           // `<!DOCTYPE ...`: the hang and the file read
+                return false;
+
+            if (p[1] == '/')                           // a closing tag
+            {
+                if (depth == 0) return false;
+                p += 2;
+                if (! skipPast (p, ">", 1)) return false;
+                if (--depth == 0) rootClosed = true;
+                continue;
+            }
+
+            // An opening tag. It is walked to its own `>` with quotes honoured, so a `>` inside an
+            // attribute value cannot end it early and a `<` inside one cannot open a phantom
+            // element.
+            if (rootClosed) return false;              // a SECOND top-level element
+            ++p;
+            juce::juce_wchar quote = 0;
+            bool selfClosing = false, closed = false;
+            for (; ! p.isEmpty(); ++p)
+            {
+                const auto t = *p;
+                if (quote != 0)              { if (t == quote) quote = 0; continue; }
+                if (t == '"' || t == '\'')   { quote = t; continue; }
+                if (t == '/' && p[1] == '>') { selfClosing = closed = true; p += 2; break; }
+                if (t == '>')                { closed = true; ++p; break; }
+            }
+            if (! closed) return false;
+
+            if (depth == 0) sawRoot = true;
+            if (! selfClosing)
+            {
+                if (++depth > maxDepth) return false;
+            }
+            else if (depth == 0)
+            {
+                rootClosed = true;                     // `<ANAMORPH/>`: opened and closed at once
+            }
+        }
+
+        return sawRoot && rootClosed && depth == 0;
+    }
+
+    // ADR-0055. THE DOCUMENT-SHAPE HALF, checked on the parsed ELEMENT rather than on the
+    // ValueTree, for two reasons a ValueTree cannot answer: `ValueTree::fromXml` DROPS a text
+    // child (tripping `jassertfalse` on the way in a debug build), and a ValueTree's property set
+    // collapses a duplicated attribute to one. Both are shapes a preset must not have, so the
+    // question is asked where they are still visible.
+    //
+    // The three literals mirror JUCE's own `AudioProcessorValueTreeState::valueType`,
+    // `idPropertyID` and `valuePropertyID`, which are private to that class; State test 1 pins the
+    // spelling against the real serialized tree, so they cannot drift silently.
+    bool presetDocumentIsWellFormed (const juce::XmlElement& root)
+    {
+        juce::StringArray ids;
+        for (auto* e = root.getFirstChildElement(); e != nullptr; e = e->getNextElement())
+        {
+            if (e->isTextElement())            return false;   // text or CDATA inside the root
+            if (! e->hasTagName ("PARAM"))     return false;   // any other element
+            if (e->getNumChildElements() != 0) return false;   // a PARAM node is a leaf
+
+            // THE ATTRIBUTE SET, COUNTED RATHER THAN SIZED, so one rule covers three failures at
+            // once: an attribute this format does not define, a missing `id` or `value`, and the
+            // SAME attribute written twice -- which a ValueTree would silently collapse to one and
+            // a sized check would miss whenever a duplicate replaced an absentee.
+            //
+            // `raw` IS ONE OF OURS, and this round measured that rather than assuming it. The
+            // comment at `soundSignatureAfterRestoring` said a preset file never carries `raw`;
+            // it does, whenever the preset is saved after an undo, a redo or an A/B apply, because
+            // those install a state-set tree that carries `raw` through `replaceState` and
+            // `saveUser`'s `apvts.copyState()` then writes the live tree as it stands. Measured on
+            // `0e32e65`: State tests 10, 18 and 35 all save such a file. The LOADER still resolves
+            // a preset through `value` alone (`normalisedFromSavedTree`), so nothing about the
+            // sound depends on it -- but refusing the attribute would have refused files this
+            // plug-in itself writes, which is the one thing this boundary must never do.
+            int idCount = 0, valueCount = 0, rawCount = 0;
+            for (int a = 0; a < e->getNumAttributes(); ++a)
+            {
+                const auto& attribute = e->getAttributeName (a);
+                if      (attribute == "id")    ++idCount;
+                else if (attribute == "value") ++valueCount;
+                else if (attribute == "raw")   ++rawCount;
+                else return false;
+            }
+            if (idCount != 1 || valueCount != 1 || rawCount > 1) return false;
+
+            const auto id = e->getStringAttribute ("id");
+            if (id.isEmpty() || ids.contains (id)) return false;   // nameless, or a second node
+            ids.add (id);                                          // claiming the same parameter
+        }
+        return true;
+    }
+}
+
 // A preset file is accepted only when it is a well-formed document AND its root
 // is the type this plug-in writes (`apvts.state.getType()`, "ANAMORPH"). Both
 // conditions fail the same way -- an invalid tree -- because to a loader they are
@@ -288,12 +453,56 @@ namespace
 // `apvts.state.getType()` and refuses a foreign-typed tree precisely as it
 // refuses an unparsable one -- and a preset is the same kind of payload asking
 // the same question, so it gets the same answer rather than a second one.
+//
+// ADR-0055 (0.9.9) ADDED A BOUNDARY IN FRONT OF THAT RULE AND LEFT THE RULE ITSELF ALONE.
+// The root test above answers "is this one of ours"; it never answered "is this ONE document,
+// and is it safe to hand to a parser at all". Measured on 0e32e65 against the pinned JUCE 9.0.2,
+// three things went wrong before this function ever held a tree, and one after it:
+//
+//   * TWO COMPLETE DOCUMENTS IN ONE FILE LOADED, AND THE FIRST WON. `parseDocumentElement` reads
+//     ONE element and returns it; nothing looks at what follows. Preset A followed by Preset B
+//     applied A, and so did a valid preset followed by prose, by a stray `<JUNK/>`, or by raw
+//     binary. The file is corrupt and it was being applied.
+//   * NESTING CRASHED THE PARSER. `readNextElement` and `readChildElements` are mutually
+//     recursive with no bound: SIGSEGV between 25 000 and 30 000 levels on an 8 MB stack, and
+//     between 2 500 and 3 000 -- a 21 KB file -- on a 1 MB one.
+//   * A DOCTYPE HUNG THE MESSAGE THREAD, AND READ ARBITRARY FILES. A 220-byte file whose DOCTYPE
+//     defines recursive entities left `XmlDocument::expandEntity` running after 60 s; and
+//     `<!DOCTYPE x SYSTEM "...">` resolves through `FileInputSource::createInputStreamFor` ->
+//     `File::getSiblingFile`, which honours an absolute path and `../` traversal alike.
+//   * A FOREIGN CHILD, A DUPLICATED `id` OR A TEXT NODE WAS SILENTLY IGNORED -- so a document
+//     that means two different things at once was accepted and half-applied.
+//
+// The first three are properties of the BYTES and are refused before `juce::parseXML` sees them,
+// because a parser that has already crashed or hung cannot be corrected afterwards. The fourth is
+// a property of the parsed document and is refused after. What is NOT refused is every tolerance
+// this format documents: a missing `PARAM` still means that parameter's default, a malformed
+// `value` still resolves through `SerializedNumber.h`, an `id` this build does not know still
+// loads, `<ANAMORPH/>` with no children at all is still a valid preset that means "all defaults",
+// and the root's own attributes are still free. Those are forward and backward compatibility, and
+// narrowing them would break real files rather than corrupt ones.
 juce::ValueTree PresetManager::parseSoundFile (const juce::File& f) const
 {
-    if (auto xml = juce::parseXML (f))
-        if (auto t = juce::ValueTree::fromXml (*xml); t.hasType (apvts.state.getType()))
-            return t;
-    return {};
+    // Size first: it is the only question answerable without reading anything, and it is what
+    // bounds the read below. `getDocumentElement` takes the WHOLE file into memory before parsing
+    // -- measured peak RSS tracked file size linearly to 264 MB for a 256 MB file, with no cap --
+    // and a preset this plug-in writes is 1525 bytes.
+    if (! f.existsAsFile() || f.getSize() > maxPresetBytes) return {};
+
+    const auto text = f.loadFileAsString();
+    if (! presetTextIsAdmissible (text, maxPresetDepth)) return {};
+
+    // PARSED FROM THE TEXT, NOT FROM THE FILE, and that is a second guard rather than a tidying:
+    // an `XmlDocument` built from a string carries no `InputSource`, so `getFileContents` -- the
+    // external-entity door measured above -- has nothing to open even if a DOCTYPE ever reached
+    // it. The pre-scan refuses one anyway; this makes the refusal structural as well as textual.
+    // `loadFileAsString` resolves a UTF-8 or UTF-16 byte-order mark exactly as the file-based
+    // parse did, so nothing a legitimate preset can carry is read differently.
+    auto xml = juce::parseXML (text);
+    if (xml == nullptr) return {};
+    if (! xml->hasTagName (apvts.state.getType().toString())) return {};
+    if (! presetDocumentIsWellFormed (*xml)) return {};
+    return juce::ValueTree::fromXml (*xml);
 }
 
 // A preset file is user-editable text and `nan` parses, so a value is adopted only
@@ -478,7 +687,7 @@ juce::String PresetManager::soundSignatureForSavedTree (const juce::AudioProcess
     return sig;
 }
 
-void PresetManager::load (int index)
+PresetManager::OpResult PresetManager::load (int index, std::function<void (bool)> onComplete)
 {
     // ADR-0008 round 25 (R1279-1283), ADR-0036 round 28 (R802-807): not inside a user transaction,
     // not inside a dispatch of ours, and not while a whole-sound replacement is in flight. The gate
@@ -486,12 +695,18 @@ void PresetManager::load (int index)
     // (§23) so it runs BEFORE anything is derived rather than after -- with the non-blocking arm.
     // The replacement lock is HELD from here to the end of the load, which is what makes
     // `applyDefaults`' and `applySoundTree`'s own acquisitions free recursive re-entries.
-    const auto admit = stateCommandAdmission ([this, index] { load (index); });
-    if (! admit.admitted()) return;
-    loadAdopted (index);
+    //
+    // ROUND 43 (0.9.9): the deferral carries the completion, so a load queued behind a transaction
+    // still answers its caller exactly once when it finally runs -- the same shape `loadFile` has
+    // had since round 27, and the reason the retry re-enters this PUBLIC entry point rather than
+    // the core.
+    const auto admit = stateCommandAdmission ([this, index, cb = onComplete]
+                                              { (void) load (index, cb); });
+    if (! admit.admitted()) return OpResult::deferred;
+    return loadAdopted (index, std::move (onComplete));
 }
 
-void PresetManager::loadAdopted (int index)
+PresetManager::OpResult PresetManager::loadAdopted (int index, std::function<void (bool)> onComplete)
 {
     // ADR-0008 round 25 (R1279-1283), round 28: guarded separately because it is public and both
     // `load` and `step` reach the row through it; when they deferred, this runs with nothing to
@@ -499,10 +714,20 @@ void PresetManager::loadAdopted (int index)
     // NO DRAIN (`drainFirst == false`), which is the whole of what "Adopted" names: `step` derived
     // its row from the session the outer drain established, and draining again here would adopt a
     // restore AFTER that row was chosen and load it onto the wrong session (§23).
-    const auto admit = stateCommandAdmission ([this, index] { loadAdopted (index); }, /*drainFirst*/ false);
-    if (! admit.admitted()) return;
-    if (index < 0 || index >= list.size()) return;
-    const auto& e = list.getReference (index);
+    const auto admit = stateCommandAdmission ([this, index, cb = onComplete]
+                                              { (void) loadAdopted (index, cb); }, /*drainFirst*/ false);
+    if (! admit.admitted()) return OpResult::deferred;
+
+    // ROUND 43 (0.9.9, ADR-0055). EVERY REFUSAL BELOW IS NOW REPORTED. It used to be a bare
+    // `return`, so the editor could not tell a load that happened from one that did not; the rule
+    // that a refusal is a clean no-op is unchanged, and all that is added is that it says so.
+    const auto fail = [&onComplete] { if (onComplete) onComplete (false); return OpResult::failed; };
+
+    if (index < 0 || index >= list.size()) return fail();
+    // COPIED, NOT REFERENCED. The missing-file branch below calls `refresh()`, which clears and
+    // rebuilds `list` -- a reference into it would dangle from that statement on. The Entry is four
+    // small members.
+    const Entry e = list.getReference (index);
 
     // Resolve EVERYTHING that can fail BEFORE opening the undo bracket: a failure must be a
     // clean no-op, never an onAboutToLoad() with no matching onLoaded() (which would flush undo
@@ -518,14 +743,27 @@ void PresetManager::loadAdopted (int index)
         // at a preset whose sound was never applied.
         factory = findFactory (e.factoryId);
         jassert (factory != nullptr);
-        if (factory == nullptr) return;
+        if (factory == nullptr) return fail();
     }
     else
     {
-        // Unparsable OR foreign-rooted -> the same clean no-op, resolved here so
-        // it lands before onAboutToLoad() like every other failure (ER-STATE-24).
+        // MISSING AND INVALID ARE DIFFERENT EVENTS (0.9.9, ADR-0055), and only one of them is
+        // about the file's CONTENTS. A row whose file has been deleted or renamed since the last
+        // scan is describing something that is no longer there, so the list is rescanned and the
+        // row goes with it. A row whose file is still on disk but is not a readable preset KEEPS
+        // its row: the user can see the file, the plug-in must not quietly disagree about whether
+        // it exists, and nothing here ever deletes or hides a file the user put in the folder.
+        if (! e.file.existsAsFile())
+        {
+            refresh();
+            return fail();
+        }
+
+        // Unparsable, foreign-rooted, more than one document, or structurally malformed -> the
+        // same clean no-op, resolved here so it lands before onAboutToLoad() like every other
+        // failure (ER-STATE-24, and ER-GUI-06's rule that a refused load raises no duck).
         userSound = parseSoundFile (e.file);
-        if (! userSound.isValid()) return;
+        if (! userSound.isValid()) return fail();
     }
 
     if (onAboutToLoad) onAboutToLoad(); // flush any settled edit so the pre-load state is the undo baseline
@@ -582,6 +820,19 @@ void PresetManager::loadAdopted (int index)
     sigAtLoad = applied;
     if (onMetaChanged) onMetaChanged();
     if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
+    if (onComplete) onComplete (true);
+    return OpResult::completed;
+}
+
+// ADR-0055. THE ROW PREDICATE `step` DERIVES ITS SKIP FROM. Deliberately a pure question: it moves
+// no parameter, opens no undo bracket and takes no admission of its own, so asking it about a row
+// `step` then declines to load costs that row nothing.
+bool PresetManager::rowIsLoadable (int index) const
+{
+    if (index < 0 || index >= list.size()) return false;
+    const auto& e = list.getReference (index);
+    return e.isFactory ? findFactory (e.factoryId) != nullptr
+                       : parseSoundFile (e.file).isValid();
 }
 
 // ROUND 27 (Devin R640). THE PARSE IS SYNCHRONOUS, THE APPLY MAY BE DEFERRED, AND THE CALLER IS
@@ -682,7 +933,7 @@ void PresetManager::applyParsedFile (const juce::File& f, const juce::ValueTree&
     if (onLoaded) onLoaded(); // record the switch as ONE undo step (name/baseline now reflect the new preset)
 }
 
-void PresetManager::step (int delta)
+PresetManager::OpResult PresetManager::step (int delta, std::function<void (bool)> onComplete)
 {
     // ADR-0008 round 25 (R1279-1283): deferred at the OUTERMOST entry point on purpose -- a step
     // is relative, so re-running `step` later re-derives the row from the state it lands on,
@@ -690,10 +941,11 @@ void PresetManager::step (int delta)
     // The seam fires from INSIDE the admission, between its drain and its try (§23): that is the
     // window this test seam exists for -- a restore arriving after the fixed point, which the step
     // must therefore NOT act on.
-    const auto admit = stateCommandAdmission ([this, delta] { step (delta); }, /*drainFirst*/ true,
+    const auto admit = stateCommandAdmission ([this, delta, cb = onComplete] { (void) step (delta, cb); },
+                                              /*drainFirst*/ true,
                                               [this] { if (beforeRelativeTarget) beforeRelativeTarget(); });
-    if (! admit.admitted()) return;
-    if (list.isEmpty()) return;
+    if (! admit.admitted()) return OpResult::deferred;
+    if (list.isEmpty()) { if (onComplete) onComplete (false); return OpResult::failed; }
     // The step is RELATIVE to the current row, so the current row must be the authoritative
     // one: a pending host restore that moves the selection is adopted before it is read (D-2
     // round 10, §18). Without this, "next" from a session that had just been replaced landed
@@ -713,7 +965,32 @@ void PresetManager::step (int delta)
     const int n   = list.size();
     // Unknown current name steps from "Default"; otherwise wrap around the list.
     const int from = cur >= 0 ? cur : 0;
-    loadAdopted (((from + delta) % n + n) % n);
+
+    // AN UNREADABLE ROW IS NOT A WALL (0.9.9, ADR-0055). "Next" asks for the one after this, so a
+    // row that will not load is stepped OVER rather than stopped at. Before this, a failed load
+    // left `current` where it was and the next press re-derived the SAME row: measured on
+    // `0e32e65` with one corrupt file between two good ones, four presses of Next gave the same
+    // row four times and the preset beyond it was unreachable in both directions.
+    //
+    // The pass is bounded by the list length and stops when it comes back to where it started, so
+    // a folder in which nothing loads answers `failed` once rather than spinning. The row is
+    // chosen by `rowIsLoadable`, not by `loadAdopted`'s result, so exactly ONE `loadAdopted` runs
+    // and it is the one that owns the completion -- a skip driven by the result would have to
+    // decide what to do with a `deferred` whose retry carries no completion.
+    //
+    // §23 IS UNCHANGED: the drain is still the admission's, still the first thing this command
+    // does, and every row considered here is derived from the session it established. `loadAdopted`
+    // is still called with `drainFirst == false` so nothing adopts underneath a chosen row.
+    for (int taken = 1; taken <= n; ++taken)
+    {
+        const int target = ((from + delta * taken) % n + n) % n;
+        if (target == from) break;                 // all the way round: nothing else to try
+        if (! rowIsLoadable (target)) continue;
+        return loadAdopted (target, std::move (onComplete));
+    }
+
+    if (onComplete) onComplete (false);
+    return OpResult::failed;
 }
 
 // ROUND 27 (Devin R640). A NAME IS JUDGED NOW; A DISK IS JUDGED WHEN IT IS WRITTEN.

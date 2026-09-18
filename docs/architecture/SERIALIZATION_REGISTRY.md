@@ -30,7 +30,7 @@ Neither case may fall back to `presets.currentName()`: `presets` is a processor 
 reuses one instance across `setStateInformation` calls, so the live name is the **previous project's**
 — the same rule `readSlot` follows for the A/B slots. The adoption therefore assigns the name
 unconditionally, and only `setStateInformation` (which can see `hasProperty`) resolves absence.
-Source: src/PresetManager.h:104-109 (`defaultName`); src/PluginProcessor.cpp:2550
+Source: src/PresetManager.h:114-119 (`defaultName`); src/PluginProcessor.cpp:2550
 (`adoptRestoreTail`'s adoption).
 
 **A malformed legacy Setting resolves to a valid setting, deterministically** (2026-09-01, ER-STATE-17). Pre-0.8.4 sessions carry Oversampling, UI Scale and Scope Persistence as APVTS `PARAM`s that `InternalState::migrateFromLegacyApvts` converts. Each value now passes the same usability predicate as the session and preset paths (`SerializedNumber.h`: plain decimal text, finite after float narrowing) — anything else means the field's **default**, exactly as an absent node does — and the choice indices are clamped into the ComboBox domain (`oversample` ids 1..4, `uiScale` 1..5; `scopePersist` to 0..1) in double **before** the integer conversion, so that conversion is defined for every input and the `+ 1` cannot overflow. Before this the value went straight into `(int)`, which is undefined for NaN, ±inf and out-of-range doubles, and JUCE's parser accepts "nan"/"inf": measured on x86-64 every such value became −2147483647 in the tree and was written back out on the next save; "2147483647" wrapped to INT_MIN through a second UB; AArch64 saturated the same inputs differently. Valid legacy values convert exactly as before (State tests 5 and 6 unchanged); State test 28 pins 88 synthetic cases over both legacy shapes, plus 36 on the real frozen pre-0.8.4 fixture mutated in place with its surrounding session asserted intact (round 13). Source: src/InternalState.h:254-299.
@@ -92,7 +92,7 @@ fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
 same-named preset. Source: src/PresetManager.h:55-77 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
-src/PresetManager.cpp:877-930 (`encodeSelection` / `decodeSelection`);
+src/PresetManager.cpp:1154-1207 (`encodeSelection` / `decodeSelection`);
 src/PluginProcessor.cpp:2247-2269 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
@@ -168,7 +168,53 @@ unparsable one). **Unchanged by it:** a valid `<ANAMORPH>` root with genuinely m
 keeps the documented per-parameter default behaviour above, and a malformed value inside a matched
 node keeps its `SerializedNumber.h` fallback. State test 34 pins all three cases apart.
 
-Source: src/PresetManager.cpp `parseSoundFile` (the shared acceptance test), `load`, `loadFile`.
+### ...and since 0.9.9 it must also be ONE well-formed document (ADR-0055)
+
+The root test above answers *is this one of ours*. It never answered *is this ONE document, and is
+it safe to hand to a parser at all* — and measured on `0e32e65` against the pinned JUCE 9.0.2, it
+had to. A file containing **two complete presets loaded and applied the first**, because
+`XmlDocument::parseDocumentElement` reads one element and never looks at the rest; so did a valid
+preset followed by prose, by a stray element or by raw binary. Three further shapes never reached
+this function at all: ~3 000 levels of nesting (a **21 KB** file) crashed the parser on a 1 MB
+thread stack, a **220-byte** file whose `DOCTYPE` defines recursive entities hung the message thread
+indefinitely, and `<!DOCTYPE x SYSTEM "…">` made the parser read an arbitrary file — absolute paths
+and `../` traversal alike.
+
+A preset file must therefore now satisfy, in this order:
+
+| Stage | Rule | Why it is where it is |
+|---|---|---|
+| Bytes | at most **256 KB** (`PresetManager::maxPresetBytes`) | 172× the 1525 bytes a real preset takes; the parse reads the whole file into memory first, with no cap of its own |
+| Bytes | **no `DOCTYPE`** | closes the hang and the arbitrary file read together; the writer never emits one |
+| Bytes | nesting at most **8** (`PresetManager::maxPresetDepth`) | 4× the two levels a real preset has, and far below the shallowest measured crash |
+| Bytes | **exactly one top-level element**, then only whitespace, comments and processing instructions | the reported case; unanswerable after the parse, which has already discarded the tail |
+| Document | every child of the root is a `PARAM`; none is a text or CDATA node | a text node never reaches a `ValueTree` at all, so this is asked on the parsed element |
+| Document | a `PARAM` is a leaf, carries exactly one `id`, exactly one `value` and at most one `raw` | a `ValueTree` collapses a duplicated attribute, so this too is asked on the element |
+| Document | no two `PARAM` nodes claim the same `id` | the first used to win, silently |
+
+**`raw` is accepted, and that was measured rather than assumed.** A preset saved after an undo, a
+redo or an A/B apply carries it: those install a state-set tree that carries `raw` through
+`replaceState`, and `saveUser`'s `apvts.copyState()` writes the live tree as it stands. The loader
+still resolves a preset through `value` alone. The claim at `soundSignatureAfterRestoring` that a
+preset file never carries `raw` was false and is corrected in place.
+
+**Unchanged, and each pinned by State test 114 leg E:** a valid `<ANAMORPH>` root with genuinely
+missing `PARAM` nodes still takes the per-parameter default; a malformed `value` still falls back
+through `SerializedNumber.h`; an `id` this build does not know still loads; `<ANAMORPH/>` with no
+children at all is still a valid preset meaning *every parameter's default*; the root's own
+attributes are still free; and a declaration, a comment or a processing instruction before the root
+is still accepted.
+
+**Changed, and deliberately:** a **value-less** `<PARAM id="width"/>` used to be accepted and
+resolved to the default. The paragraph above describes how such a node comes to exist — *a truncated
+write or a hand edit* — which is a corrupt file, and a corrupt file is now refused rather than
+interpreted. The silent collapse to the range MINIMUM that made this worth a test is still
+unreachable, now because the document never reaches `applySoundTree`. **The session path is
+untouched**: a host session carrying the same node still resolves it to the default (State test 18
+leg C).
+
+Source: src/PresetManager.cpp `presetTextIsAdmissible`, `presetDocumentIsWellFormed`,
+`parseSoundFile` (the shared acceptance test), `load`, `loadAdopted`, `loadFile`, `step`.
 
 ## `ANAMORPH_INTERNAL` child (InternalState)
 
@@ -350,7 +396,7 @@ became its own clean baseline, read from the live parameters on the first switch
 is gone, `setMeta` stores what it is given, and a re-saved legacy session therefore writes the
 derived baseline — it re-saved as `""` before. An **invalid** slot keeps an empty baseline only
 until `abEnsureInit()` re-seeds it whole from `currentStateSet()`.
-Source: src/PresetManager.h:128-154 (`setMeta`);
+Source: src/PresetManager.h:138-164 (`setMeta`);
 src/PluginProcessor.cpp:2575 (`baselineOfRestore`, the root-side rule); :1555-1639 (`readSlot`, the
 derivation at its end).
 

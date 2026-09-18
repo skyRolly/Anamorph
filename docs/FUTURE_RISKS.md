@@ -108,12 +108,13 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once. The second inversion round 20 added here (a nested poll against a host thread's whole-sound replacement) was REACHABLE and is CLOSED in round 21 by ADR-0036 §26; round 27's dispatch predicate (§30) closed the two doors whose dispatch the PLUG-IN starts, and round 28's admission (§31) closes every remaining door by construction — no state-replacing command WAITS for `soundReplacement`, whoever started the dispatch. The risk stays OPEN on what is left, which contains no Anamorph lock: JUCE's own APVTS 10 Hz timer blocking on `valueTreeChanging`, and the two-parameter nesting above |
 | RISK-010 | The DSP snapshot of the ten multiband parameters is ten independent `load()` calls, so the audio thread can read a layout that never existed as a whole | Medium | **Certain** — it is the shipped reader model; what is bounded is the harm, not the occurrence |
 | RISK-011 | A gesture count that returns to zero mid-transaction lets a poll record an undo step for a layout the user never had (the v0.9.8 rounds' residuals U1-U3) | Medium | Low as observed, **structural** as a mechanism — nothing in the current code prevents it |
+| RISK-014 | The host session blob and the A/B slot payload reach the same unbounded XML parser the preset boundary now guards, so a corrupted project file can still crash, hang or read arbitrary files | High (were it reached) | Low — the bytes come from the host's own project file rather than from a file the user opens, and no measurement has produced one in the field |
 
 ---
 
 ## RISK-001 — JUCE version bump
-- **Risk:** JUCE is pinned to exactly `9.0.1` (immutable commit `e18f7f5…`, ADR-0026; previously
-  `9.0.0` = `f8f8864…`, ADR-0022; before that
+- **Risk:** JUCE is pinned to exactly `9.0.2` (immutable commit `7278278…`, ADR-0054; previously
+  `9.0.1` = `e18f7f5…`, ADR-0026; before that `9.0.0` = `f8f8864…`, ADR-0022; before that
   tag `8.0.14`, ADR-0012). A future bump can silently change DSP behaviour (oversampling,
   Linkwitz-Riley filters, `dsp::AudioBlock`), reported latency, the parameter/state ABI, and the
   X11 editor-embedding path (the INC-006 crash lives in JUCE's host code).
@@ -129,6 +130,36 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   dump (ADR-0022) — the pattern to repeat on future bumps, and it **was** repeated for
   9.0.0→9.0.1 (ADR-0026: 32/32 hashes and latencies identical, warning set byte-identical across
   the 18 project translation units).
+
+## RISK-014 — The session and A/B decode paths reach the parser the preset path no longer does
+- **Risk:** ADR-0055 (0.9.9) put a byte-level boundary in front of `juce::parseXML` for
+  `.anamorph` files. Two other paths reach the same parser with the same exposure and were
+  deliberately left alone: the host session blob (`src/PluginProcessor.cpp:2751`, via
+  `getXmlFromBinary`) and the A/B slot payload (`:2860`, via `parseXML` on a string the session
+  carried). Every failure ADR-0055 measured applies to them from a corrupted or hostile project
+  file: unbounded mutual recursion in `readNextElement`/`readChildElements` (SIGSEGV at ~3 000
+  levels on a 1 MB thread stack — a 21 KB payload), an unbounded loop in
+  `XmlDocument::expandEntity` reachable from a `DOCTYPE` (a 220-byte input still running after
+  60 s), an arbitrary file read through a `SYSTEM` `DOCTYPE`, and an unbounded whole-file read
+  (peak RSS tracked input size linearly to 264 MB with no cap).
+- **Impact:** A crash, an unrecoverable freeze of the host's message thread, or a disk read the
+  user did not ask for, on opening a project — the same three outcomes the preset path had.
+- **Likelihood (evidence-based):** Low for the occurrence, High for the consequence. The bytes
+  arrive from the host's own project file rather than from a file a user picks in a chooser, and
+  nothing in the field has produced one. The mechanism, however, is identical and measured.
+- **Evidence [Verified]:** round-43 investigation against `0e32e65`, measured through
+  `PresetManager::loadFile` on the pinned JUCE 9.0.2 — the crash with a `gdb` backtrace of the two
+  recursing frames, the hang reproduced at two nesting levels, the arbitrary read reproduced by
+  absolute path and by `../` traversal, and the linear RSS across six input sizes. The paths are
+  named above; the parser is shared, not copied.
+- **Mitigation:** Not taken this round, by the owner's scope ruling: *"Implement preset-file
+  protection only. Do not modify host session blob loading or A/B slot payload loading in this
+  round. Record those paths as a follow-up risk requiring separate compatibility review."* The
+  guard is a free function over bytes and is reusable as it stands; what needs the separate review
+  is the compatibility question a preset does not raise — a session is written by the host and read
+  back on every project open, and any size or depth cap applied there has to be proven against
+  every session this product has ever written, including the three legacy root formats
+  `SESSION_COMPATIBILITY_POLICY.md` rule 3 keeps alive.
 
 ## RISK-002 — Always-on banks / crossover-move cost (CPU)
 - **Risk:** `SoloMonitor` runs every block even with multiband off and no solo (INC-009 invariant;
@@ -363,7 +394,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   change with no defect behind it.
 
   **Residual, stated rather than claimed away.** `PresetManager::saveUser`
-  (`src/PresetManager.cpp:844`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
+  (`src/PresetManager.cpp:1121`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
   `soundReplacement`, the only durable reader in the tree that does. It cannot join this cycle: it
   only reads, so it never waits for a `listenerLock`, and it always releases. It is recorded here
   because the rule the paragraphs above rest on — every APVTS acquisition that can happen with a

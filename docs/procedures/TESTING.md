@@ -1703,6 +1703,78 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   run and that is how the round's own hypothesis was disproved** — the guard it removed changed no
   observable behaviour, so the guard was removed too, and leg G above is what stayed.
 
+* **Round 43 — a preset file is ONE well-formed document, and every loader says so when it is not.**
+
+  **State test 114** (ADR-0055). The acceptance test asked only whether the root was `<ANAMORPH>`,
+  so everything else `juce::parseXML` tolerated came in with it. Six legs, each naming the
+  measurement it came from on `0e32e65`:
+
+  | Leg | What it drives | What it proves |
+  |---|---|---|
+  | A | two and three complete presets concatenated, in both orders | the reported case: the file loaded and applied the FIRST preset, because `parseDocumentElement` reads one element and never looks at the rest |
+  | B | a valid preset followed by prose, by `<JUNK/>`, by raw binary — and by whitespace and a comment | the same mechanism with less ceremony, and the one trailing shape that is still legal, so the rule is a boundary rather than a blanket |
+  | C | eleven malformed documents inside a correct root | each was ACCEPTED by being silently ignored, which is what made them dangerous: the document said two things and the loader picked one |
+  | D | 5 000 levels of nesting (twice — once plainly, once on a **512 KB** thread stack), one level past the depth cap, a recursive-entity `DOCTYPE` with an elapsed-time bound, a `SYSTEM` `DOCTYPE` with a real sibling file to read, and a file one byte past 256 KB | the three shapes that detonate INSIDE the parser, before the plug-in holds anything |
+  | E | eleven preserved tolerances, including `raw`, `<ANAMORPH/>`, an unknown `id` and a malformed `value` | the risk of a round like this is refusing files that are FINE |
+  | F | an absolute pick of a corrupt row, Next and Prev over it, and a row whose file has vanished | the list half: report and stay; step over; rescan a vanished row away; never touch the user's file |
+
+  **Two legs are built so they cannot pass by accident.** The `DOCTYPE` leg asserts an ELAPSED
+  TIME, because without the guard it does not fail — it never returns (a 220-byte file was still
+  running after 60 s). The deep-nesting leg is run twice: once for the refusal, and once on a
+  thread whose stack is **512 KB**, below the 1 MB size at which the crash was measured between
+  2 500 and 3 000 levels. On that thread an unguarded parse of 5 000 levels has nowhere to go, which
+  is exactly what the re-run of M206 below demonstrates.
+
+  **State test 18 is rewritten and State test 35 is re-driven**, because this round changed what
+  each was asserting. 18's value-less `<PARAM id="width"/>` is now a corrupt file rather than a
+  tolerated one, so leg A asserts the refusal and that it moved nothing, leg B moves the
+  "absent means default" claim onto the shape that is still legal (a preset that simply omits
+  `width`), and leg C asserts the SESSION path still resolves the same node to the default — this
+  round narrowed the preset boundary and nothing else. 35's refusal now travels through the
+  ABSOLUTE door (`load(index)`, which is what the preset menu calls and what still refuses), since
+  the editor's Next button no longer stops at an unreadable row; a new leg asserts that Next lands
+  on a row that really loads and therefore ducks, without naming the landing row, because the folder
+  this suite shares decides what follows.
+
+  **Mutation coverage (M204-M217). Twelve killed, one equivalent with the proof in source, one
+  survivor that is a bounded coverage gap.**
+
+  Killed: **M204** remove the size cap, **M205** step over a `DOCTYPE` instead of refusing it,
+  **M206** raise the depth cap to a million, **M207** allow a second top-level element, **M208**
+  allow non-whitespace outside every element, **M210** allow a non-`PARAM` child, **M211** drop the
+  `PARAM`-is-a-leaf rule, **M212** stop checking the attribute set, **M213** allow a duplicated
+  `id`, **M214** make `step` stop at an unreadable row again, **M215** make a refused list load
+  report success, **M216** stop rescanning a vanished row away.
+
+  **M206 and M210 each survived the first pass, and both were coverage gaps rather than
+  equivalences — they are recorded because the fix was to the TEST.** M206 survived because
+  `<N>` is not a `PARAM`: with the cap raised, the deep file still failed the shape rule on a
+  runner whose 8 MB stack survives 5 000 levels, so the leg proved the pair rather than the cap.
+  The 512 KB-stack leg was added for it, and M206 now **kills the suite by segmentation fault** —
+  the honest signal for a guard whose entire purpose is that the parser never runs. M210 survived
+  because `<MALWARE payload="x"/>` also fails the attribute rule; `<NOTAPARAM id="width"
+  value="0.5"/>` was added, which is a leaf with exactly `id` and `value` and a unique non-empty
+  `id`, so the tag rule is the only thing left that can refuse it.
+
+  **M209 IS EQUIVALENT, with the proof in JUCE's source.** It removes the text-element check.
+  `XmlElement::createTextElement` builds its element with an EMPTY tag name
+  (`juce_XmlElement.cpp:966-971`, and `isTextElement()` at `:914-917` is exactly
+  `tagName.isEmpty()`) and gives it one attribute, `getJuceXmlTextContentAttributeName()`. So every
+  text element is refused twice over without that line: `hasTagName ("PARAM")` is false, and its
+  one attribute is named neither `id`, `value` nor `raw`. The check stays because it names the
+  shape at the point the rule is about, and because it is the line that still reads correctly if the
+  attribute set ever widens.
+
+  **M217 SURVIVES, and it is a coverage gap this harness cannot close.** It deletes the editor's
+  failure arm (`presetWarnTime = 1.5`). That arm is reached from the preset MENU and from
+  `Load Preset…`, and a headless harness can click neither — a `PopupMenu` result and an OS file
+  chooser are both outside it. The ‹ › buttons ARE clickable and are driven by State test 35, but
+  they can no longer produce a failure to show: `step` fails only when nothing in the whole list
+  loads, and the ten factory rows always do. What is covered is the decision the arm consumes:
+  M215 proves the refused load reports `false` and that the completion is called exactly once. The
+  uncovered statement is one assignment. Recorded rather than papered over, in the same way M15 and
+  M189 are.
+
 * **Round 34 — a nested notification keeps its own depth's request.**
 
   **State test 111** (`src/PluginEditor.h:R256-262`). `AttachmentWitness` saved the previous

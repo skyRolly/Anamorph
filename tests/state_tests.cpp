@@ -6946,7 +6946,7 @@ static void testBandRiseDuringDragKeepsUncapturedSplits()
     auto& apvts = proc.getAPVTS();
 
     // ADVANCED BEFORE THE EDITOR IS BUILT. PluginEditor::resized lays the imager out
-    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2576),
+    // only under `if (advanced && ! multiBar.isEmpty())` (src/PluginEditor.cpp:2637),
     // and `advanced` is read from the toggle at construction -- so an editor built in
     // Simple mode leaves the imager 0x0 and every hit test below would answer about
     // nothing. Setting the parameter first is also what a user's session does.
@@ -12687,6 +12687,454 @@ static void testBareStoresDeclareTheirEndpointAndThePollNeverWaits()
     delete ed;
 }
 
+// ---------------------------------------------------------------------------
+// ADR-0055 (0.9.9). THE PRESET FILE BOUNDARY.
+//
+// A `.anamorph` file is `apvts.copyState().createXml()` -- one `<ANAMORPH>` root, `PARAM` leaves,
+// nothing else -- and until this round the loader asked only whether the ROOT was ours. Everything
+// else the XML parser happened to tolerate came in with it: a second complete preset appended to
+// the first (which loaded, and applied the FIRST one), any trailing junk at all, a duplicated `id`,
+// a foreign child, a text node. Three shapes were worse than tolerated -- they detonated inside
+// `juce::parseXML` itself, before this plug-in held anything it could inspect.
+//
+// The legs below are the boundary, in the order the loader applies it. Each names the measurement
+// it came from, because several of them describe a file nobody would write by hand and every one of
+// them was reproduced on `0e32e65` before the guard existed.
+static void testAPresetFileIsOneWellFormedDocument()
+{
+    std::printf ("State test 114: a preset file is ONE well-formed document (ADR-0055)\n");
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 512);
+    auto& pm = proc.getPresets();
+    using Op = anamorph::PresetManager::OpResult;
+
+    auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                   .getChildFile ("AnamorphAdr0055Harness");
+    dir.deleteRecursively();
+    check (dir.createDirectory(), "harness directory available");
+    auto fileFor = [&] (const juce::String& n)
+    { return dir.getChildFile (n + anamorph::PresetManager::fileSuffix()); };
+
+    // THE SENTINEL. Five parameters, each asserted to differ from its own default, because the
+    // failure mode this whole boundary guards against is "everything quietly becomes its default"
+    // -- a one-parameter probe could pass that by coincidence. Comparison is against what the
+    // parameters actually HOLD after being set, never against the literal asked for: a stepped
+    // parameter quantises what it stores and the claim here is preservation, not equality.
+    const char* const probes[] = { pid::drive, pid::width, pid::algorithm, pid::monoMakerFreq, pid::chorusRate };
+    auto setSentinel = [&]
+    {
+        setRaw (proc, pid::drive,          0.31f);
+        setRaw (proc, pid::width,          0.77f);
+        setRaw (proc, pid::algorithm,      0.66f);
+        setRaw (proc, pid::monoMakerFreq,  0.42f);
+        setRaw (proc, pid::chorusRate,     0.58f);
+    };
+    auto snapshot = [&]
+    {
+        std::vector<float> v;
+        for (auto* id : probes) v.push_back (rawOf (proc, id));
+        return v;
+    };
+    auto sameAs = [&] (const std::vector<float>& before)
+    {
+        const auto now = snapshot();
+        for (size_t i = 0; i < now.size(); ++i)
+            if (! juce::approximatelyEqual (now[i], before[i])) return false;
+        return true;
+    };
+
+    setSentinel();
+    {
+        int differing = 0;
+        for (auto* id : probes)
+        {
+            auto* rp = proc.getAPVTS().getParameter (id);
+            if (rp != nullptr && ! juce::approximatelyEqual (rp->getValue(), rp->getDefaultValue())) ++differing;
+        }
+        check (differing == (int) std::size (probes),
+               "non-vacuity: every sentinel parameter sits away from its own default");
+    }
+    const auto sentinel = snapshot();
+
+    // A REAL preset, written by the real writer, used both as the compatibility control and as the
+    // body of the corrupt files below -- so a rejection can never be blamed on the preset half.
+    auto goodFile = fileFor ("__Adr0055Good__");
+    juce::String good;
+    {
+        auto xml = proc.getAPVTS().copyState().createXml();
+        check (xml != nullptr, "the harness preset serialises");
+        if (xml != nullptr) good = xml->toString();
+        check (goodFile.replaceWithText (good), "the harness preset is written");
+    }
+
+    // One refusal check: the file is refused AND the live sound is untouched. Both halves matter --
+    // a loader that refused after writing half the parameters would pass the first alone.
+    auto refuses = [&] (const juce::String& name, const juce::String& text, const char* what)
+    {
+        auto f = fileFor (name);
+        check (f.replaceWithText (text), (juce::String ("harness file written: ") + name).toRawUTF8());
+        const auto before = snapshot();
+        check (pm.loadFile (f) == Op::failed, what);
+        check (sameAs (before), (juce::String ("...and it moved nothing: ") + what).toRawUTF8());
+        f.deleteFile();
+    };
+    auto accepts = [&] (const juce::String& name, const juce::String& text, const char* what)
+    {
+        auto f = fileFor (name);
+        check (f.replaceWithText (text), (juce::String ("harness file written: ") + name).toRawUTF8());
+        check (pm.loadFile (f) == Op::completed, what);
+        f.deleteFile();
+    };
+
+    // ---- LEG A: TWO COMPLETE DOCUMENTS IN ONE FILE ------------------------------------------
+    //
+    // The reported case. `XmlDocument::parseDocumentElement` reads ONE element and returns it;
+    // nothing ever looked at the rest. Measured on `0e32e65`: preset A followed by preset B loaded
+    // and applied A -- and 1000 documents in one file did the same.
+    std::printf ("  A. two complete documents in one file\n");
+    setSentinel();
+    {
+        auto other = juce::ValueTree ("ANAMORPH");
+        auto w = juce::ValueTree ("PARAM");
+        w.setProperty ("id", pid::width, nullptr);
+        w.setProperty ("value", 0.125, nullptr);
+        other.appendChild (w, nullptr);
+        const juce::String second = other.createXml()->toString();
+
+        refuses ("__Adr0055TwoDocs__",   good + second, "two complete documents in one file are refused");
+        refuses ("__Adr0055TwoDocsRev__", second + good, "...in either order");
+        refuses ("__Adr0055ThreeDocs__", good + second + good, "three documents likewise");
+    }
+
+    // ---- LEG B: TRAILING CONTENT ---------------------------------------------------------------
+    //
+    // The same mechanism with less ceremony: prose, a stray element and raw bytes were all
+    // discarded in silence, so a file that had been appended to loaded as if it had not.
+    std::printf ("  B. trailing content after the root element\n");
+    refuses ("__Adr0055TrailText__",   good + "this is not xml at all\n",       "trailing prose is refused");
+    refuses ("__Adr0055TrailElem__",   good + "<JUNK/>\n",                      "a trailing element is refused");
+    refuses ("__Adr0055TrailBinary__", good + juce::String::fromUTF8 ("\x01\x02\x03\x04"),
+             "trailing binary bytes are refused");
+    // ...and the one kind of trailing content that IS legal, so the rule is a boundary and not a
+    // blanket: whitespace and a comment after the root say nothing and change nothing.
+    accepts ("__Adr0055TrailOk__", good + "\n\n<!-- saved by a preset manager -->\n",
+             "trailing whitespace and a comment are still accepted");
+
+    // ---- LEG C: MALFORMED STRUCTURE ------------------------------------------------------------
+    //
+    // Every one of these was ACCEPTED before this round, and each was accepted by being ignored --
+    // which is the part that makes them dangerous rather than merely untidy: the document says two
+    // things and the loader silently picks one.
+    std::printf ("  C. malformed structure inside a correct root\n");
+    refuses ("__Adr0055DupId__",
+             "<ANAMORPH><PARAM id=\"width\" value=\"0.25\"/><PARAM id=\"width\" value=\"1.75\"/></ANAMORPH>",
+             "two PARAM nodes claiming the same id are refused (the first used to win)");
+    refuses ("__Adr0055NoId__",
+             "<ANAMORPH><PARAM value=\"0.25\"/></ANAMORPH>",
+             "a PARAM with no id is refused");
+    refuses ("__Adr0055NoValue__",
+             "<ANAMORPH><PARAM id=\"width\"/></ANAMORPH>",
+             "a PARAM with no value is refused");
+    refuses ("__Adr0055ParamKid__",
+             "<ANAMORPH><PARAM id=\"width\" value=\"0.25\"><EXTRA/></PARAM></ANAMORPH>",
+             "a PARAM carrying a child element is refused");
+    refuses ("__Adr0055ForeignKid__",
+             "<ANAMORPH><PARAM id=\"width\" value=\"0.25\"/><MALWARE payload=\"x\"/></ANAMORPH>",
+             "a non-PARAM child of the root is refused");
+    // ...and one that ONLY the tag-name rule can refuse. The case above is over-determined: with
+    // the tag check removed, `payload` still fails the attribute rule, so it proves the pair rather
+    // than the rule. This element is a leaf, carries exactly `id` and `value`, and its `id` is
+    // neither empty nor repeated -- every other rule passes it, and it is still not a `PARAM`.
+    refuses ("__Adr0055ImposterTag__",
+             "<ANAMORPH><NOTAPARAM id=\"width\" value=\"0.5\"/></ANAMORPH>",
+             "an element that is shaped like a PARAM but is not one is refused");
+    refuses ("__Adr0055NestedRoot__",
+             "<ANAMORPH><PARAM id=\"width\" value=\"0.25\"/><ANAMORPH><PARAM id=\"drive\" value=\"9\"/></ANAMORPH></ANAMORPH>",
+             "a second ANAMORPH nested inside the root is refused");
+    refuses ("__Adr0055Text__",
+             "<ANAMORPH>stray text<PARAM id=\"width\" value=\"0.25\"/></ANAMORPH>",
+             "a text node inside the root is refused");
+    refuses ("__Adr0055Cdata__",
+             "<ANAMORPH><![CDATA[binary here]]><PARAM id=\"width\" value=\"0.25\"/></ANAMORPH>",
+             "a CDATA section inside the root is refused");
+    refuses ("__Adr0055DupAttr__",
+             "<ANAMORPH><PARAM id=\"width\" value=\"0.25\" value=\"1.75\"/></ANAMORPH>",
+             "a PARAM with the same attribute twice is refused (a ValueTree would collapse it)");
+    refuses ("__Adr0055UnknownAttr__",
+             "<ANAMORPH><PARAM id=\"width\" value=\"0.25\" colour=\"red\"/></ANAMORPH>",
+             "a PARAM carrying an attribute this format does not define is refused");
+    // The foreign root, which ER-STATE-24 already refused and this round must not stop refusing.
+    refuses ("__Adr0055ForeignRoot__",
+             "<SomeOtherPluginPreset><PARAM id=\"width\" value=\"0.05\"/></SomeOtherPluginPreset>",
+             "a foreign root is still refused (ER-STATE-24 preserved)");
+
+    // ---- LEG D: PARSER SAFETY -- REFUSED BEFORE juce::parseXML RUNS AT ALL ----------------------
+    //
+    // These three are not "untidy files"; they are the ones that took the process with them, and
+    // they are why the first half of the boundary works on the BYTES. Measured on `0e32e65`:
+    //
+    //   * NESTING -> SIGSEGV inside `readNextElement`/`readChildElements`, which recurse into each
+    //     other with no bound: between 25 000 and 30 000 levels on an 8 MB stack and between 2 500
+    //     and 3 000 -- a 21 KB file -- on a 1 MB one, with the gdb backtrace those two frames
+    //     alternating. 5 000 levels is used here: comfortably past the 1 MB threshold and
+    //     comfortably under the 8 MB one, so this leg is safe to run on a CI runner and would still
+    //     have crashed a plug-in whose message thread has an ordinary Windows stack.
+    //   * DOCTYPE -> a HANG. A 220-byte file whose DOCTYPE defines recursive entities left
+    //     `XmlDocument::expandEntity` running after 60 seconds, reproducibly. The elapsed-time
+    //     assertion below is what makes this leg discriminating rather than decorative: without the
+    //     guard it does not fail, it never returns.
+    //   * DOCTYPE -> an ARBITRARY FILE READ, through `FileInputSource::createInputStreamFor` ->
+    //     `File::getSiblingFile`, which honours an absolute path and `../` traversal alike.
+    std::printf ("  D. the three shapes that detonate inside the parser\n");
+    {
+        juce::MemoryOutputStream deep;
+        deep << "<ANAMORPH>";
+        for (int i = 0; i < 5000; ++i) deep << "<N>";
+        for (int i = 0; i < 5000; ++i) deep << "</N>";
+        deep << "</ANAMORPH>";
+        refuses ("__Adr0055Deep__", deep.toString(), "5 000 levels of nesting are refused, not parsed");
+    }
+    {
+        // Nine levels: one past the cap, and a shape the parser would handle perfectly well -- so
+        // this leg measures the CAP rather than the crash, and would survive any parser.
+        juce::MemoryOutputStream nine;
+        nine << "<ANAMORPH>";
+        for (int i = 0; i < 8; ++i) nine << "<N>";
+        for (int i = 0; i < 8; ++i) nine << "</N>";
+        nine << "</ANAMORPH>";
+        refuses ("__Adr0055Depth9__", nine.toString(), "one level past the depth cap is refused");
+        juce::MemoryOutputStream eight;
+        eight << "<ANAMORPH>";
+        for (int i = 0; i < 7; ++i) eight << "<N>";
+        for (int i = 0; i < 7; ++i) eight << "</N>";
+        eight << "</ANAMORPH>";
+        // Accepted by the SCAN and then refused by the SHAPE rule, which is the honest expectation:
+        // `<N>` is not a `PARAM`. What this pins is that the depth cap itself did not fire -- the
+        // two rules are separate and this file must fail on the second, not the first.
+        auto f = fileFor ("__Adr0055Depth8__");
+        check (f.replaceWithText (eight.toString()), "harness file written: __Adr0055Depth8__");
+        check (pm.loadFile (f) == Op::failed, "exactly the depth cap still reaches the shape rule");
+        f.deleteFile();
+    }
+    {
+        // THE DEPTH CAP, MEASURED ON A STACK SMALL ENOUGH FOR THE CRASH IT EXISTS TO STOP.
+        //
+        // The leg above proves the deep file is REFUSED; it does not prove the cap is what refused
+        // it, because `<N>` is not a `PARAM` and the shape rule would catch the document anyway on
+        // a runner whose stack survives the parse. This runner's is 8 MB, and 5 000 levels do not
+        // reach it. So the same file is loaded on a thread with a **512 KB** stack -- below the
+        // 1 MB case where the crash was measured between 2 500 and 3 000 levels, so an unguarded
+        // parse of 5 000 has nowhere to go. The scan is iterative and uses no stack that grows with
+        // the document, so the guarded answer is the same on any stack size.
+        //
+        // If the cap is ever removed, this leg does not fail: the process dies here, which is the
+        // honest signal for a guard whose whole purpose is that the parser never runs.
+        struct DeepLoad final : juce::Thread
+        {
+            DeepLoad (anamorph::PresetManager& m, const juce::File& file)
+                : juce::Thread ("Adr0055Deep", 512 * 1024), pm (m), f (file) {}
+            void run() override { result = pm.loadFile (f); }
+            anamorph::PresetManager& pm;
+            juce::File f;
+            anamorph::PresetManager::OpResult result = anamorph::PresetManager::OpResult::completed;
+        };
+
+        juce::MemoryOutputStream deep;
+        deep << "<ANAMORPH>";
+        for (int i = 0; i < 5000; ++i) deep << "<N>";
+        for (int i = 0; i < 5000; ++i) deep << "</N>";
+        deep << "</ANAMORPH>";
+        auto f = fileFor ("__Adr0055DeepThread__");
+        check (f.replaceWithText (deep.toString()), "harness file written: __Adr0055DeepThread__");
+
+        DeepLoad worker (pm, f);
+        worker.startThread();
+        const bool finished = worker.waitForThreadToExit (30000);
+        check (finished, "the 512 KB-stack load returned at all");
+        check (worker.result == Op::failed, "...and refused the deep file without entering the parser");
+        f.deleteFile();
+    }
+    {
+        const juce::String bomb =
+            "<!DOCTYPE ANAMORPH [\n<!ENTITY e0 \"AAAAAAAAAA\">\n"
+            "<!ENTITY e1 \"&e0;&e0;&e0;&e0;&e0;&e0;&e0;&e0;&e0;&e0;\">\n"
+            "]>\n<ANAMORPH><PARAM id=\"width\" value=\"&e1;\"/></ANAMORPH>";
+        auto f = fileFor ("__Adr0055Doctype__");
+        check (f.replaceWithText (bomb), "harness file written: __Adr0055Doctype__");
+        const auto before = snapshot();
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        const bool refusedIt = pm.loadFile (f) == Op::failed;
+        const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+        std::printf ("    the entity-expansion file was answered in %.1f ms\n", ms);
+        check (refusedIt, "a DOCTYPE is refused");
+        check (ms < 2000.0, "...and answered at once, rather than expanding entities forever");
+        check (sameAs (before), "...and it moved nothing");
+        f.deleteFile();
+    }
+    {
+        // The external-entity door, with a real sibling file to read. The value must not arrive.
+        auto secret = dir.getChildFile ("secret.txt");
+        check (secret.replaceWithText ("<!ENTITY leak \"LEAKED\">"), "the sibling file exists");
+        refuses ("__Adr0055Xxe__",
+                 "<!DOCTYPE ANAMORPH SYSTEM \"secret.txt\">\n"
+                 "<ANAMORPH><PARAM id=\"width\" value=\"&leak;\"/></ANAMORPH>",
+                 "a SYSTEM DOCTYPE cannot make the loader read another file");
+        secret.deleteFile();
+    }
+    {
+        // One byte past the size cap. The content is a VALID preset, so nothing but the size can be
+        // the reason -- the padding is a comment, which is legal everywhere it appears.
+        juce::MemoryOutputStream big;
+        big << good << "<!--";
+        const juce::String pad = juce::String::repeatedString ("P", 4096);
+        while (big.getDataSize() < (size_t) anamorph::PresetManager::maxPresetBytes) big << pad;
+        big << "-->";
+        auto f = fileFor ("__Adr0055Big__");
+        check (f.replaceWithText (big.toString()), "harness file written: __Adr0055Big__");
+        check (f.getSize() > anamorph::PresetManager::maxPresetBytes, "the oversized file really is oversized");
+        const auto before = snapshot();
+        check (pm.loadFile (f) == Op::failed, "a file past the size cap is refused");
+        check (sameAs (before), "...and it moved nothing");
+        f.deleteFile();
+    }
+
+    // ---- LEG E: COMPATIBILITY -- EVERYTHING THE BOUNDARY MUST NOT BREAK ------------------------
+    //
+    // The whole risk of a round like this is refusing files that are FINE. Each of these is a
+    // documented tolerance, and one of them (`raw`) is a shape the plug-in itself writes that this
+    // round discovered by measurement rather than by reading the comment that denied it.
+    std::printf ("  E. the tolerances this boundary preserves\n");
+    setSentinel();
+    {
+        auto f = fileFor ("__Adr0055Good2__");
+        check (f.replaceWithText (good), "harness file written: __Adr0055Good2__");
+
+        // THE REFERENCE IS TAKEN AFTER ONE LOAD, NOT BEFORE IT, and that is the difference between
+        // an exact claim and a nearly-true one. A load drives every value through the parameter's
+        // own store/report pair, so a DISCRETE parameter arrives snapped to its grid: the sentinel
+        // sets `algorithm` to 0.66 and a load renders it as 0.6667, a 6.7e-3 difference that is the
+        // grid doing its job rather than the file being misread (ADR-0036 section 17 -- the
+        // signature is taken on the grid the plug-in actually renders and stores). Comparing a load
+        // against the LIVE pre-save value would therefore be measuring the grid. What this leg
+        // claims is what a user would notice -- that loading this preset twice gives the same
+        // sound, bit for bit -- so it compares load against load, exactly, with no tolerance at all.
+        check (pm.loadFile (f) == Op::completed, "a preset this plug-in wrote still loads");
+        const auto restored = snapshot();
+        setRaw (proc, pid::width, 0.10f);                    // move away, so a reload is visible
+        check (! sameAs (restored), "non-vacuity: the sound really moved before the reload");
+        check (pm.loadFile (f) == Op::completed, "...and loads again");
+        check (sameAs (restored), "...restoring exactly the sound it holds, bit for bit");
+        f.deleteFile();
+    }
+    accepts ("__Adr0055Empty__", "<ANAMORPH/>",
+             "an EMPTY preset is still valid -- it means every parameter's default");
+    {
+        // ...and it really did mean the defaults, which is the half an acceptance check alone
+        // would not show.
+        int atDefault = 0;
+        for (auto* id : probes)
+        {
+            auto* rp = proc.getAPVTS().getParameter (id);
+            if (rp != nullptr && juce::approximatelyEqual (rp->getValue(), rp->getDefaultValue())) ++atDefault;
+        }
+        check (atDefault == (int) std::size (probes), "...and the empty preset really applied the defaults");
+    }
+    setSentinel();
+    accepts ("__Adr0055UnknownId__",
+             "<ANAMORPH><PARAM id=\"aParameterFromALaterBuild\" value=\"7\"/>"
+             "<PARAM id=\"width\" value=\"1.5\"/></ANAMORPH>",
+             "an id this build does not know still loads (forward compatibility)");
+    accepts ("__Adr0055Malformed__",
+             "<ANAMORPH><PARAM id=\"width\" value=\"nan\"/></ANAMORPH>",
+             "a malformed VALUE still loads and still falls back (SerializedNumber.h)");
+    check (juce::approximatelyEqual (rawOf (proc, pid::width),
+                                     proc.getAPVTS().getParameter (pid::width)->getDefaultValue()),
+           "...to the parameter default, not to the range minimum");
+    accepts ("__Adr0055Raw__",
+             "<ANAMORPH><PARAM id=\"width\" value=\"1.5\" raw=\"0.75\"/></ANAMORPH>",
+             "the `raw` attribute is accepted -- saving after an undo or an A/B apply writes it");
+    accepts ("__Adr0055RootAttr__",
+             "<ANAMORPH formatHint=\"something a later build added\"><PARAM id=\"width\" value=\"1.5\"/></ANAMORPH>",
+             "a root attribute is accepted (the format's forward-compatibility room)");
+    accepts ("__Adr0055Prologue__",
+             juce::String ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- exported -->\n<?editor note?>\n")
+                 + "<ANAMORPH><PARAM id=\"width\" value=\"1.5\"/></ANAMORPH>",
+             "a declaration, a comment and a processing instruction before the root are accepted");
+    accepts ("__Adr0055Quoted__",
+             "<ANAMORPH><PARAM id=\"width\" value=\"1.5\" raw=\"0.75 &gt; 0.5 &lt; 1.0\"/></ANAMORPH>",
+             "a `>` and a `<` inside a quoted attribute value do not confuse the scan");
+
+    // ---- LEG F: THE LIST PATH REPORTS, AND A RELATIVE STEP SKIPS --------------------------------
+    //
+    // The second half of this round. A corrupt file that has reached the user preset folder used to
+    // be a SILENT no-op on both list doors: nothing reached the editor, and because `step` derives
+    // its target from a `current` a failed load never moves, Next re-derived the same row on every
+    // press and everything past it was unreachable -- measured on `0e32e65` as four presses of Next
+    // giving the same row four times.
+    std::printf ("  F. the user preset list reports, and Next steps over what will not load\n");
+    {
+        auto folder = anamorph::PresetManager::presetDirectory();
+        check (folder.createDirectory(), "the real preset folder is available");
+        auto a = folder.getChildFile (juce::String ("__Adr0055ListA__") + anamorph::PresetManager::fileSuffix());
+        auto b = folder.getChildFile (juce::String ("__Adr0055ListB__") + anamorph::PresetManager::fileSuffix());
+        auto c = folder.getChildFile (juce::String ("__Adr0055ListC__") + anamorph::PresetManager::fileSuffix());
+        check (a.replaceWithText (good), "list harness A written (valid)");
+        check (b.replaceWithText (good + "<JUNK/>"), "list harness B written (corrupt: trailing element)");
+        check (c.replaceWithText (good), "list harness C written (valid)");
+
+        pm.refresh();
+        int ia = -1, ib = -1, ic = -1;
+        for (int i = 0; i < pm.entries().size(); ++i)
+        {
+            const auto& e = pm.entries().getReference (i);
+            if (e.name == "__Adr0055ListA__") ia = i;
+            if (e.name == "__Adr0055ListB__") ib = i;
+            if (e.name == "__Adr0055ListC__") ic = i;
+        }
+        check (ia >= 0 && ib == ia + 1 && ic == ib + 1, "the three rows are listed A, B, C in order");
+        check (ib >= 0, "the CORRUPT file is still listed -- it is not hidden and it is not deleted");
+
+        if (ia >= 0 && ib > 0 && ic > 0)
+        {
+            // An ABSOLUTE pick of the corrupt row: reported, and the current preset does not move.
+            check (pm.load (ia) == Op::completed, "the valid row A loads");
+            const auto nameBefore = pm.currentName();
+            bool told = true;
+            check (pm.load (ib, [&told] (bool ok) { told = ok; }) == Op::failed,
+                   "an absolute pick of the corrupt row reports `failed`");
+            check (! told, "...and its completion said so exactly once");
+            checkStr (pm.currentName(), nameBefore, "...and the preset that WAS loaded is still loaded");
+            check (b.existsAsFile(), "...and the file is still on disk (nothing deletes a user's file)");
+
+            // A RELATIVE step: over B, onto C.
+            bool stepped = false;
+            check (pm.step (+1, [&stepped] (bool ok) { stepped = ok; }) == Op::completed,
+                   "Next from A steps over the corrupt row and lands on a row that loads");
+            check (stepped, "...and reports success");
+            checkStr (pm.currentName(), "__Adr0055ListC__", "...specifically on C, the row after the corrupt one");
+
+            // ...and backwards, for the same reason.
+            check (pm.step (-1, {}) == Op::completed, "Prev from C steps back over the corrupt row");
+            checkStr (pm.currentName(), "__Adr0055ListA__", "...and lands on A");
+
+            // A MISSING file is a different event from a corrupt one: the row describes something
+            // that is no longer there, so the rescan takes it with it.
+            const int before = pm.entries().size();
+            check (c.deleteFile(), "the C file is removed behind the list's back");
+            check (pm.load (ic) == Op::failed, "a row whose file has vanished reports `failed`");
+            check (pm.entries().size() == before - 1, "...and the vanished row is gone from the list");
+            check (b.existsAsFile(), "...while the CORRUPT row's file is untouched by that rescan");
+        }
+
+        a.deleteFile(); b.deleteFile(); c.deleteFile();
+        pm.refresh();
+    }
+
+    goodFile.deleteFile();
+    dir.deleteRecursively();
+}
+
 static void testTooltipSourceOfTruth()
 {
     std::printf ("Tooltip source of truth: the cached component vs the live pointer\n");
@@ -13001,6 +13449,18 @@ static void testValuelessParamMeansDefault()
                                 .getChildFile ("anamorph_valueless_probe.anamorph");
     presetFile.deleteFile();
 
+    // ---- LEG A: THE VALUE-LESS PARAM IS NOW A CORRUPT FILE, NOT A TOLERATED ONE (ADR-0055) ----
+    //
+    // THE TEST'S PREMISE CHANGED IN 0.9.9 AND THE INVARIANT IT GUARDS DID NOT. Until this round a
+    // `<PARAM id="width"/>` with no `value` was ACCEPTED and resolved to the parameter's default;
+    // the registry's own words for how such a node gets written are "a truncated write or a hand
+    // edit", which is a description of a corrupt file, and under ADR-0055 a corrupt file is
+    // refused rather than interpreted. What must NOT change is the thing that made this test
+    // matter: the failure mode is a silent collapse to the range MINIMUM (`var()` -> 0.0 -> mono
+    // for width), and that must still be unreachable -- which it now is by a stronger route, since
+    // the document never reaches `applySoundTree` at all. Leg B proves the default rule itself is
+    // intact on the shape that is still legal, and leg C proves the SESSION path -- which this
+    // round did not touch -- still resolves the same node the old way.
     auto tree = juce::ValueTree ("ANAMORPH");
     auto node = juce::ValueTree ("PARAM");
     node.setProperty ("id", pid::width, nullptr); // id but NO value -- the truncated-write shape
@@ -13008,12 +13468,60 @@ static void testValuelessParamMeansDefault()
     if (auto xml = tree.createXml())
         check (xml->writeTo (presetFile), "value-less preset file written");
 
-    check (opCompleted (pm.loadFile (presetFile)), "the value-less preset file loads (it is well-formed XML)");
-    const float after = rawOf (proc, pid::width);
-    std::printf ("  width after loading a preset with a value-less PARAM: %f\n", after);
-    check (juce::approximatelyEqual (after, expected),
-           "a value-less PARAM restores the default, not the range minimum");
+    check (opFailed (pm.loadFile (presetFile)), "a value-less PARAM makes the preset file INVALID (ADR-0055)");
+    const float afterRefusal = rawOf (proc, pid::width);
+    std::printf ("  width after the REFUSED value-less preset: %f (was 0.950000)\n", afterRefusal);
+    check (juce::approximatelyEqual (afterRefusal, 0.95f),
+           "a refused preset moves nothing -- width is still what the user had");
     presetFile.deleteFile();
+
+    // ---- LEG B: "ABSENT MEANS DEFAULT" IS UNCHANGED FOR A NODE THAT IS SIMPLY NOT THERE --------
+    //
+    // The same question the old leg asked, on the shape ADR-0055 still accepts: a valid preset
+    // that mentions some other parameter and says nothing about width. The answer must still be
+    // the DEFAULT and never the range minimum.
+    {
+        auto absent = juce::ValueTree ("ANAMORPH");
+        auto other  = juce::ValueTree ("PARAM");
+        other.setProperty ("id", pid::drive, nullptr);
+        other.setProperty ("value", 3.0, nullptr);
+        absent.appendChild (other, nullptr);
+        if (auto xml = absent.createXml())
+            check (xml->writeTo (presetFile), "width-omitting preset file written");
+
+        check (opCompleted (pm.loadFile (presetFile)), "a preset that simply OMITS width still loads");
+        const float after = rawOf (proc, pid::width);
+        std::printf ("  width after loading a preset with NO width node: %f\n", after);
+        check (juce::approximatelyEqual (after, expected),
+               "an absent PARAM restores the default, not the range minimum");
+        presetFile.deleteFile();
+    }
+
+    // ---- LEG C: THE SESSION PATH IS UNTOUCHED BY THIS ROUND ------------------------------------
+    //
+    // ADR-0055 narrows the PRESET boundary and nothing else. A host session carrying the same
+    // value-less node still restores through `reassertParameters` and still resolves it to the
+    // default, because that path's predicate (`SerializedNumber.h`) was not changed. Asserted
+    // rather than assumed: the two paths share a resolver, and a change that leaked across would
+    // otherwise show up only in the field.
+    {
+        setRaw (proc, pid::width, 0.95f);
+        auto root = juce::ValueTree ("AnamorphRoot");
+        auto sess = juce::ValueTree ("ANAMORPH");
+        auto bare = juce::ValueTree ("PARAM");
+        bare.setProperty ("id", pid::width, nullptr);   // id but NO value, in a SESSION this time
+        sess.appendChild (bare, nullptr);
+        root.appendChild (sess, nullptr);
+        if (auto xml = root.createXml())
+        {
+            const auto blob = BlobCodec::wrap (*xml);
+            proc.setStateInformation (blob.getData(), (int) blob.getSize());
+        }
+        const float after = rawOf (proc, pid::width);
+        std::printf ("  width after RESTORING a session with a value-less PARAM: %f\n", after);
+        check (juce::approximatelyEqual (after, expected),
+               "the session path still reads a value-less PARAM as the default (unchanged)");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -16920,9 +17428,17 @@ static void testRejectedPresetDoesNotDuck()
         return walk (root);
     };
 
-    // One run: settle an engaged widener, optionally click "next preset" (which
-    // steps onto the FOREIGN row and is refused), then measure the next block.
-    auto run = [&] (bool clickNext, double& outSide, bool& outClicked)
+    // One run: settle an engaged widener, then perform one of three actions and measure the next
+    // block.
+    //
+    //   0  nothing -- the control.
+    //   1  an ABSOLUTE load of the FOREIGN row, which is what the preset MENU does and what this
+    //      test has always measured: it is refused, so no duck may open and nothing may move.
+    //   2  the editor's Next button. 0.9.9 (ADR-0055) changed what that means: a relative step now
+    //      steps OVER a row that will not load instead of stopping dead at it, so this arm lands on
+    //      a row that really loads and must therefore duck like any other successful load. The
+    //      refusal half of the invariant moved to arm 1, which is the door that still refuses.
+    auto run = [&] (int action, double& outSide, bool& outClicked)
     {
         AnamorphAudioProcessor p;
         p.prepareToPlay (sr, block);
@@ -16936,7 +17452,12 @@ static void testRejectedPresetDoesNotDuck()
         juce::MidiBuffer midi;
         for (int nb = 0; nb < 60; ++nb) { fill (buf, rng); p.processBlock (buf, midi); }   // settle
 
-        if (clickNext)
+        if (action == 1)
+        {
+            // The menu's own call, verbatim: an absolute index, which ADR-0055 keeps refusing.
+            outClicked = anamorph::PresetManager::OpResult::failed == p.getPresets().load (idxForeign);
+        }
+        else if (action == 2)
         {
             std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
             if (auto* nav = ed != nullptr ? findPresetNav (*ed, juce::String::charToString ((juce::juce_wchar) 0x203A))
@@ -16950,21 +17471,36 @@ static void testRejectedPresetDoesNotDuck()
         return p.getPresets().currentName();
     };
 
-    double sideRejected = 0.0, sideControl = 0.0;
-    bool clicked = false, unusedClicked = false;
-    const juce::String nameAfter  = run (true,  sideRejected, clicked);
-    const juce::String nameControl = run (false, sideControl,  unusedClicked);
+    double sideRejected = 0.0, sideControl = 0.0, sideStepped = 0.0;
+    bool refused = false, unusedClicked = false, clicked = false;
+    const juce::String nameAfter   = run (1, sideRejected, refused);
+    const juce::String nameControl = run (0, sideControl,  unusedClicked);
+    const juce::String nameStepped = run (2, sideStepped,  clicked);
 
+    check (refused, "the absolute load of the foreign row reported `failed`");
     check (clicked, "the editor's Next-preset button was found and its production onClick fired");
-    std::printf ("  side RMS after a REJECTED preset step: %.6f | control (no click): %.6f | ratio %.4f\n",
+    std::printf ("  side RMS after a REJECTED preset load: %.6f | control (no click): %.6f | ratio %.4f\n",
                  sideRejected, sideControl, sideControl > 0.0 ? sideRejected / sideControl : 0.0);
 
     check (sideControl > 1.0e-3, "non-vacuity: the control block really carries the widener's side energy");
     // THE ASSERTION. A refused load must leave the audio exactly as the control's.
     check (std::abs (sideRejected - sideControl) < 1.0e-9,
-           "a REJECTED preset step leaves the next audio block identical to no load at all");
-    // ...and Round 24's state contract still holds through the same click.
-    checkStr (nameAfter, nameControl, "a rejected preset step does not move the preset identity");
+           "a REJECTED preset load leaves the next audio block identical to no load at all");
+    // ...and Round 24's state contract still holds through the same call.
+    checkStr (nameAfter, nameControl, "a rejected preset load does not move the preset identity");
+
+    // 0.9.9 (ADR-0055), THE OTHER HALF OF THE SAME RULE. Before this round the foreign row was a
+    // DEAD END: `step` derived it every time, the load was refused, `current` never moved and the
+    // preset after it could not be reached in either direction (measured on `0e32e65` -- four
+    // presses of Next, four times the same row). Next must now land on a row that really loads,
+    // which means it must also duck. Asserted without naming the landing row, because the folder
+    // this suite shares decides what comes after B; what matters is that it is neither the
+    // unreadable row nor the one the step started from.
+    std::printf ("  side RMS after a SKIPPING preset step: %.6f -> landed on \"%s\"\n",
+                 sideStepped, nameStepped.toRawUTF8());
+    check (nameStepped != "__DuckHarnessB__", "Next does not stop on the unreadable row");
+    check (nameStepped != nameControl, "Next moved off the row it started from, rather than stalling");
+    check (sideStepped < 0.5 * sideControl, "the row Next SKIPPED to really loaded, and ducked");
 
     // The other half of the invariant: a SUCCESSFUL load must still duck. Without
     // this, deleting the duck outright would pass everything above.
@@ -33492,6 +34028,7 @@ int main (int argc, char* argv[])
     testARefusedStoreStatesNoEndpoint();
     testACompleteGestureEndpointPrecedesThePoll();
     testBareStoresDeclareTheirEndpointAndThePollNeverWaits();
+    testAPresetFileIsOneWellFormedDocument();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

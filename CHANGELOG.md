@@ -18,6 +18,51 @@ not accept and which those entries predate. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
+## [0.9.9] — 2026-09-19
+
+### Fixed
+- **A damaged preset file is now refused instead of half-loaded.** A `.anamorph` file that contains
+  two complete presets — one preset saved, then a second one appended below it — used to load
+  successfully and apply the upper one, so a file that had been concatenated, merged by a sync
+  client, or appended to by accident looked like it had worked. It is a damaged file and it is now
+  rejected outright, as is a preset with anything else after it: a sentence of text, a stray tag, or
+  a run of binary. The same goes for a file that says two things at once inside a single preset —
+  the same control listed twice with different values, a control with no name or no value, a
+  fragment of another plug-in's document, or stray text in the middle. Anamorph either loads the
+  whole preset you saved or tells you it cannot, and there is no longer a third outcome where it
+  silently picks one of two answers. Decision: ADR-0055. Regression coverage: State test 114.
+  Evidence: PR #145. [Verified]
+- **Some damaged preset files could crash or freeze the plug-in, and cannot any more.** Three shapes
+  reached the XML reader before Anamorph could inspect them at all. A file nested a few thousand
+  elements deep — around 21 KB of text — crashed the plug-in outright on a typical Windows host. A
+  220-byte file could make the reader loop forever, freezing the plug-in window and, with it, the
+  part of your DAW that was waiting on it; there was no error and no recovery short of force-quitting.
+  And a file could instruct the reader to go and read a completely unrelated file from your disk
+  while loading. All three are now refused on sight, before the file is parsed, and none of them can
+  be produced by saving a preset from Anamorph. A preset file is also now capped at 256 KB, roughly
+  170 times the size of a real one, so an enormous file cannot be pulled into memory whole.
+  Decision: ADR-0055. Regression coverage: State test 114. Evidence: PR #145. [Verified]
+- **A preset that fails to load now says so, instead of nothing happening.** Choosing
+  **Load Preset…** and picking a file Anamorph cannot read looked exactly like a click that had been
+  ignored. The same was true from the preset list: a damaged preset already in your user presets
+  simply did nothing when you selected it. The preset slot in the top bar now shows
+  **PRESET UNREADABLE** for a moment, in the same warning style the Save dialog already uses — no
+  pop-up window — and the preset you had loaded stays loaded, with its name, its tick and its sound
+  untouched. Evidence: PR #145. [Verified]
+- **A damaged preset no longer blocks the ‹ › buttons.** With an unreadable preset sitting between
+  two good ones, pressing **next** targeted it, failed silently, and left you exactly where you
+  were — so pressing next again targeted the same broken preset, and every preset beyond it was
+  unreachable in both directions. Next and previous now step **over** a preset they cannot read and
+  land on the next one that works. Picking a preset directly from the list still stays where you
+  are and reports the failure, because there you named that one preset. Evidence: PR #145.
+  [Verified]
+- **An unreadable preset keeps its place in the list, and your file is never touched.** Anamorph
+  does not delete, rename, move or hide a preset file it cannot read — it is your file, it is plain
+  text, and it may well be repairable by hand or by whatever put it there. It stays in the menu and
+  says why it will not load. The one exception is a preset whose file has actually been deleted or
+  moved since the menu was built: that row is describing something that is no longer there, so it
+  disappears on the next rescan. Evidence: PR #145. [Verified]
+
 ## [0.9.8] — 2026-09-18
 
 ### Changed
@@ -2625,6 +2670,7 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
+[0.9.9]: https://github.com/skyRolly/Anamorph/compare/v0.9.8...v0.9.9
 [0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8
 [0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/

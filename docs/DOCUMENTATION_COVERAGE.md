@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **round 43** (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -952,10 +952,10 @@ such.** What is established is that the rewrite happens at a position that is no
 What is not established is the exact macOS event sequence that makes that position land one row up;
 that would need a trace on macOS, which was not available here. What supports it is arithmetic that
 accounts for all four observed controls. The box is placed `h + 8` above the cursor
-(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1208-1217`), so its top edge is a
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1211-1220`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2425-2450`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2486-2511`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1426,7 +1426,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1732-1740`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1736-1744`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -1465,7 +1465,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1689` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1693` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -1475,7 +1475,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2230"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2291"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -1483,10 +1483,10 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
-declared, and `--fix` moved all three from `src/PluginEditor.h:602` to `:223` in this change set.
+declared, and `--fix` moved all three from `src/PluginEditor.h:609` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:1343`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:1350`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1496,7 +1496,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:1343`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:1350`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1506,7 +1506,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:1343"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:1350"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -1552,7 +1552,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:655`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:659`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
@@ -8573,13 +8573,13 @@ every identifier are immutable by policy.
 
 **Drift.** Two pre-existing errors in the ※ footnote this change had to extend, both reported
 before being touched, both aimed at UI Scale rather than at the renamed control. (1) The footnote's
-label anchor `src/PluginEditor.cpp:649` pointed at `aboutLink.setFont` in `origin/main` and at
+label anchor `src/PluginEditor.cpp:653` pointed at `aboutLink.setFont` in `origin/main` and at
 `aboutBackdrop.onDismiss` here — an anchor already aimed wrong when the citation gate adopted it,
 which is the blind spot `check-citations.py`'s own header describes: the base-text test cannot see
 an anchor that was wrong at the base. (2) `src/InternalState.h:123` cited
 `return stored; // already a real boolean`, inside `repairedValue`, while the sentence it supports
 says "the pre-0.8.4 legacy APVTS id `uiScale` its migration reads" — so the line it means is the
-migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:678`) and onto the
+migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:682`) and onto the
 legacy write (`src/InternalState.h:302`), which makes the UI Scale bullet the same shape as the
 new one beside it. No `DELIBERATE_REAIMS` declaration was needed: the gate accepts both against
 `origin/main` and against the round-18 head, because restructuring the footnote changed the
@@ -13002,6 +13002,69 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 63rd pass — 2026-09-19, round 43 (a preset file is one well-formed document, and 0.9.9)
+
+The owner reported one edge case — a `.anamorph` file holding **two complete presets loads, and
+applies the upper one** — and asked for the failure modes to be measured before anything was
+changed. They were, against head `0e32e65` on the pinned JUCE 9.0.2, through the real
+`PresetManager::loadFile` on a real processor. The reported case was confirmed and five more shapes
+of it were found, all accepted by being silently ignored. Three others were worse than accepted:
+~3 000 levels of nesting (a **21 KB** file) **crashed** the parser on a 1 MB thread stack; a
+**220-byte** file whose `DOCTYPE` defines recursive entities left `XmlDocument::expandEntity`
+running after 60 s, freezing the message thread with no error and no recovery; and a `SYSTEM`
+`DOCTYPE` made the parser **read an arbitrary file**, by absolute path and by `../` traversal alike.
+A fourth axis had no bound at all: peak RSS tracked file size linearly to 264 MB.
+
+**The investigation was delivered before the implementation, because the change is gated.**
+Narrowing preset acceptance is a semantic change to a contract `SERIALIZATION_REGISTRY.md` records,
+which `ARCHITECTURE_REVIEW_GATE.md` lists as a *Serialization Registry change* and
+`AI_AGENT_POLICY.md` makes an agent hard stop. The owner then ruled on the boundary, both limits,
+the empty-preset case, the error-handling model and the scope, and this round implemented that
+ruling.
+
+**What changed.** `src/PresetManager.{h,cpp}`: a byte-level scan before `juce::parseXML`
+(256 KB, no `DOCTYPE`, depth 8, exactly one top-level element with only whitespace and comments
+after it) and a structural check on the parsed **element** — not the `ValueTree`, which drops text
+nodes and collapses duplicated attributes; `load`, `loadAdopted` and `step` gain R640's completion
+contract; `step` steps over an unreadable row with a bounded full-list pass while an absolute pick
+reports and stays; a missing file is rescanned away while a corrupt one keeps its row and its file.
+`src/PluginEditor.{h,cpp}` and `src/gui/LookAndFeel.cpp`: one completion for all three preset
+doors, and a non-modal warn-coloured `PRESET UNREADABLE` state in the top bar — the knob sweep is
+success UI and now runs only on a load that happened. `tests/state_tests.cpp`: State test 114 in six
+legs, State test 18 rewritten, State test 35 re-driven.
+
+**The round corrected one of its own claims, and one of the repository's.** The first attribute rule
+required exactly `id` and `value` and refused files **this plug-in writes**: a preset saved after an
+undo, a redo or an A/B apply carries `raw`, because those install a state-set tree bearing it
+through `replaceState` and `saveUser`'s `apvts.copyState()` writes the live tree as it stands. State
+tests 10, 18 and 35 caught it before it left the working tree. The comment at
+`soundSignatureAfterRestoring` asserting that *a preset file never carries `raw`* is therefore false
+and is corrected in place; the half of that sentence that decides which signature predictor applies
+— a preset is READ through `value` alone — was always right and is unchanged. Separately, this
+round's `FUTURE_RISKS.md` edit found **RISK-001 still describing the JUCE pin as `9.0.1`
+(`e18f7f5…`, ADR-0026)**, a present-tense claim ADR-0054 superseded and round 42's sweep missed;
+corrected to `9.0.2` / `7278278…` with the 9.0.1 entry kept as the predecessor.
+
+**Two mutations survived the first pass and both were faults in the TEST, so the tests were fixed
+rather than the record softened.** M206 (depth cap raised to a million) survived because `<N>` is
+not a `PARAM`, so the shape rule caught the deep file anyway on a runner whose 8 MB stack survives
+5 000 levels; a second leg now loads the same file on a **512 KB** thread stack, and M206 kills the
+suite by segmentation fault — the honest signal for a guard whose purpose is that the parser never
+runs. M210 (non-`PARAM` child allowed) survived because `<MALWARE payload="x"/>` also fails the
+attribute rule; `<NOTAPARAM id="width" value="0.5"/>` isolates the tag rule and kills it. M209 is
+**equivalent**, proven from `juce_XmlElement.cpp:914-917, 966-971`. M217 **survives** and is
+recorded: the editor's failure arm is reachable only from a `PopupMenu` result and an OS file
+chooser, neither of which a headless harness can click.
+
+**Docs.** `ADR-0055` (new) and its `ADR_INDEX.md` row; `SERIALIZATION_REGISTRY.md` (the new
+acceptance conditions, the `raw` correction, and the value-less `PARAM` narrowing, each with what it
+preserves); `FUTURE_RISKS.md` (**RISK-014** — the host session blob and the A/B slot payload reach
+the same parser and were scoped out by the owner for separate compatibility review — plus the
+RISK-001 correction); `TESTING.md` (State test 114's six legs, the two rewritten tests, M204-M217);
+`CHANGELOG.md` **`[0.9.9]` — 2026-09-19, five Fixed entries**, with `CMakeLists.txt`, `README.md`
+and `HANDOVER.md` following; this entry. **A gate item**: the Architecture Review Gate was triggered
+and cleared by the owner's instruction, recorded in ADR-0055's Status. [Verified]
 
 ## 62nd pass — 2026-09-18, round 42 (the pin's last present-tense claims, in the places the gate cannot see)
 

@@ -559,6 +559,13 @@ private:
     void applyUiScale();                 // whole-window XS..XL transform scale (F4)
     void refreshPresetDisplay();         // preset name + dirty mark (F2)
     void showPresetMenu();
+    // ONE ANSWER FOR EVERY PRESET LOAD, whichever door it came through -- the menu row, the
+    // prev/next buttons and `Load Preset...` all hand their completion here (0.9.9). Success
+    // sweeps the knobs to the sound that arrived; failure raises the warning above and moves
+    // nothing. Called from a completion, so it may run long after the click: every call site
+    // guards it with a SafePointer.
+    void presetLoadFinished (bool ok);
+    void stepPreset (int delta);
     void focusSaveNameField (int attemptsLeft); // deferred, verified grab (Space-vs-host fix)
     // ADR-0036 round 27 (R640): the Save dialog's PENDING state. A save that could not run
     // synchronously -- one issued from inside a multi-store user transaction -- is queued to a
@@ -1087,7 +1094,7 @@ private:
         // `Rotary` -- the angle-steered style -- is NOT one of them: its mapping is not affine in
         // the cursor, so a constant pixel shift is not a constant value shift and this returns a
         // zero offset for it. That is recorded rather than guarded because it is unreachable in this
-        // editor: `setSliderStyle` is called three times in `src/` (`src/PluginEditor.cpp:541`,
+        // editor: `setSliderStyle` is called three times in `src/` (`src/PluginEditor.cpp:545`,
         // `:687`, `:812`) and none of them names `Rotary`. The assertion is what would notice if a
         // fourth call ever did.
         [[nodiscard]] juce::Point<float> wheelDragShift() const
@@ -1405,6 +1412,16 @@ private:
     juce::String presetShownName;      // pm.currentName() the shaping last ran for
     bool  presetShownDirty = false;
     int   presetShownWidth = -1;       // presetName.getWidth() it last ran for
+    // ADR-0055 (0.9.9). THE NON-MODAL ANSWER TO A LOAD THAT DID NOT HAPPEN. A refused preset is
+    // not an error dialog: a plug-in editor raising a modal window is a known host hazard, this
+    // product has never used one, and the Save dialog's own failure surface is a warn-coloured
+    // in-place state ("SAVE FAILED"). So the top-bar slot says `PRESET UNREADABLE` for a moment
+    // and the preset that IS loaded keeps its name, its tick and its sound. Seconds, decremented
+    // on the same `dt` as `knobSweepTime` so it is frame-rate independent; `presetShownWarn` joins
+    // the three inputs the shaping is a pure function of, so the transition each way re-renders
+    // and a steady state still costs one comparison per tick.
+    double presetWarnTime = 0.0;
+    bool   presetShownWarn = false;
     bool  comboHoverLit = false;       // some box's "hov" property is currently set
     float shownMatchGainDb = -1.0e9f;  // raw getMatchGainDb() last formatted
     float meterAnim = 0.0f;     // 0..1 eased meter reveal (#19)

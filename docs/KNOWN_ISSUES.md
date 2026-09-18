@@ -206,7 +206,7 @@ session state, and is fully isolated from the pluginval state-restoration work.
 - **Mechanism:** on platforms **without per-pixel window alpha** (Linux/X11 with no compositor),
   `juce::TooltipWindow` cannot be semi-transparent, so the area **outside** the rounded capsule
   renders the window's opaque (black) fill. This is the same class of artefact already documented for
-  the popup menu, which is kept square for exactly this reason (src/gui/LookAndFeel.cpp:777-780).
+  the popup menu, which is kept square for exactly this reason (src/gui/LookAndFeel.cpp:780-783).
 - **Fix [code Verified; Linux visual re-test pending]:** `AnamorphLookAndFeel::drawTooltip`
   (src/gui/LookAndFeel.cpp) now pre-fills the full tooltip bounds with the capsule colour when
   `juce::Desktop::canUseSemiTransparentWindows()` is `false`, so the corners match the capsule rather
@@ -324,13 +324,13 @@ the JUCE focus/peer path REAPER takes).
   workaround for the *open* path: `focusSaveNameField()` grabs keyboard focus and, if the grab does
   not stick (the preset-menu's desktop window still owns OS focus at the callback instant, and JUCE
   aborts an internal focus move while `! peer->isFocused()`), it retries on later message-loop
-  passes up to four times (src/PluginEditor.cpp:2328-2336; declared src/PluginEditor.h:562). This shipped in
+  passes up to four times (src/PluginEditor.cpp:2389-2397; declared src/PluginEditor.h:569). This shipped in
   the v0.8.9 CHANGELOG "Fixed" entry ("The Save Preset name field reliably receives typing — Space
   included") and was **validated headless end-to-end**, i.e. against the JUCE wrapper, not against
   REAPER. The retry loop runs **only on dialog open** (`showSavePreset(true)` → `focusSaveNameField(4)`);
   there is **no focus re-acquisition after a later focus loss** — no `focusLost` handler,
   `mouseDown`-grab, or `setMouseClickGrabsKeyboardFocus` override on `saveNameEditor` (repo-wide:
-  the only focus calls are src/PluginEditor.cpp:2284 (the on-open call) / src/PluginEditor.cpp:2328-2336 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
+  the only focus calls are src/PluginEditor.cpp:2345 (the on-open call) / src/PluginEditor.cpp:2389-2397 (`focusSaveNameField` itself) and the unrelated SpectrumImager freq editor).
   A click on the field then relies on JUCE's default click-to-focus, which is subject to the same
   `peer->isFocused()` abort if REAPER holds OS focus on the plugin's parent window — consistent with
   "clicking the text does not reactivate editing until the dialog is reopened". This is a strong
@@ -638,7 +638,7 @@ keys fine":
   (REAPER-specific, the field stops receiving keys at all); this is a *repeat* problem that occurs
   with focus working correctly, in every host, on macOS.
 - **Evidence [Verified (code path) / Unverified (the macOS-side attribution)]:**
-  src/PluginEditor.cpp:381-391 (the field), src/PluginEditor.cpp:2266-2336 (show + focus);
+  src/PluginEditor.cpp:385-395 (the field), src/PluginEditor.cpp:2327-2397 (show + focus);
   `juce_NSViewComponentPeer_mac.mm:1655-1668, 2396-2435`; `juce_ComponentPeer.cpp:291-301`. The
   JUCE trace is verified line by line against the pinned commit; the attribution to the macOS
   text-input layer is inferred from the symptom signature (letters **and** digits suppressed,

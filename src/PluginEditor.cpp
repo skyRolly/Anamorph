@@ -363,8 +363,12 @@ AnamorphAudioProcessorEditor::AnamorphAudioProcessorEditor (AnamorphAudioProcess
     // No requestDuck() here: the load path raises it from onAboutToLoad, which fires only once a
     // load has passed every check (ER-GUI-06). step() can land on a row whose file is unreadable
     // or not ours, and ducking for that refusal masked nothing while dry-filling real audio.
-    presetPrev.onClick = [this] { processor.getPresets().step (-1); knobSweepTime = 0.45; refreshPresetDisplay(); };
-    presetNext.onClick = [this] { processor.getPresets().step (+1); knobSweepTime = 0.45; refreshPresetDisplay(); };
+    // 0.9.9 (ADR-0055): the sweep and the refresh are the SUCCESS UI and now run on a load that
+    // really happened, not on the click. A step that finds nothing loadable raises the warning
+    // instead -- and, since `step` now skips unreadable rows, "nothing loadable" means the whole
+    // list, not merely the next row.
+    presetPrev.onClick = [this] { stepPreset (-1); };
+    presetNext.onClick = [this] { stepPreset (+1); };
     presetName.onClick = [this] { showPresetMenu(); };
     addAndMakeVisible (presetPrev);
     addAndMakeVisible (presetNext);
@@ -1832,6 +1836,10 @@ void AnamorphAudioProcessorEditor::stepMicroAnims (double dt)
     // undo / algorithm change); outside it, a value jump from the scroll wheel or
     // host automation snaps instantly so it never lags or misleads (#3).
     if (knobSweepTime > 0.0) knobSweepTime -= dt;
+    // ADR-0055 (0.9.9): the `PRESET UNREADABLE` state expires on the same clock, so it lasts the
+    // same wall time whatever the frame rate. `refreshPresetDisplay` reads it on the next tick and
+    // puts the real preset name back.
+    if (presetWarnTime > 0.0) presetWarnTime -= dt;
     const bool sweeping = uiAnimOn && knobSweepTime > 0.0;
 
     // Release-outside safety net (v0.8.12): the REAL OS button state, queried lazily -- only if a
@@ -2044,13 +2052,32 @@ void AnamorphAudioProcessorEditor::refreshPresetDisplay()
     // 24 Hz tick unless one of them actually changed.
     const juce::String liveName  = pm.currentName();
     const bool         liveDirty = pm.isDirty();
+    // ADR-0055 (0.9.9): a FOURTH input, so the gate stays a pure function of everything the slot
+    // shows. Without it the warning would either never appear (the name has not changed) or never
+    // clear (nor has it changed back).
+    const bool         liveWarn  = presetWarnTime > 0.0;
     if (liveName == presetShownName
         && liveDirty == presetShownDirty
+        && liveWarn == presetShownWarn
         && presetName.getWidth() == presetShownWidth)
         return;
     presetShownName  = liveName;
     presetShownDirty = liveDirty;
+    presetShownWarn  = liveWarn;
     presetShownWidth = presetName.getWidth();
+
+    // The warning owns the slot while it lasts, and it owns it INSTEAD of the name rather than
+    // beside it: the message is what the user needs, and the slot is too narrow to carry both.
+    // `AnamorphLookAndFeel::drawButtonText` reads this property for the colour -- the same
+    // property idiom the hover animations use -- so nothing else in the button changes.
+    presetName.getProperties().set ("warn", liveWarn);
+    if (liveWarn)
+    {
+        presetName.setButtonText ("PRESET UNREADABLE");
+        presetName.repaint();
+        return;
+    }
+    presetName.repaint();
 
     // A small asterisk marks an edited preset -- lighter than the old bullet (#6).
     const juce::String marker = pm.isDirty() ? " *" : juce::String();
@@ -2080,6 +2107,36 @@ void AnamorphAudioProcessorEditor::refreshPresetDisplay()
     const juce::String shown = name + marker;
     if (presetName.getButtonText() != shown)
         presetName.setButtonText (shown);
+}
+
+// ADR-0055 (0.9.9). THE ONE PLACE A PRESET LOAD IS ANSWERED.
+//
+// Before this round only the chooser path had a completion at all, and its failure arm was
+// `if (! ok) return;` -- so a refused file looked exactly like a click the plug-in had ignored.
+// The menu row and the prev/next buttons had no result to answer with: they were `void`, and the
+// sweep ran on the CLICK, which meant a refused load still animated the knobs for 0.45 s towards a
+// sound that had not changed.
+//
+// Both halves are now the same statement. Success is the sweep; failure is the warning, which is
+// deliberately not a dialog: an editor raising a modal window is a host hazard this product has
+// never taken, and the Save dialog already establishes the house answer -- a warn-coloured state
+// in the control the user was working in. The preset that is loaded keeps its name, its tick and
+// its sound, and the file that was refused is still on disk and still in the menu.
+void AnamorphAudioProcessorEditor::presetLoadFinished (bool ok)
+{
+    if (ok) knobSweepTime  = 0.45;   // sweep the knobs to the preset (#3)
+    else    presetWarnTime = 1.5;    // seconds; decremented on the frame clock
+    refreshPresetDisplay();
+}
+
+// Prev/next. `step` itself skips rows that will not load (ADR-0055), so a `failed` here means the
+// whole list refused, not merely the neighbour -- which is the only case the warning should fire
+// for, since a skipped row is not a failure the user needs to be told about.
+void AnamorphAudioProcessorEditor::stepPreset (int delta)
+{
+    processor.getPresets().step (delta,
+        [safeThis = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (this)] (bool ok)
+        { if (safeThis != nullptr) safeThis->presetLoadFinished (ok); });
 }
 
 void AnamorphAudioProcessorEditor::showPresetMenu()
@@ -2217,10 +2274,14 @@ void AnamorphAudioProcessorEditor::showPresetMenu()
             if (r == 0 || safeThis == nullptr) return;
             if (r == 10001) { safeThis->showSavePreset (true); return; }
             if (r == 10002) { safeThis->showLoadPreset(); return; }
-            safeThis->processor.getPresets().load (r - 1);   // the load path masks the level jump
-                                                             // itself, and only if it loads (ER-GUI-06)
-            safeThis->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
-            safeThis->refreshPresetDisplay();
+            // The load path masks the level jump itself, and only if it loads (ER-GUI-06).
+            // 0.9.9 (ADR-0055): an ABSOLUTE pick reports and STAYS -- the user named this row, so a
+            // row that will not load must not silently move the selection somewhere else. The
+            // sweep and the refresh moved into the completion for the same reason they did on the
+            // chooser path in round 27: they are the success UI.
+            safeThis->processor.getPresets().load (r - 1,
+                [inner = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (safeThis)] (bool ok)
+                { if (inner != nullptr) inner->presetLoadFinished (ok); });
         });
 }
 
@@ -2251,14 +2312,14 @@ void AnamorphAudioProcessorEditor::showLoadPreset()
                 // user transaction is later, and for a foreign or unparsable file is never. The
                 // parse is synchronous either way, so "not an Anamorph preset" is still answered
                 // the instant the chooser closes.
+                // 0.9.9 (ADR-0055): the failure arm is no longer a silent `return`. The user
+                // pointed at a file and it was refused -- for a foreign root as before, and now
+                // also for a second document appended to the first, for trailing junk, for a
+                // malformed structure, or for bytes we will not hand to the parser at all.
                 safeThis->processor.getPresets().loadFile (file,
                     [inner = juce::Component::SafePointer<AnamorphAudioProcessorEditor> (safeThis)]
                     (bool ok)
-                    {
-                        if (inner == nullptr || ! ok) return;
-                        inner->knobSweepTime = 0.45; // sweep the knobs to the preset (#3)
-                        inner->refreshPresetDisplay();
-                    });
+                    { if (inner != nullptr) inner->presetLoadFinished (ok); });
             }
         });
 }

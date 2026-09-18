@@ -101,6 +101,16 @@ public:
     static juce::File presetDirectory();
     static juce::String fileSuffix() { return ".anamorph"; } // shared with the OS chooser filter (#3)
 
+    // ADR-0055 (0.9.9). THE TWO BOUNDARIES A PRESET FILE MUST BE INSIDE BEFORE IT IS PARSED, and
+    // both are measured rather than guessed: a preset this plug-in writes is **1525 bytes** at 36
+    // `PARAM` nodes and is nested exactly **two** deep (root + PARAM). The caps are 172x and 4x
+    // those, which leaves a future parameter set every room it could want while still refusing the
+    // 21 KB file that crashed the parser on a 1 MB stack and the unbounded read that tracked file
+    // size to 264 MB. They live here, not in the .cpp, so the regression can name the same
+    // constants the loader enforces instead of repeating the literals beside it.
+    static constexpr juce::int64 maxPresetBytes = 256 * 1024;
+    static constexpr int         maxPresetDepth = 8;
+
     // The label a manager carries before any session, preset load or save -- and therefore also
     // the right answer for a session that predates the `presetName` field (< 0.6). It is a
     // CONSTANT on purpose: the restore path needs a fallback for that case, and the obvious
@@ -213,9 +223,20 @@ public:
     // resolver is `anamorph::sessionNormalisedValue`, the one function that path asserts from
     // and the text repair writes from, so the post-apply live signature equals this by the same
     // arithmetic on the same inputs -- the property soundSignatureAfterLoading has for presets
-    // since round 11. A preset file never carries `raw`, which is why two predictors exist and
-    // not one. Used by decodeRestore for the root's `restoredSoundSig` (§22) and for a slot
-    // that recorded no baseline.
+    // since round 11. A preset is APPLIED through `value` alone -- `normalisedFromSavedTree` reads
+    // no other attribute -- while a session prefers `raw`, and that difference is why two
+    // predictors exist and not one.
+    //
+    // CORRECTED IN 0.9.9 (ADR-0055). This sentence used to read "a preset file never carries
+    // `raw`", which is false: a preset saved after an undo, a redo or an A/B apply does carry it,
+    // because those install a state-set tree bearing `raw` through `replaceState` and `saveUser`'s
+    // `apvts.copyState()` then writes the live tree as it stands. Measured while building the
+    // round-43 preset boundary, which refused files this plug-in had written until the attribute
+    // was admitted. What the file CARRIES and what the preset path READS are different questions;
+    // only the second one decides which predictor applies, and that half was always right.
+    //
+    // Used by decodeRestore for the root's `restoredSoundSig` (§22) and for a slot that recorded
+    // no baseline.
     static juce::String soundSignatureAfterRestoring (const juce::AudioProcessorValueTreeState&,
                                                       const juce::ValueTree& sessionSound);
 
@@ -249,16 +270,31 @@ public:
         deferred     // queued behind an open user transaction; `onComplete` reports the real answer
     };
 
-    void load (int index);                           // message thread only
+    // ROUND 43 (0.9.9, ADR-0055). EVERY LOADER REPORTS NOW; ONLY ONE OF THEM DID BEFORE.
+    //
+    // `loadFile` has carried R640's completion contract since round 27. The two LIST loaders were
+    // `void`, so a row whose file is not a readable preset was a silent no-op: nothing reached the
+    // editor, and because `step` is RELATIVE and a failed load leaves `current` where it was, the
+    // next press re-derived the same unreadable row -- measured on `0e32e65`, four presses of Next
+    // and four times the same row, with every preset beyond it unreachable. The contract is R640's
+    // unchanged and merely extended to the other two doors: a synchronous result means the thing
+    // really happened, and `onComplete`, when supplied, is called EXACTLY ONCE with the final
+    // answer -- synchronously for `completed` and `failed`, later for `deferred`.
+    OpResult load (int index, std::function<void (bool)> onComplete = {});   // message thread only
     // `load` with the drain already done. `step` calls this directly: it has drained itself and
     // derived its row from what that drain established, and a second adoption here would move
     // the selection under a row already chosen (ADR-0036 §23, round 16).
-    void loadAdopted (int index);
+    OpResult loadAdopted (int index, std::function<void (bool)> onComplete = {});
     // Load an arbitrary .anamorph file (OS chooser, #3). The PARSE is synchronous even when the
     // apply is deferred (§9): "this is not an Anamorph preset" is knowable now, so it is answered
     // now, and the deferred half then cannot fail.
     OpResult loadFile (const juce::File&, std::function<void (bool)> onComplete = {});
-    void step (int delta);                           // prev/next with wrap-around
+    // Prev/next with wrap-around -- and, since 0.9.9, PAST a row that will not load. A relative
+    // request asks for "the one after this", so an unreadable row is something to step over rather
+    // than a wall to stop at; the pass is bounded by the list length, and if nothing in the list
+    // loads the answer is `failed` and the current preset is untouched. An ABSOLUTE request keeps
+    // the opposite rule: `load(index)` reports and stays, because the user named THAT row.
+    OpResult step (int delta, std::function<void (bool)> onComplete = {});
     // Write + select. The NAME check is synchronous even when the write is deferred (§9); the
     // write itself can only fail during I/O, so that failure travels on `onComplete`.
     OpResult saveUser (const juce::String& name, std::function<void (bool)> onComplete = {});
@@ -448,6 +484,13 @@ private:
     }
 
     void applyDefaults();
+    // Would this row load, asked WITHOUT moving anything? `step` needs the answer before it
+    // commits to a row, so that the one `loadAdopted` it finally makes is the one that owns the
+    // completion -- a skip loop that learned the answer from `loadAdopted`'s own result would have
+    // to decide what to do with a `deferred` whose retry carries no completion. A factory row
+    // resolves its id; a user row is parsed. The chosen file is therefore read twice, which for a
+    // 1.5 KB document is not worth an extra entry point to avoid.
+    bool rowIsLoadable (int index) const;
     // Parse a preset file into its sound tree, or return an INVALID tree if the
     // file is not an Anamorph preset. Both loaders resolve through this, so the
     // root-type rule cannot hold on one path and not the other (ER-STATE-24).
