@@ -13031,8 +13031,11 @@ the null return too — contradicting the `_Ret_maybenull_` beside it, and exact
 would hide a missing null check after a failed `new (std::nothrow)`. `_Success_(return != 0)` is
 added; it states what `rawAlloc`/`alignedAlloc` do. The throwing forms are untouched:
 `_Ret_notnull_` already makes their post-condition unconditional, and no `C28252` opens on them.
-SAL has no run-time behaviour, so **no test can prove this** — the only oracle is the next
-`msvc.yml` SARIF, and this entry does not claim the count before that run lands.
+SAL has no run-time behaviour, so **no test can prove this** — the only oracle is the
+`msvc.yml` SARIF. **Measured: 4 → 0.** Run 457 on `b676b9f` reports **181** results against
+`b6af84e`'s 185 (`C6262` 169, `C26495` 8, `C26498` 4, `C28252` **0**); the two `C28252` identities
+are the only difference in either direction, and the 169 `C6262` are identical at every
+`(file, line, bytes)`. Resolved, not moved, and nothing traded for it.
 
 **DO NOT FIX — `C6262` x 169, re-measured rather than re-argued.** All 169 are test-only
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast

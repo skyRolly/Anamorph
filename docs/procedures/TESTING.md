@@ -1823,7 +1823,11 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     `rawAlloc`/`alignedAlloc` actually do. The throwing forms are untouched — `_Ret_notnull_`
     already makes their post-condition unconditional and no `C28252` opens on them.
     **No test can prove this**; SAL has no run-time behaviour and the only oracle is the analyzer,
-    so the proof is the `C28252` count in the next `msvc.yml` SARIF.
+    so the proof is the `C28252` count in the next `msvc.yml` SARIF. **Measured: 4 -> 0.** Run 457
+    on `b676b9f` reports **181** results where `b6af84e` reported 185 -- `C6262` 169, `C26495` 8,
+    `C26498` 4, `C28252` **0** -- and the two `C28252` identities (`new`, `new[]`) are the only
+    difference in either direction. The `C6262` set is identical between the two heads at every
+    `(file, line, bytes)`, so the finding was RESOLVED, not moved and not traded for another.
   - **DO NOT FIX — `C6262` x 169, measured again rather than argued.** All 169 are test-only
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
     PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
