@@ -13857,6 +13857,71 @@ namespace
         juce::File file;
         int opens = 0;
     };
+
+    // THE ONLY MEASUREMENT THAT CAN ANSWER "WAS THE FILE READ?", in one place because there must
+    // not be two of it. State test 116 leg G asserts on this; `--risk014-probe session-system` /
+    // `ab-system` print it. Both used to answer the question their own way, and the probe's way --
+    // looking for a canary in the serialized state afterwards -- was UNSOUND: a parser may open a
+    // file, read it, and then reject the document, and the canary would be absent either way.
+    //
+    // What this returns instead is a DIFFERENTIAL with a POSITIVE CONTROL:
+    //
+    //   * `opensWithSource` / `withSource` -- the same document text parsed with a counting
+    //     `juce::InputSource` installed. If the parser resolves external entities at all, the
+    //     counter sees the open and the entity resolves. Without this the negative below is
+    //     unfalsifiable.
+    //   * `filePresent` / `fileAbsent` -- `juce::parseXML (const String&)`, the call BOTH
+    //     host-state paths make (`juce_XmlDocument.cpp:53-56` is literally
+    //     `XmlDocument (textToParse).getDocumentElement()`), with the file on disk and then
+    //     deleted. Equal outputs mean the file's existence made no difference to the parse.
+    //
+    // "The outcome does not depend on the file" IS the property. "The canary did not appear
+    // downstream" is not, and is no longer reported by anything.
+    struct ExternalEntityProbe
+    {
+        int          opensWithSource = 0;
+        juce::String withSource, filePresent, fileAbsent;
+        bool         resolvedWithSource = false;   // the positive control fired
+        bool         dependsOnTheFile   = false;   // present != absent, i.e. the file WAS consulted
+        juce::String document;                     // the text all three parses were given
+    };
+
+    ExternalEntityProbe measureExternalEntityAccess()
+    {
+        ExternalEntityProbe r;
+
+        auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                       .getChildFile ("anamorph-risk014");
+        dir.createDirectory();
+        auto external = dir.getChildFile ("external.dtd");
+        external.replaceWithText ("<!ENTITY leak \"LEAKED\">");
+
+        r.document << "<?xml version=\"1.0\"?><!DOCTYPE ANAMORPH SYSTEM \"" << external.getFileName()
+                   << "\"><ANAMORPH><PARAM id=\"width\" value=\"&leak;\"/></ANAMORPH>";
+
+        auto serialise = [] (const std::unique_ptr<juce::XmlElement>& x)
+        {
+            return x != nullptr ? x->toString (juce::XmlElement::TextFormat().singleLine())
+                                : juce::String ("<null>");
+        };
+
+        {
+            juce::XmlDocument xd (r.document);
+            auto* counter = new CountingInputSource (external);
+            xd.setInputSource (counter);                 // the document takes ownership
+            r.withSource        = serialise (xd.getDocumentElement());
+            r.opensWithSource   = counter->opens;
+            r.resolvedWithSource = r.withSource.contains ("LEAKED");
+        }
+
+        r.filePresent = serialise (juce::parseXML (r.document));
+        external.deleteFile();
+        r.fileAbsent  = serialise (juce::parseXML (r.document));
+        r.dependsOnTheFile = (r.filePresent != r.fileAbsent);
+
+        dir.deleteRecursively();
+        return r;
+    }
 }
 
 static void testHostStateIsBoundedBeforeTheParser()
@@ -13893,16 +13958,6 @@ static void testHostStateIsBoundedBeforeTheParser()
         // `AnamorphRoot` > `ANAMORPH` > `PARAM` is depth 3, and every session this product has
         // ever written is at or below it. The cap is 8, so leg A walks the boundary itself
         // rather than a number far from it: depth 8 loads, depth 9 does not.
-        auto atCap = [&] (int d)
-        {
-            juce::String s;
-            s << "<AnamorphRoot>";
-            for (int i = 0; i < d - 3; ++i) s << "<pad>";
-            s << "<ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/></ANAMORPH>";
-            for (int i = 0; i < d - 3; ++i) s << "</pad>";
-            s << "</AnamorphRoot>";
-            return s;
-        };
         // The padding sits BESIDE the APVTS child rather than above it, so the tree the decode
         // looks for is still `AnamorphRoot`'s direct child at every depth: what changes between
         // the two legs is the document's nesting and nothing else.
@@ -13915,9 +13970,79 @@ static void testHostStateIsBoundedBeforeTheParser()
             s << "</deep></AnamorphRoot>";
             return s;
         };
-        (void) atCap;
         checkNear (restores (beside (depth)),     0.0375, 1e-6, "leg A: a session nested exactly 8 deep still restores");
         checkNear (restores (beside (depth + 1)), 0.0,    1e-9, "leg A: one level deeper is refused before the parser");
+    }
+
+    // ---- A2. a SELF-CLOSING element occupies a level, like every other element ----------
+    {
+        // THE BUG THIS LEG EXISTS FOR. Until 2026-09-19 a self-closing element contributed
+        // nothing to the scan's depth, so `<a>..<h><leaf/></h>..</a>` -- NINE elements deep --
+        // passed a cap of eight. That put enforcement one level below the definition ADR-0055
+        // ("a preset ... is nested exactly two deep", its deepest element the self-closing
+        // `PARAM`), ADR-0056 and leg F's census all use.
+        //
+        // EVERY COUNT HERE IS A LITERAL, not `depth` or `depth + 1`. The legs above size their
+        // fixtures from the constant, which pins the rule's shape; these pin the BOUNDARY, so
+        // moving `maxDocumentDepth` cannot make them vacuous -- it makes them fail, which is
+        // what leg 0 is for.
+        auto opens = [] (int n, const juce::String& leaf)
+        {
+            juce::String s;
+            for (int i = 0; i < n; ++i) s << "<e" << i << ">";
+            s << leaf;
+            for (int i = n - 1; i >= 0; --i) s << "</e" << i << ">";
+            return s;
+        };
+
+        // Eight elements deep, the eighth self-closing: SEVEN opened ancestors plus the leaf.
+        const auto eight = opens (7, "<leaf/>");
+        // Nine, by adding one ancestor. This is the review's own example, shape for shape.
+        const auto nine  = opens (8, "<leaf/>");
+
+        // Asked of the shared scan directly, under BOTH rules, because the point is that there
+        // is ONE depth definition and both callers get it. `parserSafetyOnly` is what host state
+        // asks; `oneWellFormedDocument` is what a `.anamorph` file asks.
+        using anamorph::xmlBoundary::textIsAdmissible;
+        using anamorph::xmlBoundary::DocumentRule;
+        for (auto rule : { DocumentRule::parserSafetyOnly, DocumentRule::oneWellFormedDocument })
+        {
+            const bool safety = (rule == DocumentRule::parserSafetyOnly);
+            check (textIsAdmissible (eight, 8, rule),
+                   safety ? "leg A2: eight deep with a self-closing leaf is admissible (parser safety)"
+                          : "leg A2: ...and as one well-formed document");
+            check (! textIsAdmissible (nine, 8, rule),
+                   safety ? "leg A2: NINE deep with a self-closing leaf is refused (parser safety)"
+                          : "leg A2: ...and as one well-formed document");
+        }
+
+        // A self-closing ROOT is one element, not zero: admissible at any cap down to 1, and
+        // still a complete document. `<ANAMORPH/>` is a valid preset meaning all-defaults, and
+        // ADR-0055 leg E keeps it loading -- this asserts the scan's side of that.
+        check (textIsAdmissible ("<ANAMORPH/>", 1, DocumentRule::oneWellFormedDocument),
+               "leg A2: a self-closing root is ONE level deep and is a complete document");
+        check (! textIsAdmissible ("<ANAMORPH/>", 0, DocumentRule::oneWellFormedDocument),
+               "leg A2: ...and is refused by a cap of zero, so it is counted rather than skipped");
+        check (textIsAdmissible ("<ANAMORPH/>", 1, DocumentRule::parserSafetyOnly),
+               "leg A2: the same under parser safety");
+
+        // ...and through the REAL entry point, so the fix is not just a unit-level claim. A
+        // session whose deepest node is a self-closing `PARAM` nine levels down is refused; the
+        // same shape one level shallower restores.
+        auto session = [&] (int ancestors)
+        {
+            juce::String s ("<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/></ANAMORPH><deep>");
+            for (int i = 0; i < ancestors; ++i) s << "<n>";
+            s << "<leaf/>";
+            for (int i = 0; i < ancestors; ++i) s << "</n>";
+            s << "</deep></AnamorphRoot>";
+            return s;
+        };
+        // `AnamorphRoot` + `deep` + `ancestors` + `leaf`: 2 + 6 + 1 = 9 elements at the deepest.
+        checkNear (restores (session (5)), 0.0375, 1e-6,
+                   "leg A2: a session whose deepest node is a self-closing leaf at 8 still restores");
+        checkNear (restores (session (6)), 0.0,    1e-9,
+                   "leg A2: ...and at 9 it is refused, which the pre-fix scan accepted");
     }
 
     // ---- B. a DOCTYPE in the session document ---------------------------------------
@@ -14130,54 +14255,31 @@ static void testHostStateIsBoundedBeforeTheParser()
         // The claim this establishes is therefore "the outcome does not depend on the file",
         // which IS the property, rather than "the canary did not appear downstream", which is
         // not.
-        auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                       .getChildFile ("anamorph-risk014");
-        dir.createDirectory();
-        auto external = dir.getChildFile ("external.dtd");
-        check (external.replaceWithText ("<!ENTITY leak \"LEAKED\">"), "leg G: the external DTD is on disk");
+        const auto m = measureExternalEntityAccess();
 
-        juce::String doc;
-        doc << "<?xml version=\"1.0\"?><!DOCTYPE ANAMORPH SYSTEM \"" << external.getFileName()
-            << "\"><ANAMORPH><PARAM id=\"width\" value=\"&leak;\"/></ANAMORPH>";
-
-        auto serialise = [] (const std::unique_ptr<juce::XmlElement>& x)
-        {
-            return x != nullptr ? x->toString (juce::XmlElement::TextFormat().singleLine())
-                                : juce::String ("<null>");
-        };
-
-        // G1 -- the positive control.
-        juce::String withSource;
-        int opens = 0;
-        {
-            juce::XmlDocument xd (doc);
-            auto* counter = new CountingInputSource (external);
-            xd.setInputSource (counter);                 // the document takes ownership
-            const auto parsed = xd.getDocumentElement();
-            withSource = serialise (parsed);
-            opens = counter->opens;
-        }
         std::printf ("  [leg G1] with an InputSource: %d open(s), result %s\n",
-                     opens, withSource.substring (0, 90).toRawUTF8());
-        check (opens > 0, "leg G1: the parser DOES open related content when a source exists");
-        check (withSource.contains ("LEAKED"),
+                     m.opensWithSource, m.withSource.substring (0, 90).toRawUTF8());
+        check (m.opensWithSource > 0,
+               "leg G1: the parser DOES open related content when a source exists");
+        check (m.resolvedWithSource,
                "leg G1: ...and resolves the external entity, so the oracle can see a read");
 
-        // G2 / G3 -- the production call, file present then absent.
-        const auto present = serialise (juce::parseXML (doc));
-        check (external.deleteFile(), "leg G: the external DTD is removed for the second parse");
-        const auto absent  = serialise (juce::parseXML (doc));
         std::printf ("  [leg G2] present: %s\n  [leg G3] absent : %s\n",
-                     present.substring (0, 90).toRawUTF8(), absent.substring (0, 90).toRawUTF8());
-        check (present == absent,
+                     m.filePresent.substring (0, 90).toRawUTF8(),
+                     m.fileAbsent.substring (0, 90).toRawUTF8());
+        check (! m.dependsOnTheFile,
                "leg G2/G3: the production parse gives the SAME result whether the file exists or not");
-        check (! present.contains ("LEAKED"),
+        check (! m.filePresent.contains ("LEAKED"),
                "leg G2: ...and never carries the file's contents");
 
         // G4 -- and through the real entry points the question is now moot TWICE OVER: the
         // boundary refuses the `DOCTYPE` before `parseXML` is reached at all, on top of the
         // parser having no InputSource to open anything with.
-        check (external.replaceWithText ("<!ENTITY leak \"LEAKED\">"), "leg G4: the DTD is back on disk");
+        auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                       .getChildFile ("anamorph-risk014");
+        dir.createDirectory();
+        auto external = dir.getChildFile ("external.dtd");
+        check (external.replaceWithText ("<!ENTITY leak \"LEAKED\">"), "leg G4: the DTD is on disk");
         {
             AnamorphAudioProcessor p;
             const auto blob = frameHostChunk (juce::String ("<!DOCTYPE AnamorphRoot SYSTEM \"")
@@ -14187,11 +14289,15 @@ static void testHostStateIsBoundedBeforeTheParser()
             checkNear ((double) rawOf (p, "drive"), 0.0, 1e-9,
                        "leg G4: a SYSTEM DOCTYPE in a session chunk is refused by the boundary");
             const auto tree = stateTreeOf (p);
-            check (! tree.toXmlString().contains ("LEAKED"), "leg G4: ...and no file content reaches the state");
+            // A WEAK CHECK, AND LABELLED AS ONE. It says the file's text is not in the state; it
+            // does not say the file was not read, and nothing here relies on it for that -- G1-G3
+            // above answer access, and the `drive` assertion answers refusal.
+            check (! tree.toXmlString().contains ("LEAKED"),
+                   "leg G4: ...and the file's text is not in the state either (weaker than G2/G3, not a substitute)");
         }
         {
             AnamorphAudioProcessor p;
-            const auto blob = frameHostChunk (sessionCarrying (doc));
+            const auto blob = frameHostChunk (sessionCarrying (m.document));
             p.setStateInformation (blob.getData(), (int) blob.getSize());
             p.abSwitchTo (0);
             checkNear ((double) plainOf (p, "width"), 1.0, 1e-4,
@@ -34974,11 +35080,15 @@ namespace
     // `drive` is the witness: its default is 0.0 and every shape that carries a
     // value carries 0.9 plain (0.0375 normalised), so the printed raw says
     // whether the blob was REJECTED (0.0) or ACCEPTED AND APPLIED (0.0375).
-    // `canary` is for the external-entity shapes: it is the text of a real file
-    // on disk, and finding it anywhere in the restored state would mean the
-    // parser read a file nobody asked it to.
-    int reportShape (const char* what, const juce::MemoryBlock& blob,
-                     const juce::String& canary = {})
+    //
+    // IT NO LONGER REPORTS ANYTHING ABOUT EXTERNAL FILES, and that removal is the point.
+    // It used to take a `canary` -- the text of a real file on disk -- and print whether that
+    // text turned up in the restored state, as if absence proved the file was never opened. It
+    // proves nothing of the sort: a parser may open the file, read it, and then reject the
+    // document, and the canary is absent in that case too. The question moved to
+    // `measureExternalEntityAccess()`, which measures it with a positive control, and the
+    // `session-system` / `ab-system` shapes below print THAT.
+    int reportShape (const char* what, const juce::MemoryBlock& blob)
     {
         std::printf ("  shape=%s  bytes=%d\n", what, (int) blob.getSize());
         std::fflush (stdout);                       // a SIGSEGV must not take this line with it
@@ -34989,21 +35099,8 @@ namespace
 
         const auto ms = std::chrono::duration_cast<std::chrono::milliseconds> (
                             std::chrono::steady_clock::now() - t0).count();
-        std::printf ("  RETURNED after %lld ms; drive raw=%.6f", (long long) ms,
+        std::printf ("  RETURNED after %lld ms; drive raw=%.6f\n", (long long) ms,
                      (double) rawOf (proc, "drive"));
-
-        if (canary.isNotEmpty())
-        {
-            juce::MemoryBlock out;
-            proc.getStateInformation (out);
-            const auto xml = BlobCodec::unwrap (out);
-            const auto text = xml != nullptr
-                                ? xml->toString (juce::XmlElement::TextFormat().singleLine())
-                                : juce::String();
-            std::printf ("; file contents %s", text.contains (canary) ? "LEAKED" : "did not leak");
-        }
-
-        std::printf ("\n");
         return 0;
     }
 
@@ -35041,29 +35138,39 @@ namespace
 
         if (shape == "session-system" || shape == "ab-system")
         {
-            // THE EXTERNAL-ENTITY DOOR, asked with a real file on disk to read. It is the one
-            // ADR-0055 shape this framing CANNOT reach, and the reason is structural rather than
-            // lucky: `XmlDocument::getFileContents` opens nothing unless an `InputSource` is set
-            // (`juce_XmlDocument.cpp:182-193`), and both of these paths reach the parser through
-            // `parseXML (const String&)`, whose `XmlDocument (const String&)` constructor leaves
-            // it null (`:38`). Only the `File` overload installs a `FileInputSource`, and that is
-            // what the PRESET path used to call.
-            const bool inner = (shape == "ab-system");
-            const juce::String canary = "SECRET-CANARY-0123456789";
-            auto marker = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                              .getChildFile ("anamorph-risk014-canary.txt");
-            marker.replaceWithText (canary);
+            // THE EXTERNAL-ENTITY DOOR. Two answers, and the first is the one that used to be
+            // missing: whether the file was READ, measured as a differential with a positive
+            // control rather than inferred from a canary's absence downstream. The shared
+            // `measureExternalEntityAccess()` is the same code State test 116 leg G asserts on,
+            // so the suite and the probe cannot drift into two different claims.
+            //
+            // The negative is structural, not lucky: `XmlDocument::getFileContents` opens nothing
+            // unless an `InputSource` is set (`juce_XmlDocument.cpp:182-193`), and both host-state
+            // paths reach the parser through `parseXML (const String&)`, whose
+            // `XmlDocument (const String&)` constructor leaves it null (`:38`). Only the `File`
+            // overload installs a `FileInputSource`, and that is what the PRESET path used to call.
+            const auto m = measureExternalEntityAccess();
+            std::printf ("  external-entity oracle (shared with State test 116 leg G):\n");
+            std::printf ("    positive control -- with an InputSource : %d open(s), %s\n",
+                         m.opensWithSource, m.resolvedWithSource ? "entity RESOLVED to the file's text"
+                                                                 : "entity did NOT resolve (control FAILED)");
+            std::printf ("    parseXML(String) -- file present       : %s\n",
+                         m.filePresent.substring (0, 100).toRawUTF8());
+            std::printf ("    parseXML(String) -- file absent        : %s\n",
+                         m.fileAbsent.substring (0, 100).toRawUTF8());
+            std::printf ("    VERDICT: %s\n",
+                         m.dependsOnTheFile
+                             ? "the parse DEPENDS on the file -- it was opened and read"
+                             : "the parse does not depend on the file -- it was not read");
+            if (m.opensWithSource == 0 || ! m.resolvedWithSource)
+                std::printf ("    (the control did not fire, so the verdict above proves nothing)\n");
 
-            const char* tag = inner ? "ANAMORPH" : "AnamorphRoot";
-            juce::String doc;
-            doc << "<?xml version=\"1.0\"?><!DOCTYPE " << tag << " SYSTEM \""
-                << marker.getFullPathName() << "\"><" << tag
-                << "><PARAM id=\"drive\" value=\"&leak;\"/></" << tag << ">";
-            const auto blob = inner ? frameAsHostChunk (rootCarryingSlotPayload (doc))
-                                    : frameAsHostChunk (doc);
-            const auto r = reportShape (shape.toRawUTF8(), blob, canary);
-            marker.deleteFile();
-            return r;
+            // ...and the same document through the REAL entry point, where since ADR-0056 the
+            // boundary refuses the `DOCTYPE` before `parseXML` is reached at all.
+            const bool inner = (shape == "ab-system");
+            const auto blob = inner ? frameAsHostChunk (rootCarryingSlotPayload (m.document))
+                                    : frameAsHostChunk (m.document);
+            return reportShape (shape.toRawUTF8(), blob);
         }
 
         if (shape == "session-big" || shape == "ab-big")

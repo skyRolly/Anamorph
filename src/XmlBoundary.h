@@ -232,14 +232,28 @@ namespace anamorph::xmlBoundary
             }
             if (! closed) return skipRanOff;
 
+            // A SELF-CLOSING ELEMENT IS AN ELEMENT, AND IT OCCUPIES A LEVEL. It just vacates it
+            // again immediately, so it raises the DEEPEST level reached without raising the
+            // running depth. Skipping it entirely -- which this scan did until 2026-09-19 -- put
+            // enforcement one level below the definition every other part of the repository uses,
+            // and the gap was reachable: `<a>..<h><leaf/></h>..</a>` is NINE elements deep and
+            // passed a cap of eight, because `<leaf/>` contributed nothing.
+            //
+            // THE DEFINITION IS NOT INVENTED HERE and there is only one of it. ADR-0055 records a
+            // preset -- `<ANAMORPH><PARAM id=.. value=../></ANAMORPH>`, whose deepest element is
+            // the SELF-CLOSING `PARAM` -- as "nested exactly two deep", ADR-0056 records a session
+            // as three, and the compatibility census measures both with a walk that returns
+            // `d + 1` at every element including childless ones (State test 116 leg F). All three
+            // count the self-closing leaf. This line is what makes the scan agree with them.
             if (depth == 0) sawRoot = true;
-            if (! selfClosing)
+            if (selfClosing)
             {
-                if (++depth > maxDepth) return false;
+                if (depth + 1 > maxDepth) return false;
+                if (depth == 0) rootClosed = true;     // `<ANAMORPH/>`: opened and closed at once
             }
-            else if (depth == 0)
+            else if (++depth > maxDepth)
             {
-                rootClosed = true;                     // `<ANAMORPH/>`: opened and closed at once
+                return false;
             }
         }
 

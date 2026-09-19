@@ -596,7 +596,7 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.cpp:1403-1579"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PresetManager.cpp:776",
-     "src/PresetManager.cpp:1224"): "copyState",
+     "src/PresetManager.cpp:1209"): "copyState",
     ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
      "src/PluginProcessor.cpp:470-847",
      "src/PluginProcessor.cpp:524-984"): "syncCommitted",

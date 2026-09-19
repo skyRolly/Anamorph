@@ -358,21 +358,6 @@ namespace
                                                       (int) (size - bom));
     }
 
-    // True when `p` stands at the `<?` of a processing instruction whose TARGET is exactly `xml`
-    // in any case -- which XML reserves for the DECLARATION and for nothing else. The comparison
-    // stops at a terminator (`compareIgnoreCaseUpTo` breaks on a zero character), so a truncated
-    // `<?xm` cannot be read past the end of the text; and because a match proves five non-zero
-    // characters, `p[5]` is at worst the terminator itself. `<?xmlfoo?>` is a DIFFERENT target and
-    // an ordinary instruction, which is why the character after the name is examined at all.
-    bool isXmlDeclaration (juce::String::CharPointerType p)
-    {
-        if (juce::CharacterFunctions::compareIgnoreCaseUpTo (p, juce::CharPointer_ASCII ("<?xml"), 5) != 0)
-            return false;
-
-        const auto after = p[5];
-        return after == 0 || after == '?' || juce::CharacterFunctions::isWhitespace (after);
-    }
-
     // THE WALK ITSELF NOW LIVES IN `src/XmlBoundary.h`, unchanged in behaviour and shared with
     // the two host-state paths ADR-0056 bounded (the session chunk and each A/B slot payload).
     // Those paths reach the SAME `juce::parseXML` with the same unbounded recursion and the same

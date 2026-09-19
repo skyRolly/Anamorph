@@ -1384,7 +1384,7 @@ is the wrong test: what overflows a frame is a large automatic, not that particu
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
 suite's largest frame is **289,440 bytes** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`) — 28% of the 1 MB reserve, against the state suite's **709,760**
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21719`, 68%).
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21825`, 68%).
 Widening the step armed a tripwire rather than introducing a failure: both binaries were verified
 green under `ulimit -s 1024` first.
 
@@ -1396,7 +1396,7 @@ grown 1,936 bytes; the DSP maximum is unchanged to the byte. Nothing in either s
 of **1,683** functions measured across the two translation units, the largest frame is that 709,760.
 
 **PREfast's `C6262` numbers are not frame sizes.** Its largest claim on `b6af84e` is 1,285,476 bytes
-at `tests/state_tests.cpp:15304` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
+at `tests/state_tests.cpp:15410` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
 function — 4.5× — because /analyze sums a function's locals across disjoint sibling scopes, without
 the lifetime overlap a real compiler applies. Across the 20 largest claims the overstatement runs
 from 1.01× to 9.02× and never goes the other way. Use `-fstack-usage`, not the alert text, when
@@ -1409,6 +1409,44 @@ four real frames are **284,224 / 142,688 / 142,400 / 142,464** against PREfast's
 569,696 / 432,084 / 142,296 / 426,672, and the worst of them is **27 %** of the reserve. The suite's
 maximum is unchanged at 708,480 (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`), which
 none of the four approaches. `docs/procedures/TESTING.md` carries the per-function table.
+
+**Re-measured for the five new claims of round 52 (ADR-0056), and DISPOSED `DO NOT FIX`.** The
+`C6262` count went 169 → 174 between `4d0471d` (main) and the PR head. Diffing the *byte values*
+rather than the line numbers — line anchors churn whenever a file grows, as the round-49 audit
+recorded — shows **five added, none removed, and not one pre-existing value changed**, which is the
+proof that the older large-stack findings in this file are historical and untouched by the round.
+The five, against GCC on ninja's own compile line:
+
+| Function | `/analyze` claim | `-fstack-usage` | Ratio |
+|---|---|---|---|
+| `testHostStateIsBoundedBeforeTheParser` (State test 116) | 1,142,460 | **284,192** | 4.02× |
+| …its `restores` lambda | 142,776 | **141,968** | 1.006× |
+| …its `slotA` lambda | 142,776 | **141,968** | 1.006× |
+| `reportShape` (`--risk014-probe`) | 142,816 | **141,936** | 1.006× |
+| `runRisk014Probe` (`--risk014-probe`) | 143,220 | **142,176** | 1.007× |
+
+**The responsible object is the same one every row of this section names.** `sizeof
+(AnamorphAudioProcessor)` is **141,888 bytes**, so it is 99.9 % of each of the four ordinary frames;
+the remainder is scalars. And the outlier is arithmetic, not mystery: the test function declares
+**eight** processor automatics outside its two named lambdas, 8 × 141,888 = 1,135,104, which is
+`/analyze`'s 1,142,460 less 7,356 of scalars — a textbook instance of the sum-across-disjoint-scopes
+behaviour described above. GCC's answer is the union of the deepest two that actually overlap:
+2 × 141,888 = 283,776, plus 416.
+
+**Why none of the five is fixed.** They are ordinary for this suite — **125 of the 1,575** functions
+in the translation unit already have frames at or above 141,936, and the maximum is unchanged at
+709,760 — and the control that holds the line is the guard step, which is green: both suites pass
+under `ulimit -s 1024` on this head, State test 116 included, with its deepest real chain at
+284,192 + 141,968 = **426,160 bytes, 41 % of the Windows reserve**. Heap-allocating the processors
+would make this one test differ from a hundred siblings for no measured headroom.
+
+**For `reportShape` it would be worse than pointless.** Its `AnamorphAudioProcessor proc;` is live on
+the stack across `setStateInformation`, which is where JUCE's mutually recursive
+`readNextElement`/`readChildElements` descend. Moving it to the heap hands 141,888 bytes back to that
+recursion and therefore *moves the SIGSEGV depth the probe exists to measure* and ADR-0056 records.
+The probe is opt-in, so the guard step never runs it; `--risk014-probe census` was run under
+`ulimit -s 1024` separately and is green — `main` (80 bytes) → `runRisk014Probe` → `reportShape` is
+**~284 KB, 27 %** of the reserve, and the two never nest more deeply than that.
 
 ### Why the valgrind lane needs the suite's spinners paced (`sanitizers`)
 

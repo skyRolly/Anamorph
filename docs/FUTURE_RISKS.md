@@ -173,6 +173,21 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   **once** and the entity resolves to `LEAKED`; through `juce::parseXML (const String&)` the result
   is the unresolved `leak` and is **byte-identical whether the file exists or not**. Identical output
   across present and absent is the property being claimed; the absence of a canary is not.
+- **CORRECTED 2026-09-19 (round 52) — "depth 8" was enforced as depth 9, on every surface.** The
+  shared walk advanced `depth` on an opening tag and skipped a self-closing one, so a document
+  `<a>…<h><leaf/></h>…</a>` nested **nine** elements deep passed a cap of eight, because the closing
+  leaf contributed nothing. The limit itself was never in doubt and did not move; what moved is the
+  scan, onto the one depth definition already written down — ADR-0055's *"nested exactly two deep"*
+  for a preset whose deepest element is the self-closing `PARAM`, this record's depth-3 session, and
+  the census walk that returns `d + 1` at every element including childless ones. The overshoot was
+  exactly one level (a non-self-closing chain was always counted) and reached preset text, session
+  chunk and A/B payload alike, since all three share the walk. **State test 116 leg A2** is the
+  regression; restoring the pre-fix lines fails 4 checks.
+- **CORRECTED 2026-09-19 (round 52) — round 51's claim that the discredited oracle was gone from the
+  probe was itself wrong.** Leg G had been rebuilt, but `--risk014-probe session-system` / `ab-system`
+  still ran the canary check. They now call the same `measureExternalEntityAccess()` helper leg G
+  asserts on and print the differential with its positive control, and `reportShape` no longer takes
+  a canary, so no shape can reach the old oracle.
 - **CORRECTED 2026-09-19 (round 50) — the bytes are not only the host's.** The old likelihood rating
   rested on *"the bytes come from the host's own project file rather than from a file the user
   opens"*. In the pinned VST3 SDK, `PresetFile::restoreComponentState` reads the `Comp` chunk and
@@ -460,7 +475,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   change with no defect behind it.
 
   **Residual, stated rather than claimed away.** `PresetManager::saveUser`
-  (`src/PresetManager.cpp:1224`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
+  (`src/PresetManager.cpp:1209`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
   `soundReplacement`, the only durable reader in the tree that does. It cannot join this cycle: it
   only reads, so it never waits for a `listenerLock`, and it always releases. It is recorded here
   because the rule the paragraphs above rest on — every APVTS acquisition that can happen with a

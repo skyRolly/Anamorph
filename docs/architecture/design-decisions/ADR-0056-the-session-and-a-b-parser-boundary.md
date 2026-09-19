@@ -277,6 +277,35 @@ the caps sit at **~25×** and **4×** what the product writes, and at ~128× and
 Fitting tighter numbers to today's sessions would have bought nothing and would have made the next
 parameter addition a compatibility event.
 
+### Correction, 2026-09-19 (round 52): a self-closing element occupies a level
+
+**The decision is unchanged; its enforcement was one level short of it.** As shipped in round 51 the
+shared walk advanced `depth` on an opening tag and skipped a self-closing one entirely, so
+`<a><b><c><d><e><f><g><h><leaf/></h></g></f></e></d></c></b></a>` — **nine** elements deep — passed a
+cap of eight, because `<leaf/>` contributed nothing. The cap was never the thing in doubt: **the
+limit is still 8**, and no configured value moved.
+
+What the correction restores is agreement with *the one* depth definition this repository already
+had, in three independent places that all count a childless element:
+
+* **ADR-0055** records a preset — `<ANAMORPH><PARAM id=.. value=../></ANAMORPH>`, whose deepest
+  element is the **self-closing** `PARAM` — as *"nested exactly two deep"*.
+* **This ADR's own census** records a session as depth 3 and a slot payload as depth 2, measured by
+  the `--risk014-probe census` helper whose `deepest` walk returns `d + 1` at every element,
+  childless ones included.
+* **`SESSION_COMPATIBILITY_POLICY.md` rule 7** inherited those numbers.
+
+So a second definition was never written down and none is introduced here: the scan is what moved,
+onto the definition the documents already used. `<ANAMORPH/>` — a root that opens and closes at once
+— is depth 1 under it, admitted at `maxDepth` 1 and refused at 0, which State test 116 leg A2 pins
+along with the eight-accepted / nine-refused pair and an end-to-end restore of each through
+`setStateInformation`. Both `DocumentRule`s are asserted, because the depth walk is common to them.
+
+The gap was reachable on every surface the boundary covers — preset text, host session chunk and A/B
+payload alike — since all three share the walk. It was *not* a route past the cap by more than one
+level: the running depth of a non-self-closing chain was always counted, so the overshoot is exactly
+the one level a closing leaf occupies, and the hang and unbounded-read boundaries are untouched.
+
 ## Consequences
 
 **What changed for a user: nothing that a valid session can observe.** Every fixture the repository
@@ -355,6 +384,19 @@ with the 1 MB rows under `ulimit -s 1024` for Windows main-thread parity and pea
   `InputSource` installed the parser opens the file once and the entity resolves to `LEAKED`; through
   `juce::parseXML (const String&)` the result is `leak` and is **byte-identical whether the file
   exists or not**. Identical output across present/absent is the property; canary absence is not.
+
+**Round 52 — the self-closing correction, verified the same way:**
+
+* **State 4 632 / 0** (was 4 625; +7 from leg A2), **DSP 396 / 0**, `preflight.sh` exit 0.
+* **Leg A2 kills the pre-fix scan.** Restoring only the lines that skipped a self-closing element
+  and re-running produces **4 failures**: nine-deep-with-a-self-closing-leaf refused under
+  `parserSafetyOnly`, the same under `oneWellFormedDocument`, `<ANAMORPH/>` refused by a cap of
+  zero, and the end-to-end depth-9 `setStateInformation` restore — which on the pre-fix code
+  restored `drive` to 0.0375 instead of refusing. Written before the fix, failing on the shipped
+  code, passing after: not a test fitted to the answer.
+* **M5 re-run (depth 8 → 9) now kills 2 checks**, up from 1, because leg A2's end-to-end restore
+  fails alongside leg 0's `maxDocumentDepth == 8`. The cap keeps its coverage, and the constant
+  cannot be edited to match a broken walk without the suite saying so.
 
 **Confidence: high** for the boundary, the thresholds, the compatibility evidence and the oracle.
 **Two things remain judgements rather than measurements**: the size cap is bounded by the largest

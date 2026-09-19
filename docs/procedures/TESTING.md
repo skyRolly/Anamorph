@@ -690,11 +690,16 @@ not returned after 60 s; peak RSS linear to 521–650 MB with no cap; and two do
 trailing prose, a NUL disguise, invalid UTF-8 and a chunk truncated to half its length each
 **accepted and applied**. One negative matters as much: the A/B payload **amplifies** depth rather
 than inheriting it, the 3 000 levels living inside one attribute value of a well-formed 3-deep
-session. **The probe no longer answers the external-entity question at all**, and that is a
-correction rather than a retreat: its `session-system` / `ab-system` shapes used to report whether a
-canary from a file on disk appeared in the serialized state afterwards, which cannot distinguish
-*"the file was never opened"* from *"the file was opened and read, and the document was then
-rejected"*. That question moved to **State test 116 leg G**, which measures it properly.
+session. **The probe's external-entity shapes now report leg G's measurement, not their own.** Round
+51 claimed the canary check was gone; it was not — `session-system` / `ab-system` still asked
+`reportShape` whether a canary from a file on disk turned up in the serialized state afterwards,
+which cannot distinguish *"the file was never opened"* from *"the file was opened and read, and the
+document was then rejected"*. Round 52 finished the correction by **reusing** the existing mechanism
+rather than inventing a second one: both shapes call the same `measureExternalEntityAccess()` helper
+State test 116 leg G asserts on, print the positive control, the present/absent differential and a
+`VERDICT:` line, and print an explicit guard when the control does **not** fire — a probe that has
+stopped discriminating says so rather than reading clean. `reportShape` no longer takes a `canary`
+at all, so the discredited oracle cannot be reached from any shape.
 
 **State test 116 is what the suite runs**, and it is deliberately NOT this probe. Its inputs sit one
 level past each cap — depth 9 against 8, one byte past 256 KB — so a regressed tree fails an
@@ -1818,6 +1823,29 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   uncovered statement is one assignment. Recorded rather than papered over, in the same way M15 and
   M189 are.
 
+* **Round 52 — the depth cap now enforces the depth definition the repository already had.** A
+  review found the shared walk one level short of its own limit: it advanced `depth` on an opening
+  tag and skipped a self-closing one entirely, so
+  `<a><b><c><d><e><f><g><h><leaf/></h></g></f></e></d></c></b></a>` — **nine** elements deep — passed
+  a cap of eight. **No configured value moved and no second definition was written**: ADR-0055 calls
+  a preset whose deepest element is the self-closing `PARAM` *"nested exactly two deep"*, ADR-0056
+  calls a session three, and the `--risk014-probe census` walk returns `d + 1` at every element
+  including childless ones. All three count the leaf; only the scan did not. **State test 116 leg
+  A2** pins it — eight accepted and nine refused under BOTH `DocumentRule`s, the depth-9 fixture
+  carrying a self-closing leaf so the bypass is the thing under test, `<ANAMORPH/>` handled as a root
+  that opens and closes at once (admitted at `maxDepth` 1, refused at 0), and both depths driven
+  end-to-end through `setStateInformation`. Restoring the pre-fix lines produces **4 failures**; M5
+  (depth 8 → 9) now kills **2** where it killed 1. **The probe's oracle was consolidated, not
+  duplicated.** `--risk014-probe session-system` / `ab-system` had kept the canary-in-serialized-state
+  check that leg G replaced; rather than build a second interception model they now call the same
+  `measureExternalEntityAccess()` helper leg G asserts on, print the present/absent differential with
+  a `VERDICT:` line, and print a guard when the positive control does not fire — so a probe that has
+  stopped discriminating says so instead of reading clean. `reportShape`'s `canary` parameter is
+  gone, and the destructive shapes stay destructive. **The five new PREfast `C6262` claims are
+  disposed `DO NOT FIX` on measurement**, not on being test-only: see `docs/procedures/CI_CD.md`.
+  **State 4 632 / 0**, DSP 396 / 0, both suites green under `ulimit -s 1024`, preflight exit 0.
+  Version unchanged at 0.9.9.
+
 * **Round 51 — both host-state parser surfaces bounded, and a test oracle that actually tests.**
   The owner ruled on ADR-0056: narrow host-state acceptance, protect **both** parser surfaces, use
   ADR-0055's limits (**256 KB, depth 8, no `DOCTYPE`**), and correct the trust classification. **One
@@ -1845,8 +1873,9 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   carry a top-level `width` of 1.6 so the two outcomes are different numbers. M5 (depth 8 → 9)
   survived because every leg sized itself from the constant; leg 0 now pins the values. Both
   survivals were real coverage gaps, and both are recorded rather than quietly fixed. **The Devin
-  finding on the probe's external-entity oracle is closed** — see the `--risk014-probe` entry above
-  and leg G. **State 4 625 / 0**, DSP 396 / 0, libFuzzer 10 990 runs / 181 s under ASan+UBSan with
+  finding on the probe's external-entity oracle was reported closed here and was NOT** — leg G was
+  rebuilt but the probe kept the canary check; round 52 above finished it. Left as written, with the
+  correction next to it, rather than edited to look right. **State 4 625 / 0**, DSP 396 / 0, libFuzzer 10 990 runs / 181 s under ASan+UBSan with
   no findings, preflight exit 0. Version unchanged at 0.9.9.
 * **Round 50 — RISK-014 measured instead of inferred, and stopped at the gate.** The brief asked for
   the disposition of RISK-014: the host session blob and the A/B slot payload reach the same parser
@@ -1947,10 +1976,10 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
     PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
     functions across the two translation units: the largest real frame is **709,760** bytes
-    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21719`,
+    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21825`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
     (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-    1,285,476 at `tests/state_tests.cpp:15304` against a real 284,800 — 4.5x — and across its 20
+    1,285,476 at `tests/state_tests.cpp:15410` against a real 284,800 — 4.5x — and across its 20
     largest claims the overstatement runs 1.01x to 9.02x and never inverts. The control that holds
     this line is the `ulimit -s 1024` guard step, not the alert.
   - **DO NOT FIX — `C26495` x 7, and the 2026-09-07 justification for them was WRONG.** That entry
@@ -1965,7 +1994,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     no alert while changing test code for a dashboard.
   - **DO NOT FIX — `C26498` x 4 and the JUCE `C26495`.** The four are `con.5` style suggestions to
     mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-    `tests/state_tests.cpp:18823`, :18381); identical values either way, no defect, test-only. The
+    `tests/state_tests.cpp:18929`, :18381); identical values either way, no defect, test-only. The
     JUCE one is `juce_audio_plugin_client_VST3.cpp:1826`, third-party, reachable by neither
     `ignoredIncludePaths` nor `ignoredTargetPaths` because that translation unit compiles INTO
     `Anamorph_VST3` — already documented in `msvc.yml` and accepted under `DEPENDENCY_POLICY.md`.
@@ -3969,11 +3998,11 @@ processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
 with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21719`) and
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21825`) and
 **289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
 — 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
-`tests/state_tests.cpp:15304` is 1,285,476 where the real frame is 284,800.
+`tests/state_tests.cpp:15410` is 1,285,476 where the real frame is 284,800.
 
 **Both anchors re-measured 2026-09-19 on `b6af84e`, and both written in full for the first time.**
 The state figure read 708,480 at `state_tests.cpp:17430` and the PREfast example 1,280,508 at
@@ -4012,7 +4041,7 @@ suite's maximum frame** — that is still the pre-existing Settings test at 68 %
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
-'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14385`
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14491`
 today (:13701 when this was written; re-aimed 2026-09-19, and the alert now reads 433740 at that
 line) -- which is
 `testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not

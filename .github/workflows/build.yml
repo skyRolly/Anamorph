@@ -829,10 +829,17 @@ jobs:
       # `anamorph::AnamorphEngine engine;` as an automatic in dozens of tests
       # (:119, :189, :268, :304 ...). Measured with `g++ -fstack-usage` on the exact
       # compile line ninja uses: the DSP suite's largest frame is 289,440 bytes
-      # (`testPendingDuckDoesNotSurviveActivation`, dsp_tests.cpp:1388) against the
-      # state suite's 707,824 (state_tests.cpp:8967) -- 28% of the 1 MB reserve, not
+      # (`testPendingDuckDoesNotSurviveActivation`, tests/dsp_tests.cpp:1388) against
+      # the state suite's 709,760 (`testSettingsPublicationIsFieldLevelAndOrdered-
+      # ByObservation`, tests/state_tests.cpp:21825) -- 28% of the 1 MB reserve, not
       # 0%. This arms a tripwire rather than introducing a failure: both suites were
       # verified green under `ulimit -s 1024` before the step was widened.
+      #
+      # THOSE TWO FIGURES USED TO READ 707,824 at `state_tests.cpp:8967` -- a bare
+      # filename, which `check-citations.py` does not claim (it requires a TRACKED
+      # path verbatim), so the anchor drifted unreported while the function moved.
+      # `docs/procedures/CI_CD.md` re-measured it on 2026-09-19 and this comment had
+      # not followed; the state maximum is the same function, 1,936 bytes larger.
       - name: Self-test suites under a 1 MB stack (Windows parity)
         if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
         run: |

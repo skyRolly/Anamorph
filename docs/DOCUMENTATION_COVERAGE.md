@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **round 51** (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3407` and `.github/workflows/build.yml:3492`, this round being
+`.github/workflows/build.yml:3414` and `.github/workflows/build.yml:3499`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -13003,6 +13003,75 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 72nd pass — 2026-09-19, round 52 (the depth cap enforces the depth definition; the probe's oracle consolidated)
+
+**Scope.** Three confirmed review items on the round-51 work, plus the linux CI failure it shipped
+with. No ADR was opened or reopened; ADR-0056 carries a dated correction subsection and a round-52
+validation record, and its **Accepted** status is untouched.
+
+**The depth cap was one level short of itself, on every surface.** `textIsAdmissible` advanced
+`depth` on an opening tag and skipped a self-closing one, so
+`<a><b><c><d><e><f><g><h><leaf/></h></g></f></e></d></c></b></a>` — **nine** elements deep — passed a
+cap of eight. **The configured limit did not move and no second definition was written.** The
+repository already had exactly one, in three places that all count a childless element: ADR-0055's
+*"nested exactly two deep"* for a preset whose deepest element is the self-closing `PARAM`,
+ADR-0056's depth-3 session, and the `--risk014-probe census` walk returning `d + 1` at every element.
+The scan is what moved onto them. Since preset text, session chunk and A/B payload share the walk,
+the gap was reachable on all three, and the overshoot is exactly one level. **State test 116 leg
+A2** is the regression: eight accepted / nine refused under both `DocumentRule`s, the depth-9 fixture
+carrying a self-closing leaf, `<ANAMORPH/>` handled as a root that opens and closes at once, and both
+depths driven end-to-end through `setStateInformation`. Restoring the pre-fix lines fails **4**
+checks; M5 (depth 8 → 9) now kills **2** where it killed 1.
+
+**Round 51's claim that the probe's discredited oracle was gone was FALSE, and is corrected rather
+than quietly fixed.** Leg G had been rebuilt, but `--risk014-probe session-system` / `ab-system` still
+asked `reportShape` whether a canary from a file on disk appeared in the serialized state — which
+cannot distinguish *"never opened"* from *"opened, read, then rejected"*. The fix **reuses** the
+existing mechanism instead of inventing a second interception model: `measureExternalEntityAccess()`
+was hoisted next to `CountingInputSource` and is now called by both leg G and the two probe shapes,
+which print the positive control, the present/absent differential and a `VERDICT:` line — plus an
+explicit guard when the control does **not** fire, so a probe that has stopped discriminating says so
+instead of reading clean. `reportShape`'s `canary` parameter is deleted, so no shape can reach the
+old oracle. The destructive shapes stay destructive; nothing moved into the suite.
+
+**The five new PREfast `C6262` claims: `DO NOT FIX`, on measurement.** Diffed by *byte value* rather
+than by line, because line anchors churn whenever a file grows: **five added, none removed, and not
+one pre-existing value changed** — which is itself the proof that the older large-stack findings in
+`tests/state_tests.cpp` are historical and untouched. Against `g++ -fstack-usage` on ninja's own
+compile line: `testHostStateIsBoundedBeforeTheParser` 1,142,460 claimed vs **284,192** real (4.02×),
+its two named lambdas 142,776 vs **141,968** each, `reportShape` 142,816 vs **141,936**,
+`runRisk014Probe` 143,220 vs **142,176**. The responsible object is the by-value
+`AnamorphAudioProcessor`, `sizeof` **141,888** — 99.9 % of each ordinary frame — and the outlier is
+arithmetic, not mystery: the test declares **eight** processor automatics outside its lambdas,
+8 × 141,888 = 1,135,104, which is the claim less 7,356 of scalars. Not fixed because **125 of 1,575**
+functions in the TU already sit at or above 141,936, the TU maximum is unchanged at 709,760, and the
+control that holds this line — both suites under `ulimit -s 1024` — is green on this head, State test
+116's deepest real chain included at 426,160 bytes (41 % of the Windows reserve). For `reportShape`
+heaping would be actively wrong: its processor is live across `setStateInformation`, so moving it
+hands 141,888 bytes back to JUCE's recursive descent and **moves the SIGSEGV depth the probe exists
+to measure**. The probe is opt-in and the guard step never runs it, so `--risk014-probe census` was
+run under `ulimit -s 1024` separately: green, ~284 KB deep. `docs/procedures/CI_CD.md` carries the
+table.
+
+**The linux CI failure the round-51 head shipped with** was an orphaned copy of `isXmlDeclaration`
+left in `src/PresetManager.cpp` by the walker extraction — `-Wunused-function`, 1 new warning against
+a baseline of 0. Deleted. The local sweep in `scripts/preflight.sh` had not caught it because that
+translation unit was not in its list; it is now, with the reason written next to it.
+`src/PluginProcessor.cpp` stays out, for its declared `-Wshadow` baseline row.
+
+**Drift found and corrected.** `.github/workflows/build.yml`'s stack-guard comment still quoted
+**707,824 at `state_tests.cpp:8967`** — figures `docs/procedures/CI_CD.md` re-measured earlier the
+same day to 709,760 and re-anchored in full, the comment not having followed. Corrected, with the
+reason recorded in place.
+
+**Documents touched:** `src/XmlBoundary.h`, `src/PresetManager.cpp`, `tests/state_tests.cpp`,
+`scripts/preflight.sh`, `.github/workflows/build.yml`, ADR-0056, `docs/FUTURE_RISKS.md`,
+`docs/procedures/TESTING.md`, `docs/procedures/CI_CD.md`, this file. **`CHANGELOG.md` is deliberately
+unchanged**: both defects were introduced and fixed inside the same unreleased `[0.9.9]` cycle, whose
+existing entry already promises "eight levels of nesting" — a promise the correction makes true
+rather than alters. Keep a Changelog records what a release changes for a user, not the repository's
+own intermediate states.
+
 ## 71st pass — 2026-09-19, round 51 (RISK-014 closed: both parser surfaces bounded)
 
 **Scope.** The owner ruled on ADR-0056 — narrow host-state acceptance, protect **both** parser
@@ -13210,10 +13279,10 @@ are the only difference in either direction, and the 169 `C6262` are identical a
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
 result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
 functions across the two translation units. Largest real frames: **709,760** bytes
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21719`,
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21825`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-1,285,476 at `tests/state_tests.cpp:15304` against a real 284,800 — 4.5x — and over its 20 largest
+1,285,476 at `tests/state_tests.cpp:15410` against a real 284,800 — 4.5x — and over its 20 largest
 claims the overstatement runs 1.01x to 9.02x and never inverts. Tests are not edited for a
 dashboard; the control that holds this line is the `ulimit -s 1024` guard step.
 
@@ -13229,7 +13298,7 @@ writing `{}` at the other two would change test code and change no alert.
 
 **DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
 suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-`tests/state_tests.cpp:18823`, :18381) — identical values either way, no defect, test-only. The JUCE
+`tests/state_tests.cpp:18929`, :18381) — identical values either way, no defect, test-only. The JUCE
 `C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
 `ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already
 documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,
@@ -13520,7 +13589,7 @@ and 0.9.9 is unreleased. **RISK-014 unchanged** — no session-blob or A/B-paylo
 Three review findings against `f03aa06` — the head that first implemented ADR-0055 — plus one
 static-analysis item. Every one was reproduced or measured before anything was changed.
 
-**Finding 1 — line 492 as the review cited it, `src/PresetManager.cpp:463` today, an embedded NUL
+**Finding 1 — line 492 as the review cited it, `src/PresetManager.cpp:448` today, an embedded NUL
 bypasses the boundary: CONFIRMED and
 fixed.** `parseSoundFile` read the file with `loadFileAsString` and scanned the resulting
 `juce::String`, and a `juce::String` ENDS at the first NUL: `CharPointer_UTF8::isValidString`
