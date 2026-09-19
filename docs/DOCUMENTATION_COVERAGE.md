@@ -13011,8 +13011,8 @@ produced, taken from the raw SARIF each scanner publishes as an Actions artifact
 session has the Actions tools and no Code Scanning alert tool, which is the case those steps exist
 for. **Seventeen PREfast SARIFs**: every `push`/`schedule` run on `main` from `c7471d01`
 (2026-09-03, the first run carrying the artifact step) through `b6af84e`, plus all six PR heads of
-the 0.9.9 preset series. **Four CodeQL SARIFs**: `faac9fa9`, `19bb50be`, `661a90b5`, `b6af84e`,
-`c-cpp` and `actions`. **235 results on the head**: PREfast 185 (`C6262` 169, `C26495` 8, `C26498`
+the 0.9.9 preset series. **Six CodeQL SARIFs** across four commits: `c-cpp` at `faac9fa9`,
+`19bb50be`, `661a90b5` and `b6af84e`, `actions` at the last two. **235 results on the head**: PREfast 185 (`C6262` 169, `C26495` 8, `C26498`
 4, `C28252` 4), CodeQL `c-cpp` 50, CodeQL `actions` 0. **One code change**, in a test header.
 
 **No finding is stale or mis-anchored.** All 184 first-party anchors were re-read against the
@@ -13063,8 +13063,8 @@ suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:
 documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,
 `relatedLocations` and every `threadFlow` step, with the same rule distribution at all four sampled
 commits (`cpp/integer-multiplication-cast-to-long` 41, `cpp/alloca-in-loop` 7,
-`cpp/comparison-with-wider-type` 1, `cpp/unsafe-use-of-this` 1). Zero first-party CodeQL results have
-appeared anywhere in the retained window. All third-party: JUCE is pin-locked and review-gated
+`cpp/comparison-with-wider-type` 1, `cpp/unsafe-use-of-this` 1). No first-party CodeQL result appears
+at any commit sampled here, and the 2026-09-07 audit found the same at `2ed512c6`. All third-party: JUCE is pin-locked and review-gated
 (`docs/policies/DEPENDENCY_POLICY.md`), so an alert there is an ADR-scoped dependency decision.
 
 **ALREADY FIXED — the four `C6001`, and the two halves have different reasons.** They were two

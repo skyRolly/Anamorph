@@ -1789,15 +1789,16 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     `codeql.yml` and `msvc.yml` added their `Upload raw ... SARIF` steps for. Seventeen PREfast
     SARIFs were downloaded and parsed — every push/schedule run on `main` from `c7471d01`
     (2026-09-03, the first run with the artifact step) through `b6af84e`, plus all six PR heads of
-    the 0.9.9 preset series — together with four CodeQL SARIFs (`faac9fa9`, `19bb50be`,
-    `661a90b5`, `b6af84e`). **What the artifacts cannot say is alert STATE** — open, fixed or
+    the 0.9.9 preset series — together with six CodeQL SARIFs across four commits (`c-cpp` at
+    `faac9fa9`, `19bb50be`, `661a90b5` and `b6af84e`; `actions` at the last two). **What the artifacts cannot say is alert STATE** — open, fixed or
     dismissed — and nothing in this round claims it.
   - **CodeQL is inert on this repository and has been all window.** 50 results at `faac9fa9`,
     `19bb50be`, `661a90b5` and `b6af84e`, byte-for-byte the same rule distribution
     (`cpp/integer-multiplication-cast-to-long` 41, `cpp/alloca-in-loop` 7,
     `cpp/comparison-with-wider-type` 1, `cpp/unsafe-use-of-this` 1), and **every one of them is
     under `build/_deps/juce-src`** — in `locations`, in `relatedLocations` and in every `threadFlow`
-    step. **Zero first-party CodeQL results have ever appeared in the retained window.** Third-party
+    step. **No first-party CodeQL result appears at any commit sampled here**, and the 2026-09-07
+    audit found the same at `2ed512c6`. Third-party
     JUCE is accepted, not fixed: `docs/policies/DEPENDENCY_POLICY.md` pin-locks and review-gates it.
     `actions` is 0 at both sampled points.
   - **The four `C6001` the 2026-09-07 audit called false positives are gone, and the reason is not
@@ -1825,8 +1826,8 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     so the proof is the `C28252` count in the next `msvc.yml` SARIF.
   - **DO NOT FIX — `C6262` x 169, measured again rather than argued.** All 169 are test-only
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
-    PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683** functions across the
-    two translation units: the largest real frame is **709,760** bytes
+    PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
+    functions across the two translation units: the largest real frame is **709,760** bytes
     (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21276`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
     (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
