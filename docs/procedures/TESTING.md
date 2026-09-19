@@ -1775,6 +1775,66 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   uncovered statement is one assignment. Recorded rather than papered over, in the same way M15 and
   M189 are.
 
+* **Round 48 — the navigation walk repeats only when the user turns around, and the measurement
+  says to leave it alone. NO CODE CHANGE.**
+
+  Review finding: *"preset navigation can repeatedly read the same unreadable user preset files
+  across separate navigation operations"*, cited at `step`'s candidate call. Round 47 measured the
+  walk WITHIN one operation (leg L: four reads for four rows considered). This round measures what
+  happens ACROSS operations, which is what the finding is actually about, on `448e0b6` through the
+  real `PresetManager` on a real processor, counting every read through the `beforePresetRead` seam.
+
+  **The walk always ends on a factory row, so repeated presses in one direction do NOT repeat it.**
+  Ten factory rows sit at the front of the list, `examineRow` answers a factory row from the table
+  with no file touched at all, and `step` therefore fails only when nothing in the whole list loads
+  — the same fact the M217 note above records. Measured with a folder of twenty unreadable user
+  presets, five presses of Next cost **20, 0, 0, 0 and 0 reads**: the first press walks the corrupt
+  block and lands on `Default`, and every press after it steps between factory rows for nothing.
+  The reported scenario — press navigation repeatedly, pay for the corrupt rows every time — does
+  not occur in one direction.
+
+  **It occurs when the direction alternates across the factory/user boundary, and that is the whole
+  of the finding.** Sitting on the last factory row with every user row corrupt, Next walks the
+  twenty user rows and lands on `Default`; Prev from `Default` walks the same twenty backwards and
+  lands where it started. Six alternating presses: **20 reads each, 120 in total, every file read
+  exactly once per press** (`0.18`–`0.26` ms per press for those rows). It repeats for as long as
+  the user keeps turning around.
+
+  **Within one operation the work is already the floor, and there is nothing left to reuse.** Each
+  press reads every row it considers exactly once — 4 reads for K=3, 21 for K=20, 101 for K=100,
+  maximum one read of any single file — because the walk visits each index at most once and the
+  chosen row's parsed tree is carried into the load (round 45). `PresetManager` holds no
+  parse-derived per-row state to reuse: an `Entry` is a name, a file, a factory id and a flag.
+  `refresh()` and building the menu perform **zero** file reads; they are a directory listing and an
+  in-memory scan.
+
+  **The cross-operation re-read is intentional, and ADR-0055 says so in words.** *"Nothing deletes
+  or hides a user's file. Ever. It is their data, it is plain text, it is hand-recoverable, and the
+  corruption may be transient."* A row remembered as unreadable would contradict that rule directly.
+  Measured: with a corrupt row between two valid ones, Next skips it; repair it on disk and **the
+  very next press lands on it** (one read); break it again and the press after that skips it again
+  (two reads). Any cross-operation reuse is a cache plus an invalidation policy — both excluded by
+  this round's constraints, and both would have to give up that property to be worth anything.
+
+  **So no code was changed.** The per-press cost is bounded by the number of user rows, each row is
+  read once per press, and the only reuse point the architecture offers was taken three rounds ago.
+
+  **What the per-row skip actually costs, by corrupt shape** (fifty rows of one shape, the whole
+  `step` walk timed, best of five): an empty file **8.0 µs**, a non-XML file **8.3 µs**, a truncated
+  preset **11.8 µs**, two concatenated documents **18.7 µs**. Those are the shapes a real folder
+  grows — an interrupted save, a hand-edit, a doubled write — and even five hundred of them is
+  single-digit milliseconds. The price is carried by the files that reach `parseXML` before being
+  refused: a 12 KB foreign-rooted document is **331 µs** a row and a 250 KB one is **7.9 ms** a row,
+  because the root-tag rule is a property of the parsed document and is therefore answered after the
+  parse. That is a property of the per-row refusal, not of repetition, and it is listed as a
+  residual rather than changed: moving the root test before the parse would move an ADR-0055
+  boundary, which this round has no mandate to do.
+
+  **Headless limits.** The probe drives the real `step` on a real processor and counts real reads,
+  so the read counts are exact. What it cannot do is press the ‹ › buttons through a live message
+  loop: the latency figures are measured at the `step` call, not from the click, and they exclude
+  whatever the host's own event dispatch adds. No test was added or changed, because no code was.
+
 * **Round 47 — the bytes must be the encoding they claim, and the navigation walk is measured
   (ADR-0055 amendment).**
 

@@ -13003,6 +13003,56 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 68th pass — 2026-09-19, round 48 (navigation I/O, measured and left alone)
+
+One review finding, investigated and **closed with no code change**. **RISK-014 unchanged** — no
+session-blob or A/B-payload change; `src/PresetManager.*`, `src/PluginProcessor.*` and
+`src/PluginEditor.*` are all outside this round's diff, which is documentation only.
+
+**Finding — preset navigation performs repeated I/O: PARTLY CONFIRMED, and already minimal.** The
+reported shape is *"pressing navigation buttons repeatedly can cause repeated filesystem reads on
+the same corrupt rows"*. Measured on `448e0b6` through the real `PresetManager` on a real processor,
+counting every read at the `beforePresetRead` seam:
+
+- **Repeated presses in ONE direction do not repeat the walk.** `step` answers `failed` only when
+  nothing in the whole list loads, and the ten factory rows always do, so a walk that meets a block
+  of unreadable user presets ends on a factory row. Five presses of Next over twenty unreadable
+  rows cost **20, 0, 0, 0 and 0** reads.
+- **Alternating direction across the factory/user boundary DOES repeat it**, and that is the whole
+  of the finding: six alternating presses cost **20 reads each, 120 in total**, `0.18`–`0.26` ms a
+  press for those rows.
+- **Within one operation the work is already the floor.** Each press reads every row it considers
+  exactly once — 4 reads for 3 skipped rows, 21 for 20, 101 for 100, never two reads of one file —
+  because the walk visits each index at most once and the chosen row's tree is carried into the
+  load (round 45). `refresh()` and building the menu perform **zero** file reads.
+
+**Why the cross-operation re-read is intentional rather than accidental.** ADR-0055 already rules
+it: *"Nothing deletes or hides a user's file. Ever. It is their data, it is plain text, it is
+hand-recoverable, and the corruption may be transient."* A row remembered as unreadable contradicts
+that sentence. Measured: repair a corrupt file on disk and **the very next press lands on it**;
+break it again and the press after that skips it again. `PresetManager` holds no parse-derived
+per-row state to reuse — an `Entry` is a name, a file, a factory id and a flag — so any
+cross-operation reuse would be a new cache plus an invalidation policy, both excluded by this
+round's constraints and both paid for with that property.
+
+**So nothing was changed, and no test was added or changed** — the brief's own rule, tests only if
+code moves. Leg L already asserts the within-operation floor by count. The measurement is recorded
+in `docs/procedures/TESTING.md` so the next round does not re-open it from scratch.
+
+**Residual, listed rather than fixed.** The per-row *price* of a refusal, as opposed to its
+repetition, is carried by files that reach `parseXML` before being refused: a 12 KB foreign-rooted
+document costs **331 µs** a row and a 250 KB one **7.9 ms**, because the root-tag rule is a property
+of the parsed document and is answered after the parse. The shapes a real preset folder actually
+grows — an interrupted save, a hand-edit, a doubled write — cost **8–19 µs** a row. Moving the root
+test ahead of the parse would move an ADR-0055 boundary and is out of this round's scope.
+
+**Validation.** State **4 584 / 0**, DSP **396 / 0**, both green under `ulimit -s 1024` and both
+unchanged from round 47, as they must be when no code moved.
+
+**Documentation.** `docs/procedures/TESTING.md` (round-48 entry, with the measurements and the
+headless limits). **ADR-0055 unchanged** — no serialization boundary moved. **RISK-014 unchanged.**
+**No CHANGELOG change**: nothing user-visible changed at all. [Verified]
+
 ## 67th pass — 2026-09-19, round 47 (the bytes must be the encoding they claim)
 
 Two review findings. One is a real hole and is fixed; one was already closed two rounds ago and is
