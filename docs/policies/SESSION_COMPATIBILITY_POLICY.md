@@ -37,6 +37,19 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
    stored values, so a re-saved legacy session records it; it was resolved by a live read on the
    first switch-in. Same field, same meaning, no format change — the read paths of rule 3 all stay.
 
+7. **A chunk is bounded before it is parsed (0.9.9, ADR-0056).** Both documents a host chunk carries
+   — the session document and **each** A/B slot payload, which is parsed separately and nests
+   separately — must be at most **256 KB**, nested at most **8** deep, and carry no `DOCTYPE`, before
+   `juce::parseXML` sees them. This NARROWS what `setStateInformation` accepts, which rule 1 governs
+   and the Architecture Review Gate gates; the owner ruled it on 2026-09-19 against measured crash,
+   hang and unbounded-read behaviour reachable on both paths. It is compatible with every session
+   this product has written by a wide margin — the largest is 10 629 bytes at depth 3, a slot payload
+   2 051 bytes at depth 2, and none carries a `DOCTYPE` — and the three legacy root formats rule 3
+   keeps alive are 268 / 590 / 740 bytes at depth 2–3. A refusal is the outcome each path already
+   had: `decodeRestore` returns false and touches nothing; a refused payload leaves the slot invalid
+   for `abEnsureInit()` to re-seed. Nothing else about acceptance changed — see
+   `SERIALIZATION_REGISTRY.md` for the shapes host state still takes and the reason.
+
 ## Required verification before release
 
 - `[ ] Session reload verified` (save in vN−1, load in vN — sound identical).
@@ -45,7 +58,7 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
 These same checks are enforced at release time via the release compatibility checklist
 (`docs/procedures/RELEASE_COMPATIBILITY_CHECKLIST.md`).
 
-Evidence [Verified]: src/PluginProcessor.cpp:2261-2641 (write), :595-685 (read), :540-561
+Evidence [Verified]: src/PluginProcessor.cpp:2345-2725 (write), :595-685 (read), :540-561
 (the identity helpers); src/InternalState.h:197-321.
 
 ## Enforcement

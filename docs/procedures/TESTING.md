@@ -674,6 +674,54 @@ pump explicitly. Measured: across a 1000 ms unserviced window the reported laten
 and no sleep stands in for synchronisation: the negative phase asserts a state that cannot become
 true later without servicing, and its deadline only bounds the run.
 
+`AnamorphStateTests --risk014-probe <shape> [n]` is its RISK-numbered sibling, added in round 50,
+and it is the one instrument in this file that **the suite must never call**: two of its shapes end
+the process with a SIGSEGV and two never return. It measures what a crafted host chunk does to the
+two XML parser paths ADR-0055 left outside the preset boundary — `setStateInformation` →
+`decodeRestore` → `getXmlFromBinary` → `juce::parseXML`, and the A/B slot payload's own
+`parseXML (slotPayload)` one level further in. One shape per invocation, the verdict being the exit
+status rather than an assertion; `drive` is the witness in the printed line, default `0.0` and
+carried as `0.9` plain (`0.0375` normalised), so the value says whether the chunk was refused or
+accepted **and applied**. Measured on `de89b1a`, x86-64 Linux, Release, pinned JUCE 9.0.2, with the
+1 MB rows under `ulimit -s 1024` for Windows main-thread parity: SIGSEGV between 2 500 and 3 000
+levels of nesting on 1 MB and between 20 000 and 30 000 on 8 MB, **on both paths**; a two-level
+recursive-entity `DOCTYPE` of ~230 bytes SIGSEGVs on both while a one-level one of ~150 bytes had
+not returned after 60 s; peak RSS linear to 521–650 MB with no cap; and two documents in one chunk,
+trailing prose, a NUL disguise, invalid UTF-8 and a chunk truncated to half its length each
+**accepted and applied**. One negative matters as much: the A/B payload **amplifies** depth rather
+than inheriting it, the 3 000 levels living inside one attribute value of a well-formed 3-deep
+session. **The probe's external-entity shapes now report leg G's measurement, not their own.** Round
+51 claimed the canary check was gone; it was not — `session-system` / `ab-system` still asked
+`reportShape` whether a canary from a file on disk turned up in the serialized state afterwards,
+which cannot distinguish *"the file was never opened"* from *"the file was opened and read, and the
+document was then rejected"*. Round 52 finished the correction by **reusing** the existing mechanism
+rather than inventing a second one: both shapes call the same `measureExternalEntityAccess()` helper
+State test 116 leg G asserts on, print the positive control, the present/absent differential and a
+`VERDICT:` line, and print an explicit guard when the control does **not** fire — a probe that has
+stopped discriminating says so rather than reading clean. `reportShape` no longer takes a `canary`
+at all, so the discredited oracle cannot be reached from any shape.
+
+**State test 116 is what the suite runs**, and it is deliberately NOT this probe. Its inputs sit one
+level past each cap — depth 9 against 8, one byte past 256 KB — so a regressed tree fails an
+assertion instead of taking the process with it, and its `DOCTYPE` legs carry an elapsed-time bound
+rather than relying on a timeout. Leg G is the external-entity oracle the probe used to get wrong:
+**a filesystem differential with a positive control.** With a counting `juce::InputSource` installed
+on the same document text the parser opens the file **once** and the entity resolves to `LEAKED` —
+which is what makes the negative falsifiable. Through `juce::parseXML (const String&)`, the call both
+host-state paths make (`juce_XmlDocument.cpp:53-56` is literally
+`XmlDocument (textToParse).getDocumentElement()`), the result is the unresolved `leak` and is
+**byte-identical whether the file exists or not**. That identity is the property; canary absence in
+downstream state never was, because a parser could read a file and then reject the document.
+
+`--risk014-probe census` is the same instrument pointed the other way and is the only shape that
+asserts nothing about corruption: it prints the size and depth of the sessions the product really
+writes, so a proposed cap can be read against them. This build 10 438 B / depth 3, the v0.9.5 field
+capture 10 629 B / depth 3, the three legacy roots 268 / 590 / 740 B at depth 2–3, and the capture's
+two slot payloads 2 046 and 2 051 B at depth 2. Round 50 shipped **no regression test** for any of it, deliberately: a regression test
+asserts that behaviour is intended, and whether it was intended was the open question. Round 51
+answered it — ADR-0056 is **Accepted**, the boundary is in `src/XmlBoundary.h`, and **State test
+116** is the regression. The probe stays as the instrument for the shapes a suite must never run.
+
 `AnamorphStateTests --legacy-match-probe` gained a companion in State test 31 rather than a new
 probe: the per-slot Level-Match memory (ER-STATE-20) is observed through the product's own
 behaviour. Two properties make that exact rather than a tolerance game — after a restore with no
@@ -1775,6 +1823,102 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   uncovered statement is one assignment. Recorded rather than papered over, in the same way M15 and
   M189 are.
 
+* **Round 52 — the depth cap now enforces the depth definition the repository already had.** A
+  review found the shared walk one level short of its own limit: it advanced `depth` on an opening
+  tag and skipped a self-closing one entirely, so
+  `<a><b><c><d><e><f><g><h><leaf/></h></g></f></e></d></c></b></a>` — **nine** elements deep — passed
+  a cap of eight. **No configured value moved and no second definition was written**: ADR-0055 calls
+  a preset whose deepest element is the self-closing `PARAM` *"nested exactly two deep"*, ADR-0056
+  calls a session three, and the `--risk014-probe census` walk returns `d + 1` at every element
+  including childless ones. All three count the leaf; only the scan did not. **State test 116 leg
+  A2** pins it — eight accepted and nine refused under BOTH `DocumentRule`s, the depth-9 fixture
+  carrying a self-closing leaf so the bypass is the thing under test, `<ANAMORPH/>` handled as a root
+  that opens and closes at once (admitted at `maxDepth` 1, refused at 0), and both depths driven
+  end-to-end through `setStateInformation`. Restoring the pre-fix lines produces **4 failures**; M5
+  (depth 8 → 9) now kills **2** where it killed 1. **The probe's oracle was consolidated, not
+  duplicated.** `--risk014-probe session-system` / `ab-system` had kept the canary-in-serialized-state
+  check that leg G replaced; rather than build a second interception model they now call the same
+  `measureExternalEntityAccess()` helper leg G asserts on, print the present/absent differential with
+  a `VERDICT:` line, and print a guard when the positive control does not fire — so a probe that has
+  stopped discriminating says so instead of reading clean. `reportShape`'s `canary` parameter is
+  gone, and the destructive shapes stay destructive. **The five new PREfast `C6262` claims are
+  disposed `DO NOT FIX` on measurement**, not on being test-only: see `docs/procedures/CI_CD.md`.
+  **State 4 632 / 0**, DSP 396 / 0, both suites green under `ulimit -s 1024`, preflight exit 0.
+  Version unchanged at 0.9.9.
+
+* **Round 51 — both host-state parser surfaces bounded, and a test oracle that actually tests.**
+  The owner ruled on ADR-0056: narrow host-state acceptance, protect **both** parser surfaces, use
+  ADR-0055's limits (**256 KB, depth 8, no `DOCTYPE`**), and correct the trust classification. **One
+  walk, two rule sets.** `src/XmlBoundary.h` carries the scan, parameterised by a `DocumentRule`;
+  the preset path asks `oneWellFormedDocument` and the two host paths `parserSafetyOnly`, so
+  ADR-0055's rules are the same code rather than a second model of what JUCE's parser does with a
+  `<` — State test 114's twelve legs are the proof it did not move. **What could not be shared, and
+  why**, was established rather than assumed: the byte-level preset rules (UTF-16 BOM, embedded NUL,
+  UTF-8 validity) read a FILE the way `String::createStringFromData` is about to, while a session
+  chunk is decoded by `String::fromUTF8` and an A/B payload has no bytes of its own. **The session
+  scan runs on the parser's own string**, not a reconstruction — `juce_AudioProcessor.cpp:975-976`'s
+  expression on its own range — because `String::fromUTF8` stops at the first NUL
+  (`juce_String.cpp:132`) and a raw byte scan would refuse documents the parser never sees. **Each
+  document is bounded separately**, which the round-50 amplification measurement is the reason for.
+  **Refusal semantics are the ones each path already had**: `decodeRestore` returns false and
+  touches nothing; a refused payload leaves the slot invalid for `abEnsureInit()` to re-seed
+  (ER-STATE-02). **State test 116** is the regression, in eight legs — the cap VALUES themselves
+  (leg 0, because every other leg sizes its fixtures FROM the constants and would move with them),
+  session depth 8 vs 9, a session `DOCTYPE` with an elapsed-time bound, 256 KB vs one byte past it,
+  the A/B payload's own depth and `DOCTYPE` and the containment argument for its size, the five
+  shapes the boundary deliberately still accepts, every retained fixture plus a live round trip, and
+  the rebuilt external-entity oracle. **Six mutants, six kills — and two of them survived the first
+  draft.** M2 (the A/B guard always admitting) survived because the A/B assertions read `width` at
+  its default either way, which cannot tell *refused* from *admitted but empty*; the payloads now
+  carry a top-level `width` of 1.6 so the two outcomes are different numbers. M5 (depth 8 → 9)
+  survived because every leg sized itself from the constant; leg 0 now pins the values. Both
+  survivals were real coverage gaps, and both are recorded rather than quietly fixed. **The Devin
+  finding on the probe's external-entity oracle was reported closed here and was NOT** — leg G was
+  rebuilt but the probe kept the canary check; round 52 above finished it. Left as written, with the
+  correction next to it, rather than edited to look right. **State 4 625 / 0**, DSP 396 / 0, libFuzzer 10 990 runs / 181 s under ASan+UBSan with
+  no findings, preflight exit 0. Version unchanged at 0.9.9.
+* **Round 50 — RISK-014 measured instead of inferred, and stopped at the gate.** The brief asked for
+  the disposition of RISK-014: the host session blob and the A/B slot payload reach the same parser
+  the preset boundary now guards. Investigation first, and the investigation changed the entry in
+  both directions. **The call graphs.** `setStateInformation` → `decodeRestore`
+  (`src/PluginProcessor.cpp:2831-2839`) → `getXmlFromBinary` → `juce::parseXML`; and inside the same
+  decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) → `juce::parseXML (slotPayload)` on a string
+  attribute value of the already-parsed session document. `getXmlFromBinary` validates exactly two
+  things — chunk longer than 8 bytes, first four bytes `0x21324356` — and the A/B payload is not
+  framed at all. **The measurements**, through the real entry point on `de89b1a` with
+  `--risk014-probe`, one shape per process: SIGSEGV between 2 500 and 3 000 nesting levels on a 1 MB
+  stack and between 20 000 and 30 000 on 8 MB, **identically on both paths**; a two-level
+  recursive-entity `DOCTYPE` of ~230 bytes SIGSEGVs on both, a one-level one of ~150 bytes had not
+  returned after 60 s on the session path and took 54.1 s on the A/B path, three levels hangs on
+  both; peak RSS linear with no cap to 521 MB (session) and 650 MB (A/B) at 128 MB of input; and
+  two complete documents in one chunk, trailing prose/element/binary, a NUL followed by a second
+  complete document, invalid UTF-8 in an attribute value and a chunk truncated to half its length
+  are each **accepted and applied**. **Two corrections to the risk record**, both from source rather
+  than from the preset round's reasoning. The `SYSTEM`-`DOCTYPE` arbitrary read is **NOT** reachable
+  on either path: `XmlDocument::getFileContents` opens nothing without an `InputSource`
+  (`juce_XmlDocument.cpp:182-193`), and both paths reach the parser through `parseXML (const
+  String&)`, whose constructor leaves it null (`:38`) — only the `File` overload, which the preset
+  path used to call, installs one; measured with a real canary file, no leak on either path. And
+  the likelihood argument — *"the bytes come from the host's own project file rather than from a
+  file the user opens"* — does not hold: in the pinned VST3 SDK
+  `PresetFile::restoreComponentState` calls `component->setState`
+  (`…/public.sdk/source/vst/vstpresetfile.cpp:470-475`), which JUCE forwards to
+  `setStateInformation` (`juce_audio_plugin_client_VST3.cpp:2822`), so **a `.vstpreset` the user
+  picks in the host's browser reaches this parser**. **The A/B path is a separate question, not the
+  same one one level down:** its payload amplifies depth rather than inheriting it — the 3 000
+  levels sit inside one attribute value of a well-formed 3-deep session — so a depth cap on the
+  session document alone refuses none of the A/B rows. **The compatibility answer the deferral was
+  made for**, from `--risk014-probe census`: every session ever written is depth ≤ 3 and ≤ 10 629
+  bytes, a slot payload ≤ 2 051 bytes at depth 2, and none carries a `DOCTYPE` because
+  `TextFormat::dtd` defaults empty. **Disposition: NEEDS DESIGN DECISION / STOP.** Narrowing what
+  `setStateInformation` accepts is a semantic change to a contract `SERIALIZATION_REGISTRY.md`
+  records — an Architecture Review Gate item and an AI-agent hard stop — and ADR-0055's standing
+  ruling explicitly excludes these two paths. **No `src/` change, no regression test, no
+  suppression**: a regression test asserts that behaviour is intended, which is the question being
+  asked. The evidence, the five options and the one open judgement (the size cap; 10.6 KB is the
+  largest session ever measured, and what multiple of it is safe is not a measurement) are
+  **ADR-0056, Proposed**; RISK-014 is rewritten to the measurements and its likelihood raised to
+  Medium. State 4 584 / 0 and DSP 396 / 0, both unchanged, because nothing the suite runs moved.
 * **Round 49 — the whole Code Scanning surface, from the raw SARIF of every retained run, and the
   one annotation that was half-written. ONE CODE CHANGE, in a test header.**
   A complete audit of **both** analyzers — CodeQL (`c-cpp` and `actions`) and MSVC `/analyze`
@@ -1832,10 +1976,10 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
     PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
     functions across the two translation units: the largest real frame is **709,760** bytes
-    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21276`,
+    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21825`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
     (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-    1,285,476 at `tests/state_tests.cpp:14861` against a real 284,800 — 4.5x — and across its 20
+    1,285,476 at `tests/state_tests.cpp:15410` against a real 284,800 — 4.5x — and across its 20
     largest claims the overstatement runs 1.01x to 9.02x and never inverts. The control that holds
     this line is the `ulimit -s 1024` guard step, not the alert.
   - **DO NOT FIX — `C26495` x 7, and the 2026-09-07 justification for them was WRONG.** That entry
@@ -1850,7 +1994,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     no alert while changing test code for a dashboard.
   - **DO NOT FIX — `C26498` x 4 and the JUCE `C26495`.** The four are `con.5` style suggestions to
     mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-    `tests/state_tests.cpp:18380`, :18381); identical values either way, no defect, test-only. The
+    `tests/state_tests.cpp:18929`, :18381); identical values either way, no defect, test-only. The
     JUCE one is `juce_audio_plugin_client_VST3.cpp:1826`, third-party, reachable by neither
     `ignoredIncludePaths` nor `ignoredTargetPaths` because that translation unit compiles INTO
     `Anamorph_VST3` — already documented in `msvc.yml` and accepted under `DEPENDENCY_POLICY.md`.
@@ -3854,11 +3998,11 @@ processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
 with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21276`) and
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21825`) and
 **289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
 — 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
-`tests/state_tests.cpp:14861` is 1,285,476 where the real frame is 284,800.
+`tests/state_tests.cpp:15410` is 1,285,476 where the real frame is 284,800.
 
 **Both anchors re-measured 2026-09-19 on `b6af84e`, and both written in full for the first time.**
 The state figure read 708,480 at `state_tests.cpp:17430` and the PREfast example 1,280,508 at
@@ -3897,7 +4041,7 @@ suite's maximum frame** — that is still the pre-existing Settings test at 68 %
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
-'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:13942`
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14491`
 today (:13701 when this was written; re-aimed 2026-09-19, and the alert now reads 433740 at that
 line) -- which is
 `testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not
