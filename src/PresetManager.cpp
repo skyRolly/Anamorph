@@ -1,6 +1,7 @@
 #include "PresetManager.h"
 
 #include "SerializedNumber.h"   // the shared malformed-value predicate (both restore paths)
+#include "XmlBoundary.h"        // ADR-0055/ADR-0056: one parser-safety walk, two rule sets
 #include "ParameterDispatch.h"  // ADR-0036 round 27 (R1390): every host-notifying write is bracketed
 #include <cmath>   // std::isfinite -- the non-finite guards on the restore paths
 
@@ -272,24 +273,6 @@ namespace
     // and a quoted attribute value -- because miscounting any of them would refuse a legitimate
     // preset, and a guard that rejects real files is worse than the hole it closes.
 
-    // Advance past the next occurrence of `terminator`. False means the construct never ended,
-    // which is not a document worth handing to a parser.
-    bool skipPast (juce::String::CharPointerType& p, const char* terminator, int length)
-    {
-        for (; ! p.isEmpty(); ++p)
-            if (juce::CharacterFunctions::compareUpTo (p, juce::CharPointer_ASCII (terminator), length) == 0)
-            {
-                p += length;
-                return true;
-            }
-        return false;
-    }
-
-    bool startsWith (juce::String::CharPointerType p, const char* lit, int length)
-    {
-        return juce::CharacterFunctions::compareUpTo (p, juce::CharPointer_ASCII (lit), length) == 0;
-    }
-
     // ADR-0055 (0.9.9). THE FILE IS ITS BYTES, AND EVERY ONE OF THEM MUST REACH THE SCAN BELOW.
     //
     // A `juce::String` is NUL-TERMINATED, and every reader downstream walks it with a CharPointer
@@ -390,110 +373,20 @@ namespace
         return after == 0 || after == '?' || juce::CharacterFunctions::isWhitespace (after);
     }
 
-    // True when `text` is ONE well-delimited XML document, nested no deeper than `maxDepth`,
-    // carrying no DOCTYPE, and followed by nothing but whitespace, comments and processing
-    // instructions. It answers ONLY those questions: what the document says is
-    // `presetDocumentIsWellFormed`'s job, and what its values mean is `normalisedFromSavedTree`'s.
+    // THE WALK ITSELF NOW LIVES IN `src/XmlBoundary.h`, unchanged in behaviour and shared with
+    // the two host-state paths ADR-0056 bounded (the session chunk and each A/B slot payload).
+    // Those paths reach the SAME `juce::parseXML` with the same unbounded recursion and the same
+    // entity expansion behind a `DOCTYPE`, and a second scanner would have been a second model of
+    // what that parser does with a `<`. What stays preset-specific is asked for by name here:
+    // `oneWellFormedDocument` carries the single-root rule, the whitespace-only surroundings and
+    // the declaration-at-offset-zero rule that ADR-0055 measured and State test 114 pins. The
+    // BYTE-level half above stays here too -- it reads a FILE the way
+    // `String::createStringFromData` is about to, and neither host-state path is decoded by that
+    // function.
     bool presetTextIsAdmissible (const juce::String& text, int maxDepth)
     {
-        const auto begin = text.getCharPointer();
-        auto p = begin;
-        int  depth = 0;
-        bool sawRoot = false, rootClosed = false;
-
-        while (! p.isEmpty())
-        {
-            const auto c = *p;
-
-            if (c != '<')
-            {
-                // Character data. Inside an element it is merely content this format does not use
-                // (and which `presetDocumentIsWellFormed` refuses by name); OUTSIDE every element
-                // only whitespace may appear, and that single rule is what refuses a second
-                // document's prose, a trailing sentence and a trailing run of binary alike.
-                if (depth == 0 && ! juce::CharacterFunctions::isWhitespace (c)) return false;
-                ++p;
-                continue;
-            }
-
-            if (startsWith (p, "<!--", 4))
-            {
-                p += 4;
-                if (! skipPast (p, "-->", 3)) return false;
-                continue;
-            }
-            if (startsWith (p, "<![CDATA[", 9))
-            {
-                if (depth == 0) return false;          // a CDATA section outside every element
-                p += 9;
-                if (! skipPast (p, "]]>", 3)) return false;
-                continue;
-            }
-            if (p[1] == '?')                           // a processing instruction -- or the declaration
-            {
-                // THE XML DECLARATION IS NOT AN ORDINARY INSTRUCTION, and treating it as one was a
-                // hole: `<ANAMORPH/>` followed by `<?xml version="1.0"?>` was accepted, because the
-                // skip below steps over any `<?...?>` wherever it sits and the `rootClosed` refusal
-                // guards only an opening TAG. `juce::parseXML` then returns the first element and
-                // ignores the tail, so a malformed document loaded as a preset.
-                //
-                // XML allows the declaration in exactly one place: the very first thing in the
-                // document, once. So it is admitted only at offset zero and refused everywhere
-                // else -- after the root, after a comment, after another instruction, after
-                // whitespace, or after another declaration. NOTHING may precede it, not even
-                // whitespace, which is the spec's own rule and is what the writer produces:
-                // `XmlElement::toString` emits the header first, at offset zero, and a byte-order
-                // mark is removed by the decode before this scan ever sees the text.
-                //
-                // Ordinary instructions are untouched, before the root and after it alike, which is
-                // the tolerance ADR-0055 states and State test 114 leg E pins.
-                if (p.getAddress() != begin.getAddress() && isXmlDeclaration (p)) return false;
-
-                p += 2;
-                if (! skipPast (p, "?>", 2)) return false;
-                continue;
-            }
-            if (p[1] == '!')                           // `<!DOCTYPE ...`: the hang and the file read
-                return false;
-
-            if (p[1] == '/')                           // a closing tag
-            {
-                if (depth == 0) return false;
-                p += 2;
-                if (! skipPast (p, ">", 1)) return false;
-                if (--depth == 0) rootClosed = true;
-                continue;
-            }
-
-            // An opening tag. It is walked to its own `>` with quotes honoured, so a `>` inside an
-            // attribute value cannot end it early and a `<` inside one cannot open a phantom
-            // element.
-            if (rootClosed) return false;              // a SECOND top-level element
-            ++p;
-            juce::juce_wchar quote = 0;
-            bool selfClosing = false, closed = false;
-            for (; ! p.isEmpty(); ++p)
-            {
-                const auto t = *p;
-                if (quote != 0)              { if (t == quote) quote = 0; continue; }
-                if (t == '"' || t == '\'')   { quote = t; continue; }
-                if (t == '/' && p[1] == '>') { selfClosing = closed = true; p += 2; break; }
-                if (t == '>')                { closed = true; ++p; break; }
-            }
-            if (! closed) return false;
-
-            if (depth == 0) sawRoot = true;
-            if (! selfClosing)
-            {
-                if (++depth > maxDepth) return false;
-            }
-            else if (depth == 0)
-            {
-                rootClosed = true;                     // `<ANAMORPH/>`: opened and closed at once
-            }
-        }
-
-        return sawRoot && rootClosed && depth == 0;
+        return anamorph::xmlBoundary::textIsAdmissible (
+                   text, maxDepth, anamorph::xmlBoundary::DocumentRule::oneWellFormedDocument);
     }
 
     // ADR-0055. THE DOCUMENT-SHAPE HALF, checked on the parsed ELEMENT rather than on the

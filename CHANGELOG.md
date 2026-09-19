@@ -21,6 +21,21 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
 ## [0.9.9] — 2026-09-19
 
 ### Fixed
+- **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
+  protections added for `.anamorph` preset files covered only those files. The state your DAW hands
+  back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own
+  preset browser — reached the reader with nothing in front of it, and so did the A/B data stored
+  inside that state, which Anamorph reads as a second document of its own. A chunk nested a few
+  thousand elements deep crashed the plug-in on a typical Windows host; a ~230-byte one crashed it
+  too, and a ~150-byte one made the reader loop with no error and no recovery short of
+  force-quitting; and an enormous chunk was pulled into memory whole. All of it is now refused
+  before the reader sees it, and the two documents are checked separately, because a perfectly
+  ordinary-looking project can carry a deeply nested A/B payload inside it. Nothing you have saved is
+  affected: the limits are the same ones preset files use — 256 KB and eight levels of nesting — and
+  the largest project state Anamorph has ever written is about 10 KB, three levels deep. Every older
+  project format Anamorph still reads loads exactly as before, and a chunk that is refused changes
+  nothing at all: the sound, the preset name and the A/B slots you had stay as they were.
+  Decision: ADR-0056. Regression coverage: State test 116. [Verified]
 - **A damaged preset file is now refused instead of half-loaded.** A `.anamorph` file that contains
   two complete presets — one preset saved, then a second one appended below it — used to load
   successfully and apply the upper one, so a file that had been concatenated, merged by a sync

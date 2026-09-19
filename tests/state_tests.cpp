@@ -13759,6 +13759,449 @@ static void testThePresetUnreadableStateExpiresByItself()
     delete rawEd;
 }
 
+// ============================================================================
+//  State test 116 — ADR-0056: the host chunk and each A/B payload are BOUNDED
+//  BEFORE the parser, and each is bounded on its own.
+//
+//  WHY IT EXISTS. Round 50 measured, through the real `setStateInformation`,
+//  that both documents a host chunk carries reach `juce::parseXML` with nothing
+//  in front of them: ~3 000 levels of nesting SIGSEGV'd on a 1 MB stack, a
+//  ~230-byte recursive-entity `DOCTYPE` SIGSEGV'd and a ~150-byte one never
+//  returned, and peak RSS tracked input size linearly with no cap. Round 51
+//  put `anamorph::xmlBoundary` in front of both.
+//
+//  NOTHING HERE IS A CRASH OR A HANG, and that is deliberate. The inputs are
+//  one level past each cap -- depth 9 against 8, one byte past 256 KB -- so a
+//  regressed tree REFUSES TO REFUSE and this test FAILS, rather than taking
+//  the process with it. The destructive shapes stay where they belong, behind
+//  `--risk014-probe`, which the suite never calls.
+//
+//  THE WITNESS throughout is `drive`: its default is 0.0 and every admissible
+//  fixture below carries 0.9 plain (0.0375 normalised), so the value after the
+//  call says whether the chunk was refused or accepted AND APPLIED.
+// ============================================================================
+namespace
+{
+    // JUCE's own host-chunk framing (`copyXmlToBinary`): magic, length, text, NUL.
+    juce::MemoryBlock frameHostChunk (const juce::String& text)
+    {
+        const auto* utf8 = text.toRawUTF8();
+        const auto len   = (juce::uint32) std::strlen (utf8);
+        juce::MemoryBlock mb;
+        mb.setSize (8 + len + 1, true);
+        auto* p = static_cast<juce::uint8*> (mb.getData());
+        const juce::uint32 magic = 0x21324356;
+        for (int i = 0; i < 4; ++i) p[i]     = (juce::uint8) ((magic >> (8 * i)) & 0xff);
+        for (int i = 0; i < 4; ++i) p[4 + i] = (juce::uint8) ((len   >> (8 * i)) & 0xff);
+        std::memcpy (p + 8, utf8, len);
+        return mb;
+    }
+
+    // A session that restores `drive` to 0.9 and carries `payload` verbatim in slot A.
+    // The OUTER document is built by JUCE's own writer, so it is well formed and shallow
+    // whatever the payload is -- which is the point of the A/B legs.
+    juce::String sessionCarrying (const juce::String& payload, bool withParams = true)
+    {
+        juce::XmlElement root ("AnamorphRoot");
+        root.setAttribute ("presetName", "boundary");
+        auto* params = root.createNewChildElement ("ANAMORPH");
+        if (withParams)
+        {
+            auto* p = params->createNewChildElement ("PARAM");
+            p->setAttribute ("id", "drive");
+            p->setAttribute ("value", "0.9");
+        }
+        auto* ab = root.createNewChildElement ("AB");
+        // B IS THE ACTIVE SLOT ON PURPOSE. `abSwitchTo (0)` has to be a real switch for the
+        // payload to be applied at all; restoring with A already active would make every leg
+        // below read the session's own parameters and pass for the wrong reason.
+        ab->setAttribute ("active", 1);
+        ab->setAttribute ("slotAParams", payload);
+        return root.toString (juce::XmlElement::TextFormat().singleLine());
+    }
+
+    // An A/B payload nested exactly `depth` deep that ALSO carries a top-level `width` of 1.6.
+    // Both halves matter. The nesting is what the boundary judges; the `PARAM` is what makes the
+    // verdict OBSERVABLE, because `applySoundTree` resolves parameters through
+    // `getChildWithProperty` on DIRECT children -- so a payload admitted with its `PARAM` at the
+    // root moves `width` to 1.6, while a refused one leaves the slot invalid for `abEnsureInit`
+    // to re-seed and `width` reads its default 1.0. Without the `PARAM` the two outcomes are the
+    // same number, and the assertion proves nothing: mutant M2 (the A/B guard always admitting)
+    // SURVIVED the first draft of this test for exactly that reason.
+    juce::String payloadNestedTo (int depth)
+    {
+        juce::String s ("<ANAMORPH><PARAM id=\"width\" value=\"1.6\"/><deep>");
+        for (int i = 0; i < depth - 2; ++i) s << "<n>";
+        for (int i = 0; i < depth - 2; ++i) s << "</n>";
+        s << "</deep></ANAMORPH>";
+        return s;
+    }
+
+    // An InputSource that COUNTS the parser's attempts to open related content. It is the
+    // positive control for the external-entity legs: without it, "the file was not read" is
+    // a claim no observation supports.
+    struct CountingInputSource final : public juce::InputSource
+    {
+        explicit CountingInputSource (juce::File f) : file (std::move (f)) {}
+
+        juce::InputStream* createInputStream() override { return nullptr; }
+
+        juce::InputStream* createInputStreamFor (const juce::String&) override
+        {
+            ++opens;
+            return file.createInputStream().release();
+        }
+
+        juce::int64 hashCode() const override { return file.hashCode64(); }
+
+        juce::File file;
+        int opens = 0;
+    };
+}
+
+static void testHostStateIsBoundedBeforeTheParser()
+{
+    std::printf ("State test 116: the host chunk and each A/B payload are bounded before the parser (ADR-0056)\n");
+
+    const auto cap   = (int) anamorph::xmlBoundary::maxDocumentBytes;
+    const auto depth = anamorph::xmlBoundary::maxDocumentDepth;
+
+    // THE NUMBERS THEMSELVES, pinned before anything is built from them. Every leg below sizes
+    // its fixtures FROM these constants, which pins the rule's shape but not its value: a cap
+    // raised from 8 to 9 would move the fixtures with it and pass. Mutant M5 did exactly that and
+    // survived the first draft. ADR-0056 chose 256 KB and 8 -- the same two numbers ADR-0055
+    // chose for `.anamorph` files -- and this is where that choice is a test rather than a
+    // comment. The last two lines are the refactor's own guard: the preset limits became names
+    // for these constants this round, and they must still be the values ADR-0055 shipped.
+    check (anamorph::xmlBoundary::maxDocumentBytes == 256 * 1024, "the size cap is 256 KB (ADR-0056)");
+    check (anamorph::xmlBoundary::maxDocumentDepth == 8,          "the depth cap is 8 (ADR-0056)");
+    check (anamorph::PresetManager::maxPresetBytes == anamorph::xmlBoundary::maxDocumentBytes,
+           "...and the preset file's size cap is still the same number (ADR-0055 unmoved)");
+    check (anamorph::PresetManager::maxPresetDepth == anamorph::xmlBoundary::maxDocumentDepth,
+           "...and so is its depth cap");
+
+    auto restores = [] (const juce::String& sessionText)
+    {
+        AnamorphAudioProcessor p;
+        const auto blob = frameHostChunk (sessionText);
+        p.setStateInformation (blob.getData(), (int) blob.getSize());
+        return (double) rawOf (p, "drive");
+    };
+
+    // ---- A. the session document's own depth ---------------------------------------
+    {
+        // `AnamorphRoot` > `ANAMORPH` > `PARAM` is depth 3, and every session this product has
+        // ever written is at or below it. The cap is 8, so leg A walks the boundary itself
+        // rather than a number far from it: depth 8 loads, depth 9 does not.
+        auto atCap = [&] (int d)
+        {
+            juce::String s;
+            s << "<AnamorphRoot>";
+            for (int i = 0; i < d - 3; ++i) s << "<pad>";
+            s << "<ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/></ANAMORPH>";
+            for (int i = 0; i < d - 3; ++i) s << "</pad>";
+            s << "</AnamorphRoot>";
+            return s;
+        };
+        // The padding sits BESIDE the APVTS child rather than above it, so the tree the decode
+        // looks for is still `AnamorphRoot`'s direct child at every depth: what changes between
+        // the two legs is the document's nesting and nothing else.
+        auto beside = [&] (int d)
+        {
+            juce::String s;
+            s << "<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/></ANAMORPH><deep>";
+            for (int i = 0; i < d - 2; ++i) s << "<n>";
+            for (int i = 0; i < d - 2; ++i) s << "</n>";
+            s << "</deep></AnamorphRoot>";
+            return s;
+        };
+        (void) atCap;
+        checkNear (restores (beside (depth)),     0.0375, 1e-6, "leg A: a session nested exactly 8 deep still restores");
+        checkNear (restores (beside (depth + 1)), 0.0,    1e-9, "leg A: one level deeper is refused before the parser");
+    }
+
+    // ---- B. a DOCTYPE in the session document ---------------------------------------
+    {
+        const juce::String bomb =
+            "<!DOCTYPE AnamorphRoot [\n<!ENTITY e0 \"AAAAAAAAAA\">\n"
+            "<!ENTITY e1 \"&e0;&e0;&e0;&e0;&e0;&e0;&e0;&e0;&e0;&e0;\">\n"
+            "]>\n<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"&e1;\"/></ANAMORPH></AnamorphRoot>";
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        const auto got = restores (bomb);
+        const auto ms  = juce::Time::getMillisecondCounterHiRes() - t0;
+        std::printf ("  [leg B] the entity-expansion chunk was answered in %.1f ms\n", ms);
+        checkNear (got, 0.0, 1e-9, "leg B: a DOCTYPE in the session chunk is refused");
+        check (ms < 2000.0, "leg B: ...and answered at once, rather than expanding entities");
+    }
+
+    // ---- C. the session size cap -----------------------------------------------------
+    {
+        // A VALID session padded with a comment, so nothing but the size can be the reason.
+        auto padded = [&] (int targetChunkBytes)
+        {
+            juce::String s ("<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/></ANAMORPH><!--");
+            const juce::String tail ("--></AnamorphRoot>");
+            const auto fixed = s.length() + tail.length() + 9;      // 8 header bytes + the NUL
+            s << juce::String::repeatedString ("P", juce::jmax (0, targetChunkBytes - fixed)) << tail;
+            return s;
+        };
+        const auto under = frameHostChunk (padded (cap));
+        const auto over  = frameHostChunk (padded (cap + 1));
+        std::printf ("  [leg C] chunk sizes: %d B (cap %d) and %d B\n",
+                     (int) under.getSize(), cap, (int) over.getSize());
+        check ((int) under.getSize() <= cap, "leg C: the under-cap chunk really is at or under the cap");
+        check ((int) over.getSize()  >  cap, "leg C: the over-cap chunk really is over it");
+        checkNear (restores (padded (cap)),     0.0375, 1e-6, "leg C: a 256 KB session still restores");
+        checkNear (restores (padded (cap + 1)), 0.0,    1e-9, "leg C: one byte past the cap is refused");
+    }
+
+    // ---- D. the A/B payload is bounded ON ITS OWN ------------------------------------
+    {
+        // EVERY leg here uses an outer session that is well formed and nested THREE deep, which
+        // is what a real session is. If the outer document's depth were what protected the inner
+        // parse, none of these would refuse -- and round 50 measured exactly that failure.
+        auto slotA = [] (const juce::String& sessionText)
+        {
+            AnamorphAudioProcessor p;
+            const auto blob = frameHostChunk (sessionText);
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+            // The slot the payload was meant for: switch into it and read what arrived. An
+            // ADMITTED payload puts its own `width` in force; a REFUSED one leaves the slot
+            // invalid, so `abEnsureInit` re-seeds it from the restored state and `width` is
+            // whatever the session's own APVTS child says (ER-STATE-02's recovery, unchanged).
+            p.abSwitchTo (0);
+            return (double) plainOf (p, "width");
+        };
+
+        const juce::String goodPayload =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ANAMORPH><PARAM id=\"width\" value=\"1.6\"/></ANAMORPH>";
+        checkNear (slotA (sessionCarrying (goodPayload)), 1.6, 1e-4,
+                   "leg D: a valid A/B payload is still admitted and applied");
+
+        // DEPTH, on the payload alone -- the session around every one of these is three deep and
+        // entirely well formed, which is what a real session is. 1.6 means admitted, 1.0 refused.
+        checkNear (slotA (sessionCarrying (payloadNestedTo (depth))), 1.6, 1e-4,
+                   "leg D: a payload nested exactly 8 deep is still admitted and applied");
+        {
+            AnamorphAudioProcessor p;
+            const auto blob = frameHostChunk (sessionCarrying (payloadNestedTo (depth + 1)));
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+            checkNear ((double) rawOf (p, "drive"), 0.0375, 1e-6,
+                       "leg D: ...and the SESSION around an over-deep payload still restores");
+            p.abSwitchTo (0);
+            checkNear ((double) plainOf (p, "width"), 1.0, 1e-4,
+                       "leg D: ...while the over-deep payload itself is refused and the slot re-seeded");
+        }
+
+        // DOCTYPE inside the payload, with the outer document carrying none. TWO shapes, because
+        // one number cannot answer both questions: the first makes the verdict observable (the
+        // entity resolves to a value `width` can take, so an admitted payload reads 1.6 and a
+        // refused one 1.0); the second is the expansion bomb, whose oracle is the clock.
+        {
+            const juce::String resolving =
+                "<!DOCTYPE ANAMORPH [<!ENTITY w \"1.6\">]>"
+                "<ANAMORPH><PARAM id=\"width\" value=\"&w;\"/></ANAMORPH>";
+            checkNear (slotA (sessionCarrying (resolving)), 1.0, 1e-4,
+                       "leg D: a DOCTYPE inside an A/B payload is refused, and its entity never resolves");
+        }
+        {
+            const juce::String bomb =
+                "<!DOCTYPE ANAMORPH [\n<!ENTITY e0 \"AAAAAAAAAA\">\n"
+                "<!ENTITY e1 \"&e0;&e0;&e0;&e0;&e0;&e0;&e0;&e0;&e0;&e0;\">\n]>\n"
+                "<ANAMORPH><PARAM id=\"width\" value=\"&e1;\"/></ANAMORPH>";
+            const auto t0 = juce::Time::getMillisecondCounterHiRes();
+            const auto got = slotA (sessionCarrying (bomb));
+            const auto ms  = juce::Time::getMillisecondCounterHiRes() - t0;
+            std::printf ("  [leg D] the payload's entity-expansion DOCTYPE was answered in %.1f ms\n", ms);
+            checkNear (got, 1.0, 1e-4, "leg D: the expansion bomb in a payload is refused too");
+            check (ms < 2000.0, "leg D: ...at once, and the outer session carried no DOCTYPE at all");
+        }
+
+        // SIZE: what this leg tests is CONTAINMENT, not the payload's own cap, and saying so is
+        // the point. A payload lives inside the chunk, so it cannot exceed a chunk the outer cap
+        // has already bounded -- the inner cap is unreachable while the outer one holds, and no
+        // test can reach it without removing the outer. What IS testable, and is what a host
+        // would actually hand over, is that a chunk carrying an oversized payload is refused
+        // whole. `slotPayloadIsAdmissible` states the same containment argument in source.
+        {
+            juce::String big ("<ANAMORPH><PARAM id=\"width\" value=\"1.6\"/><!--");
+            big << juce::String::repeatedString ("P", cap) << "--></ANAMORPH>";
+            check (big.getNumBytesAsUTF8() > (size_t) cap, "leg D: the oversized payload really is oversized");
+            AnamorphAudioProcessor p;
+            const auto blob = frameHostChunk (sessionCarrying (big));
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+            checkNear ((double) rawOf (p, "drive"), 0.0, 1e-9,
+                       "leg D: a chunk carrying an oversized payload is refused whole, at the outer cap");
+        }
+    }
+
+    // ---- E. what the boundary does NOT refuse ----------------------------------------
+    {
+        // ADR-0056 narrowed host state on depth, DOCTYPE and size ALONE. These four shapes are
+        // ones `.anamorph` files now refuse and host state deliberately still accepts, because
+        // narrowing them was not what the owner ruled on. The test states that, so a future
+        // round changing it has to change this leg on purpose.
+        checkNear (restores ("<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/></ANAMORPH>"
+                             "</AnamorphRoot><AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.1\"/>"
+                             "</ANAMORPH></AnamorphRoot>"), 0.0375, 1e-6,
+                   "leg E: two documents in one chunk still load, and the first still wins");
+        checkNear (restores ("<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/></ANAMORPH>"
+                             "</AnamorphRoot>trailing prose<JUNK/>"), 0.0375, 1e-6,
+                   "leg E: trailing content after the root still loads");
+        checkNear (restores ("<AnamorphRoot pad=\"x\"><!-- a comment --><ANAMORPH>"
+                             "<PARAM id=\"drive\" value=\"0.9\"/></ANAMORPH></AnamorphRoot>"), 0.0375, 1e-6,
+                   "leg E: comments and unknown root attributes are untouched");
+        {
+            // The truncation round 50 actually measured: a whole chunk cut in half, which JUCE's
+            // parser still returns an element for. Refusing it would be a fourth narrowing nobody
+            // ruled on, so it must keep loading -- and the boundary, which looks only at depth,
+            // DOCTYPE and size, leaves it alone.
+            auto blob = frameHostChunk ("<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/>"
+                                        "</ANAMORPH><AB active=\"0\" slotAParams=\"&lt;ANAMORPH/&gt;\"/>"
+                                        "</AnamorphRoot>");
+            blob.setSize (blob.getSize() / 2);
+            AnamorphAudioProcessor p;
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+            checkNear ((double) rawOf (p, "drive"), 0.0375, 1e-6,
+                       "leg E: a chunk truncated to half its length still loads, as it did before");
+        }
+    }
+
+    // ---- F. every retained session fixture still loads --------------------------------
+    {
+        // The compatibility census, asserted rather than printed. The three legacy root formats
+        // SESSION_COMPATIBILITY_POLICY rule 3 keeps alive are stored as readable XML; the v0.9.5
+        // field capture is already a framed chunk on disk and is fed through as bytes.
+        for (const char* name : { "legacy_v0_2_bare_apvts.xml",
+                                  "legacy_pre_0_6_4_ab_slots.xml",
+                                  "legacy_pre_0_8_4_view_params.xml",
+                                  "field_capture_v0_9_5.session" })
+        {
+            const auto file = fixtureDir().getChildFile (name);
+            juce::MemoryBlock blob;
+            if (auto x = juce::parseXML (file))    blob = BlobCodec::wrap (*x);
+            else if (! file.loadFileAsData (blob)) { check (false, "leg F: fixture unreadable"); continue; }
+
+            AnamorphAudioProcessor p;
+            const auto before = juce::String (plainOf (p, "width"), 4);
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+            const auto tree = stateTreeOf (p);
+            const auto label = juce::String ("leg F: ") + name + " still restores through the boundary";
+            check (tree.isValid() && tree.getChildWithName ("ANAMORPH").isValid(), label.toRawUTF8());
+            std::printf ("  [leg F] %-32s %6d B, width %s -> %.4f\n",
+                         name, (int) blob.getSize(), before.toRawUTF8(), (double) plainOf (p, "width"));
+        }
+
+        // ...and a live round trip: what this build writes must survive its own boundary.
+        AnamorphAudioProcessor p;
+        setPlain (p, "drive", 3.0f);
+        p.abCopyToOther();                       // seeds the other slot, so both payloads are real
+        juce::MemoryBlock out;
+        p.getStateInformation (out);
+        check ((juce::int64) out.getSize() <= anamorph::xmlBoundary::maxDocumentBytes,
+               "leg F: a session this build writes is inside the cap it now enforces");
+        AnamorphAudioProcessor q;
+        q.setStateInformation (out.getData(), (int) out.getSize());
+        checkNear ((double) plainOf (q, "drive"), 3.0, 1e-4,
+                   "leg F: ...and restores through it unchanged");
+        std::printf ("  [leg F] this build writes %d B against a %d B cap\n", (int) out.getSize(), cap);
+    }
+
+    // ---- G. THE EXTERNAL-ENTITY ORACLE, corrected -------------------------------------
+    {
+        // THE OLD PROBE'S ORACLE WAS UNSOUND and this leg is the replacement. It put a canary in
+        // a file, parsed a document with a `SYSTEM` DOCTYPE, and looked for the canary in the
+        // SERIALIZED STATE -- which cannot distinguish "the file was never opened" from "the
+        // file was opened and read, and the document was then rejected". Absence of the canary
+        // downstream is not absence of a read.
+        //
+        // What is measured instead is a DIFFERENTIAL over the filesystem, with a POSITIVE
+        // CONTROL that proves the instrument can see a read when one happens:
+        //
+        //   leg G1 -- the same document text parsed with a COUNTING InputSource installed.
+        //             If the parser resolves external entities at all, the counter sees the
+        //             open and the entity resolves. This is what makes G2/G3 falsifiable.
+        //   leg G2 -- `juce::parseXML (const String&)`, the call BOTH host-state paths make
+        //             (`juce_XmlDocument.cpp:53-56` is literally
+        //             `XmlDocument (textToParse).getDocumentElement()`), with the file PRESENT.
+        //   leg G3 -- the same call with the file ABSENT. Identical output to G2 means the
+        //             file's existence made no difference to the parse, i.e. it was not read.
+        //
+        // The claim this establishes is therefore "the outcome does not depend on the file",
+        // which IS the property, rather than "the canary did not appear downstream", which is
+        // not.
+        auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                       .getChildFile ("anamorph-risk014");
+        dir.createDirectory();
+        auto external = dir.getChildFile ("external.dtd");
+        check (external.replaceWithText ("<!ENTITY leak \"LEAKED\">"), "leg G: the external DTD is on disk");
+
+        juce::String doc;
+        doc << "<?xml version=\"1.0\"?><!DOCTYPE ANAMORPH SYSTEM \"" << external.getFileName()
+            << "\"><ANAMORPH><PARAM id=\"width\" value=\"&leak;\"/></ANAMORPH>";
+
+        auto serialise = [] (const std::unique_ptr<juce::XmlElement>& x)
+        {
+            return x != nullptr ? x->toString (juce::XmlElement::TextFormat().singleLine())
+                                : juce::String ("<null>");
+        };
+
+        // G1 -- the positive control.
+        juce::String withSource;
+        int opens = 0;
+        {
+            juce::XmlDocument xd (doc);
+            auto* counter = new CountingInputSource (external);
+            xd.setInputSource (counter);                 // the document takes ownership
+            const auto parsed = xd.getDocumentElement();
+            withSource = serialise (parsed);
+            opens = counter->opens;
+        }
+        std::printf ("  [leg G1] with an InputSource: %d open(s), result %s\n",
+                     opens, withSource.substring (0, 90).toRawUTF8());
+        check (opens > 0, "leg G1: the parser DOES open related content when a source exists");
+        check (withSource.contains ("LEAKED"),
+               "leg G1: ...and resolves the external entity, so the oracle can see a read");
+
+        // G2 / G3 -- the production call, file present then absent.
+        const auto present = serialise (juce::parseXML (doc));
+        check (external.deleteFile(), "leg G: the external DTD is removed for the second parse");
+        const auto absent  = serialise (juce::parseXML (doc));
+        std::printf ("  [leg G2] present: %s\n  [leg G3] absent : %s\n",
+                     present.substring (0, 90).toRawUTF8(), absent.substring (0, 90).toRawUTF8());
+        check (present == absent,
+               "leg G2/G3: the production parse gives the SAME result whether the file exists or not");
+        check (! present.contains ("LEAKED"),
+               "leg G2: ...and never carries the file's contents");
+
+        // G4 -- and through the real entry points the question is now moot TWICE OVER: the
+        // boundary refuses the `DOCTYPE` before `parseXML` is reached at all, on top of the
+        // parser having no InputSource to open anything with.
+        check (external.replaceWithText ("<!ENTITY leak \"LEAKED\">"), "leg G4: the DTD is back on disk");
+        {
+            AnamorphAudioProcessor p;
+            const auto blob = frameHostChunk (juce::String ("<!DOCTYPE AnamorphRoot SYSTEM \"")
+                                              + external.getFileName() + "\"><AnamorphRoot><ANAMORPH>"
+                                              "<PARAM id=\"drive\" value=\"0.9\"/></ANAMORPH></AnamorphRoot>");
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+            checkNear ((double) rawOf (p, "drive"), 0.0, 1e-9,
+                       "leg G4: a SYSTEM DOCTYPE in a session chunk is refused by the boundary");
+            const auto tree = stateTreeOf (p);
+            check (! tree.toXmlString().contains ("LEAKED"), "leg G4: ...and no file content reaches the state");
+        }
+        {
+            AnamorphAudioProcessor p;
+            const auto blob = frameHostChunk (sessionCarrying (doc));
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+            p.abSwitchTo (0);
+            checkNear ((double) plainOf (p, "width"), 1.0, 1e-4,
+                       "leg G4: a SYSTEM DOCTYPE in an A/B payload is refused by the boundary too");
+        }
+        external.deleteFile();
+        dir.deleteRecursively();
+    }
+}
+
 static void testTooltipSourceOfTruth()
 {
     std::printf ("Tooltip source of truth: the cached component vs the live pointer\n");
@@ -22406,7 +22849,7 @@ static void testHostSaveInsideThePendingWindowCarriesTheEdit()
 //  State test 60 -- a restore that carries no baseline is clean against the sound
 //  IT restored, not against whatever is live when the adoption runs
 //  (D-2 round 15, ADR-0036 §22; review finding "pending edits become the clean
-//  baseline", src/PluginProcessor.cpp:2550).
+//  baseline", src/PluginProcessor.cpp:2634).
 //
 //  A session records `presetBaseline` so the modified-star survives a reload. Two
 //  real session shapes carry none: anything written before 0.6, and (since 0.9.2)
@@ -22639,7 +23082,7 @@ static void testRestoreWithoutBaselineIsCleanAgainstItsOwnSound()
 // ---------------------------------------------------------------------------
 //  State test 61 -- a relative operation acts on the session it observed
 //  (D-2 round 16, ADR-0036 §23; review finding "relative navigation uses stale
-//  targets", src/PluginProcessor.cpp:2177).
+//  targets", src/PluginProcessor.cpp:2178).
 //
 //  "The other slot" and "the next preset" are decisions ABOUT a session. Both are
 //  taken in two steps -- read the current slot / row, then apply the derived target
@@ -23016,7 +23459,7 @@ static void testRelativeNavigationActsOnTheSessionItObserved()
 // ---------------------------------------------------------------------------
 //  State test 62 -- a settled sound is one session's, never a mixture
 //  (D-2 round 17, ADR-0036 §24; review finding "overlapping restores expose
-//  mixed sound", src/PluginProcessor.cpp:2735).
+//  mixed sound", src/PluginProcessor.cpp:2819).
 //
 //  A whole-sound replacement is `apvts.replaceState` -- which JUCE locks -- followed
 //  by a LOOP of per-parameter writes that runs OUTSIDE that lock. Two of them running
@@ -34996,6 +35439,7 @@ int main (int argc, char* argv[])
     testBareStoresDeclareTheirEndpointAndThePollNeverWaits();
     testAPresetFileIsOneWellFormedDocument();
     testThePresetUnreadableStateExpiresByItself();
+    testHostStateIsBoundedBeforeTheParser();
     testTooltipSourceOfTruth();
     testEditorConstructDestroy();
 

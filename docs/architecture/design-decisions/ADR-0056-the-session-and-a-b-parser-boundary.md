@@ -1,14 +1,26 @@
 # ADR-0056 — The session and A/B parser boundary (RISK-014)
 
-**Status:** **Proposed — awaiting the owner's decision.** Nothing in this ADR is implemented.
-Narrowing what `setStateInformation` accepts is a semantic change to a contract
-`docs/architecture/SERIALIZATION_REGISTRY.md` records, which
+**Status:** **Accepted** (owner instruction 2026-09-19; **Architecture Review Gate TRIGGERED and
+cleared by that instruction**). Narrowing what `setStateInformation` accepts is a semantic change to
+a contract `docs/architecture/SERIALIZATION_REGISTRY.md` records, which
 `docs/policies/ARCHITECTURE_REVIEW_GATE.md` gates as a *Serialization Registry change* and
 `docs/policies/AI_AGENT_POLICY.md` makes an agent hard stop — the same gate ADR-0055 triggered for
-preset files. ADR-0055's own scope ruling put these two paths **outside** that approval: *"Implement
-preset-file protection only. Do not modify host session blob loading or A/B slot payload loading in
-this round. Record those paths as a follow-up risk requiring separate compatibility review."* This
-ADR is that review's evidence. The decision is the owner's and is recorded here when it is made.
+preset files, and one ADR-0055's own scope ruling explicitly did NOT clear for these two paths:
+*"Implement preset-file protection only. Do not modify host session blob loading or A/B slot payload
+loading in this round. Record those paths as a follow-up risk requiring separate compatibility
+review."* This ADR was that review. It was **Proposed** for one round, carrying the measurements and
+five options and selecting none, and the owner then ruled:
+
+> **1. Narrow host-state acceptance.** The measured crash, hang, and unbounded-memory behaviors are
+> reachable parser-safety defects. **2. Protect both parser surfaces** — the host session XML text
+> before its `parseXML`, and each A/B slot payload before its separate `parseXML`. Do not protect
+> only the outer session document. **3. Use the established limits** — 256 KB, depth 8, reject
+> `DOCTYPE` — and do not invent a different limit merely because the current measured sessions are
+> much smaller. **4. Correct the trust classification** so host state is not described as inherently
+> trusted merely because it enters through `setStateInformation`.
+
+That is **option C** below, with option D's limits question settled by instruction 3. Implemented in
+round 51; what follows keeps the round-50 evidence verbatim and records the implementation after it.
 
 ## Context
 
@@ -17,9 +29,9 @@ files. Two other paths reach the same parser and were deliberately left alone, a
 `docs/FUTURE_RISKS.md` records them as **RISK-014**:
 
 1. **The host session blob.** `setStateInformation` → `decodeRestore`
-   (`src/PluginProcessor.cpp:2747-2751`) → `AudioProcessor::getXmlFromBinary` → `juce::parseXML`.
+   (`src/PluginProcessor.cpp:2831-2839`) → `AudioProcessor::getXmlFromBinary` → `juce::parseXML`.
 2. **The A/B slot payload.** Inside the same decode, `readSlot`'s `adoptIfAnamorph`
-   (`src/PluginProcessor.cpp:2858-2862`) calls `juce::parseXML (slotPayload)` on a **string
+   (`src/PluginProcessor.cpp:2946-2956`) calls `juce::parseXML (slotPayload)` on a **string
    attribute value** of the already-parsed session document — a second, independently framed XML
    document one level further in.
 
@@ -204,60 +216,147 @@ the option is not re-proposed rather than because it is live.
 
 ## Decision
 
-**Not taken.** The owner's decision is required on four points:
+**Option C, with ADR-0055's limits.** Both independently parsed documents are bounded before the
+parser, each on its own, at **256 KB**, **depth 8**, and **no `DOCTYPE`**.
 
-1. **Whether to narrow session acceptance at all** — i.e. A versus B/C/D.
-2. **Which paths**, if so: the session chunk alone (B), or the chunk and each slot payload (C).
-   The depth-amplification measurement is the evidence that these are two questions, not one.
-3. **Which limits**, and against what headroom. The measured maxima are 10 629 bytes and depth 3
-   for a whole session, and 2 051 bytes and depth 2 for a slot payload; the preset boundary chose
-   256 KB and depth 8 against 1 525 bytes and depth 2, i.e. ~172× and 4×.
-4. **Whether the `.vstpreset` / `.aupreset` door changes the trust classification** the registry
-   records for host state — independently of 1-3, because it is a statement of fact about where the
-   bytes come from.
+### The shared mechanism, and what could NOT be shared
+
+`src/XmlBoundary.h` (`anamorph::xmlBoundary`) carries ONE walk over the text, parameterised by a
+`DocumentRule`. The preset path asks it `oneWellFormedDocument`; the two host-state paths ask it
+`parserSafetyOnly`. `PresetManager.cpp`'s `presetTextIsAdmissible` is now a two-line call into it,
+so ADR-0055's behaviour is not reimplemented — it is the same code, and State test 114's twelve legs
+are the proof that it did not move.
+
+The split was established rather than assumed, because the preset scanner could NOT simply be
+copied:
+
+| Check | Level | Shared? |
+|---|---|---|
+| nesting depth | decoded text | **yes** — `readNextElement`/`readChildElements` recurse without bound on any input |
+| any `<!` that is not `<!--` or `<![CDATA[` | decoded text | **yes** — a `DOCTYPE` is what reaches `expandExternalEntity` |
+| size | bytes (session) / UTF-8 length (payload) | **yes**, as a number; applied at each path's own entry |
+| UTF-16 BOM, embedded NUL, UTF-8 validity | **bytes of a FILE** | **no** — these read the bytes the way `String::createStringFromData` is about to. A session chunk is decoded by `String::fromUTF8` instead, and an A/B payload has no bytes of its own: it arrives already decoded, as an attribute value. Copying them would have guarded the wrong decoder |
+| one top-level element, whitespace-only surroundings, declaration at offset zero | decoded text | **no** — correctness rules about a *file format*, not parser safety. Instruction 3 named three limits and these are not among them |
+
+### Where each boundary sits
+
+* **Session chunk** — `hostChunkIsAdmissible`, called at the top of `decodeRestore`, before
+  `AudioProcessor::getXmlFromBinary` reads anything. Size is answered first, on `sizeInBytes`,
+  because that is what bounds the decode. The text it then scans is **not a reconstruction**: it is
+  `juce_AudioProcessor.cpp:975-976`'s own expression on its own range, so the scan and the parse
+  cannot disagree about where the document ends. That matters — `String::fromUTF8` builds through
+  `createFromCharPointer`, whose `while (e < end && ! e.isEmpty())` (`juce_String.cpp:132`) stops at
+  the first NUL, so scanning the raw bytes instead would scan past it and refuse documents the
+  parser never sees. Below the framing `getXmlFromBinary` requires, the guard defers to it and the
+  path is exactly as it was.
+* **Each A/B slot payload** — `slotPayloadIsAdmissible`, called inside `adoptIfAnamorph` before its
+  own `parseXML`. The payload's size cap is **redundant by containment today** and is stated anyway,
+  because the rule is that every independently parsed document carries its own boundary: the payload
+  lives inside a chunk already capped at 256 KB and XML unescaping only shrinks, and the one
+  mechanism that could have grown it — entity expansion from a `DOCTYPE` in the outer document — is
+  refused above. No test can reach that cap without removing the outer one, and State test 116 leg D
+  says so rather than pretending otherwise.
+
+### Failure semantics: the ones each path already had
+
+Neither path gained a new outcome, and neither gained any user-facing state.
+
+* A refused chunk is `decodeRestore` returning `false` — the documented *"a chunk of neither
+  recognised shape is not a restore at all"* (SERIALIZATION_REGISTRY.md). Not one parameter, not the
+  Settings, not the A/B slots is touched, and the sound the user has stays. State test 116 leg A/B/C
+  assert exactly that by reading `drive` back at its default.
+* A refused payload leaves the slot invalid, so `abEnsureInit()` re-seeds it from
+  `currentStateSet()` — precisely the recovery an unparsable or foreign-typed payload already gets
+  (ER-STATE-02). Leg D asserts the re-seed, not an error.
+
+### The limits, and why they are ADR-0055's rather than fitted
+
+Instruction 3 is explicit, and the compatibility evidence supports it without strain: the largest
+session ever measured is 10 629 bytes at depth 3 and the largest payload 2 051 bytes at depth 2, so
+the caps sit at **~25×** and **4×** what the product writes, and at ~128× and 4× what a slot carries.
+Fitting tighter numbers to today's sessions would have bought nothing and would have made the next
+parameter addition a compatibility event.
 
 ## Consequences
 
-*While the decision is outstanding:* the code is unchanged and every row of the matrix above stands.
-RISK-014 remains **open**, with its wording corrected to the measurements rather than to the
-round-43 preset-path reasoning.
+**What changed for a user: nothing that a valid session can observe.** Every fixture the repository
+retains still restores — the three legacy root formats `SESSION_COMPATIBILITY_POLICY.md` rule 3 keeps
+alive, the v0.9.5 field capture, and a live save→restore round trip — and State test 116 leg F
+asserts each one rather than printing it.
 
-*If A is chosen:* RISK-014 closes as accepted and this ADR is marked `Accepted` with option A named.
+**What changed for a corrupt one:** the crash, the hang and the unbounded read are gone from both
+paths. Re-measured with `--risk014-probe` on this head: 3 000 and 30 000 levels of nesting, and the
+one-, two- and three-level recursive-entity `DOCTYPE`s, are each refused in 0–4 ms on both paths,
+where before they SIGSEGV'd or did not return. The plug-in now allocates nothing for an oversized
+chunk; the host still holds the bytes it is handing over, which no boundary here can change.
 
-*If B, C or D is chosen:* the Architecture Review Gate clears on that instruction, the registry and
-`SESSION_COMPATIBILITY_POLICY.md` record the narrowed acceptance as a semantic change under rule 1,
-and `RELEASE_COMPATIBILITY_CHECKLIST.md` runs — the three legacy root formats and the v0.9.5 field
-capture are the fixtures the new limits must be proven against, and all four are already in
-`tests/fixtures/`.
+**What did NOT change, deliberately.** Two documents in one chunk, trailing prose, a NUL disguise,
+invalid UTF-8 in an attribute value and a chunk truncated to half its length all still load, exactly
+as they did. Those are acceptance questions instruction 3 did not open, and State test 116 leg E
+pins them so that a later round narrowing them has to do it on purpose.
+
+**ADR-0055 is unchanged.** Its scanner moved file; its rules, its limits and its twelve-leg test did
+not. `PresetManager::maxPresetBytes` and `maxPresetDepth` are now names for
+`anamorph::xmlBoundary::maxDocumentBytes` and `maxDocumentDepth`, and leg 0 of State test 116 asserts
+they still hold ADR-0055's values.
+
+**Compatibility process:** `RELEASE_COMPATIBILITY_CHECKLIST.md`'s session-reload and preset-migration
+checks are what the fixture legs discharge in the suite; the checklist itself is a release-time
+gate and is unaffected by this change beyond the evidence now being automatic.
 
 ## What was NOT done, and why
 
-No guard, no extraction of the ADR-0055 scanner, no change to `src/`. The gate is triggered and the
-standing ruling explicitly excludes these paths, so implementing first and asking afterwards would
-invert the procedure `ARCHITECTURE_REVIEW_GATE.md` §Procedure sets out.
+**No new thread, no worker parser, no blocking.** Option E stays rejected for ADR-0055's reasons and
+would have been a gated Thread Model change on top.
 
-No test asserts the current behaviour either. A regression test is a statement that behaviour is
-intended, and whether it is intended is the question this ADR asks; the evidence lives in the probe,
-which the suite does not call.
+**No byte-level rules on host state.** The session chunk's invalid-UTF-8 tolerance and its NUL
+truncation are real and are recorded as the round's residual (see RISK-014). They are neither crash,
+hang nor unbounded read, and instruction 3 named three limits.
+
+**No single-document rule on host state**, for the same reason — see the Decision table.
+
+**No suppression anywhere**, and no production change made to satisfy a test. The one change this
+round made to a test's *subject* was to give State test 116's A/B legs a payload carrying a
+distinguishable `width`, because the first draft's assertions could not tell "refused" from
+"admitted but empty" and mutant M2 survived them.
 
 ## Related code
 
-* `src/PluginProcessor.cpp:2747-2751` — `decodeRestore`'s `getXmlFromBinary` / `ValueTree::fromXml`.
-* `src/PluginProcessor.cpp:2855-2862` — `readSlot`'s `adoptIfAnamorph` and its `parseXML`.
-* `src/PluginProcessor.cpp:2607-2657` — `writeState`, the writer both shapes come from.
-* `src/PresetManager.cpp:310-548` — the ADR-0055 scanner, today file-private.
-* `tests/state_tests.cpp` — `--risk014-probe`, the reproducer for every row above.
-* `tests/fuzz_state.cpp` — the libFuzzer target already aimed at `setStateInformation`.
+* `src/XmlBoundary.h` — `anamorph::xmlBoundary`: the shared walk, the two rules, the two limits.
+* `src/PluginProcessor.cpp` — `hostChunkIsAdmissible` and `slotPayloadIsAdmissible` in the file's
+  anonymous namespace, and their two call sites in `decodeRestore` and `adoptIfAnamorph`.
+* `src/PresetManager.cpp` — `presetTextIsAdmissible`, now a call into the shared walk; the
+  byte-level `presetBytesAreAdmissible` stays where it is and why.
+* `src/PresetManager.h` — `maxPresetBytes` / `maxPresetDepth`, now names for the shared constants.
+* `tests/state_tests.cpp` — **State test 116** (legs 0, A–G) and `--risk014-probe`, the opt-in
+  evidence instrument the suite never calls.
+* `tests/fuzz_state.cpp` — the libFuzzer target aimed at `setStateInformation`.
 
 ## Evidence + confidence
 
-**[Verified]** — every row of the matrix was produced by running the shape through the real
+**[Verified].** The round-50 matrix above was produced by running each shape through the real
 `setStateInformation` on `de89b1a`, x86-64 Linux, Release, pinned JUCE 9.0.2, one shape per process,
-with the 1 MB rows under `ulimit -s 1024` for Windows main-thread parity; peak RSS sampled from
-`/proc/<pid>/status` `VmHWM`. The reachability claims about `InputSource`, the framing and the DTD
-default are read from the pinned JUCE and VST3 SDK sources cited inline. The census is
-`--risk014-probe census` against the four fixtures in `tests/fixtures/`.
+with the 1 MB rows under `ulimit -s 1024` for Windows main-thread parity and peak RSS sampled from
+`/proc/<pid>/status` `VmHWM`. The reachability claims about `InputSource`, the framing and the
+`TextFormat::dtd` default are read from the pinned JUCE and VST3 SDK sources cited inline.
 
-**Confidence: high** for the reachability, the thresholds and the trust-boundary facts; **the size
-cap is the one open judgement**, because "every session this product has ever written" is bounded by
-measurement only up to the largest one measured.
+**The round-51 implementation is verified by measurement, not by inspection:**
+
+* **State 4 625 / 0** (was 4 584; +41 from State test 116), **DSP 396 / 0**, `preflight.sh` exit 0.
+* **Six mutants, six kills.** M1 the session guard always admits → 5 failures. M2 the payload guard
+  always admits → 3. M3 the shared walk stops refusing `<!` under `parserSafetyOnly` → 2. M4 the
+  session size cap removed → 2. M5 depth 8 → 9 → 1. M6 size 256 KB → 128 KB → 1. **M2 and M5
+  survived the first draft** and both survivals were real coverage gaps, fixed in the test.
+* **libFuzzer over `setStateInformation`**, ASan+UBSan, seeded corpus, 10 990 runs / 181 s: no
+  findings, no reports, slowest unit 0 s.
+* **The external-entity oracle was rebuilt** (see RISK-014 and TESTING.md): the old probe looked for
+  a canary in the serialized state, which cannot distinguish "never opened" from "opened, read, then
+  rejected". Leg G now measures a filesystem differential with a positive control — with a counting
+  `InputSource` installed the parser opens the file once and the entity resolves to `LEAKED`; through
+  `juce::parseXML (const String&)` the result is `leak` and is **byte-identical whether the file
+  exists or not**. Identical output across present/absent is the property; canary absence is not.
+
+**Confidence: high** for the boundary, the thresholds, the compatibility evidence and the oracle.
+**Two things remain judgements rather than measurements**: the size cap is bounded by the largest
+session ever *measured*, not by a proof; and the payload's own size cap is unreachable while the
+outer cap holds, so it is argued by containment rather than tested.

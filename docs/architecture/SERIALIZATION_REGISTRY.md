@@ -9,7 +9,7 @@ Field-level ledger of everything written to session state. Companion to
 > migration support (a read path for the old field). Adding a field is allowed only if absence
 > is handled (a default), so older sessions still load.
 
-Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:2795-2798 (pre-0.8.4, `resolveLegacy`), :1287-1360 (pre-0.6.4 `readSlot`), :1388-1410 (v0.2 bare APVTS);
+Evidence [Verified]: backward-compat paths at src/PluginProcessor.cpp:2883-2886 (pre-0.8.4, `resolveLegacy`), :1287-1360 (pre-0.6.4 `readSlot`), :1388-1410 (v0.2 bare APVTS);
 src/InternalState.h:198-433.
 
 ## `AnamorphRoot` properties
@@ -19,7 +19,7 @@ src/InternalState.h:198-433.
 | `presetName` | String | ≥0.6 (Unverified exact) | No | No | `PresetManager::defaultName()` — **absent ≠ empty**, see below |
 | `presetBaseline` | String | 0.6.x (#6) [Partially Verified] | No | No | `baselineOfRestore` clean baseline |
 
-Source: src/PluginProcessor.cpp:2610-2618 (write), :1268-1277 (read), :1104-1105 (adoption).
+Source: src/PluginProcessor.cpp:2694-2702 (write), :1268-1277 (read), :1104-1105 (adoption).
 
 **`presetName`: absent and empty are different answers.** The property is *absent* only in a session
 that predates it (< 0.6); it resolves to `PresetManager::defaultName()`, whose name-fallback tick is
@@ -30,7 +30,7 @@ Neither case may fall back to `presets.currentName()`: `presets` is a processor 
 reuses one instance across `setStateInformation` calls, so the live name is the **previous project's**
 — the same rule `readSlot` follows for the A/B slots. The adoption therefore assigns the name
 unconditionally, and only `setStateInformation` (which can see `hasProperty`) resolves absence.
-Source: src/PresetManager.h:114-119 (`defaultName`); src/PluginProcessor.cpp:2550
+Source: src/PresetManager.h:119-124 (`defaultName`); src/PluginProcessor.cpp:2634
 (`adoptRestoreTail`'s adoption).
 
 **A malformed legacy Setting resolves to a valid setting, deterministically** (2026-09-01, ER-STATE-17). Pre-0.8.4 sessions carry Oversampling, UI Scale and Scope Persistence as APVTS `PARAM`s that `InternalState::migrateFromLegacyApvts` converts. Each value now passes the same usability predicate as the session and preset paths (`SerializedNumber.h`: plain decimal text, finite after float narrowing) — anything else means the field's **default**, exactly as an absent node does — and the choice indices are clamped into the ComboBox domain (`oversample` ids 1..4, `uiScale` 1..5; `scopePersist` to 0..1) in double **before** the integer conversion, so that conversion is defined for every input and the `+ 1` cannot overflow. Before this the value went straight into `(int)`, which is undefined for NaN, ±inf and out-of-range doubles, and JUCE's parser accepts "nan"/"inf": measured on x86-64 every such value became −2147483647 in the tree and was written back out on the next save; "2147483647" wrapped to INT_MIN through a second UB; AArch64 saturated the same inputs differently. Valid legacy values convert exactly as before (State tests 5 and 6 unchanged); State test 28 pins 88 synthetic cases over both legacy shapes, plus 36 on the real frozen pre-0.8.4 fixture mutated in place with its surrounding session asserted intact (round 13). Source: src/InternalState.h:254-299.
@@ -44,7 +44,7 @@ moved — "metadata describing a session that was never loaded", which is the sa
 paragraph exists to prevent. `getStateInformation` appends the child unconditionally, so no session
 this plug-in has ever written reaches that branch and no valid session changes behaviour; what
 reaches it is a truncated, hand-edited or forward-version blob. Source:
-src/PluginProcessor.cpp:2656-2763; State test 27.
+src/PluginProcessor.cpp:2740-2851; State test 27.
 
 **A chunk of neither recognised shape is not a restore at all.** `setStateInformation` handles two
 root shapes — `AnamorphRoot` and the bare v0.2 APVTS tree. Anything else (a foreign or
@@ -52,7 +52,7 @@ forward-version root) matches neither, so no parameter, Settings value or A/B sl
 the function **returns before the adoption block**: preset name, identity, checkmark and dirty
 baseline all stay exactly as they were. That is the same answer the guard at the top already gives a
 blob `getXmlFromBinary` cannot parse — input we do not recognise never becomes state. Source:
-src/PluginProcessor.cpp:2936-2970 (the else-branch), :607 (the unparsable-blob guard).
+src/PluginProcessor.cpp:3030-3064 (the else-branch), :607 (the unparsable-blob guard).
 
 ### The preset **indicator identity** (0.9.2, ADR-0024 as amended)
 
@@ -90,10 +90,10 @@ platform, resolves to nothing and ticks nothing. Accepted and explained in ADR-0
 Absent, empty, half-written or unrecognised all decode to `unknown`, which is the pre-0.9.2 name
 fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that no longer resolves —
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
-same-named preset. Source: src/PresetManager.h:55-77 (`Selection`), :78-94 (`SelectionFields`,
+same-named preset. Source: src/PresetManager.h:56-78 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
-src/PresetManager.cpp:1364-1417 (`encodeSelection` / `decodeSelection`);
-src/PluginProcessor.cpp:2247-2269 (`writeSelection`/`readSelection`), :585 (root write),
+src/PresetManager.cpp:1257-1310 (`encodeSelection` / `decodeSelection`);
+src/PluginProcessor.cpp:2248-2353 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
 ## `ANAMORPH` child (APVTS)
@@ -358,7 +358,7 @@ switch recalled the previous project's sound underneath the restored one. The re
 (`active` → 0, both slots → invalid, i.e. "lazily initialised from current") on those two paths,
 `adoptRestoreTail` assigns the slot set as a whole, and the existing `abEnsureInit()` re-seeds from
 the state that was just restored. A blob that DOES carry an `AB` node is unaffected: its slots restore as before.
-Source: src/PluginProcessor.cpp:2909-2933 (the `AB`-absent branch of `decodeRestore`), :1388-1410 (the
+Source: src/PluginProcessor.cpp:3003-3027 (the `AB`-absent branch of `decodeRestore`), :1388-1410 (the
 v0.2 branch) and :1063-1108 (`adoptRestoreTail`, which assigns the slot set and resets the
 Level-Match memory); State test 26.
 
@@ -388,7 +388,7 @@ path that runs every time — construction, where both slots are invalid — the
 indistinguishable, since slot A has just been seeded from the same live state. They diverged only
 when slot A was valid and slot B was not, i.e. an `AB` node whose `slotBParams` alone was missing or
 unparsable: slot B came back as a **duplicate of slot A** rather than as the state just restored, and
-a later save wrote that duplicate out. Source: src/PluginProcessor.cpp:2819-2903
+a later save wrote that duplicate out. Source: src/PluginProcessor.cpp:2907-2997
 (`readSlot`), :904-932 (`abEnsureInit`); src/PluginProcessor.h:541-554 (`StateSet::isValid`).
 
 An absent or empty `slotABase` / `slotBBase` means **"no baseline was recorded"**, which is *not* the
@@ -404,12 +404,12 @@ became its own clean baseline, read from the live parameters on the first switch
 is gone, `setMeta` stores what it is given, and a re-saved legacy session therefore writes the
 derived baseline — it re-saved as `""` before. An **invalid** slot keeps an empty baseline only
 until `abEnsureInit()` re-seeds it whole from `currentStateSet()`.
-Source: src/PresetManager.h:138-164 (`setMeta`);
-src/PluginProcessor.cpp:2575 (`baselineOfRestore`, the root-side rule); :1555-1639 (`readSlot`, the
+Source: src/PresetManager.h:143-169 (`setMeta`);
+src/PluginProcessor.cpp:2659 (`baselineOfRestore`, the root-side rule); :1555-1639 (`readSlot`, the
 derivation at its end).
 
 **◊** Pre-0.6.4 sessions stored params-only under `slotA`/`slotB`; `readSlot` migrates them.
-Evidence [Verified]: src/PluginProcessor.cpp:2866-2867 (the legacy-key fallback inside `readSlot`, :1555-1639);
+Evidence [Verified]: src/PluginProcessor.cpp:2960-2961 (the legacy-key fallback inside `readSlot`, :1555-1639);
 the per-slot identity is written at :831 / :835 and read at :918.
 
 ## Legacy root formats (read-only compatibility)
@@ -418,43 +418,86 @@ the per-slot identity is written at :831 / :835 and read at :918.
 |---|---|---|
 | v0.2 bare APVTS tree | `xml->hasTagName(apvtsStateType)` | repair on a private copy → `apvts.replaceState` → `reassertParameters` (`applySoundTree`) |
 
-Source: src/PluginProcessor.cpp:2935-2958.
+Source: src/PluginProcessor.cpp:3029-3052.
 
-## What the HOST-STATE path accepts, measured (0.9.9, RISK-014 / ADR-0056)
+## The HOST-STATE parser boundary (0.9.9, ADR-0056)
 
-The two rules above — the root type, and ADR-0055's document boundary — govern the **preset file**.
-The host chunk is admitted by neither. `setStateInformation` → `decodeRestore` →
-`AudioProcessor::getXmlFromBinary` validates exactly two things (`juce_AudioProcessor.cpp:968-980`):
-that the chunk is longer than 8 bytes, and that its first four bytes are `magicXmlNumber`
-(`0x21324356`, ASCII `VC2!`). It then hands `String::fromUTF8` of the rest to `juce::parseXML`. The
-`AB` child's slot payload is not framed at all: `adoptIfAnamorph` parses the attribute value as its
-own independent document. **This section records what that means, as measured through the real
-entry point on `de89b1a`; it proposes nothing.**
+### Host state is not trusted because of where it enters
 
-Accepted and **applied** today, which the preset path now refuses: two complete documents in one
-chunk (the first wins), a document followed by prose, by a stray element or by raw binary, a
-document followed by one NUL and a second complete document, invalid UTF-8 in an attribute value,
-and a chunk truncated to half its length. Refused today: mismatched tags, a stated length far
-larger than the chunk, UTF-16 text under the UTF-8 frame, and — in a slot — a foreign-typed root
-(ER-STATE-02, above).
+The rules above — the root type, and ADR-0055's document boundary — govern the **preset file**. Until
+round 51 the host chunk was admitted by neither, on the reasoning that its bytes come from the host
+rather than from a file the user opens. **That reasoning is false, and the correction is a statement
+of fact about the call paths rather than a change of posture:**
 
-Not survivable today, on **both** paths: ~3 000 levels of nesting (SIGSEGV on a 1 MB stack; ~30 000
-on 8 MB), a two-level recursive-entity `DOCTYPE` of ~230 bytes (SIGSEGV), a one-level one of ~150
-bytes (no return after 60 s), and input size (peak RSS linear to 521-650 MB, no cap). **Not**
-reachable on either path, unlike the preset path before ADR-0055: the `SYSTEM`-`DOCTYPE` file read,
-because `parseXML (const String&)` leaves `XmlDocument::inputSource` null.
+* In the pinned VST3 SDK, `PresetFile::restoreComponentState` reads the `Comp` chunk and calls
+  `component->setState (readOnlyBStream)`
+  (`…/format_types/VST3_SDK/public.sdk/source/vst/vstpresetfile.cpp:470-475`), and JUCE's
+  `JuceVST3Component::setState` forwards it to `pluginInstance->setStateInformation`
+  (`juce_audio_plugin_client_VST3.cpp:2822`). **A `.vstpreset` the user picks in the host's preset
+  browser, or drags onto the plug-in, reaches this parser** — the same door a project open uses. The
+  AU (`ClassInfo`) and Standalone paths reach it the same way.
+* A project file is itself an exchanged document: it travels between machines and collaborators, is
+  stored and synced, and can be truncated by a crash mid-save.
 
-**What the writer produces, for anyone proposing a bound:** every session this product has written
-is nested at most **3** deep and at most **10 629 bytes** (the v0.9.5 field capture; this build
-10 438 B; the three legacy roots below 268 / 590 / 740 B at depth 2-3), a slot payload at most
-**2 051 bytes** at depth **2**, and none carries a `DOCTYPE` — `XmlElement::TextFormat::dtd`
-defaults to empty (`juce_XmlElement.h:207`) and neither `copyXmlToBinary` nor
-`ValueTree::toXmlString` sets it.
+What is **not** claimed: that the host is hostile, or that any field measurement has produced such a
+chunk. The classification is about the *reachable byte paths*, which is what a boundary can be
+justified on.
 
-Narrowing any of this is a **semantic change to this registry** and therefore an Architecture
-Review Gate item; the evidence, the options and the open judgement are
-[ADR-0056](design-decisions/ADR-0056-the-session-and-a-b-parser-boundary.md), **Proposed**. The
-reproducer is `AnamorphStateTests --risk014-probe`.
+### Two independently parsed documents, bounded separately
+
+A host chunk carries **two** documents that reach `juce::parseXML`, and they nest independently:
+
+1. the **session document**, decoded by `AudioProcessor::getXmlFromBinary` — which validates exactly
+   two things (`juce_AudioProcessor.cpp:968-980`): a chunk longer than 8 bytes, and first four bytes
+   `magicXmlNumber` (`0x21324356`, ASCII `VC2!`);
+2. each **A/B slot payload**, which is not framed at all: `adoptIfAnamorph` parses the attribute
+   value as its own document.
+
+Measured on `de89b1a` through the real entry point, both reached SIGSEGV between 2 500 and 3 000
+levels of nesting on a 1 MB stack and between 20 000 and 30 000 on 8 MB; both SIGSEGV'd on a
+~230-byte recursive-entity `DOCTYPE` and did not return from a ~150-byte one; and peak RSS tracked
+input size linearly with no cap, to 521 MB and 650 MB. **The payload amplifies depth rather than
+inheriting it** — 3 000 levels inside one attribute value of a session nested three deep — so a cap
+on the outer document alone would have refused none of it.
+
+Since 0.9.9 each document must therefore satisfy, before the parser sees it:
+
+| Stage | Rule | Why |
+|---|---|---|
+| Size | at most **256 KB** (`anamorph::xmlBoundary::maxDocumentBytes`) | the decode copies the chunk into a `juce::String` before the parser sees a byte, with no cap of its own. ~25x the largest session ever measured |
+| Text | nesting at most **8** (`maxDocumentDepth`) | `readNextElement`/`readChildElements` are mutually recursive with no bound. 2.7x the depth any session has ever had |
+| Text | **no `DOCTYPE`** — no `<!` that is not `<!--` or `<![CDATA[` | the entity expansion that hangs and crashes. No session this product has written carries one: `XmlElement::TextFormat::dtd` defaults empty (`juce_XmlElement.h:207`) and neither `copyXmlToBinary` nor `ValueTree::toXmlString` sets it |
+
+**Applied to each document separately.** The payload's size cap is redundant by containment while the
+outer cap holds, and is stated anyway so that the rule is "every independently parsed document
+carries its own boundary" rather than "the outer one is enough".
+
+**A refusal is the outcome each path already had.** A refused chunk is `decodeRestore` returning
+`false` — *"a chunk of neither recognised shape is not a restore at all"*, above — so not one
+parameter, not the Settings and not the A/B slots is touched. A refused payload leaves the slot
+invalid and `abEnsureInit()` re-seeds it from `currentStateSet()`, which is what an unparsable or
+foreign-typed payload already got (ER-STATE-02). No new state, no new user-facing report.
+
+### What host state still accepts, and that is deliberate
+
+ADR-0056's ruling named three limits. These shapes are ones a `.anamorph` file now refuses and a host
+chunk still accepts, measured and pinned by State test 116 leg E so that narrowing them later has to
+be a decision: **two complete documents in one chunk** (the first wins), **a document followed by
+prose, a stray element or raw binary**, **a document followed by one NUL and a second complete
+document** (`String::fromUTF8` stops at the first NUL, `juce_String.cpp:132`), **invalid UTF-8 in an
+attribute value**, and **a chunk truncated to half its length** (half-applied). Refused as before:
+mismatched tags, a stated length far larger than the chunk, UTF-16 text under the UTF-8 frame, and a
+foreign-typed slot root.
+
+**Not reachable on either path, and structurally so:** the `SYSTEM`-`DOCTYPE` arbitrary file read.
+`XmlDocument::getFileContents` opens nothing unless an `InputSource` is set
+(`juce_XmlDocument.cpp:182-193`), and both paths reach the parser through `parseXML (const String&)`,
+whose `XmlDocument (const String&)` constructor leaves it null (`:38`). Only the `File` overload —
+what the preset path used to call — installs a `FileInputSource`. State test 116 leg G measures this
+as a filesystem differential with a positive control rather than asserting the absence of a canary.
+
+Changing any of this is a semantic change to this registry and therefore an Architecture Review Gate
+item: [ADR-0056](design-decisions/ADR-0056-the-session-and-a-b-parser-boundary.md), **Accepted**.
 
 ## Notes
 

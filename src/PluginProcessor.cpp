@@ -3,6 +3,7 @@
 #include "AbSlotIndex.h"
 #include "SerializedNumber.h"   // the shared malformed-value predicate (both restore paths)
 #include "ParameterDispatch.h"  // ADR-0036 round 27 (R1390): every host-notifying write is bracketed
+#include "XmlBoundary.h"        // ADR-0056: the parser-safety scan both host-state paths run
 
 #include <cmath>   // std::isfinite -- the non-finite guards on the restore paths
 
@@ -2252,6 +2253,89 @@ juce::AudioProcessorEditor* AnamorphAudioProcessor::createEditor()
 
 namespace
 {
+    // ================= ADR-0056 (0.9.9): THE HOST-STATE PARSER BOUNDARY =================
+    //
+    // Two INDEPENDENTLY PARSED documents reach `juce::parseXML` from a host chunk, and round 50
+    // measured the same three failures on both: SIGSEGV between 2 500 and 3 000 levels of nesting
+    // on a 1 MB stack (a 21 KB input) and between 20 000 and 30 000 on 8 MB, because
+    // `readNextElement` and `readChildElements` are mutually recursive with no bound; a two-level
+    // recursive-entity `DOCTYPE` of ~230 bytes that also SIGSEGVs and a one-level one of ~150
+    // bytes that had not returned after 60 s, because `XmlDocument::expandExternalEntity` indexes
+    // with `ent.indexOf (i + 1, ";")` -- the DTD TOKEN index rather than the ampersand it just
+    // found; and peak RSS tracking input size linearly with no cap, to 521 MB and 650 MB.
+    //
+    // THE TWO DOCUMENTS ARE BOUNDED SEPARATELY BECAUSE THEY NEST SEPARATELY. An A/B slot payload
+    // is not a subtree of the session document: it is a STRING ATTRIBUTE of it, parsed on its own
+    // by `adoptIfAnamorph` below. Measured: 3 000 levels inside one attribute value of a session
+    // nested THREE deep and entirely well formed. A cap applied to the outer document alone would
+    // have refused none of it, so each gets its own.
+    //
+    // WHAT IS NOT REFUSED. Only depth, `DOCTYPE` and size -- `DocumentRule::parserSafetyOnly`.
+    // Two documents in one chunk, a trailing sentence, invalid UTF-8, a NUL disguise and a
+    // truncated chunk are all shapes `.anamorph` files now refuse, and all of them still load
+    // here exactly as they did: that is a serialization-acceptance question the owner's ruling
+    // did not open, and narrowing it silently would be the same mistake in the other direction.
+    //
+    // WHAT A REFUSAL MEANS is the semantic each path ALREADY HAS, unchanged. For the session
+    // chunk, `decodeRestore` returns false and nothing -- not one parameter, not the Settings,
+    // not the A/B slots -- is touched (SERIALIZATION_REGISTRY.md, "A chunk of neither recognised
+    // shape is not a restore at all"). For a slot payload, the slot stays invalid and
+    // `abEnsureInit()` re-seeds it from `currentStateSet()`, which is precisely the recovery an
+    // unparsable or foreign-typed payload already gets (ER-STATE-02). No new state, no new UI.
+
+    // The session chunk, scanned BEFORE `AudioProcessor::getXmlFromBinary` reads it.
+    bool hostChunkIsAdmissible (const void* data, int sizeInBytes)
+    {
+        // SIZE FIRST: it is the only question answerable without reading anything, and it is what
+        // bounds the decode below. `getXmlFromBinary` copies up to the whole chunk into a
+        // `juce::String` before the parser sees a byte, with no cap of its own. A session this
+        // build writes is 10 438 bytes, so the cap is ~25x the largest one ever measured.
+        if ((juce::int64) sizeInBytes > anamorph::xmlBoundary::maxDocumentBytes)
+            return false;
+
+        // Beneath the framing `getXmlFromBinary` requires there is no document to scan, and it
+        // returns null on its own -- which `decodeRestore` already treats as "not a restore".
+        // Answering `true` here keeps that path exactly as it was.
+        static constexpr juce::uint32 magicXmlNumber = 0x21324356;   // juce_AudioProcessor.cpp:946
+        if (sizeInBytes <= 8 || juce::ByteOrder::littleEndianInt (data) != magicXmlNumber)
+            return true;
+
+        const auto stated = (int) juce::ByteOrder::littleEndianInt (juce::addBytesToPointer (data, 4));
+        if (stated <= 0)
+            return true;
+
+        // THE STRING THE PARSER WILL SEE -- not a reconstruction of it. This is
+        // `juce_AudioProcessor.cpp:975-976`'s own expression on its own range, so the scan and the
+        // parse cannot disagree about where the document ends. It matters: `String::fromUTF8`
+        // builds through `createFromCharPointer`, whose `while (e < end && ! e.isEmpty())`
+        // (`juce_String.cpp:132`) STOPS AT THE FIRST NUL, so the text the parser gets is a prefix
+        // of the byte range. Scanning the bytes instead would scan past that NUL and refuse
+        // documents the parser never sees. The cost is one extra decode of at most 256 KB, once
+        // per project open.
+        const auto text = juce::String::fromUTF8 (static_cast<const char*> (data) + 8,
+                                                  juce::jmin (sizeInBytes - 8, stated));
+        return anamorph::xmlBoundary::textIsAdmissible (
+                   text, anamorph::xmlBoundary::maxDocumentDepth,
+                   anamorph::xmlBoundary::DocumentRule::parserSafetyOnly);
+    }
+
+    // One A/B slot payload, scanned before its OWN `juce::parseXML`.
+    bool slotPayloadIsAdmissible (const juce::String& payload)
+    {
+        // The size cap is REDUNDANT BY CONTAINMENT TODAY, and stated anyway because the rule is
+        // "every independently parsed document carries its own boundary". The payload arrives as
+        // an attribute value of a session chunk already capped at 256 KB, and XML unescaping only
+        // ever shrinks (`&lt;` -> `<`); the one mechanism that could have grown it -- entity
+        // expansion from a `DOCTYPE` in the OUTER document -- is refused above. If either of those
+        // two facts ever changes, this line is what keeps the payload bounded.
+        if ((juce::int64) payload.getNumBytesAsUTF8() > anamorph::xmlBoundary::maxDocumentBytes)
+            return false;
+
+        return anamorph::xmlBoundary::textIsAdmissible (
+                   payload, anamorph::xmlBoundary::maxDocumentDepth,
+                   anamorph::xmlBoundary::DocumentRule::parserSafetyOnly);
+    }
+
     // One place that knows a Selection is three properties, shared by the root node and both
     // A/B slots. The encoding itself lives on PresetManager (`encodeSelection`).
     void writeSelection (juce::ValueTree& t, const anamorph::PresetManager::Selection& s,
@@ -2748,6 +2832,10 @@ void AnamorphAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 // not one parameter, not the Settings, not the A/B slots -- was touched.
 bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, RestoreDecode& d)
 {
+    // ADR-0056: bounded before the parser reads it. A refusal is the SAME event as an unparsable
+    // chunk -- the `return false` below -- so nothing downstream learns a new outcome.
+    if (! hostChunkIsAdmissible (data, sizeInBytes)) return false;
+
     auto xml = getXmlFromBinary (data, sizeInBytes);
     if (xml == nullptr) return false;
 
@@ -2857,6 +2945,12 @@ bool AnamorphAudioProcessor::decodeRestore (const void* data, int sizeInBytes, R
                 // same recovery the unparsable case already gets.
                 auto adoptIfAnamorph = [&] (const juce::String& slotPayload)
                 {
+                    // ADR-0056: this payload is its OWN document, so it gets its own boundary --
+                    // the outer session's depth says nothing about what is inside this attribute.
+                    // A refusal leaves the slot invalid, which is where an unparsable or
+                    // foreign-typed payload already lands.
+                    if (! slotPayloadIsAdmissible (slotPayload)) return;
+
                     if (auto x = juce::parseXML (slotPayload))
                         if (auto t = juce::ValueTree::fromXml (*x); t.hasType (expectedType))
                             dst.params = t;

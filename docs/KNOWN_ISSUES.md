@@ -896,7 +896,7 @@ adversarial verifications against the then-pinned JUCE 9.0.1 tree; `juce_MouseIn
 `juce_Desktop.cpp` are byte-identical at the 9.0.2 pin — ADR-0054).**
 
 The processor registers itself as the APVTS listener for `pid::drive` and `pid::algorithm`
-(`src/PluginProcessor.cpp:34-35`), and `parameterChanged` → `updateLatency()` →
+(`src/PluginProcessor.cpp:35-36`), and `parameterChanged` → `updateLatency()` →
 `setLatencySamples()` runs **synchronously on whatever thread changes the parameter**. Under VST3
 host automation that thread is the audio thread (`JuceVST3Component::process` →
 `processParameterChanges` → `setValueAndNotifyIfChanged`), and JUCE dispatches parameter listeners
@@ -950,7 +950,7 @@ APVTS `LockedListeners` mutex).
   in `setParameters`' own body either — `check-realtime.py` now seeds `setParameters`/`toEngine`
   (with self-test liveness), closing the static half; RTSan still enforces only from the
   `process` annotation down.
-- **Evidence [Verified]:** src/PluginProcessor.cpp:34-35, :117-134; pinned JUCE
+- **Evidence [Verified]:** src/PluginProcessor.cpp:35-36, :117-134; pinned JUCE
   `juce_audio_plugin_client_VST3.cpp:3563/:3591/:3537`, `juce_AudioProcessorParameter.cpp:110-121`,
   `juce_AudioProcessorValueTreeState.cpp:148-203`, `juce_AudioProcessor.cpp:415-436`,
   `juce_VST3Common.h:1642-1653`, `juce_Messaging_linux.cpp:79-96`.

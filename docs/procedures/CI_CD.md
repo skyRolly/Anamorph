@@ -1100,7 +1100,7 @@ not audited, and a clean run means none of them **moved**.
 
 **Since 2026-08-21 that hole is closed for the anchors that say what they point at.** A citation
 written in this repository's own convention carries the symbol beside the line number —
-`` src/PluginProcessor.cpp:269-279 (`updateLatency`) `` — and the checker now reads that gloss and
+`` src/PluginProcessor.cpp:270-280 (`updateLatency`) `` — and the checker now reads that gloss and
 asserts the token is in the cited lines. It needs no base revision, because it is not a question
 about drift: it asks whether an anchor lands on what its own document says it lands on, in the tree
 as it is now. Exactly two gloss shapes are claimed — one backticked identifier, or one double-quoted
@@ -1384,7 +1384,7 @@ is the wrong test: what overflows a frame is a large automatic, not that particu
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
 suite's largest frame is **289,440 bytes** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`) — 28% of the 1 MB reserve, against the state suite's **709,760**
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21276`, 68%).
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21719`, 68%).
 Widening the step armed a tripwire rather than introducing a failure: both binaries were verified
 green under `ulimit -s 1024` first.
 
@@ -1396,7 +1396,7 @@ grown 1,936 bytes; the DSP maximum is unchanged to the byte. Nothing in either s
 of **1,683** functions measured across the two translation units, the largest frame is that 709,760.
 
 **PREfast's `C6262` numbers are not frame sizes.** Its largest claim on `b6af84e` is 1,285,476 bytes
-at `tests/state_tests.cpp:14861` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
+at `tests/state_tests.cpp:15304` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
 function — 4.5× — because /analyze sums a function's locals across disjoint sibling scopes, without
 the lifetime overlap a real compiler applies. Across the 20 largest claims the overstatement runs
 from 1.01× to 9.02× and never goes the other way. Use `-fstack-usage`, not the alert text, when

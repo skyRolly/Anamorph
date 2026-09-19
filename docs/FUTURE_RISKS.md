@@ -108,7 +108,8 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once. The second inversion round 20 added here (a nested poll against a host thread's whole-sound replacement) was REACHABLE and is CLOSED in round 21 by ADR-0036 §26; round 27's dispatch predicate (§30) closed the two doors whose dispatch the PLUG-IN starts, and round 28's admission (§31) closes every remaining door by construction — no state-replacing command WAITS for `soundReplacement`, whoever started the dispatch. The risk stays OPEN on what is left, which contains no Anamorph lock: JUCE's own APVTS 10 Hz timer blocking on `valueTreeChanging`, and the two-parameter nesting above |
 | RISK-010 | The DSP snapshot of the ten multiband parameters is ten independent `load()` calls, so the audio thread can read a layout that never existed as a whole | Medium | **Certain** — it is the shipped reader model; what is bounded is the harm, not the occurrence |
 | RISK-011 | A gesture count that returns to zero mid-transaction lets a poll record an undo step for a layout the user never had (the v0.9.8 rounds' residuals U1-U3) | Medium | Low as observed, **structural** as a mechanism — nothing in the current code prevents it |
-| RISK-014 | The host session blob and the A/B slot payload reach the same unbounded XML parser the preset boundary now guards, so a corrupt chunk of ~230 bytes crashes the plug-in and one of ~150 bytes freezes the host's message thread — **measured on both paths**, round 50 | High | **Raised 2026-09-19 to Medium**: a `.vstpreset` the user picks in the host's browser reaches the same parser as a project open, so the likelihood argument the entry previously made does not hold. Nothing in the field has produced one |
+| RISK-014 | **RESOLVED 2026-09-19 (round 51, ADR-0056)** — both host-state XML parser surfaces (the session chunk and each A/B slot payload) are now bounded at 256 KB / depth 8 / no `DOCTYPE` before `juce::parseXML`, each on its own. The crash, the hang and the unbounded read are measured gone on both paths; valid and legacy sessions are unchanged | — | — |
+| RISK-015 | Host state still accepts five shapes a `.anamorph` file now refuses — two documents in one chunk (the first wins), trailing prose or binary, a NUL followed by a second complete document, invalid UTF-8 in an attribute value, and a chunk truncated to half its length | Low — a corrupt session is half-applied or silently truncated rather than refused; no crash, hang or unbounded read | **Certain** as a mechanism: it is the acceptance ADR-0056 deliberately left alone, measured and pinned by State test 116 leg E |
 
 ---
 
@@ -131,83 +132,100 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   9.0.0→9.0.1 (ADR-0026: 32/32 hashes and latencies identical, warning set byte-identical across
   the 18 project translation units).
 
-## RISK-014 — The session and A/B decode paths reach the parser the preset path no longer does
-- **Risk:** ADR-0055 (0.9.9) put a byte-level boundary in front of `juce::parseXML` for
-  `.anamorph` files. Two other paths reach the same parser and were deliberately left alone: the
-  host session blob (`src/PluginProcessor.cpp:2751`, via `getXmlFromBinary`) and the A/B slot
-  payload (`:2860`, via `parseXML` on a string the session carried). **Round 50 measured both
-  through the real `setStateInformation`** rather than reasoning from the preset path, and the
-  entry below is those measurements. `getXmlFromBinary` validates a four-byte magic number and a
-  length and nothing else (`juce_AudioProcessor.cpp:968-980`), and the A/B payload is not framed at
-  all.
-- **Measured on `de89b1a`, x86-64 Linux, Release, pinned JUCE 9.0.2** — `AnamorphStateTests
-  --risk014-probe`, one shape per process, the 1 MB rows under `ulimit -s 1024` for Windows
-  main-thread parity:
+## RISK-014 — **RESOLVED 2026-09-19** (round 51, ADR-0056): both host-state parser surfaces are bounded
+
+- **What the risk was.** ADR-0055 (0.9.9) put a byte-level boundary in front of `juce::parseXML` for
+  `.anamorph` files and its scope ruling left two paths alone: the host session blob
+  (`src/PluginProcessor.cpp:2839`, via `getXmlFromBinary`) and the A/B slot payload
+  (`:2946-2956`, via `parseXML` on a string the session carried). Round 50 measured both through the
+  real `setStateInformation` on `de89b1a` rather than reasoning from the preset path:
   - **Crash, both paths, same thresholds.** SIGSEGV between 2 500 and 3 000 levels of nesting on a
-    1 MB stack (a 21 KB chunk), and between 20 000 and 30 000 on 8 MB. `readNextElement` and
-    `readChildElements` are mutually recursive with no bound. At 20 000 levels the parse *returns*,
+    1 MB stack (a 21 KB chunk) and between 20 000 and 30 000 on 8 MB; at 20 000 the parse *returned*,
     after **12.2 s** on the message thread.
   - **Hang and crash from a `DOCTYPE`, both paths.** A one-level recursive-entity subset of ~150
-    bytes had not returned after 60 s on the session path and took **54.1 s** on the A/B path; a
-    two-level one of ~230 bytes **SIGSEGVs** on both; three levels hangs again on both.
-    `XmlDocument::expandExternalEntity` indexes with `ent.indexOf (i + 1, ";")` — the DTD *token*
-    index, not the ampersand it just found.
-  - **Unbounded memory, both paths.** Peak RSS tracked input size linearly with no cap: 1 / 16 /
-    64 / 128 MB of payload cost 14 / 72 / 265 / **521 MB** through the session path and 16 / 120 /
-    330 / **650 MB** through the A/B path, the last taking 25.6 s.
-  - **Accepted and APPLIED, session path:** two complete documents in one chunk (the first wins),
-    a document followed by prose, a stray element and raw binary, a document followed by one NUL
-    and a second complete document (the tail is invisible to everything downstream), invalid UTF-8
-    in an attribute value, and a chunk **truncated to half its length** (half-applied).
-  - **The A/B payload AMPLIFIES depth rather than inheriting it.** The 3 000-level payload sits
-    inside one attribute value of a perfectly well-formed session nested **three** deep, so a depth
-    cap applied to the session document alone would refuse none of the A/B rows above.
-- **CORRECTED 2026-09-19 — the arbitrary file read is NOT reachable on either path.** The previous
-  wording claimed it from the preset measurement. `XmlDocument::getFileContents` opens nothing
-  unless an `InputSource` is set (`juce_XmlDocument.cpp:182-193`), and both of these paths reach
-  the parser through `parseXML (const String&)`, whose `XmlDocument (const String&)` constructor
-  leaves it null (`:38`). Only the `File` overload installs a `FileInputSource`, and that is what
-  the preset path used to call. Measured with a real canary file on disk: refused on both paths,
-  contents did not leak.
-- **CORRECTED 2026-09-19 — the bytes are not only the host's.** The likelihood rating rested on
-  *"the bytes come from the host's own project file rather than from a file the user opens"*. In
-  the pinned VST3 SDK, `PresetFile::restoreComponentState` reads the `Comp` chunk and calls
-  `component->setState` (`…/public.sdk/source/vst/vstpresetfile.cpp:470-475`), which JUCE forwards
-  to `setStateInformation` (`juce_audio_plugin_client_VST3.cpp:2822`). **A `.vstpreset` the user
-  picks in the host's browser, or drags onto the plug-in, is a file the user opens and it reaches
-  this parser** — as does an `.aupreset` through AU `ClassInfo`. A project file is additionally an
-  exchanged document that a crash mid-save can truncate.
-- **Impact:** a crash, an unrecoverable freeze of the host's message thread, or hundreds of
-  megabytes of RSS, on opening a project or picking a preset.
-- **Likelihood (evidence-based):** Medium for the occurrence, High for the consequence. Nothing in
-  the field has produced such a chunk; the inputs that do are ~150-230 bytes and trivially
-  constructible, and one of the two doors is a file chooser.
-- **Compatibility, measured** (`--risk014-probe census`, the four fixtures in `tests/fixtures/`):
-  every session this product has written is nested at most **3** deep and at most **10 629** bytes
-  — this build 10 438 B / depth 3, the v0.9.5 field capture 10 629 B / depth 3, and the three
-  legacy roots `SESSION_COMPATIBILITY_POLICY.md` rule 3 keeps alive 268 / 590 / 740 B at depth 2-3.
-  A slot payload is at most **2 051** bytes at depth **2**. None carries a `DOCTYPE`:
-  `XmlElement::TextFormat`'s `dtd` defaults to empty (`juce_XmlElement.h:207`) and neither
-  `copyXmlToBinary` nor `ValueTree::toXmlString` sets it.
-- **Evidence [Verified]:** the round-50 investigation and its full matrix, options and open
-  judgement are **[ADR-0056](architecture/design-decisions/ADR-0056-the-session-and-a-b-parser-boundary.md)**;
-  the reproducer for every row is `AnamorphStateTests --risk014-probe`
-  (`docs/procedures/TESTING.md`). The round-43 preset-path measurements the previous wording
-  extrapolated from are ADR-0055.
-- **Mitigation:** **still not taken, and now for a stated reason rather than by deferral.**
-  Narrowing what `setStateInformation` accepts is a semantic change to a contract
-  `SERIALIZATION_REGISTRY.md` records, which `ARCHITECTURE_REVIEW_GATE.md` gates as a
-  *Serialization Registry change* and `AI_AGENT_POLICY.md` makes an agent hard stop — and ADR-0055's
-  standing ruling explicitly excludes these two paths: *"Implement preset-file protection only. Do
-  not modify host session blob loading or A/B slot payload loading in this round. Record those
-  paths as a follow-up risk requiring separate compatibility review."* ADR-0056 is that review and
-  sets out five options without selecting one. The compatibility question the deferral was made
-  for is now answered for depth and `DOCTYPE` and remains a judgement for size: 10.6 KB is the
-  largest session ever measured, and what multiple of it is safe as a cap is not a measurement.
-  One fact removes the error-handling half of the problem: a refusal here needs no new user-facing
-  state, because `decodeRestore` returning `false` is already the documented *"a chunk of neither
-  recognised shape is not a restore at all"* outcome — nothing is touched and the sound the user
-  has stays.
+    bytes had not returned after 60 s on the session path and took 54.1 s on the A/B path; a
+    two-level one of ~230 bytes **SIGSEGV'd** on both. `XmlDocument::expandExternalEntity` indexes
+    with `ent.indexOf (i + 1, ";")` — the DTD *token* index, not the ampersand it just found.
+  - **Unbounded memory, both paths.** Peak RSS tracked input size linearly with no cap: 128 MB of
+    payload cost **521 MB** through the session path and **650 MB** through the A/B path.
+  - **The A/B payload AMPLIFIED depth rather than inheriting it** — 3 000 levels inside one attribute
+    value of a session nested three deep — so a cap on the outer document alone would have refused
+    none of it.
+- **What was done (ADR-0056, owner instruction 2026-09-19).** Both documents are now bounded before
+  the parser, **each on its own**, at **256 KB**, **depth 8** and **no `DOCTYPE`** —
+  `anamorph::xmlBoundary` in `src/XmlBoundary.h`, one walk shared with the preset path and
+  parameterised by a `DocumentRule` so ADR-0055's rules are the same code rather than a second model
+  of the parser. Re-measured with `--risk014-probe` on the fixed head: 3 000 and 30 000 levels, and
+  the one-, two- and three-level entity bombs, are each **refused in 0–4 ms on both paths**. What a
+  refusal means did not change — `decodeRestore` returns false and touches nothing; a refused payload
+  leaves the slot invalid for `abEnsureInit()` to re-seed (ER-STATE-02).
+- **CORRECTED 2026-09-19 (round 50) — the arbitrary file read was NOT reachable on either path**, and
+  the earlier wording had extrapolated it from the preset measurement.
+  `XmlDocument::getFileContents` opens nothing unless an `InputSource` is set
+  (`juce_XmlDocument.cpp:182-193`), and both paths reach the parser through
+  `parseXML (const String&)`, whose constructor leaves it null (`:38`). Only the `File` overload —
+  what the preset path used to call — installs a `FileInputSource`.
+- **CORRECTED 2026-09-19 (round 51) — the EVIDENCE for that claim was not sound, and now is.** The
+  first probe put a canary in a file and looked for it in the serialized state afterwards, which
+  cannot distinguish *"the file was never opened"* from *"the file was opened and read, and the
+  document was then rejected"*. State test 116 leg G replaces it with a **filesystem differential
+  carrying a positive control**: with a counting `InputSource` installed the parser opens the file
+  **once** and the entity resolves to `LEAKED`; through `juce::parseXML (const String&)` the result
+  is the unresolved `leak` and is **byte-identical whether the file exists or not**. Identical output
+  across present and absent is the property being claimed; the absence of a canary is not.
+- **CORRECTED 2026-09-19 (round 50) — the bytes are not only the host's.** The old likelihood rating
+  rested on *"the bytes come from the host's own project file rather than from a file the user
+  opens"*. In the pinned VST3 SDK, `PresetFile::restoreComponentState` reads the `Comp` chunk and
+  calls `component->setState` (`…/public.sdk/source/vst/vstpresetfile.cpp:470-475`), which JUCE
+  forwards to `setStateInformation` (`juce_audio_plugin_client_VST3.cpp:2822`): **a `.vstpreset` the
+  user picks in the host's browser is a file the user opens and it reaches this parser**, as does an
+  `.aupreset` through AU `ClassInfo`. `SERIALIZATION_REGISTRY.md` now records the classification.
+- **Compatibility, measured** (`--risk014-probe census`, asserted by State test 116 leg F): every
+  session this product has written is nested at most **3** deep and at most **10 629** bytes — this
+  build 10 438 B, the v0.9.5 field capture 10 629 B, and the three legacy roots
+  `SESSION_COMPATIBILITY_POLICY.md` rule 3 keeps alive 268 / 590 / 740 B at depth 2–3. A slot payload
+  is at most **2 051** bytes at depth **2**. None carries a `DOCTYPE`:
+  `XmlElement::TextFormat::dtd` defaults empty (`juce_XmlElement.h:207`).
+- **Evidence [Verified]:** [ADR-0056](architecture/design-decisions/ADR-0056-the-session-and-a-b-parser-boundary.md)
+  (Accepted) carries the full matrix, the shared/not-shared split and the validation; State test 116
+  is the regression; `AnamorphStateTests --risk014-probe` remains the opt-in instrument for the
+  destructive shapes the suite must never run.
+- **What this did NOT close, and it is a residual rather than a gap in the boundary.** ADR-0056's
+  ruling named three limits, so host state still accepts shapes a `.anamorph` file refuses: two
+  complete documents in one chunk (the first wins), trailing prose or binary, a NUL followed by a
+  second complete document (`String::fromUTF8` stops at the first NUL, `juce_String.cpp:132`),
+  invalid UTF-8 in an attribute value, and a chunk truncated to half its length. None is a crash, a
+  hang or an unbounded read; each is an acceptance question, pinned by State test 116 leg E so that
+  changing it later is a decision rather than a drift. **RISK-015** carries them.
+
+## RISK-015 — Host state still takes five shapes a preset file refuses
+
+- **Risk:** ADR-0056 narrowed `setStateInformation` on **size, depth and `DOCTYPE`** — the three
+  limits the owner's 2026-09-19 instruction named, and the three that answer a crash, a hang and an
+  unbounded read. ADR-0055's *other* rules, which make a `.anamorph` file ONE WELL-FORMED DOCUMENT,
+  were deliberately not extended, so a host chunk is still accepted and applied when it is: **two
+  complete documents in one chunk** (the first wins, as `XmlDocument::parseDocumentElement` reads one
+  element and never looks at the rest); **a document followed by prose, a stray element or raw
+  binary**; **a document, one NUL, and a second complete document** (`String::fromUTF8` builds
+  through `createFromCharPointer`, whose `while (e < end && ! e.isEmpty())`, `juce_String.cpp:132`,
+  stops at the first NUL, so the tail is examined by nobody); **invalid UTF-8 in an attribute
+  value**; and **a chunk truncated to half its length**, which is half-applied.
+- **Impact:** a corrupt or hand-edited session restores a partial or wrong sound instead of being
+  refused whole. Bounded: every one of these is a *correctness* outcome inside the parser-safety
+  boundary — none crashes, hangs, or reads unboundedly, and none of them reaches a file.
+- **Likelihood (evidence-based):** **Certain as a mechanism, unmeasured in the field.** All five were
+  measured through the real `setStateInformation` on `de89b1a` and are re-asserted every build by
+  State test 116 leg E, which exists so that a later round changing them does so on purpose.
+- **Evidence [Verified]:** [ADR-0056](architecture/design-decisions/ADR-0056-the-session-and-a-b-parser-boundary.md)
+  §Consequences and §"What was NOT done"; `docs/architecture/SERIALIZATION_REGISTRY.md`
+  §"What host state still accepts".
+- **Mitigation:** not taken, and it is a decision rather than an omission: extending the
+  single-document rule to host state would narrow serialization acceptance further than the ruling
+  covered, which `SESSION_COMPATIBILITY_POLICY.md` rule 1 makes an Architecture Review Gate item in
+  its own right. The mechanism is ready — `anamorph::xmlBoundary::DocumentRule::oneWellFormedDocument`
+  already exists and is what the preset path asks for — so the change, if it is ever ruled, is one
+  enum value at two call sites plus the compatibility case for the truncated and multi-document
+  shapes.
 
 ## RISK-002 — Always-on banks / crossover-move cost (CPU)
 - **Risk:** `SoloMonitor` runs every block even with multiband off and no solo (INC-009 invariant;
@@ -305,7 +323,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   plug-in creates the nesting at all:** `AnamorphAudioProcessor::parameterValueChanged`
   (`src/PluginProcessor.h:496-499`) is a single relaxed `fetch_add`,
   `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:701`) the same, and
-  `parameterGestureChanged` (`src/PluginProcessor.cpp:1402-1579`) touches two ints — the last
+  `parameterGestureChanged` (`src/PluginProcessor.cpp:1403-1580`) touches two ints — the last
   deliberately, its comment recording that `--d2-stress-probe` once reported this same detector
   for an APVTS/`listenerLock` inversion, closed by **removing** the nesting.
 - **How it surfaced:** ThreadSanitizer's deadlock detector, on `AnamorphStateTests` at
@@ -442,7 +460,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   change with no defect behind it.
 
   **Residual, stated rather than claimed away.** `PresetManager::saveUser`
-  (`src/PresetManager.cpp:1331`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
+  (`src/PresetManager.cpp:1224`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
   `soundReplacement`, the only durable reader in the tree that does. It cannot join this cycle: it
   only reads, so it never waits for a `listenerLock`, and it always releases. It is recorded here
   because the rule the paragraphs above rest on — every APVTS acquisition that can happen with a
@@ -554,9 +572,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   cancelled save's completion closed a newer dialog) — and both are fixed, so the command path was
   walked again for anything Anamorph owns that can WAIT. **Nothing was found, and the inventory is
   the evidence rather than the conclusion.** Every `ScopedLock (soundReplacement)` a command can
-  reach — `applyStatePreservingView` (`src/PluginProcessor.cpp:1092`), `copyStateWithRawValues`
+  reach — `applyStatePreservingView` (`src/PluginProcessor.cpp:1093`), `copyStateWithRawValues`
   (`:1134`), `applySoundTree` (`:1374`), `PresetManager::applyDefaults`
-  (`src/PresetManager.cpp:197`), `PresetManager::applySoundTree` (`:313`) and the factory half of
+  (`src/PresetManager.cpp:198`), `PresetManager::applySoundTree` (`:313`) and the factory half of
   `loadAdopted` (`:550`) — runs underneath the gate's own held lock and is a free recursive
   re-entry on the same thread; every drain a command makes is `adoptPendingHostState (false)`. The
   two BLOCKING `adoptPendingHostState()` calls that remain are in `getStateInformation` and
@@ -647,7 +665,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 
 ## RISK-011 — Undo re-entrancy can split one topology transaction into two undo steps — **RESOLVED (rounds 24 and 25, three doors)**
 - **Risk:** `AnamorphAudioProcessor::parameterGestureChanged` counts open gestures and sets
-  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:1402-1578`), and
+  `pendingGestureCommit` when the count returns to zero (`src/PluginProcessor.cpp:1403-1579`), and
   `pollUndoCoalesce` turns that into an undo entry. A `SpectrumImager` topology transaction is a
   burst of stores, several of which open and close their own gesture (`setBands`, `setSoloMask`,
   `resetParam`), so the open count returns to zero **inside** the burst. A poll that runs there —
@@ -659,7 +677,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   DSP, as RISK-010 describes — but it is a state-correctness one.
 - **Likelihood:** Low as observed (no reported occurrence, and no test in the suite reaches it),
   **structural** as a mechanism: nothing in the current code prevents it.
-- **Evidence [Verified]:** `src/PluginProcessor.cpp:1402-1578` (the counter), `:827-834`
+- **Evidence [Verified]:** `src/PluginProcessor.cpp:1403-1579` (the counter), `:827-834`
   (`pollUndoCoalesce`), `src/gui/SpectrumImager.cpp` `addBandAt` / `removeBand` (the multi-gesture
   bursts). Carried through the v0.9.8 review rounds as residuals **U1–U3** with a deliberate
   no-fix decision; recorded here on 2026-09-08 because a decision carried only in a worklog is a
@@ -1057,7 +1075,7 @@ mitigation. Do not invent risks to fill the template.
   inside that window is ordered after the restore.
 - **Risk (as recorded, now closed):** `getStateInformation`/`setStateInformation` mutate non-atomic message-thread-read
   state with no lock or marshalling — `internal.restoreState`, `abSlot`/`abActive`/`abUndo`,
-  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:2991-3090 read
+  `presets.setMeta`, `syncCommitted` (src/PluginProcessor.cpp:3085-3184 read
   side, :661-691 write side; the APVTS half is internally locked by JUCE). A host that calls
   state functions off its UI thread while the editor's 24 Hz timer is running races
   `juce::String`/`std::vector`/`ValueTree` state — torn-read UB, crash-class.
@@ -1135,7 +1153,7 @@ mitigation. Do not invent risks to fill the template.
   call, and would silence the very evidence D-2 is waiting on.
 - **Round 21 (2026-09-02, ER-STATE-23 re-raised): re-measured on the current tree, same four
   reports, still no production change.** The finding arrived again, at the same source line
-  (`setStateInformation`, `src/PluginProcessor.cpp:2991`) and with the same wording plus one added
+  (`setStateInformation`, `src/PluginProcessor.cpp:3085`) and with the same wording plus one added
   sentence — "the documented macOS AU race remains open" — which is this entry's own Likelihood
   bullet restated, not new evidence. Two things were checked rather than assumed. First, the
   concurrency surface has not moved: `src/PluginProcessor.cpp` and `src/PluginProcessor.h` are
@@ -1144,7 +1162,7 @@ mitigation. Do not invent risks to fill the template.
   `--state-thread-probe` and `--state-prepare-race-probe` each report **the same four races and no
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
-  `src/PluginProcessor.cpp:2527`, against `canUndo()`; the `abUndo` vector's internals twice, via
+  `src/PluginProcessor.cpp:2611`, against `canUndo()`; the `abUndo` vector's internals twice, via
   `UndoStacks::operator=` (`src/PluginProcessor.h:611`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture
