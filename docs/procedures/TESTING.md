@@ -1775,6 +1775,45 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   uncovered statement is one assignment. Recorded rather than papered over, in the same way M15 and
   M189 are.
 
+* **Round 47 — the bytes must be the encoding they claim, and the navigation walk is measured
+  (ADR-0055 amendment).**
+
+  **State test 114 leg K -- invalid encodings.** The boundary validated the DECODED TEXT, and the
+  decode is not lossless: `String::createStringFromData` asks whether the bytes are valid UTF-8 and,
+  when they are not, reads them as **Windows-1252** instead (`juce_String.cpp:2030-2034`). Measured
+  on `7076359` through the real `loadFile`, `raw="\xC3\x28"` decoded from 63 bytes to 64 and
+  LOADED, and so did a truncated sequence, bare continuation bytes, an overlong encoding, a
+  surrogate encoded in UTF-8 and a UTF-16 file with an unpaired surrogate.
+
+  Eleven refusals: invalid UTF-8 in an attribute (the reported case), in element content, and
+  **inside a COMMENT** -- the discriminating one, because a comment is stripped by the parser and
+  permitted by the scan, so nothing but the encoding rule can refuse that file; a truncated
+  sequence; bare continuation bytes; an overlong encoding; a surrogate encoded in UTF-8; a code
+  point past U+10FFFF; and three UTF-16 shapes -- a lone high surrogate, a lone low surrogate, and a
+  high surrogate at the very end of the file.
+
+  **Seven acceptances, and they are the point of the leg.** The real preset this plug-in writes;
+  VALID multi-byte UTF-8 (`café`) in an attribute; a UTF-8 byte-order mark; a correctly PAIRED
+  UTF-16 surrogate (U+1F3B5) in both endiannesses; and a plain UTF-16 LE preset. Without those the
+  rule could degenerate into "refuse anything above ASCII" or "refuse every surrogate" and the suite
+  would not notice -- which is exactly what M238 tries.
+
+  **State test 114 leg L -- the navigation walk, counted.** The review also reported repeated I/O in
+  `step`. The double read of the CHOSEN row was already removed in round 45, when `examineRow` began
+  carrying its parsed tree into `loadAdopted`; leg I asserts that for one row. Leg L measures the
+  whole walk instead of asserting a property of one: with three unreadable rows between the current
+  preset and the next readable one, it counts reads per file through the `beforePresetRead` seam and
+  asserts **1, 1, 1 for the skipped rows, 1 for the row that loads, 0 for the row it started from,
+  four in total for four rows considered**. That is the minimum a skip decision can cost without
+  caching anything, and the counting is what makes it a measurement rather than a claim.
+
+  **Mutation coverage (M236-M240). All five killed.** **M236** the UTF-8 check removed -- 7.
+  **M237** the UTF-16 surrogate validation removed -- 3. **M238** every surrogate refused, paired or
+  not -- 2, both of them acceptance legs, which is the proof the rule is not over-broad. **M239**
+  the UTF-16 zero code unit allowed again (round 44's M220 re-run under the restructured branch) --
+  1. **M240** `step` no longer carries the candidate's tree (round 45's M229 re-run) -- 7, which now
+  includes leg L's read counts: the mutant makes the chosen row's count 2, and the leg says so.
+
 * **Round 46 — the XML declaration is not an ordinary processing instruction, and an MSVC-only
   compile error (ADR-0055 amendment).**
 
@@ -3696,7 +3735,7 @@ suite's maximum frame** — that is still the pre-existing Settings test at 68 %
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
-'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:13510`
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:13701`
 today, this round's two new legs having moved it -- which is
 `testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not
 touch**. The same alert, byte-identical at **433548**, is in the predecessor run's SARIF on

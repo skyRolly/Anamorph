@@ -82,10 +82,12 @@ in both directions.
 
 **Before the parser**, on the bytes, because everything in this half detonates inside it:
 
-0. **Every byte of the file reaches the scan.** Added by the amendment below. A file carrying a
-   NUL — a zero byte in UTF-8, a zero code unit in UTF-16, or a trailing half code unit — is
-   refused, because a `juce::String` ends at the first one and everything after it would be
-   validated by nobody.
+0. **Every byte of the file reaches the scan, and is the encoding it claims to be.** Added by the
+   amendments below. A file carrying a NUL — a zero byte in UTF-8, a zero code unit in UTF-16, or a
+   trailing half code unit — is refused, because a `juce::String` ends at the first one and
+   everything after it would be validated by nobody. A file whose bytes are not valid UTF-8 (or,
+   under a UTF-16 mark, whose surrogates do not pair) is refused too, because the decode does not
+   fail on those — it reinterprets them.
 1. **Size.** A file larger than **256 KB** is refused (`PresetManager::maxPresetBytes`) — 172× a real
    preset.
 2. **No `DOCTYPE`.** Refused outright. This closes the hang and the arbitrary file read together,
@@ -181,11 +183,11 @@ used to play for a load that had been refused.
 
 - **Files this plug-in has ever written still load.** The writer is unchanged; ADR-0024's rule that
   user preset files are byte-for-byte what 0.9.1 wrote is untouched, because nothing here writes.
-- **Six shapes that used to load now do not:** a file containing more than one document, a file with
-  anything but whitespace or comments after the root, a structurally malformed document, a
-  value-less `PARAM`, and (per the amendments) a file whose bytes continue past a NUL and a file
-  carrying an XML declaration anywhere but first. Each is a corrupt file by the format's own
-  definition.
+- **Seven shapes that used to load now do not:** a file containing more than one document, a file
+  with anything but whitespace or comments after the root, a structurally malformed document, a
+  value-less `PARAM`, and (per the amendments) a file whose bytes continue past a NUL, a file
+  carrying an XML declaration anywhere but first, and a file whose bytes are not the encoding they
+  claim. Each is a corrupt file by the format's own definition.
 - **A preset subtree lifted out of a session by hand still loads**, because `raw` is accepted.
 - **ER-STATE-24 is unchanged and re-affirmed**: the root test still runs, still refuses a foreign
   root, and still runs before any per-parameter fallback can reinterpret the document.
@@ -314,6 +316,37 @@ to case, because XML reserves `xml` in any case; a target that merely BEGINS wit
 (`<?xmlstylesheet …?>`) is a different instruction and stays accepted. Ordinary instructions before
 and after the root are untouched -- that tolerance is rule 4's and State test 114 leg E pins it.
 
+### The bytes must be the encoding they claim
+
+Review finding, reproduced first. The boundary validated the DECODED TEXT, and the decode is not
+lossless. `String::createStringFromData` asks whether the bytes are valid UTF-8 and, when they are
+not, reads them as **Windows-1252 instead** (`juce_String.cpp:2030-2034`) — a codepage in which
+every byte means something — so a file no conforming XML parser would accept was silently
+transcoded into one that parsed.
+
+Measured on `7076359` through the real `loadFile`:
+
+| Input | Behaviour before this rule |
+|---|---|
+| `raw="\xC3\x28"` — `C3` opens a two-byte sequence, `28` is not a continuation byte | **accepted**; 63 bytes decoded to 64 |
+| A truncated multi-byte sequence, bare continuation bytes, an overlong encoding | **accepted** |
+| A surrogate code point encoded in UTF-8 | **accepted** |
+| A UTF-16 file with an unpaired surrogate | **accepted**; the decode emits the surrogate itself |
+
+**The refusal is the decoder's own predicate, on the decoder's own range.**
+`CharPointer_UTF8::isValidString` is exactly what `createStringFromData` asks before choosing
+between UTF-8 and the fallback, so refusing when it says no makes the fallback unreachable BY
+CONSTRUCTION rather than by a second opinion that could drift from it. It rejects a malformed lead
+byte, a missing or malformed continuation byte, an overlong encoding, a surrogate code point and
+anything past U+10FFFF (`juce_CharPointer_UTF8.h:437-511`). Under a UTF-16 byte-order mark the
+surrogate structure is checked here instead, because `CharPointer_UTF16::operator*` pairs a high
+surrogate with whatever follows and otherwise returns the surrogate code point itself.
+
+**What this does NOT narrow**, and each is pinned by State test 114 leg K: valid multi-byte UTF-8
+still loads (a preset carrying `café` is not suddenly corrupt), a UTF-8 byte-order mark is still
+accepted, and a correctly paired UTF-16 surrogate still loads in both endiannesses. The rule is
+"be the encoding you claim", not "be ASCII".
+
 ### Scope
 
 Unchanged: the accepted format, the two limits, the empty-preset ruling, the missing-versus-corrupt
@@ -350,5 +383,10 @@ can. Leg I corrupts the row on its SECOND read and asserts that there is no seco
 instruction, a doubled one inside and outside the prologue, one after a comment, one after
 whitespace and one spelled `<?XML` are all refused, while the writer's own leading declaration, the
 full prologue (declaration, comment, instruction, root), a trailing instruction, a trailing comment
-and an `<?xmlstylesheet …?>` target are all still accepted. Mutation record:
+and an `<?xmlstylesheet …?>` target are all still accepted.
+
+**Leg K** is the encoding rule — eight invalid UTF-8 shapes and three unpaired-surrogate UTF-16
+shapes refused, against seven acceptances that keep it from becoming "refuse above ASCII" — and
+**leg L** measures the navigation walk: three unreadable rows between the current preset and the
+next readable one cost exactly four reads, one per row considered and none twice. Mutation record:
 `docs/procedures/TESTING.md`.

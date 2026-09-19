@@ -13003,6 +13003,73 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 67th pass — 2026-09-19, round 47 (the bytes must be the encoding they claim)
+
+Two review findings. One is a real hole and is fixed; one was already closed two rounds ago and is
+answered with a measurement rather than a change. **RISK-014 unchanged** — no session-blob or
+A/B-payload change; `src/PluginProcessor.*` is not in the diff.
+
+**Finding 1 — invalid UTF-8 presets are accepted: CONFIRMED and fixed.** The boundary validated the
+DECODED TEXT, and the decode is not lossless. `String::createStringFromData` asks whether the bytes
+are valid UTF-8 and, when they are not, reads them as **Windows-1252** instead
+(`juce_String.cpp:2030-2034`) — a codepage in which every byte means something — so a file no
+conforming XML parser would accept was silently transcoded into one that parsed. Measured on
+`7076359` through the real `loadFile`: `raw="\xC3\x28"` (a two-byte lead followed by a
+non-continuation byte) decoded from 63 bytes to 64 and LOADED; so did a truncated sequence, bare
+continuation bytes, an overlong encoding, a surrogate encoded in UTF-8, and a UTF-16 file with an
+unpaired surrogate. Six shapes, all accepted.
+
+**The refusal is the decoder's own predicate, on the decoder's own range.**
+`CharPointer_UTF8::isValidString` is exactly what `createStringFromData` asks before choosing
+between UTF-8 and the fallback, so refusing when it says no makes the fallback **unreachable by
+construction** rather than by a second opinion that could drift from it. It rejects a malformed lead
+byte, a missing or malformed continuation byte, an overlong encoding, a surrogate code point and
+anything past U+10FFFF (`juce_CharPointer_UTF8.h:437-511`). Under a UTF-16 byte-order mark the
+surrogate structure is checked directly, because `CharPointer_UTF16::operator*` pairs a high
+surrogate with whatever follows and otherwise returns the surrogate code point itself, which the
+decode then writes as a three-byte sequence UTF-8 forbids.
+
+**Not narrowed, and each pinned by leg K:** valid multi-byte UTF-8 still loads, a UTF-8 byte-order
+mark is still accepted, and a correctly paired UTF-16 surrogate still loads in both endiannesses.
+The rule is *be the encoding you claim*, not *be ASCII*. **Unchanged, deliberately:** the size
+limit, the NUL rejection, the `DOCTYPE` rejection, the depth limit, the XML declaration rules,
+exactly one root element, and the trailing-content rule.
+
+**Finding 2 — repeated I/O during navigation: ALREADY FIXED, in round 45, and now measured.** The
+cited line is `step`'s candidate call. `rowIsLoadable` — which returned only a `bool`, so
+`loadAdopted` read the same file again — became `examineRow`, which returns the parsed tree, and
+`step` carries that tree into the load. The reported double read of the chosen row therefore does
+not exist on this head, and leg I has asserted `readsOfB == 1` since that round.
+
+What this round adds is the **measurement the finding asked for**, over a whole walk rather than one
+row: leg L counts reads per file through the `beforePresetRead` seam while Next steps past three
+unreadable rows, and asserts **1 / 1 / 1 for the skipped rows, 1 for the row that loads, 0 for the
+row it started from — four reads for four rows considered.** That is the floor: a skip decision must
+read the row it is deciding about, and one parse per row examined is the minimum without caching.
+**No cache, no background scan, no asynchronous redesign and no index change was introduced**, per
+the constraint; the only reuse point the architecture offers is the candidate's tree, and it is
+already taken.
+
+**Coverage.** **Leg K**: eleven refusals (including invalid UTF-8 inside a COMMENT — the
+discriminating case, since a comment is stripped by the parser and permitted by the scan, so nothing
+but the encoding rule can refuse it) and seven acceptances that keep the rule from degenerating.
+**Leg L**: the counted walk above, plus the preservation half — the corrupt rows stay listed, stay
+on disk, and an absolute pick of one still reports failure and leaves the current preset alone.
+
+**Validation.** State **4 584 / 0** (was 4 521), DSP **396 / 0**, both green under `ulimit -s 1024`.
+Mutations **M236-M240, all five killed** — including M238 (every surrogate refused), which only the
+acceptance legs can see, and M240 (the carried tree dropped), which leg L now catches by count as
+well as leg I by outcome.
+
+**CI on the predecessor.** `7076359` cleared `Microsoft C++ Code Analysis` — the `ssize_t` fix
+landed, and the two MSVC lanes that round 46 diagnosed are no longer red.
+
+**Documentation.** `ADR-0055` (rule 0 extended, a fourth amendment section, the shape count, and the
+new legs in Evidence); `docs/architecture/SERIALIZATION_REGISTRY.md` (an encoding row in the
+boundary table); `docs/procedures/TESTING.md` (round-47 entry). **No CHANGELOG change**: the
+`[0.9.9]` entry already tells users a damaged preset is rejected, a file whose bytes are not the
+encoding they claim is damaged, and 0.9.9 is unreleased. [Verified]
+
 ## 66th pass — 2026-09-19, round 46 (the declaration is not an instruction, and an MSVC-only error)
 
 One review finding and two CI failures with a single cause. Both were diagnosed from evidence before
@@ -13138,7 +13205,7 @@ and 0.9.9 is unreleased. **RISK-014 unchanged** — no session-blob or A/B-paylo
 Three review findings against `f03aa06` — the head that first implemented ADR-0055 — plus one
 static-analysis item. Every one was reproduced or measured before anything was changed.
 
-**Finding 1 — line 492 as the review cited it, `src/PresetManager.cpp:526` today, an embedded NUL
+**Finding 1 — line 492 as the review cited it, `src/PresetManager.cpp:570` today, an embedded NUL
 bypasses the boundary: CONFIRMED and
 fixed.** `parseSoundFile` read the file with `loadFileAsString` and scanned the resulting
 `juce::String`, and a `juce::String` ENDS at the first NUL: `CharPointer_UTF8::isValidString`
@@ -13172,7 +13239,7 @@ that loaded within 1.5 s of a refusal was displayed as UNREADABLE, with its own 
 for the remainder. Success now clears the warning as well as raising the sweep.
 
 **PREfast alert 209 — `Function uses '433548' bytes of stack`: NO CHANGE, and it is not this
-round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13510`
+round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13701`
 today, which is
 `testNonFiniteParameterInStateIsRejected` — State test 17, untouched by round 43 and by this round.
 The predecessor SARIF on `0e32e65` carries the same alert, byte-identical at **433548**, at

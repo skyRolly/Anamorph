@@ -318,17 +318,61 @@ namespace
             // dropped without ever being read -- another byte the scan would never see.
             if (size % 2 != 0) return false;
 
+            const bool bigEndian = juce::CharPointer_UTF16::isByteOrderMarkBigEndian (bytes);
+            auto unitAt = [bytes, bigEndian] (size_t i)
+            {
+                return bigEndian ? ((juce::uint32) bytes[i] << 8) | (juce::uint32) bytes[i + 1]
+                                 : ((juce::uint32) bytes[i + 1] << 8) | (juce::uint32) bytes[i];
+            };
+
             for (size_t i = 2; i < size; i += 2)
-                if (bytes[i] == 0 && bytes[i + 1] == 0) return false;
+            {
+                const auto unit = unitAt (i);
+                if (unit == 0) return false;                       // a zero code unit ends the text
+
+                // SURROGATES ARE A PAIR OR THEY ARE NOTHING. `CharPointer_UTF16::operator*` pairs a
+                // high surrogate with whatever follows and otherwise returns the surrogate code
+                // point ITSELF, which the decode then writes into the UTF-8 buffer as a three-byte
+                // sequence encoding a value UTF-8 forbids -- so an unpaired surrogate became text
+                // no encoder would ever produce, silently.
+                if (unit >= 0xdc00 && unit <= 0xdfff) return false;   // a LOW surrogate, unpaired
+
+                if (unit >= 0xd800 && unit <= 0xdbff)                 // a HIGH surrogate: pair it
+                {
+                    i += 2;
+                    if (i + 1 >= size) return false;
+                    const auto low = unitAt (i);
+                    if (low < 0xdc00 || low > 0xdfff) return false;
+                }
+            }
 
             return true;
         }
 
-        for (size_t i = (size >= 3 && juce::CharPointer_UTF8::isByteOrderMark (bytes)) ? 3 : 0;
-             i < size; ++i)
+        const size_t bom = (size >= 3 && juce::CharPointer_UTF8::isByteOrderMark (bytes)) ? 3 : 0;
+
+        for (size_t i = bom; i < size; ++i)
             if (bytes[i] == 0) return false;
 
-        return true;
+        // ...AND THE BYTES MUST ACTUALLY BE UTF-8, which is a second question and was not being
+        // asked. `String::createStringFromData` validates the bytes and, WHEN THEY ARE NOT VALID
+        // UTF-8, falls back to reading them as Windows-1252 (juce_String.cpp:2030-2034) -- a
+        // codepage in which every byte means something, so a file that no conforming XML parser
+        // would accept was silently transcoded into one that parsed. Measured on `7076359` through
+        // the real `loadFile`: `<PARAM ... raw="\xC3\x28"/>` -- `C3` opens a two-byte sequence and
+        // `28` is not a continuation byte -- decoded from 63 bytes to 64 and LOADED, and so did a
+        // truncated sequence, bare continuation bytes, an overlong encoding and a surrogate
+        // encoded in UTF-8.
+        //
+        // The refusal is the decoder's OWN predicate, on the decoder's OWN range: `isValidString`
+        // is exactly what `createStringFromData` asks before choosing between UTF-8 and the
+        // fallback, so refusing when it says no makes the fallback unreachable BY CONSTRUCTION
+        // rather than by a second opinion that could drift from it. It rejects a malformed lead
+        // byte, a missing or malformed continuation byte, an overlong encoding, a surrogate code
+        // point and anything past U+10FFFF (`juce_CharPointer_UTF8.h:437-511`). Valid UTF-8 above
+        // ASCII is untouched: a preset carrying `café` still loads.
+        return juce::CharPointer_UTF8::isValidString (reinterpret_cast<const char*> (bytes + bom),
+                                                      (int) (size - bom));
     }
 
     // True when `p` stands at the `<?` of a processing instruction whose TARGET is exactly `xml`

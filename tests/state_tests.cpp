@@ -13421,6 +13421,197 @@ static void testAPresetFileIsOneWellFormedDocument()
                  "a trailing instruction whose target only starts with `xml` is still accepted");
     }
 
+    // ---- LEG K: THE BYTES MUST ACTUALLY BE THE ENCODING THEY CLAIM ----------------------------
+    //
+    // Devin review finding. The boundary validated the DECODED TEXT, and the decode is not
+    // lossless: `String::createStringFromData` asks whether the bytes are valid UTF-8 and, when
+    // they are not, reads them as Windows-1252 instead (juce_String.cpp:2030-2034) -- a codepage
+    // in which every byte means something. So a file no conforming XML parser would accept was
+    // silently transcoded into one that parsed. Measured on `7076359` through the real `loadFile`:
+    // `raw="\xC3\x28"` decoded from 63 bytes to 64 and LOADED, and so did a truncated sequence,
+    // bare continuation bytes, an overlong encoding and a surrogate encoded in UTF-8.
+    //
+    // The refusal is now the decoder's own predicate on the decoder's own range, so the fallback is
+    // unreachable by construction. The ACCEPTED legs are what keep the rule from becoming "refuse
+    // anything above ASCII": valid multi-byte UTF-8 loads, and so does a correctly paired UTF-16
+    // surrogate.
+    std::printf ("  K. invalid encodings are refused before the decode can reinterpret them\n");
+    {
+        auto writeBytes = [&] (const juce::File& f, const std::string& bytes)
+        {
+            f.deleteFile();
+            juce::FileOutputStream os (f);
+            const bool wrote = os.openedOk() && os.write (bytes.data(), bytes.size());
+            os.flush();
+            return wrote && f.getSize() == (juce::int64) bytes.size();
+        };
+        auto refusesBytes = [&] (const juce::String& name, const std::string& bytes, const char* what)
+        {
+            auto f = fileFor (name);
+            check (writeBytes (f, bytes), (juce::String ("harness bytes written: ") + name).toRawUTF8());
+            const auto before = snapshot();
+            check (pm.loadFile (f) == Op::failed, what);
+            check (sameAs (before), (juce::String ("...and it moved nothing: ") + what).toRawUTF8());
+            f.deleteFile();
+        };
+        auto acceptsBytes = [&] (const juce::String& name, const std::string& bytes, const char* what)
+        {
+            auto f = fileFor (name);
+            check (writeBytes (f, bytes), (juce::String ("harness bytes written: ") + name).toRawUTF8());
+            check (pm.loadFile (f) == Op::completed, what);
+            f.deleteFile();
+        };
+        auto toUtf16 = [] (const std::string& ascii, bool bigEndian)
+        {
+            std::string out;
+            if (bigEndian) { out += (char) 0xFE; out += (char) 0xFF; }
+            else           { out += (char) 0xFF; out += (char) 0xFE; }
+            for (char c : ascii)
+            {
+                if (bigEndian) { out += (char) 0; out += c; }
+                else           { out += c; out += (char) 0; }
+            }
+            return out;
+        };
+        // One document, with `%s` standing where the bytes under test go.
+        auto withRaw = [] (const std::string& raw)
+        {
+            return "<ANAMORPH><PARAM id=\"width\" value=\"1.5\" raw=\"" + raw + "\"/></ANAMORPH>\n";
+        };
+
+        setSentinel();
+
+        // --- refused: UTF-8 that is not UTF-8 ---------------------------------------------------
+        refusesBytes ("__Adr0055Utf8Attr__",   withRaw ("\xC3\x28"),
+                      "invalid UTF-8 inside an ATTRIBUTE is refused (the reported case)");
+        refusesBytes ("__Adr0055Utf8Content__",
+                      "<ANAMORPH><PARAM id=\"width\" value=\"1.5\"/>\xE2\x28\xA1</ANAMORPH>\n",
+                      "invalid UTF-8 inside element CONTENT is refused");
+        // THE DISCRIMINATING ONE: a comment is stripped by the parser and permitted by the scan, so
+        // nothing but the encoding rule can refuse this file.
+        refusesBytes ("__Adr0055Utf8Comment__",
+                      "<!-- \xC3\x28 -->\n" + good.toStdString(),
+                      "...and inside a COMMENT, which no other rule here can see");
+        refusesBytes ("__Adr0055Utf8Trunc__",  withRaw ("\xE2\x82"),
+                      "a truncated multi-byte sequence is refused");
+        refusesBytes ("__Adr0055Utf8Cont__",   withRaw ("\x80\x80"),
+                      "bare continuation bytes are refused");
+        refusesBytes ("__Adr0055Utf8Over__",   withRaw ("\xC0\xAF"),
+                      "an overlong encoding is refused");
+        refusesBytes ("__Adr0055Utf8Surro__",  withRaw ("\xED\xA0\x80"),
+                      "a surrogate code point encoded in UTF-8 is refused");
+        refusesBytes ("__Adr0055Utf8Past__",   withRaw ("\xF5\x80\x80\x80"),
+                      "a code point past U+10FFFF is refused");
+
+        // --- refused: UTF-16 whose surrogates do not pair ---------------------------------------
+        {
+            const std::string head = toUtf16 ("<ANAMORPH><PARAM id=\"width\" value=\"1.5\" raw=\"", false);
+            const std::string tail = toUtf16 ("\"/></ANAMORPH>\n", false).substr (2);
+            const std::string hi ("\x00\xD8", 2);      // D800, a high surrogate
+            const std::string lo ("\x00\xDC", 2);      // DC00, a low surrogate
+
+            refusesBytes ("__Adr0055U16Lone__", head + hi + tail,
+                          "a UTF-16 high surrogate with no low one is refused");
+            refusesBytes ("__Adr0055U16Low__",  head + lo + tail,
+                          "...and a low surrogate with no high one");
+            refusesBytes ("__Adr0055U16End__",  head + hi,
+                          "...and a high surrogate at the very end of the file");
+        }
+
+        // --- accepted: everything that was legal before, and still is ---------------------------
+        acceptsBytes ("__Adr0055Utf8Ascii__", good.toStdString(),
+                      "the real preset this plug-in writes still loads");
+        acceptsBytes ("__Adr0055Utf8Multi__", withRaw ("caf\xC3\xA9"),
+                      "VALID multi-byte UTF-8 still loads -- the rule is not `refuse above ASCII`");
+        acceptsBytes ("__Adr0055Utf8Bom2__",  std::string ("\xEF\xBB\xBF") + good.toStdString(),
+                      "a UTF-8 byte-order mark is still accepted");
+        {
+            // U+1F3B5, a correctly PAIRED surrogate: D83C DFB5.
+            const std::string pairLe = std::string ("\x3C\xD8", 2) + std::string ("\xB5\xDF", 2);
+            const std::string pairBe = std::string ("\xD8\x3C", 2) + std::string ("\xDF\xB5", 2);
+            acceptsBytes ("__Adr0055U16PairLe__",
+                          toUtf16 ("<ANAMORPH><PARAM id=\"width\" value=\"1.5\" raw=\"", false) + pairLe
+                              + toUtf16 ("\"/></ANAMORPH>\n", false).substr (2),
+                          "a correctly paired UTF-16 surrogate still loads (LE)");
+            acceptsBytes ("__Adr0055U16PairBe__",
+                          toUtf16 ("<ANAMORPH><PARAM id=\"width\" value=\"1.5\" raw=\"", true) + pairBe
+                              + toUtf16 ("\"/></ANAMORPH>\n", true).substr (2),
+                          "...and so does the same file big-endian");
+        }
+        acceptsBytes ("__Adr0055U16Plain__", toUtf16 (good.toStdString(), false),
+                      "a plain UTF-16 LE preset still loads");
+    }
+
+    // ---- LEG L: NAVIGATION READS EACH ROW IT EXAMINES EXACTLY ONCE ----------------------------
+    //
+    // Devin review finding, measured rather than assumed. The double read of the CHOSEN row was
+    // removed when `examineRow` began carrying its parsed tree into `loadAdopted` (leg I asserts
+    // that for one row). This leg measures the whole walk: with three unreadable rows between the
+    // current preset and the next readable one, a successful Next must read each row it considers
+    // once and no row twice -- four reads for four rows, which is the minimum a skip decision can
+    // cost without caching anything.
+    std::printf ("  L. a walk over unreadable rows reads each of them exactly once\n");
+    {
+        auto folder = anamorph::PresetManager::presetDirectory();
+        check (folder.createDirectory(), "the real preset folder is available");
+        auto nav = [&] (const char* n)
+        { return folder.getChildFile (juce::String (n) + anamorph::PresetManager::fileSuffix()); };
+        auto fa = nav ("__Adr0055NavA__"), fb1 = nav ("__Adr0055NavB1__"), fb2 = nav ("__Adr0055NavB2__");
+        auto fb3 = nav ("__Adr0055NavB3__"), fc = nav ("__Adr0055NavC__");
+
+        check (fa.replaceWithText (good), "nav harness A written (valid)");
+        check (fb1.replaceWithText (good + "<JUNK/>"), "nav harness B1 written (corrupt)");
+        check (fb2.replaceWithText ("not xml at all\n"), "nav harness B2 written (corrupt)");
+        check (fb3.replaceWithText (good + good), "nav harness B3 written (corrupt: two documents)");
+        check (fc.replaceWithText (good), "nav harness C written (valid)");
+
+        pm.refresh();
+        int ia = -1, ic = -1;
+        for (int i = 0; i < pm.entries().size(); ++i)
+        {
+            const auto& e = pm.entries().getReference (i);
+            if (e.name == "__Adr0055NavA__") ia = i;
+            if (e.name == "__Adr0055NavC__") ic = i;
+        }
+        check (ia >= 0 && ic == ia + 4, "the five rows are listed A, B1, B2, B3, C in order");
+
+        if (ia >= 0 && ic == ia + 4)
+        {
+            check (pm.load (ia) == Op::completed, "row A loads");
+
+            int ra = 0, r1 = 0, r2 = 0, r3 = 0, rc = 0;
+            pm.beforePresetRead = [&] (const juce::File& f)
+            {
+                if      (f == fa)  ++ra;
+                else if (f == fb1) ++r1;
+                else if (f == fb2) ++r2;
+                else if (f == fb3) ++r3;
+                else if (f == fc)  ++rc;
+            };
+            bool told = false;
+            const auto r = pm.step (+1, [&told] (bool ok) { told = ok; });
+            pm.beforePresetRead = nullptr;
+
+            check (r == Op::completed && told, "Next walks past the three unreadable rows");
+            checkStr (pm.currentName(), "__Adr0055NavC__", "...and lands on C");
+            check (r1 == 1 && r2 == 1 && r3 == 1, "each unreadable row was read EXACTLY ONCE");
+            check (rc == 1, "...and so was the row that was finally loaded -- not twice");
+            check (ra == 0, "...and the row it started from was not read at all");
+            check (r1 + r2 + r3 + rc == 4, "four rows considered, four reads: the skip costs no more");
+
+            // ...and the corrupt rows are still listed, still on disk, and still report when named.
+            check (pm.entries().size() > ic, "the list still holds every row");
+            check (fb1.existsAsFile() && fb2.existsAsFile() && fb3.existsAsFile(),
+                   "the corrupt files are still on disk");
+            const auto nameBefore = pm.currentName();
+            check (pm.load (ia + 1) == Op::failed, "an absolute pick of a corrupt row still reports failure");
+            checkStr (pm.currentName(), nameBefore, "...and still leaves the current preset alone");
+        }
+
+        fa.deleteFile(); fb1.deleteFile(); fb2.deleteFile(); fb3.deleteFile(); fc.deleteFile();
+        pm.refresh();
+    }
+
     goodFile.deleteFile();
     dir.deleteRecursively();
 }

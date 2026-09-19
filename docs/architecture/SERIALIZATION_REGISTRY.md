@@ -92,7 +92,7 @@ fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
 same-named preset. Source: src/PresetManager.h:55-77 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
-src/PresetManager.cpp:1320-1373 (`encodeSelection` / `decodeSelection`);
+src/PresetManager.cpp:1364-1417 (`encodeSelection` / `decodeSelection`);
 src/PluginProcessor.cpp:2247-2269 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
@@ -184,6 +184,7 @@ A preset file must therefore now satisfy, in this order:
 
 | Stage | Rule | Why it is where it is |
 |---|---|---|
+| Bytes | **valid UTF-8**, or valid UTF-16 under a byte-order mark | the decode does not fail on invalid bytes -- it reads them as Windows-1252 instead (`juce_String.cpp:2030-2034`), so a file no XML parser would accept became one that parsed. The check is the decoder's own `isValidString`, so the fallback is unreachable by construction. Valid multi-byte UTF-8 and correctly paired surrogates are untouched |
 | Bytes | **no embedded NUL** — no zero byte in UTF-8, no zero code unit or trailing half unit in UTF-16 | a `juce::String` ends at the first one, so every byte after it would be read by neither this scan nor the parser; measured on `f03aa06`, a 263-byte file holding a preset, a NUL and a second complete preset decoded to 131 bytes and loaded |
 | Bytes | at most **256 KB** (`PresetManager::maxPresetBytes`), measured BEFORE the read and again on what the read produced | 172× the 1525 bytes a real preset takes; the parse reads the whole file into memory first, with no cap of its own — and the pre-read check alone was decided on a file a concurrent replacement could already have changed |
 | Bytes | **no `DOCTYPE`** | closes the hang and the arbitrary file read together; the writer never emits one |
