@@ -95,6 +95,9 @@ in both directions.
 4. **Exactly one top-level element**, with nothing after it but whitespace, comments and processing
    instructions. This is the reported case and every trailing-junk shape at once, and it cannot be
    asked after the parse.
+5. **The XML declaration only at offset zero.** Added by the second amendment below. `<?xml …?>` is
+   not an ordinary processing instruction: XML allows it first, once, with nothing before it. It is
+   refused anywhere else, and ordinary instructions are untouched.
 
 The scan steps over comments, CDATA sections, processing instructions (which is how the `<?xml …?>`
 declaration arrives) and quoted attribute values, because each of those may legally contain `<` or
@@ -178,10 +181,11 @@ used to play for a load that had been refused.
 
 - **Files this plug-in has ever written still load.** The writer is unchanged; ADR-0024's rule that
   user preset files are byte-for-byte what 0.9.1 wrote is untouched, because nothing here writes.
-- **Five shapes that used to load now do not:** a file containing more than one document, a file with
+- **Six shapes that used to load now do not:** a file containing more than one document, a file with
   anything but whitespace or comments after the root, a structurally malformed document, a
-  value-less `PARAM`, and (per the amendment) a file whose bytes continue past a NUL. Each is a
-  corrupt file by the format's own definition.
+  value-less `PARAM`, and (per the amendments) a file whose bytes continue past a NUL and a file
+  carrying an XML declaration anywhere but first. Each is a corrupt file by the format's own
+  definition.
 - **A preset subtree lifted out of a session by hand still loads**, because `raw` is accepted.
 - **ER-STATE-24 is unchanged and re-affirmed**: the root test still runs, still refuses a foreign
   root, and still runs before any per-parameter fallback can reinterpret the document.
@@ -292,6 +296,24 @@ index. It is unreachable from `step` in any case, because the gate asks `refuseN
 nesting shortcut and nothing between `step`'s admission and `loadAdopted`'s can open a transaction
 or a dispatch on this thread.
 
+### The XML declaration is not an ordinary processing instruction
+
+Review finding, reproduced first. The byte scan stepped over every `<?…?>` wherever it sat, and
+rule 4's refusal guards only an opening TAG -- so `<ANAMORPH/>` followed by `<?xml version="1.0"?>`
+passed the scan, `juce::parseXML` returned the first element and ignored the tail, and a malformed
+document loaded as a preset. The same held for a declaration after a trailing instruction, after a
+comment, and for a second declaration anywhere.
+
+**This one DOES move the accepted boundary**, which the two enforcement fixes above did not, so it
+is recorded as a rule rather than as an enforcement note. XML allows the declaration in exactly one
+place: the very first thing in the document, once, with nothing before it -- not even whitespace.
+That is now the rule, and it costs a real file nothing: `XmlElement::toString` emits the header at
+offset zero, which is where every file this plug-in has ever written carries it, and a byte-order
+mark is removed by the decode before the scan sees the text. The target is matched without regard
+to case, because XML reserves `xml` in any case; a target that merely BEGINS with `xml`
+(`<?xmlstylesheet …?>`) is a different instruction and stays accepted. Ordinary instructions before
+and after the root are untouched -- that tolerance is rule 4's and State test 114 leg E pins it.
+
 ### Scope
 
 Unchanged: the accepted format, the two limits, the empty-preset ruling, the missing-versus-corrupt
@@ -322,5 +344,11 @@ between `parseSoundFile`'s size check and its read — the one point at which "a
 replaced this file" is reproducible at all, and the reason neither leg is a race. Leg H replaces the
 file with a valid document that fits under the cap followed by whitespace that pushes the FILE over
 it, so neither the read bound nor the document scans can refuse it and only the size of what arrived
-can. Leg I corrupts the row on its SECOND read and asserts that there is no second read. Mutation
-record: `docs/procedures/TESTING.md`.
+can. Leg I corrupts the row on its SECOND read and asserts that there is no second read.
+
+**State test 114 leg J** is the declaration rule: a trailing declaration, one after a trailing
+instruction, a doubled one inside and outside the prologue, one after a comment, one after
+whitespace and one spelled `<?XML` are all refused, while the writer's own leading declaration, the
+full prologue (declaration, comment, instruction, root), a trailing instruction, a trailing comment
+and an `<?xmlstylesheet …?>` target are all still accepted. Mutation record:
+`docs/procedures/TESTING.md`.

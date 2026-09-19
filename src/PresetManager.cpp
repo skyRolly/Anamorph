@@ -331,13 +331,29 @@ namespace
         return true;
     }
 
+    // True when `p` stands at the `<?` of a processing instruction whose TARGET is exactly `xml`
+    // in any case -- which XML reserves for the DECLARATION and for nothing else. The comparison
+    // stops at a terminator (`compareIgnoreCaseUpTo` breaks on a zero character), so a truncated
+    // `<?xm` cannot be read past the end of the text; and because a match proves five non-zero
+    // characters, `p[5]` is at worst the terminator itself. `<?xmlfoo?>` is a DIFFERENT target and
+    // an ordinary instruction, which is why the character after the name is examined at all.
+    bool isXmlDeclaration (juce::String::CharPointerType p)
+    {
+        if (juce::CharacterFunctions::compareIgnoreCaseUpTo (p, juce::CharPointer_ASCII ("<?xml"), 5) != 0)
+            return false;
+
+        const auto after = p[5];
+        return after == 0 || after == '?' || juce::CharacterFunctions::isWhitespace (after);
+    }
+
     // True when `text` is ONE well-delimited XML document, nested no deeper than `maxDepth`,
     // carrying no DOCTYPE, and followed by nothing but whitespace, comments and processing
     // instructions. It answers ONLY those questions: what the document says is
     // `presetDocumentIsWellFormed`'s job, and what its values mean is `normalisedFromSavedTree`'s.
     bool presetTextIsAdmissible (const juce::String& text, int maxDepth)
     {
-        auto p = text.getCharPointer();
+        const auto begin = text.getCharPointer();
+        auto p = begin;
         int  depth = 0;
         bool sawRoot = false, rootClosed = false;
 
@@ -369,8 +385,26 @@ namespace
                 if (! skipPast (p, "]]>", 3)) return false;
                 continue;
             }
-            if (p[1] == '?')                           // `<?xml ... ?>`, and any other instruction
+            if (p[1] == '?')                           // a processing instruction -- or the declaration
             {
+                // THE XML DECLARATION IS NOT AN ORDINARY INSTRUCTION, and treating it as one was a
+                // hole: `<ANAMORPH/>` followed by `<?xml version="1.0"?>` was accepted, because the
+                // skip below steps over any `<?...?>` wherever it sits and the `rootClosed` refusal
+                // guards only an opening TAG. `juce::parseXML` then returns the first element and
+                // ignores the tail, so a malformed document loaded as a preset.
+                //
+                // XML allows the declaration in exactly one place: the very first thing in the
+                // document, once. So it is admitted only at offset zero and refused everywhere
+                // else -- after the root, after a comment, after another instruction, after
+                // whitespace, or after another declaration. NOTHING may precede it, not even
+                // whitespace, which is the spec's own rule and is what the writer produces:
+                // `XmlElement::toString` emits the header first, at offset zero, and a byte-order
+                // mark is removed by the decode before this scan ever sees the text.
+                //
+                // Ordinary instructions are untouched, before the root and after it alike, which is
+                // the tolerance ADR-0055 states and State test 114 leg E pins.
+                if (p.getAddress() != begin.getAddress() && isXmlDeclaration (p)) return false;
+
                 p += 2;
                 if (! skipPast (p, "?>", 2)) return false;
                 continue;
@@ -556,8 +590,15 @@ juce::ValueTree PresetManager::parseSoundFile (const juce::File& f) const
     juce::FileInputStream in (f);
     if (! in.openedOk()) return {};
 
+    // THE BOUND IS SPELLED `int`, AND THAT IS PORTABILITY RATHER THAN LAZINESS. The parameter's
+    // type is `ssize_t`, which JUCE declares ITSELF only under `#if JUCE_WINDOWS`
+    // (`juce_MathsFunctions.h:97-99`) and takes from the system headers everywhere else -- so
+    // naming the type unqualified compiles on Linux and macOS, where POSIX puts it in the global
+    // namespace, and fails on MSVC with `C2065: 'ssize_t': undeclared identifier`, because
+    // `juce::ssize_t` is not visible from this namespace. 256 KB + 1 fits an `int` on every
+    // platform this ships to, and an `int` converts to whichever `ssize_t` is in play.
     juce::MemoryBlock raw;
-    in.readIntoMemoryBlock (raw, (ssize_t) (maxPresetBytes + 1));
+    in.readIntoMemoryBlock (raw, (int) (maxPresetBytes + 1));
     if ((juce::int64) raw.getSize() > maxPresetBytes) return {};
 
     if (! presetBytesAreAdmissible (raw.getData(), raw.getSize())) return {};

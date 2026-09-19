@@ -1775,6 +1775,45 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   uncovered statement is one assignment. Recorded rather than papered over, in the same way M15 and
   M189 are.
 
+* **Round 46 — the XML declaration is not an ordinary processing instruction, and an MSVC-only
+  compile error (ADR-0055 amendment).**
+
+  **State test 114 leg J.** Review finding, reproduced first. The byte scan stepped over every
+  `<?…?>` wherever it sat, and the second-top-level-element refusal guards only an opening TAG -- so
+  `<ANAMORPH/>` followed by `<?xml version="1.0"?>` passed the scan, `juce::parseXML` returned the
+  first element and ignored the tail, and a malformed document loaded as a preset. XML allows the
+  declaration first, once, with nothing before it; that is now the rule.
+
+  The leg is built around the writer rather than around a literal: it first asserts that
+  `good.startsWith ("<?xml")` -- the real preset this harness saves really does carry a declaration,
+  at offset zero -- so the accepted shape under test is the shape the plug-in actually produces, and
+  the refused shapes are derived from it. Refused: a trailing declaration; one after a trailing
+  instruction that is itself legal; a doubled one outside the root and a doubled one inside the
+  prologue; one after a comment; one after mere whitespace; and one spelled `<?XML`, which pins the
+  case rule. Accepted, and each is a tolerance a careless rule would have taken: the writer's own
+  leading declaration, the full prologue (declaration, comment, instruction, root), a trailing
+  instruction, a trailing comment, and `<?xmlstylesheet …?>` -- a target that merely BEGINS with
+  `xml` and is a different instruction.
+
+  **Mutation coverage (M232-M235). All four killed.** **M232** the position check removed, so every
+  `<?…?>` is an ordinary instruction again -- 8. **M233** the target matched case-sensitively -- 1,
+  the `<?XML` leg, which is the only check that can see it. **M234** the declaration allowed
+  anywhere before the root (refused only after it) -- 3, the prologue legs. **M235** any
+  `<?xml`-prefixed target counted as a declaration -- 1, the `<?xmlstylesheet` leg, which is the
+  control that the rule is not over-broad.
+
+  **The MSVC-only compile error, and why no local gate could have caught it.** Round 45's bounded
+  read was written `in.readIntoMemoryBlock (raw, (ssize_t) (maxPresetBytes + 1))`. JUCE declares
+  `ssize_t` ITSELF only under `#if JUCE_WINDOWS` (`juce_MathsFunctions.h:97-99`) and takes the
+  system one everywhere else, so an unqualified `ssize_t` inside `namespace anamorph` resolves to
+  the POSIX global on Linux and macOS and is **undeclared** on MSVC -- `C2065`, in the `windows`
+  build step and in Code Analysis's identical build step, which is why both lanes failed on the same
+  line and every Clang and GCC lane was green. The bound is now spelled `(int)`: 256 KB + 1 fits an
+  `int` on every supported platform and converts to whichever `ssize_t` is in play. **No local gate
+  covers this class** -- the repository has no MSVC host, `check-portability.py` guards the JUCE
+  SIMD overload hazard and nothing else, and the warning gates read build logs from Clang and GCC.
+  CI is the gate for MSVC-only compilation, and it fired.
+
 * **Round 45 — two rules that were stated but not enforced (ADR-0055 amendment).**
 
   Two review findings against `2953f7e`. Neither changes what a preset file may contain; both make a
@@ -3657,7 +3696,7 @@ suite's maximum frame** — that is still the pre-existing Settings test at 68 %
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
-'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:13458`
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:13510`
 today, this round's two new legs having moved it -- which is
 `testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not
 touch**. The same alert, byte-identical at **433548**, is in the predecessor run's SARIF on

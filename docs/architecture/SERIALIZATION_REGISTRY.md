@@ -92,7 +92,7 @@ fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
 same-named preset. Source: src/PresetManager.h:55-77 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
-src/PresetManager.cpp:1279-1332 (`encodeSelection` / `decodeSelection`);
+src/PresetManager.cpp:1320-1373 (`encodeSelection` / `decodeSelection`);
 src/PluginProcessor.cpp:2247-2269 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
@@ -189,6 +189,7 @@ A preset file must therefore now satisfy, in this order:
 | Bytes | **no `DOCTYPE`** | closes the hang and the arbitrary file read together; the writer never emits one |
 | Bytes | nesting at most **8** (`PresetManager::maxPresetDepth`) | 4× the two levels a real preset has, and far below the shallowest measured crash |
 | Bytes | **exactly one top-level element**, then only whitespace, comments and processing instructions | the reported case; unanswerable after the parse, which has already discarded the tail |
+| Bytes | an **XML declaration only at offset zero** -- first, once, nothing before it, target matched without regard to case | `<?xml …?>` is not an ordinary instruction: XML allows it in one place only. `<ANAMORPH/>` followed by a declaration used to pass, because the rule above guards only an opening tag. The writer emits the header first, so no file this plug-in has written is affected |
 | Document | every child of the root is a `PARAM`; none is a text or CDATA node | a text node never reaches a `ValueTree` at all, so this is asked on the parsed element |
 | Document | a `PARAM` is a leaf, carries exactly one `id`, exactly one `value` and at most one `raw` | a `ValueTree` collapses a duplicated attribute, so this too is asked on the element |
 | Document | no two `PARAM` nodes claim the same `id` | the first used to win, silently |

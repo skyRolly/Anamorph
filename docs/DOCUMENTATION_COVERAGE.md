@@ -13003,6 +13003,64 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 66th pass — 2026-09-19, round 46 (the declaration is not an instruction, and an MSVC-only error)
+
+One review finding and two CI failures with a single cause. Both were diagnosed from evidence before
+anything changed. **RISK-014 unchanged** — no session-blob or A/B-payload change.
+
+**CI — `windows` and `Microsoft C++ Code Analysis`: INTRODUCED BY ROUND 45, one line, one cause.**
+Both lanes failed in their (identical) build step with
+`src\PresetManager.cpp(560,35): error C2065: 'ssize_t': undeclared identifier`. Round 45's bounded
+read was written `in.readIntoMemoryBlock (raw, (ssize_t) (maxPresetBytes + 1))`, and JUCE declares
+`ssize_t` **itself only under `#if JUCE_WINDOWS`** (`juce_MathsFunctions.h:97-99`), taking the
+system one everywhere else — so an unqualified `ssize_t` inside `namespace anamorph` resolves to the
+POSIX global on Linux and macOS and is undeclared on MSVC. That is why every Clang and GCC lane was
+green and only the two MSVC lanes were red, and why the local preflight could not have caught it.
+The bound is now spelled `(int)`: 256 KB + 1 fits an `int` on every supported platform and converts
+to whichever `ssize_t` is in play. No analysis setting was weakened and no warning suppressed. The
+`Code Analysis` failure is not a finding at all — the analyser never ran, because its build failed
+first. **Nothing else in either log is red**: the only other diagnostic is the pre-existing
+`C4458 'params' hides class member` at `PluginProcessor.cpp:2757`, which is a warning, not this
+round's, and untouched.
+
+**Devin finding — `src/PresetManager.cpp:R372-376`, a malformed trailing XML declaration is
+accepted: CONFIRMED and fixed.** `presetTextIsAdmissible` treated every `<?…?>` as an ordinary
+processing instruction, and the second-top-level-element refusal guards only an opening TAG — so
+`<ANAMORPH/>` followed by `<?xml version="1.0"?>` passed the scan, `juce::parseXML` returned the
+first element and ignored the tail, and a malformed document loaded as a preset. The same held for a
+declaration after a trailing instruction, after a comment, and for a second declaration anywhere.
+
+**This one DOES move the accepted boundary**, unlike round 45's two enforcement fixes, so it is
+recorded in ADR-0055 as a rule (number 5 in the pre-parser list) rather than as an enforcement note.
+XML allows the declaration in exactly one place — first, once, nothing before it, not even
+whitespace — and that is now the rule. It costs a real file nothing: `XmlElement::toString` emits
+the header at offset zero, which is where every file this plug-in has written carries it, and a
+byte-order mark is removed by the decode before the scan sees the text. The target is matched
+without regard to case because XML reserves `xml` in any case; a target that merely BEGINS with
+`xml` (`<?xmlstylesheet …?>`) is a different instruction and stays accepted. Ordinary instructions
+before and after the root are untouched.
+
+**Unchanged, deliberately:** the size limit, the NUL rejection, the `DOCTYPE` rejection, the depth
+limit, exactly one root element, and the trailing-content rule. Nothing was loosened.
+
+**Coverage.** **State test 114 leg J**, built around the writer rather than a literal: it first
+asserts `good.startsWith ("<?xml")`, so the accepted shape under test is the shape the plug-in
+actually saves and the refused shapes are derived from it. Seven refusals (trailing; after a
+trailing instruction; doubled outside and doubled inside the prologue; after a comment; after
+whitespace; `<?XML`) and five acceptances (the writer's own leading declaration, the full prologue,
+a trailing instruction, a trailing comment, `<?xmlstylesheet …?>`).
+
+**Validation.** State **4 521 / 0** (was 4 486), DSP **396 / 0**, both green under `ulimit -s 1024`.
+Mutations **M232-M235, all four killed** — including M233, which only the `<?XML` leg can see, and
+M235, which only the `<?xmlstylesheet` leg can see.
+
+**Documentation.** `ADR-0055` (rule 5 in the pre-parser list, a third amendment section, the
+shape count, and the new leg in Evidence); `docs/architecture/SERIALIZATION_REGISTRY.md` (a row in
+the boundary table); `docs/procedures/TESTING.md` (round-46 entry, including why no local gate
+covers MSVC-only compilation). **No CHANGELOG change**: the `[0.9.9]` entry already tells users a
+preset with *"anything else after it"* is rejected, a trailing declaration is an instance of that,
+and 0.9.9 is unreleased. [Verified]
+
 ## 65th pass — 2026-09-19, round 45 (two rules that were stated but not enforced)
 
 Two review findings against `2953f7e`. **Neither changes what a preset file may contain**; both make
@@ -13080,7 +13138,8 @@ and 0.9.9 is unreleased. **RISK-014 unchanged** — no session-blob or A/B-paylo
 Three review findings against `f03aa06` — the head that first implemented ADR-0055 — plus one
 static-analysis item. Every one was reproduced or measured before anything was changed.
 
-**Finding 1 — `src/PresetManager.cpp:492`, an embedded NUL bypasses the boundary: CONFIRMED and
+**Finding 1 — line 492 as the review cited it, `src/PresetManager.cpp:526` today, an embedded NUL
+bypasses the boundary: CONFIRMED and
 fixed.** `parseSoundFile` read the file with `loadFileAsString` and scanned the resulting
 `juce::String`, and a `juce::String` ENDS at the first NUL: `CharPointer_UTF8::isValidString`
 returns `true` there (`juce_CharPointer_UTF8.h:438-447`) and every reader below walks the buffer
@@ -13113,7 +13172,7 @@ that loaded within 1.5 s of a refusal was displayed as UNREADABLE, with its own 
 for the remainder. Success now clears the warning as well as raising the sweep.
 
 **PREfast alert 209 — `Function uses '433548' bytes of stack`: NO CHANGE, and it is not this
-round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13458`
+round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13510`
 today, which is
 `testNonFiniteParameterInStateIsRejected` — State test 17, untouched by round 43 and by this round.
 The predecessor SARIF on `0e32e65` carries the same alert, byte-identical at **433548**, at

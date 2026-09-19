@@ -13369,6 +13369,58 @@ static void testAPresetFileIsOneWellFormedDocument()
         pm.refresh();
     }
 
+    // ---- LEG J: THE XML DECLARATION IS NOT AN ORDINARY PROCESSING INSTRUCTION ------------------
+    //
+    // Devin review finding. The scan stepped over every `<?...?>` wherever it sat, and the
+    // second-top-level-element refusal guards only an opening TAG -- so `<ANAMORPH/>` followed by
+    // `<?xml version="1.0"?>` was accepted, `juce::parseXML` returned the first element and ignored
+    // the tail, and a malformed document loaded as a preset.
+    //
+    // XML allows the declaration in exactly one place: first, once, with nothing before it. It is
+    // now admitted only at offset zero. Ordinary instructions are untouched -- before the root and
+    // after it alike -- which is the tolerance leg E pins and this leg must not disturb.
+    std::printf ("  J. an XML declaration is only ever the first thing in the file\n");
+    {
+        const juce::String decl = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+
+        // THE CONTROL THAT MAKES THE REST MEAN SOMETHING: the real writer emits the declaration,
+        // at offset zero, so the accepted shape below is the shape this plug-in actually saves.
+        check (good.startsWith ("<?xml"), "the writer really does emit a declaration, first");
+
+        setSentinel();
+        accepts ("__Adr0055DeclFirst__", good, "a preset whose declaration is first still loads");
+        accepts ("__Adr0055DeclProlog__",
+                 decl + "<!-- exported -->\n<?editor note?>\n<ANAMORPH><PARAM id=\"width\" value=\"1.5\"/></ANAMORPH>",
+                 "declaration, then a comment, then an ordinary instruction, then the root: still accepted");
+        accepts ("__Adr0055TrailPi__",
+                 good + "<?editor note?>\n",
+                 "an ordinary instruction AFTER the root is still accepted (ADR-0055's tolerance)");
+        accepts ("__Adr0055TrailComment__", good + "<!-- filed -->\n",
+                 "...and so is a trailing comment");
+
+        refuses ("__Adr0055DeclTrail__", good + decl,
+                 "a declaration AFTER the root element is refused");
+        refuses ("__Adr0055DeclAfterPi__", good + "<?editor note?>\n" + decl,
+                 "...including after a trailing instruction that is itself legal");
+        refuses ("__Adr0055DeclTwiceOut__", good + decl + decl,
+                 "...and twice over");
+        refuses ("__Adr0055DeclTwiceIn__", decl + good,
+                 "a SECOND declaration in the prologue is refused (the file's own is already first)");
+        refuses ("__Adr0055DeclAfterComment__", "<!-- note -->\n" + good,
+                 "a declaration after a comment is refused -- it is no longer first");
+        refuses ("__Adr0055DeclAfterSpace__", juce::String (" ") + good,
+                 "...and so is one after mere whitespace, which XML forbids too");
+        refuses ("__Adr0055DeclUpper__", good + "<?XML version=\"1.0\"?>\n",
+                 "the target is matched without regard to case");
+        refuses ("__Adr0055DeclNoSpace__", good + "<?xml?>\n",
+                 "...and a declaration with no attributes at all is still a declaration");
+
+        // ...while a target that merely BEGINS with `xml` is a different instruction, and this
+        // boundary has never had a reason to refuse it.
+        accepts ("__Adr0055PiXmlish__", good + "<?xmlstylesheet href=\"x\"?>\n",
+                 "a trailing instruction whose target only starts with `xml` is still accepted");
+    }
+
     goodFile.deleteFile();
     dir.deleteRecursively();
 }
