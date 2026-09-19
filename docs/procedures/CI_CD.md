@@ -1337,6 +1337,22 @@ FetchContent tree outside the workspace, or post-filtering the SARIF before uplo
 System scope decisions under `ARCHITECTURE_REVIEW_GATE.md`, so neither was folded into the audit
 that found this.
 
+**Re-confirmed 2026-09-19 on `b6af84e`, over the whole retained artifact window.** Seventeen PREfast
+SARIFs (every `push`/`schedule` run on `main` from `c7471d01` — the first with the artifact step —
+through `b6af84e`, plus the six PR heads of the 0.9.9 series) and four CodeQL SARIFs. The head
+carries **235 results**: PREfast 185 (`C6262` 169, `C26495` 8, `C26498` 4, `C28252` 4), CodeQL
+`c-cpp` 50, CodeQL `actions` 0. The split above is unchanged — **every CodeQL result is JUCE, at all
+four sampled commits, and on this head `src/**` draws no result from either scanner.** The analyzer version is
+constant at PREfast 14.51.36256.0 across all seventeen, so a finding that appears or vanishes in
+this window is a code change, never toolchain drift. `docs/procedures/TESTING.md` §Round 49 carries
+the per-rule dispositions.
+
+**A failed analysis leaves no record at all.** `msvc.yml` run 451 on `ca865f17` died in its Build
+step; `run-analysis` never ran, so there is no SARIF, no artifact and no Code Scanning upload for
+that head — the `if-no-files-found: error` gating protects the artifact from being empty, not the
+head from being unanalysed. The next commit is the one to read. (Here `7076359`, which fixed the
+MSVC-only `ssize_t` that broke the build.)
+
 **What the raw artifacts cannot tell you.** They carry what each scanner *produced*. They do not
 carry alert *state* — whether an alert is open, fixed or dismissed, and by whom. That is the Code
 Scanning alerts API, and any claim about the dashboard's standing alert count has to come from
@@ -1367,15 +1383,25 @@ is the wrong test: what overflows a frame is a large automatic, not that particu
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
 suite's largest frame is **289,440 bytes** (`testPendingDuckDoesNotSurviveActivation`,
-dsp_tests.cpp:1388) — 28% of the 1 MB reserve, against the state suite's **707,824**
-(state_tests.cpp:8967, 68%). Widening the step armed a tripwire rather than introducing a failure:
-both binaries were verified green under `ulimit -s 1024` first.
+`tests/dsp_tests.cpp:1388`) — 28% of the 1 MB reserve, against the state suite's **709,760**
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21276`, 68%).
+Widening the step armed a tripwire rather than introducing a failure: both binaries were verified
+green under `ulimit -s 1024` first.
 
-**PREfast's `C6262` numbers are not frame sizes.** The same audit measured its largest claim,
-1,280,508 bytes at state_tests.cpp:2659, against GCC's 283,968 for that function — /analyze sums a
-function's locals across disjoint sibling scopes, without the lifetime overlap a real compiler
-applies. Use `-fstack-usage`, not the alert text, when judging headroom. The `C6262` alerts are
-accepted as test-only; the control that actually holds this line is the guard step, not the alert.
+**Re-measured 2026-09-19 on `b6af84e`, and the anchors written in full.** The two figures above used
+to read 707,824 at `state_tests.cpp:8967` — a bare filename, which `check-citations.py` does not
+claim as a citation (it requires a `TRACKED` path verbatim), so the anchor drifted through eleven
+merges unreported while the function moved to :21276. The state maximum is the same function and has
+grown 1,936 bytes; the DSP maximum is unchanged to the byte. Nothing in either suite reaches 1 MiB:
+of **1,683** functions measured across the two translation units, the largest frame is that 709,760.
+
+**PREfast's `C6262` numbers are not frame sizes.** Its largest claim on `b6af84e` is 1,285,476 bytes
+at `tests/state_tests.cpp:14861` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
+function — 4.5× — because /analyze sums a function's locals across disjoint sibling scopes, without
+the lifetime overlap a real compiler applies. Across the 20 largest claims the overstatement runs
+from 1.01× to 9.02× and never goes the other way. Use `-fstack-usage`, not the alert text, when
+judging headroom. The `C6262` alerts are accepted as test-only; the control that actually holds this
+line is the guard step, not the alert.
 
 **Re-measured for the four PR #144 wheel tests (round 16)**, because those functions are new and the
 figures above predate them: one `AnamorphAudioProcessor` automatic is `sizeof` 141,320 bytes, the

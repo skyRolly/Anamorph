@@ -13003,6 +13003,99 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 69th pass — 2026-09-19, round 49 (the complete Code Scanning audit, from the raw SARIF)
+
+**Scope.** Every CodeQL and MSVC `/analyze` result this repository can still be shown to have
+produced, taken from the raw SARIF each scanner publishes as an Actions artifact
+(`docs/procedures/CI_CD.md` §Raw scanner SARIF artifacts) rather than from the dashboard — this
+session has the Actions tools and no Code Scanning alert tool, which is the case those steps exist
+for. **Seventeen PREfast SARIFs**: every `push`/`schedule` run on `main` from `c7471d01`
+(2026-09-03, the first run carrying the artifact step) through `b6af84e`, plus all six PR heads of
+the 0.9.9 preset series. **Four CodeQL SARIFs**: `faac9fa9`, `19bb50be`, `661a90b5`, `b6af84e`,
+`c-cpp` and `actions`. **235 results on the head**: PREfast 185 (`C6262` 169, `C26495` 8, `C26498`
+4, `C28252` 4), CodeQL `c-cpp` 50, CodeQL `actions` 0. **One code change**, in a test header.
+
+**No finding is stale or mis-anchored.** All 184 first-party anchors were re-read against the
+working tree: 0 files missing, 0 lines past EOF, 0 landing on unrelated code. The 29 `C6262` anchors
+on a bare `{` are lambda bodies. The 185th result is the single JUCE `C26495`.
+
+**FIX — one, in `tests/AllocationGuard.h`, and the analyzer was right.** The four `C28252` stopped
+saying "this instance has no annotations" when a previous round added SAL to the replaced
+`operator new` family; what they say now is that the prior instance carries
+`SAL_success(return!=0)`. That prior instance is `vcruntime_new.h`'s declaration of the same
+operator, which spells the nothrow contract `_Ret_maybenull_ _Success_(return != NULL)
+_Post_writable_byte_size_(_Size)`. `ANAMORPH_GUARD_RET_MAYBENULL` carried the first and third and
+not the second. The omission is not cosmetic: a `_Post_writable_byte_size_` with no `_Success_`
+applies on **every** return, so the half-annotated form promised `/analyze` `sz` writable bytes on
+the null return too — contradicting the `_Ret_maybenull_` beside it, and exactly the shape that
+would hide a missing null check after a failed `new (std::nothrow)`. `_Success_(return != 0)` is
+added; it states what `rawAlloc`/`alignedAlloc` do. The throwing forms are untouched:
+`_Ret_notnull_` already makes their post-condition unconditional, and no `C28252` opens on them.
+SAL has no run-time behaviour, so **no test can prove this** — the only oracle is the next
+`msvc.yml` SARIF, and this entry does not claim the count before that run lands.
+
+**DO NOT FIX — `C6262` x 169, re-measured rather than re-argued.** All 169 are test-only
+(`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
+result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
+functions across the two translation units. Largest real frames: **709,760** bytes
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21276`,
+67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
+`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
+1,285,476 at `tests/state_tests.cpp:14861` against a real 284,800 — 4.5x — and over its 20 largest
+claims the overstatement runs 1.01x to 9.02x and never inverts. Tests are not edited for a
+dashboard; the control that holds this line is the `ulimit -s 1024` guard step.
+
+**DO NOT FIX — `C26495` x 7, and the 2026-09-07 entry's reason for them was wrong.** That entry
+said the structs are "aggregate-initialised at every construction site". Two of the three are not:
+`Scenario scenarios[2];` (`tests/dsp_tests.cpp:1611`) and `Case c;` (:5787) are DEFAULT-initialised,
+which genuinely leaves `const char* name` and `double minRatio` indeterminate. The correct evidence
+is that every member default-initialisation leaves indeterminate is assigned before the first read —
+checked member by member for both `scenarios` elements and for every `mk()` call. The third site,
+`Case cases[4] {}` (:1733), IS value-initialised and is **still flagged four times**, which settles
+what the rule is about: the DECLARATION carrying no default member initialisers, not any site. So
+writing `{}` at the other two would change test code and change no alert.
+
+**DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
+suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
+`tests/state_tests.cpp:18380`, :18381) — identical values either way, no defect, test-only. The JUCE
+`C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
+`ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already
+documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,
+`relatedLocations` and every `threadFlow` step, with the same rule distribution at all four sampled
+commits (`cpp/integer-multiplication-cast-to-long` 41, `cpp/alloca-in-loop` 7,
+`cpp/comparison-with-wider-type` 1, `cpp/unsafe-use-of-this` 1). Zero first-party CodeQL results have
+appeared anywhere in the retained window. All third-party: JUCE is pin-locked and review-gated
+(`docs/policies/DEPENDENCY_POLICY.md`), so an alert there is an ADR-scoped dependency decision.
+
+**ALREADY FIXED — the four `C6001`, and the two halves have different reasons.** They were two
+defects' worth of reports, each doubled (`X` and `X[BYTE:0]`). `nf` in `src/gui/SpectrumImager.cpp`
+disappeared at `faac9fa9` (PR #143) as a side effect of the ADR-0044/0049 guard work — nothing was
+done about the alert, and the condition never existed: `removeBand` writes `nf[0 .. N-3]` and reads
+exactly that range for every reachable `N` and `dropX`. `saved` in `src/PluginProcessor.cpp`
+disappeared at `19bb50be` (PR #144) because round 28 changed the code on purpose — one named
+`constexpr size_t viewCount` in place of two separate `std::size (pid::viewParams)` spellings, so
+`/analyze` can no longer take the bound as zero in one loop and non-zero in the other. **The
+analyzer version is constant at PREfast 14.51.36256.0 across all seventeen SARIFs**, so neither
+disappearance is toolchain drift, and neither is a location move.
+
+**Two stale figures, and the mechanism that let them go stale.** `CI_CD.md` and `TESTING.md` both
+carried the state suite's maximum frame and PREfast's largest claim anchored as BARE FILENAMES
+(`state_tests.cpp:8967`, `state_tests.cpp:17430`, `state_tests.cpp:2659`). `check-citations.py`
+claims a citation only when its path is one of `TRACKED` verbatim, so none of the three was ever
+re-aimed and all three now land in unrelated tests — the same silent-drift mechanism this ledger
+recorded for `THREAD_MODEL.md` on 2026-09-07. Re-measured and rewritten in full-path form, which
+puts them under the gate. The measurements held up: the state maximum is the same function
+(+1,280 bytes since round 17) and the DSP maximum is unchanged to the byte. The round-44 pointer
+`tests/state_tests.cpp:13701` was re-aimed to :13942 in the same pass.
+
+**One analyzer gap, named rather than glossed.** `msvc.yml` run 451 on `ca865f17` FAILED in its
+Build step, so it produced no SARIF, no artifact and no Code Scanning upload — that head has no
+analyzer record at all. The cause is already fixed in the same round: `ca865f17` used `ssize_t`,
+which MSVC does not declare in that namespace, and `7076359` replaced it with `int`. The only other
+absent runs are the two `main` merges that predate the artifact steps (`ac47151b`, `e666b29f`).
+What no artifact can supply is alert **state** — open, fixed or dismissed — and nothing here claims
+it. [Verified]
+
 ## 68th pass — 2026-09-19, round 48 (navigation I/O, measured and left alone)
 
 One review finding, investigated and **closed with no code change**. **RISK-014 unchanged** — no

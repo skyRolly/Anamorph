@@ -101,10 +101,28 @@
 // platform where it is the sole realtime tier (RTSan does not run there).
 // The annotations carry no codegen; they tell the analyser what the function
 // returns, which is exactly what it was missing. Empty off MSVC.
+//
+// THE NOTHROW FORMS NEED `_Success_` AS WELL, AND THE FIRST PASS OMITTED IT.
+// That pass took six alerts to four; the four that remained stopped saying "this
+// instance has no annotations" and started saying "return/function has
+// 'SAL_success(return!=0)' on the prior instance" -- the prior instance being
+// `vcruntime_new.h`'s own declaration of the same operator, which spells the
+// nothrow contract `_Ret_maybenull_ _Success_(return != NULL)
+// _Post_writable_byte_size_(_Size)`. The gap is not cosmetic and closing it is
+// not silencing: a `_Post_writable_byte_size_` with no `_Success_` applies on
+// EVERY return, so the half-annotated form promised the analyser `sz` writable
+// bytes on the null return too -- flatly contradicting the `_Ret_maybenull_`
+// beside it, and exactly the shape that would hide a missing null check after a
+// failed `new (std::nothrow)`. `_Success_(return != 0)` says what the code does:
+// `rawAlloc`/`alignedAlloc` return null on failure, and the block is writable
+// only when they do not. The throwing forms need nothing -- `_Ret_notnull_`
+// already makes the post-condition unconditional, and /analyze opens no
+// C28252 on them.
 #if defined(_MSC_VER)
   #include <sal.h>
   #define ANAMORPH_GUARD_RET_NOTNULL(sz)   _Ret_notnull_ _Post_writable_byte_size_(sz)
-  #define ANAMORPH_GUARD_RET_MAYBENULL(sz) _Ret_maybenull_ _Post_writable_byte_size_(sz)
+  #define ANAMORPH_GUARD_RET_MAYBENULL(sz) _Ret_maybenull_ _Success_(return != 0) \
+                                           _Post_writable_byte_size_(sz)
 #else
   #define ANAMORPH_GUARD_RET_NOTNULL(sz)
   #define ANAMORPH_GUARD_RET_MAYBENULL(sz)
