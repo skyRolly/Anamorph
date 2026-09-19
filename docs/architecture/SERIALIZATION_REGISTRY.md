@@ -420,6 +420,42 @@ the per-slot identity is written at :831 / :835 and read at :918.
 
 Source: src/PluginProcessor.cpp:2935-2958.
 
+## What the HOST-STATE path accepts, measured (0.9.9, RISK-014 / ADR-0056)
+
+The two rules above — the root type, and ADR-0055's document boundary — govern the **preset file**.
+The host chunk is admitted by neither. `setStateInformation` → `decodeRestore` →
+`AudioProcessor::getXmlFromBinary` validates exactly two things (`juce_AudioProcessor.cpp:968-980`):
+that the chunk is longer than 8 bytes, and that its first four bytes are `magicXmlNumber`
+(`0x21324356`, ASCII `VC2!`). It then hands `String::fromUTF8` of the rest to `juce::parseXML`. The
+`AB` child's slot payload is not framed at all: `adoptIfAnamorph` parses the attribute value as its
+own independent document. **This section records what that means, as measured through the real
+entry point on `de89b1a`; it proposes nothing.**
+
+Accepted and **applied** today, which the preset path now refuses: two complete documents in one
+chunk (the first wins), a document followed by prose, by a stray element or by raw binary, a
+document followed by one NUL and a second complete document, invalid UTF-8 in an attribute value,
+and a chunk truncated to half its length. Refused today: mismatched tags, a stated length far
+larger than the chunk, UTF-16 text under the UTF-8 frame, and — in a slot — a foreign-typed root
+(ER-STATE-02, above).
+
+Not survivable today, on **both** paths: ~3 000 levels of nesting (SIGSEGV on a 1 MB stack; ~30 000
+on 8 MB), a two-level recursive-entity `DOCTYPE` of ~230 bytes (SIGSEGV), a one-level one of ~150
+bytes (no return after 60 s), and input size (peak RSS linear to 521-650 MB, no cap). **Not**
+reachable on either path, unlike the preset path before ADR-0055: the `SYSTEM`-`DOCTYPE` file read,
+because `parseXML (const String&)` leaves `XmlDocument::inputSource` null.
+
+**What the writer produces, for anyone proposing a bound:** every session this product has written
+is nested at most **3** deep and at most **10 629 bytes** (the v0.9.5 field capture; this build
+10 438 B; the three legacy roots below 268 / 590 / 740 B at depth 2-3), a slot payload at most
+**2 051 bytes** at depth **2**, and none carries a `DOCTYPE` — `XmlElement::TextFormat::dtd`
+defaults to empty (`juce_XmlElement.h:207`) and neither `copyXmlToBinary` nor
+`ValueTree::toXmlString` sets it.
+
+Narrowing any of this is a **semantic change to this registry** and therefore an Architecture
+Review Gate item; the evidence, the options and the open judgement are
+[ADR-0056](design-decisions/ADR-0056-the-session-and-a-b-parser-boundary.md), **Proposed**. The
+reproducer is `AnamorphStateTests --risk014-probe`.
+
 ## Notes
 
 - Exact "Introduced" versions are **Unverified** where marked: no git tags exist. The 0.8.4
