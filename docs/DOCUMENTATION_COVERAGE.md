@@ -13038,9 +13038,13 @@ old oracle. The destructive shapes stay destructive; nothing moved into the suit
 than by line, because line anchors churn whenever a file grows: **five added, none removed, and not
 one pre-existing value changed** — which is itself the proof that the older large-stack findings in
 `tests/state_tests.cpp` are historical and untouched. Against `g++ -fstack-usage` on ninja's own
-compile line: `testHostStateIsBoundedBeforeTheParser` 1,142,460 claimed vs **284,192** real (4.02×),
-its two named lambdas 142,776 vs **141,968** each, `reportShape` 142,816 vs **141,936**,
-`runRisk014Probe` 143,220 vs **142,176**. The responsible object is the by-value
+compile line, re-measured on the head that carries this round's fixes:
+`testHostStateIsBoundedBeforeTheParser` 1,142,408 claimed vs **284,192** real (4.02×), its two named
+lambdas 142,776 vs **141,968** each, `reportShape` 142,776 vs **141,936**, `runRisk014Probe` 143,232
+vs **142,176**. Three claims moved by tens of bytes between the head they were raised against and this
+one, as the test edits changed the scalars around the processors — `reportShape` by exactly the 40
+bytes its deleted `canary` parameter occupied. **None is resolved by that**, and the round does not
+claim otherwise: the count is still 174 and all five are still there. The responsible object is the by-value
 `AnamorphAudioProcessor`, `sizeof` **141,888** — 99.9 % of each ordinary frame — and the outlier is
 arithmetic, not mystery: the test declares **eight** processor automatics outside its lambdas,
 8 × 141,888 = 1,135,104, which is the claim less 7,356 of scalars. Not fixed because **125 of 1,575**

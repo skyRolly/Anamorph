@@ -1419,11 +1419,18 @@ The five, against GCC on ninja's own compile line:
 
 | Function | `/analyze` claim | `-fstack-usage` | Ratio |
 |---|---|---|---|
-| `testHostStateIsBoundedBeforeTheParser` (State test 116) | 1,142,460 | **284,192** | 4.02× |
+| `testHostStateIsBoundedBeforeTheParser` (State test 116) | 1,142,408 | **284,192** | 4.02× |
 | …its `restores` lambda | 142,776 | **141,968** | 1.006× |
 | …its `slotA` lambda | 142,776 | **141,968** | 1.006× |
-| `reportShape` (`--risk014-probe`) | 142,816 | **141,936** | 1.006× |
-| `runRisk014Probe` (`--risk014-probe`) | 143,220 | **142,176** | 1.007× |
+| `reportShape` (`--risk014-probe`) | 142,776 | **141,936** | 1.006× |
+| `runRisk014Probe` (`--risk014-probe`) | 143,232 | **142,176** | 1.007× |
+
+**The claims are re-measured on the head that carries the round's fixes**, not on the head the
+findings were raised against — three of the five moved by tens of bytes as the test edits changed the
+scalars around the processors (the raised values were 1,142,460 · 142,776 ×2 · 142,816 · 143,220, at
+`state_tests.cpp:13862 / 13884 / 13964 / 34980 / 35010`). **None of them is resolved**, and the change
+in a claim's number or line is not evidence that one was: the count is still 174, the five are still
+there, and `reportShape` shrank by exactly the 40 bytes its deleted `canary` parameter occupied.
 
 **The responsible object is the same one every row of this section names.** `sizeof
 (AnamorphAudioProcessor)` is **141,888 bytes**, so it is 99.9 % of each of the four ordinary frames;
