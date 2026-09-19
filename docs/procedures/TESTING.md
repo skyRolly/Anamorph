@@ -1703,6 +1703,320 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   run and that is how the round's own hypothesis was disproved** — the guard it removed changed no
   observable behaviour, so the guard was removed too, and leg G above is what stayed.
 
+* **Round 43 — a preset file is ONE well-formed document, and every loader says so when it is not.**
+
+  **State test 114** (ADR-0055). The acceptance test asked only whether the root was `<ANAMORPH>`,
+  so everything else `juce::parseXML` tolerated came in with it. Six legs, each naming the
+  measurement it came from on `0e32e65`:
+
+  | Leg | What it drives | What it proves |
+  |---|---|---|
+  | A | two and three complete presets concatenated, in both orders | the reported case: the file loaded and applied the FIRST preset, because `parseDocumentElement` reads one element and never looks at the rest |
+  | B | a valid preset followed by prose, by `<JUNK/>`, by raw binary — and by whitespace and a comment | the same mechanism with less ceremony, and the one trailing shape that is still legal, so the rule is a boundary rather than a blanket |
+  | C | eleven malformed documents inside a correct root | each was ACCEPTED by being silently ignored, which is what made them dangerous: the document said two things and the loader picked one |
+  | D | 5 000 levels of nesting (twice — once plainly, once on a **512 KB** thread stack), one level past the depth cap, a recursive-entity `DOCTYPE` with an elapsed-time bound, a `SYSTEM` `DOCTYPE` with a real sibling file to read, and a file one byte past 256 KB | the three shapes that detonate INSIDE the parser, before the plug-in holds anything |
+  | E | eleven preserved tolerances, including `raw`, `<ANAMORPH/>`, an unknown `id` and a malformed `value` | the risk of a round like this is refusing files that are FINE |
+  | F | an absolute pick of a corrupt row, Next and Prev over it, and a row whose file has vanished | the list half: report and stay; step over; rescan a vanished row away; never touch the user's file |
+
+  **Two legs are built so they cannot pass by accident.** The `DOCTYPE` leg asserts an ELAPSED
+  TIME, because without the guard it does not fail — it never returns (a 220-byte file was still
+  running after 60 s). The deep-nesting leg is run twice: once for the refusal, and once on a
+  thread whose stack is **512 KB**, below the 1 MB size at which the crash was measured between
+  2 500 and 3 000 levels. On that thread an unguarded parse of 5 000 levels has nowhere to go, which
+  is exactly what the re-run of M206 below demonstrates.
+
+  **State test 18 is rewritten and State test 35 is re-driven**, because this round changed what
+  each was asserting. 18's value-less `<PARAM id="width"/>` is now a corrupt file rather than a
+  tolerated one, so leg A asserts the refusal and that it moved nothing, leg B moves the
+  "absent means default" claim onto the shape that is still legal (a preset that simply omits
+  `width`), and leg C asserts the SESSION path still resolves the same node to the default — this
+  round narrowed the preset boundary and nothing else. 35's refusal now travels through the
+  ABSOLUTE door (`load(index)`, which is what the preset menu calls and what still refuses), since
+  the editor's Next button no longer stops at an unreadable row; a new leg asserts that Next lands
+  on a row that really loads and therefore ducks, without naming the landing row, because the folder
+  this suite shares decides what follows.
+
+  **Mutation coverage (M204-M217). Twelve killed, one equivalent with the proof in source, one
+  survivor that is a bounded coverage gap.**
+
+  Killed: **M204** remove the size cap, **M205** step over a `DOCTYPE` instead of refusing it,
+  **M206** raise the depth cap to a million, **M207** allow a second top-level element, **M208**
+  allow non-whitespace outside every element, **M210** allow a non-`PARAM` child, **M211** drop the
+  `PARAM`-is-a-leaf rule, **M212** stop checking the attribute set, **M213** allow a duplicated
+  `id`, **M214** make `step` stop at an unreadable row again, **M215** make a refused list load
+  report success, **M216** stop rescanning a vanished row away.
+
+  **M206 and M210 each survived the first pass, and both were coverage gaps rather than
+  equivalences — they are recorded because the fix was to the TEST.** M206 survived because
+  `<N>` is not a `PARAM`: with the cap raised, the deep file still failed the shape rule on a
+  runner whose 8 MB stack survives 5 000 levels, so the leg proved the pair rather than the cap.
+  The 512 KB-stack leg was added for it, and M206 now **kills the suite by segmentation fault** —
+  the honest signal for a guard whose entire purpose is that the parser never runs. M210 survived
+  because `<MALWARE payload="x"/>` also fails the attribute rule; `<NOTAPARAM id="width"
+  value="0.5"/>` was added, which is a leaf with exactly `id` and `value` and a unique non-empty
+  `id`, so the tag rule is the only thing left that can refuse it.
+
+  **M209 IS EQUIVALENT, with the proof in JUCE's source.** It removes the text-element check.
+  `XmlElement::createTextElement` builds its element with an EMPTY tag name
+  (`juce_XmlElement.cpp:966-971`, and `isTextElement()` at `:914-917` is exactly
+  `tagName.isEmpty()`) and gives it one attribute, `getJuceXmlTextContentAttributeName()`. So every
+  text element is refused twice over without that line: `hasTagName ("PARAM")` is false, and its
+  one attribute is named neither `id`, `value` nor `raw`. The check stays because it names the
+  shape at the point the rule is about, and because it is the line that still reads correctly if the
+  attribute set ever widens.
+
+  **M217 SURVIVES, and it is a coverage gap this harness cannot close.** It deletes the editor's
+  failure arm (`presetWarnTime = 1.5`). That arm is reached from the preset MENU and from
+  `Load Preset…`, and a headless harness can click neither — a `PopupMenu` result and an OS file
+  chooser are both outside it. The ‹ › buttons ARE clickable and are driven by State test 35, but
+  they can no longer produce a failure to show: `step` fails only when nothing in the whole list
+  loads, and the ten factory rows always do. What is covered is the decision the arm consumes:
+  M215 proves the refused load reports `false` and that the completion is called exactly once. The
+  uncovered statement is one assignment. Recorded rather than papered over, in the same way M15 and
+  M189 are.
+
+* **Round 48 — the navigation walk repeats only when the user turns around, and the measurement
+  says to leave it alone. NO CODE CHANGE.**
+
+  Review finding: *"preset navigation can repeatedly read the same unreadable user preset files
+  across separate navigation operations"*, cited at `step`'s candidate call. Round 47 measured the
+  walk WITHIN one operation (leg L: four reads for four rows considered). This round measures what
+  happens ACROSS operations, which is what the finding is actually about, on `448e0b6` through the
+  real `PresetManager` on a real processor, counting every read through the `beforePresetRead` seam.
+
+  **The walk always ends on a factory row, so repeated presses in one direction do NOT repeat it.**
+  Ten factory rows sit at the front of the list, `examineRow` answers a factory row from the table
+  with no file touched at all, and `step` therefore fails only when nothing in the whole list loads
+  — the same fact the M217 note above records. Measured with a folder of twenty unreadable user
+  presets, five presses of Next cost **20, 0, 0, 0 and 0 reads**: the first press walks the corrupt
+  block and lands on `Default`, and every press after it steps between factory rows for nothing.
+  The reported scenario — press navigation repeatedly, pay for the corrupt rows every time — does
+  not occur in one direction.
+
+  **It occurs when the direction alternates across the factory/user boundary, and that is the whole
+  of the finding.** Sitting on the last factory row with every user row corrupt, Next walks the
+  twenty user rows and lands on `Default`; Prev from `Default` walks the same twenty backwards and
+  lands where it started. Six alternating presses: **20 reads each, 120 in total, every file read
+  exactly once per press** (`0.18`–`0.26` ms per press for those rows). It repeats for as long as
+  the user keeps turning around.
+
+  **Within one operation the work is already the floor, and there is nothing left to reuse.** Each
+  press reads every row it considers exactly once — 4 reads for K=3, 21 for K=20, 101 for K=100,
+  maximum one read of any single file — because the walk visits each index at most once and the
+  chosen row's parsed tree is carried into the load (round 45). `PresetManager` holds no
+  parse-derived per-row state to reuse: an `Entry` is a name, a file, a factory id and a flag.
+  `refresh()` and building the menu perform **zero** file reads; they are a directory listing and an
+  in-memory scan.
+
+  **The cross-operation re-read is intentional, and ADR-0055 says so in words.** *"Nothing deletes
+  or hides a user's file. Ever. It is their data, it is plain text, it is hand-recoverable, and the
+  corruption may be transient."* A row remembered as unreadable would contradict that rule directly.
+  Measured: with a corrupt row between two valid ones, Next skips it; repair it on disk and **the
+  very next press lands on it** (one read); break it again and the press after that skips it again
+  (two reads). Any cross-operation reuse is a cache plus an invalidation policy — both excluded by
+  this round's constraints, and both would have to give up that property to be worth anything.
+
+  **So no code was changed.** The per-press cost is bounded by the number of user rows, each row is
+  read once per press, and the only reuse point the architecture offers was taken three rounds ago.
+
+  **What the per-row skip actually costs, by corrupt shape** (fifty rows of one shape, the whole
+  `step` walk timed, best of five): an empty file **8.0 µs**, a non-XML file **8.3 µs**, a truncated
+  preset **11.8 µs**, two concatenated documents **18.7 µs**. Those are the shapes a real folder
+  grows — an interrupted save, a hand-edit, a doubled write — and even five hundred of them is
+  single-digit milliseconds. The price is carried by the files that reach `parseXML` before being
+  refused: a 12 KB foreign-rooted document is **331 µs** a row and a 250 KB one is **7.9 ms** a row,
+  because the root-tag rule is a property of the parsed document and is therefore answered after the
+  parse. That is a property of the per-row refusal, not of repetition, and it is listed as a
+  residual rather than changed: moving the root test before the parse would move an ADR-0055
+  boundary, which this round has no mandate to do.
+
+  **Headless limits.** The probe drives the real `step` on a real processor and counts real reads,
+  so the read counts are exact. What it cannot do is press the ‹ › buttons through a live message
+  loop: the latency figures are measured at the `step` call, not from the click, and they exclude
+  whatever the host's own event dispatch adds. No test was added or changed, because no code was.
+
+* **Round 47 — the bytes must be the encoding they claim, and the navigation walk is measured
+  (ADR-0055 amendment).**
+
+  **State test 114 leg K -- invalid encodings.** The boundary validated the DECODED TEXT, and the
+  decode is not lossless: `String::createStringFromData` asks whether the bytes are valid UTF-8 and,
+  when they are not, reads them as **Windows-1252** instead (`juce_String.cpp:2030-2034`). Measured
+  on `7076359` through the real `loadFile`, `raw="\xC3\x28"` decoded from 63 bytes to 64 and
+  LOADED, and so did a truncated sequence, bare continuation bytes, an overlong encoding, a
+  surrogate encoded in UTF-8 and a UTF-16 file with an unpaired surrogate.
+
+  Eleven refusals: invalid UTF-8 in an attribute (the reported case), in element content, and
+  **inside a COMMENT** -- the discriminating one, because a comment is stripped by the parser and
+  permitted by the scan, so nothing but the encoding rule can refuse that file; a truncated
+  sequence; bare continuation bytes; an overlong encoding; a surrogate encoded in UTF-8; a code
+  point past U+10FFFF; and three UTF-16 shapes -- a lone high surrogate, a lone low surrogate, and a
+  high surrogate at the very end of the file.
+
+  **Seven acceptances, and they are the point of the leg.** The real preset this plug-in writes;
+  VALID multi-byte UTF-8 (`café`) in an attribute; a UTF-8 byte-order mark; a correctly PAIRED
+  UTF-16 surrogate (U+1F3B5) in both endiannesses; and a plain UTF-16 LE preset. Without those the
+  rule could degenerate into "refuse anything above ASCII" or "refuse every surrogate" and the suite
+  would not notice -- which is exactly what M238 tries.
+
+  **State test 114 leg L -- the navigation walk, counted.** The review also reported repeated I/O in
+  `step`. The double read of the CHOSEN row was already removed in round 45, when `examineRow` began
+  carrying its parsed tree into `loadAdopted`; leg I asserts that for one row. Leg L measures the
+  whole walk instead of asserting a property of one: with three unreadable rows between the current
+  preset and the next readable one, it counts reads per file through the `beforePresetRead` seam and
+  asserts **1, 1, 1 for the skipped rows, 1 for the row that loads, 0 for the row it started from,
+  four in total for four rows considered**. That is the minimum a skip decision can cost without
+  caching anything, and the counting is what makes it a measurement rather than a claim.
+
+  **Mutation coverage (M236-M240). All five killed.** **M236** the UTF-8 check removed -- 7.
+  **M237** the UTF-16 surrogate validation removed -- 3. **M238** every surrogate refused, paired or
+  not -- 2, both of them acceptance legs, which is the proof the rule is not over-broad. **M239**
+  the UTF-16 zero code unit allowed again (round 44's M220 re-run under the restructured branch) --
+  1. **M240** `step` no longer carries the candidate's tree (round 45's M229 re-run) -- 7, which now
+  includes leg L's read counts: the mutant makes the chosen row's count 2, and the leg says so.
+
+* **Round 46 — the XML declaration is not an ordinary processing instruction, and an MSVC-only
+  compile error (ADR-0055 amendment).**
+
+  **State test 114 leg J.** Review finding, reproduced first. The byte scan stepped over every
+  `<?…?>` wherever it sat, and the second-top-level-element refusal guards only an opening TAG -- so
+  `<ANAMORPH/>` followed by `<?xml version="1.0"?>` passed the scan, `juce::parseXML` returned the
+  first element and ignored the tail, and a malformed document loaded as a preset. XML allows the
+  declaration first, once, with nothing before it; that is now the rule.
+
+  The leg is built around the writer rather than around a literal: it first asserts that
+  `good.startsWith ("<?xml")` -- the real preset this harness saves really does carry a declaration,
+  at offset zero -- so the accepted shape under test is the shape the plug-in actually produces, and
+  the refused shapes are derived from it. Refused: a trailing declaration; one after a trailing
+  instruction that is itself legal; a doubled one outside the root and a doubled one inside the
+  prologue; one after a comment; one after mere whitespace; and one spelled `<?XML`, which pins the
+  case rule. Accepted, and each is a tolerance a careless rule would have taken: the writer's own
+  leading declaration, the full prologue (declaration, comment, instruction, root), a trailing
+  instruction, a trailing comment, and `<?xmlstylesheet …?>` -- a target that merely BEGINS with
+  `xml` and is a different instruction.
+
+  **Mutation coverage (M232-M235). All four killed.** **M232** the position check removed, so every
+  `<?…?>` is an ordinary instruction again -- 8. **M233** the target matched case-sensitively -- 1,
+  the `<?XML` leg, which is the only check that can see it. **M234** the declaration allowed
+  anywhere before the root (refused only after it) -- 3, the prologue legs. **M235** any
+  `<?xml`-prefixed target counted as a declaration -- 1, the `<?xmlstylesheet` leg, which is the
+  control that the rule is not over-broad.
+
+  **The MSVC-only compile error, and why no local gate could have caught it.** Round 45's bounded
+  read was written `in.readIntoMemoryBlock (raw, (ssize_t) (maxPresetBytes + 1))`. JUCE declares
+  `ssize_t` ITSELF only under `#if JUCE_WINDOWS` (`juce_MathsFunctions.h:97-99`) and takes the
+  system one everywhere else, so an unqualified `ssize_t` inside `namespace anamorph` resolves to
+  the POSIX global on Linux and macOS and is **undeclared** on MSVC -- `C2065`, in the `windows`
+  build step and in Code Analysis's identical build step, which is why both lanes failed on the same
+  line and every Clang and GCC lane was green. The bound is now spelled `(int)`: 256 KB + 1 fits an
+  `int` on every supported platform and converts to whichever `ssize_t` is in play. **No local gate
+  covers this class** -- the repository has no MSVC host, `check-portability.py` guards the JUCE
+  SIMD overload hazard and nothing else, and the warning gates read build logs from Clang and GCC.
+  CI is the gate for MSVC-only compilation, and it fired.
+
+* **Round 45 — two rules that were stated but not enforced (ADR-0055 amendment).**
+
+  Two review findings against `2953f7e`. Neither changes what a preset file may contain; both make a
+  rule hold when the filesystem moves underneath it. Both are driven through a NEW test seam,
+  `PresetManager::beforePresetRead`, which fires between `parseSoundFile`'s size check and its
+  read -- the one point at which "another process replaced this file" is reproducible at all, and
+  the reason neither leg below is a race. It is the same reasoning, and the same shape, as
+  `beforeStateCapture`; empty in every shipping path.
+
+  **State test 114 leg H -- the cap was applied to what was stat'ed, not to what was read.**
+  `getSize()` describes the file at the instant it is asked; the read happened afterwards, and
+  `File::loadFileAsData` re-stats and takes the WHOLE file into memory (`juce_File.cpp:559-566`)
+  with the cap never re-applied. The read is now bounded at one byte past the cap and the cap is
+  re-measured on what arrived. **The leg's replacement file is built so that neither half of the
+  guard can hide behind the other**: a complete valid document of ~200 KB, comfortably under the
+  cap, followed by ~80 KB of whitespace. Read whole it is a valid preset; read bounded at the cap
+  it is still a valid preset followed by whitespace, which this boundary accepts. The only thing
+  that can refuse it is the size of what arrived -- which is exactly the rule under test. A control
+  leg loads the same file unswapped, so the harness cannot pass by never having worked.
+
+  **State test 114 leg I -- the chosen row was read twice.** `step` parsed a candidate row to decide
+  whether to skip it and `loadAdopted` parsed the same file again to load it; a file that changed in
+  between turned a working skip into the wall it exists to remove. The candidate's tree is now
+  carried into the load. The leg corrupts the row on its **second** read and asserts `readsOfB == 1`
+  -- so it measures the absence of the second read directly, not merely that the step happened to
+  survive. It then asserts the sound that landed is the candidate's, that a row corrupted for real
+  is still stepped over onto C, and that the ABSOLUTE door is unchanged: `load(index)` on the
+  corrupt row still reads the file, still reports `failed`, still stays, and still never deletes it.
+
+  **Mutation coverage (M226-M231). Five killed, one recorded survivor.**
+
+  Killed: **M226** the post-read cap check removed (bound kept) -- 2; **M227** the whole pre-fix
+  read restored, `loadFileAsData` with no re-measurement -- 2; **M229** `step` no longer carries the
+  candidate's tree -- 5; **M230** `loadAdopted` ignores the tree it was handed -- 5; **M231** `step`
+  no longer skips an unloadable row -- 8. M231 is round 43's M214 under its new spelling: the anchor
+  moved from `rowIsLoadable` to `examineRow`, and the mutant it names is the same one.
+
+  **M228 SURVIVES, and it is equivalent for every finite file.** It removes the READ BOUND and
+  leaves the post-read cap check in place. Any file that is over the cap is then read whole and
+  refused by the check, so no suite assertion can separate the two: the bound's value is that the
+  oversized content never enters memory at all, and peak allocation is not something this harness
+  can observe portably. Recorded rather than papered over, in the same way M209 is -- and the bound
+  stays, because "a much larger file can enter memory before the cap is applied" is the half of the
+  finding a post-read check does not answer.
+
+* **Round 44 — the file is its bytes, and the warning has a life (ADR-0055 amendment).**
+
+  Three review findings against `f03aa06`, the head that first implemented ADR-0055. All three were
+  reproduced through the real code before anything was changed.
+
+  **State test 114 gains leg G — an embedded NUL.** `parseSoundFile` read the file with
+  `loadFileAsString` and scanned the result, and a `juce::String` ENDS at the first NUL: every
+  reader below -- the ADR's own pre-scan and `juce::XmlDocument` alike -- walks it with a
+  CharPointer that stops there. One 0x00 therefore hid the rest of the file from the boundary, and
+  the shapes legs A and B refuse came straight back. Measured on `f03aa06` through the real
+  `loadFile`: a **263-byte** file holding a preset, a NUL and a COMPLETE second preset decoded to
+  **131 bytes** and LOADED, applying the first -- the same file without the NUL was refused. Leg G
+  refuses six shapes (NUL then a document, NUL then text, NUL then a tail that is not valid UTF-8,
+  a NUL truncating the document, a file that is one NUL, a NUL before the document) and, just as
+  importantly, keeps four ACCEPTED: plain UTF-8, UTF-8 with a byte-order mark, UTF-16 LE and
+  UTF-16 BE. Those four are what make the guard encoding-aware rather than a blanket zero-byte ban
+  -- every second byte of a UTF-16 preset is zero -- and they are the legs that fail if it ever
+  becomes one. Two UTF-16 shapes that hide bytes (a zero code unit, a trailing half code unit) are
+  refused on the same principle.
+
+  **State test 115 -- the `PRESET UNREADABLE` state's lifecycle, and the round-43 coverage gap.**
+  Two defects. `presetWarnTime` counted down BELOW `stepMicroAnims`' idle-gate early returns, and a
+  refused load satisfies every condition that gate seals on (it changes no generation and lights no
+  widget), so with the cursor outside the editor the warning stopped counting on the next frame and
+  stayed in the top bar indefinitely. And `presetLoadFinished(true)` did not clear it, so a preset
+  that loaded within 1.5 s of a refusal was shown as UNREADABLE, its own name suppressed, for the
+  remainder. Four legs, all read from the REAL top-bar button found by its component ID
+  (`presetname`): **A** a refused load shows the state and the loaded preset keeps its name; **B**
+  with no mouse movement, no click and no other animation it is still shown at 1.00 s and gone by
+  1.75 s -- the leg that pins the duration in both directions, and the one that needs the gate to
+  be sealed, which is why it drives 20 settling frames first; **C** a success clears it with no
+  frames driven at all, so the clear is immediate rather than eventual; **D** a run of successful
+  loads never raises it.
+
+  **What the harness reaches, and what it cannot.** Round 43 recorded M217 as an uncovered
+  assignment because the failure arm is reached from a `juce::PopupMenu` row and an OS file chooser,
+  and the ‹ › buttons cannot produce a failure (`step` fails only when the WHOLE list refuses, and
+  the factory rows always load). That is still true of those doors. What changed is the seam:
+  `presetLoadFinished`, `stepMicroAnims` and `refreshPresetDisplay` are now public, for the reason
+  `showSavePreset` and `abortAbandonedDragGestures` already are -- they are the same functions
+  production calls, and their production drivers (a menu window, a `VBlankAttachment`, a privately
+  inherited `juce::Timer`) do not exist in a headless suite. **M217 is now killed.** Still out of
+  reach and deliberately not faked: the menu row and the chooser themselves, the warn COLOUR (a
+  `LookAndFeel` paint decision -- the test asserts the `warn` property the paint reads), and the
+  0.45 s sweep, which has no observable other than the private timer.
+
+  **Mutation coverage (M217-M225). All nine killed.**
+
+  **M217** delete the editor's failure arm (the round-43 survivor) -- 5 failing checks. **M218**
+  remove the byte scan entirely -- 6. **M219** remove its UTF-8 NUL loop, keeping the UTF-16 half --
+  4. **M220** allow a zero UTF-16 code unit -- 1. **M221** allow a trailing half code unit -- 1.
+  **M222** make the guard encoding-blind, so any zero byte refuses -- 2, all of them the UTF-16
+  acceptance legs, which is the proof the rule is not over-broad. **M223** decode with
+  `MemoryBlock::toString` (`String::fromUTF8`) instead of `String::createStringFromData` -- 3, which
+  is the proof that the decode really is the one `loadFileAsString` used. **M224** put the warning
+  decrement back below the idle gate -- the exact pre-fix code, two edits -- 3 failing checks, all
+  in leg B, which is what makes leg B a regression rather than a description. **M225** stop clearing
+  the warning on success -- 2, in leg C.
+
 * **Round 34 — a nested notification keeps its own depth's request.**
 
   **State test 111** (`src/PluginEditor.h:R256-262`). `AttachmentWitness` saved the previous
@@ -3479,6 +3793,25 @@ artefact this section already documents; test 87's claim is the one that happens
 which is the control that says the tool is not simply wrong everywhere. **None of the four raises the
 suite's maximum frame** — that is still the pre-existing Settings test at 68 % — and both binaries
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
+
+**Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:13701`
+today, this round's two new legs having moved it -- which is
+`testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not
+touch**. The same alert, byte-identical at **433548**, is in the predecessor run's SARIF on
+`0e32e65` at `state_tests.cpp:12870`, which is where that function sat before State test 114 was
+inserted above it; only the line moved, which re-keys a Code Scanning alert and makes it read as
+new. It is the sum-across-siblings artefact again: three `AnamorphAudioProcessor` automatics
+(3 x 141,320 = 423,960) in scopes where only two are ever live at once, plus about 9.6 KB of other
+locals. Measured with `g++ -fstack-usage` on ninja's own compile line, the real frame is
+**289,360** bytes -- **27.6 %** of the Windows 1 MB reserve, and well under the suite maximum,
+which is still the pre-existing Settings test at **709,600** (67.7 %). Both binaries run green
+under `ulimit -s 1024`. **No change was made**, on the rule this section already states: the alert
+text is not a frame size, and the control that holds this line is the guard step. Round 44's own
+two functions were measured on the same run and raise nothing:
+`testAPresetFileIsOneWellFormedDocument` is **143,360** and
+`testThePresetUnreadableStateExpiresByItself` is **142,096** -- one processor each, 13.7 % and
+13.5 %.
 
 **Re-measured for round 23's two new tests, on the same compile line.** State test 96
 (`testAnamorphsOwnBareBracketsDeclareTheirEndpoint`) is **142,112** bytes — three

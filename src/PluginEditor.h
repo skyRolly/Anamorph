@@ -114,6 +114,30 @@ public:
     // lives inside it (see `saveAttempt` below).
     void showSavePreset (bool);
 
+    // ONE ANSWER FOR EVERY PRESET LOAD, whichever door it came through -- the menu row, the
+    // prev/next buttons and `Load Preset...` all hand their completion here (0.9.9). Success
+    // sweeps the knobs to the sound that arrived AND clears any warning still on screen; failure
+    // raises the warning and moves nothing. Called from a completion, so it may run long after
+    // the click: every call site guards it with a SafePointer.
+    //
+    // PUBLIC for the same reason `showSavePreset` above is. Two of its three doors are a
+    // `juce::PopupMenu` row and an OS file chooser, which a headless suite cannot drive, and the
+    // third -- the prev/next buttons -- can no longer produce a failure to show, because `step`
+    // fails only when the WHOLE list refuses and the factory rows always load. Round 43 had to
+    // record that as an uncovered assignment (mutant M217); this is the seam that covers it.
+    // Nothing else changes: it is the same function the completions call.
+    void presetLoadFinished (bool ok);
+
+    // The two CLOCKS the preset slot runs on, public for the same reason and as a pair, because
+    // the state they carry is only visible when both can be turned. `stepMicroAnims` is driven in
+    // production by a `juce::VBlankAttachment` and `refreshPresetDisplay` by the 24 Hz
+    // `timerCallback` -- a display a headless suite does not have, and a `juce::Timer` base this
+    // class inherits privately. Both are the same functions production calls, unchanged, with no
+    // test-only behaviour inside them; `refreshPresetDisplay` is idempotent and self-gating, so
+    // an extra call can only re-render what already changed.
+    void stepMicroAnims (double dt);     // eased hover/press/toggle micro-animations (F3)
+    void refreshPresetDisplay();         // preset name + dirty mark (F2)
+
 private:
     using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;
@@ -553,12 +577,11 @@ private:
     void timerCallback() override;
     void layoutScopeArea();              // scope + meter block; re-run per frame during the reveal (#6)
     void stepMeterReveal (double dt);    // vsync-driven meter reveal animation (#6/#3)
-    void stepMicroAnims (double dt);     // eased hover/press/toggle micro-animations (F3)
     void registerAnimated (juce::Component&);
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override; // Persistence scroll reveal (#1)
     void applyUiScale();                 // whole-window XS..XL transform scale (F4)
-    void refreshPresetDisplay();         // preset name + dirty mark (F2)
     void showPresetMenu();
+    void stepPreset (int delta);
     void focusSaveNameField (int attemptsLeft); // deferred, verified grab (Space-vs-host fix)
     // ADR-0036 round 27 (R640): the Save dialog's PENDING state. A save that could not run
     // synchronously -- one issued from inside a multi-store user transaction -- is queued to a
@@ -1087,7 +1110,7 @@ private:
         // `Rotary` -- the angle-steered style -- is NOT one of them: its mapping is not affine in
         // the cursor, so a constant pixel shift is not a constant value shift and this returns a
         // zero offset for it. That is recorded rather than guarded because it is unreachable in this
-        // editor: `setSliderStyle` is called three times in `src/` (`src/PluginEditor.cpp:541`,
+        // editor: `setSliderStyle` is called three times in `src/` (`src/PluginEditor.cpp:545`,
         // `:687`, `:812`) and none of them names `Rotary`. The assertion is what would notice if a
         // fourth call ever did.
         [[nodiscard]] juce::Point<float> wheelDragShift() const
@@ -1405,6 +1428,17 @@ private:
     juce::String presetShownName;      // pm.currentName() the shaping last ran for
     bool  presetShownDirty = false;
     int   presetShownWidth = -1;       // presetName.getWidth() it last ran for
+    // ADR-0055 (0.9.9). THE NON-MODAL ANSWER TO A LOAD THAT DID NOT HAPPEN. A refused preset is
+    // not an error dialog: a plug-in editor raising a modal window is a known host hazard, this
+    // product has never used one, and the Save dialog's own failure surface is a warn-coloured
+    // in-place state ("SAVE FAILED"). So the top-bar slot says `PRESET UNREADABLE` for a moment
+    // and the preset that IS loaded keeps its name, its tick and its sound. Seconds, decremented
+    // on the same `dt` as `knobSweepTime` so it is frame-rate independent; `presetShownWarn` joins
+    // the three inputs the shaping is a pure function of, so the transition each way re-renders
+    // and a steady state still costs one comparison per tick. It is decremented ABOVE
+    // `stepMicroAnims`' idle gate, so no gate can stall it -- the reason is at that decrement.
+    double presetWarnTime = 0.0;
+    bool   presetShownWarn = false;
     bool  comboHoverLit = false;       // some box's "hov" property is currently set
     float shownMatchGainDb = -1.0e9f;  // raw getMatchGainDb() last formatted
     float meterAnim = 0.0f;     // 0..1 eased meter reveal (#19)

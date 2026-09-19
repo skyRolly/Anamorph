@@ -723,7 +723,10 @@ void AnamorphLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
     if (b.getComponentID() == "presetname") // preset display (F2)
     {
         g.setFont (getTextButtonFont (b, b.getHeight()));
-        g.setColour (colours::text);
+        // ADR-0055 (0.9.9): the editor sets `warn` for the moment the slot is showing
+        // `PRESET UNREADABLE` instead of a preset name -- the same component-property idiom the
+        // hover animations use, so the button needs no new type and no new state of its own.
+        g.setColour (b.getProperties().getWithDefault ("warn", false) ? colours::warn : colours::text);
         g.drawText (b.getButtonText(), b.getLocalBounds().reduced (6, 0),
                     juce::Justification::centred, true);
         return;

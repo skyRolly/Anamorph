@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **round 43** (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -952,10 +952,10 @@ such.** What is established is that the rewrite happens at a position that is no
 What is not established is the exact macOS event sequence that makes that position land one row up;
 that would need a trace on macOS, which was not available here. What supports it is arithmetic that
 accounts for all four observed controls. The box is placed `h + 8` above the cursor
-(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1208-1217`), so its top edge is a
+(`AnamorphLookAndFeel::getTooltipBounds`, `src/gui/LookAndFeel.cpp:1211-1220`), so its top edge is a
 **tip-dependent** offset above the pointer, and the Settings rows are at editor-local
 `oversampleBox` 274–297, `uiScaleBox` 331–354, `scopePersistK` 387–411, `tooltipsToggle` 423–449,
-`animToggle` 455–481 (`src/PluginEditor.cpp:2425-2450`). Taking each control's centre and
+`animToggle` 455–481 (`src/PluginEditor.cpp:2503-2528`). Taking each control's centre and
 subtracting `h + 8` for a two-line tip lands inside **Oversampling** from UI Scale, inside **UI
 Scale** from Vectorscope Persist, on or within a pixel or two of **Tooltips** from UI Animations,
 and — from Oversampling — on `settingsTitle` (221–241), a plain `juce::Label` that never had
@@ -1426,7 +1426,7 @@ document already uses for its five other source anchors.
 same untracked class" was a count of what that pass happened to look at, not a search — three more
 sat in `KNOWN_ISSUES.md` alone, and one of them is the worse kind. **KI-009's `focusSaveNameField`
 citation was mis-aimed, then mechanically carried.** At the merge base it read
-`src/PluginEditor.cpp:1732-1740`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
+`src/PluginEditor.cpp:1736-1744`, which was the `rIn`/`rOut`/`rAct`/`rOn`/`rPos` easing block in
 `stepMicroAnims` — not that function at all — and `--fix` moved it to `:1567-1575`, the same easing
 block after this change's insertions. Faithful, and still wrong. `focusSaveNameField` is at
 **`:1984-1992`**, and the two untracked references beside it were mis-aimed the same way: the
@@ -1465,7 +1465,7 @@ something these rounds created, and closing it is its own change.
 
 **A third review pass found the same carried-mistake class in `PRIVACY.md`, and this one needed a
 declaration.** The row saying the Presets folder is created when the **Load Preset** dialog opens
-cited `src/PluginEditor.cpp:1689` at the merge base — the S11 generation pre-gate comment inside
+cited `src/PluginEditor.cpp:1693` at the merge base — the S11 generation pre-gate comment inside
 `stepMicroAnims`, about 383 lines short of the `:1838` that `dir.createDirectory()` sat on there.
 `--fix` carried it to `:1524`, still the same comment. Corrected to **`:1916`**, and written the way
 the checker's own header says new citations should be — with the symbol spelled beside the number
@@ -1475,7 +1475,7 @@ half that survives the next shift.
 **Unlike the `KNOWN_ISSUES.md` five, this one is caught by the gate, which is why it is declared.**
 `PRIVACY.md` still has exactly one `src/PluginEditor.cpp` citation, so the pair IS compared, the
 re-aim reads as drift, and `--fix` **reverted the correction on the first run** — measured, not
-predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2230"): "createDirectory"` is therefore added to
+predicted. `("PRIVACY.md", "src/PluginEditor.cpp:2308"): "createDirectory"` is therefore added to
 `DELIBERATE_REAIMS`. It is not an inert exemption: `verify_reaim_targets` resolves the anchor against
 the live file every run, and mutating the substring to a value the code does not contain makes the
 run fail with `::error::` and exit 2 — checked by doing it, then reverting. A declaration turns the
@@ -1483,10 +1483,10 @@ drift check off for its anchor, so the aim check is the thing that keeps it hone
 
 **Reported and deliberately NOT corrected — the About-link anchor in the three legal documents.**
 `EULA.md`, `PRIVACY.md` and `TRADEMARKS.md` cite where the product's one outbound hyperlink is
-declared, and `--fix` moved all three from `src/PluginEditor.h:602` to `:223` in this change set.
+declared, and `--fix` moved all three from `src/PluginEditor.h:625` to `:223` in this change set.
 That re-anchor is mechanically correct and **preserves a pre-existing mistake**: at the merge base
 `:213` already read `return juce::TooltipWindow::getTipFor (c);`, and `:223` reads the identical
-line today, while `aboutLink` actually lives at `src/PluginEditor.h:1343`. So the rot predates this
+line today, while `aboutLink` actually lives at `src/PluginEditor.h:1366`. So the rot predates this
 change and was faithfully carried, not created by it — precisely the failure mode
 `check-citations.py`'s own header describes ("it CANNOT tell you a citation was aimed at the wrong
 code to begin with… and it does so INVISIBLY, in a DRIFTED line that reads like a repair"). It is
@@ -1496,7 +1496,7 @@ nothing to do with hover; recording it here is what stops the paragraph above re
 three anchors were verified correct.
 
 **NOW CLOSED (2026-08-19), as its own standalone change.** The three documents cite
-**`src/PluginEditor.h:1343`**, where `aboutLink` is actually declared, instead of `:223` — which is
+**`src/PluginEditor.h:1366`**, where `aboutLink` is actually declared, instead of `:223` — which is
 `return juce::TooltipWindow::getTipFor (c);` inside `GatedTooltipWindow`, the line `--fix` had
 carried the mis-aim onto from the merge base's `:213`. Only the number changed in each document; no
 wording, formatting or meaning was touched, and the correction is one anchor per file.
@@ -1506,7 +1506,7 @@ the three documents holds **exactly one** `src/PluginEditor.h` citation in both 
 current tree, so the count guard does not fire, the pair IS compared, and the re-aim reads as drift.
 Measured: before the entries were written the run reported all three `DRIFTED … -> :223`, and `--fix`
 would have dragged every one of them back. `("EULA.md" | "PRIVACY.md" | "TRADEMARKS.md",
-"src/PluginEditor.h:1343"): "aboutLink"` now covers them, and the substring is what keeps that
+"src/PluginEditor.h:1366"): "aboutLink"` now covers them, and the substring is what keeps that
 off-switch honest: `verify_reaim_targets` resolves `:465` against the live header every run, and
 mutating one entry's substring to a value the line does not contain makes the run emit `::error::`
 and exit 2 — checked by doing it, then reverting. Re-running `--fix` afterwards leaves all three
@@ -1552,7 +1552,7 @@ two that do not are `titleButton` and `aboutLink`, and neither can produce the r
     `false`. So the control has no hover visual at all, registered or not; the argument the review
     traces never reaches a pixel.
   * **`aboutLink` has a live fallback but cannot be occluded by a menu.** It is the *only* child of
-    `aboutBackdrop` (`src/PluginEditor.cpp:655`), so it is on screen only while the About overlay
+    `aboutBackdrop` (`src/PluginEditor.cpp:659`), so it is on screen only while the About overlay
     is. The editor's only menu-openers are `presetName.onClick` (`:350`) and the combo drop-downs —
     all of them outside that overlay and covered by it while it is up, with `Backdrop::mouseDown`
     eating the click. No pop-up menu can be open while `aboutLink` is visible.
@@ -8573,13 +8573,13 @@ every identifier are immutable by policy.
 
 **Drift.** Two pre-existing errors in the ※ footnote this change had to extend, both reported
 before being touched, both aimed at UI Scale rather than at the renamed control. (1) The footnote's
-label anchor `src/PluginEditor.cpp:649` pointed at `aboutLink.setFont` in `origin/main` and at
+label anchor `src/PluginEditor.cpp:653` pointed at `aboutLink.setFont` in `origin/main` and at
 `aboutBackdrop.onDismiss` here — an anchor already aimed wrong when the citation gate adopted it,
 which is the blind spot `check-citations.py`'s own header describes: the base-text test cannot see
 an anchor that was wrong at the base. (2) `src/InternalState.h:123` cited
 `return stored; // already a real boolean`, inside `repairedValue`, while the sentence it supports
 says "the pre-0.8.4 legacy APVTS id `uiScale` its migration reads" — so the line it means is the
-migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:678`) and onto the
+migration's own write. Re-aimed onto `uiScaleLabel` (`src/PluginEditor.cpp:682`) and onto the
 legacy write (`src/InternalState.h:302`), which makes the UI Scale bullet the same shape as the
 new one beside it. No `DELIBERATE_REAIMS` declaration was needed: the gate accepts both against
 `origin/main` and against the round-18 head, because restructuring the footnote changed the
@@ -13002,6 +13002,391 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 68th pass — 2026-09-19, round 48 (navigation I/O, measured and left alone)
+
+One review finding, investigated and **closed with no code change**. **RISK-014 unchanged** — no
+session-blob or A/B-payload change; `src/PresetManager.*`, `src/PluginProcessor.*` and
+`src/PluginEditor.*` are all outside this round's diff, which is documentation only.
+
+**Finding — preset navigation performs repeated I/O: PARTLY CONFIRMED, and already minimal.** The
+reported shape is *"pressing navigation buttons repeatedly can cause repeated filesystem reads on
+the same corrupt rows"*. Measured on `448e0b6` through the real `PresetManager` on a real processor,
+counting every read at the `beforePresetRead` seam:
+
+- **Repeated presses in ONE direction do not repeat the walk.** `step` answers `failed` only when
+  nothing in the whole list loads, and the ten factory rows always do, so a walk that meets a block
+  of unreadable user presets ends on a factory row. Five presses of Next over twenty unreadable
+  rows cost **20, 0, 0, 0 and 0** reads.
+- **Alternating direction across the factory/user boundary DOES repeat it**, and that is the whole
+  of the finding: six alternating presses cost **20 reads each, 120 in total**, `0.18`–`0.26` ms a
+  press for those rows.
+- **Within one operation the work is already the floor.** Each press reads every row it considers
+  exactly once — 4 reads for 3 skipped rows, 21 for 20, 101 for 100, never two reads of one file —
+  because the walk visits each index at most once and the chosen row's tree is carried into the
+  load (round 45). `refresh()` and building the menu perform **zero** file reads.
+
+**Why the cross-operation re-read is intentional rather than accidental.** ADR-0055 already rules
+it: *"Nothing deletes or hides a user's file. Ever. It is their data, it is plain text, it is
+hand-recoverable, and the corruption may be transient."* A row remembered as unreadable contradicts
+that sentence. Measured: repair a corrupt file on disk and **the very next press lands on it**;
+break it again and the press after that skips it again. `PresetManager` holds no parse-derived
+per-row state to reuse — an `Entry` is a name, a file, a factory id and a flag — so any
+cross-operation reuse would be a new cache plus an invalidation policy, both excluded by this
+round's constraints and both paid for with that property.
+
+**So nothing was changed, and no test was added or changed** — the brief's own rule, tests only if
+code moves. Leg L already asserts the within-operation floor by count. The measurement is recorded
+in `docs/procedures/TESTING.md` so the next round does not re-open it from scratch.
+
+**Residual, listed rather than fixed.** The per-row *price* of a refusal, as opposed to its
+repetition, is carried by files that reach `parseXML` before being refused: a 12 KB foreign-rooted
+document costs **331 µs** a row and a 250 KB one **7.9 ms**, because the root-tag rule is a property
+of the parsed document and is answered after the parse. The shapes a real preset folder actually
+grows — an interrupted save, a hand-edit, a doubled write — cost **8–19 µs** a row. Moving the root
+test ahead of the parse would move an ADR-0055 boundary and is out of this round's scope.
+
+**Validation.** State **4 584 / 0**, DSP **396 / 0**, both green under `ulimit -s 1024` and both
+unchanged from round 47, as they must be when no code moved.
+
+**Documentation.** `docs/procedures/TESTING.md` (round-48 entry, with the measurements and the
+headless limits). **ADR-0055 unchanged** — no serialization boundary moved. **RISK-014 unchanged.**
+**No CHANGELOG change**: nothing user-visible changed at all. [Verified]
+
+## 67th pass — 2026-09-19, round 47 (the bytes must be the encoding they claim)
+
+Two review findings. One is a real hole and is fixed; one was already closed two rounds ago and is
+answered with a measurement rather than a change. **RISK-014 unchanged** — no session-blob or
+A/B-payload change; `src/PluginProcessor.*` is not in the diff.
+
+**Finding 1 — invalid UTF-8 presets are accepted: CONFIRMED and fixed.** The boundary validated the
+DECODED TEXT, and the decode is not lossless. `String::createStringFromData` asks whether the bytes
+are valid UTF-8 and, when they are not, reads them as **Windows-1252** instead
+(`juce_String.cpp:2030-2034`) — a codepage in which every byte means something — so a file no
+conforming XML parser would accept was silently transcoded into one that parsed. Measured on
+`7076359` through the real `loadFile`: `raw="\xC3\x28"` (a two-byte lead followed by a
+non-continuation byte) decoded from 63 bytes to 64 and LOADED; so did a truncated sequence, bare
+continuation bytes, an overlong encoding, a surrogate encoded in UTF-8, and a UTF-16 file with an
+unpaired surrogate. Six shapes, all accepted.
+
+**The refusal is the decoder's own predicate, on the decoder's own range.**
+`CharPointer_UTF8::isValidString` is exactly what `createStringFromData` asks before choosing
+between UTF-8 and the fallback, so refusing when it says no makes the fallback **unreachable by
+construction** rather than by a second opinion that could drift from it. It rejects a malformed lead
+byte, a missing or malformed continuation byte, an overlong encoding, a surrogate code point and
+anything past U+10FFFF (`juce_CharPointer_UTF8.h:437-511`). Under a UTF-16 byte-order mark the
+surrogate structure is checked directly, because `CharPointer_UTF16::operator*` pairs a high
+surrogate with whatever follows and otherwise returns the surrogate code point itself, which the
+decode then writes as a three-byte sequence UTF-8 forbids.
+
+**Not narrowed, and each pinned by leg K:** valid multi-byte UTF-8 still loads, a UTF-8 byte-order
+mark is still accepted, and a correctly paired UTF-16 surrogate still loads in both endiannesses.
+The rule is *be the encoding you claim*, not *be ASCII*. **Unchanged, deliberately:** the size
+limit, the NUL rejection, the `DOCTYPE` rejection, the depth limit, the XML declaration rules,
+exactly one root element, and the trailing-content rule.
+
+**Finding 2 — repeated I/O during navigation: ALREADY FIXED, in round 45, and now measured.** The
+cited line is `step`'s candidate call. `rowIsLoadable` — which returned only a `bool`, so
+`loadAdopted` read the same file again — became `examineRow`, which returns the parsed tree, and
+`step` carries that tree into the load. The reported double read of the chosen row therefore does
+not exist on this head, and leg I has asserted `readsOfB == 1` since that round.
+
+What this round adds is the **measurement the finding asked for**, over a whole walk rather than one
+row: leg L counts reads per file through the `beforePresetRead` seam while Next steps past three
+unreadable rows, and asserts **1 / 1 / 1 for the skipped rows, 1 for the row that loads, 0 for the
+row it started from — four reads for four rows considered.** That is the floor: a skip decision must
+read the row it is deciding about, and one parse per row examined is the minimum without caching.
+**No cache, no background scan, no asynchronous redesign and no index change was introduced**, per
+the constraint; the only reuse point the architecture offers is the candidate's tree, and it is
+already taken.
+
+**Coverage.** **Leg K**: eleven refusals (including invalid UTF-8 inside a COMMENT — the
+discriminating case, since a comment is stripped by the parser and permitted by the scan, so nothing
+but the encoding rule can refuse it) and seven acceptances that keep the rule from degenerating.
+**Leg L**: the counted walk above, plus the preservation half — the corrupt rows stay listed, stay
+on disk, and an absolute pick of one still reports failure and leaves the current preset alone.
+
+**Validation.** State **4 584 / 0** (was 4 521), DSP **396 / 0**, both green under `ulimit -s 1024`.
+Mutations **M236-M240, all five killed** — including M238 (every surrogate refused), which only the
+acceptance legs can see, and M240 (the carried tree dropped), which leg L now catches by count as
+well as leg I by outcome.
+
+**CI on the predecessor.** `7076359` cleared `Microsoft C++ Code Analysis` — the `ssize_t` fix
+landed, and the two MSVC lanes that round 46 diagnosed are no longer red.
+
+**Documentation.** `ADR-0055` (rule 0 extended, a fourth amendment section, the shape count, and the
+new legs in Evidence); `docs/architecture/SERIALIZATION_REGISTRY.md` (an encoding row in the
+boundary table); `docs/procedures/TESTING.md` (round-47 entry). **No CHANGELOG change**: the
+`[0.9.9]` entry already tells users a damaged preset is rejected, a file whose bytes are not the
+encoding they claim is damaged, and 0.9.9 is unreleased. [Verified]
+
+## 66th pass — 2026-09-19, round 46 (the declaration is not an instruction, and an MSVC-only error)
+
+One review finding and two CI failures with a single cause. Both were diagnosed from evidence before
+anything changed. **RISK-014 unchanged** — no session-blob or A/B-payload change.
+
+**CI — `windows` and `Microsoft C++ Code Analysis`: INTRODUCED BY ROUND 45, one line, one cause.**
+Both lanes failed in their (identical) build step with
+`src\PresetManager.cpp(560,35): error C2065: 'ssize_t': undeclared identifier`. Round 45's bounded
+read was written `in.readIntoMemoryBlock (raw, (ssize_t) (maxPresetBytes + 1))`, and JUCE declares
+`ssize_t` **itself only under `#if JUCE_WINDOWS`** (`juce_MathsFunctions.h:97-99`), taking the
+system one everywhere else — so an unqualified `ssize_t` inside `namespace anamorph` resolves to the
+POSIX global on Linux and macOS and is undeclared on MSVC. That is why every Clang and GCC lane was
+green and only the two MSVC lanes were red, and why the local preflight could not have caught it.
+The bound is now spelled `(int)`: 256 KB + 1 fits an `int` on every supported platform and converts
+to whichever `ssize_t` is in play. No analysis setting was weakened and no warning suppressed. The
+`Code Analysis` failure is not a finding at all — the analyser never ran, because its build failed
+first. **Nothing else in either log is red**: the only other diagnostic is the pre-existing
+`C4458 'params' hides class member` at `PluginProcessor.cpp:2757`, which is a warning, not this
+round's, and untouched.
+
+**Devin finding — `src/PresetManager.cpp:R372-376`, a malformed trailing XML declaration is
+accepted: CONFIRMED and fixed.** `presetTextIsAdmissible` treated every `<?…?>` as an ordinary
+processing instruction, and the second-top-level-element refusal guards only an opening TAG — so
+`<ANAMORPH/>` followed by `<?xml version="1.0"?>` passed the scan, `juce::parseXML` returned the
+first element and ignored the tail, and a malformed document loaded as a preset. The same held for a
+declaration after a trailing instruction, after a comment, and for a second declaration anywhere.
+
+**This one DOES move the accepted boundary**, unlike round 45's two enforcement fixes, so it is
+recorded in ADR-0055 as a rule (number 5 in the pre-parser list) rather than as an enforcement note.
+XML allows the declaration in exactly one place — first, once, nothing before it, not even
+whitespace — and that is now the rule. It costs a real file nothing: `XmlElement::toString` emits
+the header at offset zero, which is where every file this plug-in has written carries it, and a
+byte-order mark is removed by the decode before the scan sees the text. The target is matched
+without regard to case because XML reserves `xml` in any case; a target that merely BEGINS with
+`xml` (`<?xmlstylesheet …?>`) is a different instruction and stays accepted. Ordinary instructions
+before and after the root are untouched.
+
+**Unchanged, deliberately:** the size limit, the NUL rejection, the `DOCTYPE` rejection, the depth
+limit, exactly one root element, and the trailing-content rule. Nothing was loosened.
+
+**Coverage.** **State test 114 leg J**, built around the writer rather than a literal: it first
+asserts `good.startsWith ("<?xml")`, so the accepted shape under test is the shape the plug-in
+actually saves and the refused shapes are derived from it. Seven refusals (trailing; after a
+trailing instruction; doubled outside and doubled inside the prologue; after a comment; after
+whitespace; `<?XML`) and five acceptances (the writer's own leading declaration, the full prologue,
+a trailing instruction, a trailing comment, `<?xmlstylesheet …?>`).
+
+**Validation.** State **4 521 / 0** (was 4 486), DSP **396 / 0**, both green under `ulimit -s 1024`.
+Mutations **M232-M235, all four killed** — including M233, which only the `<?XML` leg can see, and
+M235, which only the `<?xmlstylesheet` leg can see.
+
+**Documentation.** `ADR-0055` (rule 5 in the pre-parser list, a third amendment section, the
+shape count, and the new leg in Evidence); `docs/architecture/SERIALIZATION_REGISTRY.md` (a row in
+the boundary table); `docs/procedures/TESTING.md` (round-46 entry, including why no local gate
+covers MSVC-only compilation). **No CHANGELOG change**: the `[0.9.9]` entry already tells users a
+preset with *"anything else after it"* is rejected, a trailing declaration is an instance of that,
+and 0.9.9 is unreleased. [Verified]
+
+## 65th pass — 2026-09-19, round 45 (two rules that were stated but not enforced)
+
+Two review findings against `2953f7e`. **Neither changes what a preset file may contain**; both make
+a rule ADR-0055 already states hold when the filesystem moves underneath it. Each was reproduced
+against the real loader before anything was changed, and ADR-0055's Decision section is untouched.
+
+**Finding 1 — `src/PresetManager.cpp:R537`, the size cap can be raced: CONFIRMED and fixed.**
+`getSize()` describes the file at the instant it is asked; the read happens afterwards, and
+`File::loadFileAsData` — which this called — re-stats and takes the WHOLE file into memory
+(`juce_File.cpp:559-566`) with the cap never re-applied. A replacement landing in that window was
+therefore read in full and went on to the scans with the one check that exists to keep an enormous
+file out of memory having been decided on a file that was no longer there. The read is now bounded
+at one byte past the cap — enough to tell "at the cap" from "over it" — and the cap is re-measured
+on what arrived. The early rejection is kept: it is free, it is right in almost every case, and it
+is what stops a genuinely oversized file from being opened at all. Deliberately NOT re-checked is
+`loadFileAsData`'s other rule, that the length was the same before and after: a torn write is
+refused by the document scans (an incomplete `<ANAMORPH>` is not one well-formed document), which is
+the same answer reached by the rule this boundary actually states.
+
+**Finding 2 — `src/PresetManager.cpp:R888-889`, the chosen row was read twice: CONFIRMED and
+fixed.** `step` parsed a candidate row to decide whether to skip it, and `loadAdopted` parsed the
+same file again to load it. A file that changed between the two reads made a row that was loadable
+when it was chosen fail on the load — so `step` answered `failed` and navigation stopped at exactly
+the row the skip exists to step past. **The candidate's parsed tree is now carried into the load**,
+which is the rule `loadFile` has followed since round 27 (*"the parsed tree IS the preset: a file
+edited in the meantime cannot change what the user asked to load"*). The window is closed by
+construction rather than retried; it is also one read instead of two, which is the lesser half of
+the reason. The declaration comment that had weighed the double read as a cost question — *"not
+worth an extra entry point to avoid"* — is corrected in place, because the question it missed was
+correctness.
+
+**What is preserved, deliberately.** Exactly one `loadAdopted` still runs per `step` and still owns
+the completion, so R640's exactly-once contract is untouched. The admission rules are unchanged,
+`drainFirst == false` included (ADR-0036 §23). The ABSOLUTE door is unchanged: `load(index)` carries
+no tree, still checks existence, still keeps the missing-versus-corrupt split, still reports and
+stays. A deferral drops the carried tree on purpose — it may open with the list rebuilt, so `index`
+may not name the row the tree was parsed for — and it is unreachable from `step` in any case,
+because the gate asks `refuseNow` before its nesting shortcut and nothing between `step`'s admission
+and `loadAdopted`'s can open a transaction or a dispatch on this thread.
+
+**A new test seam, and why one was needed.** `PresetManager::beforePresetRead` fires between
+`parseSoundFile`'s size check and its read. That is the one point at which "another process replaced
+this file" is reproducible at all, and both findings live there. A test that could only hope to land
+such a replacement by racing a real thread would be a race to lose; with the seam the interleaving
+is exact and repeatable — the same reasoning, and the same shape, as `beforeStateCapture`. Empty in
+every shipping path.
+
+**Coverage.** **State test 114 leg H** replaces the file, in that window, with a complete valid
+document of ~200 KB followed by ~80 KB of whitespace — built so that neither half of the guard can
+hide behind the other: read whole it is a valid preset, read bounded at the cap it is still a valid
+preset followed by whitespace, so only the size of what arrived can refuse it. A control leg loads
+the same file unswapped. **Leg I** corrupts a row on its SECOND read and asserts `readsOfB == 1`,
+measuring the absence of the second read directly rather than that the step happened to survive; it
+then asserts the sound that landed is the candidate's, that a row corrupted for real is still
+stepped over, and that the absolute door still reports, stays and never deletes.
+
+**Validation.** State **4 486 / 0** (was 4 457), DSP **396 / 0**, both green under `ulimit -s 1024`.
+Mutations **M226-M231: five killed, one recorded survivor.** M231 is round 43's M214 under its new
+spelling (`rowIsLoadable` → `examineRow`). **M228 survives and is equivalent for every finite file**:
+it removes the read bound but leaves the post-read cap check, so an oversized file is read whole and
+then refused — no suite assertion can separate the two, because the bound's value is that the content
+never enters memory and peak allocation is not portably observable. The bound stays, because "a much
+larger file can enter memory before the cap is applied" is the half of the finding a post-read check
+does not answer.
+
+**Documentation.** `ADR-0055` (a second amendment section on enforcement, the `examineRow` rename in
+two places, and the new legs in Evidence — the Decision section is untouched);
+`docs/architecture/SERIALIZATION_REGISTRY.md` (the size row now says when the cap is measured);
+`docs/procedures/TESTING.md` (round-45 entry). **No CHANGELOG change**: the cap, the skip and their
+enforcement are all 0.9.9, the existing entries already claim the behaviour these fixes make true,
+and 0.9.9 is unreleased. **RISK-014 unchanged** — no session-blob or A/B-payload change. [Verified]
+
+## 64th pass — 2026-09-19, round 44 (the file is its bytes, and the warning has a life)
+
+Three review findings against `f03aa06` — the head that first implemented ADR-0055 — plus one
+static-analysis item. Every one was reproduced or measured before anything was changed.
+
+**Finding 1 — line 492 as the review cited it, `src/PresetManager.cpp:570` today, an embedded NUL
+bypasses the boundary: CONFIRMED and
+fixed.** `parseSoundFile` read the file with `loadFileAsString` and scanned the resulting
+`juce::String`, and a `juce::String` ENDS at the first NUL: `CharPointer_UTF8::isValidString`
+returns `true` there (`juce_CharPointer_UTF8.h:438-447`) and every reader below walks the buffer
+with a CharPointer that stops there — the ADR's own pre-scan and `juce::XmlDocument` alike. So one
+0x00 made the rest of the file invisible to the boundary. Measured through the real `loadFile`: a
+**263-byte** file holding a preset, a NUL and a COMPLETE second preset decoded to **131 bytes** and
+LOADED, applying the first; the same file without the NUL was refused, as were trailing prose and a
+trailing invalid-UTF-8 tail once the NUL was removed. The guard is now on the BYTES, before the
+decode, and it is **encoding-aware** rather than a blanket zero-byte ban: it reads them the way
+`String::createStringFromData` is about to (`juce_String.cpp:1987-2035`), so a UTF-16 preset — every
+second byte of which is zero — still loads, while a zero code unit or a trailing half code unit in
+one is refused for the same reason a NUL byte is in UTF-8. The decode is spelled
+`String::createStringFromData`, which is exactly what `loadFileAsString` was doing
+(`juce_File.cpp:568-576` → `juce_InputStream.cpp:241-246` → `juce_MemoryOutputStream.cpp:207-210`),
+so no legitimate encoding reads differently than before the guard existed.
+
+**Finding 2 — `src/PluginEditor.cpp:R1842`, the warning timer could stop forever: CONFIRMED and
+fixed.** `presetWarnTime` was decremented BELOW `stepMicroAnims`' two idle-gate early returns, and a
+refused load satisfies every condition that gate seals on: it writes no parameter, so no generation
+and no fingerprint moves, and it lights no widget. With the cursor outside the editor and nothing
+else animating, the gate closed on the very next frame and `PRESET UNREADABLE` stayed in the top bar
+until some unrelated animation happened to wake the pass. The decrement now runs ABOVE the gate.
+The asymmetry with `knobSweepTime`, which stays IN the gate conditions, is deliberate and is stated
+at the decrement: a sweep eases widgets and needs that pass, while the warning is a text state the
+24 Hz `timerCallback` reads, so holding the 44-widget poll open for 1.5 s would animate nothing.
+
+**Finding 3 — `src/PluginEditor.cpp:R2127-2128`, a successful load left a stale warning: CONFIRMED
+and fixed.** `presetLoadFinished(true)` set the sweep and left `presetWarnTime` alone, so a preset
+that loaded within 1.5 s of a refusal was displayed as UNREADABLE, with its own name suppressed,
+for the remainder. Success now clears the warning as well as raising the sweep.
+
+**PREfast alert 209 — `Function uses '433548' bytes of stack`: NO CHANGE, and it is not this
+round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13701`
+today, which is
+`testNonFiniteParameterInStateIsRejected` — State test 17, untouched by round 43 and by this round.
+The predecessor SARIF on `0e32e65` carries the same alert, byte-identical at **433548**, at
+`state_tests.cpp:12870`, which is where that function sat before State test 114 was inserted above
+it: only the line moved, which re-keys a Code Scanning alert and makes it read as new. The number is
+the documented sum-across-siblings artefact — three `AnamorphAudioProcessor` automatics
+(3 × 141,320) in scopes where only two are ever live. Measured with `g++ -fstack-usage`, the real
+frame is **289,360** bytes, **27.6 %** of the Windows 1 MB reserve, under the pre-existing suite
+maximum of **709,600** (67.7 %), and both binaries run green under `ulimit -s 1024`. Nothing was
+moved to the heap to silence it. Round 44's own two functions measure **143,360** and **142,096**.
+
+**A drift this round found in its own predecessor's work.** All five `[0.9.9]` CHANGELOG entries
+read *Evidence: PR #145*. PR #145 merged mid-round-43 and the round's commits were rebased onto the
+new `main` and opened as **PR #149**, so no 0.9.9 commit is in #145 — confirmed with
+`git merge-base --is-ancestor`. Corrected to #149; nothing else in the entries changed, because the
+fixes above make their existing claims true rather than altering them, and 0.9.9 is unreleased, so a
+defect introduced and fixed inside it is not a change between releases.
+
+**Test seams.** `presetLoadFinished`, `stepMicroAnims` and `refreshPresetDisplay` are now public, for
+the reason `showSavePreset` and `abortAbandonedDragGestures` already are and with the same kind of
+note on the declarations: their production drivers are a `juce::PopupMenu` row, an OS file chooser,
+a `VBlankAttachment` and a privately inherited `juce::Timer`, none of which exists in a headless
+suite. Same functions, same callers, no test-only behaviour. This closes the coverage gap round 43
+had to record.
+
+**Validation.** State **4 457 / 0** (was 4 397), DSP **396 / 0**, both green under `ulimit -s 1024`.
+Mutations **M217–M225, all nine killed** — including M217, the round-43 survivor, and M224, which is
+the exact pre-fix decrement placement. M204–M216 are unaffected by this round and were not re-run.
+
+**Documentation.** `ADR-0055` (an Amendment section, rule 0 in the pre-parser list, five-shapes
+consequence, Related code, Evidence); `docs/architecture/SERIALIZATION_REGISTRY.md` (the NUL row in
+the boundary table, and why the rule is encoding-aware); `docs/procedures/TESTING.md` (round-44
+entry, and the alert-209 measurement beside the existing C6262 disposition); `CHANGELOG.md` (the
+five evidence references). **RISK-014 is unchanged**: the host session blob and the A/B slot payload
+were not touched. [Verified]
+
+## 63rd pass — 2026-09-19, round 43 (a preset file is one well-formed document, and 0.9.9)
+
+The owner reported one edge case — a `.anamorph` file holding **two complete presets loads, and
+applies the upper one** — and asked for the failure modes to be measured before anything was
+changed. They were, against head `0e32e65` on the pinned JUCE 9.0.2, through the real
+`PresetManager::loadFile` on a real processor. The reported case was confirmed and five more shapes
+of it were found, all accepted by being silently ignored. Three others were worse than accepted:
+~3 000 levels of nesting (a **21 KB** file) **crashed** the parser on a 1 MB thread stack; a
+**220-byte** file whose `DOCTYPE` defines recursive entities left `XmlDocument::expandEntity`
+running after 60 s, freezing the message thread with no error and no recovery; and a `SYSTEM`
+`DOCTYPE` made the parser **read an arbitrary file**, by absolute path and by `../` traversal alike.
+A fourth axis had no bound at all: peak RSS tracked file size linearly to 264 MB.
+
+**The investigation was delivered before the implementation, because the change is gated.**
+Narrowing preset acceptance is a semantic change to a contract `SERIALIZATION_REGISTRY.md` records,
+which `ARCHITECTURE_REVIEW_GATE.md` lists as a *Serialization Registry change* and
+`AI_AGENT_POLICY.md` makes an agent hard stop. The owner then ruled on the boundary, both limits,
+the empty-preset case, the error-handling model and the scope, and this round implemented that
+ruling.
+
+**What changed.** `src/PresetManager.{h,cpp}`: a byte-level scan before `juce::parseXML`
+(256 KB, no `DOCTYPE`, depth 8, exactly one top-level element with only whitespace and comments
+after it) and a structural check on the parsed **element** — not the `ValueTree`, which drops text
+nodes and collapses duplicated attributes; `load`, `loadAdopted` and `step` gain R640's completion
+contract; `step` steps over an unreadable row with a bounded full-list pass while an absolute pick
+reports and stays; a missing file is rescanned away while a corrupt one keeps its row and its file.
+`src/PluginEditor.{h,cpp}` and `src/gui/LookAndFeel.cpp`: one completion for all three preset
+doors, and a non-modal warn-coloured `PRESET UNREADABLE` state in the top bar — the knob sweep is
+success UI and now runs only on a load that happened. `tests/state_tests.cpp`: State test 114 in six
+legs, State test 18 rewritten, State test 35 re-driven.
+
+**The round corrected one of its own claims, and one of the repository's.** The first attribute rule
+required exactly `id` and `value` and refused files **this plug-in writes**: a preset saved after an
+undo, a redo or an A/B apply carries `raw`, because those install a state-set tree bearing it
+through `replaceState` and `saveUser`'s `apvts.copyState()` writes the live tree as it stands. State
+tests 10, 18 and 35 caught it before it left the working tree. The comment at
+`soundSignatureAfterRestoring` asserting that *a preset file never carries `raw`* is therefore false
+and is corrected in place; the half of that sentence that decides which signature predictor applies
+— a preset is READ through `value` alone — was always right and is unchanged. Separately, this
+round's `FUTURE_RISKS.md` edit found **RISK-001 still describing the JUCE pin as `9.0.1`
+(`e18f7f5…`, ADR-0026)**, a present-tense claim ADR-0054 superseded and round 42's sweep missed;
+corrected to `9.0.2` / `7278278…` with the 9.0.1 entry kept as the predecessor.
+
+**Two mutations survived the first pass and both were faults in the TEST, so the tests were fixed
+rather than the record softened.** M206 (depth cap raised to a million) survived because `<N>` is
+not a `PARAM`, so the shape rule caught the deep file anyway on a runner whose 8 MB stack survives
+5 000 levels; a second leg now loads the same file on a **512 KB** thread stack, and M206 kills the
+suite by segmentation fault — the honest signal for a guard whose purpose is that the parser never
+runs. M210 (non-`PARAM` child allowed) survived because `<MALWARE payload="x"/>` also fails the
+attribute rule; `<NOTAPARAM id="width" value="0.5"/>` isolates the tag rule and kills it. M209 is
+**equivalent**, proven from `juce_XmlElement.cpp:914-917, 966-971`. M217 **survives** and is
+recorded: the editor's failure arm is reachable only from a `PopupMenu` result and an OS file
+chooser, neither of which a headless harness can click.
+
+**Docs.** `ADR-0055` (new) and its `ADR_INDEX.md` row; `SERIALIZATION_REGISTRY.md` (the new
+acceptance conditions, the `raw` correction, and the value-less `PARAM` narrowing, each with what it
+preserves); `FUTURE_RISKS.md` (**RISK-014** — the host session blob and the A/B slot payload reach
+the same parser and were scoped out by the owner for separate compatibility review — plus the
+RISK-001 correction); `TESTING.md` (State test 114's six legs, the two rewritten tests, M204-M217);
+`docs/user/USER_MANUAL.md` §7.1.1 (new — what a refused preset looks like, that the file is never touched, and why a direct pick stops where ‹ › steps over); `CHANGELOG.md` **`[0.9.9]` — 2026-09-19, five Fixed entries**, with `CMakeLists.txt`, `README.md` and `HANDOVER.md` following; this entry. **A gate item**: the Architecture Review Gate was triggered
+and cleared by the owner's instruction, recorded in ADR-0055's Status. [Verified]
 
 ## 62nd pass — 2026-09-18, round 42 (the pin's last present-tense claims, in the places the gate cannot see)
 
