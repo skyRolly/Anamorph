@@ -34454,6 +34454,345 @@ static void testADeferredPresetOperationReportsItsRealResult()
     cleanUp();
 }
 
+// ============================================================================
+//  `--risk014-probe` -- THE RISK-014 EVIDENCE TOOL (round 50).
+//
+//  NOT A TEST, and deliberately not called by the suite: it MEASURES what a
+//  crafted host chunk does to the two XML parser paths ADR-0055 left outside
+//  the preset-file boundary -- `setStateInformation` -> `decodeRestore` ->
+//  `getXmlFromBinary` -> `juce::parseXML`, and the A/B slot payload's own
+//  `juce::parseXML (slotPayload)` one level further in.
+//
+//  Two of the shapes below END THE PROCESS (SIGSEGV) and two never return, so
+//  each runs ALONE, one shape per invocation, and the verdict is the exit
+//  status rather than an assertion. A suite that called these would report
+//  nothing at all, which is the whole reason this is a probe:
+//
+//      AnamorphStateTests --risk014-probe <shape> [n]
+//
+//  Shapes: census | session-deep N | ab-deep N | session-doctype N |
+//          ab-doctype N | session-system | ab-system | session-big N |
+//          ab-big N | session-multiroot | session-trailing | session-malformed
+//          | session-truncated | session-badlength | session-nul |
+//          session-nuldisguise | session-badutf8-value | session-utf16 |
+//          ab-foreign | ab-malformed
+//
+//  `census` is the compatibility side and the only shape that asserts nothing
+//  about corruption: it prints the size and depth of the sessions this product
+//  really writes, so any proposed cap can be read against them.
+//
+//  What the round measured with it is in `docs/FUTURE_RISKS.md` (RISK-014) and
+//  `docs/architecture/design-decisions/ADR-0056-...md`. The numbers there were
+//  taken on `de89b1a`, x86-64 Linux, Release, pinned JUCE 9.0.2.
+// ============================================================================
+namespace
+{
+    // JUCE's own host-chunk framing (copyXmlToBinary): magic, length, text, NUL.
+    juce::MemoryBlock frameAsHostChunk (const juce::String& text, bool goodLength = true)
+    {
+        const auto utf8 = text.toRawUTF8();
+        const auto len  = (juce::uint32) std::strlen (utf8);
+        juce::MemoryBlock mb;
+        mb.setSize (8 + len + 1, true);
+        auto* p = static_cast<juce::uint8*> (mb.getData());
+        const juce::uint32 magic = 0x21324356;
+        for (int i = 0; i < 4; ++i) p[i]     = (juce::uint8) ((magic >> (8 * i)) & 0xff);
+        const juce::uint32 stated = goodLength ? len : (len * 4 + 1024);
+        for (int i = 0; i < 4; ++i) p[4 + i] = (juce::uint8) ((stated >> (8 * i)) & 0xff);
+        std::memcpy (p + 8, utf8, len);
+        return mb;
+    }
+
+    juce::String nestedDocument (int depth, const juce::String& rootTag)
+    {
+        juce::String s;
+        s << "<" << rootTag << ">";
+        for (int i = 0; i < depth; ++i) s << "<n>";
+        for (int i = 0; i < depth; ++i) s << "</n>";
+        s << "</" << rootTag << ">";
+        return s;
+    }
+
+    // A valid AnamorphRoot carrying ONE attribute value verbatim -- the A/B
+    // payload door. The payload is XML-escaped exactly as ValueTree::createXml
+    // escapes it, so the OUTER document is well-formed whatever the inner is.
+    juce::String rootCarryingSlotPayload (const juce::String& payload)
+    {
+        juce::XmlElement root ("AnamorphRoot");
+        root.setAttribute ("presetName", "probe");
+        auto* params = root.createNewChildElement ("ANAMORPH");
+        params->setAttribute ("dummy", "0");
+        auto* ab = root.createNewChildElement ("AB");
+        ab->setAttribute ("active", 0);
+        ab->setAttribute ("slotAParams", payload);
+        return root.toString (juce::XmlElement::TextFormat().singleLine());
+    }
+
+    // `drive` is the witness: its default is 0.0 and every shape that carries a
+    // value carries 0.9 plain (0.0375 normalised), so the printed raw says
+    // whether the blob was REJECTED (0.0) or ACCEPTED AND APPLIED (0.0375).
+    // `canary` is for the external-entity shapes: it is the text of a real file
+    // on disk, and finding it anywhere in the restored state would mean the
+    // parser read a file nobody asked it to.
+    int reportShape (const char* what, const juce::MemoryBlock& blob,
+                     const juce::String& canary = {})
+    {
+        std::printf ("  shape=%s  bytes=%d\n", what, (int) blob.getSize());
+        std::fflush (stdout);                       // a SIGSEGV must not take this line with it
+        const auto t0 = std::chrono::steady_clock::now();
+
+        AnamorphAudioProcessor proc;
+        proc.setStateInformation (blob.getData(), (int) blob.getSize());
+
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds> (
+                            std::chrono::steady_clock::now() - t0).count();
+        std::printf ("  RETURNED after %lld ms; drive raw=%.6f", (long long) ms,
+                     (double) rawOf (proc, "drive"));
+
+        if (canary.isNotEmpty())
+        {
+            juce::MemoryBlock out;
+            proc.getStateInformation (out);
+            const auto xml = BlobCodec::unwrap (out);
+            const auto text = xml != nullptr
+                                ? xml->toString (juce::XmlElement::TextFormat().singleLine())
+                                : juce::String();
+            std::printf ("; file contents %s", text.contains (canary) ? "LEAKED" : "did not leak");
+        }
+
+        std::printf ("\n");
+        return 0;
+    }
+
+    int runRisk014Probe (const juce::String& shape, int n)
+    {
+        if (shape == "session-deep")
+            return reportShape ("session-deep", frameAsHostChunk (nestedDocument (n, "AnamorphRoot")));
+
+        if (shape == "ab-deep")
+            return reportShape ("ab-deep",
+                                frameAsHostChunk (rootCarryingSlotPayload (nestedDocument (n, "ANAMORPH"))));
+
+        // THE EXACT ADR-0055 FIXTURE SHAPE, and the shape matters: the reference sits in an
+        // ATTRIBUTE VALUE and the internal subset is newline-separated, which is what makes
+        // `XmlDocument::expandExternalEntity`'s `ent.indexOf (i + 1, ";")` walk instead of
+        // terminate. A one-line subset with the reference in element text does NOT hang.
+        if (shape == "session-doctype" || shape == "ab-doctype")
+        {
+            const bool inner = (shape == "ab-doctype");
+            juce::String s2;
+            s2 << "<!DOCTYPE ANAMORPH [\n<!ENTITY e0 \"AAAAAAAAAA\">\n";
+            for (int i = 1; i <= n; ++i)
+            {
+                s2 << "<!ENTITY e" << i << " \"";
+                for (int k = 0; k < 10; ++k) s2 << "&e" << (i - 1) << ";";
+                s2 << "\">\n";
+            }
+            s2 << "]>\n<" << (inner ? "ANAMORPH" : "AnamorphRoot") << ">"
+               << "<PARAM id=\"width\" value=\"&e" << n << ";\"/>"
+               << "</" << (inner ? "ANAMORPH" : "AnamorphRoot") << ">";
+            const auto blob = inner ? frameAsHostChunk (rootCarryingSlotPayload (s2))
+                                    : frameAsHostChunk (s2);
+            return reportShape (shape.toRawUTF8(), blob);
+        }
+
+        if (shape == "session-system" || shape == "ab-system")
+        {
+            // THE EXTERNAL-ENTITY DOOR, asked with a real file on disk to read. It is the one
+            // ADR-0055 shape this framing CANNOT reach, and the reason is structural rather than
+            // lucky: `XmlDocument::getFileContents` opens nothing unless an `InputSource` is set
+            // (`juce_XmlDocument.cpp:182-193`), and both of these paths reach the parser through
+            // `parseXML (const String&)`, whose `XmlDocument (const String&)` constructor leaves
+            // it null (`:38`). Only the `File` overload installs a `FileInputSource`, and that is
+            // what the PRESET path used to call.
+            const bool inner = (shape == "ab-system");
+            const juce::String canary = "SECRET-CANARY-0123456789";
+            auto marker = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                              .getChildFile ("anamorph-risk014-canary.txt");
+            marker.replaceWithText (canary);
+
+            const char* tag = inner ? "ANAMORPH" : "AnamorphRoot";
+            juce::String doc;
+            doc << "<?xml version=\"1.0\"?><!DOCTYPE " << tag << " SYSTEM \""
+                << marker.getFullPathName() << "\"><" << tag
+                << "><PARAM id=\"drive\" value=\"&leak;\"/></" << tag << ">";
+            const auto blob = inner ? frameAsHostChunk (rootCarryingSlotPayload (doc))
+                                    : frameAsHostChunk (doc);
+            const auto r = reportShape (shape.toRawUTF8(), blob, canary);
+            marker.deleteFile();
+            return r;
+        }
+
+        if (shape == "session-big" || shape == "ab-big")
+        {
+            juce::String filler = juce::String::repeatedString ("0123456789", 1024 * 1024 / 10); // ~1 MB
+            juce::String s;
+            s << "<" << (shape == "ab-big" ? "ANAMORPH" : "AnamorphRoot") << ">";
+            for (int i = 0; i < n; ++i) s << "<p v=\"" << filler << "\"/>";
+            s << "</" << (shape == "ab-big" ? "ANAMORPH" : "AnamorphRoot") << ">";
+            const auto blob = shape == "ab-big" ? frameAsHostChunk (rootCarryingSlotPayload (s))
+                                                : frameAsHostChunk (s);
+            return reportShape (shape.toRawUTF8(), blob);
+        }
+
+        if (shape == "session-multiroot")
+            return reportShape ("session-multiroot",
+                                frameAsHostChunk ("<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/>"
+                                                  "</ANAMORPH></AnamorphRoot>"
+                                                  "<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.1\"/>"
+                                                  "</ANAMORPH></AnamorphRoot>"));
+
+        if (shape == "session-trailing")
+            return reportShape ("session-trailing",
+                                frameAsHostChunk ("<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/>"
+                                                  "</ANAMORPH></AnamorphRoot>this is prose<JUNK/>\x01\x02\x03"));
+
+        if (shape == "session-malformed")
+            return reportShape ("session-malformed", frameAsHostChunk ("<AnamorphRoot><ANAMORPH></AnamorphRoot>"));
+
+        if (shape == "session-truncated")
+        {
+            auto blob = frameAsHostChunk ("<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/>"
+                                          "</ANAMORPH><AB active=\"0\" slotAParams=\"&lt;ANAMORPH/&gt;\"/></AnamorphRoot>");
+            blob.setSize (blob.getSize() / 2);   // the host wrote half a chunk
+            return reportShape ("session-truncated", blob);
+        }
+
+        if (shape == "session-badlength")
+            return reportShape ("session-badlength",
+                                frameAsHostChunk ("<AnamorphRoot><ANAMORPH/></AnamorphRoot>", false));
+
+        if (shape == "session-nul")
+        {
+            auto blob = frameAsHostChunk ("<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/>"
+                                          "</ANAMORPH></AnamorphRoot>");
+            static_cast<juce::uint8*> (blob.getData())[8 + 20] = 0;   // a NUL mid-document
+            return reportShape ("session-nul", blob);
+        }
+
+        if (shape == "session-badutf8")
+        {
+            auto blob = frameAsHostChunk ("<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/>"
+                                          "</ANAMORPH></AnamorphRoot>");
+            auto* p = static_cast<juce::uint8*> (blob.getData());
+            p[8 + 30] = 0xC3; p[8 + 31] = 0x28;      // an overlong / truncated sequence
+            p[8 + 32] = 0xFE; p[8 + 33] = 0xFF;      // bytes no UTF-8 sequence may contain
+            return reportShape ("session-badutf8", blob);
+        }
+
+        if (shape == "session-utf16")
+        {
+            // A UTF-16 document where the frame promises UTF-8 bytes.
+            const char16_t doc[] = u"<AnamorphRoot><ANAMORPH/></AnamorphRoot>";
+            const auto bytes = (int) (std::char_traits<char16_t>::length (doc) * 2);
+            juce::MemoryBlock mb;
+            mb.setSize ((size_t) (8 + bytes + 2), true);
+            auto* p = static_cast<juce::uint8*> (mb.getData());
+            const juce::uint32 magic = 0x21324356;
+            for (int i = 0; i < 4; ++i) p[i]     = (juce::uint8) ((magic >> (8 * i)) & 0xff);
+            for (int i = 0; i < 4; ++i) p[4 + i] = (juce::uint8) (((juce::uint32) bytes >> (8 * i)) & 0xff);
+            std::memcpy (p + 8, doc, (size_t) bytes);
+            return reportShape ("session-utf16", mb);
+        }
+
+        if (shape == "census")
+        {
+            // THE COMPATIBILITY SIDE OF THE SAME QUESTION: what a REAL session costs, so any
+            // proposed cap can be read against it rather than guessed at. Reported for a fresh
+            // instance and again after both A/B slots have been seeded, which is the largest
+            // shape `writeState` produces.
+            AnamorphAudioProcessor proc;
+            auto report = [] (const char* what, const juce::MemoryBlock& mb)
+            {
+                auto xml = BlobCodec::unwrap (mb);
+                std::function<int (const juce::XmlElement&)> deepest =
+                    [&deepest] (const juce::XmlElement& e)
+                    {
+                        int d = 0;
+                        for (auto* c = e.getFirstChildElement(); c != nullptr; c = c->getNextElement())
+                            d = juce::jmax (d, deepest (*c));
+                        return d + 1;
+                    };
+                const auto text = xml != nullptr
+                                    ? xml->toString (juce::XmlElement::TextFormat().singleLine())
+                                    : juce::String();
+                std::printf ("  %-22s chunk=%6d B  xml=%6d B  depth=%d\n",
+                             what, (int) mb.getSize(), text.length(),
+                             xml != nullptr ? deepest (*xml) : -1);
+            };
+            juce::MemoryBlock mb;
+            proc.getStateInformation (mb);
+            report ("fresh instance", mb);
+            proc.setStateInformation (mb.getData(), (int) mb.getSize());
+            proc.getStateInformation (mb);
+            report ("after a round trip", mb);
+            // The three legacy root formats SESSION_COMPATIBILITY_POLICY rule 3 keeps alive are
+            // stored as readable XML and framed here; the v0.9.5 field capture is already a
+            // FRAMED CHUNK on disk (it begins `VC2!`), so it is read as bytes and not re-wrapped.
+            for (const char* f : { "legacy_v0_2_bare_apvts.xml",
+                                   "legacy_pre_0_6_4_ab_slots.xml",
+                                   "legacy_pre_0_8_4_view_params.xml",
+                                   "field_capture_v0_9_5.session" })
+            {
+                const auto file = fixtureDir().getChildFile (f);
+                juce::MemoryBlock blob;
+                if (auto x = juce::parseXML (file))   blob = BlobCodec::wrap (*x);
+                else if (! file.loadFileAsData (blob)) continue;
+                report (f, blob);
+            }
+            return 0;
+        }
+
+        if (shape == "session-nuldisguise")
+        {
+            // ADR-0055's NUL DISGUISE, asked of the host framing instead of a file. Document A
+            // sets drive to 0.9, then one zero byte, then a COMPLETE document B setting it to
+            // 0.1. The stated length covers BOTH, so `getXmlFromBinary` hands the whole run to
+            // `String::fromUTF8` -- and what the parser then sees is whatever that decode keeps.
+            const juce::String a = "<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/>"
+                                   "</ANAMORPH></AnamorphRoot>";
+            const juce::String b = "<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.1\"/>"
+                                   "</ANAMORPH></AnamorphRoot>";
+            const auto la = (int) std::strlen (a.toRawUTF8());
+            const auto lb = (int) std::strlen (b.toRawUTF8());
+            juce::MemoryBlock mb;
+            mb.setSize ((size_t) (8 + la + 1 + lb + 1), true);
+            auto* p8 = static_cast<juce::uint8*> (mb.getData());
+            const juce::uint32 magic = 0x21324356, stated = (juce::uint32) (la + 1 + lb);
+            for (int i = 0; i < 4; ++i) p8[i]     = (juce::uint8) ((magic  >> (8 * i)) & 0xff);
+            for (int i = 0; i < 4; ++i) p8[4 + i] = (juce::uint8) ((stated >> (8 * i)) & 0xff);
+            std::memcpy (p8 + 8, a.toRawUTF8(), (size_t) la);
+            p8[8 + la] = 0;
+            std::memcpy (p8 + 8 + la + 1, b.toRawUTF8(), (size_t) lb);
+            return reportShape ("session-nuldisguise", mb);
+        }
+
+        if (shape == "session-badutf8-value")
+        {
+            // Invalid UTF-8 inside a SPARE attribute value, so the tags, the `id` and the `value`
+            // all stay intact and the only question asked is what the DECODE does with two bytes
+            // no UTF-8 sequence may contain. `drive` back at 0.9 means the blob was ACCEPTED.
+            auto blob = frameAsHostChunk ("<AnamorphRoot pad=\"QQ\"><ANAMORPH>"
+                                          "<PARAM id=\"drive\" value=\"0.9\"/>"
+                                          "</ANAMORPH></AnamorphRoot>");
+            auto* p8 = static_cast<juce::uint8*> (blob.getData());
+            for (size_t i = 8; i + 1 < blob.getSize(); ++i)
+                if (p8[i] == 'Q' && p8[i + 1] == 'Q') { p8[i] = 0xC3; p8[i + 1] = 0x28; break; }
+            return reportShape ("session-badutf8-value", blob);
+        }
+
+        if (shape == "ab-foreign")
+            return reportShape ("ab-foreign",
+                                frameAsHostChunk (rootCarryingSlotPayload ("<SOMEONEELSE a=\"1\"/>")));
+
+        if (shape == "ab-malformed")
+            return reportShape ("ab-malformed", frameAsHostChunk (rootCarryingSlotPayload ("<ANAMORPH>")));
+
+        std::printf ("  unknown shape\n");
+        return 2;
+    }
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -34467,6 +34806,9 @@ int main (int argc, char* argv[])
     std::setvbuf (stdout, nullptr, _IONBF, 0);
 
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
+
+    if (argc > 1 && std::strcmp (argv[1], "--risk014-probe") == 0)
+        return runRisk014Probe (argc > 2 ? argv[2] : "", argc > 3 ? std::atoi (argv[3]) : 1);
 
     if (argc > 1 && std::strcmp (argv[1], "--state-thread-probe") == 0)
         return runStateThreadProbe();

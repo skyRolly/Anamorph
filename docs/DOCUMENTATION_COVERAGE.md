@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **round 43** (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **round 50** (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -13002,6 +13002,92 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 70th pass — 2026-09-19, round 50 (RISK-014 measured, and stopped at the gate)
+
+**Scope.** One risk, investigated to a disposition: RISK-014 — the host session blob and the A/B
+slot payload reach the XML parser that ADR-0055 put a boundary in front of for preset files.
+**Disposition: NEEDS DESIGN DECISION / STOP.** No `src/` change, no regression test, no
+suppression. One new file (`ADR-0056`, **Proposed**), one new opt-in instrument
+(`--risk014-probe`), and four documents corrected to the measurements.
+
+**The two call graphs, from the API rather than the names.** `setStateInformation` →
+`decodeRestore` (`src/PluginProcessor.cpp:2747-2751`) → `AudioProcessor::getXmlFromBinary` →
+`juce::parseXML`; and, inside the same decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) →
+`juce::parseXML (slotPayload)` on a string attribute value of the already-parsed session document —
+a second, independently framed document. `getXmlFromBinary` validates exactly two things: chunk
+longer than 8 bytes, and first four bytes `magicXmlNumber` = `0x21324356`
+(`juce_AudioProcessor.cpp:968-980`). No size cap, no depth bound, no `DOCTYPE` rule, no encoding
+validation. The A/B payload is not framed at all.
+
+**RISK-014 is reachable, and on both paths at the same thresholds.** Measured on `de89b1a`,
+x86-64 Linux, Release, pinned JUCE 9.0.2, one shape per process, the 1 MB rows under `ulimit -s
+1024` for Windows main-thread parity: SIGSEGV between 2 500 and 3 000 nesting levels on a 1 MB
+stack (a 21 KB chunk) and between 20 000 and 30 000 on 8 MB — `readNextElement` and
+`readChildElements` are mutually recursive with no bound; a two-level recursive-entity `DOCTYPE` of
+~230 bytes SIGSEGVs on both paths while a one-level one of ~150 bytes had not returned after 60 s
+on the session path and took 54.1 s on the A/B path, because `XmlDocument::expandExternalEntity`
+indexes with `ent.indexOf (i + 1, ";")` — the DTD **token** index, not the ampersand it just found;
+and peak RSS tracks input linearly with no cap, 521 MB (session) and 650 MB (A/B) at 128 MB of
+payload. Accepted **and applied** today: two complete documents in one chunk (the first wins), a
+document followed by prose, a stray element or raw binary, a document followed by one NUL and a
+second complete document, invalid UTF-8 in an attribute value, and a chunk truncated to half its
+length.
+
+**Two corrections to the risk record, and both are the reason this pass exists.** First, the
+`SYSTEM`-`DOCTYPE` arbitrary file read — which RISK-014 claimed for these paths — is **not
+reachable on either**, structurally: `XmlDocument::getFileContents` opens nothing unless an
+`InputSource` is set (`juce_XmlDocument.cpp:182-193`), and both paths reach the parser through
+`parseXML (const String&)`, whose `XmlDocument (const String&)` constructor leaves it null (`:38`).
+Only the `File` overload installs a `FileInputSource`, and that is what the **preset** path used to
+call. Measured with a real canary file on disk: refused on both, contents did not leak. The old
+wording had extrapolated a preset-path measurement. Second, the likelihood rating rested on *"the
+bytes come from the host's own project file rather than from a file the user opens"*, and that is
+false: in the pinned VST3 SDK `PresetFile::restoreComponentState` reads the `Comp` chunk and calls
+`component->setState` (`…/public.sdk/source/vst/vstpresetfile.cpp:470-475`), which JUCE forwards to
+`setStateInformation` (`juce_audio_plugin_client_VST3.cpp:2822`) — so **a `.vstpreset` the user
+picks in the host's browser is a file the user opens and it reaches this parser**. Likelihood
+raised to Medium.
+
+**The A/B payload is a separate question, not the same one one level down.** It **amplifies** depth
+rather than inheriting it: in the reproduction the 3 000 levels live inside one attribute value of a
+session nested **three** deep and entirely well formed, so a depth cap applied to the session
+document alone would have refused none of the A/B rows. That finding is what makes "which paths" a
+real decision rather than a formality.
+
+**The compatibility question the 2026-09-18 deferral was made for is now answered for two of its
+three parts**, by `--risk014-probe census` against the fixtures already in `tests/fixtures/`: every
+session this product has written is nested at most **3** deep and is at most **10 629 bytes** (this
+build 10 438 B, the v0.9.5 field capture 10 629 B, the three legacy roots `SESSION_COMPATIBILITY_
+POLICY.md` rule 3 keeps alive 268 / 590 / 740 B at depth 2–3), a slot payload is at most **2 051
+bytes** at depth **2**, and **none carries a `DOCTYPE`** — `XmlElement::TextFormat::dtd` defaults to
+empty (`juce_XmlElement.h:207`) and neither `copyXmlToBinary` nor `ValueTree::toXmlString` sets it.
+The third part, a size cap, stays a judgement: 10.6 KB is the largest session ever measured, and
+what multiple of it is safe is not something a measurement decides.
+
+**Why the disposition is a stop and not a fix.** Narrowing what `setStateInformation` accepts is a
+semantic change to a contract `docs/architecture/SERIALIZATION_REGISTRY.md` records, which
+`ARCHITECTURE_REVIEW_GATE.md` gates as a *Serialization Registry change* and `AI_AGENT_POLICY.md`
+makes an agent hard stop — the same gate ADR-0055 triggered — and ADR-0055's standing ruling
+explicitly excludes these two paths (*"Do not modify host session blob loading or A/B slot payload
+loading in this round"*). ADR-0056 therefore sets out five options (accept; session only; both;
+no size cap; big-stack thread, already rejected by ADR-0055's own reasoning) and names the four
+points the owner must decide, **without selecting one**. One fact removes the error-handling half
+of the problem in advance: a refusal here needs no new user-facing state, because `decodeRestore`
+returning `false` is already the documented *"a chunk of neither recognised shape is not a restore
+at all"* outcome.
+
+**Documents changed.** `FUTURE_RISKS.md` (RISK-014 rewritten to the measurements, both corrections
+stated as corrections, likelihood raised, summary row updated);
+`architecture/design-decisions/ADR-0056-the-session-and-a-b-parser-boundary.md` (**new, Proposed**)
+and its `ADR_INDEX.md` row; `architecture/SERIALIZATION_REGISTRY.md` (a new *What the HOST-STATE
+path accepts, measured* section — what is accepted, what is refused, what is not survivable, what
+the writer produces, and that narrowing any of it is a gated change);
+`procedures/TESTING.md` (the `--risk014-probe` instrument, the `census` shape, the explicit note
+that the suite must never call it and that no regression test accompanies the findings, plus the
+round-50 bullet). **No `CHANGELOG.md` entry**: nothing the product does changed. **ADR-0055 is
+unchanged and not reopened** — this round confirms its scope ruling rather than revisiting it.
+**State 4 584 / 0, DSP 396 / 0**, both unchanged, because nothing the suite runs moved. [Verified]
 
 ## 69th pass — 2026-09-19, round 49 (the complete Code Scanning audit, from the raw SARIF)
 

@@ -674,6 +674,34 @@ pump explicitly. Measured: across a 1000 ms unserviced window the reported laten
 and no sleep stands in for synchronisation: the negative phase asserts a state that cannot become
 true later without servicing, and its deadline only bounds the run.
 
+`AnamorphStateTests --risk014-probe <shape> [n]` is its RISK-numbered sibling, added in round 50,
+and it is the one instrument in this file that **the suite must never call**: two of its shapes end
+the process with a SIGSEGV and two never return. It measures what a crafted host chunk does to the
+two XML parser paths ADR-0055 left outside the preset boundary — `setStateInformation` →
+`decodeRestore` → `getXmlFromBinary` → `juce::parseXML`, and the A/B slot payload's own
+`parseXML (slotPayload)` one level further in. One shape per invocation, the verdict being the exit
+status rather than an assertion; `drive` is the witness in the printed line, default `0.0` and
+carried as `0.9` plain (`0.0375` normalised), so the value says whether the chunk was refused or
+accepted **and applied**. Measured on `de89b1a`, x86-64 Linux, Release, pinned JUCE 9.0.2, with the
+1 MB rows under `ulimit -s 1024` for Windows main-thread parity: SIGSEGV between 2 500 and 3 000
+levels of nesting on 1 MB and between 20 000 and 30 000 on 8 MB, **on both paths**; a two-level
+recursive-entity `DOCTYPE` of ~230 bytes SIGSEGVs on both while a one-level one of ~150 bytes had
+not returned after 60 s; peak RSS linear to 521–650 MB with no cap; and two documents in one chunk,
+trailing prose, a NUL disguise, invalid UTF-8 and a chunk truncated to half its length each
+**accepted and applied**. Two negatives matter as much: the `SYSTEM`-`DOCTYPE` file read is **not**
+reachable on either path — both reach `parseXML (const String&)`, whose `XmlDocument` leaves
+`inputSource` null, so `getFileContents` has nothing to open, and a real canary file on disk did not
+leak — and the A/B payload **amplifies** depth rather than inheriting it, the 3 000 levels living
+inside one attribute value of a well-formed 3-deep session.
+
+`--risk014-probe census` is the same instrument pointed the other way and is the only shape that
+asserts nothing about corruption: it prints the size and depth of the sessions the product really
+writes, so a proposed cap can be read against them. This build 10 438 B / depth 3, the v0.9.5 field
+capture 10 629 B / depth 3, the three legacy roots 268 / 590 / 740 B at depth 2–3, and the capture's
+two slot payloads 2 046 and 2 051 B at depth 2. **No regression test accompanies any of this**, and
+deliberately: a regression test asserts that behaviour is intended, and whether it is intended is
+the open question — see `docs/FUTURE_RISKS.md` RISK-014 and ADR-0056 (**Proposed**).
+
 `AnamorphStateTests --legacy-match-probe` gained a companion in State test 31 rather than a new
 probe: the per-slot Level-Match memory (ER-STATE-20) is observed through the product's own
 behaviour. Two properties make that exact rather than a tolerance game — after a restore with no
@@ -1775,6 +1803,48 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   uncovered statement is one assignment. Recorded rather than papered over, in the same way M15 and
   M189 are.
 
+* **Round 50 — RISK-014 measured instead of inferred, and stopped at the gate.** The brief asked for
+  the disposition of RISK-014: the host session blob and the A/B slot payload reach the same parser
+  the preset boundary now guards. Investigation first, and the investigation changed the entry in
+  both directions. **The call graphs.** `setStateInformation` → `decodeRestore`
+  (`src/PluginProcessor.cpp:2747-2751`) → `getXmlFromBinary` → `juce::parseXML`; and inside the same
+  decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) → `juce::parseXML (slotPayload)` on a string
+  attribute value of the already-parsed session document. `getXmlFromBinary` validates exactly two
+  things — chunk longer than 8 bytes, first four bytes `0x21324356` — and the A/B payload is not
+  framed at all. **The measurements**, through the real entry point on `de89b1a` with
+  `--risk014-probe`, one shape per process: SIGSEGV between 2 500 and 3 000 nesting levels on a 1 MB
+  stack and between 20 000 and 30 000 on 8 MB, **identically on both paths**; a two-level
+  recursive-entity `DOCTYPE` of ~230 bytes SIGSEGVs on both, a one-level one of ~150 bytes had not
+  returned after 60 s on the session path and took 54.1 s on the A/B path, three levels hangs on
+  both; peak RSS linear with no cap to 521 MB (session) and 650 MB (A/B) at 128 MB of input; and
+  two complete documents in one chunk, trailing prose/element/binary, a NUL followed by a second
+  complete document, invalid UTF-8 in an attribute value and a chunk truncated to half its length
+  are each **accepted and applied**. **Two corrections to the risk record**, both from source rather
+  than from the preset round's reasoning. The `SYSTEM`-`DOCTYPE` arbitrary read is **NOT** reachable
+  on either path: `XmlDocument::getFileContents` opens nothing without an `InputSource`
+  (`juce_XmlDocument.cpp:182-193`), and both paths reach the parser through `parseXML (const
+  String&)`, whose constructor leaves it null (`:38`) — only the `File` overload, which the preset
+  path used to call, installs one; measured with a real canary file, no leak on either path. And
+  the likelihood argument — *"the bytes come from the host's own project file rather than from a
+  file the user opens"* — does not hold: in the pinned VST3 SDK
+  `PresetFile::restoreComponentState` calls `component->setState`
+  (`…/public.sdk/source/vst/vstpresetfile.cpp:470-475`), which JUCE forwards to
+  `setStateInformation` (`juce_audio_plugin_client_VST3.cpp:2822`), so **a `.vstpreset` the user
+  picks in the host's browser reaches this parser**. **The A/B path is a separate question, not the
+  same one one level down:** its payload amplifies depth rather than inheriting it — the 3 000
+  levels sit inside one attribute value of a well-formed 3-deep session — so a depth cap on the
+  session document alone refuses none of the A/B rows. **The compatibility answer the deferral was
+  made for**, from `--risk014-probe census`: every session ever written is depth ≤ 3 and ≤ 10 629
+  bytes, a slot payload ≤ 2 051 bytes at depth 2, and none carries a `DOCTYPE` because
+  `TextFormat::dtd` defaults empty. **Disposition: NEEDS DESIGN DECISION / STOP.** Narrowing what
+  `setStateInformation` accepts is a semantic change to a contract `SERIALIZATION_REGISTRY.md`
+  records — an Architecture Review Gate item and an AI-agent hard stop — and ADR-0055's standing
+  ruling explicitly excludes these two paths. **No `src/` change, no regression test, no
+  suppression**: a regression test asserts that behaviour is intended, which is the question being
+  asked. The evidence, the five options and the one open judgement (the size cap; 10.6 KB is the
+  largest session ever measured, and what multiple of it is safe is not a measurement) are
+  **ADR-0056, Proposed**; RISK-014 is rewritten to the measurements and its likelihood raised to
+  Medium. State 4 584 / 0 and DSP 396 / 0, both unchanged, because nothing the suite runs moved.
 * **Round 49 — the whole Code Scanning surface, from the raw SARIF of every retained run, and the
   one annotation that was half-written. ONE CODE CHANGE, in a test header.**
   A complete audit of **both** analyzers — CodeQL (`c-cpp` and `actions`) and MSVC `/analyze`
