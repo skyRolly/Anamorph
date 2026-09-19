@@ -1775,6 +1775,99 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
   uncovered statement is one assignment. Recorded rather than papered over, in the same way M15 and
   M189 are.
 
+* **Round 49 — the whole Code Scanning surface, from the raw SARIF of every retained run, and the
+  one annotation that was half-written. ONE CODE CHANGE, in a test header.**
+  A complete audit of **both** analyzers — CodeQL (`c-cpp` and `actions`) and MSVC `/analyze`
+  (PREfast) — over the entire window in which raw SARIF still exists, not just the newest run.
+  **235 results on the current head `b6af84e`**: PREfast 185 (`C6262` 169, `C26495` 8, `C26498` 4,
+  `C28252` 4), CodeQL `c-cpp` 50, CodeQL `actions` 0. Every anchor was re-read against the working
+  tree: **184 of 185 first-party anchors resolve, 0 files missing, 0 past EOF, 0 landing on
+  unrelated code**; the 185th is the one JUCE result. The 29 `C6262` anchors that sit on a bare `{`
+  are lambda bodies, as in the 2026-09-07 audit.
+  - **Source of truth: the artifacts, because the alert API is not reachable here.** This session
+    has GitHub Actions tools and no Code Scanning alert tool, which is precisely the case
+    `codeql.yml` and `msvc.yml` added their `Upload raw ... SARIF` steps for. Seventeen PREfast
+    SARIFs were downloaded and parsed — every push/schedule run on `main` from `c7471d01`
+    (2026-09-03, the first run with the artifact step) through `b6af84e`, plus all six PR heads of
+    the 0.9.9 preset series — together with six CodeQL SARIFs across four commits (`c-cpp` at
+    `faac9fa9`, `19bb50be`, `661a90b5` and `b6af84e`; `actions` at the last two). **What the artifacts cannot say is alert STATE** — open, fixed or
+    dismissed — and nothing in this round claims it.
+  - **CodeQL is inert on this repository and has been all window.** 50 results at `faac9fa9`,
+    `19bb50be`, `661a90b5` and `b6af84e`, byte-for-byte the same rule distribution
+    (`cpp/integer-multiplication-cast-to-long` 41, `cpp/alloca-in-loop` 7,
+    `cpp/comparison-with-wider-type` 1, `cpp/unsafe-use-of-this` 1), and **every one of them is
+    under `build/_deps/juce-src`** — in `locations`, in `relatedLocations` and in every `threadFlow`
+    step. **No first-party CodeQL result appears at any commit sampled here**, and the 2026-09-07
+    audit found the same at `2ed512c6`. Third-party
+    JUCE is accepted, not fixed: `docs/policies/DEPENDENCY_POLICY.md` pin-locks and review-gates it.
+    `actions` is 0 at both sampled points.
+  - **The four `C6001` the 2026-09-07 audit called false positives are gone, and the reason is not
+    the same for both.** They were two defects' worth of reports, each doubled (`X` and
+    `X[BYTE:0]`). `nf` in `src/gui/SpectrumImager.cpp` vanished at `faac9fa9` (PR #143) as a SIDE
+    EFFECT of the ADR-0044/0049 guard work — nothing was done about the alert, and the condition
+    never existed: `removeBand` writes `nf[0 .. N-3]` and reads exactly that range, for every
+    reachable `N` and `dropX`. `saved` in `src/PluginProcessor.cpp` vanished at `19bb50be` (PR #144)
+    because round 28 DID change the code — one named `constexpr size_t viewCount` instead of two
+    separate `std::size (pid::viewParams)` spellings, so /analyze can no longer take the bound as
+    zero in one loop and non-zero in the other. **The analyzer version is constant at PREfast
+    14.51.36256.0 across all seventeen SARIFs**, so neither disappearance is toolchain drift.
+  - **FIX — `tests/AllocationGuard.h`, and the finding was right.** The four `C28252` do not say
+    "no annotations" any more; they say the prior instance carries `SAL_success(return!=0)`. That
+    prior instance is `vcruntime_new.h`'s own declaration, which spells the nothrow contract
+    `_Ret_maybenull_ _Success_(return != NULL) _Post_writable_byte_size_(_Size)`. The guard's
+    `ANAMORPH_GUARD_RET_MAYBENULL` had the first and third and not the second — and a
+    `_Post_writable_byte_size_` with no `_Success_` applies on EVERY return, so the half-annotated
+    form promised the analyser `sz` writable bytes on the null return as well, contradicting the
+    `_Ret_maybenull_` next to it and hiding exactly the missing-null-check shape /analyze exists to
+    find. `_Success_(return != 0)` is added. **This is not a suppression**: it states what
+    `rawAlloc`/`alignedAlloc` actually do. The throwing forms are untouched — `_Ret_notnull_`
+    already makes their post-condition unconditional and no `C28252` opens on them.
+    **No test can prove this**; SAL has no run-time behaviour and the only oracle is the analyzer,
+    so the proof is the `C28252` count in the next `msvc.yml` SARIF. **Measured: 4 -> 0.** Run 457
+    on `b676b9f` reports **181** results where `b6af84e` reported 185 -- `C6262` 169, `C26495` 8,
+    `C26498` 4, `C28252` **0** -- and the two `C28252` identities (`new`, `new[]`) are the only
+    difference in either direction. The `C6262` set is identical between the two heads at every
+    `(file, line, bytes)`, so the finding was RESOLVED, not moved and not traded for another.
+  - **DO NOT FIX — `C6262` x 169, measured again rather than argued.** All 169 are test-only
+    (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
+    PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
+    functions across the two translation units: the largest real frame is **709,760** bytes
+    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21276`,
+    67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
+    (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
+    1,285,476 at `tests/state_tests.cpp:14861` against a real 284,800 — 4.5x — and across its 20
+    largest claims the overstatement runs 1.01x to 9.02x and never inverts. The control that holds
+    this line is the `ulimit -s 1024` guard step, not the alert.
+  - **DO NOT FIX — `C26495` x 7, and the 2026-09-07 justification for them was WRONG.** That entry
+    said the structs are "aggregate-initialised at every construction site". Two of the three sites
+    are not: `Scenario scenarios[2];` (`tests/dsp_tests.cpp:1611`) and `Case c;` (:5787) are
+    DEFAULT-initialised, which does leave `const char* name` and `double minRatio` indeterminate.
+    The correct evidence is that every member default-initialisation leaves indeterminate is
+    assigned before the first read — checked member by member for both elements of `scenarios` and
+    for every `mk()` call. The third site, `Case cases[4] {}` (:1733), IS value-initialised **and is
+    still flagged four times**, which proves the rule is about the DECLARATION having no
+    default member initialisers, not about any site — so writing `{}` at the other two would change
+    no alert while changing test code for a dashboard.
+  - **DO NOT FIX — `C26498` x 4 and the JUCE `C26495`.** The four are `con.5` style suggestions to
+    mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
+    `tests/state_tests.cpp:18380`, :18381); identical values either way, no defect, test-only. The
+    JUCE one is `juce_audio_plugin_client_VST3.cpp:1826`, third-party, reachable by neither
+    `ignoredIncludePaths` nor `ignoredTargetPaths` because that translation unit compiles INTO
+    `Anamorph_VST3` — already documented in `msvc.yml` and accepted under `DEPENDENCY_POLICY.md`.
+  - **A gap, named rather than glossed.** `msvc.yml` run 451 on `ca865f17` FAILED in its Build step
+    and produced no SARIF and no Code Scanning upload, so that head has no analyzer record at all.
+    The cause is already fixed: `ca865f17` used `ssize_t`, which MSVC does not declare in this
+    namespace, and `7076359` replaced it the same round. The only other missing runs are the two
+    `main` merges that predate the artifact steps (`ac47151b`, `e666b29f`).
+  - **Two stale figures, and the reason they went stale.** `docs/procedures/CI_CD.md` and
+    `docs/procedures/TESTING.md` both carried the state suite's maximum frame and PREfast's largest
+    claim anchored as BARE FILENAMES (`state_tests.cpp:8967`, `state_tests.cpp:17430`,
+    `state_tests.cpp:2659`). `check-citations.py` claims a citation only when the path is one of
+    `TRACKED` verbatim, so none of the three was ever re-aimed, and all three now land in unrelated
+    tests. Re-measured and rewritten in full-path form, which puts them under the gate from now on.
+    The measurements themselves held up: the state maximum is the same function (+1,280 bytes since
+    round 17), the DSP maximum is unchanged to the byte.
+
 * **Round 48 — the navigation walk repeats only when the user turns around, and the measurement
   says to leave it alone. NO CODE CHANGE.**
 
@@ -3760,12 +3853,21 @@ reproduces the failure it exists for.
 processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `tests/dsp_tests.cpp`
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
-with `g++ -fstack-usage`, the largest frames are **708,480 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, state_tests.cpp:17430) and
-**289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, dsp_tests.cpp:1388) — 68%
-and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
+with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21276`) and
+**289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
+— 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
-state_tests.cpp:2659 is 1,280,508 where the real frame is 283,968.
+`tests/state_tests.cpp:14861` is 1,285,476 where the real frame is 284,800.
+
+**Both anchors re-measured 2026-09-19 on `b6af84e`, and both written in full for the first time.**
+The state figure read 708,480 at `state_tests.cpp:17430` and the PREfast example 1,280,508 at
+`state_tests.cpp:2659`; both were spelled as BARE FILENAMES, which `check-citations.py` does not
+claim as citations — it requires a `TRACKED` path verbatim — so neither was re-aimed when the
+functions moved, and :17430 and :2659 now land in the middle of unrelated tests. The measurement
+itself held up: the state maximum is still the same Settings test (+1,280 bytes since round 17's
+708,480), the DSP maximum is unchanged to the byte, and of the **1,683** functions `-fstack-usage`
+reports across the two translation units, **none** reaches 1 MiB.
 
 **The four ADR-0053 tests PREfast flags on PR #144, measured rather than argued (round 16).** The
 wheel work added four functions and PREfast opened one `C6262` on each. One `AnamorphAudioProcessor`
@@ -3795,8 +3897,9 @@ suite's maximum frame** — that is still the pre-existing Settings test at 68 %
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
-'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:13701`
-today, this round's two new legs having moved it -- which is
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:13942`
+today (:13701 when this was written; re-aimed 2026-09-19, and the alert now reads 433740 at that
+line) -- which is
 `testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not
 touch**. The same alert, byte-identical at **433548**, is in the predecessor run's SARIF on
 `0e32e65` at `state_tests.cpp:12870`, which is where that function sat before State test 114 was
