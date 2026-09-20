@@ -6,7 +6,7 @@ documentation-affecting change** (`docs/policies/DOCUMENTATION_LIFECYCLE_POLICY.
 Coverage = how well the module/topic is documented. Confidence = strength of the evidence behind
 that documentation (Verified / Partially Verified / Unverified / Not Supported).
 
-Last updated: for the **0.9.9 change set** — **round 43** (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
+Last updated: for the **0.9.9 change set** — **round 52** (2026-09-19), the self-closing depth correction, the probe's consolidated external-entity oracle and the round's PREfast disposition, whose entry is the **72nd pass**; before it round 51 (2026-09-19), the ADR-0056 host-state parser boundary, whose entry is the **71st pass**; before it round 50 (2026-09-19), the RISK-014 investigation and its ADR-0056 decision request, whose entry is the **70th pass**; before it round 43 (2026-09-19), the preset-file boundary of ADR-0055, whose entry is the **63rd pass**; before it round 42 (2026-09-18). Before those, for the **0.9.7 change set** — the **changelog system round 7** (2026-09-06), whose
 entry is LAST in the body; before it **changelog system round 6** (2026-09-05); before it **changelog system round 5** (2026-09-05); before it **changelog system round 4** (2026-09-05); before it **changelog system round 3b** (2026-09-05); before it **changelog system round 3** (2026-09-05); before it **changelog system round 2d** (2026-09-05); before it **changelog system round 2c** (2026-09-05); before it **changelog system round 2** (2026-09-05); before it
 the **changelog audit against Keep a Changelog 1.1.0**
 (2026-09-05); before it the **`Vectorscope Persist` →
@@ -1842,7 +1842,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3407` and `.github/workflows/build.yml:3492`, this round being
+`.github/workflows/build.yml:3414` and `.github/workflows/build.yml:3499`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -8252,7 +8252,7 @@ draining shells over `abSwitchToAdopted` / `pollUndoCoalesceAdopted`, `abToggle`
 `beforeRelativeTarget` test seam; `src/PluginEditor.cpp` — `showPresetMenu` adopts before reading the
 row its tick is drawn on; `tests/state_tests.cpp` — State test 61.
 
-**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2177`).
+**Why.** Review finding *"relative navigation uses stale targets"* (`src/PluginProcessor.cpp:2178`).
 `abToggle` and `step` each derive a target and then call a primitive that drains on the way in
 (`abSwitchTo`; `load`, and `pollUndoCoalesce` inside it). A restore landing in that gap was adopted
 after the target had been derived from the session it replaced, so the A/B toggle could be a NO-OP —
@@ -8285,7 +8285,7 @@ write it guards) the adoption's §14 re-install, plus the `insideSoundReplacemen
 supplies, taken by `applySoundTree`, by `applyDefaults`, and across BOTH halves of the factory apply,
 plus the `insideReplacement` seam wired to the processor's; `tests/state_tests.cpp` — State test 62.
 
-**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2735`).
+**Why.** Review finding *"overlapping restores expose mixed sound"* (`src/PluginProcessor.cpp:2819`).
 A whole-sound replacement is `apvts.replaceState` — locked by JUCE — followed by a LOOP of
 per-parameter writes that was locked by nothing. A host thread's restore decode installs its sound on
 H; an A/B apply, an undo, or a preset load installs one on M; interleaved, the settled parameter set
@@ -8375,7 +8375,7 @@ adoption. `src/PresetManager.h` / `.cpp` — `adoptRestoredState` is DELETED (it
 and `setMeta`'s empty-baseline fallback is documented as no longer reachable from a host restore.
 `tests/state_tests.cpp` — State test 60.
 
-**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2550`).
+**Why.** Review finding *"pending edits become the clean baseline"* (`src/PluginProcessor.cpp:2634`).
 A session that records no `presetBaseline` — written before 0.6, or saved on a nameless A/B slot,
 which stores the property present-but-empty — had its clean baseline read off the LIVE parameters at
 the moment the message thread adopted the restore. For a host thread's restore that is an unbounded
@@ -9948,7 +9948,7 @@ probe and the editor-lifetime test both do it. `SpectrumImager`'s mouse handlers
 overrides, so no seam was ever needed and none was added. The out-of-tree harness was the right
 proof for the hour it took to write, and the wrong thing to leave standing.
 
-**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1115`: `pid::viewParams`
+**BENIGN — the four `C6001` PREfast reported.** `src/PluginProcessor.cpp:1116`: `pid::viewParams`
 (src/PluginParameters.h:71) is an `inline constexpr` array of **one** element, so `saved` is
 `float[1]` and both loops run exactly once; PREfast's own flow is self-contradictory, taking
 `0 < std::size (viewParams)` as false at :511 and true at :525 for the identical condition, because
@@ -10772,7 +10772,7 @@ and the live count together. Recorded in `TESTING.md` beside the test rather tha
 **A correction this round made to its own work.** The comment first written at the wheel's width
 store copied ADR-0045's wording — *"an automation touch and an undo step"* — onto a store that opens
 no gesture. `parameterGestureChanged` counts gesture opens and `pollUndoCoalesce` turns the return
-to zero into the undo entry (`src/PluginProcessor.cpp:1402-1578`), so a bare `setParam` makes **no**
+to zero into the undo entry (`src/PluginProcessor.cpp:1403-1579`), so a bare `setParam` makes **no**
 undo step: the value reaches the host and is folded into the committed baseline with nothing to
 reverse it, which is worse than the sentence claimed rather than better. Caught by the round's own
 audit workflow and corrected in place, with the reason `resetParam`'s wording is right where it
@@ -12295,7 +12295,7 @@ empty-directory mistake and MB1–MB6);
 
 **Trigger.** Two items on PR #144 at head `988ff3b`: `src/PluginProcessor.cpp:R802-807`, *"direct
 program commands can deadlock"*, and PREfast `C6001` **272/273** on the view-param
-write-back, `src/PluginProcessor.cpp:1115` (line 960 in the pre-fix file, which is the line the
+write-back, `src/PluginProcessor.cpp:1116` (line 960 in the pre-fix file, which is the line the
 alerts name), *"using uninitialized memory 'saved'"*. The first is confirmed; the
 second is a false positive, and was removed rather than dismissed.
 
@@ -13003,6 +13003,248 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
+## 72nd pass — 2026-09-19, round 52 (the depth cap enforces the depth definition; the probe's oracle consolidated)
+
+**Scope.** Three confirmed review items on the round-51 work, plus the linux CI failure it shipped
+with. No ADR was opened or reopened; ADR-0056 carries a dated correction subsection and a round-52
+validation record, and its **Accepted** status is untouched.
+
+**The depth cap was one level short of itself, on every surface.** `textIsAdmissible` advanced
+`depth` on an opening tag and skipped a self-closing one, so
+`<a><b><c><d><e><f><g><h><leaf/></h></g></f></e></d></c></b></a>` — **nine** elements deep — passed a
+cap of eight. **The configured limit did not move and no second definition was written.** The
+repository already had exactly one, in three places that all count a childless element: ADR-0055's
+*"nested exactly two deep"* for a preset whose deepest element is the self-closing `PARAM`,
+ADR-0056's depth-3 session, and the `--risk014-probe census` walk returning `d + 1` at every element.
+The scan is what moved onto them. Since preset text, session chunk and A/B payload share the walk,
+the gap was reachable on all three, and the overshoot is exactly one level. **State test 116 leg
+A2** is the regression: eight accepted / nine refused under both `DocumentRule`s, the depth-9 fixture
+carrying a self-closing leaf, `<ANAMORPH/>` handled as a root that opens and closes at once, and both
+depths driven end-to-end through `setStateInformation`. Restoring the pre-fix lines fails **4**
+checks; M5 (depth 8 → 9) now kills **2** where it killed 1.
+
+**Round 51's claim that the probe's discredited oracle was gone was FALSE, and is corrected rather
+than quietly fixed.** Leg G had been rebuilt, but `--risk014-probe session-system` / `ab-system` still
+asked `reportShape` whether a canary from a file on disk appeared in the serialized state — which
+cannot distinguish *"never opened"* from *"opened, read, then rejected"*. The fix **reuses** the
+existing mechanism instead of inventing a second interception model: `measureExternalEntityAccess()`
+was hoisted next to `CountingInputSource` and is now called by both leg G and the two probe shapes,
+which print the positive control, the present/absent differential and a `VERDICT:` line — plus an
+explicit guard when the control does **not** fire, so a probe that has stopped discriminating says so
+instead of reading clean. `reportShape`'s `canary` parameter is deleted, so no shape can reach the
+old oracle. The destructive shapes stay destructive; nothing moved into the suite.
+
+**The five new PREfast `C6262` claims: `DO NOT FIX`, on measurement.** Diffed by *byte value* rather
+than by line, because line anchors churn whenever a file grows: **five added, none removed, and not
+one pre-existing value changed** — which is itself the proof that the older large-stack findings in
+`tests/state_tests.cpp` are historical and untouched. Against `g++ -fstack-usage` on ninja's own
+compile line, re-measured on the head that carries this round's fixes:
+`testHostStateIsBoundedBeforeTheParser` 1,142,408 claimed vs **284,192** real (4.02×), its two named
+lambdas 142,776 vs **141,968** each, `reportShape` 142,776 vs **141,936**, `runRisk014Probe` 143,232
+vs **142,176**. Three claims moved by tens of bytes between the head they were raised against and this
+one, as the test edits changed the scalars around the processors — `reportShape` by exactly the 40
+bytes its deleted `canary` parameter occupied. **None is resolved by that**, and the round does not
+claim otherwise: the count is still 174 and all five are still there. The responsible object is the by-value
+`AnamorphAudioProcessor`, `sizeof` **141,888** — 99.9 % of each ordinary frame — and the outlier is
+arithmetic, not mystery: the test declares **eight** processor automatics outside its lambdas,
+8 × 141,888 = 1,135,104, which is the claim less 7,356 of scalars. Not fixed because **125 of 1,575**
+functions in the TU already sit at or above 141,936, the TU maximum is unchanged at 709,760, and the
+control that holds this line — both suites under `ulimit -s 1024` — is green on this head, State test
+116's deepest real chain included at 426,160 bytes (41 % of the Windows reserve). For `reportShape`
+heaping would be actively wrong: its processor is live across `setStateInformation`, so moving it
+hands 141,888 bytes back to JUCE's recursive descent and **moves the SIGSEGV depth the probe exists
+to measure**. The probe is opt-in and the guard step never runs it, so `--risk014-probe census` was
+run under `ulimit -s 1024` separately: green, ~284 KB deep. `docs/procedures/CI_CD.md` carries the
+table.
+
+**The linux CI failure the round-51 head shipped with** was an orphaned copy of `isXmlDeclaration`
+left in `src/PresetManager.cpp` by the walker extraction — `-Wunused-function`, 1 new warning against
+a baseline of 0. Deleted. The local sweep in `scripts/preflight.sh` had not caught it because that
+translation unit was not in its list; it is now, with the reason written next to it.
+`src/PluginProcessor.cpp` stays out, for its declared `-Wshadow` baseline row.
+
+**Drift found and corrected.** `.github/workflows/build.yml`'s stack-guard comment still quoted
+**707,824 at `state_tests.cpp:8967`** — figures `docs/procedures/CI_CD.md` re-measured earlier the
+same day to 709,760 and re-anchored in full, the comment not having followed. Corrected, with the
+reason recorded in place.
+
+**Documents touched:** `src/XmlBoundary.h`, `src/PresetManager.cpp`, `tests/state_tests.cpp`,
+`scripts/preflight.sh`, `.github/workflows/build.yml`, ADR-0056, `docs/FUTURE_RISKS.md`,
+`docs/procedures/TESTING.md`, `docs/procedures/CI_CD.md`, this file. **`CHANGELOG.md` is deliberately
+unchanged**: both defects were introduced and fixed inside the same unreleased `[0.9.9]` cycle, whose
+existing entry already promises "eight levels of nesting" — a promise the correction makes true
+rather than alters. Keep a Changelog records what a release changes for a user, not the repository's
+own intermediate states.
+
+## 71st pass — 2026-09-19, round 51 (RISK-014 closed: both parser surfaces bounded)
+
+**Scope.** The owner ruled on ADR-0056 — narrow host-state acceptance, protect **both** parser
+surfaces, use ADR-0055's limits (**256 KB, depth 8, no `DOCTYPE`**), correct the trust
+classification. Implemented. **RISK-014 is RESOLVED**; the acceptance ADR-0056 deliberately did not
+narrow is now **RISK-015**, so nothing disappears by being fixed next to it.
+
+**One walk, two rule sets — and the split was established, not assumed.** `src/XmlBoundary.h`
+(`anamorph::xmlBoundary`) carries the scan, parameterised by a `DocumentRule`. The preset path asks
+`oneWellFormedDocument`; the two host paths ask `parserSafetyOnly`. `presetTextIsAdmissible` is now a
+two-line call into it, so ADR-0055's rules are the *same code* rather than a second model of what
+JUCE's parser does with a `<` — and State test 114's twelve legs, green and untouched, are the proof
+it did not move. What could **not** be shared: the byte-level preset checks (UTF-16 BOM, embedded
+NUL, UTF-8 validity) read a FILE the way `String::createStringFromData` is about to, while a session
+chunk is decoded by `String::fromUTF8` and an A/B payload has no bytes of its own — it arrives
+already decoded, as an attribute value. And the single-document rules are correctness rules about a
+file format, not parser safety, so instruction 3's three limits did not carry them.
+
+**The session scan runs on the parser's own string.** `hostChunkIsAdmissible` answers size first, on
+`sizeInBytes`, because that is what bounds the decode; the text it then scans is
+`juce_AudioProcessor.cpp:975-976`'s own expression on its own range rather than a reconstruction of
+it. That is load-bearing: `String::fromUTF8` builds through `createFromCharPointer`, whose
+`while (e < end && ! e.isEmpty())` (`juce_String.cpp:132`) stops at the first NUL, so a raw byte scan
+would look past it and refuse documents the parser never sees.
+
+**Each document is bounded separately**, which round 50's amplification measurement is the whole
+reason for: 3 000 levels inside one attribute value of a session nested three deep. The payload's own
+size cap is redundant by containment while the outer cap holds; the code says so and State test 116
+leg D says so, rather than either pretending to test it.
+
+**Refusal semantics are the ones each path already had.** `decodeRestore` returns `false` and touches
+nothing — the registry's *"a chunk of neither recognised shape is not a restore at all"*. A refused
+payload leaves the slot invalid for `abEnsureInit()` to re-seed, which is ER-STATE-02's existing
+recovery. No new state, no new user-facing report, no new thread, lock or blocking wait.
+
+**The Devin finding on the probe's external-entity oracle is closed, and the old oracle was genuinely
+unsound.** It put a canary in a file, parsed a document with a `SYSTEM` `DOCTYPE`, and looked for the
+canary in the serialized state — which cannot distinguish *"the file was never opened"* from *"the
+file was opened and read, and the document was then rejected"*. State test 116 leg G replaces it with
+a **filesystem differential carrying a positive control**: with a counting `juce::InputSource`
+installed the parser opens the file **once** and the entity resolves to `LEAKED`, which is what makes
+the negative falsifiable; through `juce::parseXML (const String&)` — the call both host paths make,
+and literally `XmlDocument (textToParse).getDocumentElement()` at `juce_XmlDocument.cpp:53-56` — the
+result is the unresolved `leak` and is **byte-identical whether the file exists or not**. The
+production conclusion is unchanged and now rests on evidence that supports it.
+
+**Two mutants survived the first draft, and both were real coverage gaps.** M2 (the A/B guard always
+admitting) survived because the A/B legs read `width` at its default whether the payload was refused
+or admitted-but-empty; the payloads now carry a top-level `width` of 1.6 so the outcomes are
+different numbers. M5 (depth 8 → 9) survived because every leg sized its fixtures *from* the
+constants and moved with them; leg 0 now pins the two values, and also pins that
+`PresetManager::maxPresetBytes` / `maxPresetDepth` still hold ADR-0055's numbers after becoming names
+for the shared ones. Final: **six mutants, six kills** (M1 session guard → 5 failures, M2 → 3, M3 the
+`<!` rule under `parserSafetyOnly` → 2, M4 session size cap → 2, M5 → 1, M6 size halved → 1).
+
+**Compatibility, re-verified rather than quoted.** State test 116 leg F asserts every retained
+fixture through the real entry point — the three legacy root formats
+`SESSION_COMPATIBILITY_POLICY.md` rule 3 keeps alive (268 / 590 / 740 B, depth 2–3), the v0.9.5 field
+capture (10 629 B, depth 3) — plus a live save→restore round trip (10 444 B against the 262 144 B
+cap). Slot payloads in the real capture: 2 046 and 2 051 B at depth 2. Re-measured with
+`--risk014-probe` on the fixed head, the shapes that used to SIGSEGV or never return are each refused
+in **0–4 ms on both paths**.
+
+**Documents changed.** `ADR-0056` **Proposed → Accepted**, with the owner's ruling quoted, the
+shared/not-shared table, the two boundaries, the failure semantics and the validation, and the
+round-50 evidence kept verbatim above it; its `ADR_INDEX.md` row rewritten.
+`architecture/SERIALIZATION_REGISTRY.md` — the measured-acceptance section replaced by **The
+HOST-STATE parser boundary**, leading with why host state is not trusted by its entry point (the
+`.vstpreset` path, cited to the pinned VST3 SDK and JUCE wrapper). `policies/SESSION_COMPATIBILITY_
+POLICY.md` — new **rule 7** recording the narrowed acceptance and its compatibility evidence.
+`FUTURE_RISKS.md` — RISK-014 **RESOLVED** with both round-50 corrections preserved as corrections and
+the round-51 oracle correction added; **RISK-015** opened for the five shapes still accepted.
+`procedures/TESTING.md` — the probe entry corrected (it no longer answers the external-entity
+question), State test 116 and leg G documented, round-51 bullet. `CHANGELOG.md` — one **Fixed** entry
+under the existing `[0.9.9]` heading, in user terms.
+
+**Validation.** State **4 625 / 0** (was 4 584), DSP **396 / 0**, `preflight.sh` exit 0, `check-docs`
+145 files clean, citations clean on all three bases (63 + 8 + 1 re-anchored and **seven
+`DELIBERATE_REAIMS` declarations re-derived** — the gate caught every one of them, which is the gate
+working). libFuzzer over `setStateInformation` under ASan+UBSan, seeded corpus: **10 990 runs / 181 s,
+no findings**, slowest unit 0 s — run with the locally available clang 18.1.3 rather than the pinned
+22, which CI runs. Version unchanged at **0.9.9**. [Verified]
+
+## 70th pass — 2026-09-19, round 50 (RISK-014 measured, and stopped at the gate)
+
+**Scope.** One risk, investigated to a disposition: RISK-014 — the host session blob and the A/B
+slot payload reach the XML parser that ADR-0055 put a boundary in front of for preset files.
+**Disposition: NEEDS DESIGN DECISION / STOP.** No `src/` change, no regression test, no
+suppression. One new file (`ADR-0056`, **Proposed**), one new opt-in instrument
+(`--risk014-probe`), and four documents corrected to the measurements.
+
+**The two call graphs, from the API rather than the names.** `setStateInformation` →
+`decodeRestore` (`src/PluginProcessor.cpp:2831-2839`) → `AudioProcessor::getXmlFromBinary` →
+`juce::parseXML`; and, inside the same decode, `readSlot`'s `adoptIfAnamorph` (`:2855-2862`) →
+`juce::parseXML (slotPayload)` on a string attribute value of the already-parsed session document —
+a second, independently framed document. `getXmlFromBinary` validates exactly two things: chunk
+longer than 8 bytes, and first four bytes `magicXmlNumber` = `0x21324356`
+(`juce_AudioProcessor.cpp:968-980`). No size cap, no depth bound, no `DOCTYPE` rule, no encoding
+validation. The A/B payload is not framed at all.
+
+**RISK-014 is reachable, and on both paths at the same thresholds.** Measured on `de89b1a`,
+x86-64 Linux, Release, pinned JUCE 9.0.2, one shape per process, the 1 MB rows under `ulimit -s
+1024` for Windows main-thread parity: SIGSEGV between 2 500 and 3 000 nesting levels on a 1 MB
+stack (a 21 KB chunk) and between 20 000 and 30 000 on 8 MB — `readNextElement` and
+`readChildElements` are mutually recursive with no bound; a two-level recursive-entity `DOCTYPE` of
+~230 bytes SIGSEGVs on both paths while a one-level one of ~150 bytes had not returned after 60 s
+on the session path and took 54.1 s on the A/B path, because `XmlDocument::expandExternalEntity`
+indexes with `ent.indexOf (i + 1, ";")` — the DTD **token** index, not the ampersand it just found;
+and peak RSS tracks input linearly with no cap, 521 MB (session) and 650 MB (A/B) at 128 MB of
+payload. Accepted **and applied** today: two complete documents in one chunk (the first wins), a
+document followed by prose, a stray element or raw binary, a document followed by one NUL and a
+second complete document, invalid UTF-8 in an attribute value, and a chunk truncated to half its
+length.
+
+**Two corrections to the risk record, and both are the reason this pass exists.** First, the
+`SYSTEM`-`DOCTYPE` arbitrary file read — which RISK-014 claimed for these paths — is **not
+reachable on either**, structurally: `XmlDocument::getFileContents` opens nothing unless an
+`InputSource` is set (`juce_XmlDocument.cpp:182-193`), and both paths reach the parser through
+`parseXML (const String&)`, whose `XmlDocument (const String&)` constructor leaves it null (`:38`).
+Only the `File` overload installs a `FileInputSource`, and that is what the **preset** path used to
+call. Measured with a real canary file on disk: refused on both, contents did not leak. The old
+wording had extrapolated a preset-path measurement. Second, the likelihood rating rested on *"the
+bytes come from the host's own project file rather than from a file the user opens"*, and that is
+false: in the pinned VST3 SDK `PresetFile::restoreComponentState` reads the `Comp` chunk and calls
+`component->setState` (`…/public.sdk/source/vst/vstpresetfile.cpp:470-475`), which JUCE forwards to
+`setStateInformation` (`juce_audio_plugin_client_VST3.cpp:2822`) — so **a `.vstpreset` the user
+picks in the host's browser is a file the user opens and it reaches this parser**. Likelihood
+raised to Medium.
+
+**The A/B payload is a separate question, not the same one one level down.** It **amplifies** depth
+rather than inheriting it: in the reproduction the 3 000 levels live inside one attribute value of a
+session nested **three** deep and entirely well formed, so a depth cap applied to the session
+document alone would have refused none of the A/B rows. That finding is what makes "which paths" a
+real decision rather than a formality.
+
+**The compatibility question the 2026-09-18 deferral was made for is now answered for two of its
+three parts**, by `--risk014-probe census` against the fixtures already in `tests/fixtures/`: every
+session this product has written is nested at most **3** deep and is at most **10 629 bytes** (this
+build 10 438 B, the v0.9.5 field capture 10 629 B, the three legacy roots `SESSION_COMPATIBILITY_
+POLICY.md` rule 3 keeps alive 268 / 590 / 740 B at depth 2–3), a slot payload is at most **2 051
+bytes** at depth **2**, and **none carries a `DOCTYPE`** — `XmlElement::TextFormat::dtd` defaults to
+empty (`juce_XmlElement.h:207`) and neither `copyXmlToBinary` nor `ValueTree::toXmlString` sets it.
+The third part, a size cap, stays a judgement: 10.6 KB is the largest session ever measured, and
+what multiple of it is safe is not something a measurement decides.
+
+**Why the disposition is a stop and not a fix.** Narrowing what `setStateInformation` accepts is a
+semantic change to a contract `docs/architecture/SERIALIZATION_REGISTRY.md` records, which
+`ARCHITECTURE_REVIEW_GATE.md` gates as a *Serialization Registry change* and `AI_AGENT_POLICY.md`
+makes an agent hard stop — the same gate ADR-0055 triggered — and ADR-0055's standing ruling
+explicitly excludes these two paths (*"Do not modify host session blob loading or A/B slot payload
+loading in this round"*). ADR-0056 therefore sets out five options (accept; session only; both;
+no size cap; big-stack thread, already rejected by ADR-0055's own reasoning) and names the four
+points the owner must decide, **without selecting one**. One fact removes the error-handling half
+of the problem in advance: a refusal here needs no new user-facing state, because `decodeRestore`
+returning `false` is already the documented *"a chunk of neither recognised shape is not a restore
+at all"* outcome.
+
+**Documents changed.** `FUTURE_RISKS.md` (RISK-014 rewritten to the measurements, both corrections
+stated as corrections, likelihood raised, summary row updated);
+`architecture/design-decisions/ADR-0056-the-session-and-a-b-parser-boundary.md` (**new, Proposed**)
+and its `ADR_INDEX.md` row; `architecture/SERIALIZATION_REGISTRY.md` (a new *What the HOST-STATE
+path accepts, measured* section — what is accepted, what is refused, what is not survivable, what
+the writer produces, and that narrowing any of it is a gated change);
+`procedures/TESTING.md` (the `--risk014-probe` instrument, the `census` shape, the explicit note
+that the suite must never call it and that no regression test accompanies the findings, plus the
+round-50 bullet). **No `CHANGELOG.md` entry**: nothing the product does changed. **ADR-0055 is
+unchanged and not reopened** — this round confirms its scope ruling rather than revisiting it.
+**State 4 584 / 0, DSP 396 / 0**, both unchanged, because nothing the suite runs moved. [Verified]
+
 ## 69th pass — 2026-09-19, round 49 (the complete Code Scanning audit, from the raw SARIF)
 
 **Scope.** Every CodeQL and MSVC `/analyze` result this repository can still be shown to have
@@ -13041,10 +13283,10 @@ are the only difference in either direction, and the 169 `C6262` are identical a
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
 result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
 functions across the two translation units. Largest real frames: **709,760** bytes
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21276`,
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21825`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-1,285,476 at `tests/state_tests.cpp:14861` against a real 284,800 — 4.5x — and over its 20 largest
+1,285,476 at `tests/state_tests.cpp:15410` against a real 284,800 — 4.5x — and over its 20 largest
 claims the overstatement runs 1.01x to 9.02x and never inverts. Tests are not edited for a
 dashboard; the control that holds this line is the `ulimit -s 1024` guard step.
 
@@ -13060,7 +13302,7 @@ writing `{}` at the other two would change test code and change no alert.
 
 **DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
 suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-`tests/state_tests.cpp:18380`, :18381) — identical values either way, no defect, test-only. The JUCE
+`tests/state_tests.cpp:18929`, :18381) — identical values either way, no defect, test-only. The JUCE
 `C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
 `ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already
 documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,
@@ -13351,7 +13593,7 @@ and 0.9.9 is unreleased. **RISK-014 unchanged** — no session-blob or A/B-paylo
 Three review findings against `f03aa06` — the head that first implemented ADR-0055 — plus one
 static-analysis item. Every one was reproduced or measured before anything was changed.
 
-**Finding 1 — line 492 as the review cited it, `src/PresetManager.cpp:570` today, an embedded NUL
+**Finding 1 — line 492 as the review cited it, `src/PresetManager.cpp:448` today, an embedded NUL
 bypasses the boundary: CONFIRMED and
 fixed.** `parseSoundFile` read the file with `loadFileAsString` and scanned the resulting
 `juce::String`, and a `juce::String` ENDS at the first NUL: `CharPointer_UTF8::isValidString`
@@ -13521,7 +13763,7 @@ occurrence only where source and context prove it describes the CURRENT reposito
   `clang::nonblocking` / `clang::nonallocating` occurrences across `modules/`. ADR-0029's rule and the
   52-warning figure stand.
 
-**What was deliberately NOT touched.** `src/PluginProcessor.cpp:1221` records a dated act of checking
+**What was deliberately NOT touched.** `src/PluginProcessor.cpp:1222` records a dated act of checking
 ("CORRECTED 2026-08-31 … after checking the pinned JUCE 9.0.1"); `build.yml:1210` records the
 2026-08-18 leak retest on the configuration it names; `build.yml:2682` already says "the JUCE 9.0.1
 pin this repository carried until ADR-0054"; `README.md:28` describes the 0.9.4 release;

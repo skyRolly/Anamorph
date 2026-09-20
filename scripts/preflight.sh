@@ -111,7 +111,14 @@ if [ ${#LOCAL_CXXS[@]} -gt 0 ] && [ -d build/_deps/juce-src/modules ]; then
     # warning on every run. This sweep's whole value is that silence means "nothing new"; a line
     # the reader must learn to skip destroys that faster than the missing coverage costs. Add the
     # file the day that debt row is paid off, not before.
-    for TU in src/PluginEditor.cpp src/gui/SpectrumImager.cpp tests/state_tests.cpp; do
+    #
+    # `src/PresetManager.cpp` IS here, added 2026-09-19 after its absence let a dead function ship.
+    # Round 51 moved the ADR-0055 walker into `src/XmlBoundary.h` and left one orphaned helper
+    # behind; clang-22's `-Wunused-function` failed the `linux` job on it, and this sweep -- which
+    # exists precisely to catch that before a push -- was green because the file was not in the
+    # list. It carries no declared debt row in either pinned baseline, so it costs no accepted
+    # noise. The exclusion above is a judgement; this omission was not.
+    for TU in src/PluginEditor.cpp src/PresetManager.cpp src/gui/SpectrumImager.cpp tests/state_tests.cpp; do
         for CXX in "${LOCAL_CXXS[@]}"; do
             # -Wshadow is NOT in -Wall -Wextra, and its absence is why a `-Wshadow` on a loop
             # variable shadowing a function parameter reached CI on 2026-09-10 with this sweep green.

@@ -4,6 +4,7 @@
 #include <functional>
 #include "PluginParameters.h"
 #include "StateCommandGate.h"   // anamorph::StateCommandGate (ADR-0036 section 31)
+#include "XmlBoundary.h"        // anamorph::xmlBoundary (ADR-0055 / ADR-0056: the shared limits)
 
 namespace anamorph
 {
@@ -108,8 +109,12 @@ public:
     // 21 KB file that crashed the parser on a 1 MB stack and the unbounded read that tracked file
     // size to 264 MB. They live here, not in the .cpp, so the regression can name the same
     // constants the loader enforces instead of repeating the literals beside it.
-    static constexpr juce::int64 maxPresetBytes = 256 * 1024;
-    static constexpr int         maxPresetDepth = 8;
+    //
+    // ADR-0056 (0.9.9) adopted these SAME two numbers for the host session chunk and for each A/B
+    // slot payload, so the literals moved to `XmlBoundary.h` and these two names now point at
+    // them. Two copies of "256 KB" are two things that can disagree; the values are unchanged.
+    static constexpr juce::int64 maxPresetBytes = anamorph::xmlBoundary::maxDocumentBytes;
+    static constexpr int         maxPresetDepth = anamorph::xmlBoundary::maxDocumentDepth;
 
     // The label a manager carries before any session, preset load or save -- and therefore also
     // the right answer for a session that predates the `presetName` field (< 0.6). It is a

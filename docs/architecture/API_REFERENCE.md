@@ -98,7 +98,7 @@ Evidence [Verified]: src/InternalState.h:165-435.
 | `onAboutToSave` / `soundParamGeneration` | `std::function<void()>` / `std::function<juce::uint32()>` | The two hooks `saveUser` uses to keep the file and the clean baseline one coherent pair (ADR-0036 §16). `onAboutToSave` drains any pending host restore **before** the sound is captured, so the bytes are the session the plug-in is on. `soundParamGeneration` is no longer read by `saveUser` at all — §17 replaced its two reads and their retry with ONE capture, so there is nothing to re-check; it remains `isDirty()`'s memo generation. Both optional. |
 | `Entry::factoryId` | `juce::String` | Empty for user presets; the factory preset's internal id otherwise. Immutable — renaming a preset is a display change, renaming an id would re-point live A/B and undo slots. |
 
-Evidence [Verified]: src/PresetManager.h:31-102.
+Evidence [Verified]: src/PresetManager.h:32-103.
 
 ## DSP module public interfaces
 
