@@ -31,6 +31,39 @@ public:
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
+
+    // HOST RESET -> ENGINE FLUSH (F2). `AudioProcessor::reset` is documented as
+    // "a host may call this to tell the plugin that it should stop any tails or
+    // sounds that have been left running" (juce_AudioProcessor.h:939-944), and its
+    // default implementation does nothing -- so without this override the request
+    // reached no state at all. It is not a theoretical entry point: the pinned
+    // JUCE VST3 wrapper calls `getPluginInstance().reset()` from
+    // `setProcessing(false)` (juce_audio_plugin_client_VST3.cpp:3475-3479), which
+    // a host issues whenever it stops processing, and the AU wrapper calls
+    // `juceFilter->reset()` from `Reset()` (juce_audio_plugin_client_AU_1.mm:255-263).
+    // Neither is followed by a `prepareToPlay`: the VST3 side re-prepares through
+    // `setupProcessing` with `CallPrepareToPlay::no` (:3470), and the AU side calls
+    // `prepareToPlay()` BEFORE the reset and only when not already prepared. So a
+    // transport stop left the delay lines, crossover banks, oversamplers, dry rings
+    // and any in-flight duck exactly as the last block left them.
+    //
+    // `AnamorphEngine::reset()` is already written for precisely this request --
+    // its own comment says "so a host reset lands in a clean steady state" -- and
+    // it allocates nothing: every buffer it clears is already sized.
+    //
+    // THREADING. This is the same standing the THREAD_MODEL gives `prepareToPlay`
+    // (the "Host prepare thread" row): a format callback that the host contract
+    // guarantees is not concurrent with `processBlock`. JUCE's own wrappers call it
+    // unguarded for that reason, and the VST3 wrapper takes
+    // `pluginInstance->getCallbackLock()` around the process call itself
+    // (VST3.cpp:3714). Nothing is added to the audio path, and no lock, wait or
+    // async hop is introduced -- REALTIME_AUDIO_POLICY is untouched.
+    //
+    // `audioTailsOnly`, NOT the wholesale flush, and the distinction is ADR-0007's.
+    // The request is to stop tails and sounds; a loudness MEASUREMENT is neither,
+    // and ADR-0007 requires the Level-Match measure to hold across silence so the
+    // next entry does not slam. `AnamorphEngine::ResetScope` carries that reasoning.
+    void reset() override { engine.reset (anamorph::AnamorphEngine::ResetScope::audioTailsOnly); }
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
@@ -41,7 +74,45 @@ public:
     bool acceptsMidi() const override  { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.1; }
+    // REPORTED TAIL (F3). This is not latency -- it is how long the chain keeps
+    // producing audio after its input goes silent, and the VST3 wrapper hands it
+    // straight to the host as `getTailSamples()`
+    // (juce_audio_plugin_client_VST3.cpp:3482-3493), which is what decides how long
+    // the host keeps calling `processBlock` after a source stops. UNDER-reporting
+    // therefore truncates an audible decay; over-reporting only costs a little
+    // processing after the source has stopped. The contract is a bound, so the safe
+    // direction is up, and this value is deliberately a conservative one.
+    //
+    // 0.1 was a constant with nothing behind it, and it was wrong. MEASURED on this
+    // chain -- 2 s of white noise, then pure silence, the last sample above a floor
+    // set relative to the steady peak that produced it:
+    //
+    //   shipped defaults                              0.000 s  (the identity path)
+    //   multiband on, default splits                  0.007 s
+    //   4 bands, every split at the 20 Hz floor       0.108 s
+    //   + Band Solo and Mid Solo                      0.198 s
+    //   + Level Match, Mono Maker at 20 Hz, Haas
+    //     35 ms, x8 oversampling, Drive, Mix 0.5      0.250 s   <- worst at -60 dB
+    //                                        -80 dB   0.284 s
+    //                                       -100 dB   0.318 s
+    //
+    // WHAT SETS IT. The binding element is the LR4 crossover bank at the 20 Hz
+    // floor of its own parameter range -- `logFreqRange (20, 20000)`
+    // (PluginParameters.cpp:238-240), a value reachable from the UI and from
+    // automation, and one `MultibandWidth::setCrossovers`' [20 Hz, 0.45*sr] clamp
+    // preserves at every rate. Being a filter, its decay is set in Hz and is
+    // therefore SAMPLE-RATE INDEPENDENT, which the sweep confirms: 0.232-0.250 s
+    // across 44.1/48/96/192 kHz. Band Solo roughly doubles it because the
+    // SoloMonitor mirrors the same splits into a SECOND bank in series; the fixed
+    // -time elements (the 1..35 ms Haas line, Velvet's ~45 ms sparse FIR, the
+    // oversampling wrap) then add on top rather than overlapping.
+    //
+    // WHY 0.5 AND NOT 0.318. A sweep finds the worst case it was pointed at, not
+    // the supremum over a continuous parameter space, so the reported number
+    // carries an explicit margin over the deepest floor measured -- about 1.6x --
+    // instead of being pinned to one measurement. Test 58 asserts the direction
+    // that matters: the reported value is never shorter than the measured tail.
+    double getTailLengthSeconds() const override { return 0.5; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }

@@ -92,7 +92,7 @@ fallback (rule 2 of `SESSION_COMPATIBILITY_POLICY.md`). A well-formed value that
 a removed factory id, a deleted or moved user preset — ticks **nothing**; it never falls back to a
 same-named preset. Source: src/PresetManager.h:56-78 (`Selection`), :78-94 (`SelectionFields`,
 `encodeSelection` / `decodeSelection`);
-src/PresetManager.cpp:1242-1295 (`encodeSelection` / `decodeSelection`);
+src/PresetManager.cpp:1310-1363 (`encodeSelection` / `decodeSelection`);
 src/PluginProcessor.cpp:2248-2353 (`writeSelection`/`readSelection`), :585 (root write),
 :594 / :598 (per-slot write), :638 (root read), :680 (per-slot read).
 
@@ -389,7 +389,7 @@ indistinguishable, since slot A has just been seeded from the same live state. T
 when slot A was valid and slot B was not, i.e. an `AB` node whose `slotBParams` alone was missing or
 unparsable: slot B came back as a **duplicate of slot A** rather than as the state just restored, and
 a later save wrote that duplicate out. Source: src/PluginProcessor.cpp:2907-2997
-(`readSlot`), :904-932 (`abEnsureInit`); src/PluginProcessor.h:541-554 (`StateSet::isValid`).
+(`readSlot`), :904-932 (`abEnsureInit`); src/PluginProcessor.h:612-625 (`StateSet::isValid`).
 
 An absent or empty `slotABase` / `slotBBase` means **"no baseline was recorded"**, which is *not* the
 same as "modified". Only a pre-0.6.4 slot produces it in this plug-in's own output — every in-memory

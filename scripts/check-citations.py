@@ -417,13 +417,13 @@ DELIBERATE_REAIMS = {
     # settled fails here rather than going quiet.
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:246-249",
-     "src/PluginProcessor.h:496-499"): "parameterValueChanged",
+     "src/PluginProcessor.h:567-570"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:390",
-     "src/PluginProcessor.h:701"): "parameterValueChanged",
+     "src/PluginProcessor.h:772"): "parameterValueChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:325",
-     "src/PluginProcessor.h:611"): "UndoStacks",
+     "src/PluginProcessor.h:682"): "UndoStacks",
 
     # 2026-09-13 (round 14, ADR-0008 as amended): THREE ENTRIES, all for spans this change EDITED
     # rather than moved, which is exactly the case a declaration is for -- the line map returns
@@ -447,7 +447,7 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.cpp:1403-1580"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.h:250",
-     "src/PluginProcessor.h:611"): "UndoStacks",
+     "src/PluginProcessor.h:682"): "UndoStacks",
     ("docs/FUTURE_RISKS.md",
      "src/PluginProcessor.cpp:1869-1968",
      "src/PluginProcessor.cpp:3085-3184"): "setStateInformation",
@@ -596,7 +596,7 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.cpp:1403-1579"): "parameterGestureChanged",
     ("docs/FUTURE_RISKS.md",
      "src/PresetManager.cpp:776",
-     "src/PresetManager.cpp:1209"): "copyState",
+     "src/PresetManager.cpp:1277"): "copyState",
     ("docs/architecture/design-decisions/ADR-0008-custom-per-ab-undo.md",
      "src/PluginProcessor.cpp:470-847",
      "src/PluginProcessor.cpp:524-984"): "syncCommitted",

@@ -27,13 +27,30 @@ Two cooperating estimators publishing `matchGainDb = LUFS(dry) − LUFS(wet)`:
 Dry reference is the phase-matched `A(dry)` (ADR-0005), not the raw input, so the multiband
 allpass ripple cancels. "Apply" locks the measured gain into Output Gain as a fixed value.
 
+## Note, 2026-09-21 — a host reset does not clear the measure
+
+R5/F2 added the missing `AudioProcessor::reset()` override, which gives this ADR a **new entry point
+that did not exist before**: a host issues a reset on a transport stop (VST3 `setProcessing(false)`,
+AU `Reset()`), and a transport stop is the canonical silence this ADR's "holds the last trusted
+value" rule is about.
+
+The override therefore calls `AnamorphEngine::reset (ResetScope::audioTailsOnly)`, not the wholesale
+flush: it clears the delay lines, filter banks, oversamplers, rings and any in-flight duck, and
+deliberately leaves `loudness` alone. The wholesale flush — which `prepare()` still performs, because
+a new sample rate invalidates the measurement too — zeroes `matchGainDb`, and measured on this engine
+that turns a converged −5.158 dB into 0.000 dB on every transport stop: the "slammed loud on the next
+play" symptom in the Context above, and a contradiction of `testLevelMatchSilenceFreeze` (Test 16).
+
+Anything that adds another flush path must make the same distinction. State test 118's last leg
+asserts it.
+
 ## Consequences
 - No drift on silence; no ratchet; no Mix=100% slam; unbiased at unity.
 - Deliberately **not** a continuously-adapting AGC.
 
 ## Related code
 - `src/dsp/LoudnessMatch.cpp:15-43` (K-weighting), `:74-95` (predict), `:131-156` (measure/hold)
-- `src/dsp/AnamorphEngine.cpp:1054-1087` (A(dry) ref + silence-edge snap)
+- `src/dsp/AnamorphEngine.cpp:1060-1093` (A(dry) ref + silence-edge snap)
 - `src/PluginProcessor.cpp:402-424` (`applyAutoGain`)
 
 Evidence [Verified]:

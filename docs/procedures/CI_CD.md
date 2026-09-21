@@ -1384,7 +1384,7 @@ is the wrong test: what overflows a frame is a large automatic, not that particu
 (:119, :189, :268, :304 …). Measured with `g++ -fstack-usage` on ninja's own compile line, the DSP
 suite's largest frame is **289,440 bytes** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`) — 28% of the 1 MB reserve, against the state suite's **709,760**
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21960`, 68%).
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21964`, 68%).
 Widening the step armed a tripwire rather than introducing a failure: both binaries were verified
 green under `ulimit -s 1024` first.
 
@@ -1396,7 +1396,7 @@ grown 1,936 bytes; the DSP maximum is unchanged to the byte. Nothing in either s
 of **1,683** functions measured across the two translation units, the largest frame is that 709,760.
 
 **PREfast's `C6262` numbers are not frame sizes.** Its largest claim on `b6af84e` is 1,285,476 bytes
-at `tests/state_tests.cpp:15545` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
+at `tests/state_tests.cpp:15549` (`runPresetSemanticsProbe`), against GCC's **284,800** for that
 function — 4.5× — because /analyze sums a function's locals across disjoint sibling scopes, without
 the lifetime overlap a real compiler applies. Across the 20 largest claims the overstatement runs
 from 1.01× to 9.02× and never goes the other way. Use `-fstack-usage`, not the alert text, when

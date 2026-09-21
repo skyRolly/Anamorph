@@ -23,7 +23,7 @@ The VST3/Standalone wrapper (`: juce::AudioProcessor, private APVTS::Listener`).
 | `abSwitchTo` / `abCopyToOther` / `abActiveSlot` | A/B API | A/B compare living in the processor (survives editor close). |
 | `abToggle` | `void ()` | The A/B toggle as its own operation (ADR-0036 §18). Drains any pending host restore, then derives the destination as the other slot of the **post-drain** active slot. The editor's toggle calls this; it used to compute `abSwitchTo (abActiveSlot() == 0 ? 1 : 0)` from a read taken before the drain, which a restore flipping the active slot turned into a no-op. `abSwitchTo (int)` stays the primitive for an explicit target, which is intent rather than a stale derivation. |
 
-Evidence [Verified]: src/PluginProcessor.h:25-466.
+Evidence [Verified]: src/PluginProcessor.h:25-537.
 
 ## `AnamorphEngine` — `src/dsp/AnamorphEngine.h`
 
@@ -42,7 +42,7 @@ Format-agnostic DSP orchestrator. Driven only by `EngineParameters`.
 | `injectMatchGainDb` | `void (float) noexcept` | A/B per-slot Level-Match restore (atomic). |
 | `requestDuck` | `void () noexcept` | Force a masking duck around a bulk param swap (atomic). |
 
-Evidence [Verified]: src/dsp/AnamorphEngine.h:46-142.
+Evidence [Verified]: src/dsp/AnamorphEngine.h:46-162.
 
 ## `ParamPointers` / layout — `src/PluginParameters.h`
 

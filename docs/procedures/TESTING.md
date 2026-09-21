@@ -2011,10 +2011,10 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
     PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
     functions across the two translation units: the largest real frame is **709,760** bytes
-    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21960`,
+    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21964`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
     (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-    1,285,476 at `tests/state_tests.cpp:15545` against a real 284,800 — 4.5x — and across its 20
+    1,285,476 at `tests/state_tests.cpp:15549` against a real 284,800 — 4.5x — and across its 20
     largest claims the overstatement runs 1.01x to 9.02x and never inverts. The control that holds
     this line is the `ulimit -s 1024` guard step, not the alert.
   - **DO NOT FIX — `C26495` x 7, and the 2026-09-07 justification for them was WRONG.** That entry
@@ -2029,7 +2029,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     no alert while changing test code for a dashboard.
   - **DO NOT FIX — `C26498` x 4 and the JUCE `C26495`.** The four are `con.5` style suggestions to
     mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-    `tests/state_tests.cpp:19064`, :18381); identical values either way, no defect, test-only. The
+    `tests/state_tests.cpp:19068`, :18381); identical values either way, no defect, test-only. The
     JUCE one is `juce_audio_plugin_client_VST3.cpp:1826`, third-party, reachable by neither
     `ignoredIncludePaths` nor `ignoredTargetPaths` because that translation unit compiles INTO
     `Anamorph_VST3` — already documented in `msvc.yml` and accepted under `DEPENDENCY_POLICY.md`.
@@ -4033,11 +4033,11 @@ processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
 with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21960`) and
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21964`) and
 **289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
 — 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
-`tests/state_tests.cpp:15545` is 1,285,476 where the real frame is 284,800.
+`tests/state_tests.cpp:15549` is 1,285,476 where the real frame is 284,800.
 
 **Both anchors re-measured 2026-09-19 on `b6af84e`, and both written in full for the first time.**
 The state figure read 708,480 at `state_tests.cpp:17430` and the PREfast example 1,280,508 at
@@ -4076,7 +4076,7 @@ suite's maximum frame** — that is still the pre-existing Settings test at 68 %
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
-'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14626`
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14630`
 today (:13701 when this was written; re-aimed 2026-09-19, and the alert now reads 433740 at that
 line) -- which is
 `testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not

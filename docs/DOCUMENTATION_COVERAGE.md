@@ -422,7 +422,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:1063-1069` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:1069-1075` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1916,10 +1916,10 @@ No other approval is claimed by this entry.
 
 **Test 38 never armed a parameter CHANGE.** The per-configuration `setParameters (p); reset();` ran
 *before* the block loop, and `reset()` flushes an in-flight duck straight to its target
-(`src/dsp/AnamorphEngine.cpp:208-215`) — so by the time the counters were armed the switch was over,
+(`src/dsp/AnamorphEngine.cpp:214-221`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:912-1032`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:918-1038`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2026,7 +2026,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:1719-1769` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:1725-1775` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -10949,7 +10949,7 @@ in the ADR. The probe is the coverage.
 GUI-side snapshot); held-audition guard unchanged (`tick()` still returns at `isShowing()`, no
 production seam added); wheel gesture closure unchanged (ADR-0041, State test 80); U4 unchanged; the
 TSan suppression verified harness-scoped by grep — `WriteFromInsideAGestureOpen` exists only at
-`tests/state_tests.cpp:2830` — with the match-count assertion green in CI on `03a6e39`; both
+`tests/state_tests.cpp:2834` — with the match-count assertion green in CI on `03a6e39`; both
 informational items unchanged.
 
 **Documentation.** `ADR-0047` (new) and its `ADR_INDEX.md` row, `CHANGELOG.md` `[0.9.8] ### Fixed`,
@@ -13283,10 +13283,10 @@ are the only difference in either direction, and the 169 `C6262` are identical a
 (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws no PREfast
 result at all, and no CodeQL result at any sampled commit. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
 functions across the two translation units. Largest real frames: **709,760** bytes
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21960`,
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21964`,
 67.7 % of the Windows 1 MB reserve) and **289,440** (`testPendingDuckDoesNotSurviveActivation`,
 `tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-1,285,476 at `tests/state_tests.cpp:15545` against a real 284,800 — 4.5x — and over its 20 largest
+1,285,476 at `tests/state_tests.cpp:15549` against a real 284,800 — 4.5x — and over its 20 largest
 claims the overstatement runs 1.01x to 9.02x and never inverts. Tests are not edited for a
 dashboard; the control that holds this line is the `ulimit -s 1024` guard step.
 
@@ -13302,7 +13302,7 @@ writing `{}` at the other two would change test code and change no alert.
 
 **DO NOT FIX — `C26498` x 4, the JUCE `C26495`, and all 50 CodeQL results.** The `C26498` are `con.5`
 suggestions to mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-`tests/state_tests.cpp:19064`, :18381) — identical values either way, no defect, test-only. The JUCE
+`tests/state_tests.cpp:19068`, :18381) — identical values either way, no defect, test-only. The JUCE
 `C26495` is `juce_audio_plugin_client_VST3.cpp:1826`, which neither `ignoredIncludePaths` nor
 `ignoredTargetPaths` can reach because that translation unit compiles INTO `Anamorph_VST3` — already
 documented in `msvc.yml`. CodeQL's 50 are **every one** under `build/_deps/juce-src`, in `locations`,
@@ -13331,7 +13331,7 @@ re-aimed and all three now land in unrelated tests — the same silent-drift mec
 recorded for `THREAD_MODEL.md` on 2026-09-07. Re-measured and rewritten in full-path form, which
 puts them under the gate. The measurements held up: the state maximum is the same function
 (+1,280 bytes since round 17) and the DSP maximum is unchanged to the byte. The round-44 pointer
-`tests/state_tests.cpp:13701` was re-aimed to :13942 in the same pass.
+`tests/state_tests.cpp:13705` was re-aimed to :13942 in the same pass.
 
 **One analyzer gap, named rather than glossed.** `msvc.yml` run 451 on `ca865f17` FAILED in its
 Build step, so it produced no SARIF, no artifact and no Code Scanning upload — that head has no
@@ -13627,7 +13627,7 @@ that loaded within 1.5 s of a refusal was displayed as UNREADABLE, with its own 
 for the remainder. Success now clears the warning as well as raising the sweep.
 
 **PREfast alert 209 — `Function uses '433548' bytes of stack`: NO CHANGE, and it is not this
-round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13701`
+round's.** The alert anchors at line 13318 as PREfast reported it, `tests/state_tests.cpp:13705`
 today, which is
 `testNonFiniteParameterInStateIsRejected` — State test 17, untouched by round 43 and by this round.
 The predecessor SARIF on `0e32e65` carries the same alert, byte-identical at **433548**, at

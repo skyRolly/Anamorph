@@ -317,7 +317,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   for — the **instance count on a named machine** — because instruction counts cannot answer it and a
   shared runner is not a wall-clock datum. **This risk therefore stays open**, and the audit says so
   in its own §4.5 rather than claiming otherwise.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1717 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1723 (`soloMonitor.process`, always-on); src/dsp/MultibandWidth.cpp (glide + fade paths);
   Devin PR #50 review (efficiency note); `docs/architecture/PERFORMANCE_BUDGET.md` (TODOs);
   `worklogs/performance/PERF_AUDIT_v0.9.4_INVESTIGATION.md` §3.1, §4.5.
 - **Mitigation:** Formal profiling (PERFORMANCE_BUDGET numeric budgets remain TODO — the harness and
@@ -392,8 +392,8 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 - **Likelihood (evidence-based):** **Low.** It requires the HOST to write cross-parameter from
   inside a dispatch, on two threads, in opposite orders, overlapping. **No listener in this
   plug-in creates the nesting at all:** `AnamorphAudioProcessor::parameterValueChanged`
-  (`src/PluginProcessor.h:496-499`) is a single relaxed `fetch_add`,
-  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:701`) the same, and
+  (`src/PluginProcessor.h:567-570`) is a single relaxed `fetch_add`,
+  `ViewGenWatcher::parameterValueChanged` (`src/PluginProcessor.h:772`) the same, and
   `parameterGestureChanged` (`src/PluginProcessor.cpp:1403-1580`) touches two ints — the last
   deliberately, its comment recording that `--d2-stress-probe` once reported this same detector
   for an APVTS/`listenerLock` inversion, closed by **removing** the nesting.
@@ -531,7 +531,7 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   change with no defect behind it.
 
   **Residual, stated rather than claimed away.** `PresetManager::saveUser`
-  (`src/PresetManager.cpp:1209`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
+  (`src/PresetManager.cpp:1277`) takes `apvts.copyState()` — and so the APVTS lock — WITHOUT
   `soundReplacement`, the only durable reader in the tree that does. It cannot join this cycle: it
   only reads, so it never waits for a `listenerLock`, and it always releases. It is recorded here
   because the rule the paragraphs above rest on — every APVTS acquisition that can happen with a
@@ -1234,7 +1234,7 @@ mitigation. Do not invent risks to fill the template.
   others**, and `--reprepare-race-probe` is **silent**, so ER-STATE-19/D-1 also remains closed. Each
   report maps one-to-one onto a row already recorded above — `abActive`, written at
   `src/PluginProcessor.cpp:2611`, against `canUndo()`; the `abUndo` vector's internals twice, via
-  `UndoStacks::operator=` (`src/PluginProcessor.h:611`) against the reader's iteration; and the
+  `UndoStacks::operator=` (`src/PluginProcessor.h:682`) against the reader's iteration; and the
   `juce::String` refcount exchange, `juce::String`'s copy constructor against the metadata
   assignment. Nothing new, and again no mutex, `callAsync`, `AsyncUpdater` or state-architecture
   change.

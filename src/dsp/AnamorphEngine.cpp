@@ -180,7 +180,7 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     monoMaker.snapToTargets();
 }
 
-void AnamorphEngine::reset()
+void AnamorphEngine::reset (ResetScope resetScope)
 {
     haas.reset();
     velvet.reset();
@@ -188,7 +188,13 @@ void AnamorphEngine::reset()
     multiband.reset();
     monoMaker.reset();
     soloMonitor.reset();
-    loudness.reset();
+    // The MEASUREMENT half, and the one part of this flush a host reset must not
+    // perform. See ResetScope in the header: ADR-0007 requires the Level-Match
+    // measure to HOLD across silence, and a transport stop is silence. The meters
+    // and the correlation display are cleared either way -- a stopped transport
+    // should read empty, and neither feeds a gain.
+    if (resetScope == ResetScope::everything)
+        loudness.reset();
     correlation.reset();
     levels.reset();
     if (os2) os2->reset();

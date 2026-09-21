@@ -56,6 +56,10 @@
 #include <algorithm>
 #include <random>
 #include <vector>
+#include <csignal>
+#if ! JUCE_WINDOWS
+ #include <sys/resource.h>
+#endif
 #include <functional>
 #include <limits>
 
@@ -35583,6 +35587,401 @@ namespace
     }
 }
 
+// ---------------------------------------------------------------------------
+//  State test 117 -- A PRESET SAVE THAT DID NOT LAND REPORTS FAILURE, AND LEAVES
+//  THE PRESET THAT WAS THERE ALONE (R5 / F4)
+//
+//  `PresetManager.h` says of `saveUser`: "the write itself can only fail during
+//  I/O, so that failure travels on `onComplete`". It did not. `writeUserPreset`
+//  checked what `File::replaceWithText` returned, but that function does not
+//  check its own write -- in the pinned JUCE (juce_File.cpp:798-803) it calls
+//  `appendText` and DISCARDS the bool, then promotes whatever exists, because
+//  `TemporaryFile::overwriteTargetFileWithTemporary` asks
+//  `if (temporaryFile.exists())` (juce_TemporaryFile.cpp:100) rather than
+//  whether the file holds the bytes.
+//
+//  MEASURED on a real full filesystem before the fix: saving over a valid
+//  1539-byte preset left a ZERO-BYTE file that does not parse, while the
+//  completion reported ok=TRUE, the preset stayed selected, and the dirty
+//  indicator read CLEAN -- so the user was told their preset was saved, the file
+//  was destroyed, and nothing prompted a retry.
+//
+//  HOW THIS TEST FAILS THE WRITE, and why this injector and not another. The
+//  failure has to arrive at the same syscall the real one does --
+//  `FileOutputStream::writeInternal`'s `::write` (juce_SharedCode_posix.h:527-538)
+//  -- or it tests a different contract. `RLIMIT_FSIZE` does exactly that: the
+//  write is cut off at the limit by the kernel, in the same call, with no root
+//  and no mount. It also reproduces the WORST version of the defect, the one a
+//  status check alone cannot see: measured with a 512-byte limit and a
+//  7105-character document, `writeText` returned true, `getStatus().failed()`
+//  was FALSE, the stream reported position 7407 -- and the file on disk was 512
+//  bytes. A short write sets no status, because `writeInternal` records one only
+//  when ::write returns -1. The size comparison is what catches it, and this
+//  test is what keeps that comparison.
+//
+//  POSIX ONLY. `RLIMIT_FSIZE` has no Windows equivalent, so the injected-failure
+//  legs are compiled out there and the test says so rather than reporting a pass
+//  it did not perform. The success leg runs everywhere.
+static void testAFailedPresetWriteReportsFailure()
+{
+    std::printf ("State test 117: a preset save that did not land reports failure (F4)\n");
+
+    // The preset folder is userApplicationDataDirectory/RollyTech/Anamorph/Presets
+    // (PresetManager.cpp:76-80) and on Linux that resolves through `~/.config`
+    // (juce_Files_linux.cpp:135), so the test cannot simply redirect it. It works
+    // on the real folder, under a name no human would pick, and removes it after.
+    const auto dir  = anamorph::PresetManager::presetDirectory();
+    const juce::String probeName ("__anamorph_r5_f4_probe__");
+    const auto file = dir.getChildFile (probeName + ".anamorph");
+    file.deleteFile();
+
+    AnamorphAudioProcessor proc;
+    proc.prepareToPlay (48000.0, 256);
+    auto& pm = proc.getPresets();
+
+    // --- leg A: an ordinary save still succeeds, and the file is usable.
+    if (auto* w = proc.getAPVTS().getParameter ("width"))
+        w->setValueNotifyingHost (w->convertTo0to1 (1.6f));
+
+    bool sawOk = false, called = false;
+    pm.saveUser (probeName, [&] (bool ok) { called = true; sawOk = ok; });
+    check (called, "F4: the save reports a result");
+    check (sawOk, "F4: a save with room available succeeds");
+    check (file.existsAsFile(), "F4: the preset file exists after a successful save");
+    const auto goodText  = file.loadFileAsString();
+    const auto goodBytes = file.getSize();
+    check (juce::parseXML (goodText) != nullptr, "F4: a successfully saved preset parses");
+    check (goodBytes > 0, "F4: a successfully saved preset is not empty");
+
+   #if JUCE_WINDOWS
+    std::printf ("  (the injected-failure legs need RLIMIT_FSIZE and are POSIX-only -- NOT run here)\n");
+   #else
+    // --- leg B: the same save, with the kernel cutting the write short.
+    //     SIGXFSZ's default action terminates the process, so it is ignored for
+    //     the duration; the limit is restored before leaving either way.
+    struct rlimit saved {};
+    const bool haveLimit = (getrlimit (RLIMIT_FSIZE, &saved) == 0);
+    check (haveLimit, "F4: the harness can read RLIMIT_FSIZE");
+
+    if (haveLimit)
+    {
+        auto* const prevXfsz = std::signal (SIGXFSZ, SIG_IGN);
+
+        struct rlimit tight = saved;
+        tight.rlim_cur = 512;                       // shorter than any real preset
+        const bool set = (setrlimit (RLIMIT_FSIZE, &tight) == 0);
+        check (set, "F4: the harness can tighten RLIMIT_FSIZE");
+
+        if (set)
+        {
+            // Move the sound so the save has something new to write.
+            if (auto* w = proc.getAPVTS().getParameter ("width"))
+                w->setValueNotifyingHost (w->convertTo0to1 (0.6f));
+
+            bool sawOk2 = false, called2 = false;
+            pm.saveUser (probeName, [&] (bool ok) { called2 = true; sawOk2 = ok; });
+
+            struct rlimit restore = saved;
+            setrlimit (RLIMIT_FSIZE, &restore);
+            std::signal (SIGXFSZ, prevXfsz);
+
+            check (called2, "F4: a failed save still reports a result");
+            check (! sawOk2, "F4: a write that could not complete reports FAILURE");
+
+            // The invariant that matters to a user: the preset they already had
+            // is still the preset they have.
+            check (file.existsAsFile(), "F4: the existing preset still exists after a failed save");
+            check (file.getSize() == goodBytes,
+                   "F4: the existing preset is unchanged in size after a failed save");
+            check (file.loadFileAsString() == goodText,
+                   "F4: the existing preset is byte-for-byte unchanged after a failed save");
+            check (juce::parseXML (file.loadFileAsString()) != nullptr,
+                   "F4: the existing preset still parses after a failed save");
+
+            // And the failure must not be dressed up as a save: the dirty marker
+            // is what tells the user to try again.
+            check (pm.isDirty(), "F4: the sound reads DIRTY after a failed save");
+        }
+        else
+        {
+            std::signal (SIGXFSZ, prevXfsz);
+        }
+    }
+   #endif
+
+    file.deleteFile();
+}
+
+// ---------------------------------------------------------------------------
+//  State test 118 -- A HOST RESET REACHES THE ENGINE (R5 / F2)
+//
+//  `AudioProcessor::reset` is documented as the request a host makes to "stop
+//  any tails or sounds that have been left running"
+//  (juce_AudioProcessor.h:939-944) and its default implementation does nothing.
+//  `AnamorphAudioProcessor` did not override it, so the request reached no state.
+//
+//  It is a live entry point, not a formality: the pinned JUCE VST3 wrapper calls
+//  `getPluginInstance().reset()` from `setProcessing(false)`
+//  (juce_audio_plugin_client_VST3.cpp:3475-3479) and the AU wrapper from
+//  `Reset()` (juce_audio_plugin_client_AU_1.mm:255-263), and neither is followed
+//  by a `prepareToPlay` -- the VST3 side re-prepares with `CallPrepareToPlay::no`.
+//
+//  WHAT THIS ASSERTS is the externally meaningful thing, through the WRAPPER
+//  rather than by calling the engine directly: fill the chain with audio, ask the
+//  PROCESSOR to reset, then feed silence and require silence back. A tail that
+//  survives the reset is the defect; a tail that does not is the contract. The
+//  Haas line is used because it is a plain delay -- what comes out after the
+//  reset is audio that was put in before it, with nothing to argue about.
+static void testAHostResetReachesTheEngine()
+{
+    std::printf ("State test 118: a host reset reaches the engine (F2)\n");
+
+    const double sr = 48000.0; const int block = 256;
+    AnamorphAudioProcessor proc;
+
+    auto setPlain = [&proc] (const char* id, float v)
+    {
+        if (auto* p = proc.getAPVTS().getParameter (id))
+            p->setValueNotifyingHost (p->convertTo0to1 (v));
+    };
+
+    proc.prepareToPlay (sr, block);
+    setPlain ("advancedMode", 1.0f);
+    setPlain ("algorithm", 0.0f);      // Haas: a delay line, so the tail is literal
+    setPlain ("amount",    1.0f);
+    setPlain ("haasDelay", 35.0f);     // the longest the parameter allows
+    setPlain ("width",     1.6f);
+
+    juce::AudioBuffer<float> buf (2, block);
+    juce::MidiBuffer midi;
+    juce::Random rng (4242);
+
+    auto runNoise = [&] (int blocks)
+    {
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                buf.setSample (0, i, rng.nextFloat() * 1.6f - 0.8f);
+                buf.setSample (1, i, rng.nextFloat() * 1.6f - 0.8f);
+            }
+            midi.clear();
+            proc.processBlock (buf, midi);
+        }
+    };
+    auto runSilenceAndPeak = [&] (int blocks)
+    {
+        double peak = 0.0;
+        for (int b = 0; b < blocks; ++b)
+        {
+            buf.clear(); midi.clear();
+            proc.processBlock (buf, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                    peak = juce::jmax (peak, (double) std::abs (buf.getSample (ch, i)));
+        }
+        return peak;
+    };
+
+    // --- CONTROL: with no reset, silence after audio DOES carry a tail. Without
+    //     this leg the test could pass on a chain that never had a tail at all.
+    runNoise (40);
+    const double tailWithoutReset = runSilenceAndPeak (2);
+    check (tailWithoutReset > 1.0e-4,
+           "F2 control: without a reset the chain does carry a tail into silence");
+
+    // --- THE ASSERTION: the same setup, but the host asks for a reset first.
+    runNoise (40);
+    proc.reset();                                   // the host-level request
+    const double tailAfterReset = runSilenceAndPeak (2);
+    std::printf ("  tail peak into silence: no reset %.3e, after reset %.3e\n",
+                 tailWithoutReset, tailAfterReset);
+    check (tailAfterReset <= 1.0e-9,
+           "F2: a host reset flushes the chain -- silence in, silence out");
+
+    // --- AND processing must still be correct afterwards, not merely silent.
+    runNoise (20);
+    double live = 0.0;
+    for (int i = 0; i < block; ++i)
+    {
+        buf.setSample (0, i, 0.5f);
+        buf.setSample (1, i, -0.5f);
+    }
+    midi.clear();
+    proc.processBlock (buf, midi);
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < block; ++i)
+            live = juce::jmax (live, (double) std::abs (buf.getSample (ch, i)));
+    check (live > 1.0e-3, "F2: the plug-in still processes normally after a reset");
+
+    // --- A reset before any prepare must be harmless, because a host may send one.
+    {
+        AnamorphAudioProcessor fresh;
+        fresh.reset();
+        check (true, "F2: a reset before prepareToPlay does not crash");
+    }
+
+    // --- AND IT MUST NOT THROW AWAY THE LEVEL-MATCH MEASUREMENT. ADR-0007's
+    //     Decision is that on silence the measure HOLDS the last trusted value, and
+    //     its Consequences are "no drift on silence ... no slam" -- a transport stop
+    //     is the canonical silence. Routing a host reset into the engine's WHOLESALE
+    //     flush would call `loudness.reset()` and zero the measured gain, which is
+    //     read by the readout (PluginEditor.cpp), by Apply (which writes it into
+    //     Output Gain) and by the per-slot A/B match. That is why the override
+    //     passes `ResetScope::audioTailsOnly`. Without this leg the narrowing has
+    //     nothing holding it in place.
+    {
+        AnamorphAudioProcessor lm;
+        lm.prepareToPlay (sr, block);
+        auto setP = [&lm] (const char* id, float v)
+        {
+            if (auto* p = lm.getAPVTS().getParameter (id))
+                p->setValueNotifyingHost (p->convertTo0to1 (v));
+        };
+        setP ("advancedMode", 1.0f);
+        setP ("autoGainMatch", 1.0f); // Level Match on
+        setP ("drive",    8.0f);      // something for it to measure
+
+        juce::AudioBuffer<float> b2 (2, block);
+        juce::MidiBuffer m2;
+        juce::Random r2 (777);
+        for (int n = 0; n < 400; ++n)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                b2.setSample (0, i, r2.nextFloat() * 1.2f - 0.6f);
+                b2.setSample (1, i, r2.nextFloat() * 1.2f - 0.6f);
+            }
+            m2.clear();
+            lm.processBlock (b2, m2);
+        }
+        const float converged = lm.getEngine().getMatchGainDb();
+        lm.reset();                                   // the host stops the transport
+        const float afterReset = lm.getEngine().getMatchGainDb();
+        std::printf ("  Level Match: converged %.3f dB, after a host reset %.3f dB\n",
+                     converged, afterReset);
+        check (std::abs (converged) > 0.01f,
+               "F2 control: Level Match converged to something before the reset");
+        check (std::abs (afterReset - converged) < 1.0e-6f,
+               "F2: a host reset HOLDS the Level-Match measurement (ADR-0007)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 119 -- THE REPORTED TAIL IS NEVER SHORTER THAN THE REAL ONE (R5 / F3)
+//
+//  `getTailLengthSeconds()` is handed straight to the host: the VST3 wrapper
+//  converts it in `getTailSamples()` (juce_audio_plugin_client_VST3.cpp:3482-3493),
+//  and that is what decides how long a host keeps calling `processBlock` after a
+//  source stops. Under-reporting truncates an audible decay.
+//
+//  It returned a hard-coded 0.1 s. MEASURED worst case on this chain: 0.250 s at
+//  a -60 dB floor, 0.318 s at -100 dB -- four bands with every split at the 20 Hz
+//  floor of `logFreqRange (20, 20000)` (PluginParameters.cpp:238-240), Band Solo
+//  and Mid Solo (which mirror the same splits into a SECOND bank in series),
+//  Mono Maker at 20 Hz, a 35 ms Haas line, x8 oversampling and Mix 0.5. Being
+//  filter-dominated the figure is sample-rate independent: 0.232-0.250 s across
+//  44.1/48/96/192 kHz.
+//
+//  WHAT THIS ASSERTS is the DIRECTION the contract cares about -- reported >=
+//  actual -- measured rather than assumed, and at the configuration that produces
+//  the longest tail rather than at the defaults (where the tail is 0.000 s and
+//  any value at all would pass).
+static void testTheReportedTailCoversTheRealTail()
+{
+    std::printf ("State test 119: the reported tail is never shorter than the real one (F3)\n");
+
+    const int block = 256;
+    AnamorphAudioProcessor proc;
+
+    auto setPlain = [&proc] (const char* id, float v)
+    {
+        if (auto* p = proc.getAPVTS().getParameter (id))
+            p->setValueNotifyingHost (p->convertTo0to1 (v));
+    };
+
+    // Measure the tail at one rate: drive with noise, then feed silence and find
+    // the last sample above a floor set relative to the steady peak that made it.
+    auto measureTail = [&] (double sr) -> double
+    {
+        proc.prepareToPlay (sr, block);
+        proc.reset();
+
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        juce::Random rng (99);
+
+        const int driveBlocks = (int) std::ceil (1.5 * sr / block);
+        double steadyPeak = 0.0;
+        for (int b = 0; b < driveBlocks; ++b)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                buf.setSample (0, i, rng.nextFloat() * 2.0f - 1.0f);
+                buf.setSample (1, i, rng.nextFloat() * 2.0f - 1.0f);
+            }
+            midi.clear();
+            proc.processBlock (buf, midi);
+            if (b > driveBlocks / 2)
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < block; ++i)
+                        steadyPeak = juce::jmax (steadyPeak, (double) std::abs (buf.getSample (ch, i)));
+        }
+
+        const double floor60 = steadyPeak * 1.0e-3;
+        const int silBlocks = (int) std::ceil (2.0 * sr / block);
+        long long n = 0, last = -1;
+        for (int b = 0; b < silBlocks; ++b)
+        {
+            buf.clear(); midi.clear();
+            proc.processBlock (buf, midi);
+            for (int i = 0; i < block; ++i, ++n)
+            {
+                const double v = juce::jmax (std::abs ((double) buf.getSample (0, i)),
+                                             std::abs ((double) buf.getSample (1, i)));
+                if (v > floor60) last = n;
+            }
+        }
+        return last < 0 ? 0.0 : (double) (last + 1) / sr;
+    };
+
+    // The configuration that produces the longest tail. Every value here is at a
+    // bound the parameter itself allows, so none of it is out of reach.
+    setPlain ("advancedMode",  1.0f);
+    setPlain ("mbEnable",      1.0f);
+    setPlain ("mbBands",       4.0f);
+    setPlain ("mbFreqLow",    20.0f);
+    setPlain ("mbFreqMid",    22.0f);
+    setPlain ("mbFreqHigh",   25.0f);
+    setPlain ("monoMaker",     1.0f);
+    setPlain ("monoMakerFreq", 20.0f);
+    setPlain ("algorithm",     0.0f);     // Haas
+    setPlain ("amount",        1.0f);
+    setPlain ("haasDelay",    35.0f);
+    setPlain ("mix",           0.5f);
+    // Band Solo and Mid Solo are what make this the WORST case rather than
+    // merely a long one: the SoloMonitor mirrors the multiband's splits into a
+    // second crossover bank, so at the 20 Hz floor there are two such banks in
+    // series and the tail roughly doubles -- 0.108 s without them, 0.250 s with
+    // them and the rest of this configuration. Leaving them out would let the
+    // guard pass against a chain half as long as the one a user can build.
+    setPlain ("mbSolo",        1.0f);     // solo band 1
+    setPlain ("solo",          1.0f);     // Mid
+
+    const double reported = proc.getTailLengthSeconds();
+    double worst = 0.0;
+    for (const double sr : { 44100.0, 48000.0, 96000.0 })
+        worst = juce::jmax (worst, measureTail (sr));
+
+    std::printf ("  reported %.3f s; worst measured tail %.3f s (44.1/48/96 kHz)\n", reported, worst);
+    check (worst > 0.05,
+           "F3 control: the configuration under test really does have a long tail");
+    check (reported >= worst,
+           "F3: the reported tail is never shorter than the measured tail");
+    check (reported < 5.0,
+           "F3: the reported tail is a bound, not an arbitrary large number");
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -35762,6 +36161,9 @@ int main (int argc, char* argv[])
     testTheDeferredFlushNeverWaitsForAReplacement();
     testATimerRetryNeverRunsACommandInsideADispatch();
     testADeferredPresetOperationReportsItsRealResult();
+    testAFailedPresetWriteReportsFailure();
+    testAHostResetReachesTheEngine();
+    testTheReportedTailCoversTheRealTail();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

@@ -143,7 +143,19 @@ backing the older ones have.
 > unterminated quotes only in attribute-*value* position, which is the safe case. The name-position
 > case was found by the fleet's `xml-boundary` finder and then reproduced above.
 
-### F2 — `AudioProcessor::reset()` is not overridden, so a host flush request reaches nothing
+### F2 — `AudioProcessor::reset()` is not overridden, so a host flush request reaches nothing  ·  **RESOLVED (R5)**
+
+> **R5, 2026-09-21 — confirmed and fixed.** The two wrapper call sites are quoted from the pinned
+> JUCE — VST3 `setProcessing(false)` (`juce_audio_plugin_client_VST3.cpp:3475-3479`) and AU `Reset()`
+> (`juce_audio_plugin_client_AU_1.mm:255-263`) — and **neither is followed by a `prepareToPlay`**: the
+> VST3 side re-prepares with `CallPrepareToPlay::no`. `AnamorphEngine::reset()` was written for this
+> request (its own comment says "so a host reset lands in a clean steady state") and had **exactly one
+> caller in the product**, inside `prepare()`. Fixed with `void reset() override { engine.reset(); }`,
+> under the same non-concurrency contract `THREAD_MODEL.md` already gives `prepareToPlay`; no
+> synchronisation added, no latency write. Measured at the wrapper level: tail peak into silence
+> 2.125 without a reset, **0.000** with one. The "how often do shipped hosts call it" question is
+> still **not established**, and the fix does not depend on it.
+> State test 118. See `R5_CI_AND_HOST_CONTRACT.md` §D.
 
 - **Classification:** confirmed bug. **Severity:** medium. **Confidence:** high — **[verified
   first-hand]**
@@ -164,7 +176,19 @@ backing the older ones have.
 - **Unresolved:** how often shipped hosts call it. The wrapper call sites are proven; host behaviour on
   transport stop is not, and cannot be from this repository.
 
-### F3 — `getTailLengthSeconds()` under-reports the chain's ring
+### F3 — `getTailLengthSeconds()` under-reports the chain's ring  ·  **RESOLVED (R5), with the figure revised UPWARD**
+
+> **R5, 2026-09-21 — confirmed, and the prior 0.18 s was low.** Re-measured across a sweep rather than
+> one signal: worst **0.250 s** at a −60 dB floor and **0.318 s** at −100 dB, at four bands with every
+> split at the 20 Hz floor of `logFreqRange (20, 20000)` plus Band Solo (which mirrors the same splits
+> into a second crossover bank in series), Mono Maker at 20 Hz, a 35 ms Haas line, x8 oversampling and
+> Mix 0.5. Filter-dominated, so **sample-rate independent** (0.232–0.250 s across 44.1–192 kHz); at the
+> shipped defaults it is 0.000 s, which is why the constant survived. The VST3 wrapper hands the value
+> to the host as `getTailSamples()` (`VST3.cpp:3482-3493`), so under-reporting truncates a decay while
+> over-reporting only costs processing — the contract is a bound and the safe direction is up. Set to
+> **0.5 s**, an explicit ~1.6× margin over the deepest floor measured. Not a latency change:
+> `ARCHITECTURE_REVIEW_GATE`'s item names `LATENCY_MODEL.md`, which does not mention tail.
+> State test 119. See `R5_CI_AND_HOST_CONTRACT.md` §E.
 
 - **Classification:** confirmed bug. **Severity:** medium. **Confidence:** high for the constant
   **[verified first-hand]**, medium for the 0.18 s figure (finder measurement, not re-run here)
@@ -175,7 +199,20 @@ backing the older ones have.
   as F2: host-contract members other than `processBlock` were written once and never revisited.
 - **Current protection.** None; no test asserts the reported tail against the measured one.
 
-### F4 — `writeUserPreset` reports success for a write that failed or was truncated
+### F4 — `writeUserPreset` reports success for a write that failed or was truncated  ·  **RESOLVED (R5)**
+
+> **R5, 2026-09-21 — confirmed, and the finding's LOCATION corrected.** `writeUserPreset` did check
+> what it was given; the discarded `appendText` result is inside JUCE
+> (`juce_File.cpp:798-803`), and `TemporaryFile::overwriteTargetFileWithTemporary` promotes on
+> `if (temporaryFile.exists())` (`juce_TemporaryFile.cpp:100`) — existence, not content. A third
+> discard in `~FileOutputStream` (`juce_FileOutputStream.cpp:47-51`) plus a 16384-byte default buffer
+> against a ~1.5 KB preset means the whole write happens in the destructor, after every error path is
+> gone. Reproduced on a real full filesystem through `AnamorphAudioProcessor`: a valid 1539-byte
+> preset became a **0-byte unreadable file** while the completion reported **ok=TRUE** and the dirty
+> marker cleared. Impact is now **Verified**. Fixed by `writeTextVerified`, which keeps the same
+> `TemporaryFile` atomicity and argument defaults and adds a size check — load-bearing, because a
+> short write sets no stream status. State test 117.
+> See `R5_CI_AND_HOST_CONTRACT.md` §C.
 
 - **Classification:** confirmed bug. **Severity:** high impact / low likelihood → medium.
   **Confidence:** high — **[verified first-hand in JUCE's source]**
@@ -549,7 +586,15 @@ the plug-in still produces output; then fix.
 **Complete when:** the new tests fail before and pass after, and ADR-0004 records the repeated-transition
 case.
 
-### R5 — Host contract and user data (F4, F2, F3)
+### R5 — Host contract and user data (F4, F2, F3)  ·  **DONE (2026-09-21)** — see `R5_CI_AND_HOST_CONTRACT.md`
+
+> **A correction to this item's own premise.** It grouped the three as "one theme (`AudioProcessor`
+> members other than `processBlock`)". F4 is not an `AudioProcessor` member — it is message-thread file
+> I/O in `PresetManager` — so the grouping was a scheduling convenience rather than a shared cause. The
+> one real connection found is between **F2 and F3**: `AudioProcessor::reset`'s documented job is to
+> stop "any tails … left running", which is the same tail `getTailLengthSeconds()` reports, so the
+> plug-in was under-reporting the tail *and* ignoring the request to stop it. That shared subject still
+> did not justify a shared fix, and none was made.
 
 **Problem:** a save that lies, a flush that does nothing, a tail that under-reports.
 **Why here:** small independent diffs, no prerequisites, each with a clear completion test. Do them
