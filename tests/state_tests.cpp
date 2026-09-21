@@ -14192,6 +14192,87 @@ static void testHostStateIsBoundedBeforeTheParser()
         }
     }
 
+    // ---- E2. an opening tag whose quote never closes (ADR-0056 correction, 2026-09-21) ----
+    {
+        // THE SHAPE ROUND 52's BOUNDARY ADMITTED AND THE PARSER DID NOT SURVIVE. The scan walks an
+        // opening tag to its own `>` with quotes honoured, and when a quote is still open at the
+        // end of the text it used to answer `skipRanOff` -- true for host state -- on the premise
+        // that such a tag "swallows the rest of the text for this scan AND for `XmlDocument`".
+        // It does not. `juce_XmlDocument.cpp:491-497` treats a quote as a string delimiter only
+        // after `name =`; a quote where a NAME is expected errors at `:508-510` and a name with no
+        // `=` at `:500-503`, and BOTH return the element while `errorOccurred` is read once at
+        // `:233` AFTER parsing -- so `readChildElements` (`:577-580`) carries on through every
+        // element that followed the quote. Measured before the fix: `<r><a "` + 4 000 `<x>` is
+        // 12 007 bytes, was admitted, and SIGSEGV'd on a 1 MB stack (and on 8 MB at 40 000).
+        //
+        // THE TAIL HERE IS DELIBERATELY SHALLOWER THAN THE CAP. Three `<x>` cannot be refused for
+        // depth under a cap of 8, so a refusal below can only come from the quote rule -- a deep
+        // tail would pass this leg for the wrong reason and would keep passing if the fix were
+        // reverted. The crash-scale proof is `tests/xml_boundary_differential.cpp`, which has the
+        // process isolation this suite deliberately does not.
+        using anamorph::xmlBoundary::textIsAdmissible;
+        using anamorph::xmlBoundary::DocumentRule;
+
+        const juce::String shallow = "<x><x><x>";   // 3 elements, cap is 8
+        auto host = [&] (const juce::String& t)
+        {
+            return textIsAdmissible (t, depth, DocumentRule::parserSafetyOnly);
+        };
+
+        check (! host ("<r><a \""   + shallow), "leg E2: a quote in attribute-NAME position is refused");
+        check (! host ("<r><a '"    + shallow), "leg E2: ...single-quoted too");
+        check (! host ("<r><a b\""  + shallow), "leg E2: ...and a name followed by a quote with no '='");
+        // VALUE position is refused as well, and on purpose. `readQuotedString` does consume to
+        // the end there, so the parser survives it -- but the scan does not model the parser's
+        // positional rule, and refusing costs nothing: `juce::parseXML` answers null for this
+        // shape, which is the same outcome a refusal produces. Modelling the rule instead is what
+        // put the hole here in the first place.
+        check (! host ("<r><a b=\"" + shallow), "leg E2: a quote in attribute-VALUE position is refused too");
+        check (! host ("<r><a b='"  + shallow), "leg E2: ...single-quoted too");
+
+        // THE PREMISE STILL HOLDS FOR EVERYTHING ELSE IT NAMED, and this half is what stops the
+        // correction from being a blanket refusal of truncated text. Each of these reaches the end
+        // of the text with NO quote open, and each is measured to return null from the parser
+        // rather than recursing.
+        check (host ("<r><a b c"),          "leg E2: a tag that runs out of text with no quote open still loads");
+        check (host ("<r><!--"   + shallow), "leg E2: an unterminated comment is unchanged");
+        check (host ("<r><![CDATA[" + shallow), "leg E2: an unterminated CDATA section is unchanged");
+        check (host ("<r><?"     + shallow), "leg E2: an unterminated processing instruction is unchanged");
+
+        // ...AND LEGITIMATE DOCUMENTS ARE UNTOUCHED. Quotes that close, in both spellings, around
+        // values that contain the characters the walk is looking for.
+        check (host ("<AnamorphRoot presetName=\"Bob&apos;s\"><ANAMORPH/></AnamorphRoot>"),
+               "leg E2: an apostrophe in a preset name is still admitted");
+        check (host ("<AnamorphRoot presetName=\"a&lt;b&gt;c\"><ANAMORPH/></AnamorphRoot>"),
+               "leg E2: an escaped '<' and '>' in a value is still admitted");
+        check (host ("<AnamorphRoot presetName='Gentle'><ANAMORPH><PARAM id='w' value='1'/>"
+                     "</ANAMORPH></AnamorphRoot>"),
+               "leg E2: single-quoted attribute values are still admitted");
+
+        // END TO END, THROUGH THE SESSION PATH. The chunk is well formed up to the malformed tag,
+        // so a boundary that admitted it would hand the parser a document to recurse through.
+        checkNear (restores ("<AnamorphRoot><ANAMORPH><PARAM id=\"drive\" value=\"0.9\"/></ANAMORPH>"
+                             "<a \"" + shallow), 0.0, 1e-9,
+                   "leg E2: a session carrying the shape restores nothing at all");
+
+        // END TO END, THROUGH THE A/B PAYLOAD PATH -- the second parse, which nests separately.
+        // The outer session is well formed and three deep, so only the payload's own boundary can
+        // refuse it; a refused payload leaves the slot invalid for `abEnsureInit` to re-seed,
+        // which reads 1.0 rather than the payload's 1.6.
+        {
+            AnamorphAudioProcessor p;
+            const auto blob = frameHostChunk (sessionCarrying (
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ANAMORPH><PARAM id=\"width\" value=\"1.6\"/>"
+                "<a \"" + shallow));
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+            checkNear ((double) rawOf (p, "drive"), 0.0375, 1e-6,
+                       "leg E2: ...the SESSION around such a payload still restores");
+            p.abSwitchTo (0);
+            checkNear ((double) plainOf (p, "width"), 1.0, 1e-4,
+                       "leg E2: ...while the payload itself is refused and the slot re-seeded");
+        }
+    }
+
     // ---- F. every retained session fixture still loads --------------------------------
     {
         // The compatibility census, asserted rather than printed. The three legacy root formats
@@ -14230,6 +14311,60 @@ static void testHostStateIsBoundedBeforeTheParser()
         checkNear ((double) plainOf (q, "drive"), 3.0, 1e-4,
                    "leg F: ...and restores through it unchanged");
         std::printf ("  [leg F] this build writes %d B against a %d B cap\n", (int) out.getSize(), cap);
+    }
+
+    // ---- F2. THE FUZZ CORPUS IS LIVE ---------------------------------------------------
+    {
+        // THE SEEDS MUST REACH THE PARSER, and until 2026-09-21 they did not. All three were
+        // stored zlib-framed -- `56 43 32 21` then `78 9c` -- but no JUCE this project has ever
+        // pinned compresses that container: `AudioProcessor::copyXmlToBinary` writes magic,
+        // length, PLAIN single-line XML and a NUL at 8.0.14, 9.0.0, 9.0.1 and 9.0.2 alike, and
+        // `getXmlFromBinary` is `parseXML (String::fromUTF8 (data + 8, ...))`. A zlib body
+        // therefore decoded to nothing, `decodeRestore` returned false at its first branch, and
+        // the 90 s `fuzz` budget started from three inputs that reached no migration, no repair
+        // and no A/B decode -- while `REPOSITORY_MAP.md` said they existed so the fuzzer would
+        // "start from inputs that already reach the parser rather than from noise".
+        //
+        // NOTHING IN THE PIPELINE COULD SEE THAT. The `fuzz` job's pass condition is "no
+        // sanitizer fired", which a corpus that reaches nothing satisfies perfectly. So the
+        // liveness condition lives HERE, where it is asserted on every platform on every push:
+        // each seed must still be a restore that MOVES A PARAMETER. Re-compressing a seed, or
+        // truncating one, or regenerating one through a future JUCE that changes the container,
+        // fails this leg loudly instead of quietly emptying the fuzz budget.
+        const auto corpusDir = fixtureDir().getParentDirectory().getChildFile ("fuzz-corpus");
+        int live = 0;
+        for (const char* name : { "legacy_v0_2_bare_apvts.bin",
+                                  "legacy_pre_0_6_4_ab_slots.bin",
+                                  "legacy_pre_0_8_4_view_params.bin" })
+        {
+            const auto file = corpusDir.getChildFile (name);
+            juce::MemoryBlock blob;
+            if (! file.loadFileAsData (blob))
+            {
+                check (false, (juce::String ("leg F2: corpus seed unreadable: ") + name).toRawUTF8());
+                continue;
+            }
+
+            // The seed carries the framing the wrapper reads...
+            const bool framed = blob.getSize() > 8
+                             && juce::ByteOrder::littleEndianInt (blob.getData()) == 0x21324356;
+            check (framed, (juce::String ("leg F2: ") + name + " carries the host-chunk framing").toRawUTF8());
+
+            // ...and, fed to the real entry point, it APPLIES. `width` is the observable: every
+            // one of the three fixtures carries a non-default one, so a seed that decodes to
+            // nothing leaves the default standing and fails here.
+            AnamorphAudioProcessor p;
+            const float before = plainOf (p, "width");
+            p.setStateInformation (blob.getData(), (int) blob.getSize());
+            const float after = plainOf (p, "width");
+            const bool applied = ! juce::exactlyEqual (before, after);
+            check (applied, (juce::String ("leg F2: ") + name
+                             + " reaches the parser and applies (the fuzzer starts from a real restore)").toRawUTF8());
+            if (applied) ++live;
+            std::printf ("  [leg F2] %-34s %5d B, width %.4f -> %.4f\n",
+                         name, (int) blob.getSize(), (double) before, (double) after);
+        }
+        check (live == 3, "leg F2: all three fuzz seeds are live");
     }
 
     // ---- G. THE EXTERNAL-ENTITY ORACLE, corrected -------------------------------------
@@ -25357,6 +25492,45 @@ static int runSplitSnapshotProbe (int iterations)
         }
     });
 
+    // THE CONTROL THIS PROBE DID NOT HAVE, added 2026-09-21. Its verdict is a listener that must
+    // stay silent, and a listener that stays silent is exactly what a probe reaching nothing also
+    // produces -- so `TOTAL LAUNDERED: 0` was, on its own, indistinguishable between "the defect
+    // is gone" and "the drag never happened". Two things are therefore proved here first, with the
+    // lane silent: the drag MOVES split 0 (so the gesture the whole probe is built on is still
+    // being performed), and the detector does NOT fire (so a message-thread write to mbFreqMid
+    // really is the signature of the defect and not of an ordinary drag). `--solo-alias-probe` and
+    // `--band-move-adopt-probe` have refused to report a zero without this since they were written.
+    {
+        imager->mouseUp (mev (split0X, laneY, split0X, laneY, false));
+        setPlain (loP, kLoBase); setPlain (midP, kMidBase); setPlain (hiP, kHiBase);
+
+        detector.sawRevert.store (false, std::memory_order_release);
+        detector.armed.store (true, std::memory_order_release);
+        imager->mouseDown (mev (split0X, laneY, split0X, laneY, false));
+        imager->mouseDrag (mev (split0X + 2.0f, laneY, split0X, laneY, true));
+        imager->mouseUp   (mev (split0X + 2.0f, laneY, split0X, laneY, true));
+        detector.armed.store (false, std::memory_order_release);
+
+        const bool ctlMoved = std::abs (plainOf (loP) - kLoBase) > 0.01f;
+        const bool ctlFired = detector.sawRevert.load (std::memory_order_acquire);
+        std::printf ("  control (no lane): split0 %.1f -> %.1f%s%s\n",
+                     (double) kLoBase, (double) plainOf (loP),
+                     ctlMoved ? "" : "   [!! the drag wrote nothing]",
+                     ctlFired ? "   [!! the detector fired with no lane]" : "");
+        if (! ctlMoved || ctlFired)
+        {
+            std::printf ("  ABORT: the control %s, so this probe cannot see its own defect and a"
+                         " zero below would mean nothing.\n",
+                         ! ctlMoved ? "performed no drag" : "fired on an ordinary drag");
+            quit.store (true, std::memory_order_release);
+            automation.join();
+            midP->removeListener (&detector);
+            proc.editorBeingDeleted (ed);
+            delete ed;
+            return 1;
+        }
+    }
+
     int totalLaundered = 0;
     for (const int sp : { 0, 40, 120, 400 })
     {
@@ -25562,12 +25736,34 @@ static int runAddTargetProbe (int iterations)
 
     // CONTROL FIRST, with the lane silent: the same click must add a split near 15 kHz, or the
     // probe is measuring its own aim rather than the defect.
+    //
+    // AND IT ABORTS ON THE CONTROL, since 2026-09-21. Until then this block PRINTED its result
+    // and carried on, so a probe whose click no longer landed on the add affordance -- a layout
+    // change, a geometry change, a cursor change -- reported `TOTAL MISPLACED: 0` and passed the
+    // gate having measured nothing at all. That is the exact failure mode `--solo-alias-probe`
+    // and `--band-move-adopt-probe` already refuse by construction; this is the same refusal.
     {
         reset();
         imager->mouseDown (mev (clickX, laneY, false));
         imager->mouseUp   (mev (clickX, laneY, false));
-        std::printf ("  control (no lane): clickX %.1f -> bands %d, splits %.1f / %.1f / %.1f\n",
-                     clickX, bandsNow(), plainOf (loP), plainOf (midP), plainOf (hiP));
+        const int   ctlBands = bandsNow();
+        const float c0 = plainOf (loP), c1 = plainOf (midP), c2 = plainOf (hiP);
+        auto ctlNear = [] (float f) { return f > 14000.0f && f < 15500.0f; };
+        const bool ctlOk = ctlBands == 3 && (ctlNear (c0) || ctlNear (c1) || ctlNear (c2));
+        std::printf ("  control (no lane): clickX %.1f -> bands %d, splits %.1f / %.1f / %.1f%s\n",
+                     clickX, ctlBands, c0, c1, c2, ctlOk ? "" : "   [!! the control added nothing]");
+        if (! ctlOk)
+        {
+            std::printf ("  ABORT: with the lane silent the click did not add a split near 15 kHz,"
+                         " so this probe cannot see its own defect and a zero below would mean"
+                         " nothing.\n");
+            quit.store (true, std::memory_order_release);
+            automation.join();
+            for (int i = 0; i < 3; ++i) fp[i]->removeListener (&det[i]);
+            proc.editorBeingDeleted (ed);
+            delete ed;
+            return 1;
+        }
     }
 
     int misplaced = 0, placed = 0, noAdd = 0;
@@ -25773,12 +25969,31 @@ static int runAddEdgeProbe (int iterations)
         }
     });
 
+    // CONTROL, AND IT ABORTS -- see `--add-target-probe`'s own control for why this stopped
+    // being a printed line on 2026-09-21. A click that no longer lands on the add affordance
+    // measures nothing, and a probe that measures nothing must not report a zero.
     {
         reset();
         imager->mouseDown (mev (clickX, laneY, false));
         imager->mouseUp   (mev (clickX, laneY, false));
-        std::printf ("  control (no lane): clickX %.1f -> bands %d, splits %.1f / %.1f / %.1f\n",
-                     clickX, bandsNow(), plainOf (loP), plainOf (midP), plainOf (hiP));
+        const int   ctlBands = bandsNow();
+        const float c0 = plainOf (loP), c1 = plainOf (midP), c2 = plainOf (hiP);
+        auto ctlNear = [] (float f) { return f > 14000.0f && f < 15500.0f; };
+        const bool ctlOk = ctlBands == 3 && (ctlNear (c0) || ctlNear (c1) || ctlNear (c2));
+        std::printf ("  control (no lane): clickX %.1f -> bands %d, splits %.1f / %.1f / %.1f%s\n",
+                     clickX, ctlBands, c0, c1, c2, ctlOk ? "" : "   [!! the control added nothing]");
+        if (! ctlOk)
+        {
+            std::printf ("  ABORT: with the lane silent the click did not add a split near 15 kHz,"
+                         " so this probe cannot see its own defect and a zero below would mean"
+                         " nothing.\n");
+            quit.store (true, std::memory_order_release);
+            automation.join();
+            for (int i = 0; i < 3; ++i) fp[i]->removeListener (&det[i]);
+            proc.editorBeingDeleted (ed);
+            delete ed;
+            return 1;
+        }
     }
 
     int misplaced = 0, placed = 0, noAdd = 0;
@@ -26031,16 +26246,41 @@ static int runBandMoveProbe (int iterations)
         im->mouseUp   (mev (sx + 40.0f, soloY, sx, soloY, true));
     };
 
+    // CONTROL, AND IT ABORTS ON TWO CONDITIONS, since 2026-09-21. This block used to print its
+    // result -- including the `[!! control wrote freqP[2]]` flag -- and carry on regardless, so
+    // both of the ways it can be meaningless passed the gate silently: a control that does not
+    // MOVE the band (the drag no longer reaches the solo button, so every later reading is of a
+    // gesture that never happened), and a control that DOES write the out-of-range parameter with
+    // no lane running at all (the detector's signature is not specific to the defect any more, so
+    // the counts below are noise). `--band-move-adopt-probe` refuses on exactly this basis.
     {
         reset();
+        const float before0 = plainOf (loP), before1 = plainOf (midP);
         det.sawOutOfRange.store (false, std::memory_order_release);
         det.armed.store (true, std::memory_order_release);
         oneMove (false);
         det.armed.store (false, std::memory_order_release);
-        std::printf ("  control (no lane): solo x %.1f -> bands %.0f, splits %.1f / %.1f / %.1f%s\n",
+        const bool ctlWrote  = det.sawOutOfRange.load (std::memory_order_acquire);
+        const bool ctlMoved  = std::abs (plainOf (loP) - before0) > 0.01f
+                            || std::abs (plainOf (midP) - before1) > 0.01f;
+        std::printf ("  control (no lane): solo x %.1f -> bands %.0f, splits %.1f / %.1f / %.1f%s%s\n",
                      sx, (double) plainOf (bandsP), (double) plainOf (loP), (double) plainOf (midP),
                      (double) plainOf (hiP),
-                     det.sawOutOfRange.load (std::memory_order_acquire) ? "  [!! control wrote freqP[2]]" : "");
+                     ctlWrote ? "  [!! control wrote freqP[2]]" : "",
+                     ctlMoved ? "" : "  [!! the control moved no band]");
+        if (! ctlMoved || ctlWrote)
+        {
+            std::printf ("  ABORT: the control %s, so this probe cannot see its own defect and a"
+                         " zero below would mean nothing.\n",
+                         ! ctlMoved ? "moved no band with the lane silent"
+                                    : "wrote the out-of-range parameter with no lane running");
+            quit.store (true, std::memory_order_release);
+            automation.join();
+            hiP->removeListener (&det);
+            proc.editorBeingDeleted (ed);
+            delete ed;
+            return 1;
+        }
     }
 
     int outOfRange = 0;

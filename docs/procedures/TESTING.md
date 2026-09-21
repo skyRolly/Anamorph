@@ -464,6 +464,41 @@ legacy paths side by side — because the review that raised the finding located
 on the modern path, 0 of 6 on the legacy one**. Keep the two columns; they are what stops the two
 paths being confused again.
 
+**EVERY ONE OF THE SIX BLOCKING PROBES NOW REFUSES TO REPORT A ZERO IT CANNOT SUPPORT (2026-09-21).**
+`--band-move-adopt-probe` and `--solo-alias-probe` have aborted on a dead control since they were
+written. The other four did not: `--add-target-probe`, `--add-edge-probe` and `--band-move-probe`
+each ran a control with the lane silent and **printed** the result without testing it, and
+`--split-snapshot-probe` had no control at all. A probe whose instrument stops reaching its window —
+a moved affordance, a changed cursor, a drag that no longer crosses the 4 px gate — then printed
+`TOTAL …: 0` and passed the gate having measured nothing, which is the failure mode this repository
+has recorded twice. Each of the four now ABORTS with a named reason:
+
+| probe | what the control proves | how it fails |
+|---|---|---|
+| `--split-snapshot-probe` | with the lane silent the drag MOVES split 0, and the detector does NOT fire on an ordinary drag | `[!! the drag wrote nothing]` / `[!! the detector fired with no lane]` |
+| `--add-target-probe` | with the lane silent the click adds a split near 15 kHz | `[!! the control added nothing]` |
+| `--add-edge-probe` | the same | `[!! the control added nothing]` |
+| `--band-move-probe` | with the lane silent the drag MOVES a band, and does NOT write the out-of-range parameter | `[!! the control moved no band]` / `[!! control wrote freqP[2]]` |
+
+Demonstrated in both directions in round 53: all four exit 0 on the shipped tree, and all four exit 1
+with the abort message when their own targeting is perturbed so the instrument cannot reach.
+
+**`tests/xml_boundary_differential.cpp` (ADR-0056) is the newest gate in the `linux` job**, and it is
+the only one that asserts a *contract between two components* rather than a behaviour of one:
+`textIsAdmissible(t, 8, parserSafetyOnly) == true` must imply `juce::parseXML(t)` RETURNS — a
+document or a null, either is a pass; what is forbidden is not returning. It exists because round 52
+shipped a hand-written model of the parser that was right about a comment, a CDATA section and a
+processing instruction and wrong about an opening tag with an unterminated quote, and nothing in the
+tree compared the two. It proves its own oracle first by feeding the parser deepening documents with
+the boundary bypassed until one does not return — the crashing depth is a property of the toolchain
+(Clang 2 500–3 000 levels on 1 MB; GCC 13 at -O1 survives 3 000 and crashes at 5 000), so it searches
+rather than hard-codes — then sizes its fixtures from the depth it measured. It also asserts that
+seven writer-shaped documents are still ADMITTED, so the contract cannot be satisfied by refusing
+everything. ~0.5 s for 1 500 generated documents plus 18 named shapes. **Linux-only by construction**
+(`fork` + `pthread_attr_setstacksize`) and deliberately not folded into `AnamorphStateTests`, whose
+run must not contain a case that can take the process down with it; State test 116 leg E2 carries the
+same shapes as ordinary assertions on the boundary's VERDICT, which every platform runs.
+
 `AnamorphStateTests --split-snapshot-probe` (ADR-0047) is the one probe in this list that MEASURES A
 DEFECT RATE rather than handing the verdict to a sanitizer, because the thing it drives is not a data
 race — every read and write involved is on a `std::atomic<float>` — but a **logical** one: the drag's
@@ -1976,10 +2011,10 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     (`tests/state_tests.cpp` 122, `tests/dsp_tests.cpp` 47); on this head `src/**` draws **no**
     PREfast result at all. `g++ -fstack-usage` on ninja's own compile lines measured **1,683**
     functions across the two translation units: the largest real frame is **709,760** bytes
-    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21825`,
+    (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21960`,
     67.7 % of the Windows 1 MB reserve) and **289,440** in the DSP suite
     (`tests/dsp_tests.cpp:1388`, 27.6 %). **Nothing reaches 1 MiB.** PREfast's largest claim is
-    1,285,476 at `tests/state_tests.cpp:15410` against a real 284,800 — 4.5x — and across its 20
+    1,285,476 at `tests/state_tests.cpp:15545` against a real 284,800 — 4.5x — and across its 20
     largest claims the overstatement runs 1.01x to 9.02x and never inverts. The control that holds
     this line is the `ulimit -s 1024` guard step, not the alert.
   - **DO NOT FIX — `C26495` x 7, and the 2026-09-07 justification for them was WRONG.** That entry
@@ -1994,7 +2029,7 @@ mutation-tested — its fix reverted in isolation makes it fail, 42 alongside 37
     no alert while changing test code for a dashboard.
   - **DO NOT FIX — `C26498` x 4 and the JUCE `C26495`.** The four are `con.5` style suggestions to
     mark four `const float` locals `constexpr` (`tests/dsp_tests.cpp:3770`, :3930,
-    `tests/state_tests.cpp:18929`, :18381); identical values either way, no defect, test-only. The
+    `tests/state_tests.cpp:19064`, :18381); identical values either way, no defect, test-only. The
     JUCE one is `juce_audio_plugin_client_VST3.cpp:1826`, third-party, reachable by neither
     `ignoredIncludePaths` nor `ignoredTargetPaths` because that translation unit compiles INTO
     `Anamorph_VST3` — already documented in `msvc.yml` and accepted under `DEPENDENCY_POLICY.md`.
@@ -3998,11 +4033,11 @@ processors". It holds no `AnamorphAudioProcessor` — `AnamorphTests` compiles `
 alone — but that is not the rule: what overflows a frame is a large automatic of any type, and
 `dsp_tests.cpp` declares `anamorph::AnamorphEngine engine;` as a local in dozens of tests. Measured
 with `g++ -fstack-usage`, the largest frames are **709,760 bytes** in the state suite
-(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21825`) and
+(`testSettingsPublicationIsFieldLevelAndOrderedByObservation`, `tests/state_tests.cpp:21960`) and
 **289,440** in the DSP suite (`testPendingDuckDoesNotSurviveActivation`, `tests/dsp_tests.cpp:1388`)
 — 68% and 28% of the Windows reserve. Use `-fstack-usage` to judge headroom, never a PREfast `C6262`
 alert: /analyze sums a function's locals across disjoint sibling scopes, so its number for
-`tests/state_tests.cpp:15410` is 1,285,476 where the real frame is 284,800.
+`tests/state_tests.cpp:15545` is 1,285,476 where the real frame is 284,800.
 
 **Both anchors re-measured 2026-09-19 on `b6af84e`, and both written in full for the first time.**
 The state figure read 708,480 at `state_tests.cpp:17430` and the PREfast example 1,280,508 at
@@ -4041,7 +4076,7 @@ suite's maximum frame** — that is still the pre-existing Settings test at 68 %
 run green under `ulimit -s 1024`, which is the control that actually holds this line.
 
 **Alert 209 on PR #149, measured rather than argued (round 44).** PREfast reported *"Function uses
-'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14491`
+'433548' bytes of stack"* at line 13318 as PREfast anchored it -- `tests/state_tests.cpp:14626`
 today (:13701 when this was written; re-aimed 2026-09-19, and the alert now reads 433740 at that
 line) -- which is
 `testNonFiniteParameterInStateIsRejected` -- **State test 17, a pre-existing test this round did not

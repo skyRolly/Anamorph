@@ -35,7 +35,13 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   the largest project state Anamorph has ever written is about 10 KB, three levels deep. Every older
   project format Anamorph still reads loads exactly as before, and a chunk that is refused changes
   nothing at all: the sound, the preset name and the A/B slots you had stay as they were.
-  Decision: ADR-0056. Regression coverage: State test 116. [Verified]
+  **One shape was still getting through, and now does not:** a damaged tag with a quotation mark left
+  open — the kind of thing a truncated or hand-edited project file produces — hid everything after it
+  from the size and nesting checks, so a 12 KB chunk could still crash the plug-in as it loaded. It is
+  refused too. Nothing Anamorph has ever saved contains that shape, and every project and preset that
+  loaded before still loads: what is refused now is only what the reader was already unable to read.
+  Decision: ADR-0056. Regression coverage: State test 116 (legs E2 and F2) and
+  `tests/xml_boundary_differential.cpp`. [Verified]
 - **A damaged preset file is now refused instead of half-loaded.** A `.anamorph` file that contains
   two complete presets — one preset saved, then a second one appended below it — used to load
   successfully and apply the upper one, so a file that had been concatenated, merged by a sync
