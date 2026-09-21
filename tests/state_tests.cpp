@@ -35635,7 +35635,8 @@ static void testAFailedPresetWriteReportsFailure()
     const auto file = dir.getChildFile (probeName + ".anamorph");
     file.deleteFile();
 
-    AnamorphAudioProcessor proc;
+    const auto procOwner = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+    auto& proc = *procOwner;
     proc.prepareToPlay (48000.0, 256);
     auto& pm = proc.getPresets();
 
@@ -35737,7 +35738,8 @@ static void testAHostResetReachesTheEngine()
     std::printf ("State test 118: a host reset reaches the engine (F2)\n");
 
     const double sr = 48000.0; const int block = 256;
-    AnamorphAudioProcessor proc;
+    const auto procOwner = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+    auto& proc = *procOwner;
 
     auto setPlain = [&proc] (const char* id, float v)
     {
@@ -35816,7 +35818,8 @@ static void testAHostResetReachesTheEngine()
 
     // --- A reset before any prepare must be harmless, because a host may send one.
     {
-        AnamorphAudioProcessor fresh;
+        const auto freshOwner = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+        auto& fresh = *freshOwner;
         fresh.reset();
         check (true, "F2: a reset before prepareToPlay does not crash");
     }
@@ -35831,7 +35834,8 @@ static void testAHostResetReachesTheEngine()
     //     passes `ResetScope::audioTailsOnly`. Without this leg the narrowing has
     //     nothing holding it in place.
     {
-        AnamorphAudioProcessor lm;
+        const auto lmOwner = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+        auto& lm = *lmOwner;
         lm.prepareToPlay (sr, block);
         auto setP = [&lm] (const char* id, float v)
         {
@@ -35892,7 +35896,8 @@ static void testTheReportedTailCoversTheRealTail()
     std::printf ("State test 119: the reported tail is never shorter than the real one (F3)\n");
 
     const int block = 256;
-    AnamorphAudioProcessor proc;
+    const auto procOwner = std::make_unique<AnamorphAudioProcessor>();  // heap: State test 59's note
+    auto& proc = *procOwner;
 
     auto setPlain = [&proc] (const char* id, float v)
     {

@@ -74,7 +74,44 @@ The baseline was **not** widened — it stands at the same 9 entries.
 **And the job is green in CI.** The `linux` job passed on `ef75b8c` (run 35651087654, job
 106503393315) — confirmed in CI, not inferred from the local reproduction.
 
-**The same gate then caught a second would-be failure, this time before it was pushed.** The F2 work
+### A second CI failure, also mine, in a different job
+
+Pushing the R5 work turned the **`sanitizers`** job red — an AddressSanitizer
+`stack-overflow`, on the **main thread**, inside
+`testHostStateIsBoundedBeforeTheParser` (State test 116, from round 2) at
+`tests/state_tests.cpp:13953`, which is a lambda whose body constructs an
+`AnamorphAudioProcessor` as a stack local. Nothing in that test was touched this round.
+
+**Attributed, not guessed.** `sanitizers` was green on `77e4aec` (R4's head) and on
+`ef75b8c` (the CI fix), and failed on `045026b`. The only change to that translation
+unit was this round's three new tests.
+
+**The cause is a rule this repository had already measured and written down**, in the note
+above State test 59 (D-2 round 13):
+
+> `AnamorphAudioProcessor` is ~138 kB, and a compiler gives each of a function's
+> sibling-scope locals its own frame slot rather than reusing one. […] Splitting the legs
+> into separate functions is **NOT sufficient, and was measured not to be: the compiler
+> inlines them back into one frame and the overflow returns.** Only the heap allocation is
+> guaranteed by the language.
+
+Tests 117–119 declared their processors on the stack and so ignored that rule. Measured
+here with `-fstack-usage` under ASan: one processor local costs **139 KB** of frame, State
+test 116 already needs **1.36 MB**, and the three new tests were carrying **~714 KB**
+between them — test 118 alone **418 KB**, holding three. Moving all five to
+`std::make_unique`, the way every other heavy state test in the file already does, drops
+those frames to **1,040 / 1,440 / 1,008 bytes** and removes the round's entire contribution
+to that pressure (TU total 39,830,168 → 39,119,656 bytes).
+
+**I could not reproduce it locally, and say so rather than implying I did.** GCC 13 with
+ASan passes (4677 / 0), and so does a Release build under `ulimit -s 1024` — the
+reproduction `TESTING.md` prescribes for this class — both before and after the fix,
+because GCC does not inline those three functions into `main`. The failure needs the
+sanitizers job's clang-22 with `local-bounds`, `implicit-conversion`, `vptr` and the rest,
+which this container cannot build (no `libclang_rt` for the installed clang-18). **CI is
+therefore the verification for this one, not a local run.**
+
+**The same clang gate had already caught a second would-be failure before it was pushed.** The F2 work
 gave `AnamorphEngine::reset` a `ResetScope scope` parameter, and `scope` is already a member of
 `AnamorphEngine` (the `ScopeBuffer` at `AnamorphEngine.h:212`) — `-Wshadow`, which the baseline allows
 0 of in that file. GCC 13 built it silently; clang-18 reported it; the parameter was renamed to
@@ -479,6 +516,8 @@ Each control check passes in both directions, so none of the three tests is vacu
 | `check-portability` | 0 violations, self-test 120 cases |
 | `check-docs` | 147 files clean, self-test 464 cases |
 | `check-citations` | 531 anchors intact, **self-test 242 cases** |
+| the `sanitizers` job | red on the first R5 push (an ASan stack overflow in a pre-existing test, caused by this round's stack-local processors) and fixed by following the heap rule above; **not reproducible locally** — CI is the verification |
+| a Release state run under `ulimit -s 1024` | 4677 / 0 — run because `TESTING.md` prescribes it for this class, and reported even though it did **not** catch the defect |
 | the repaired `linux` job | **green in CI** on `ef75b8c`, and its warning gate demonstrated to still reject the class, to still refuse a mismatched clang major, and to have an unwidened baseline |
 
 **What adversarial verification changed.** This round's three investigations were each attacked from
@@ -550,9 +589,14 @@ R6's work list should therefore be extended with what this round found:
 
 1. a lint that every `EngineParameters` field appears in `sameParameters` (from R4);
 2. a lint that every write to `pendingP` is followed by the same derivation (from R4);
-3. **a check that the one preset write path is the verified one** — trivial to state as a lint
+3. **a lint that no test declares an `AnamorphAudioProcessor` as a stack local** — the rule
+   above State test 59 is measured, load-bearing, and was still ignored by three new tests
+   in this very round, with the failure landing in an unrelated pre-existing test in a job
+   that cannot be reproduced locally. It is a one-line grep with an obvious exemption list,
+   and it is now the item with the freshest evidence behind it;
+4. **a check that the one preset write path is the verified one** — trivial to state as a lint
    (`replaceWithText` must not appear in `src/`), and it is the cheapest of the six;
-4. **the prime/prepare ordering hazard from R4** belongs here too — `primeParameters` before
+5. **the prime/prepare ordering hazard from R4** belongs here too — `primeParameters` before
    `prepare` is required, documented in a comment, and honoured by the single production caller;
    the reverse order silently produces a mis-configured engine, which cost R4 a published refutation.
 
