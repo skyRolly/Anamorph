@@ -270,10 +270,20 @@ backing the older ones have.
   whole body — and ADR-0029 §5/§8 records the RTSan scope decision and the trigger that would change
   it. The defect is the Policy's claim, not the code.
 
-### F8 — Multiband Enable at Mix < 1 steps the Mix's dry source in a single sample
+### F8 — Multiband Enable at Mix < 1 steps the Mix's dry source in a single sample  ·  **RESOLVED (R4)**
+
+> **R4, 2026-09-21 — measured and fixed.** Impact is now **Verified**: up to **+3.9 dBFS** and 89×
+> the signal's own slew (1 kHz / 4 bands / Mix 0.05 and 100 Hz / 4 bands / Mix 0.25 / block 64), on
+> both edges, following `(1 − Mix)` exactly as the Evidence below predicts, and identically zero at
+> Mix 0, at Mix 1 and at one band. Fixed by gliding `A(dry)` toward the clean dry on
+> `mbEnableBlend`'s own curve. ADR-0005 Correction 2026-09-21; Test 56.
+> **A refutation of this finding was published in chat during R4 and is withdrawn** — it was an
+> artefact of a harness that called `prepare()` before `primeParameters`, which left the engine
+> running with default module settings so `A(dry)` equalled the clean dry. See
+> `R4_F11_F8_MEASUREMENT_AND_RESOLUTION.md` §A.2 and §C.
 
 - **Classification:** confirmed bug. **Severity:** high. **Confidence:** high (finder + verifier
-  confirmed; magnitude not measured — this round is read-only)
+  confirmed; magnitude **measured in R4**)
 - **Subsystems:** engine chain · multiband · dry reconstruction (ADR-0005)
 - **Evidence.** `mbEnableBlend` crossfades the wet path only; the Mix stage's dry source switches
   between the phase-matched `A(dry)` and the clean dry in one sample, so the transition is
@@ -317,9 +327,21 @@ backing the older ones have.
   unconditionally. Every re-entrant window the guard was built for is still open through the other
   three.
 
-### F11 — A host automation lane crossing a discrete step faster than ~1 per 3 blocks holds the plug-in in a perpetual duck
+### F11 — A host automation lane crossing a discrete step faster than ~1 per 3 blocks holds the plug-in in a perpetual duck  ·  **RESOLVED (R4), with the title corrected twice**
 
-- **Classification:** confirmed risk. **Severity:** high. **Confidence:** high (round 2, confirmed)
+> **R4, 2026-09-21 — measured and fixed, and the finding is wrong in two details.**
+> **(1) The cadence is an interval in milliseconds, not a block count.** 2.667 ms between crossings
+> reads −42.21 dB at 48 kHz/256, 96 kHz/512 and 192 kHz/1024 alike, to two decimals. Audible below
+> ~130 ms; −3 dB at ~50 ms; −20 dB at ~13 ms.
+> **(2) It is not perpetual.** The level returns to within 0.5 dB in 8–10 blocks (21–27 ms) once the
+> automation stops. It is a sustained attenuation while the lane moves, not a latch.
+> Fixed by narrowing `discreteDiffers`' `dimMode` term rather than by changing the re-arm, because
+> for a change that genuinely rewires the graph the duck is ADR-0004's deliberate trade. ADR-0004
+> Correction 2026-09-21; Test 55. The companion below is fixed too (Test 57) and is a **distinct**
+> mechanism. See `R4_F11_F8_MEASUREMENT_AND_RESOLUTION.md` §B and §D.
+
+- **Classification:** confirmed risk. **Severity:** high. **Confidence:** high (round 2, confirmed;
+  impact **measured in R4**, which corrected the cadence and the persistence)
 - **Evidence.** The `FadeIn → FadeOut` re-arm resumes the fade-out from the current phase, so a lane
   that re-triggers before the fade completes never reaches the silent bottom.
 - **Why it matters.** Automating any discrete parameter at block cadence — an ordinary thing for a host
@@ -513,7 +535,7 @@ this round's scratchpad is fork-based and Linux-only, which suits the `linux` jo
 **Complete when:** it fails on the pre-R1 code and passes after, and its liveness case is asserted.
 **Stop if:** isolation proves unportable — then keep it Linux-only and say so, rather than dropping it.
 
-### R4 — The two automation-cadence DSP defects (F11, F8)
+### R4 — The two automation-cadence DSP defects (F11, F8)  ·  **DONE (2026-09-21)** — see `R4_F11_F8_MEASUREMENT_AND_RESOLUTION.md`
 
 **Problem:** a perpetual duck under ordinary automation; a dry-source step at Mix < 1.
 **Why here:** highest-impact audible defects, but each needs a measurement this read-only round could
@@ -575,7 +597,23 @@ four resolved entries; the stale test counts in four documents including `TESTIN
 the "adopted, not audited" problem, and it is a project of its own. Correct the six oldest ADRs' anchors
 only where a road-map item already touches them.
 
-### Round-53 outcome, and what the next item is
+### R4 outcome (2026-09-21), and what the next item is
+
+R4 is complete: F8, F11 and F11's companion are measured, fixed and covered by Tests 56, 55 and 57
+(73 new checks; 59 of them fail against the pre-fix engine). Two of the three findings needed
+correcting on the evidence rather than merely closing — F11's cadence and persistence, and F8's
+verdict, which this round first got wrong. The full record is
+`R4_F11_F8_MEASUREMENT_AND_RESOLUTION.md`.
+
+**The next item is R5** (F4, F2, F3), unchanged in scope and now the cheapest high-value work on the
+list. **R6 gained its second measured instance:** `discreteDiffers`, `sameParameters`,
+`processingDiffers` and `copyContinuous` are four hand-maintained field lists over one struct, and
+R4 found a defect in two of them — a member that should not have been in one list, and a derived
+flag missing from one of four paths into the variable it describes. R7 is partly addressed: Test 56
+drives the multiband dry bank at partial Mix, one of F15's named holes. R8 gains nothing here: every DSP
+test count in the documents sits inside a dated round record and stays correct as written.
+
+### Round-53 outcome, and what the next item was then
 
 R1, R2 and R3 are complete; R8's R1/R2-adjacent items are done. **The next item is R4** (F11 and F8),
 and the confidence recalibration in §7 sharpens its shape rather than changing its place: both are

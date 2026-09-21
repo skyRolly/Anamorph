@@ -18,6 +18,42 @@ not accept and which those entries predate. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
+## [Unreleased]
+
+### Fixed
+- **Automating Dim-D Style no longer ducks the sound when Dimension D is not the selected
+  algorithm.** Dim-D Style is read only by the Dimension D algorithm, but moving it counted as a
+  structural change whatever algorithm was selected — so an automation lane crossing one of its four
+  steps opened the full transition fade every time, on a control that could not change the sound at
+  all. Under a lane crossing a step every few milliseconds that held the output well below where it
+  belonged: 42 dB down at one crossing every 2.7 ms, 30 dB at 5.3 ms, 19 dB at 10.7 ms, and audible
+  at any crossing closer together than about 130 ms. It was never permanent — the level came back
+  about 25 ms after the automation stopped — but for as long as the lane kept moving, it stayed
+  down. Moving Dim-D Style while another algorithm is selected is now completely silent: the output
+  is sample-for-sample identical to leaving the control alone, at every sample rate and buffer size.
+  The value is still adopted, so switching to Dimension D afterwards gives you the voicing you
+  chose; and moving it **while** Dimension D is selected still transitions exactly as before, as do
+  band count, algorithm, oversampling factor and Band Solo. Decision: ADR-0004 (Correction,
+  2026-09-21). Regression coverage: Test 55. [Verified]
+- **Turning the Multiband on or off at a partial Mix no longer clicks.** With Mix anywhere between
+  0 % and 100 % and more than one band, the dry half of the mix was swapped between two versions of
+  itself in a single sample, at a buffer boundary about 12 ms after the toggle — the crossfade
+  covered the processed signal but not the dry one. The result was a genuine click, and a loud one:
+  on a steady tone at four bands it reached the signal's own peak level and up to ninety times the
+  step the signal itself was making. It was worst at low Mix settings and on low-frequency material,
+  and it happened in both directions. The dry signal now crosses over on the same short fade as the
+  rest, so the toggle is inaudible. An exact-0 % Mix, an exact-100 % Mix and a single-band setting
+  were never affected and are bit-for-bit unchanged. Decision: ADR-0005 (Correction, 2026-09-21).
+  Regression coverage: Test 56. [Verified]
+- **Switching algorithm immediately after another control no longer carries the old algorithm's
+  sound into the new one.** When a change to another structural control — the band count, say — was
+  followed within a few milliseconds by an algorithm change, the transition adopted the new
+  algorithm without clearing the previous one's delay lines. Between Chorus and Dimension D, which
+  share the same modulation engine, the incoming voice started on a line still full of the outgoing
+  one's audio, and the artefact was as loud as the signal itself. Changing algorithm the moment
+  after another control now sounds exactly the same as changing both together. Decision: ADR-0004
+  (Correction, 2026-09-21). Regression coverage: Test 57. [Verified]
+
 ## [0.9.9] — 2026-09-19
 
 ### Fixed
@@ -2691,6 +2727,7 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
+[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.9.9...HEAD
 [0.9.9]: https://github.com/skyRolly/Anamorph/compare/v0.9.8...v0.9.9
 [0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8
 [0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7

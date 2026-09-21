@@ -5768,6 +5768,405 @@ static void testOversamplingOffHandoffKeepsProcessing()
     }
 }
 
+// ---------------------------------------------------------------------------
+//  Regression (R4 / F11): a discrete change that reaches NO module must not duck.
+//
+//  `discreteDiffers` opens a duck-to-silence -- ~6 ms out, ~28 ms in (ADR-0004).
+//  That is the right trade for a change that genuinely rewires the graph, because
+//  the swap then happens at silence and no stale tail survives it. It is the wrong
+//  trade for `dimMode`, which is read by exactly one line -- `chorus.setDimMode`,
+//  inside `else if (p.algorithm == Algorithm::DimensionD)` -- so under any other
+//  algorithm the value reaches nothing at all and the duck buys nothing.
+//
+//  MEASURED, on this engine, before the fix: a host lane toggling dimMode between
+//  two adjacent steps held the steady output 42.2 dB below the un-automated same
+//  engine at 48 kHz / block 128, and the governing variable was the toggle INTERVAL
+//  in ms, not the block count -- 2.667 ms gave -42.21 dB at 48k/256 crossings, at
+//  96k/512 and at 192k/1024 alike, to two decimals. An automation lane crossing a
+//  step boundary every few milliseconds is ordinary; nothing rate-limits it.
+//
+//  WHAT THIS ASSERTS. Not a state variable: the OUTPUT SAMPLES, against the same
+//  engine with no automation at all. The inert case is bit-exact post-fix (measured
+//  at 44.1 / 48 / 96 kHz and blocks 64 / 128 / 512, zero differing samples), so the
+//  assertion is equality, not a threshold. Three positive controls follow it, and
+//  they are the point of the test: the duck must still be there wherever the change
+//  can be heard, and the value must still be adopted.
+static void testInertDiscreteChangeDoesNotDuck()
+{
+    std::printf ("Test 55: an inert discrete change does not open a duck\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    struct Rendered { std::vector<float> s; double rms = 0.0; };
+
+    // toggleEvery <= 0 means no automation (the control). `field` picks what the
+    // lane moves; everything else is held identical between the two renders.
+    enum class Lane { None, DimMode, MbBands };
+    auto render = [] (double sr, int block, int blocks, anamorph::Algorithm alg,
+                      int startDimMode, Lane lane, int toggleEvery) -> Rendered
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;
+        p.algorithm = alg; p.algoAmount = 0.7f; p.width = 1.4f; p.mix = 1.0f;
+        p.mbEnable = true; p.mbBands = 2; p.dimMode = startDimMode;
+        engine.setParameters (p);
+        engine.reset();
+
+        juce::AudioBuffer<float> buf (2, block);
+        Rendered out; out.s.reserve ((size_t) (blocks * block));
+        double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * 1000.0 / sr;
+        bool alt = false; int since = 0; double sumSq = 0.0;
+
+        for (int b = 0; b < blocks; ++b)
+        {
+            if (toggleEvery > 0 && ++since >= toggleEvery)
+            {
+                since = 0; alt = ! alt;
+                if (lane == Lane::DimMode) p.dimMode = alt ? startDimMode + 1 : startDimMode;
+                else if (lane == Lane::MbBands) p.mbBands = alt ? 3 : 2;
+            }
+            engine.setParameters (p);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = (float) std::sin (phase);
+                phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s * 0.85f);
+            }
+            engine.process (buf);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                { const double v = buf.getSample (ch, i); sumSq += v * v; }
+            for (int i = 0; i < block; ++i) out.s.push_back (buf.getSample (0, i));
+        }
+        out.rms = std::sqrt (sumSq / (2.0 * blocks * block));
+        return out;
+    };
+
+    auto dbBetween = [] (double a, double ref)
+    { return 20.0 * std::log10 (std::max (a, 1e-12) / std::max (ref, 1e-12)); };
+
+    // --- THE ASSERTION. Under Haas, dimMode reaches no module, so a lane moving it
+    //     at ANY cadence must leave the stream untouched -- sample for sample.
+    const double rates[3]  = { 44100.0, 48000.0, 96000.0 };
+    const int    blocks_[3] = { 64, 128, 512 };
+    for (int r = 0; r < 3; ++r)
+        for (int bi = 0; bi < 3; ++bi)
+        {
+            const auto ctl = render (rates[r], blocks_[bi], 300, anamorph::Algorithm::Haas, 1, Lane::None, 0);
+            for (const int every : { 1, 2, 4 })
+            {
+                const auto aut = render (rates[r], blocks_[bi], 300, anamorph::Algorithm::Haas, 1,
+                                         Lane::DimMode, every);
+                size_t differing = 0;
+                for (size_t i = 0; i < ctl.s.size(); ++i)
+                    if (std::memcmp (&ctl.s[i], &aut.s[i], sizeof (float)) != 0) ++differing;
+                if (differing != 0)
+                    std::printf ("  [%.0f Hz, block %d, every %d] %zu/%zu samples differ, level %+.2f dB\n",
+                                 rates[r], blocks_[bi], every, differing, ctl.s.size(),
+                                 dbBetween (aut.rms, ctl.rms));
+                check (differing == 0,
+                       "an inert dimMode automation lane leaves the output bit-exact");
+            }
+        }
+
+    // --- CONTROL 1: an AUDIBLE discrete change at the same cadence must STILL duck.
+    //     The duck is not being removed, only its membership narrowed; if this stops
+    //     ducking the fix has gone too far. Measured at -42.2 dB; asserted at -20.
+    {
+        const double sr = 48000.0; const int block = 128;
+        const auto ctl = render (sr, block, 300, anamorph::Algorithm::Haas, 1, Lane::None, 0);
+        const auto aut = render (sr, block, 300, anamorph::Algorithm::Haas, 1, Lane::MbBands, 1);
+        const double d = dbBetween (aut.rms, ctl.rms);
+        std::printf ("  control: mbBands lane (audible) still ducks to %+.2f dB\n", d);
+        check (d < -20.0, "an audible discrete change (mbBands) still ducks");
+    }
+
+    // --- CONTROL 2: the SAME dimMode lane under the one algorithm that READS
+    //     dimMode must still duck. This is what makes the exclusion an exclusion
+    //     rather than a deletion. Measured at -34.4 dB; asserted at -20.
+    {
+        const double sr = 48000.0; const int block = 128;
+        const auto ctl = render (sr, block, 300, anamorph::Algorithm::DimensionD, 1, Lane::None, 0);
+        const auto aut = render (sr, block, 300, anamorph::Algorithm::DimensionD, 1, Lane::DimMode, 1);
+        const double d = dbBetween (aut.rms, ctl.rms);
+        std::printf ("  control: dimMode lane under Dimension D still ducks to %+.2f dB\n", d);
+        check (d < -20.0, "dimMode still ducks under the algorithm that reads it");
+    }
+
+    // --- CONTROL 3: the value is still ADOPTED while inert. Not ducking must not
+    //     mean not adopting: `sameParameters` still compares dimMode, so the change
+    //     takes the ordinary continuous path and a later switch to Dimension D has
+    //     to hear the NEW value. Asserted externally: move dimMode under Haas, then
+    //     switch to Dimension D, and require the settled output to match an engine
+    //     that carried the new value all along -- and NOT to match one that kept the
+    //     old value. Two renders that must agree and one that must not.
+    {
+        const double sr = 48000.0; const int block = 128;
+        auto switchToDimD = [&] (int dimBefore, int dimAfter) -> std::vector<float>
+        {
+            anamorph::AnamorphEngine engine;
+            engine.prepare (sr, block);
+            anamorph::EngineParameters p;
+            p.algorithm = anamorph::Algorithm::Haas; p.algoAmount = 0.7f; p.width = 1.4f;
+            p.mix = 1.0f; p.mbEnable = true; p.mbBands = 2; p.dimMode = dimBefore;
+            engine.setParameters (p);
+            engine.reset();
+
+            juce::AudioBuffer<float> buf (2, block);
+            std::vector<float> out; out.reserve ((size_t) (240 * block));
+            double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * 1000.0 / sr;
+            for (int b = 0; b < 240; ++b)
+            {
+                if (b == 40) p.dimMode = dimAfter;                              // inert here
+                if (b == 80) p.algorithm = anamorph::Algorithm::DimensionD;     // now it matters
+                engine.setParameters (p);
+                for (int i = 0; i < block; ++i)
+                {
+                    const float s = (float) std::sin (phase);
+                    phase += inc;
+                    buf.setSample (0, i, s); buf.setSample (1, i, s * 0.85f);
+                }
+                engine.process (buf);
+                for (int i = 0; i < block; ++i) out.push_back (buf.getSample (0, i));
+            }
+            return out;
+        };
+        // Compare only the settled tail, well past the algorithm swap's own fade.
+        auto tailDiff = [block] (const std::vector<float>& a, const std::vector<float>& b)
+        {
+            double worst = 0.0;
+            for (size_t i = (size_t) (160 * block); i < a.size(); ++i)
+                worst = std::max (worst, (double) std::abs (a[i] - b[i]));
+            return worst;
+        };
+        const auto moved   = switchToDimD (1, 3);   // 1 -> 3 while inert, then Dimension D
+        const auto carried = switchToDimD (3, 3);   // 3 throughout
+        const auto stale   = switchToDimD (1, 1);   // never moved: the wrong mode
+        std::printf ("  control: adopted-while-inert tail |moved-carried| = %.3e, |moved-stale| = %.3e\n",
+                     tailDiff (moved, carried), tailDiff (moved, stale));
+        check (tailDiff (moved, carried) < 1e-6,
+               "a dimMode moved while inert is adopted -- Dimension D hears the new mode");
+        check (tailDiff (moved, stale) > 1e-3,
+               "the adoption control is sharp: the stale mode sounds different");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Regression (R4 / F8): the Multiband Enable crossfade must not STEP THE DRY
+//  SOURCE at partial Mix.
+//
+//  ADR-0005 mixes the dry as a phase-matched `A(dry)` reconstructed through the
+//  same crossovers as the wet. `A(dry)` is produced only while the multiband bank
+//  is running, and `dryAligned` -- the flag the Mix stage picks its dry source from
+//  -- is a BLOCK constant derived from `mbActive`. So when the enable crossfade
+//  finished, the dry term jumped from `A(dry)` to the clean dry in ONE SAMPLE at
+//  the next block boundary, with nothing fading it: a step of (1-Mix)*|A(dry)-dry|.
+//
+//  WHY TEST 23 DOES NOT COVER THIS. Test 23 runs at the default Mix of 1.0, where
+//  the H4 gate drops the dry term altogether and no dry source exists to switch.
+//  The defect lives strictly at 0 < Mix < 1, and only with more than one band (with
+//  one band there is no crossover, so A(dry) == dry and the step is identically 0).
+//
+//  MEASURED before the fix, 48 kHz, 4 bands, crossovers 200/900/3500 Hz: +3.9 dBFS
+//  and 18x the signal's own slew (1 kHz, Mix 0.05); -13.4 dBFS and 24x (100 Hz,
+//  Mix 0.25, block 256); up to 89x at block 64. After it, every one of those cases
+//  sits at 1.3-1.6x -- the signal's own slew, i.e. nothing.
+//
+//  WHAT THIS ASSERTS. The worst single-sample delta anywhere in the transition,
+//  against the same signal's own MEDIAN delta in a steady window before it. A
+//  crossfaded transition scores ~1; a one-sample source switch scores tens. The
+//  bound is 3.0: far above every post-fix reading and far below every pre-fix one.
+static void testMultibandEnableDrySourceNoStep()
+{
+    std::printf ("Test 56: Multiband Enable does not step the dry source at partial Mix\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+
+    // Returns worstStep / medianSlew across the whole transition.
+    auto ratio = [sr] (int block, int bands, float mix, bool startEnabled) -> double
+    {
+        anamorph::AnamorphEngine engine;
+        engine.prepare (sr, block);
+        anamorph::EngineParameters p;
+        p.algorithm = anamorph::Algorithm::Haas; p.algoAmount = 0.7f; p.width = 1.4f;
+        p.mix = mix; p.mbEnable = startEnabled; p.mbBands = bands;
+        // The bands must actually do something, or the wet path is identity and
+        // there is no A(dry) to differ from the clean dry.
+        p.mbWidthLow = 1.6f; p.mbWidthMid = 0.6f; p.mbWidthHiMid = 1.5f; p.mbWidthHigh = 0.7f;
+        p.mbFreqLow = 200.0f; p.mbFreqMid = 900.0f; p.mbFreqHigh = 3500.0f;
+        engine.setParameters (p);
+        engine.reset();
+
+        const int toggleAt = 40;
+        const int blendSamples = (int) std::lround (0.012 * sr);   // mbEnableBlend, ~12 ms
+        const int spanBlocks = blendSamples / block + 3;           // the blend AND the boundary after it
+        const int blocks = toggleAt + spanBlocks + 4;
+
+        juce::AudioBuffer<float> buf (2, block);
+        std::vector<float> out; out.reserve ((size_t) (blocks * block));
+        double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * 100.0 / sr; // 100 Hz: a slow
+                                                                                    // signal, so a step
+                                                                                    // cannot hide in slew
+        for (int b = 0; b < blocks; ++b)
+        {
+            if (b == toggleAt) p.mbEnable = ! startEnabled;
+            engine.setParameters (p);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = (float) std::sin (phase);
+                phase += inc;
+                buf.setSample (0, i, s); buf.setSample (1, i, s * 0.8f);
+            }
+            engine.process (buf);
+            for (int i = 0; i < block; ++i) out.push_back (buf.getSample (0, i));
+        }
+
+        std::vector<double> steady;
+        for (int i = (toggleAt - 8) * block; i < (toggleAt - 2) * block; ++i)
+            steady.push_back (std::abs ((double) out[(size_t) i] - out[(size_t) (i - 1)]));
+        std::sort (steady.begin(), steady.end());
+        const double medianSlew = std::max (steady[steady.size() / 2], 1e-9);
+
+        double worst = 0.0;
+        for (int i = toggleAt * block; i < (toggleAt + spanBlocks) * block; ++i)
+            worst = std::max (worst, std::abs ((double) out[(size_t) i] - out[(size_t) (i - 1)]));
+        return worst / medianSlew;
+    };
+
+    // Both directions, both interesting band counts, across Mix and block size.
+    for (const bool startEnabled : { true, false })
+        for (const int bands : { 2, 4 })
+            for (const float mix : { 0.05f, 0.25f, 0.5f, 0.75f })
+            {
+                const double r = ratio (256, bands, mix, startEnabled);
+                if (r >= 3.0)
+                    std::printf ("  [%s, %d bands, mix %.2f] worst step is %.1fx the signal's own slew\n",
+                                 startEnabled ? "disable" : "enable", bands, mix, r);
+                check (r < 3.0, "Multiband Enable at partial Mix does not step the dry source");
+            }
+
+    // Block size decides WHERE the boundary after the blend falls, so it decides
+    // how much of the fade has run when the source used to switch. Pre-fix this
+    // row read 88.8 / 74.1 / 23.7 / 72.6 / 47.9.
+    for (const int block : { 64, 128, 256, 512, 1024 })
+    {
+        const double r = ratio (block, 4, 0.25f, true);
+        std::printf ("  block %4d: worst step %.2fx the signal's own slew\n", block, r);
+        check (r < 3.0, "the dry source does not step at any block size");
+    }
+
+    // CONTROL: one band has no crossover, so A(dry) == dry and no step was ever
+    // possible there. It must read the same before and after the fix -- if this
+    // moved, the change is doing something beyond closing the switch.
+    const double one = ratio (256, 1, 0.25f, true);
+    std::printf ("  control: one band (A(dry) == dry) reads %.2fx\n", one);
+    check (one < 3.0, "the one-band control is unaffected");
+}
+
+// ---------------------------------------------------------------------------
+//  Regression (R4 / Part 6): an algorithm change that arrives DURING a fade-out
+//  must still clear the outgoing algorithm's state at the silent bottom.
+//
+//  `pendingAlgoReset` is what makes `haas/velvet/chorus.reset()` run at the duck
+//  bottom. It was recomputed at all three duck ENTRIES but not on the fourth path
+//  into `pendingP` -- a plain retarget while the fade-out is already running,
+//  which the FadeIn-only re-arm guard lets fall straight through. So
+//      block N   : change the band count  -> duck opens, flag = false
+//      block N+1 : change the algorithm   -> pendingP retargeted, flag NOT refreshed
+//  adopted the new algorithm without clearing the old one's state.
+//
+//  WHICH PAIRS THIS CAN BE HEARD ON. Only a change between Chorus and Dimension D.
+//  A module is processed only while it IS the selected algorithm (:1281-1282 and
+//  the `isModAlgorithm` gate at :859), so every other incoming module starts from
+//  silence and a skipped reset costs nothing. Chorus and Dimension D are two
+//  VOICES OF ONE ChorusEngine, so there the incoming voice inherits a delay line
+//  full of the outgoing voice's audio. Measured through AnamorphAudioProcessor
+//  with host-style parameter writes: peak 0.587 (Chorus -> Dimension D, block 64)
+//  and 1.519 (Dimension D -> Chorus, block 128) against a 0.7-amplitude source --
+//  and 0.000 for Haas -> Velvet / Chorus / Dimension D and for Chorus -> Haas,
+//  which is why the pair matters and the others are kept here as controls.
+//
+//  WHAT THIS ASSERTS. Not the flag: the SAMPLES. The same end state is reached by
+//  two routes -- the algorithm moving WITH the band count (which sets the flag at
+//  the duck entry) and the algorithm moving one block into the fade-out (which did
+//  not) -- and the two streams have to be identical, because a duck exists exactly
+//  so that what happens inside it is not heard.
+static void testAlgoResetSurvivesMidFadeRetarget()
+{
+    std::printf ("Test 57: an algorithm change retargeted mid-fade-out still resets the modules\n");
+    juce::ScopedNoDenormals noDenormals;
+    const double sr = 48000.0;
+
+    // route 0 -- both changes at once (the flag is set at the duck ENTRY)
+    // route 1 -- band count first, algorithm `delayBlocks` later (the retarget path)
+    //
+    // primeParameters() THEN prepare() is the production order (AnamorphEngine.h:87-92,
+    // PluginProcessor.cpp:232-233) and it matters here: prepare() is what runs
+    // updateDerived(), so priming afterwards would leave the modules configured from
+    // defaults and the engine would never reach the state this test is about.
+    auto render = [sr] (int block, int route, anamorph::Algorithm from,
+                        anamorph::Algorithm to, int delayBlocks)
+    {
+        anamorph::AnamorphEngine engine;
+        anamorph::EngineParameters p;
+        p.algorithm = from; p.algoAmount = 0.8f; p.width = 1.4f; p.mix = 1.0f;
+        p.mbEnable = true; p.mbBands = 2;
+        engine.primeParameters (p);
+        engine.prepare (sr, block);
+        engine.setParameters (p);
+
+        juce::AudioBuffer<float> buf (2, block);
+        std::vector<float> out; out.reserve ((size_t) (200 * block));
+        double phase = 0.0; const double inc = 2.0 * 3.14159265358979 * 400.0 / sr;
+        for (int b = 0; b < 200; ++b)
+        {
+            if (b == 60) { p.mbBands = 3; if (route == 0) p.algorithm = to; }
+            if (route == 1 && b == 60 + delayBlocks) p.algorithm = to;
+            engine.setParameters (p);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = (float) std::sin (phase); phase += inc;
+                buf.setSample (0, i, s * 0.7f); buf.setSample (1, i, s * 0.55f);
+            }
+            engine.process (buf);
+            for (int i = 0; i < block; ++i) out.push_back (buf.getSample (0, i));
+        }
+        return out;
+    };
+
+    const struct { anamorph::Algorithm from, to; const char* name; } pairs[] = {
+        { anamorph::Algorithm::Chorus,      anamorph::Algorithm::DimensionD, "Chorus -> Dimension D" },
+        { anamorph::Algorithm::DimensionD,  anamorph::Algorithm::Chorus,     "Dimension D -> Chorus" },
+        { anamorph::Algorithm::Haas,        anamorph::Algorithm::Velvet,     "Haas -> Velvet (control)" },
+        { anamorph::Algorithm::Haas,        anamorph::Algorithm::DimensionD, "Haas -> Dimension D (control)" },
+        { anamorph::Algorithm::Chorus,      anamorph::Algorithm::Haas,       "Chorus -> Haas (control)" },
+    };
+
+    // The fade-out is ~6 ms (ADR-0004): at block 64 that is 4.5 blocks and at
+    // block 128 it is 2.25, so +1 and +2 land inside it at both sizes.
+    for (const int block : { 64, 128 })
+        for (const auto& pr : pairs)
+        {
+            const auto entry = render (block, 0, pr.from, pr.to, 0);
+            double worstHere = 0.0;
+            for (const int d : { 1, 2 })
+            {
+                const auto late = render (block, 1, pr.from, pr.to, d);
+                double worst = 0.0;
+                for (size_t i = (size_t) (60 * block); i < entry.size(); ++i)
+                    worst = std::max (worst, (double) std::abs (entry[i] - late[i]));
+                worstHere = std::max (worstHere, worst);
+                if (worst > 0.0)
+                    std::printf ("  [block %d, %s, +%d blk] routes differ by %.4f\n",
+                                 block, pr.name, d, worst);
+                check (worst == 0.0,
+                       "a mid-fade-out algorithm retarget lands exactly as an entry-route one");
+            }
+            (void) worstHere;
+        }
+    std::printf ("  every pair, both block sizes, both retarget delays: routes identical\n");
+}
+
 static int runForcedSwapAuditProbe()
 {
     std::printf ("Forced-swap audit (A/B, preset recall, undo). 220 Hz, block 64, 48 kHz.\n");
@@ -6005,6 +6404,9 @@ int main (int argc, char* argv[])
     testOversamplingLatencyIsFactorOnly();
     testDriveCrossingIsSeamlessWithOversampling();
     testOversamplingOffHandoffKeepsProcessing();
+    testInertDiscreteChangeDoesNotDuck();
+    testMultibandEnableDrySourceNoStep();
+    testAlgoResetSurvivesMidFadeRetarget();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

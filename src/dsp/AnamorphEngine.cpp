@@ -298,7 +298,33 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.solo             != b.solo
         || a.algorithm        != b.algorithm
         || a.haasSide         != b.haasSide
-        || a.dimMode          != b.dimMode
+        // dimMode is READ BY ONE LINE, and only under one algorithm: `chorus.setDimMode
+        // (p.dimMode)` at :603, inside `else if (p.algorithm == Algorithm::DimensionD)`.
+        // With any other algorithm adopted the value reaches no module, so a duck for it
+        // buys nothing and costs the whole fade -- measured, on the real wrapper path, at
+        // -42.2 dB of steady output under a host lane toggling it once per 128-sample
+        // block, identical to the attenuation an AUDIBLE discrete change produces. That
+        // is the whole of this exclusion: not that the duck is wrong, but that this
+        // change is not one of the changes it is for.
+        //
+        // The condition is symmetric and deliberately conservative. If EITHER side is
+        // DimensionD the duck still fires -- and when only one side is, `algorithm`
+        // already differs two lines up, so the guard changes nothing there. The one
+        // behaviour it removes is a duck for a dimMode move between two non-DimensionD
+        // states, which no module can observe.
+        //
+        // NOTHING IS LOST BY NOT DUCKING. `sameParameters` still compares dimMode (:269),
+        // so the value is adopted the ordinary continuous way (`p = np; updateDerived()`),
+        // and a later switch TO DimensionD is an `algorithm` difference that ducks, adopts
+        // the whole snapshot at the bottom and runs `chorus.setDimMode` with the value
+        // already in `p`. ADR-0004 §"Correction, 2026-09-21" records the measurement.
+        //
+        // haasSide is NOT given the same treatment, and the asymmetry is the point:
+        // `haas.setSide` at :590 runs UNCONDITIONALLY, so that value reaches a module
+        // whatever the algorithm is. The test for this exclusion is "does the field reach
+        // a module", not "does the algorithm use it".
+        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
+                                    || b.algorithm == Algorithm::DimensionD))
         || a.mbBands          != b.mbBands
         // Multiband Enable is NOT listed: like Bypass it is now a click-free OUTPUT
         // crossfade (mbEnableBlend) with the crossover bank kept warm, NOT a duck-to-
@@ -481,6 +507,41 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // as the tighten above; this narrow window keeps plain duck-to-silence.
             pendingForced = true;
             dryDuck       = false;
+        }
+        else
+        {
+            // ORDINARY DUCK, RETARGETED DURING THE FADE-OUT (R4, Part 6). This is
+            // the fourth path into `pendingP` and the only one that used to leave
+            // `pendingAlgoReset` alone. The other three -- :433 (forced entry),
+            // :445 (discrete entry) and :480 (the FadeIn re-arm) -- all recompute
+            // it; this one did not, because the re-arm guard above tests
+            // `switchState == FadeIn` and a change arriving during FADE-OUT
+            // therefore falls straight through to `pendingP = np` at the top.
+            //
+            // So a sequence that is entirely ordinary --
+            //     block N    : change the band count   -> duck opens, flag = false
+            //     block N+1  : change the algorithm    -> pendingP retargeted
+            // -- reached the silent bottom, adopted the new algorithm with
+            // `p = pendingP` (:894) and skipped `haas/velvet/chorus.reset()`
+            // because the flag still described the FIRST change. The incoming
+            // algorithm then started on the outgoing one's delay-line and LFO
+            // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:
+            // Haas -> Chorus produced a worst step of 0.1335 against 0.1026 for
+            // the identical end state reached by the entry route (1.30x), and
+            // Haas -> Dimension D 0.0525 against 0.0455 (1.15x). With this line
+            // in place both routes are BIT-IDENTICAL, which is what identifies
+            // the flag -- not the arrival timing -- as the whole of the
+            // difference. Haas -> Velvet was already identical either way.
+            //
+            // The recompute is the same expression the other three use, against
+            // the same reference (`p`, the state still being heard). This branch
+            // is reached only with an ordinary duck in flight: a forced one takes
+            // the `pendingForced` tighten above, a new forced request the upgrade
+            // above it, and a FadeIn re-arm the branch above that -- each of which
+            // sets the flag itself. It is also reached from FadeIn when nothing
+            // discrete differs, where the bottom has already passed and the flag
+            // is false; writing false again is a no-op there.
+            pendingAlgoReset = (np.algorithm != p.algorithm);
         }
 
         // A forced swap defers everything to the silent bottom; otherwise keep
@@ -1346,11 +1407,44 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         {
             const float* pmL = preMbScratch.getReadPointer (0);
             const float* pmR = preMbScratch.getReadPointer (1);
+            // The DRY reconstruction rides the SAME curve, and it has to. `dryAligned`
+            // is a BLOCK constant -- it is set only inside this `if (mbActive)`, and
+            // mbActive is evaluated once per block -- while the Mix stage picks its dry
+            // source straight off it (`aL = dryAligned ? dryAlignScratch : dL`) and
+            // blends with ts = 1 for any Mix >= kAlignMix. Without the line below the
+            // dry term therefore JUMPED from A(dry) to the clean dry in one sample at
+            // the block boundary where mbActive flipped: a step of (1-Mix)*|A(dry)-dry|,
+            // uncrossfaded, in the middle of a control a user toggles from the UI.
+            // Measured at 48 kHz, 4 bands, crossovers 200/900/3500: +3.9 dBFS and 18x
+            // the signal's own slew (1 kHz, Mix 0.05), -13.4 dBFS and 24x (100 Hz,
+            // Mix 0.25), up to 89x at block 64 -- and exactly zero at Mix 0 (ts = 0,
+            // the aligned dry is never read), at Mix 1 (the H4 gate drops the dry term
+            // altogether) and at one band (no crossover, so A(dry) == dry).
+            //
+            // Gliding A(dry) toward the clean dry on `b` moves the source switch to the
+            // instant the two are already equal: on a DISABLE the blend reaches 0 while
+            // mbActive is still true, so by the boundary where it flips the buffer holds
+            // the clean dry and the switch is a no-op; on an ENABLE the blend starts at
+            // 0, so the buffer starts AT the clean dry the previous block was using.
+            // `blending` implies `! fullWetIdle` implies `dryAligned`, so the write is
+            // always to a buffer the multiband just filled -- no guard is needed. At a
+            // settled blend this loop does not run at all, so every fully-enabled and
+            // fully-disabled state stays BIT-EXACT (ADR-0005's Mix=0 null included).
+            //
+            // ADR-0005 also makes A(dry) the Level-Match dry reference; for the ~12 ms
+            // of the fade that reference now follows the dry actually being mixed,
+            // which is the quantity Match is supposed to measure against.
+            float* aLw = dryAlignScratch.getWritePointer (0);
+            float* aRw = dryAlignScratch.getWritePointer (1);
+            const float* cdL = dryScratch.getReadPointer (0);
+            const float* cdR = dryScratch.getReadPointer (1);
             for (int i = 0; i < n; ++i)
             {
                 const float b = mbEnableBlend.getNextValue();
                 L[i] = pmL[i] + b * (L[i] - pmL[i]);
                 R[i] = pmR[i] + b * (R[i] - pmR[i]);
+                aLw[i] = cdL[i] + b * (aLw[i] - cdL[i]);
+                aRw[i] = cdR[i] + b * (aRw[i] - cdR[i]);
             }
         }
     }
