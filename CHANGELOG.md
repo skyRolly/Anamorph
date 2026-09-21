@@ -34,7 +34,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   The value is still adopted, so switching to Dimension D afterwards gives you the voicing you
   chose; and moving it **while** Dimension D is selected still transitions exactly as before, as do
   band count, algorithm, oversampling factor and Band Solo. Decision: ADR-0004 (Correction,
-  2026-09-21). Regression coverage: Test 55. [Verified]
+  2026-09-21). Regression coverage: Test 55. Evidence: PR #155. [Verified]
 - **Turning the Multiband on or off at a partial Mix no longer clicks.** With Mix anywhere between
   0 % and 100 % and more than one band, the dry half of the mix was swapped between two versions of
   itself in a single sample, at a buffer boundary about 12 ms after the toggle — the crossfade
@@ -44,7 +44,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   and it happened in both directions. The dry signal now crosses over on the same short fade as the
   rest, so the toggle is inaudible. An exact-0 % Mix, an exact-100 % Mix and a single-band setting
   were never affected and are bit-for-bit unchanged. Decision: ADR-0005 (Correction, 2026-09-21).
-  Regression coverage: Test 56. [Verified]
+  Regression coverage: Test 56. Evidence: PR #155. [Verified]
 - **Switching algorithm immediately after another control no longer carries the old algorithm's
   sound into the new one.** When a change to another structural control — the band count, say — was
   followed within a few milliseconds by an algorithm change, the transition adopted the new
@@ -52,7 +52,7 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   share the same modulation engine, the incoming voice started on a line still full of the outgoing
   one's audio, and the artefact was as loud as the signal itself. Changing algorithm the moment
   after another control now sounds exactly the same as changing both together. Decision: ADR-0004
-  (Correction, 2026-09-21). Regression coverage: Test 57. [Verified]
+  (Correction, 2026-09-21). Regression coverage: Test 57. Evidence: PR #155. [Verified]
 
 ## [0.9.9] — 2026-09-19
 
