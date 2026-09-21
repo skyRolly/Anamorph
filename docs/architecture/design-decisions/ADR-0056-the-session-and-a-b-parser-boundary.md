@@ -306,6 +306,69 @@ payload alike — since all three share the walk. It was *not* a route past the 
 level: the running depth of a non-self-closing chain was always counted, so the overshoot is exactly
 the one level a closing leaf occupies, and the hang and unbounded-read boundaries are untouched.
 
+### Correction, 2026-09-21 (round 53): an opening tag that never closes is not a tag the parser stops at
+
+**The decision is unchanged; one sentence of its reasoning was false, and the false half was
+load-bearing.** The shared walk carried this premise, and applied it to four constructs at once:
+
+> A `<!--`, a `<![CDATA[`, a `<?` **or an opening tag** that never ends swallows the rest of the text
+> for this scan AND for `XmlDocument`, which runs out of data and reports an error without recursing:
+> there is no depth hiding behind it.
+
+It is true for the first three and **false for the fourth**, and the reason is positional. In the
+pinned JUCE, `juce_XmlDocument.cpp:491-497` treats a quote as a string delimiter only after
+`name =`. A quote where an attribute **name** is expected falls to `:508-510`
+(`setLastError ("illegal character found in ...", false)`, then `break`); a name followed by a quote
+with no `=` falls to `:500-503` (`setLastError ("expected '=' after attribute ...", false);
+return node;`). **Both return the element**, and `errorOccurred` is consulted exactly once, at
+`:233`, *after* parsing completes — so the parent's `readChildElements` (`:577-580`) carries straight
+on and recurses into every element that followed the quote. Those elements are precisely the text the
+scan stopped reading, and nothing bounds their nesting.
+
+**Measured on `8dd036e` before the repair**, with the shipped `textIsAdmissible` and the parse
+contained in a forked child on a 1 MB `pthread` stack:
+
+| shape (N = 4 000 trailing `<x>`) | size | host rule | preset rule | parser |
+|---|---|---|---|---|
+| `<r><a "` + N·`<x>` (name position) | 12 007 B | **ADMITS** | refuses | **SIGSEGV** |
+| `<r><a '` + N·`<x>` | 12 007 B | **ADMITS** | refuses | **SIGSEGV** |
+| `<r><a b"` + N·`<x>` (no `=`) | 12 008 B | **ADMITS** | refuses | **SIGSEGV** |
+| `<r><a b="` + N·`<x>` (value position) | 12 009 B | ADMITS | refuses | null |
+| `<r><!--` / `<![CDATA[` / `<?` + N·`<x>` | ~12 007 B | ADMITS | refuses | null |
+| `<AnamorphRoot>…<a "` + N·`<x>` | 12 134 B | **ADMITS** | refuses | **SIGSEGV** |
+| through the chunk framing | 12 016 B | `hostChunkIsAdmissible` **ADMITS** | — | **SIGSEGV** |
+
+Also SIGSEGV on an 8 MB stack at N = 40 000 (120 KB, inside the cap). **The `.anamorph` path was
+never affected**: under `oneWellFormedDocument` `skipRanOff` is false and every shape above is
+refused, which is why ADR-0055's twelve-leg test could not have seen this.
+
+**The repair is to stop modelling where the parser stops.** A tag walk that reaches the end of the
+text is now admitted only when no quote was open — `if (! closed) return quote == 0 && skipRanOff;`.
+With no quote open, everything that remained *was* scanned and there is nothing behind it; with one
+open, the scan consumed text the parser may resume inside, and it refuses rather than guessing where.
+
+**This is an implementation repair of rule 7, not a new narrowing of it**, and the distinction is
+measured rather than argued: every shape the repair newly refuses is one `juce::parseXML` answers
+with **null** or does not answer at all — checked across the name-position, no-`=` and value-position
+forms, long and short — so **the set of chunks that successfully restore is unchanged**, and a
+refusal is the outcome each path already had (§"Failure semantics"). The four retained fixtures, a
+writer-shaped session, single- and double-quoted values, escaped `<`/`>` and an apostrophe in a
+preset name are all still admitted and still parse. One nuance worth recording so a later round is
+not surprised: a chunk truncated *inside an attribute value* now refuses at the boundary where it
+previously reached the parser and got null — the restore outcome is identical, the boundary verdict
+is not. The truncation shape State test 116 leg E pins is cut at `</ANAM`, with no quote open, and is
+untouched.
+
+**Why nothing caught it, which matters more than the defect.** Nothing in the tree compared
+`textIsAdmissible`'s verdict against what `juce::parseXML` actually does; State test 116 asserts the
+shapes someone thought of, and the six mutants recorded below all weaken a *guard* rather than test
+the model. The only generic oracle is the `fuzz` job, whose three corpus seeds could not decode at
+all (RISK-016). Round 53 adds both halves: **State test 116 leg E2** for the verdict, on every
+platform, and `tests/xml_boundary_differential.cpp` for the contract itself — a Linux-only harness
+with process isolation, a self-proving oracle that searches for the toolchain's own crashing depth,
+and an assertion that legitimate documents are still admitted so the contract cannot be satisfied by
+refusing everything.
+
 ## Consequences
 
 **What changed for a user: nothing that a valid session can observe.** Every fixture the repository
@@ -318,6 +381,13 @@ paths. Re-measured with `--risk014-probe` on this head: 3 000 and 30 000 levels 
 one-, two- and three-level recursive-entity `DOCTYPE`s, are each refused in 0–4 ms on both paths,
 where before they SIGSEGV'd or did not return. The plug-in now allocates nothing for an oversized
 chunk; the host still holds the bytes it is handing over, which no boundary here can change.
+
+> **Amended 2026-09-21 (round 53).** That paragraph was true of the three shapes it names and
+> **overstated as a claim about the crash**: an opening tag whose quote never closes was admitted,
+> and a 12 KB chunk still SIGSEGV'd through both surfaces until round 53 refused it. See
+> §"Correction, 2026-09-21" for the measurement and the repair. The sentence stands for the shapes
+> the probe covers; it is the *scope* of "gone" that was wrong, and the round-53 differential
+> harness is what now holds the general statement instead of a list of measured shapes.
 
 **What did NOT change, deliberately.** Two documents in one chunk, trailing prose, a NUL disguise,
 invalid UTF-8 in an attribute value and a chunk truncated to half its length all still load, exactly

@@ -40,7 +40,12 @@ Subset of `COMPATIBILITY_POLICY.md`. Governs state serialization
 7. **A chunk is bounded before it is parsed (0.9.9, ADR-0056).** Both documents a host chunk carries
    — the session document and **each** A/B slot payload, which is parsed separately and nests
    separately — must be at most **256 KB**, nested at most **8** deep, and carry no `DOCTYPE`, before
-   `juce::parseXML` sees them. This NARROWS what `setStateInformation` accepts, which rule 1 governs
+   `juce::parseXML` sees them. **An opening tag that reaches the end of the text with a quote still
+   open is refused on the same rule (2026-09-21, ADR-0056 §"Correction"):** the scan cannot bound the
+   depth of text it stopped reading, and the parser does not stop where that premise assumed. That is
+   an implementation repair of this rule rather than a further narrowing of it — every shape it newly
+   refuses is one `juce::parseXML` answers with null or does not answer at all, so the set of chunks
+   that RESTORE is unchanged. This NARROWS what `setStateInformation` accepts, which rule 1 governs
    and the Architecture Review Gate gates; the owner ruled it on 2026-09-19 against measured crash,
    hang and unbounded-read behaviour reachable on both paths. It is compatible with every session
    this product has written by a wide margin — the largest is 10 629 bytes at depth 3, a slot payload

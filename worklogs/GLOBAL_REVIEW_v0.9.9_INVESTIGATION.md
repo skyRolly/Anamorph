@@ -8,10 +8,16 @@ both changed.
 **Method:** 18 subsystem finders, each followed by an adversarial verifier applying three lenses
 (refute / intent / coverage), then a completeness critic, a cross-subsystem interaction analyst and a
 healthy-area auditor, then a second targeted round on the gaps the critic named. 49 agents, 0 errors.
-76 candidate findings; **10 refuted**, 66 survived; round 2 added 12. Findings marked **[verified
-first-hand]** were re-derived by the author directly from the code, from JUCE's own source at the
-pinned commit, or by a compiled probe; everything else is finder + three-lens verifier evidence and is
-labelled with its confidence.
+**Candidate findings: 95** — 76 in round 1 (10 refuted, 66 survived) and 19 in round 2 (7 refuted,
+12 survived), so **78 survived in total**. The original wording of this line ("76 candidate findings;
+10 refuted, 66 survived; round 2 added 12") gave round 1's candidate count as if it were the whole
+round's, and never said what §2 does with the 78. **§2 is a prioritised SELECTION, not a partition:**
+41 of the 78 are carried into F1–F16, 7 more are referenced in its prose without being presented as
+findings, and **30 are not carried at all**. Appendix A reconciles every one of the 78 by id, so the
+completeness claim is auditable rather than implied. Findings marked **[verified first-hand]** were
+re-derived by the author directly from the code, from JUCE's own source at the pinned commit, or by a
+compiled probe; everything else is finder + three-lens verifier evidence and is labelled with its
+confidence — see §7 for what "confidence" is now separated into.
 
 ---
 
@@ -67,6 +73,11 @@ backing the older ones have.
 ## 2. Findings
 
 ### F1 — The ADR-0056 host-state boundary admits a document that crashes the parser
+
+> **RESOLVED 2026-09-21 (round 53).** Refused at the boundary; State test 116 leg E2 and
+> `tests/xml_boundary_differential.cpp` carry the regression. ADR-0056 §"Correction,
+> 2026-09-21", RISK-014's round-53 correction and `SESSION_COMPATIBILITY_POLICY` rule 7 record
+> it. Kept here in full because the road map below is derived from it.
 
 - **Classification:** confirmed bug. **Severity:** high. **Confidence:** high — **[verified first-hand,
   reproduced]**
@@ -191,6 +202,9 @@ backing the older ones have.
 
 ### F5 — The fuzz corpus cannot decode under any JUCE this project has pinned
 
+> **RESOLVED 2026-09-21 (round 53).** Seeds regenerated through the shipped framing; State
+> test 116 leg F2 asserts each one still applies a parameter. Filed as RISK-016.
+
 - **Classification:** missing test coverage (+ documentation inconsistency). **Severity:** medium.
   **Confidence:** high — **[verified first-hand]**
 - **Evidence.** All three `tests/fuzz-corpus/*.bin` carry the correct 8-byte framing
@@ -218,9 +232,18 @@ backing the older ones have.
 
 ### F6 — Four of six release-blocking race probes return success on a zero count with no control leg
 
+> **RESOLVED 2026-09-21 (round 53).** All four now abort when their instrument cannot reach its
+> window, demonstrated in both directions.
+
 - **Classification:** confirmed risk. **Severity:** high → medium (verifier). **Confidence:** high
-- **Evidence.** Only `--band-move-adopt-probe` carries a control that proves the instrument still
-  reaches the window it counts. The other four report a zero and pass. Contrast Test 38, which asks
+- **Evidence.** *(Attribution corrected 2026-09-21 — the original sentence was wrong in two ways,
+  and the count it gave was right.)* **Two** probes refuse to report a zero without a live control:
+  `--band-move-adopt-probe` ("the probe's own control line must read *late crossover stores SEEN*")
+  and `--solo-alias-probe` ("ABORTS if its control line fails to solo band 1"). The other four are
+  `--split-snapshot-probe`, `--add-target-probe`, `--add-edge-probe` and `--band-move-probe`, and
+  three of those four **did** have a control — they *printed* its result and carried on regardless,
+  which is a weaker defect than "no control" and a more insidious one, because the log looks right.
+  `--split-snapshot-probe` had none at all. Contrast Test 38, which asks
   `anamorph::testing::selfCheck()` before trusting its own zero and prints a `::warning::` when a half
   is compiled out (`tests/dsp_tests.cpp:3126-3143`) — the discipline exists in the tree and is simply
   not generalised.
@@ -446,7 +469,7 @@ I read `toEngine` line by line. This is a documentation correction with a covera
 
 ## 4. Next-step road map
 
-### R1 — Close F1, and correct the two records that now mis-describe it
+### R1 — Close F1, and correct the two records that now mis-describe it  ·  **DONE (round 53)**
 
 **Problem:** a reproduced crash through both host-state surfaces. **Why first:** highest impact,
 smallest diff, and it invalidates a published closure claim.
@@ -463,7 +486,7 @@ are green, and the register no longer claims more than is true.
 **Stop if:** the owner rules the shape out of scope — in which case the register must still be
 corrected, because the claim is wrong either way.
 
-### R2 — Give the generic oracles a liveness proof (F5, F6)
+### R2 — Give the generic oracles a liveness proof (F5, F6)  ·  **DONE (round 53)**
 
 **Problem:** the fuzz corpus reaches nothing and four blocking probes pass on an unchecked zero.
 **Why second:** it is the reason R1's defect survived. **Depends on:** nothing.
@@ -477,7 +500,7 @@ instrument still reaches its window, failing loudly when it does not. Correct
 running it that way once.
 **Defer:** widening the fuzz budget. Time is not the binding constraint; the corpus was.
 
-### R3 — A differential test for the boundary (F1's regression protection)
+### R3 — A differential test for the boundary (F1's regression protection)  ·  **DONE (round 53)**
 
 **Problem:** nothing compares `textIsAdmissible`'s verdict against what `parseXML` actually does, so
 the next divergence is found the same way this one was.
@@ -541,7 +564,7 @@ non-finite-input test that proves the ADR-0009 self-heal restores audio rather t
 rather than a moving risk. **Complete when:** each path has one test that would fail if the path were
 deleted.
 
-### R8 — Documentation, batched with the work it describes (F16)
+### R8 — Documentation, batched with the work it describes (F16)  ·  **PARTLY DONE (round 53)** — the items that ride with R1/R2 are done; the standalone pass is not
 
 Two items ride with R1 (the RISK-014 closure claim; `STATE_SERIALIZATION.md`'s procedure). The rest is
 one pass: the `FUTURE_RISKS` table's two missing rows and the RISK-011 row's contradiction; the
@@ -551,6 +574,21 @@ four resolved entries; the stale test counts in four documents including `TESTIN
 `DELIBERATE_REAIMS` entries. **Do not** attempt a general audit of the ADR evidence anchors — that is
 the "adopted, not audited" problem, and it is a project of its own. Correct the six oldest ADRs' anchors
 only where a road-map item already touches them.
+
+### Round-53 outcome, and what the next item is
+
+R1, R2 and R3 are complete; R8's R1/R2-adjacent items are done. **The next item is R4** (F11 and F8),
+and the confidence recalibration in §7 sharpens its shape rather than changing its place: both are
+implementation-Verified and impact-Unverified, so R4 begins with measurement — the magnitude of the
+mb-enable dry step at Mix < 1 with 2+ bands, and the automation rate at which the duck stops
+completing — and the fix follows the number. R5 (F4/F2/F3) is unchanged in position and is the
+cheapest independent work available if R4's measurement stalls.
+
+One thing this round changed about R6's justification rather than its content: the "invariant held by
+a hand-maintained list" pattern gained a *measured* instance. F1 was a hand-written model of another
+component's behaviour with nothing comparing the two, and the three probes whose controls printed
+instead of asserting were the same shape again. R6 is now the item with the most evidence behind it
+after R4.
 
 ### Explicit no-action
 
@@ -651,3 +689,167 @@ Genuinely open after this round, with what would settle each.
 
 74 further finder-level uncertainties are recorded in the run's own transcript; the nine above are the
 ones that would change a road-map decision.
+
+---
+
+## 7. Confidence, recalibrated (added 2026-09-21, round 53)
+
+The single **Confidence:** field used in §2 conflated four different questions, and
+`SOURCE_OF_TRUTH.md` already supplies the vocabulary to keep them apart:
+
+| Level | Meaning (verbatim from `SOURCE_OF_TRUTH.md`) |
+|---|---|
+| **Verified** | Provable from current source code, or code + a test case. |
+| **Partially Verified** | Supported by README / commit / PR / code comment, but not fully provable from current code alone. |
+| **Unverified** | No sufficient factual evidence; could be true but unproven (e.g. real-DAW host behaviour, performance numbers). |
+
+The four axes, which a single label cannot carry:
+
+- **Implementation** — is the code what the finding says it is?
+- **Trigger** — has the path actually been driven, in a harness, to the stated outcome?
+- **Host reachability** — does a shipped host do the thing that reaches it?
+- **Impact** — has the user-visible consequence been measured, or is it inferred?
+
+A finding can be **Verified** on implementation and **Unverified** on reachability at the same time,
+and most of §2's "high confidence" labels were exactly that. Recalibrated, without mechanically
+downgrading a finding merely because its real-world trigger was not exercised:
+
+| # | Implementation | Trigger | Host reachability | Impact | Was | Note |
+|---|---|---|---|---|---|---|
+| F1 | Verified | **Verified** (reproduced end to end, and now a regression test) | Unverified | Verified (SIGSEGV measured) | high | the one finding where "high" was right on every axis except reachability |
+| F2 | Verified (no override; `engine.reset()` has zero callers in `src/`) | Unverified | Unverified | Unverified | high | **overstated**: nothing was driven, and whether hosts call `reset()` is a fact about hosts |
+| F3 | Verified (the constant) | Unverified | Unverified | Unverified (the 0.18 s ring is a finder measurement, not re-run) | high | **overstated** on three axes; the constant is the only Verified part |
+| F4 | Verified (`juce_File.cpp:801` discards `appendText`'s result) | Unverified (no failing destination exercised) | Partially Verified (a full disk is not host-specific) | Partially Verified (follows from the code) | high | implementation is solid; the outcome is reasoned, not measured |
+| F5 | Verified | **Verified** (bytes decoded, four JUCE versions read, gate demonstrated in both directions) | n/a | Verified | high | upheld |
+| F6 | Verified | **Verified** (all four demonstrated aborting) | n/a | Verified | high | upheld, but its *attribution* was wrong — see the corrected evidence line in §2 |
+| F7 | Verified (the Policy's claim is provably unbacked) | n/a | n/a | Verified (documentation defect) | high | upheld; note the *code* it claims about is correct |
+| F8 | Partially Verified (mechanism read from code) | Unverified | Unverified | Unverified (magnitude depends on allpass phase; not measured) | high | **overstated**: a code-established mechanism is not a measured click |
+| F9 | Partially Verified | Unverified | Unverified | Unverified | high | **overstated**; needs a host holding the other edge |
+| F10 | Verified (the four-writer/one-consumer guard is plain in the source) | Unverified | Unverified | Unverified | high | implementation Verified, everything downstream inferred |
+| F11 | Partially Verified | Unverified (the "~1 per 3 blocks" figure is a finder measurement) | Unverified | Unverified | high | **overstated** |
+| F12 | Verified (`isAutomatable()` only clears `kCanAutomate`) | Unverified | Partially Verified | Unverified | high | |
+| F13 | Verified (all three sub-findings are readable facts) | Unverified | Unverified | Unverified | mixed | the sub-finding severities already varied; the axes did not |
+| F14 | Verified (grep: no test feeds non-finite audio) | n/a | n/a | n/a | high | upheld — a coverage claim is settled by grep |
+| F15 | Verified | n/a | n/a | n/a | high | upheld, same reason |
+| F16 | Verified | n/a | n/a | n/a | high | upheld, same reason |
+
+**What this changes in the ordering, and what it does not.** Coverage and documentation findings
+(F5, F6, F7, F14, F15, F16) are settled by reading the tree, so their confidence survives intact —
+which is why F5/F6 kept their place above the remaining defects in the original ordering and keep it
+in §"Updated road map" below. The findings that move are the ones whose *impact* was inferred from a
+mechanism: **F8 and F11 are re-rated implementation-Verified / impact-Unverified**, which is what
+makes "measure before fixing" a prerequisite of their road-map item rather than a courtesy. **F2 and
+F3 do not move in priority** despite the downgrade: their fixes are small, local and independent, and
+the cost of being wrong about reachability is a few lines, not a redesign.
+
+**Two errors in this report were found by re-verifying it**, and both are recorded above rather than
+quietly edited: the accounting (§front matter, Appendix A) and F6's attribution. Neither changes a
+road-map decision, which is itself worth stating — an audit that finds only harmless errors has still
+established something.
+
+---
+
+## Appendix A — reconciliation of all 78 surviving findings
+
+76 round-1 candidates (10 refuted) + 19 round-2 candidates (7 refuted) = **78 survivors**. Every one
+is listed below with what §2 did with it. "Referenced only" means it appears in §2's prose — inside
+another finding's Interaction, Companion or Current-protection paragraph — without being presented as
+a finding of its own. "Not carried" means it does not appear in this report at all.
+
+**Disposition: 41 carried into F1–F16 · 7 referenced only · 30 not carried.**
+
+The 30 are not a silent drop any more, and six of them are worth naming here because they are *not*
+low-severity items — they were omitted by a threshold this report never stated:
+
+| finding id | class | sev | why it matters |
+|---|---|---|---|
+| `ab-switch-deletes-pending-undo-step` | confirmed-bug | medium | a direct A/B switch deletes a settled-but-unpolled gesture's undo step (`abSwitchToAdopted` calls `syncCommitted()` with no preceding flush) |
+| `scope-window-is-frames-not-time` | confirmed-risk | medium | the vectorscope window is a frame count, so the trail shortens 4× from 48 to 192 kHz |
+| `isa-baseline-no-liveness-gcc-clang` | confirmed-risk | medium | the ADR-0031 ISA baseline has no flag-liveness assertion in CI |
+| `macos-focus-false-positive` | confirmed-risk | medium | on macOS `peer->isFocused()` is satisfied by a flag `grabFocus()` sets unconditionally |
+| `duck-fires-for-inaudible-changes` | design-debt | medium | `discreteDiffers` ducks to silence for changes that provably cannot alter the audio |
+| `keyboard-focus-untestable-by-construction` | missing-test-coverage | medium | no gate in the repository can observe the keyboard-focus declaration |
+
+These six are added to §"Remaining findings" and are candidates for the next round; the other 24 are
+low-severity or informational and stay in this appendix as the record.
+
+| # | round | dimension / area | finding id | class | sev | verdict | disposition |
+|---|---|---|---|---|---|---|---|
+| 1 | r1 | xml-boundary | `unterminated-quote-bypass` | confirmed-bug | high | confirmed | **F1** — headline |
+| 2 | r1 | xml-boundary | `no-differential-oracle` | missing-test-coverage | medium | confirmed | **F1** — cited as F1 protection; is road-map R3 |
+| 3 | r1 | rt-audio-path | `host-reset-unwired` | confirmed-bug | medium | confirmed | **F2** — headline |
+| 4 | r1 | latency | `host-reset-never-reaches-engine` | confirmed-bug | medium | confirmed | **F2** — same defect, second dimension |
+| 5 | r2 | The AudioProcessor hos | `tail-under-reports-lr4-ringdown` | confirmed-bug | medium | confirmed | **F3** — headline |
+| 6 | r1 | presets | `save-write-failure-unreportable` | confirmed-bug | high | confirmed | **F4** — headline |
+| 7 | r1 | test-coverage | `fuzz-gate-no-liveness` | confirmed-risk | medium | confirmed | **F5** — headline (with orchestrator corpus-format fact) |
+| 8 | r1 | test-coverage | `probe-no-liveness-control` | confirmed-risk | high | confirmed | **F6** — headline |
+| 9 | r1 | test-coverage | `wrapper-alloc-claim-unbacked` | confirmed-risk | high | confirmed | **F7** — headline |
+| 10 | r1 | rt-audio-path | `wrapper-audio-path-no-runtime-tier` | missing-test-coverage | medium | confirmed | **F7** — same claim, second dimension |
+| 11 | r1 | engine-chain | `mb-enable-dry-source-step` | confirmed-bug | high | confirmed | **F8** — headline |
+| 12 | r1 | state-gate | `adoption-under-the-gates-own-lock` | confirmed-risk | high | confirmed | **F9** — headline |
+| 13 | r1 | state-gate | `reentrant-adoption-splits-the-session` | likely-weakness-needs-validation | medium | plausible | **F9** — named as "Related" in F9 |
+| 14 | r1 | spectrumimager | `mouseup-nested-in-beginbandmove` | confirmed-risk | high | confirmed | **F10** — headline |
+| 15 | r2 | Host automation of the | `duck-no-rearm-limit` | confirmed-risk | high | confirmed | **F11** — headline |
+| 16 | r1 | engine-chain | `algo-reset-latched-not-recomputed` | confirmed-bug | medium | confirmed | **F11** — same defect, round-1 dimension |
+| 17 | r2 | Host automation of the | `stale-pending-algo-reset` | confirmed-bug | medium | confirmed | **F11** — named as "Companion" in F11 |
+| 18 | r2 | Host automation of the | `adr-0004-silent-and-stale` | doc-inconsistency | low | confirmed | **F11** — named inside F11 |
+| 19 | r2 | Host-driven writes to  | `adv-flag-blocks-nothing` | confirmed-risk | high | confirmed | **F12** — headline |
+| 20 | r2 | Host-driven writes to  | `ki007-removing-that-trigger` | doc-inconsistency | medium | plausible | **F12** — named inside F12 |
+| 21 | r2 | Host-driven writes to  | `adv-transition-with-editor-untested` | missing-test-coverage | medium | confirmed | **F12** — named inside F12 |
+| 22 | r1 | levelmatch | `match-smoother-not-landed-on-forced-swap` | confirmed-risk | high | plausible | **F13** — cluster member 1 |
+| 23 | r1 | levelmatch | `loudnessmatch-no-nonfinite-guard` | confirmed-bug | medium | plausible | **F13** — cluster member 3 |
+| 24 | r1 | levelmatch | `softreset-gate-misses-continuous-only-ab-swaps` | design-debt | medium | confirmed | **F13** — cluster member 2 |
+| 25 | r1 | nonlinear-numerics | `selfheal-never-executed-by-any-test` | missing-test-coverage | medium | confirmed | **F14** — headline |
+| 26 | r1 | nonlinear-numerics | `nan-param-latches-in-haas-velvet-reset` | likely-weakness-needs-validation | medium | plausible | **F14** — named inside F14 via root cause 5 |
+| 27 | r1 | rt-audio-path | `transport-seek-block-untested` | missing-test-coverage | medium | confirmed | **F15** — same gap, second dimension |
+| 28 | r1 | multiband | `mb-fade-untested` | missing-test-coverage | medium | confirmed | **F15** — cluster member |
+| 29 | r1 | channel-config | `mono-layout-untested` | missing-test-coverage | medium | confirmed | **F15** — cluster member |
+| 30 | r1 | scopes-rt-gui | `scopebuffer-untested` | missing-test-coverage | medium | confirmed | **F15** — cluster member |
+| 31 | r1 | test-coverage | `playhead-transport-untested` | missing-test-coverage | medium | confirmed | **F15** — cluster member |
+| 32 | r1 | latency | `engaged-wrap-delay-unasserted` | missing-test-coverage | low | confirmed | **F15** — cluster member |
+| 33 | r1 | build-platform | `lld-comment-inverted-since-adr-0030` | doc-inconsistency | medium | confirmed | **F16** — cluster member |
+| 34 | r1 | docs-adr | `adr-evidence-anchors-misaimed` | doc-inconsistency | medium | confirmed | **F16** — cluster member |
+| 35 | r1 | docs-adr | `state-serialization-omits-adr-0056-step` | doc-inconsistency | medium | confirmed | **F16** — cluster member |
+| 36 | r1 | docs-adr | `suite-inventory-stale-four-docs` | doc-inconsistency | medium | confirmed | **F16** — cluster member |
+| 37 | r1 | params | `adr-0008-related-code-deleted-symbols` | doc-inconsistency | low | confirmed | **F16** — cluster member (the deleted-symbol item) |
+| 38 | r1 | build-platform | `cicd-omits-dispatch-lint` | doc-inconsistency | low | confirmed | **F16** — cluster member |
+| 39 | r1 | test-coverage | `testing-policy-stale-counts` | doc-inconsistency | low | confirmed | **F16** — cluster member |
+| 40 | r1 | docs-adr | `handover-release-bookkeeping-self-contradictory` | doc-inconsistency | low | confirmed | **F16** — cluster member |
+| 41 | r1 | docs-adr | `resolved-kis-retained-against-own-rule` | doc-inconsistency | low | confirmed | **F16** — cluster member |
+| 42 | r1 | params | `ab-switch-deletes-pending-undo-step` | confirmed-bug | medium | confirmed | **not carried** — medium severity — omitted from the headline selection |
+| 43 | r1 | scopes-rt-gui | `scope-window-is-frames-not-time` | confirmed-risk | medium | confirmed | **not carried** — medium severity — omitted from the headline selection |
+| 44 | r1 | build-platform | `isa-baseline-no-liveness-gcc-clang` | confirmed-risk | medium | plausible | **not carried** — medium severity — omitted from the headline selection |
+| 45 | r2 | Keyboard input and typ | `macos-focus-false-positive` | confirmed-risk | medium | confirmed | **not carried** — medium severity — omitted from the headline selection |
+| 46 | r2 | Keyboard input and typ | `keyboard-focus-untestable-by-construction` | missing-test-coverage | medium | confirmed | **not carried** — medium severity — omitted from the headline selection |
+| 47 | r2 | Host automation of the | `duck-fires-for-inaudible-changes` | design-debt | medium | plausible | **not carried** — medium severity — omitted from the headline selection |
+| 48 | r1 | xml-boundary | `preset-walk-unchanged-claim` | doc-inconsistency | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 49 | r1 | rt-audio-path | `rt-doc-line-drift` | doc-inconsistency | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 50 | r1 | latency | `adr0003-latch-clause-and-test52-comments-stale` | doc-inconsistency | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 51 | r1 | engine-chain | `haas-velvet-glide-not-rate-normalised` | likely-weakness-needs-validation | low | plausible | **not carried** — severity low AND verdict plausible — below the headline threshold used |
+| 52 | r1 | nonlinear-numerics | `adr-0009-related-code-line-drift` | doc-inconsistency | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 53 | r1 | levelmatch | `ab-match-memory-capture-race` | likely-weakness-needs-validation | low | plausible | **not carried** — severity low AND verdict plausible — below the headline threshold used |
+| 54 | r1 | channel-config | `bus-layout-doc-citations-stale` | doc-inconsistency | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 55 | r1 | params | `registry-snapshot-scope` | informational | low | confirmed | **not carried** — informational classification — not a defect |
+| 56 | r1 | params | `mbfreqhigh-text-roundtrip` | confirmed-bug | low | plausible | **not carried** — severity low AND verdict plausible — below the headline threshold used |
+| 57 | r1 | params | `abcopy-drops-level-match-memory` | confirmed-risk | low | plausible | **not carried** — severity low AND verdict plausible — below the headline threshold used |
+| 58 | r1 | params | `undo-window-reverts-concurrent-automation` | likely-weakness-needs-validation | low | plausible | **not carried** — severity low AND verdict plausible — below the headline threshold used |
+| 59 | r1 | serialization | `ab-slot-payload-never-repaired` | design-debt | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 60 | r1 | serialization | `state-doc-anchors-stale` | doc-inconsistency | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 61 | r1 | state-gate | `editor-door-comment-names-the-blocking-poll` | doc-inconsistency | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 62 | r1 | presets | `preset-path-doc-drift` | doc-inconsistency | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 63 | r1 | editor-sync | `scope-persist-no-resync` | confirmed-bug | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 64 | r1 | editor-sync | `vectorscope-stale-reachability-comment` | doc-inconsistency | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 65 | r1 | editor-sync | `sweep-armed-on-click-for-deferrable-commands` | design-debt | low | plausible | **not carried** — severity low AND verdict plausible — below the headline threshold used |
+| 66 | r1 | spectrumimager | `doubleclick-reads-split-row-twice` | design-debt | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 67 | r1 | scopes-rt-gui | `idle-gate-two-load-slip` | likely-weakness-needs-validation | low | plausible | **not carried** — severity low AND verdict plausible — below the headline threshold used |
+| 68 | r1 | scopes-rt-gui | `vectorscope-clip-ring-decimated` | design-debt | low | plausible | **not carried** — severity low AND verdict plausible — below the headline threshold used |
+| 69 | r1 | build-platform | `merge-result-never-linted` | missing-test-coverage | low | plausible | **not carried** — severity low AND verdict plausible — below the headline threshold used |
+| 70 | r1 | build-platform | `objcxx-outside-two-source-lints` | design-debt | low | confirmed | **not carried** — severity low, confirmed — real but not selected for a headline entry |
+| 71 | r2 | Keyboard input and typ | `cost-of-flipping-true` | informational | low | confirmed | **not carried** — informational classification — not a defect |
+| 72 | r1 | multiband | `mb-fade-stale-dry-twins` | confirmed-risk | medium | confirmed | **referenced only** — named in F8 "Interaction" only |
+| 73 | r1 | presets | `step-parses-under-replacement-lock` | confirmed-risk | medium | plausible | **referenced only** — named in the Interactions summary only |
+| 74 | r1 | spectrumimager | `wheel-burst-clears-nested-press-stamp` | likely-weakness-needs-validation | medium | plausible | **referenced only** — named in F10 root-cause paragraph only |
+| 75 | r1 | spectrumimager | `cancel-releases-wheel-before-declining` | confirmed-risk | medium | confirmed | **referenced only** — named in F10 root-cause paragraph only |
+| 76 | r2 | Host automation of the | `no-level-presence-test-under-transitions` | missing-test-coverage | medium | confirmed | **referenced only** — named in F11 "Current protection" only |
+| 77 | r1 | multiband | `mb-flat-recomb-envelope` | missing-test-coverage | low | plausible | **referenced only** — named in F8 "Interaction" only |
+| 78 | r1 | build-platform | `ci-coverage-boundary` | informational | low | confirmed | **referenced only** — absorbed into F15/healthy prose |

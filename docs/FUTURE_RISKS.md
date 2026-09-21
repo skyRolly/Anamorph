@@ -108,8 +108,9 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
 | RISK-009 | A host that writes one parameter from inside another's dispatch, on two threads in opposite orders, nests two JUCE `listenerLock`s in a cycle | High (were it reached) | Low — no listener in this plug-in creates the nesting; it needs the host to do it on two threads at once. The second inversion round 20 added here (a nested poll against a host thread's whole-sound replacement) was REACHABLE and is CLOSED in round 21 by ADR-0036 §26; round 27's dispatch predicate (§30) closed the two doors whose dispatch the PLUG-IN starts, and round 28's admission (§31) closes every remaining door by construction — no state-replacing command WAITS for `soundReplacement`, whoever started the dispatch. The risk stays OPEN on what is left, which contains no Anamorph lock: JUCE's own APVTS 10 Hz timer blocking on `valueTreeChanging`, and the two-parameter nesting above |
 | RISK-010 | The DSP snapshot of the ten multiband parameters is ten independent `load()` calls, so the audio thread can read a layout that never existed as a whole | Medium | **Certain** — it is the shipped reader model; what is bounded is the harm, not the occurrence |
 | RISK-011 | A gesture count that returns to zero mid-transaction lets a poll record an undo step for a layout the user never had (the v0.9.8 rounds' residuals U1-U3) | Medium | Low as observed, **structural** as a mechanism — nothing in the current code prevents it |
-| RISK-014 | **RESOLVED 2026-09-19 (round 51, ADR-0056)** — both host-state XML parser surfaces (the session chunk and each A/B slot payload) are now bounded at 256 KB / depth 8 / no `DOCTYPE` before `juce::parseXML`, each on its own. The crash, the hang and the unbounded read are measured gone on both paths; valid and legacy sessions are unchanged | — | — |
+| RISK-014 | **RESOLVED 2026-09-19 (round 51, ADR-0056), COMPLETED 2026-09-21 (round 53)** — both host-state XML parser surfaces (the session chunk and each A/B slot payload) are bounded at 256 KB / depth 8 / no `DOCTYPE` before `juce::parseXML`, each on its own. Round 51's closure claim was overstated: the boundary admitted an opening tag whose quote never closes, and a 12 KB chunk still SIGSEGV'd until round 53 refused it. Valid and legacy sessions are unchanged in both rounds | — | — |
 | RISK-015 | Host state still accepts five shapes a `.anamorph` file now refuses — two documents in one chunk (the first wins), trailing prose or binary, a NUL followed by a second complete document, invalid UTF-8 in an attribute value, and a chunk truncated to half its length | Low — a corrupt session is half-applied or silently truncated rather than refused; no crash, hang or unbounded read | **Certain** as a mechanism: it is the acceptance ADR-0056 deliberately left alone, measured and pinned by State test 116 leg E |
+| RISK-016 | **RESOLVED 2026-09-21 (round 53)** — the three `fuzz` corpus seeds were stored in a container no pinned JUCE writes, so they decoded to nothing and the release-blocking fuzz budget started from inputs that reached no parser | Medium (were it reached) | — |
 
 ---
 
@@ -173,6 +174,29 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   **once** and the entity resolves to `LEAKED`; through `juce::parseXML (const String&)` the result
   is the unresolved `leak` and is **byte-identical whether the file exists or not**. Identical output
   across present and absent is the property being claimed; the absence of a canary is not.
+- **CORRECTED 2026-09-21 (round 53) — the crash was NOT gone from both paths, and this entry said it
+  was.** The round-51 closure above is accurate about depth, `DOCTYPE` and size; it was wrong to
+  state the outcome as *"the crash … measured gone"*, because the boundary admitted a shape that
+  still reached the recursion. `XmlBoundary.h`'s walk answered `skipRanOff` — true for host state —
+  for **an opening tag whose quote never closes**, on the premise that such a tag "swallows the rest
+  of the text for this scan AND for `XmlDocument`". The premise is positional and the model was
+  wrong on one side of it: `juce_XmlDocument.cpp:491-497` treats a quote as a string delimiter only
+  after `name =`, so a quote where a NAME is expected errors at `:508-510` and a name with no `=` at
+  `:500-503`, **both return the element**, and `errorOccurred` is read once at `:233` *after* parsing
+  — so `readChildElements` (`:577-580`) carries on through every element that followed the quote,
+  which is the text the scan skipped. Measured: `<r><a "` + 4 000 `<x>` is **12 007 bytes**, was
+  admitted, and SIGSEGV'd on a 1 MB stack (and on 8 MB at 40 000); the same through the real framing
+  at 12 016 bytes and inside a well-formed `<AnamorphRoot>` prefix at 12 134. The `.anamorph` path
+  was never affected — `oneWellFormedDocument` refuses every one of those shapes.
+  **Closed in round 53** by refusing a tag that reaches the end of the text with a quote still open.
+  It is an implementation repair of `SESSION_COMPATIBILITY_POLICY` rule 7 rather than a new
+  narrowing of it: every shape it newly refuses is one `juce::parseXML` answers with null or does
+  not answer at all, measured across the name-position, no-`=` and value-position forms, so **the
+  set of chunks that RESTORE is unchanged**. Regression coverage is State test 116 leg E2 (the
+  verdict, on every platform) and `tests/xml_boundary_differential.cpp` (the contract itself, in
+  the `linux` job, with process isolation and a self-proving oracle). **Why nothing caught it:** the
+  only generic oracle aimed at this path is the `fuzz` job, whose three corpus seeds could not
+  decode at all — see RISK-016.
 - **CORRECTED 2026-09-19 (round 52) — "depth 8" was enforced as depth 9, on every surface.** The
   shared walk advanced `depth` on an opening tag and skipped a self-closing one, so a document
   `<a>…<h><leaf/></h>…</a>` nested **nine** elements deep passed a cap of eight, because the closing
@@ -241,6 +265,38 @@ sanctioned staleness-hint pattern, H3/H4/H11 are bounded Class-B changes); befor
   already exists and is what the preset path asks for — so the change, if it is ever ruled, is one
   enum value at two call sites plus the compatibility case for the truncated and multi-document
   shapes.
+
+## RISK-016 — **RESOLVED 2026-09-21** (round 53): the fuzz corpus reached no parser
+
+- **What the risk was.** `tests/fuzz-corpus/*.bin` are the three seeds libFuzzer starts from, and
+  `REPOSITORY_MAP.md` described them as existing "so the fuzzer starts from inputs that already reach
+  the parser rather than from noise". All three were stored **zlib-framed** — `56 43 32 21` (the
+  correct magic) followed by `78 9c` — but no JUCE this project has ever pinned compresses that
+  container: `AudioProcessor::copyXmlToBinary` writes magic, length, plain single-line XML and a NUL
+  at 8.0.14, 9.0.0 (`f8f8864`), 9.0.1 (`e18f7f5`) and 9.0.2 (`7278278`) alike, and `getXmlFromBinary`
+  is `parseXML (String::fromUTF8 (data + 8, ...))`. A zlib body therefore decoded to nothing:
+  `decodeRestore` returned false at its first branch, and no migration, no `repairSerializedValues`
+  and no A/B decode was reachable from any seed.
+- **Impact.** The `fuzz` job is the only generic oracle aimed at `setStateInformation`, and it is the
+  one release-blocking gate whose pass condition is "no sanitizer fired" — which a corpus that
+  reaches nothing satisfies perfectly. It is why the RISK-014 residual corrected in round 53 survived
+  the round that was looking for it: reaching `<a "` followed by thousands of elements by mutation,
+  inside a 90 s budget, from three inputs that do not parse, is not a plausible search.
+- **Likelihood:** **certain as a mechanism** — it was the committed state of the corpus, not an edge
+  case.
+- **What was done.** The three seeds were regenerated through the shipped framing (the five
+  statements of `copyXmlToBinary`, so the seed and the wrapper cannot disagree about the container)
+  and each now reads back through the wrapper's own expression: 268 / 590 / 740 bytes.
+- **What stops it returning, and it is not a comment.** State test 116 **leg F2** asserts on every
+  platform on every push that each seed still carries the host-chunk framing AND, fed to the real
+  `setStateInformation`, **moves a parameter**. Re-compressing a seed, truncating one, or
+  regenerating one through a future JUCE that changes the container fails that leg loudly instead of
+  quietly emptying the fuzz budget. Demonstrated in both directions in round 53: green on the
+  regenerated corpus, and `width 1.0000 -> 1.0000` with exit 1 when one seed was put back into the
+  zlib form.
+- **What would re-open it:** a JUCE upgrade that changes the binary-state container (`DEPENDENCY_POLICY`
+  rule 2's bit-identity dump covers DSP output, not this), or a seed added by hand rather than
+  regenerated. Leg F2 is what turns either into a failure.
 
 ## RISK-002 — Always-on banks / crossover-move cost (CPU)
 - **Risk:** `SoloMonitor` runs every block even with multiband off and no solo (INC-009 invariant;

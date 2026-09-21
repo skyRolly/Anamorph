@@ -122,12 +122,17 @@ namespace anamorph::xmlBoundary
         const bool oneDocument = (rule == DocumentRule::oneWellFormedDocument);
 
         // AN UNTERMINATED CONSTRUCT IS NOT A PARSER-SAFETY PROBLEM, and under
-        // `parserSafetyOnly` it must not be treated as one. A `<!--`, a `<![CDATA[`, a `<?` or an
-        // opening tag that never ends swallows the rest of the text for this scan AND for
-        // `XmlDocument`, which runs out of data and reports an error without recursing: there is
-        // no depth hiding behind it. So the scan stops and says yes, and the parser refuses the
-        // document on its own. Under `oneWellFormedDocument` the same shape is a malformed file
-        // and ADR-0055 refuses it.
+        // `parserSafetyOnly` it must not be treated as one. A `<!--`, a `<![CDATA[` or a `<?` that
+        // never ends swallows the rest of the text for this scan AND for `XmlDocument`, which runs
+        // out of data and reports an error without recursing: there is no depth hiding behind it.
+        // So the scan stops and says yes, and the parser refuses the document on its own. Under
+        // `oneWellFormedDocument` the same shape is a malformed file and ADR-0055 refuses it.
+        //
+        // AN OPENING TAG THAT NEVER ENDS IS NOT IN THAT LIST ANY MORE, and it never belonged
+        // there -- see the tag walk below and ADR-0056 §"Correction, 2026-09-21". This sentence
+        // used to name it, which is how a 12 KB chunk reached the recursion this file exists to
+        // bound. The three constructs above are still exactly as described: measured on the pinned
+        // JUCE, each returns null rather than recursing.
         const bool skipRanOff = ! oneDocument;
 
         const auto begin = text.getCharPointer();
@@ -230,7 +235,37 @@ namespace anamorph::xmlBoundary
                 if (t == '/' && p[1] == '>') { selfClosing = closed = true; p += 2; break; }
                 if (t == '>')                { closed = true; ++p; break; }
             }
-            if (! closed) return skipRanOff;
+            // A TAG THAT NEVER CLOSED, AND THE ONE CASE WHERE THAT HIDES DEPTH. The walk above
+            // reaches the end of the text for exactly two reasons, and they are not equivalent.
+            //
+            //   * `quote == 0`: the text simply ran out inside the tag (`<r><a b c`). Everything
+            //     that remained WAS scanned -- there is nothing after it -- so nothing is hidden,
+            //     and `XmlDocument` runs out of data at the same place. Admit, as before.
+            //
+            //   * `quote != 0`: the walk consumed from an opening quote to the end of the text as
+            //     though it were all one attribute value. THE PARSER DOES NOT AGREE, and the
+            //     disagreement is positional: `juce_XmlDocument.cpp:491-497` treats a quote as a
+            //     string delimiter only after `name =`. A quote where an attribute NAME is
+            //     expected falls to `:508-510` (`setLastError ("illegal character found in ...",
+            //     false)` then `break`), and a name followed by a quote with no `=` to `:500-503`
+            //     (`setLastError ("expected '=' after attribute ...", false); return node;`).
+            //     Both RETURN the element, and `errorOccurred` is consulted once, at `:233`,
+            //     AFTER parsing -- so the parent's `readChildElements` (`:577-580`) carries on and
+            //     recurses into every element that followed the quote. Those elements are the text
+            //     this scan skipped, and their nesting is unbounded.
+            //
+            // Measured on this tree before the refusal existed: `<r><a "` followed by 4 000 `<x>`
+            // is 12 007 bytes, was ADMITTED here, and SIGSEGV'd in `juce::parseXML` on a 1 MB
+            // stack -- and on an 8 MB one at 40 000. The same through the real framing at 12 016
+            // bytes, and inside a well-formed `<AnamorphRoot>` prefix at 12 134.
+            //
+            // REFUSING COSTS NO COMPATIBILITY, which is why this is an implementation repair of
+            // SESSION_COMPATIBILITY_POLICY rule 7 rather than a new narrowing of it: every shape
+            // that reaches here with a quote open is one `juce::parseXML` answers with null or
+            // does not answer at all -- measured across the name-position, no-`=` and
+            // value-position forms, long and short. The set of chunks that RESTORE is unchanged,
+            // and a refusal is the outcome each path already had.
+            if (! closed) return quote == 0 && skipRanOff;
 
             // A SELF-CLOSING ELEMENT IS AN ELEMENT, AND IT OCCUPIES A LEVEL. It just vacates it
             // again immediately, so it raises the DEEPEST level reached without raising the

@@ -97,6 +97,16 @@ window). `docs/architecture/THREAD_MODEL.md` carries the cells and their orderin
 
 ## `setStateInformation` logic
 
+0. **The parser boundary (ADR-0056).** Before anything reads the chunk, `hostChunkIsAdmissible`
+   answers three questions about it: its size against 256 KB, and — on the exact `String` the parser
+   will see, `String::fromUTF8 (data + 8, jmin (sizeInBytes - 8, stated))` — its nesting depth
+   against 8 and whether it carries a `DOCTYPE`. A refusal is `decodeRestore` returning false, which
+   is step 4's answer: nothing is touched. Since 2026-09-21 the same scan also refuses an opening tag
+   that reaches the end of the text with a **quote still open**, because the parser does not stop
+   there — it errors out of the attribute loop, returns the element, and goes on recursing through
+   whatever followed (ADR-0056 §"Correction, 2026-09-21"). Each **A/B slot payload** is bounded
+   separately at step 2, by `slotPayloadIsAdmissible`, because it is a second document parsed on its
+   own and nests on its own.
 1. `getXmlFromBinary` → root tree.
 2. **If `AnamorphRoot`:**
    - **`repairSerializedValues`** on a private copy of the `ANAMORPH` child — every malformed
