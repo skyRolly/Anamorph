@@ -5932,21 +5932,28 @@ static void testInertDiscreteChangeDoesNotDuck()
             return out;
         };
         // Compare only the settled tail, well past the algorithm swap's own fade.
-        auto tailDiff = [block] (const std::vector<float>& a, const std::vector<float>& b)
+        // `from` is a PARAMETER rather than a capture: with `block` declared
+        // `const int` the expression `160 * block` is a constant expression, so
+        // `block` would not be odr-used and a `[block]` capture is dead -- which
+        // Clang reports as -Wunused-lambda-capture and the first-party warning
+        // gate rejects. Passing the index states the dependency instead of
+        // leaving it resting on `block` happening to stay constexpr-usable.
+        auto tailDiff = [] (const std::vector<float>& a, const std::vector<float>& b, size_t from)
         {
             double worst = 0.0;
-            for (size_t i = (size_t) (160 * block); i < a.size(); ++i)
+            for (size_t i = from; i < a.size(); ++i)
                 worst = std::max (worst, (double) std::abs (a[i] - b[i]));
             return worst;
         };
+        const size_t settledFrom = (size_t) (160 * block);
         const auto moved   = switchToDimD (1, 3);   // 1 -> 3 while inert, then Dimension D
         const auto carried = switchToDimD (3, 3);   // 3 throughout
         const auto stale   = switchToDimD (1, 1);   // never moved: the wrong mode
         std::printf ("  control: adopted-while-inert tail |moved-carried| = %.3e, |moved-stale| = %.3e\n",
-                     tailDiff (moved, carried), tailDiff (moved, stale));
-        check (tailDiff (moved, carried) < 1e-6,
+                     tailDiff (moved, carried, settledFrom), tailDiff (moved, stale, settledFrom));
+        check (tailDiff (moved, carried, settledFrom) < 1e-6,
                "a dimMode moved while inert is adopted -- Dimension D hears the new mode");
-        check (tailDiff (moved, stale) > 1e-3,
+        check (tailDiff (moved, stale, settledFrom) > 1e-3,
                "the adoption control is sharp: the stale mode sounds different");
     }
 }
@@ -6148,21 +6155,18 @@ static void testAlgoResetSurvivesMidFadeRetarget()
         for (const auto& pr : pairs)
         {
             const auto entry = render (block, 0, pr.from, pr.to, 0);
-            double worstHere = 0.0;
             for (const int d : { 1, 2 })
             {
                 const auto late = render (block, 1, pr.from, pr.to, d);
                 double worst = 0.0;
                 for (size_t i = (size_t) (60 * block); i < entry.size(); ++i)
                     worst = std::max (worst, (double) std::abs (entry[i] - late[i]));
-                worstHere = std::max (worstHere, worst);
                 if (worst > 0.0)
                     std::printf ("  [block %d, %s, +%d blk] routes differ by %.4f\n",
                                  block, pr.name, d, worst);
                 check (worst == 0.0,
                        "a mid-fade-out algorithm retarget lands exactly as an entry-route one");
             }
-            (void) worstHere;
         }
     std::printf ("  every pair, both block sizes, both retarget delays: routes identical\n");
 }
