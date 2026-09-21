@@ -35245,6 +35245,48 @@ namespace
             return reportShape ("session-utf16", mb);
         }
 
+        // ------------------------------------------------------------------------------------
+        // THE UNTERMINATED-QUOTE FAMILY. `textIsAdmissible` walks an opening tag with quotes
+        // honoured and, finding no `>`, returns `skipRanOff` -- which under `parserSafetyOnly` is
+        // TRUE, on the stated premise that an unterminated construct "swallows the rest of the
+        // text for this scan AND for `XmlDocument` ... there is no depth hiding behind it".
+        //
+        // That premise is FALSE for a quote in an opening tag, and these shapes measure it.
+        // `XmlDocument::readNextElement` enters a quoted state only for a well-formed
+        // `name` `=` `quote` (juce_XmlDocument.cpp:487-497). A quote ANYWHERE else is an error it
+        // RECOVERS from: `setLastError (..., /*carryOn=*/false)` sets `errorOccurred` but NOT
+        // `outOfData` (:176-180), the node is returned, and `readChildElements` resumes recursive
+        // descent over everything that follows. So arbitrary depth hides behind the quote.
+        //
+        // `n` is the number of nested opens placed after the quote.
+        if (shape.startsWith ("quote-") || shape.startsWith ("ab-quote-"))
+        {
+            const auto onAB = shape.startsWith ("ab-");
+            const auto kind = shape.fromLastOccurrenceOf ("-", false, false);
+
+            // The three quote POSITIONS, which the parser treats differently:
+            //   name  -- `<a "`   : quote where an attribute NAME is expected
+            //   eq    -- `<a b"`  : quote where the `=` is expected
+            //   value -- `<a b="` : unterminated attribute VALUE (the one genuinely terminal case)
+            const juce::String head = kind == "name"  ? "<a \""
+                                    : kind == "eq"    ? "<a b\""
+                                                      : "<a b=\"";
+            juce::String doc;
+            doc << "<" << (onAB ? "ANAMORPH" : "AnamorphRoot") << ">" << head;
+            for (int i = 0; i < n; ++i) doc << "<n>";
+
+            const auto admitted = anamorph::xmlBoundary::textIsAdmissible (
+                                      doc, anamorph::xmlBoundary::maxDocumentDepth,
+                                      anamorph::xmlBoundary::DocumentRule::parserSafetyOnly);
+            std::printf ("  boundary verdict: %s (opens after the quote: %d)\n",
+                         admitted ? "ADMITTED" : "refused", n);
+            std::fflush (stdout);
+
+            return reportShape (shape.toRawUTF8(),
+                                onAB ? frameAsHostChunk (rootCarryingSlotPayload (doc))
+                                     : frameAsHostChunk (doc));
+        }
+
         if (shape == "census")
         {
             // THE COMPATIBILITY SIDE OF THE SAME QUESTION: what a REAL session costs, so any
