@@ -32,21 +32,21 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   With a little space left it left a file cut off part-way through instead. Now a write that cannot
   complete reports a failure, the preset already on disk is left **byte-for-byte untouched**, and the
   edited marker stays on so you know the save did not happen. A save that completes behaves exactly as
-  before and writes exactly the same file. Regression coverage: State test 117. [Verified]
+  before and writes exactly the same file. Regression coverage: State test 117. Evidence: PR #155. [Verified]
 - **Stopping the transport now clears the plug-in's delay lines and filters, as your host asks it
   to.** Hosts send a reset when they stop processing — a request to drop anything still ringing.
   Anamorph was not listening for it, so echoes, filter ringing and any in-progress fade survived a
   stop and could be heard at the start of the next thing you played. The reset now reaches the audio
   engine: silence in, silence out. Normal processing after a stop is unchanged, and this is not a
   latency change — what your host reports for delay compensation is untouched. Regression coverage:
-  State test 118. [Verified]
+  State test 118. Evidence: PR #155. [Verified]
 - **Anamorph now tells your host how long its sound really takes to decay.** The reported tail length
   was a fixed 0.1 s, and the chain can ring for considerably longer than that — measured at up to
   0.25 s, with the low crossover settings and Band Solo that produce it. Hosts use that figure to
   decide how long to keep the plug-in running after a sound stops, so freezing, bouncing or rendering
   a track could clip the last of a decay. The reported value is now 0.5 s, chosen to cover the longest
   decay measured with room to spare. Nothing about the sound itself changes, and this is not the
-  latency figure. Regression coverage: State test 119. [Verified]
+  latency figure. Regression coverage: State test 119. Evidence: PR #155. [Verified]
 - **Automating Dim-D Style no longer ducks the sound when Dimension D is not the selected
   algorithm.** Dim-D Style is read only by the Dimension D algorithm, but moving it counted as a
   structural change whatever algorithm was selected — so an automation lane crossing one of its four
