@@ -117,12 +117,12 @@ the flag refreshed, every route is bit-identical to the entry route.
   pre-correction engine — 27 and 12 checks respectively.
 
 ## Related code
-- `src/dsp/AnamorphEngine.cpp:245-272` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
+- `src/dsp/AnamorphEngine.cpp:306-333` (`discreteDiffers`, exclusions), `:480-562` (switch machine)
 - `:819-829` (raised-cosine duck), `:872-888` (`bypassBlend`), `:655-707` (`mbEnableBlend`)
 - `:831-845` (SoloMonitor every-block); `src/dsp/SoloMonitor.cpp:59-109`
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:245-272, 1113-1324; src/dsp/SoloMonitor.cpp:59-109
+- Source: src/dsp/AnamorphEngine.cpp:306-333, 1174-1385; src/dsp/SoloMonitor.cpp:59-109
 - Tests: testNoClicksAcrossTransitions, testSoloNoGhostInSilence, testBypassCrossfadeClickFree,
   testMultibandEnableCrossfadeClickFree, testSoloMultibandEnableClickFree,
   testInertDiscreteChangeDoesNotDuck, testAlgoResetSurvivesMidFadeRetarget

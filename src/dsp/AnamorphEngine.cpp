@@ -188,15 +188,76 @@ void AnamorphEngine::reset (ResetScope resetScope)
     multiband.reset();
     monoMaker.reset();
     soloMonitor.reset();
-    // The MEASUREMENT half, and the one part of this flush a host reset must not
-    // perform. See ResetScope in the header: ADR-0007 requires the Level-Match
-    // measure to HOLD across silence, and a transport stop is silence. The meters
-    // and the correlation display are cleared either way -- a stopped transport
-    // should read empty, and neither feeds a gain.
+    // THE MEASUREMENT HALF, and the one place the two scopes genuinely differ.
+    //
+    // `everything` is prepare()'s flush: a new sample rate or block size invalidates
+    // the K-weighting coefficients and every integrator, so the whole matcher goes --
+    // including the PUBLISHED gain, because there is no longer a measurement behind it.
+    //
+    // `audioTailsOnly` is a host reset, and it takes `softReset()` instead. The
+    // distinction is not cosmetic and neither half of it is optional:
+    //
+    //   * the K-weighting filter states and the energy integrators describe AUDIO THAT
+    //     HAS STOPPED, so they must go. Leaving them is not merely untidy: the silence
+    //     gate is judged FROM those integrators (`meanSqDry < 1e-6 && meanSqWet < 1e-6`)
+    //     against a tau = 0.4 s window, so stale energy makes `silent` read FALSE for
+    //     SECONDS of real silence and MEASURE keeps gliding the published gain toward a
+    //     target computed from pre-reset audio. Measured through the wrapper before this
+    //     line existed: the gain was still moving 4 s after the reset -- 0.024158 dB
+    //     over the first 1.4 s at Drive 8 / Mix 1 / Width 0.3 / Amount 0.4, and
+    //     0.04-0.09 dB over 4 s at higher Drive. Small, unbounded within the window,
+    //     and exactly the "No drift on silence" ADR-0007 lists under Consequences.
+    //
+    //   * `displayedGainDb`, `prevPredictedGainDb` and the published `matchGainDb` must
+    //     SURVIVE, which is why this is `softReset()` and not `reset()`. ADR-0007's
+    //     Decision is that on silence the measure holds the last trusted value; R5's
+    //     first attempt at the host-reset path used the wholesale flush and turned a
+    //     converged -5.158 dB into 0.000 dB on every transport stop -- the "slammed loud
+    //     on the next play" symptom in that ADR's Context. State test 118 holds both
+    //     halves: the analysis state must clear AND the published gain must not. State
+    //     test 118's last leg holds the published half on its own; State test 120 holds
+    //     both, and measured 0.024158 dB of drift over 1.4 s of silence against the
+    //     pre-fix engine and 0.000000 dB against this one.
+    //
+    // This is not a new semantic. It is the one the duck bottom already uses when the
+    // processing changed (`if (procChanged) loudness.softReset()`), applied to the entry
+    // point R5 added.
+    if (resetScope == ResetScope::everything) loudness.reset();
+    else                                      loudness.softReset();
+
+    // THE DISPLAY METERS, and `audioTailsOnly` deliberately does not touch them.
+    //
+    // Found by inventorying this function against the scope rather than by taking the
+    // reported bug at face value, and it is the SAME defect as the loudness one above:
+    // `LevelMeters::reset()` clears `peakHoldL/R`, which LevelMeters.h documents as
+    // "a held PEAK number (max sample peak since the last reset, never falls)" and
+    // whose reset rule that header states outright: "on a number click or a playback
+    // RESTART". There are exactly TWO such paths in the product and a transport stop is
+    // neither -- `src/gui/LevelMeter.h:27` (mouseDown on the readout) and
+    // `PluginProcessor.cpp:442` (a PLAY edge or a seek). Stopping to LOOK at the number
+    // is what the latch is for, so a stop must keep it and the next play still clears
+    // it. Before R5 this flush had one caller, `prepare()`, where clearing the meters
+    // is right because a new sample rate invalidates them; R5's host-reset override
+    // made it reachable from every transport stop, and measured through the wrapper a
+    // held peak of -0.92 dB became -100.00 dB on the stop. State test 120 leg 4 drives
+    // a real AudioPlayHead and holds the other half: -0.92 dB kept across the stop,
+    // cleared by the next play edge and by a seek.
+    //
+    // Nothing is lost by not clearing them. Both meters are DISPLAY ONLY -- the audio
+    // path writes them (`levels.input/output.process`, `correlation.process`) and never
+    // reads them back for a gain or a routing decision; their only readers are the
+    // editor's meters. And they do not need a reset to fall: the bar and numeric
+    // readouts have hold-then-fall ballistics of their own and decay on silence, while
+    // `Correlation` is running averages that do the same.
+    //
+    // So the rule for this scope is one sentence rather than a list: a host reset
+    // clears AUDIO, and leaves DISPLAY alone. `everything` still clears both, because
+    // a re-prepare really does invalidate every readout.
     if (resetScope == ResetScope::everything)
-        loudness.reset();
-    correlation.reset();
-    levels.reset();
+    {
+        correlation.reset();
+        levels.reset();
+    }
     if (os2) os2->reset();
     if (os4) os4->reset();
     if (os8) os8->reset();

@@ -4,11 +4,11 @@
 #  command, before a push spends a CI round trip discovering the same thing.
 #
 #  WHAT THIS RUNS, in CI's own order (docs/procedures/CI_CD.md §Reproducing CI
-#  locally): the seven checkers with their --self-tests first (seconds, no
+#  locally): the eight checkers with their --self-tests first (seconds, no
 #  build, historically the most-tripped gates), then the built test suites when
 #  a built tree exists.
 #
-#  WHAT THIS CANNOT RUN, said out loud rather than implied. Three of the seven
+#  WHAT THIS CANNOT RUN, said out loud rather than implied. Three of the eight
 #  need something a bare checkout does not have, and each says so instead of
 #  passing quietly:
 #    * the Clang warning gate needs a fresh clang build log to classify;
@@ -58,6 +58,8 @@ python3 scripts/check-realtime.py --self-test
 python3 scripts/check-realtime.py
 python3 scripts/check-dispatch.py --self-test
 python3 scripts/check-dispatch.py
+python3 scripts/check-state-coverage.py --self-test
+python3 scripts/check-state-coverage.py
 python3 scripts/check-clang-warnings.py --self-test
 python3 scripts/check-gcc-warnings.py --self-test
 # The toolchain installer's release-identity verifier. Its --self-test drives the

@@ -31,7 +31,7 @@ Audit basis: full read of `src/dsp/**` and `src/PluginProcessor.cpp` (two indepe
   `std::vector::assign` or `juce::dsp::*::prepare`).
 - **Non-finite guard:** an engine-wide per-sample NaN/Inf check replaces only non-finite
   samples with 0 and resets stateful nodes; it is not a level limiter and never alters valid
-  audio. Evidence: src/dsp/AnamorphEngine.cpp:1725-1775.
+  audio. Evidence: src/dsp/AnamorphEngine.cpp:1786-1836.
 - **`reset()` paths run `std::fill`/filter resets** but never allocate, and are invoked at safe
   points (prepare, host reset, the silent duck bottom, NaN self-heal).
 
@@ -94,11 +94,11 @@ calls per run) rather than once in a session.
 
 **The SWITCH is armed as well as the steady state, since 2026-08-19, and until then it was not.**
 Each of the 32 configurations is now applied *inside* the armed region, so the block that adopts a
-discrete change — `src/dsp/AnamorphEngine.cpp:918-1038`: algorithm tails cleared, the three
+discrete change — `src/dsp/AnamorphEngine.cpp:979-1099`: algorithm tails cleared, the three
 oversamplers and the chorus reset on an oversampling-path change, the crossover cleared on a
 topology change — runs with the counters watching. Before that the configuration was applied and
 then `reset()` *outside* the armed region, and `reset()` flushes an in-flight duck straight to its
-target (`src/dsp/AnamorphEngine.cpp:214-221`), so every armed block sat in the steady-state
+target (`src/dsp/AnamorphEngine.cpp:275-282`), so every armed block sat in the steady-state
 no-change gate and the gate proved the audio path allocation-free only while nothing was changing.
 Measured both ways with one allocation seeded into that adopt block: invisible then (3,840 armed
 calls, worst `new` 0, green), a failure now (worst `new` 2, worst `malloc` 2). The test also counts

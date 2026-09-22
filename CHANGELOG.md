@@ -40,6 +40,24 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   engine: silence in, silence out. Normal processing after a stop is unchanged, and this is not a
   latency change — what your host reports for delay compensation is untouched. Regression coverage:
   State test 118. Evidence: PR #155. [Verified]
+- **The Level Match readout no longer creeps while the transport is stopped.** Level Match measures
+  how much louder or quieter the effect makes your track and holds that figure steady through
+  silence — that is what lets you stop, start and A/B without the level lurching. The host reset
+  added above cleared the audio but left the measurement's own filters and energy running, so for
+  several seconds after a stop the matcher still believed it was hearing the last thing you played
+  and kept easing the figure toward a target computed from it. Measured at **0.024 dB** of movement
+  over the first 1.4 s of silence and still moving 4 s later. The reset now re-arms the measurement
+  instead: the analysis is cleared and the published match figure is carried across **exactly** as
+  it was, so a stop freezes the number rather than nudging it. Measured post-fix: **0.000 dB** of
+  movement. Regression coverage: State test 120. Evidence: PR #155. [Verified]
+- **Stopping the transport no longer wipes the peak numbers under the meters.** The number beside
+  each meter is a held peak — the loudest sample since you last cleared it — and clearing it is
+  supposed to be your decision, made by clicking it. The host reset added above was clearing it too,
+  so on every transport stop a reading you were keeping (measured: **−0.92 dB**) dropped to
+  **−100.00 dB** before you could act on it. Transport stops now leave the meters alone; the reading
+  still clears when you click it, and when the plug-in is re-initialised at a new sample rate, where
+  the old number no longer means anything. Regression coverage: State test 120. Evidence: PR #155.
+  [Verified]
 - **Anamorph now tells your host how long its sound really takes to decay.** The reported tail length
   was a fixed 0.1 s, and the chain can ring for considerably longer than that — measured at up to
   0.25 s, with the low crossover settings and Band Solo that produce it. Hosts use that figure to

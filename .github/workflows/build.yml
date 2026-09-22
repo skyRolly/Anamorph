@@ -514,6 +514,24 @@ jobs:
       - name: Lint parameter dispatches (every write raises the extent depth, ADR-0036 §30)
         run: python3 scripts/check-dispatch.py
 
+      # THE COVERAGE GATE FOR HAND-MAINTAINED STATE LISTS (round 54). This repository's dominant
+      # recurring defect is an invariant held by a list that nothing compares to its subject: a
+      # function enumerating fields of `EngineParameters` or modules of `AnamorphEngine`, sitting
+      # next to a type that grows without it. Both targets have produced measured defects --
+      # round 4's `dimMode` duck (a field in a list it did not belong in) and round 6's two
+      # host-reset findings, `loudness` left running and `levels` cleared, in the SAME function
+      # and in OPPOSITE directions. The lint makes no judgement: it requires that one was made
+      # for every member, and holds the code to the one that was declared.
+      #
+      # It does NOT cover scalar engine state (`dryDelayWrite`, `pendingForced`), which is cleared
+      # by assignment rather than by a call; that gap is named in the script's docstring and is
+      # covered by State tests 57 and 118-120 rather than here.
+      - name: State-coverage lint self-test (the parsers still read, the checks still fire)
+        run: python3 scripts/check-state-coverage.py --self-test
+
+      - name: Lint hand-maintained state lists (every field and module has a declared answer)
+        run: python3 scripts/check-state-coverage.py
+
       # Same rule, and this checker needs it MOST: the other three only report,
       # while this one REWRITES governed documents under `--fix`. A defect here
       # does not merely fail to catch drift — it replaces a correct anchor with a

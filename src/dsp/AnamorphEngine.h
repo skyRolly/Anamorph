@@ -62,8 +62,11 @@ public:
     // would contradict what Test 16 (`testLevelMatchSilenceFreeze`) asserts.
     enum class ResetScope
     {
-        everything,       // prepare(): buffers AND measurements
-        audioTailsOnly    // a host reset: buffers, filters, rings and the duck only
+        everything,       // prepare(): buffers AND the whole matcher, published gain included
+        audioTailsOnly    // a host reset: AUDIO only -- buffers, filters, rings, the duck
+                          // and the matcher's analysis state. Never the matcher's
+                          // published gain, and never the display meters (the held peak
+                          // is the user's latch, cleared from the GUI)
     };
 
     void reset (ResetScope resetScope = ResetScope::everything);
