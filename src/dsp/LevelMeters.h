@@ -44,13 +44,38 @@ public:
         reset();
     }
 
+    // THE WHOLE METER -- a re-prepare's reset: the live display AND the user's latches.
     void reset() noexcept
     {
-        pkDimL = pkDimR = msBriL = msBriR = msNumL = msNumR = 0.0f;
-        barPeakL = barPeakR = 0.0f; holdL = holdR = 0.0;
-        peakHoldL = peakHoldR = 0.0f;
-        rmsNumL = rmsNumR = -100.0f; rmsHoldL = rmsHoldR = 0.0;
-        rmsClipL = rmsClipR = false;
+        clearLive();
+        clearLatches();
+        publishAll();
+    }
+
+    // THE LIVE DISPLAY ONLY -- a host reset's. Clears every value that describes audio
+    // that has ENDED (the three envelopes, the bar tick and its hold, the RMS number and
+    // its hold) and PUBLISHES the result; leaves the user's latches exactly as they are.
+    //
+    // WHY IT MUST PUBLISH, and why nothing else can do this. Every one of these values
+    // decays only inside `process()` / `publish()`, on the audio thread, and the GUI
+    // applies no ballistics of its own (gui/LevelMeter.h: "ballistics are all
+    // audio-side") -- it draws the published atomics. A host that calls
+    // `AudioProcessor::reset()` and then stops calling `processBlock` (VST3
+    // `setProcessing(false)`) therefore froze the meter at its last active frame, for as
+    // long as the host stayed stopped. MEASURED through the wrapper, -6 dBFS noise: dim
+    // -6.13, bright -11.17, bar -0.92, RMS -10.87 dB, unchanged 2 s after the reset.
+    // The frozen RMS NUMBER also reached the latches: `stepRmsNumber` latches the RMS clip
+    // on the number, which `resetHold()` does not clear, so after +3.52 dB material the
+    // first block following a click or a play edge re-latched the clip it had just cleared.
+    //
+    // WHAT IT MUST LEAVE. `peakHoldL/R` is "a held PEAK number ... never falls until you
+    // click it or playback restarts" (the header above), and the two clip latches are
+    // derived from / held beside it. Those are the user's, and a transport stop is
+    // neither a click nor a restart. `resetReq` is a pending request, not state, and is
+    // honoured by the next `process()` as always.
+    void resetLive() noexcept
+    {
+        clearLive();
         publishAll();
     }
 
@@ -182,6 +207,24 @@ private:
     static void  store (std::atomic<int>& a, int v) noexcept { a.store (v, std::memory_order_relaxed); }
     static float load (const std::atomic<float>& a) noexcept { return a.load (std::memory_order_relaxed); }
 
+    // The partition `reset()` and `resetLive()` are built from. Between them they name
+    // every field `process()` / `publish()` write, so a field added to one of those and
+    // not to a clearer is a field NEITHER reset clears. `blockPeakL/R` is here although
+    // `process()` rewrites it before `publish()` reads it, so clearing it is unobservable
+    // today: it is live by definition, and the partition is only useful if it is total.
+    void clearLive() noexcept
+    {
+        pkDimL = pkDimR = msBriL = msBriR = msNumL = msNumR = 0.0f;
+        barPeakL = barPeakR = 0.0f; holdL = holdR = 0.0;
+        blockPeakL = blockPeakR = 0.0f;
+        rmsNumL = rmsNumR = -100.0f; rmsHoldL = rmsHoldR = 0.0;
+    }
+    void clearLatches() noexcept
+    {
+        peakHoldL = peakHoldR = 0.0f;
+        rmsClipL = rmsClipR = false;
+    }
+
     void stepRmsNumber (float& num, double& hold, float targetDb, bool& clip) noexcept
     {
         // Snap UP quickly, then hold and fall SLOWLY; a small dead-band keeps the
@@ -246,6 +289,7 @@ struct LevelMeters
     StereoLevel input, output;
     void prepare (double sr) { input.prepare (sr); output.prepare (sr); }
     void reset()             { input.reset();      output.reset(); }
+    void resetLive()         { input.resetLive();  output.resetLive(); } // host reset: live only
     void publish()           { input.publish();    output.publish(); }
     void resetHold()         { input.resetHold();  output.resetHold(); } // click / replay (#16)
 };

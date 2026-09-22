@@ -63,10 +63,12 @@ public:
     enum class ResetScope
     {
         everything,       // prepare(): buffers AND the whole matcher, published gain included
-        audioTailsOnly    // a host reset: AUDIO only -- buffers, filters, rings, the duck
-                          // and the matcher's analysis state. Never the matcher's
-                          // published gain, and never the display meters (the held peak
-                          // is the user's latch, cleared from the GUI)
+        audioTailsOnly    // a host reset: AUDIO and the LIVE DISPLAY -- buffers, filters,
+                          // rings, the duck, the matcher's analysis state, and the meter
+                          // envelopes / bars / RMS readouts that describe audio that has
+                          // ended. Never the matcher's published gain, and never the
+                          // user's meter LATCHES (held peak, clip latches -- cleared by
+                          // the GUI click or a playback restart)
     };
 
     void reset (ResetScope resetScope = ResetScope::everything);

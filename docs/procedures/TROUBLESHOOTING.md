@@ -35,7 +35,7 @@ Diagnosing build, validation, and runtime problems. For the validation workflow 
 | Vectorscope looks different on Linux vs macOS/Windows | By design | Linux/BSD render CPU-side (no OpenGL attach); macOS/Windows GPU-composite (ADR-0011). Visually identical. |
 | DSP suddenly resets / brief glitch under extreme automation | NaN/Inf self-heal fired | A non-finite sample was produced upstream; the engine self-heals (AnamorphEngine.cpp:1256-1300). Crossovers are Nyquist-clamped (ADR-0009) — if it recurs, capture the parameter automation that triggered it. |
 | A control click/pops on toggle | Should not happen | All discrete switches duck; Bypass/Multiband-Enable/Solo crossfade (ADR-0004). If reproducible, add a regression test (TESTING.md) and check the relevant click-free test. |
-| Meters stuck / bar vanished | Was a NaN-latch (fixed 0.8.2) | Meters self-heal non-finite envelopes (LevelMeters.h:92-100, with `sanitize` at :179). If it recurs, the source is upstream non-finite audio. |
+| Meters stuck / bar vanished | Was a NaN-latch (fixed 0.8.2) | Meters self-heal non-finite envelopes (LevelMeters.h:117-125, with `sanitize` at :204). If it recurs, the source is upstream non-finite audio. |
 
 ## "What cannot be verified headlessly"
 

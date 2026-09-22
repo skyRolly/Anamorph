@@ -225,39 +225,46 @@ void AnamorphEngine::reset (ResetScope resetScope)
     if (resetScope == ResetScope::everything) loudness.reset();
     else                                      loudness.softReset();
 
-    // THE DISPLAY METERS, and `audioTailsOnly` deliberately does not touch them.
+    // THE DISPLAY METERS. Two halves, and `audioTailsOnly` takes exactly one of them.
     //
-    // Found by inventorying this function against the scope rather than by taking the
-    // reported bug at face value, and it is the SAME defect as the loudness one above:
-    // `LevelMeters::reset()` clears `peakHoldL/R`, which LevelMeters.h documents as
-    // "a held PEAK number (max sample peak since the last reset, never falls)" and
-    // whose reset rule that header states outright: "on a number click or a playback
-    // RESTART". There are exactly TWO such paths in the product and a transport stop is
-    // neither -- `src/gui/LevelMeter.h:27` (mouseDown on the readout) and
-    // `PluginProcessor.cpp:442` (a PLAY edge or a seek). Stopping to LOOK at the number
-    // is what the latch is for, so a stop must keep it and the next play still clears
-    // it. Before R5 this flush had one caller, `prepare()`, where clearing the meters
-    // is right because a new sample rate invalidates them; R5's host-reset override
-    // made it reachable from every transport stop, and measured through the wrapper a
-    // held peak of -0.92 dB became -100.00 dB on the stop. State test 120 leg 4 drives
-    // a real AudioPlayHead and holds the other half: -0.92 dB kept across the stop,
-    // cleared by the next play edge and by a seek.
+    // THE USER'S LATCHES SURVIVE. `LevelMeters::reset()` clears `peakHoldL/R`, which
+    // LevelMeters.h documents as "a held PEAK number (max sample peak since the last
+    // reset, never falls)" and whose reset rule that header states outright: "on a
+    // number click or a playback RESTART". There are exactly TWO such paths in the
+    // product and a transport stop is neither -- `src/gui/LevelMeter.h:27` (mouseDown on
+    // the readout) and `PluginProcessor.cpp:442` (a PLAY edge or a seek). Stopping to
+    // LOOK at the number is what the latch is for. R5's host-reset override made the
+    // whole-meter flush reachable from every transport stop, and measured through the
+    // wrapper a held peak of -0.92 dB became -100.00 dB on the stop (State test 120).
     //
-    // Nothing is lost by not clearing them. Both meters are DISPLAY ONLY -- the audio
-    // path writes them (`levels.input/output.process`, `correlation.process`) and never
-    // reads them back for a gain or a routing decision; their only readers are the
-    // editor's meters. And they do not need a reset to fall: the bar and numeric
-    // readouts have hold-then-fall ballistics of their own and decay on silence, while
-    // `Correlation` is running averages that do the same.
+    // THE LIVE DISPLAY DOES NOT, and this corrects what R6 wrote here. The reasoning
+    // was: "they do not need a reset to fall: the bar and numeric readouts have
+    // hold-then-fall ballistics of their own and decay on silence, while `Correlation`
+    // is running averages that do the same." True only while the host keeps calling
+    // `processBlock` -- those ballistics run inside `process()` / `publish()`, and the
+    // GUI applies none of its own (gui/LevelMeter.h: "ballistics are all audio-side").
+    // A host that resets and then STOPS calling `processBlock` -- VST3
+    // `setProcessing(false)` -- froze every readout at its last active frame for as long
+    // as it stayed stopped. MEASURED through the wrapper, -6 dBFS noise: dim -6.13,
+    // bright -11.17, bar -0.92, RMS -10.87 dB, unchanged 2 s later. With the right
+    // channel at 0.4x the left, the correlation meter's `energy` stayed at 9.663e-02, so
+    // the GUI never saw the silence that triggers its own glide to centre and held phase
+    // +1.000 / balance -0.724. Resumed playback then inherited the pre-stop bar tick and
+    // RMS hold, and the frozen RMS NUMBER re-latched the RMS clip on the first block after
+    // a click or a play edge had cleared it (State test 122).
     //
-    // So the rule for this scope is one sentence rather than a list: a host reset
-    // clears AUDIO, and leaves DISPLAY alone. `everything` still clears both, because
-    // a re-prepare really does invalidate every readout.
+    // So: `resetLive()` on a host reset (envelopes, bar tick, RMS number, their holds;
+    // published) and the whole meter only on a re-prepare, which invalidates every
+    // readout. `correlation` has no user latch, so it is reset on both scopes, and its
+    // `reset()` publishes so the GUI's glide runs. Neither changes a sample: both meters
+    // are DISPLAY ONLY, written by the audio path and never read back by it. The rule:
+    // a host reset clears AUDIO and the LIVE DISPLAY describing audio that has ended,
+    // and leaves the user's LATCHES and the Level-Match RESULT alone.
+    correlation.reset();
     if (resetScope == ResetScope::everything)
-    {
-        correlation.reset();
         levels.reset();
-    }
+    else
+        levels.resetLive();
     if (os2) os2->reset();
     if (os4) os4->reset();
     if (os8) os8->reset();

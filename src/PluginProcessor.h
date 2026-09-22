@@ -70,7 +70,7 @@ public:
         // ...AND THE TRANSPORT EDGE DETECTOR, because this reset ENDS a processing
         // session and `prevPlaying` is a memory of one.
         //
-        // The meter hold is cleared on a "playback restart" (LevelMeters.h:57-59),
+        // The meter hold is cleared on a "playback restart" (LevelMeters.h:82-84),
         // which `processBlock` finds as the rising edge `playing && ! prevPlaying`.
         // That edge only exists if the plug-in SAW a non-playing block -- and the
         // host class this override was added for is precisely the one that does not

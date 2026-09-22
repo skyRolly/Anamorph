@@ -27,10 +27,22 @@ public:
         reset();
     }
 
+    // Clears the running averages AND PUBLISHES the result, as `StereoLevel::reset()` always
+    // has. It used to stop at the clear, so the GUI kept reading the last published `energy`
+    // until some later `process()` block republished -- and the GUI's glide-to-centre is
+    // triggered by exactly that value (`energy < 6e-9`, gui/CorrelationMeter.cpp), on the
+    // GUI's own clock. A host that resets and then stops calling `processBlock` therefore
+    // held both pointers where the music left them. MEASURED through the wrapper, noise
+    // with the right channel at 0.4x the left: energy 9.663e-02, phase +1.000, balance
+    // -0.724, unchanged after the reset -- the GUI read ACTIVE. Publishing zeros is exactly
+    // this meter's documented idle state (`correlation()` and the balance both return 0
+    // below their small-signal guards), so after a first prepare this writes the values the
+    // atomics were constructed with.
     void reset() noexcept
     {
         lrFast = llFast = rrFast = 0.0f;
         lrSlow = llSlow = rrSlow = 0.0f;
+        publish();
     }
 
     inline void process (float l, float r) noexcept

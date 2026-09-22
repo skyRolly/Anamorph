@@ -36281,7 +36281,7 @@ static void testAHostResetClearsAudioAndKeepsTheUsersState()
 //  State test 120 settled WHAT a host reset clears. This one is about the state it
 //  has to INVALIDATE so that the next thing the host does is read correctly.
 //
-//  The held peak is cleared on a "playback restart" (LevelMeters.h:57-59), and
+//  The held peak is cleared on a "playback restart" (LevelMeters.h:82-84), and
 //  `processBlock` finds that restart as the rising edge `playing && ! prevPlaying`
 //  (PluginProcessor.cpp). An edge needs a falling half, and the falling half only
 //  exists if the plug-in SAW a non-playing block.
@@ -36514,6 +36514,272 @@ static void testAHostResetArmsTheNextRestart()
     }
 }
 
+// ---------------------------------------------------------------------------
+//  State test 122 -- A HOST RESET CLEARS THE LIVE METERS, AND ONLY THE LIVE METERS
+//
+//  State test 120 established that a host reset must leave the user's meter LATCHES
+//  alone, and R6 met that by not resetting the meters on that path at all. That was one
+//  half right. The other half rested on a premise this test disproves: that the live
+//  readouts "do not need a reset to fall: the bar and numeric readouts have
+//  hold-then-fall ballistics of their own and decay on silence". They decay only inside
+//  `process()` / `publish()`, on the audio thread, and the GUI applies no ballistics of
+//  its own -- gui/LevelMeter.h: "ballistics are all audio-side"; it draws the published
+//  atomics. So a host that calls `reset()` and then STOPS calling `processBlock` --
+//  VST3 `setProcessing(false)`, juce_audio_plugin_client_VST3.cpp:3475-3479 -- froze
+//  every readout at the last active frame for as long as it stayed stopped.
+//
+//  MEASURED through the wrapper before the fix, -6 dBFS noise with one 0.9 transient:
+//      dim -6.13, bright -11.17, bar -0.92, RMS -10.87 dB   straight after reset()
+//      ...the same four values 2 s later, nothing having run
+//  and the correlation meter's `energy` stayed at 1.659e-01, above the GUI's
+//  `energy < 6e-9` silence test (gui/CorrelationMeter.cpp), so the phase and balance
+//  pointers never began their glide to centre. On RESUME, the bar tick (1 s hold) and
+//  the RMS number (1.2 s hold) still carried the pre-stop values -- the hold timers had
+//  never advanced, because no audio-thread time had passed.
+//
+//  The frozen RMS NUMBER also defeated both ways of clearing a clip latch. The number,
+//  not the latch, is what `stepRmsNumber` latches on, and neither the GUI click nor the
+//  play edge (`resetHold()`) clears the number. After a host reset from +3.52 dB
+//  material, measured before the fix:
+//      click, then one block of silence       rclip 1   RMS number +3.30 dB
+//      play edge, then four blocks at -34 dB  rclip 1   RMS number +3.30 dB
+//  -- the first block the host ran cleared the latch and re-latched it from pre-stop
+//  state. With no host reset the same click cleared it (RMS number -11.04 dB by then).
+//
+//  WHAT THIS ASSERTS, all of it through the published atomics the GUI reads:
+//    A  host reset, NO block after it: every live readout at its floor, and the
+//       correlation `energy` at 0 so the GUI's own glide can run.
+//    B  the same reset: the held peak and BOTH clip latches exactly as they were.
+//    C  resume: the live readouts describe the NEW audio, not the old; the play edge
+//       still clears the held peak, which then latches the new material normally; and
+//       a click or a play edge after the reset clears the clip latches for good.
+//    D  a re-prepare (`ResetScope::everything`): the whole meter, latches included.
+//    E  the paths this must not disturb: the GUI click with no host reset, and ordinary
+//       decay on silence.
+//  The floor is exactly -100 by construction (`db()` returns -100 below 1e-6), so the
+//  live assertions are equality, not a threshold.
+static void testAHostResetClearsTheLiveMeters()
+{
+    std::printf ("State test 122: a host reset clears the live meters, and only the live meters\n");
+
+    const double sr = 48000.0; const int block = 256;
+
+    struct Head : juce::AudioPlayHead
+    {
+        bool playing = false;
+        juce::int64 pos = 0;
+        juce::Optional<juce::AudioPlayHead::PositionInfo> getPosition() const override
+        {
+            juce::AudioPlayHead::PositionInfo info;
+            info.setIsPlaying (playing);
+            info.setTimeInSamples (pos);
+            return info;
+        }
+    };
+
+    struct Rig
+    {
+        const std::unique_ptr<AnamorphAudioProcessor> owner
+            { std::make_unique<AnamorphAudioProcessor>() };            // heap: State test 59's note
+        AnamorphAudioProcessor& proc { *owner };
+        Head head;
+        juce::AudioBuffer<float> buf;
+        juce::MidiBuffer midi;
+        juce::Random rng { 99 };
+
+        Rig (double sampleRate, int blockSize) : buf (2, blockSize)
+        {
+            proc.setPlayHead (&head);
+            proc.prepareToPlay (sampleRate, blockSize);
+        }
+        ~Rig() { proc.setPlayHead (nullptr); }
+
+        // `gen (block, sample)` gives the sample; the playhead advances only while playing.
+        // (std::function: a local class cannot declare a member template.)
+        void run (int blocks, const std::function<float (int, int)>& gen)
+        {
+            for (int b = 0; b < blocks; ++b)
+            {
+                for (int i = 0; i < buf.getNumSamples(); ++i)
+                {
+                    const float v = gen (b, i);
+                    buf.setSample (0, i, v); buf.setSample (1, i, v);
+                }
+                midi.clear();
+                proc.processBlock (buf, midi);
+                if (head.playing) head.pos += buf.getNumSamples();
+            }
+        }
+        // -6 dBFS-ish noise with one 0.9 transient: a live meter well off the floor and a
+        // held peak (-0.92 dB) far above what the noise alone latches.
+        void loud (int blocks)
+        {
+            run (blocks, [this] (int b, int i)
+                 { return (b == 20 && i == 7) ? 0.9f : (rng.nextFloat() * 2.0f - 1.0f) * 0.5f; });
+        }
+        void level (int blocks, float v) { run (blocks, [v] (int, int) { return v; }); }
+
+        const anamorph::StereoLevel& out() const { return proc.getEngine().getLevels().output; }
+        const anamorph::StereoLevel& in()  const { return proc.getEngine().getLevels().input; }
+    };
+
+    auto liveAtFloor = [] (const anamorph::StereoLevel& m)
+    {
+        return juce::exactlyEqual (m.getDimL(), -100.0f) && juce::exactlyEqual (m.getDimR(), -100.0f)
+            && juce::exactlyEqual (m.getBriL(), -100.0f) && juce::exactlyEqual (m.getBriR(), -100.0f)
+            && juce::exactlyEqual (m.getBarL(), -100.0f) && juce::exactlyEqual (m.getBarR(), -100.0f)
+            && juce::exactlyEqual (m.getRmsNumL(), -100.0f) && juce::exactlyEqual (m.getRmsNumR(), -100.0f);
+    };
+    const int oneSecond = (int) std::ceil (sr / block);
+
+    // --- A + B: the reset with no block after it, sub-0 dB material ---------------------------
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.loud (oneSecond);
+        const float held = r.out().getPeakHoldL();
+        std::printf ("  active:      dim %+.2f bright %+.2f bar %+.2f RMS %+.2f | held %+.2f | energy %.3e\n",
+                     r.out().getDimL(), r.out().getBriL(), r.out().getBarL(), r.out().getRmsNumL(),
+                     held, r.proc.getEngine().getCorrelation().getEnergy());
+        check (r.out().getBriL() > -30.0f && r.out().getRmsNumL() > -30.0f,
+               "R9 control: the live meter was well off its floor before the reset");
+        check (held > -3.0f, "R9 control: the transient latched a distinct held peak");
+
+        const juce::int64 stopped = r.head.pos;
+        r.head.playing = false;
+        r.proc.reset();                            // ...and the host calls nothing after it
+
+        const float energy = r.proc.getEngine().getCorrelation().getEnergy();
+        std::printf ("  after reset: dim %+.2f bright %+.2f bar %+.2f RMS %+.2f | held %+.2f | energy %.3e\n",
+                     r.out().getDimL(), r.out().getBriL(), r.out().getBarL(), r.out().getRmsNumL(),
+                     r.out().getPeakHoldL(), energy);
+        check (liveAtFloor (r.out()), "R9 A: a host reset clears the OUTPUT live meters, no block needed");
+        check (liveAtFloor (r.in()),  "R9 A: a host reset clears the INPUT live meters, no block needed");
+        check (juce::exactlyEqual (energy, 0.0f),
+               "R9 A: the correlation meter publishes silence, so the GUI's glide can run");
+        check (juce::exactlyEqual (r.out().getPeakHoldL(), held),
+               "R9 B: the held peak survives the host reset (State test 120)");
+
+        // --- C: the host resumes where it stopped -----------------------------------------
+        r.head.playing = true; r.head.pos = stopped;
+        r.level (4, 0.02f);                        // -33.98 dB material
+        std::printf ("  resumed:     dim %+.2f bright %+.2f bar %+.2f RMS %+.2f | held %+.2f\n",
+                     r.out().getDimL(), r.out().getBriL(), r.out().getBarL(), r.out().getRmsNumL(),
+                     r.out().getPeakHoldL());
+        check (r.out().getBarL() < -30.0f,
+               "R9 C: the resumed bar tick describes the new audio, not the pre-stop hold");
+        check (r.out().getRmsNumL() < -30.0f,
+               "R9 C: the resumed RMS number describes the new audio, not the pre-stop hold");
+        check (r.out().getPeakHoldL() < -30.0f,
+               "R9 C: the play edge still clears the held peak on resume (State test 121)");
+        r.run (8, [] (int b, int i) { return (b == 2 && i == 3) ? 0.7f : 0.02f; });
+        check (std::abs (r.out().getPeakHoldL() - juce::Decibels::gainToDecibels (0.7f)) < 0.05f,
+               "R9 C: after the resume the held peak latches new material as normal");
+    }
+
+    // Over-0 dBFS material sets both clip latches: +3.52 dB peak, +3.52 dB RMS.
+    const auto hot = [] (int, int i) { return (i & 1) ? 1.5f : -1.5f; };
+    const auto latches = [] (const char* when, const anamorph::StereoLevel& m)
+    {
+        std::printf ("  %-24s pclip %d rclip %d | held %+.2f RMS %+.2f\n", when,
+                     (int) m.getPeakClipL(), (int) m.getRmsClipL(), m.getPeakHoldL(), m.getRmsNumL());
+    };
+    const auto latchesClear = [] (const anamorph::StereoLevel& m)
+    {
+        return ! m.getPeakClipL() && ! m.getPeakClipR() && ! m.getRmsClipL() && ! m.getRmsClipR()
+            && m.getPeakHoldL() < -30.0f && m.getPeakHoldR() < -30.0f;
+    };
+
+    // --- B: the CLIP latches ---------------------------------------------------------------
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.run (oneSecond, hot);
+        check (r.out().getPeakClipL() && r.out().getRmsClipL(),
+               "R9 control: +3.5 dB material set both clip latches");
+        const float held = r.out().getPeakHoldL();
+        r.head.playing = false;
+        r.proc.reset();
+        latches ("clip, after reset:", r.out());
+        check (r.out().getPeakClipL() && r.out().getPeakClipR(),
+               "R9 B: the PEAK clip latch survives the host reset");
+        check (r.out().getRmsClipL() && r.out().getRmsClipR(),
+               "R9 B: the RMS clip latch survives the host reset");
+        check (juce::exactlyEqual (r.out().getPeakHoldL(), held),
+               "R9 B: ...and so does the held peak behind the peak latch");
+        check (liveAtFloor (r.out()), "R9 B: while the live readouts beside them are cleared");
+
+        // --- C: the GUI click made while stopped. It is consumed by the first block the host
+        //     runs, and that block must not re-latch the RMS clip from the pre-stop RMS number
+        //     (`stepRmsNumber` latches on the NUMBER, which the click does not clear).
+        r.proc.getEngine().getLevels().resetHold(); // the GUI's click raises this flag
+        r.level (1, 0.0f);
+        latches ("clip, click + 1 block:", r.out());
+        check (latchesClear (r.out()),
+               "R9 C: a click after the host reset clears both clip latches, and nothing stale re-latches them");
+    }
+
+    // --- C: the PLAY EDGE after a host reset from over-0 dB material (State test 121's path) ---
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.run (oneSecond, hot);
+        const juce::int64 stopped = r.head.pos;
+        r.head.playing = false;
+        r.proc.reset();
+        r.head.playing = true; r.head.pos = stopped;   // resume where it stopped: the play edge
+        r.level (4, 0.02f);
+        latches ("clip, play edge + 4:", r.out());
+        check (latchesClear (r.out()),
+               "R9 C: the restart after the host reset clears both clip latches, and nothing stale re-latches them");
+    }
+
+    // --- E: the GUI click with no host reset, once the hot material has ended ----------------
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.run (oneSecond, hot);
+        r.head.playing = false;
+        r.level (3 * oneSecond, 0.0f);             // the RMS number's 1.2 s hold + 8 dB/s fall
+        r.proc.getEngine().getLevels().resetHold();
+        r.level (1, 0.0f);
+        latches ("clip, no reset, click:", r.out());
+        check (latchesClear (r.out()),
+               "R9 E: with no host reset the GUI click clears both clip latches, as before");
+    }
+
+    // --- D: a re-prepare is the WHOLE meter ------------------------------------------------
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.run (oneSecond, hot);
+        check (r.out().getPeakClipL() && r.out().getRmsClipL(), "R9 control: latches set before the re-prepare");
+        r.proc.prepareToPlay (sr, block);          // ResetScope::everything
+        check (liveAtFloor (r.out()) && liveAtFloor (r.in()),
+               "R9 D: ResetScope::everything clears the live meters");
+        check (r.out().getPeakHoldL() < -99.0f && ! r.out().getPeakClipL() && ! r.out().getRmsClipL(),
+               "R9 D: ...AND the user's latches, which a new sample rate invalidates");
+        check (juce::exactlyEqual (r.proc.getEngine().getCorrelation().getEnergy(), 0.0f),
+               "R9 D: ...and publishes a silent correlation meter");
+    }
+
+    // --- E: ordinary decay is untouched -- the host that keeps calling processBlock ----------
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.loud (oneSecond);
+        const float held = r.out().getPeakHoldL();
+        r.head.playing = false;
+        r.level (3 * oneSecond, 0.0f);             // no reset at all: 3 s of silent blocks
+        std::printf ("  3 s of silence, no reset: dim %+.2f bar %+.2f | held %+.2f\n",
+                     r.out().getDimL(), r.out().getBarL(), r.out().getPeakHoldL());
+        check (r.out().getDimL() < -80.0f && juce::exactlyEqual (r.out().getBarL(), -100.0f),
+               "R9 E: without a reset the live meters still decay on silence as before");
+        check (juce::exactlyEqual (r.out().getPeakHoldL(), held),
+               "R9 E: ...and the held peak still holds, as before");
+    }
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -36698,6 +36964,7 @@ int main (int argc, char* argv[])
     testTheReportedTailCoversTheRealTail();
     testAHostResetClearsAudioAndKeepsTheUsersState();
     testAHostResetArmsTheNextRestart();
+    testAHostResetClearsTheLiveMeters();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

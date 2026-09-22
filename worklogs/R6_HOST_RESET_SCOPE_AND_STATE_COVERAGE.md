@@ -687,7 +687,325 @@ It does not block this work, and CI captures whole logs, so a recurrence there w
 
 ---
 
+## Q. Third follow-up: a host reset froze the live meters (R9)
+
+A fourth review finding on this branch, and the third on the host-reset entry point. **Confirmed**,
+and wider than reported: the same premise froze the correlation and balance display, and it
+defeated the clip-latch clears.
+
+### Baseline, from the tree rather than from this log
+
+- **HEAD at the start of the round was `d9f6c88`** (R8). The round's brief named `dd00eb9`, which is
+  R6; `caef45a` (R7) and `d9f6c88` (R8) sit on top of it. The tree was clean and level with origin.
+- Suites on `d9f6c88`, local GCC 13 Release: DSP **479 checks, 0 failures**; state **4708 checks,
+  0 failures**.
+- **CI on `d9f6c88` itself**, read from the Actions API this round rather than assumed from the
+  `caef45a` result §P reports: push run **35713608895**, 14 jobs — 13 `success` (`source-lint`,
+  `docs`, `linux` with pluginval and the 1 MB-stack pass, `linux-lto-tests`, `realtime`, `tsan`,
+  `sanitizers` with valgrind, `fuzz`, `windows`, `windows-avx2-ab`, `macos`, `macos-intel`,
+  `macos-crossslice`) and `merge-check` `skipped`, as it is on every push event. The pull-request
+  runs on the same SHA — Build & Validate 35713617159, CodeQL, Microsoft C++ Code Analysis,
+  Dependency review — all `success`. This branch had introduced no CI failure to fix.
+
+### The lifecycle, traced from the code
+
+Every writer, clearer and publisher of the meter state, and who reads it:
+
+| state | written by | cleared by (before this round) | reaches the GUI through |
+|---|---|---|---|
+| `pkDim`, `msBri`, `msNum` (the three envelopes) | `process()`, per sample | `reset()` only | `publish()` → `publishAll()` |
+| `barPeak` + `hold` (bar tick, 1 s hold) | `process()` / `publish()` | `reset()` only | `publishAll()` |
+| `rmsNum` + `rmsHold` (RMS number, 1.2 s hold) | `publish()` → `stepRmsNumber` | `reset()`; `resetReq` clears the hold only | `publishAll()` |
+| `blockPeak` | `process()`, rewritten every block | nothing (unobservable) | read by `publish()` |
+| `peakHold` (the held peak) | `process()`, max | `reset()`; `resetReq` | `publishAll()`; the peak clip is `db(peakHold) > 0` |
+| `rmsClip` | `stepRmsNumber`, `num > 0` | `reset()`; `resetReq` | `publishAll()` |
+| `resetReq` (a pending request, not state) | `resetHold()` — the readout click, and `processBlock`'s play / seek edge | `process()`'s `exchange` | — |
+| `Correlation` fast / slow `lr`, `ll`, `rr` | `process()`, per sample | `reset()`, which did **not** publish | `publish()`, per block |
+
+The GUI adds nothing to any of it. `LevelMeter::tick` snapshots the atomics and draws them —
+`gui/LevelMeter.h`: "ballistics are all audio-side". `StereoMeter` (gui/CorrelationMeter.cpp) runs
+its own glide to centre, on its own clock, only when it reads `energy < 6e-9`. So every falling
+value in the meter falls only while `processBlock` runs. `reset()` was reached from `prepare()`
+alone, since R6 took it off the host-reset path.
+
+The host sequence that matters is the one R7 already established: VST3 `setProcessing(false)`
+calls `reset()` and then stops calling `process`, and `setProcessing(true)` resumes without a
+prepare (`juce_audio_plugin_client_VST3.cpp:3469-3479`). AU `Reset()` has the same shape.
+
+### Measured, before the fix
+
+Through the wrapper, `AnamorphAudioProcessor` on the heap, −6 dBFS noise with one 0.9 transient,
+host reset with no block after it (output meter, L; R identical):
+
+| moment | dim | bright | bar | RMS number | held peak |
+|---|---|---|---|---|---|
+| active | −6.13 | −11.17 | −0.92 | −10.87 | −0.92 |
+| straight after `reset()` | −6.13 | −11.17 | −0.92 | −10.87 | −0.92 |
+| 2 s later, nothing run | −6.13 | −11.17 | −0.92 | −10.87 | −0.92 |
+| resumed, 4 blocks at −33.98 dB | −6.75 | −11.88 | **−0.92** | **−10.87** | −33.98 (play edge) |
+
+The resumed bar tick and RMS number are the pre-stop values, because their hold timers had not
+advanced while nothing ran. For comparison, the same host resetting and then **continuing** to call
+`processBlock` with silence decayed normally: dim −20.64 and bar −35.20 at 0.5 s, the bar at −100 by
+1.5 s, dim −93.22 and the RMS number −25.21 at 3.0 s.
+
+**The correlation meter froze the same way**, which the finding did not name. With the right channel
+at 0.4× the left: `energy` 9.663e-02, phase +1.000, balance −0.724, unchanged after the reset — and
+the GUI decides silence from `energy` alone, so both pointers stayed put. Three silent blocks later
+`energy` was still 8.457e-02: `CorrelationMeter::reset()` cleared the accumulators and published
+nothing.
+
+**The clip latches were affected too**, found by State test 122 rather than by the finding.
+`stepRmsNumber` latches the RMS clip on the NUMBER, and `resetReq` does not clear the number. After
++3.52 dB material and a host reset:
+
+| then | peak clip | RMS clip | held peak | RMS number |
+|---|---|---|---|---|
+| a click, one block of silence | 0 | **1** | −100.00 | +3.30 |
+| a play edge, four blocks at −34 dB | 0 | **1** | −33.98 | +3.30 |
+| control — no reset, 3 s of silence, then the click | 0 | 0 | −100.00 | −11.04 |
+
+The first block the host ran cleared the RMS clip and re-latched it from pre-stop state.
+
+**Out of scope, recorded:** the vectorscope holds its last frame when the ring stops moving. That is
+the designed idle gate — `Vectorscope::tick` names the case, "the ring is FROZEN (the host stopped
+calling processBlock)" — and it reads `ScopeBuffer`, which has no `reset()` and is not in this path.
+
+### The semantics, and what was rejected
+
+The state splits cleanly in two, and the two need opposite answers on a host reset:
+
+- **Live display** — the three envelopes, the bar tick and its hold, the RMS number and its hold,
+  `blockPeak`, and all of `Correlation`. Each describes audio that has ENDED.
+- **Latches** — `peakHoldL/R` and `rmsClipL/R` (the peak clip is derived from `peakHold`). They are
+  the user's, cleared "on a number click or a playback restart" (`LevelMeters.h`), and a stop is
+  neither. R6's fix for them stands.
+
+Chosen: `StereoLevel::resetLive()` — clear the live half and publish — built with `reset()` on one
+private partition, `clearLive()` + `clearLatches()`, which between them name every field
+`process()` / `publish()` write. `reset()` is now `clearLive(); clearLatches(); publishAll();`.
+`CorrelationMeter::reset()` publishes. `AnamorphEngine::reset` calls `correlation.reset()` on both
+scopes and `levels.reset()` or `levels.resetLive()` by scope. Rejected:
+
+- **Clearing the fields from `AnamorphEngine`.** Moves `StereoLevel`'s invariants out of the class,
+  and nothing would then keep the two halves total.
+- **`resetHold()` from `reset()`.** Clears the latches at the stop: State test 120's defect again,
+  and R7's "WHAT THE FIX IS NOT".
+- **Decay or a staleness timeout in the GUI.** A second clock and a second set of ballistics for the
+  same meter, against "ballistics are all audio-side", and a much larger change.
+- **`levels.reset()` on the host path.** The R6 regression.
+
+### The reset-state matrix, filled in from the code after the fix
+
+| state | host reset (`audioTailsOnly`) | re-prepare (`everything`) | readout click | playback restart |
+|---|---|---|---|---|
+| Level Match published gain (`displayedGainDb`, `prevPredictedGainDb`, `matchGainDb`) | kept (`softReset`) | cleared | — | — |
+| Level Match analysis (K-weighting biquads, integrators) | cleared | cleared | — | — |
+| held peak `peakHoldL/R` (and the peak clip) | **kept** | cleared | cleared, next block | cleared, next block |
+| RMS clip `rmsClipL/R` | **kept** | cleared | cleared, next block | cleared, next block |
+| envelopes `pkDim`, `msBri`, `msNum` | cleared **(new)** | cleared | — | — |
+| RMS number `rmsNum` | cleared **(new)** | cleared | — | — |
+| bar tick `barPeak` / `blockPeak` | cleared **(new)** | cleared | — | — |
+| hold timers: bar `hold` / RMS `rmsHold` | cleared **(new)** | cleared | — / cleared | — / cleared |
+| `Correlation` accumulators | cleared **(new)**, published | cleared, published **(new)** | — | — |
+| `prevPlaying` (R7) | cleared | untouched (benign, §L) | — | — |
+
+"Next block" is exact: the click and the restart only raise `resetReq`, and `process()` consumes
+it.
+
+### Publication from `reset()`'s thread
+
+`publishAll()` and `CorrelationMeter::publish()` are relaxed stores into the same atomics the audio
+thread publishes every block and the GUI reads relaxed from any thread. The non-atomic writes before
+them are safe under the same format contract that already covers every other write `reset()` makes:
+no `processBlock` runs concurrently with a host reset (THREAD_MODEL.md, Host reset row). Nothing new
+is added to the audio path, and there is no new ordering, lock, wait or `callAsync`. The prepare
+thread already published through `levels.reset()`, and R5 did so from this thread too. THREAD_MODEL.md
+and THREADING_POLICY.md now name both extra writers.
+
+### The trade-off
+
+A host that resets **and keeps** calling `processBlock` with silence used to see the live meters fall
+over a few seconds (figures above). It now sees them reach the floor at the stop. The end state is
+the same, and silence with **no** reset is unchanged: 3 s of silent blocks give dim −93.21, bar −100,
+held peak −0.92, before and after the fix.
+
+### Tests — State test 122, `testAHostResetClearsTheLiveMeters`
+
+Through the wrapper, with a real `AudioPlayHead`, heap-allocated processors, 24 checks, all on the
+published atomics the GUI reads:
+
+- **A**, a reset with no block after it: every live readout on both meters exactly −100 (`db()`'s
+  floor, so equality rather than a threshold), and `energy` exactly 0.
+- **B**, the held peak exactly as before, and both clip latches on both channels.
+- **C**, the resume: bar and RMS number describe the new audio, the play edge still clears and the
+  peak re-latches new material to within 0.05 dB. A click after the reset, and a play edge after the
+  reset, each leave both clip latches clear.
+- **D**, a re-prepare: the whole meter, latches included, and a silent correlation meter.
+- **E**, what must not move: the click with no host reset, and plain decay on silence.
+
+**Against the pre-fix engine, 9 of the 24 fail**: the three A checks, the two C resume checks, the B
+"live readouts beside them are cleared", both clip-latch C checks, and D's correlation publication.
+Against the fix, 0 of 24 fail (the suite runs **4732 checks, 0 failures**, up from 4708).
+
+The GUI-click leg began life in group E as an "unaffected path". Against the pre-fix engine it
+failed. The reason was the frozen RMS number re-latching the clip, which is the defect, not a
+regression in the click. It is labelled C now, and E carries the true control: the click with no
+host reset, which passes before and after the fix.
+
+Frame: `testAHostResetClearsTheLiveMeters` is **464 B** (`-fstack-usage`, static). The suite's
+largest frame is unchanged at **709,760 B** (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`).
+
+### `scripts/check-state-coverage.py`
+
+- `correlation` moved from `everything` to `both`, with the reason.
+- `levels` stays `everything`, **deliberately**: `resets_in` does not count `resetLive()` or
+  `resetHold()` as a reset. Counting `resetLive()` would make R6's defect — a full `levels.reset()` on
+  the host path — read `both` against a `both` declaration and pass. Measured in a scratch mirror
+  of the tree: putting `levels.reset()` back on the host path still fails the lint.
+- Self-test: 83 cases, among them `resetLive` and `resetHold` not counting as a reset, and
+  `correlation` moved back to a re-prepare only firing. The fixtures that encoded R6's shape
+  (correlation under `everything`) were updated to the new one.
+- **A blind spot, measured rather than assumed.** The lint sees WHETHER a module is reset under a
+  scope, not WHICH reset. Swapping `loudness.reset()` and `loudness.softReset()` between the scopes
+  passes it. In the real tree, byte-restored afterwards: the whole swap fails State tests 118, 120
+  and 121 (5 checks, all on the host-reset half). **The re-prepare half alone** — `everything`
+  taking `softReset()`, so a re-prepare keeps the published gain that ADR-0007's note of 2026-09-21
+  says a new sample rate invalidates — **fails nothing**: the lint passes, and so do all 4732 state
+  and 479 DSP checks. That is a coverage gap in a documented contract, not a user-facing defect. It
+  is recorded in the lint's docstring and in `CI_CD.md`, and not closed here.
+
+### Documentation changed, and why each
+
+- **ADR-0007** — a dated Correction. R6's rule "leaves display and the user's own latches alone" is
+  refined to "leaves the latches and the Level-Match result alone, and clears the live display". The
+  ADR is append-only, so R6's text stands.
+- **THREAD_MODEL.md** — the Host reset row (scope rule and the publication from that thread), the
+  prepare row (what `everything` adds), and three handoff rows. *Level meters* and *Correlation* now
+  name the reset writers. *Meter hold reset* now names the play / seek edge as its second writer:
+  that is **reported drift, pre-existing**, because the row named only the GUI. Its anchor
+  `LevelMeters.h:58,62` was re-derived to `:85, 110`. `:62` already pointed at the bit-select comment
+  at HEAD, not at the `exchange`, so that is **drift reported, not silent**.
+- **THREADING_POLICY.md** — the Audio → GUI row now names the reset writers, and the prepare one
+  was missing too.
+- **DSP_ALGORITHMS.md** — one sentence each: `CorrelationMeter::reset()` publishes, and the two
+  `StereoLevel` resets.
+- **CHANGELOG `[0.9.9]`** — R6's bullet said "Transport stops now leave the meters alone", which is
+  no longer true. It now says the peak numbers and their clip colours. A new Fixed bullet covers the
+  freeze. That the freeze is user-visible relative to 0.9.8 rests on a **code audit, not a
+  measurement**. The 0.9.8 release commit `27920b3` and the merge base `bfd0e06` both have no
+  `reset()` override, the same audio-side-only meter ballistics, and the same `energy < 6e-9`
+  correlation glide. So a VST3 suspend froze the meters there as well. The bullet makes no claim
+  about when the defect began.
+- **USER_MANUAL.md** — one clause: a stop keeps the peak numbers and clip colours, and the bars and
+  RMS numbers fall.
+- **CI_CD.md** and the lint docstring — the blind spot above, and why `resetLive()` is not counted.
+
+**Citations.** The `reset()` comment moved everything below it in `AnamorphEngine.cpp` by +7 lines.
+The ten glossed `SIGNAL_FLOW.md` anchors were re-derived by hand: 60 range boundaries were checked
+against HEAD's text at the old line, and every gloss was found inside its new range. The other 34 are
+ordinary drift, handled by `--fix` (0 need a human). Six more anchors are in the class the gate does
+not check (bare filenames, `:NNN` continuations). They were correct at HEAD, this change broke them,
+and they were re-derived by symbol: `PluginProcessor.h:73` and State test 121's header
+(`LevelMeters.h:82-84`), `TROUBLESHOOTING.md` (`:117-125`, `:204`), `POSTMORTEMS.md:51` (`:204`), and
+`REALTIME_SAFETY_AUDIT.md` (`Correlation.h:48-107`, `LevelMeters.h:85-192`).
+
+**Found and reported, not changed** — anchors in that same unchecked class that already pointed at
+unrelated text at HEAD. They split two ways, and the split decides whose drift each one is.
+
+- **Broken by this PR's earlier rounds.** ADR-0039:126, ADR-0040:41 and `SpectrumImager.cpp:662` cite
+  `AnamorphEngine.cpp:609` / `:616` for "the engine only reads these parameters". At the merge base
+  `bfd0e06` those lines ARE `multiband.setCrossovers` / `soloMonitor.setCrossovers`. R4–R8 moved them,
+  and the gate does not read bare filenames. They are at `:770` / `:777` today. The recommendation is
+  to correct them in this PR, since this PR introduced them. It is left to the documentation pass
+  because this round's brief confines docs to the host-reset semantics.
+- **Already wrong at the merge base, so older than the PR.** ADR-0009's `LevelMeters.h:98-102, 167`
+  (`sanitize`; the bit-select helper and a blank line — `LevelMeters.h` is unchanged between the merge
+  base and HEAD). `PARAMETER_REFERENCE.md`'s `:614-617`, `:442-469`, `:648-653`.
+  `REALTIME_SAFETY_AUDIT.md:14`'s `:660-1339`. `POSTMORTEMS.md:87`'s `:513` (the merge base's line is
+  about `osBlend`, not `mbEnableBlend`) and `:920-921`. The NaN self-heal anchors `1256-1300` /
+  `1269-1313` in `TROUBLESHOOTING.md`, `DSP_POLICY.md` and `DEVELOPMENT.md`: the self-heal sat at
+  `:1625` at the merge base and is at `:1819` now.
+
+`DSP_POLICY.md`'s other bare anchors (`AnamorphEngine.cpp:761-766`, `:878-894`, `:726-759`,
+`:768-785`) were **not checked** this round.
+
+**Also reported:** `DOCUMENTATION_LIFECYCLE_POLICY.md` maps "New/changed test" to `TESTING.md` and
+`DOCUMENTATION_COVERAGE.md`. Neither has an entry for State tests 118–122 or Test 58: R6, R7 and R8
+did not add them, and this round did not add one for 122 alone. It belongs to the standalone
+documentation pass.
+
+### Validation — local, this machine only
+
+| check | result |
+|---|---|
+| DSP suite, GCC 13 Release | 479 checks, 0 failures; the same under `ulimit -s 1024` |
+| state suite, GCC 13 Release | 4732 checks, 0 failures; the same under `ulimit -s 1024` |
+| `scripts/preflight.sh` | exit 0. Every lint and self-test passes; citations match `origin/main` (531 anchors) and `d9f6c88` (534). Its local warning sweep and suite half did not run here (no `./build`); the suites above are the same targets built in a scratch tree |
+| GCC gate, approximated | the gate's flag set on every translation unit that sees the changed code, GCC **13** (CI pins 16): only the two baselined sites (`PluginProcessor.cpp` `-Wshadow`, `AnamorphEngine.cpp` `-Wmisleading-indentation`) |
+| Clang gate, approximated | JUCE's Clang warning set, Clang **18** (CI pins 22), same translation units: every first-party site is a baselined one, plus four `-Wmissing-prototypes` in `tests/AllocationGuard.h`, a file this round did not touch. No site lands on a changed line |
+| stack | State test 122's frame is 464 B; the suite's largest is unchanged at 709,760 B |
+
+Not exercised locally, and **not claimed**: MSVC, AppleClang, the pinned Clang 22 and GCC 16, TSan,
+ASan/UBSan, RTSan, valgrind and pluginval. Those are CI's, on the commit that carries this work.
+
+---
+
+## R. Part 9 — the conditional-membership limitation: leave it test-only
+
+Recorded in §O: `check-state-coverage.py` requires the two selection lists to attach the same
+condition to a field they both name. It does not check that the condition is right, because
+conditional membership lives in `updateDerived`'s control flow. Three options:
+
+| option | what it would take | benefit, on evidence |
+|---|---|---|
+| a static check of the condition | reading which branch of `updateDerived` reaches each module — control-flow understanding of C++ from a text scan | one field (`dimMode`) has a condition today; the lint would be fragile for a single row |
+| an executable check | driving each field under each algorithm and asking whether output changes — Test 58's method, generalised | that is a test, and belongs in a test suite |
+| **leave it test-only** (chosen) | nothing | Test 58 already pins the one condition, with four must-still-re-arm legs and the must-not legs. The guard-parity rule (R8) holds the two lists to each other |
+
+Nothing measured this round argues for more. The defect this round found was not in conditional
+membership. It was in the lint's per-method blindness (§Q), and that is recorded as its own gap. The
+note stays informational.
+
+---
+
+## S. Part 10 — the road map, reassessed on the evidence
+
+"Decision" is what should happen next, not work done here; nothing below was implemented. The
+criteria are the brief's: severity, reproducibility, impact, likelihood, regression risk, existing
+safeguards, dependencies and the cost of postponing. Coverage claims are from grep of the current
+tree, not from the original review.
+
+| item | severity · likelihood | safeguards today | cost of postponing | decision |
+|---|---|---|---|---|
+| **R7 — production-reachable unexercised paths** (F15, F14) | medium · the paths run in every host | F15's transport hole is now partly covered: State tests 120–122 install an `AudioPlayHead` and reach the sample-clock path, the play edge, the seek and the no-playhead path. Still reached by **no test**: the ppq fallback in `processBlock` (0 test files call `setPpqPosition`), bus-layout negotiation and the mono up-mix (0 files), `ScopeBuffer::readLatest` (0 files), and the engine-wide NaN/Inf self-heal (F14 — Tests 19 and 45 feed non-finite samples to the meters, never to `AnamorphEngine::process`) | high, and measured by this branch: the host-lifecycle defects fixed in R5, R6, R7 and R9 were each found by review rather than by a test, and each fix had to add the test that was missing (State tests 118, 120, 121, 122) | **proceed — the next priority.** Additive tests, the lowest regression risk on the list, and the class that keeps producing findings. Start with the re-prepare leg below, then F14's self-heal, then F15's holes in the order listed |
+| **A re-prepare keeps the Level-Match gain — untested** (new, §Q) | low · a sample-rate change is rare | none: measured, the mutation passes the lint and all 5211 checks | small but silent — the next edit to `reset()` has nothing to stop it | **proceed**, as R7's first item: one State-test leg (converge, re-prepare at a new rate, assert the published gain is 0). A per-method column in the lint is a table-shape change, and the test is cheaper and exact |
+| **F13** — Level Match state that outlives its validity | medium · every preset / undo / A/B with Level Match on | ADR-0007; Tests 16, 58; State tests 118, 120, 121 | medium: (1) `matchGainSmooth` not snapped on a forced duck carries the previous state's match gain through a preset load, undo or redo (review: high → medium; not measured); (2) continuous-only swaps not re-arming is design debt; (3) `LoudnessMatch`'s missing non-finite guard is low (the review's verifier: the self-heal fires first) | (1) **investigate** — measure the carried gain through a preset load before choosing a fix; (2) **architecture decision** — it is R6c's question and changes ADR-0007's re-arm contract; (3) **defer**, and let it ride with F14's test, which is the one that can reach it |
+| **F10** — re-entrant `mouseUp` leaks two gestures | high · low, needs a re-entrant host | none for three of `gestureBands`' four writers (source-readable: `SpectrumImager.cpp:3254` is the only consult) | medium: a host sees an automation touch that never ends | **investigate**: the root cause is readable in source, and the state suite already drives imager presses (State test 105). A synthetic re-entrant `mouseUp` would turn "likelihood unverified" into a measurement before R6b is sized |
+| **F9** — adoption under the held `soundReplacement` lock | high · unverified, needs a host holding the other edge | the TSan lane and canary, which cannot hold the other edge | unknown; the review marked it overstated | **investigate reachability** before any fix (open question 6 of the global review); no change on this round's evidence |
+| **F12** — `advancedMode` host-writable, synchronous resize | high · low | none: no test transitions it with an editor open | unmeasured: the review records no reproduction in a shipping host | **defer**, unchanged. It needs a host-write test with an editor, which is R7-shaped work once R7's lifecycle items are done |
+| **R6c / R6d** — `processingDiffers`' two questions; one prologue for the five program-state jumps | behaviour changes | R8's guard parity reduces R6c's exposure | low | **defer**, per the road map's own instruction: each needs an ADR amendment |
+| **R6a / R6b** — the `StateCommandGate` lint; `gestureActionDepth` consulted by all four writers | enforcement / F10's fix | — | R6b is gated on F10's measurement | **defer** R6a (trigger unchanged); R6b **after** F10's investigation |
+| **Scalar-state gap**, and the new **per-method blindness**, in `check-state-coverage.py` | enforcement gaps, both documented | tests (State tests 57, 118–122; and the leg above) | low once the re-prepare leg exists | **preserve** as documented; revisit only on a second method-level defect |
+| **Conditional membership** (Part 9) | informational | Test 58 | none | **preserve** test-only (§R) |
+| **F16 / road-map R8** — documentation drift | low · certain | the citation gate covers path-qualified anchors only | rises with every round: this one found five unchecked anchors this PR's own earlier rounds broke, eleven older ones, and the missing test entries (§Q) | **proceed** as a documentation-only pass, separate from code rounds. Do not widen it into an ADR evidence audit, which R8's own text rules out |
+| **Intermittent state failure** (§M, §P) | unattributed | whole CI logs name any recurrence | none this round: nine full local runs, every failure in them a deliberate pre-fix or mutation check | **investigate on recurrence only**; no retry, no loosening |
+| **Vectorscope frozen frame** | not a defect | the idle gate's own comment names the case | — | **refute** |
+
+**The next engineering priority is R7**, entered through its cheapest item, the re-prepare leg. The
+reasons: it is the only open item whose absence produced findings on this branch, round after round;
+its work is additive tests, so it cannot regress the product; and every higher-severity item (F9,
+F10, F12) needs a measurement first that the same test harness provides.
+
+---
+
 ## K. Remaining findings, and what the next item is
+
+> **Updated after R9 (§Q–§S).** The R6 list below stands, with four changes. **R7 is now the next
+> priority**, entered through the re-prepare Level-Match leg (§S). **R6b** is sequenced after an F10
+> measurement. The lint's **per-method blindness** joins the scalar-state gap as a documented
+> enforcement gap. The **documentation pass** gains the unchecked-anchor drift and the missing test
+> entries listed in §Q.
 
 Nothing new was manufactured. The round leaves:
 

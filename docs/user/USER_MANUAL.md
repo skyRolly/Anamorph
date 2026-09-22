@@ -230,7 +230,9 @@ Controls respond to some universal gestures:
 - **Level meters** (hidden until you press the meters icon) — four bars: IN and OUT × L/R,
   with RMS fill, a held peak tick and a clip latch on a dBFS ruler. **Click any readout
   number to reset the holds**; they also reset automatically when the host transport
-  starts or jumps.
+  starts or jumps — not when it stops, so the peak numbers and the clip colours stay
+  readable while you are stopped. The bars (fill and peak tick) and the RMS numbers do
+  fall to silence at the stop.
 
 ### 3.3 WIDEN panel (always visible)
 

@@ -54,10 +54,10 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   each meter is a held peak — the loudest sample since you last cleared it — and clearing it is
   supposed to be your decision, made by clicking it. The host reset added above was clearing it too,
   so on every transport stop a reading you were keeping (measured: **−0.92 dB**) dropped to
-  **−100.00 dB** before you could act on it. Transport stops now leave the meters alone; the reading
-  still clears when you click it, and when the plug-in is re-initialised at a new sample rate, where
-  the old number no longer means anything. Regression coverage: State test 120. Evidence: PR #155.
-  [Verified]
+  **−100.00 dB** before you could act on it. Transport stops now leave the peak numbers and their clip
+  colours alone; the reading still clears when you click it, and when the plug-in is re-initialised at
+  a new sample rate, where the old number no longer means anything. Regression coverage: State test
+  120. Evidence: PR #155. [Verified]
 - **...and starting playback again now clears them, in every host.** The held peak is meant to clear
   when playback restarts, and Anamorph found that restart by watching for the first playing block
   after a non-playing one. Hosts that simply *stop calling the plug-in* while the transport is
@@ -68,6 +68,19 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   a resume from the same spot. The peak now clears on the restart in every host — and still
   **not** at the stop itself, so it is there to read while you are stopped. Regression coverage:
   State test 121. Evidence: PR #155. [Verified]
+- **The meters no longer freeze on the last thing you played when the transport stops.** The meters
+  only move while the plug-in is processing audio, and hosts that stop calling the plug-in while the
+  transport is stopped — which is what a VST3 host does when it suspends processing — left the bars,
+  the RMS numbers and the phase and balance pointers exactly where the music left them for as long as
+  you stayed stopped. Starting again did not fully clear them either: for a second or more the peak
+  tick and the RMS numbers still showed the old take. And if the old take had pushed an RMS number
+  over 0 dBFS, clearing its amber clip colour — by clicking it, or by starting playback — lit it again
+  on the very first block. The bars and RMS numbers now drop to silence at the stop and the phase and
+  balance pointers glide back to centre, while the held peak numbers and their clip colours stay until
+  you click them or playback restarts, as above. Measured through the plug-in: a bar and RMS number
+  that stayed at **−0.92 dB** and **−10.87 dB** after the stop now read silence at once, beside a held
+  peak of **−0.92 dB** that is still there. Regression coverage: State test 122. Evidence: PR #155.
+  [Verified]
 - **Level Match no longer re-measures when nothing about the sound changed.** Level Match watches
   the difference your processing makes and holds that reading steady so A/B-ing does not lurch. It
   re-measures whenever the signal path really moves — a different algorithm, a routing change — and

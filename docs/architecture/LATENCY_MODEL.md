@@ -151,7 +151,7 @@ binary (requires running the plugin; not statically provable here).`
   Oversampling Setting inside an off-thread `setStateInformation` (RISK-007) can still change the
   value from a non-message thread.
 
-Evidence [Verified]: src/PluginProcessor.cpp:256-280 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:344-349,
+Evidence [Verified]: src/PluginProcessor.cpp:256-280 (`deliverLatency` + `updateLatency`), :110-115 (`parameterChanged`); src/dsp/AnamorphEngine.cpp:351-356,
 :293-329, :494-509.
 
 ## INVARIANT (binding)

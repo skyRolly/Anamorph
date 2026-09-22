@@ -182,9 +182,14 @@ edge above must not be read as release non-blocking.
   field they both name — the narrowest rule that would have caught a measured defect, since R4
   guarded `dimMode` in one and left the other comparing it unconditionally and the lint stayed green
   for four rounds. A legitimate divergence is declared in `GUARD_DIVERGENCE` with a reason. It still
-  does not claim the condition is *correct*; Test 58 is what catches a wrong one. Its blind spot is
+  does not claim the condition is *correct*; Test 58 is what catches a wrong one. Its blind spots are
   **scalar** engine state (`dryDelayWrite`, `pendingForced`), cleared by assignment rather than by a
-  call and covered by State tests 57 and 118–120 instead.
+  call and covered by State tests 57 and 118–120 instead; and **which** reset a module takes —
+  `reset()` and `softReset()` both count, so swapping them between scopes passes (measured round 9:
+  the host-reset half of that swap fails State tests 118, 120 and 121, the re-prepare half alone
+  fails nothing). A **partial** reset, `levels.resetLive()`, is deliberately not counted, so the
+  full `levels.reset()` still cannot return to the host-reset path unseen; State test 122 pins the
+  partial one.
   Each of the five runs its own `--self-test` **first**, in this job and ahead of the lint it
   verifies — the step immediately before, for the four that can be; for `check-citations.py` its own
   step ahead of the one that resolves the base revision and then compares, which is the job-and-order

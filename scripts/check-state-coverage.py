@@ -22,7 +22,10 @@ Both of this lint's targets have produced measured defects:
     of them.  Round 6 measured two wrong ones in the same function and in opposite directions:
     `loudness` was not reset at all on a host reset (pre-reset energy kept the silence gate shut
     and the published gain drifted, against ADR-0007), and `levels` WAS reset (wiping `peakHoldL/R`,
-    a latch LevelMeters.h documents as the user's and THREAD_MODEL.md assigns to the GUI).
+    a latch LevelMeters.h documents as the user's and THREAD_MODEL.md assigns to the GUI).  Round 9
+    measured the cost of Round 6's answer for the display: `correlation` and the LIVE half of
+    `levels` were then not reset either, and a host that resets and stops calling `processBlock`
+    froze both at the last active frame (State test 122).
 
 The shape is the same both times: a list whose SUBJECT is enumerable, whose answers are judgement
 calls, and whose omissions are invisible.  This lint does not make the judgements.  It requires
@@ -82,6 +85,19 @@ named here rather than papered over: ER-DSP-07 (`pendingForced` left latched thr
 was exactly such a scalar, and it is covered by tests, not by this lint.  Widening the subject to
 every data member would turn a 12-row table into a 50-row one whose rows are mostly `never`, and a
 table nobody reads is a table nobody maintains.
+
+It sees WHETHER a module is reset under a scope, not WHICH reset.  `reset()` and `softReset()` both
+count, so swapping them between the two scopes still reads `both` and passes.  Measured in round 9:
+that swap's host-reset half fails State tests 118, 120 and 121; its re-prepare half ALONE --
+`everything` taking `softReset()`, so a re-prepare keeps the published Level-Match gain ADR-0007
+says it zeroes -- fails nothing, in this lint or in either suite.  Recorded as a coverage gap, not
+closed here: telling the methods apart means declaring one per module per scope.
+
+A PARTIAL reset is deliberately NOT counted.  `levels.resetLive()` clears the live display and
+keeps the user's latches; counting it as a reset would make the Round-6 defect -- a full
+`levels.reset()` on the host-reset path -- read `both` against a `both` declaration and pass.  So
+`levels` is declared `everything`, a full reset on the host path still fails, and the partial reset
+the host path does take is pinned by State test 122 instead.
 
 WHY THE TABLE IS A LIST TOO, and why that is still a strict improvement
 =======================================================================
@@ -172,11 +188,18 @@ RESET_SCOPE = {
     "loudness": ("both", "K-weighting filters and energy integrators are audio that has stopped; "
                          "the host-reset path takes softReset() so the PUBLISHED gain survives "
                          "(ADR-0007), which is why this row is `both` and not `everything`"),
-    "correlation": ("everything", "display-only running averages, read by the editor and by no "
-                                  "gain or routing decision; they decay on silence by themselves"),
-    "levels": ("everything", "display-only, and peakHoldL/R is the USER'S latch -- "
-                             "LevelMeters.h: \"never falls\"; cleared from the GUI's resetHold(), "
-                             "which THREAD_MODEL.md lists as GUI-owned"),
+    "correlation": ("both", "display-only running averages with NO user latch. R6 declared this "
+                            "`everything` on the premise that they decay on silence by themselves; "
+                            "they decay only inside process(), so a host that resets and stops "
+                            "calling processBlock froze both pointers. reset() now publishes"),
+    # `everything` because that is where the WHOLE meter is reset. A host reset calls
+    # `levels.resetLive()` -- the live display only -- which this table deliberately does NOT
+    # count as a reset (see `resets_in`): if it did, the Round-6 defect (a full
+    # `levels.reset()` on the host-reset path, wiping the user's held peak) would read `both`,
+    # match, and go uncaught. The partial reset is pinned by State test 122 instead.
+    "levels": ("everything", "the WHOLE meter includes peakHoldL/R and the clip latches, the "
+                             "USER'S -- LevelMeters.h: \"never falls\"; cleared by the GUI click "
+                             "or a playback restart. A host reset takes resetLive() instead"),
     "os2": ("both", "oversampler delay: audio"),
     "os4": ("both", "oversampler delay: audio"),
     "os8": ("both", "oversampler delay: audio"),
@@ -919,6 +942,11 @@ def self_test():
           resets_in(split_by_reset_scope(function_body(
               _reset_src(["if (os2) os2->reset();"]), "AnamorphEngine::reset"))[0], "os2"), True)
     check("softReset counts as a reset", resets_in("loudness.softReset();", "loudness"), True)
+    # ...but `resetLive` must NOT. It is a partial reset that leaves the user's latches, and
+    # counting it would let the Round-6 defect -- a FULL `levels.reset()` on the host-reset
+    # path -- read `both`, match its declaration and go uncaught.
+    check("resetLive is not a full reset", resets_in("levels.resetLive();", "levels"), False)
+    check("resetHold is not a full reset", resets_in("levels.resetHold();", "levels"), False)
     check("a near-miss member name does not count",
           resets_in("loudnessRefScratch.reset();", "loudness"), False)
 
@@ -1039,8 +1067,8 @@ def self_test():
     check("the table is restored after the divergence cases", dict(GUARD_DIVERGENCE), _saved)
 
     # --- 6. TARGET 2 MUST STAY QUIET on the real shape ----------------------------------------
-    clean_reset = _reset_src(_ALL_RESET + ["loudnessDone();"],
-                             ["correlation.reset();", "levels.reset();"])
+    clean_reset = _reset_src(_ALL_RESET + ["correlation.reset();", "loudnessDone();"],
+                             ["levels.reset();"], ["levels.resetLive();"])
     clean_reset = clean_reset.replace("    loudnessDone();\n",
                                       "    if (resetScope == ResetScope::everything) "
                                       "loudness.reset();\n    else loudness.softReset();\n")
@@ -1051,18 +1079,28 @@ def self_test():
     # `loudness` untouched on a host reset -- what R5 shipped and R6 measured.
     fires("loudness left out of the host-reset path",
           check_engine_reset(_engine_h(_REAL_MODULES),
-                             _reset_src(_ALL_RESET,
-                                        ["correlation.reset();", "levels.reset();",
-                                         "loudness.reset();"])),
+                             _reset_src(_ALL_RESET + ["correlation.reset();"],
+                                        ["levels.reset();", "loudness.reset();"],
+                                        ["levels.resetLive();"])),
           "loudness")
     # `levels` cleared on a host reset -- the user's held peak, wiped by every transport stop.
-    levels_out = _reset_src(_ALL_RESET + ["levels.reset();", "loudnessPair();"],
-                            ["correlation.reset();"]).replace(
+    levels_out = _reset_src(_ALL_RESET + ["correlation.reset();", "levels.reset();",
+                                          "loudnessPair();"], []).replace(
         "    loudnessPair();\n",
         "    if (resetScope == ResetScope::everything) loudness.reset();\n"
         "    else loudness.softReset();\n")
     fires("levels cleared on the host-reset path",
           check_engine_reset(_engine_h(_REAL_MODULES), levels_out), "levels")
+    # `correlation` moved back under `everything` -- R6's shape, which froze the phase and
+    # balance pointers for any host that resets and then stops calling processBlock.
+    corr_back = _reset_src(_ALL_RESET + ["loudnessPair();"],
+                           ["correlation.reset();", "levels.reset();"],
+                           ["levels.resetLive();"]).replace(
+        "    loudnessPair();\n",
+        "    if (resetScope == ResetScope::everything) loudness.reset();\n"
+        "    else loudness.softReset();\n")
+    fires("correlation moved back to a re-prepare only",
+          check_engine_reset(_engine_h(_REAL_MODULES), corr_back), "correlation")
     fires("a new resettable module with no declared answer",
           check_engine_reset(_engine_h(_REAL_MODULES + ["MonoMaker monoMaker2;"]),
                              clean_reset), "monoMaker2")

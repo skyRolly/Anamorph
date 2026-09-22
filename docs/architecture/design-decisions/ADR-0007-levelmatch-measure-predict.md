@@ -132,13 +132,57 @@ what pins the guard rather than a removal. `scripts/check-state-coverage.py` add
 the two selection lists to attach the same condition to a field they both name; it does not and
 cannot check that the condition is right.
 
+## Correction, 2026-09-22 — the live display is not a latch
+
+The rule settled above — a host reset "leaves **display and the user's own latches** alone" — joined
+two things that need opposite answers. The **latches** (`peakHoldL/R` and the two clip latches) are
+the user's, and that correction is right to keep them. The **live display** (the three meter
+envelopes, the bar tick and its hold, the RMS number and its hold, and `correlation`'s running
+averages) describes audio that has ended. It was skipped on the premise that it decays on silence by
+its own ballistics, which holds only while the host keeps calling `processBlock`: those ballistics
+run in `process()` / `publish()` on the audio thread, and the GUI draws the published atomics with
+none of its own (`gui/LevelMeter.h`: "ballistics are all audio-side"). The host class this entry
+point exists for — VST3 `setProcessing(false)`, AU `Reset()` — calls `reset()` and then stops
+calling `process`.
+
+Measured through the wrapper, a host reset with no block after it (−6 dBFS noise, one 0.9 transient):
+
+| readout | active | after the reset, R6 | 2 s later, R6 | after the reset, now |
+|---|---|---|---|---|
+| dim / bright envelope | −6.13 / −11.17 | −6.13 / −11.17 | −6.13 / −11.17 | −100.00 / −100.00 |
+| bar tick / RMS number | −0.92 / −10.87 | −0.92 / −10.87 | −0.92 / −10.87 | −100.00 / −100.00 |
+| held peak (a latch) | −0.92 | −0.92 | −0.92 | **−0.92** |
+
+With the right channel at 0.4× the left, `correlation`'s `energy` stayed at 9.663e-02 — above the
+GUI's `energy < 6e-9` silence test, so the phase and balance pointers never began their glide to
+centre. On resume the bar tick (1 s hold) and the RMS number (1.2 s hold) still carried the pre-stop
+values. And because `stepRmsNumber` latches the RMS clip on the NUMBER, which neither the readout
+click nor the play edge clears, the first block after either re-latched the clip it had just cleared
+(after +3.52 dB material: RMS clip set again, number +3.30 dB).
+
+`audioTailsOnly` now calls `levels.resetLive()` — the live half, published — and `everything` calls
+`levels.reset()`, the whole meter. `correlation` has no latch, so it is reset on both scopes, and
+its `reset()` now publishes. **The rule is therefore: a host reset clears audio and the live display
+that describes audio that has ended, and leaves the user's latches and the Level-Match result
+alone.** The trade-off, stated rather than hidden: a host that resets AND keeps calling
+`processBlock` with silence now sees the live meters reach the floor at the stop, where they used to
+fall there over several seconds (measured before the fix, that same host: the bar tick at −100 dB
+after 1.5 s, the RMS number still at −25.21 dB after 3 s). The end state is the same, and silence
+with no reset decays exactly as before.
+
+State test 122 asserts all of it through the published atomics — including a click and a play edge
+after the reset, and silence with no reset — and 9 of its 24 checks fail against the pre-fix engine.
+`scripts/check-state-coverage.py` now reads `correlation` as reset on both scopes. `levels` stays
+declared `everything`, deliberately: `resetLive()` is not counted as a reset, so the full
+`levels.reset()` the correction above removed from the host path still cannot come back unseen.
+
 ## Consequences
 - No drift on silence; no ratchet; no Mix=100% slam; unbiased at unity.
 - Deliberately **not** a continuously-adapting AGC.
 
 ## Related code
 - `src/dsp/LoudnessMatch.cpp:15-43` (K-weighting), `:74-95` (predict), `:131-156` (measure/hold)
-- `src/dsp/AnamorphEngine.cpp:1147-1180` (A(dry) ref + silence-edge snap)
+- `src/dsp/AnamorphEngine.cpp:1154-1187` (A(dry) ref + silence-edge snap)
 - `src/PluginProcessor.cpp:402-424` (`applyAutoGain`)
 
 Evidence [Verified]:
