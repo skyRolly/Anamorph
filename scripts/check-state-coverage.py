@@ -42,6 +42,21 @@ the absence is a DECISION with a written reason rather than an omission, and tha
 since drifted away from it.  The judgement stays where it belongs: with the reviewer, the ADR, and
 the tests.
 
+There is a THIRD claim, added in round 8 and deliberately no larger: where the two SELECTION lists
+both name a field, they must attach the SAME condition to it.  `discreteDiffers` and
+`processingDiffers` ask different questions ("must this be swapped at silence?" and "did the signal
+path change?"), but a field's CONDITION in both is the same test -- does the value reach a module --
+so a difference between them is a decision rather than a detail.  This is the narrowest rule that
+would have caught a measured defect: R4 gave `dimMode` a Dimension-D relevance guard in
+`discreteDiffers` and left `processingDiffers` comparing it unconditionally, and the lint stayed
+green for four rounds because "the field is named" was true either way.  An inert Dim-D Style move
+then threw away a converged Level-Match reading through a forced duck (Test 58).
+  * It still does not claim the guard is CORRECT.  Rewriting `Algorithm::DimensionD` to the wrong
+    enumerator keeps both lists in agreement and this check silent; Test 58 is what catches that,
+    and the four "must still re-arm" legs in it exist for exactly that reason.
+  * A divergence CAN be legitimate, since the questions differ, so it is declared in
+    `GUARD_DIVERGENCE` with a reason rather than forbidden.  That table is empty today.
+
 WHY A TEXT SCAN IS THE RIGHT TOOL FOR TARGET 1, which is not true of every lint
 ==============================================================================
 All four functions are single-expression enumerations with a FIXED shape -- a `&&` chain of
@@ -115,6 +130,12 @@ DISCRETE = {
     "channelMode", "monoSum", "swapLR", "msMode", "solo", "algorithm", "haasSide", "dimMode",
     "mbEnable", "mbBands", "monoMakerEnable", "oversample", "bypass", "autoGainMatch",
 }
+
+# Fields whose relevance CONDITION is deliberately different between `discreteDiffers` and
+# `processingDiffers`, with the reason. Empty today, and that is the finding: `dimMode` carries
+# the same Dimension-D guard in both, because both are asking the same thing about it -- does
+# the value reach a module. A future field whose two answers really must differ goes here.
+GUARD_DIVERGENCE = {}
 
 # DISCRETE fields deliberately NOT named in `discreteDiffers`, with the reason the source gives.
 # Being discrete is not the same as needing the duck: a change with its own click-free crossfade
@@ -455,6 +476,37 @@ def resets_in(text, member):
 # =============================================================================================
 #  The checks.
 # =============================================================================================
+_SELECTION_LISTS = ("discreteDiffers", "processingDiffers")
+
+
+def guard_of(body, field):
+    """The CONDITION attached to `field`'s comparison in `body`, normalised, or None.
+
+    The two selection lists are `||` chains of `a.X != b.X`. A field whose relevance is
+    conditional is written as one parenthesised term --
+
+        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
+                                    || b.algorithm == Algorithm::DimensionD))
+
+    -- so the guard is everything after the `&&` up to the paren that opened the term.
+    Whitespace is collapsed so a re-wrap is not a difference; anything else is.
+    """
+    m = re.search(r"\(\s*a\." + re.escape(field) + r"\s*!=\s*b\." + re.escape(field)
+                  + r"\s*&&", body)
+    if m is None:
+        return None
+    depth, k, n = 1, m.end(), len(body)          # the `(` that opened the term
+    while k < n:
+        if body[k] == "(":
+            depth += 1
+        elif body[k] == ")":
+            depth -= 1
+            if depth == 0:
+                return " ".join(body[m.end():k].split())
+        k += 1
+    return None
+
+
 def check_engine_params(params_h, engine_cpp):
     """Problems with the four `EngineParameters` lists, as [(file, line, message)]."""
     problems = []
@@ -539,6 +591,39 @@ def check_engine_params(params_h, engine_cpp):
             problems.append((ENGINE_CPP, 1,
                              f"`{f}` is excluded from `{fn}` but is not DISCRETE, so the exclusion "
                              f"describes nothing."))
+
+    # --- GUARD PARITY between the two selection lists ----------------------------------------
+    # The narrowest rule this lint could add that would have caught a real, measured defect:
+    # R4 gave `dimMode` a Dimension-D relevance guard in `discreteDiffers` and left
+    # `processingDiffers` comparing it unconditionally. The lint stayed green for four rounds,
+    # because "the field is named" was satisfied either way -- and an inert Dim-D Style move
+    # then threw away a converged Level-Match reading through a forced duck (Test 58).
+    #
+    # WHAT THIS CLAIMS, and it is deliberately not more: the two lists must give the SAME
+    # answer where they both answer. It does NOT claim the answer is right -- that is still the
+    # reviewer's, the ADR's and the test's job, and Test 58 is what actually pins this one.
+    # The lists ask different questions, so a divergence CAN be legitimate; it just has to be
+    # declared with a reason rather than appear.
+    guards = {f: {fn: guard_of(bodies[fn], f) for fn in _SELECTION_LISTS} for f in fields}
+    for f in sorted(fields):
+        g = guards[f]
+        present = {fn: g[fn] for fn in _SELECTION_LISTS
+                   if re.search(r"\ba\." + re.escape(f) + r"\s*!=\s*b\." + re.escape(f) + r"\b",
+                                bodies[fn])}
+        if len(present) < 2 or len(set(present.values())) == 1:
+            continue
+        if f in GUARD_DIVERGENCE:
+            continue
+        shown = "; ".join(f"`{fn}`: " + (v if v else "no guard") for fn, v in present.items())
+        problems.append((ENGINE_CPP, 1,
+                         f"`{f}` is compared under DIFFERENT conditions in the two selection "
+                         f"lists -- {shown}. Both ask whether the field reaches a module, so a "
+                         f"difference is a decision: make them agree, or record why they must "
+                         f"not in GUARD_DIVERGENCE in scripts/check-state-coverage.py."))
+    for f in sorted(set(GUARD_DIVERGENCE) - set(fields)):
+        problems.append((ENGINE_CPP, 1,
+                         f"GUARD_DIVERGENCE names `{f}`, which `EngineParameters` does not "
+                         f"declare. Remove it."))
     return problems
 
 
@@ -723,8 +808,10 @@ def _copy_src(preserve, half=None):
             + "    dst = src;\n" + restores + "}\n")
 
 
-def _diff_src(fn, named):
-    terms = [f"a.{f} != b.{f}" for f in sorted(named)] or ["false"]
+def _diff_src(fn, named, guarded=None):
+    guarded = guarded or {}
+    terms = [(f"(a.{f} != b.{f} && {guarded[f]})" if f in guarded else f"a.{f} != b.{f}")
+             for f in sorted(named)] or ["false"]
     return (f"bool AnamorphEngine::{fn} (const EngineParameters& a, "
             f"const EngineParameters& b) noexcept\n{{\n    return "
             + "\n        || ".join(terms) + ";\n}\n")
@@ -901,6 +988,55 @@ def self_test():
               check_engine_params(_params_src(),
                                   base + _diff_src(fn, (DISCRETE - set(excluded)) | {"mix"})),
               "mix")
+
+    # --- 5b. GUARD PARITY between the two selection lists -------------------------------------
+    # The rule that would have caught the R8 defect: R4 guarded `dimMode` in `discreteDiffers`
+    # and left `processingDiffers` comparing it unconditionally, and "the field is named" was
+    # satisfied either way. Both directions are exercised, including the escape hatch.
+    G1 = "(a.algorithm == X::D || b.algorithm == X::D)"
+    G2 = "(a.algorithm == X::D)"
+
+    def _pair(gd=None, gp=None):
+        """Both selection lists over the full DISCRETE set, each optionally guarding `solo`."""
+        return (_same_src(sorted(DISCRETE) + list(_CONTINUOUS_SAMPLE)) + _copy_src(DISCRETE)
+                + _diff_src("discreteDiffers", DISCRETE - set(DISCRETE_DIFFERS_EXCLUDED),
+                            {"solo": gd} if gd else None)
+                + _diff_src("processingDiffers", DISCRETE - set(PROCESSING_DIFFERS_EXCLUDED),
+                            {"solo": gp} if gp else None))
+
+    check("an unguarded term has no guard",
+          guard_of("return a.solo != b.solo || a.mix != b.mix;", "solo"), None)
+    check("a guard is extracted whole, nested parens included",
+          guard_of("return (a.solo != b.solo && (a.x == P::Q || b.x == P::Q)) || z;", "solo"),
+          "(a.x == P::Q || b.x == P::Q)")
+    check("a re-wrapped guard is the same guard",
+          guard_of("return (a.solo != b.solo && (a.x == P::Q\n   || b.x == P::Q));", "solo"),
+          guard_of("return (a.solo != b.solo && (a.x == P::Q || b.x == P::Q));", "solo"))
+
+    check("the same guard in both lists is quiet",
+          check_engine_params(_params_src(), _pair(G1, G1)), [])
+    check("no guard in either list is quiet",
+          check_engine_params(_params_src(), _pair()), [])
+    fires("a guard in ONE list only -- the R8 defect's own shape",
+          check_engine_params(_params_src(), _pair(G1, None)), "solo")
+    fires("a guard in the OTHER list only",
+          check_engine_params(_params_src(), _pair(None, G1)), "solo")
+    fires("two DIFFERENT guards",
+          check_engine_params(_params_src(), _pair(G1, G2)), "solo")
+
+    _saved = dict(GUARD_DIVERGENCE)
+    try:
+        GUARD_DIVERGENCE["solo"] = "a declared, deliberate difference"
+        check("a DECLARED divergence is quiet",
+              check_engine_params(_params_src(), _pair(G1, None)), [])
+        GUARD_DIVERGENCE.clear()
+        GUARD_DIVERGENCE["notAField"] = "stale"
+        fires("a declaration for a field the struct does not have",
+              check_engine_params(_params_src(), _pair(G1, G1)), "notAField")
+    finally:
+        GUARD_DIVERGENCE.clear()
+        GUARD_DIVERGENCE.update(_saved)
+    check("the table is restored after the divergence cases", dict(GUARD_DIVERGENCE), _saved)
 
     # --- 6. TARGET 2 MUST STAY QUIET on the real shape ----------------------------------------
     clean_reset = _reset_src(_ALL_RESET + ["loudnessDone();"],

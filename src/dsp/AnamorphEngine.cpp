@@ -423,8 +423,34 @@ bool AnamorphEngine::processingDiffers (const EngineParameters& a, const EngineP
 {
     return a.channelMode != b.channelMode || a.monoSum  != b.monoSum  || a.swapLR   != b.swapLR
         || a.msMode      != b.msMode      || a.solo     != b.solo     || a.algorithm != b.algorithm
-        || a.haasSide    != b.haasSide    || a.dimMode  != b.dimMode  || a.mbEnable  != b.mbEnable
+        || a.haasSide    != b.haasSide    || a.mbEnable != b.mbEnable
         || a.mbBands     != b.mbBands
+        // dimMode carries THE SAME Dimension-D relevance guard `discreteDiffers` has, and
+        // for the same one-line reason: `chorus.setDimMode (p.dimMode)` is the only reader
+        // and it sits inside `else if (p.algorithm == Algorithm::DimensionD)`. With any
+        // other algorithm adopted the value reaches no module, so the SIGNAL PATH did not
+        // change and re-arming the Level-Match measurement for it throws away a converged
+        // reading for nothing.
+        //
+        // WHY THIS WAS REACHABLE AT ALL, since R4's guard means an inert dimMode move opens
+        // no duck of its own and this function is read only at the duck BOTTOM. Two routes,
+        // both measured (Test 58, tests/dsp_tests.cpp):
+        //   * a FORCED duck -- A/B, preset load, undo (`requestDuck`, PluginProcessor.cpp)
+        //     -- ducks regardless of what differs, so a slot or preset whose only
+        //     processing delta is dimMode reached this line and re-armed.
+        //   * `autoGainMatch` is the ONE field in `discreteDiffers` but not here, so
+        //     toggling Level Match itself opens a duck; an inert dimMode riding in the same
+        //     snapshot made `procChanged` true. That defeats the rule the call site states
+        //     three lines below -- "Toggling Level Match / Bypass must NOT re-measure".
+        // Measured on the engine, Haas + Level Match, converged then silent: the analysis
+        // survived (0.030 dB of ordinary drift) on the plain dimMode move, and was thrown
+        // away (0.000 dB, frozen) on both of those routes. With the guard, both preserve.
+        //
+        // Symmetric and conservative, exactly as in `discreteDiffers`: if EITHER side is
+        // DimensionD this still fires, and when only one side is, `algorithm` already
+        // differs on the line above, so the guard changes nothing there.
+        || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
+                                    || b.algorithm == Algorithm::DimensionD))
         || a.monoMakerEnable != b.monoMakerEnable || a.oversample != b.oversample;
 }
 

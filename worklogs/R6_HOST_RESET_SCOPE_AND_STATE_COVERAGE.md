@@ -554,6 +554,139 @@ be named; nothing here suppresses, retries or loosens anything to hide it.
 
 ---
 
+## N. Second follow-up: an inert dimMode move re-armed the Level-Match measure
+
+A third review finding on the same branch. **Confirmed** — but its stated scenario does not
+reproduce, and the routes that do are different ones.
+
+### What the two lists actually said
+
+R4 gave `discreteDiffers` a Dimension-D relevance guard on `dimMode` (§ADR-0004's Correction):
+`chorus.setDimMode (p.dimMode)` is the field's only reader and it sits inside
+`else if (p.algorithm == Algorithm::DimensionD)`, so under any other algorithm the value reaches no
+module. `processingDiffers` — the narrower question, *did the signal path change* — still compared
+it unconditionally. Its one consumer is the silent duck bottom:
+
+```cpp
+const bool procChanged = processingDiffers (pendingP, p);
+...
+if (procChanged) loudness.softReset();
+```
+
+### The reported scenario does not reproduce, and that had to be measured
+
+A plain Dim-D Style move under Haas opens **no duck at all** after R4, so `processingDiffers` is
+never consulted. Measured; it is leg 1 of the test, asserted rather than assumed, so a future
+widening of `discreteDiffers` cannot make the test pass for the wrong reason.
+
+### The two routes that do reach it
+
+| route | before | after |
+|---|---|---|
+| a plain Dim-D Style move under Haas *(the reported scenario)* | preserved | preserved |
+| a **forced duck** — A/B, preset recall, undo, all via `requestDuck()` — whose only processing delta is `dimMode` | **thrown away** | preserved |
+| `dimMode` in the same snapshot as a **Level Match toggle** | **thrown away** | preserved |
+| `dimMode` riding a real discrete change | thrown away | thrown away |
+| `dimMode` **while Dimension D is live** | thrown away | thrown away |
+| switching **to** Dimension D; `haasSide` | thrown away | thrown away |
+
+The second route is the pointed one: `autoGainMatch` is the **one** field `discreteDiffers` lists
+and `processingDiffers` does not, so toggling Level Match opens a duck of its own — and an inert
+`dimMode` riding along made `procChanged` true, defeating the rule written three lines below the
+call: *"Toggling Level Match / Bypass must NOT re-measure."*
+
+### The discriminator, and the attribution
+
+`softReset()` clears the K-weighting filters and the energy integrators and keeps the published
+gain; the silence gate is judged **from** those integrators. So: converge, go silent, make the
+change, keep feeding silence. Analysis preserved → stale integrators → `silent` false → the gain
+drifts (**0.030446 dB**). Analysis re-armed → integrators at 1e-9 → frozen (**0.000454 dB**, one
+block of pre-bottom drift and then nothing). A **67×** separation, so the 1e-3 threshold sits
+nowhere near either number.
+
+Each defect leg is paired with an **attribution control** — the same duck with `dimMode` held still.
+Both preserved *before* the fix, so the re-arm was attributable to `dimMode` and to nothing else in
+the snapshot. Without those two controls the legs would only show that *a* duck re-arms.
+
+### The fix, and what pins it
+
+The same guard `discreteDiffers` already carries, symmetric and conservative: if either side is
+DimensionD it still fires, and when only one side is, `algorithm` already differs a line above.
+**Test 58** (10 checks) carries all six rows plus the two attribution controls; **two fail** against
+the pre-fix tree, and they are exactly the two reachable routes. Four of its legs must still
+RE-ARM — those are what pin the guard rather than a deletion of the term.
+
+---
+
+## O. Part 3: the checker's blind spot — extended, narrowly, and the case against
+
+The informational finding: `check-state-coverage.py` cannot validate the *conditional meaning* of
+`dimMode`'s membership. True, and this defect is the proof — the lint was green for four rounds
+while the two lists disagreed, because "the field is named" was satisfied either way.
+
+**Decision: extend, with an escape hatch.** Both of the bars set for it are met and measurable.
+
+* **Measured benefit.** R4 introduced the asymmetry on 2026-09-21 and it survived to round 8 under
+  a green lint. The rule fails the build at the moment it is introduced, in seconds, on every push.
+* **A clear mechanical rule.** *Where the two selection lists both name a field, they must attach
+  the same condition to it.* The lists ask different questions, but a field's condition in both is
+  the same test — does the value reach a module — so a difference is a decision. The guard is
+  extracted by balanced-paren walk from a fixed term shape and compared with whitespace collapsed.
+* **It cannot become wrong**, because a legitimate divergence is *declared* in `GUARD_DIVERGENCE`
+  with a reason rather than forbidden — the same idiom as the existing exclusion tables. Empty today.
+
+**The case against, recorded because it is real.** The rule governs exactly one field today, and
+Test 58 already pins the behaviour by measurement with ten legs, four of them specifically on the
+guard. A test that measures output is strictly stronger than a lint that compares text: rewriting
+`Algorithm::DimensionD` to the wrong enumerator keeps both lists in agreement and leaves this check
+silent. That limit is now written into the lint's own docstring rather than left for a reader to
+discover — the lint's third claim is stated as consistency, never correctness.
+
+**Not done:** anything that would have the lint reason about what a guard *means*. That needs real
+analysis, not a text scan, and it is the boundary the docstring has drawn since round 6.
+
+Self-test 64 → **79 cases**, both directions, including the R8 defect's own shape, a differing
+guard, a re-wrapped guard (must be the same guard), the declared-divergence hatch and a stale
+declaration. Demonstrated firing against the **real tree** for both violation shapes.
+
+---
+
+## P. Part 4: the intermittent state-suite failure — still unattributed, and now much better bounded
+
+§M recorded one local run reporting `4708 checks, 1 failure(s)` whose failing check was lost to a
+`tail`. This round adds the evidence that matters most, and it is not local.
+
+**CI on `caef45a` completed with every job green** (run 35703670784), and seven of those jobs run
+the full state suite independently:
+
+| job | toolchain / platform |
+|---|---|
+| `linux` | GCC Release, and again under `ulimit -s 1024` |
+| `linux-lto-tests` | GCC + `-flto` |
+| `sanitizers` | Clang ASan + UBSan + vptr, **and** valgrind memcheck |
+| `tsan` | Clang ThreadSanitizer (plus the D-2 probes ×5) |
+| `windows` | MSVC |
+| `macos` | AppleClang universal, **and** the x86_64 slice under Rosetta |
+| `macos-intel` | native Intel |
+
+Plus three more local runs on the current tree. So the count since the single observed failure is
+now **nine local runs** (four idle, three under a six-way CPU spin, two under a concurrent 4-way
+rebuild) **plus three more here plus the CI matrix** — across five toolchains and three operating
+systems, with sanitizers and valgrind — and none reproduced it.
+
+Against the three questions asked:
+* **Caused by this branch?** No evidence for it, and now substantial evidence against: the branch
+  head passes the suite on every platform and sanitizer CI runs.
+* **Deterministic?** No. Not once in the reproductions above.
+* **Otherwise?** **Unattributed.** The failing check is still unknown, because that run's stdout was
+  piped through `tail`. Nothing has been retried, loosened, suppressed or marked flaky. The suite
+  carries six pre-existing wall-clock assertions, and the tightest was measured at **51 ms against
+  its 400 ms bound**, unchanged under load — so the obvious hypothesis is not supported either.
+
+It does not block this work, and CI captures whole logs, so a recurrence there will name the check.
+
+---
+
 ## K. Remaining findings, and what the next item is
 
 Nothing new was manufactured. The round leaves:

@@ -96,13 +96,49 @@ narrowing that kept the peak by breaking the play-edge clear could not pass — 
 pre-fix engine (0.0242 dB of drift; −100.00 dB held peak).
 `scripts/check-state-coverage.py` holds the per-module decision in place.
 
+## Note, 2026-09-22 — what may re-arm the measure, and what may not
+
+The measure is re-armed in exactly one place: the silent duck bottom, `if (procChanged)
+loudness.softReset()`, where `procChanged` is `processingDiffers (pendingP, p)`. That function asks
+*did the signal path change* — a narrower question than the duck's own — and its answer decides
+whether a converged reading survives a switch.
+
+`processingDiffers` compared `dimMode` **unconditionally**, while ADR-0004's Correction of
+2026-09-21 had already given `discreteDiffers` a Dimension-D relevance guard for it: the field's
+only reader is `chorus.setDimMode`, inside `else if (p.algorithm == Algorithm::DimensionD)`, so
+under any other algorithm the value reaches no module and the path did not change.
+
+**The reported scenario did not reproduce**, and that is worth recording. A plain Dim-D Style move
+under Haas opens no duck at all after ADR-0004's correction, so this function is never consulted.
+Two other routes did reach it, both measured on the engine (Haas, Level Match engaged, converged
+then silent — the analysis survives as ~0.030 dB of ordinary drift and is thrown away as a frozen
+0.000):
+
+| route | before | after |
+|---|---|---|
+| a plain Dim-D Style move | preserved | preserved |
+| a **forced duck** — A/B, preset recall, undo (`requestDuck`) whose only processing delta is `dimMode` | **thrown away** | preserved |
+| `dimMode` in the same snapshot as a **Level Match toggle** (`autoGainMatch` is the one field `discreteDiffers` lists and `processingDiffers` does not, so it opens a duck of its own) | **thrown away** | preserved |
+| `dimMode` while Dimension D is live, or any real path change | thrown away | thrown away |
+
+The second route defeats the rule written at the call site itself — *"Toggling Level Match / Bypass
+must NOT re-measure, or enabling Match with a big boost slams loud for a moment"*. Each of the two
+was paired with an attribution control (the same duck with `dimMode` held still), and both controls
+preserved, so the re-arm was attributable to `dimMode` alone.
+
+`processingDiffers` now carries the same guard, symmetric and conservative exactly as in
+`discreteDiffers`. Test 58 pins all of it, including four legs that must STILL re-arm — which is
+what pins the guard rather than a removal. `scripts/check-state-coverage.py` additionally requires
+the two selection lists to attach the same condition to a field they both name; it does not and
+cannot check that the condition is right.
+
 ## Consequences
 - No drift on silence; no ratchet; no Mix=100% slam; unbiased at unity.
 - Deliberately **not** a continuously-adapting AGC.
 
 ## Related code
 - `src/dsp/LoudnessMatch.cpp:15-43` (K-weighting), `:74-95` (predict), `:131-156` (measure/hold)
-- `src/dsp/AnamorphEngine.cpp:1121-1154` (A(dry) ref + silence-edge snap)
+- `src/dsp/AnamorphEngine.cpp:1147-1180` (A(dry) ref + silence-edge snap)
 - `src/PluginProcessor.cpp:402-424` (`applyAutoGain`)
 
 Evidence [Verified]:

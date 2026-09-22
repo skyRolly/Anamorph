@@ -5,7 +5,7 @@ order guarantees. Reorder constraints are formalised in `DSP_GRAPH_REFERENCE.md`
 order itself is a binding invariant (`docs/policies/DSP_POLICY.md`).
 
 Evidence [Verified] for the entire chain:
-- Source: src/dsp/AnamorphEngine.cpp:947-1875 (`process`)
+- Source: src/dsp/AnamorphEngine.cpp:973-1901 (`process`)
 - Source: src/dsp/AnamorphEngine.h:23-42 (chain header comment)
 - Tests: tests/dsp_tests.cpp :: testMonoMakerPostMix, testSoloMonitor, testMultibandMonoCompat,
   testLevelMatchAndSolo, testNoClicksAcrossTransitions
@@ -61,45 +61,45 @@ which is what it is for and what does not rot.
 
 | Stage | Source |
 |---|---|
-| 0 · Input level tap | src/dsp/AnamorphEngine.cpp:1128 (`levels.input.process`) |
-| 0b · True-bypass dry capture | src/dsp/AnamorphEngine.cpp:1130-1201 (`bypassDelayBuffer`) |
-| 1 · Input conditioning | src/dsp/AnamorphEngine.cpp:1204 (`applyInputConditioning`) |
-| 1b · M/S Solo | src/dsp/AnamorphEngine.cpp:1209-1212 |
-| — conditioned-input capture | src/dsp/AnamorphEngine.cpp:1220-1221 (`dryScratch`) |
-| 2a · Oversampled nonlinear region | src/dsp/AnamorphEngine.cpp:1223-1380 |
-| 2b · Linear algorithm at base rate | src/dsp/AnamorphEngine.cpp:1382-1384 |
-| 2c · Global Width (MS-domain) | src/dsp/AnamorphEngine.cpp:1386-1400 (`applyWidth`) |
-| 2d · Multiband Width | src/dsp/AnamorphEngine.cpp:1402-1521 (`multiband.processBlock`) |
-| 3 · Dry/Wet Mix | src/dsp/AnamorphEngine.cpp:1523-1631 |
-| 4 · Mono Maker (post-Mix) | src/dsp/AnamorphEngine.cpp:1638 (`monoMaker.process`) |
-| 5 · Output stage | src/dsp/AnamorphEngine.cpp:1640-1766 |
-| 6 · Band Solo monitor | src/dsp/AnamorphEngine.cpp:1784 (`soloMonitor.process`) |
-| 6b · NaN/Inf self-heal | src/dsp/AnamorphEngine.cpp:1786-1836 |
-| 7 · Bypass crossfade | src/dsp/AnamorphEngine.cpp:1838-1863 (`bypassBlend`) |
-| 8 · Metering tap | src/dsp/AnamorphEngine.cpp:1865-1874 (`scope.pushBlock`) |
+| 0 · Input level tap | src/dsp/AnamorphEngine.cpp:1154 (`levels.input.process`) |
+| 0b · True-bypass dry capture | src/dsp/AnamorphEngine.cpp:1156-1227 (`bypassDelayBuffer`) |
+| 1 · Input conditioning | src/dsp/AnamorphEngine.cpp:1230 (`applyInputConditioning`) |
+| 1b · M/S Solo | src/dsp/AnamorphEngine.cpp:1235-1238 |
+| — conditioned-input capture | src/dsp/AnamorphEngine.cpp:1246-1247 (`dryScratch`) |
+| 2a · Oversampled nonlinear region | src/dsp/AnamorphEngine.cpp:1249-1406 |
+| 2b · Linear algorithm at base rate | src/dsp/AnamorphEngine.cpp:1408-1410 |
+| 2c · Global Width (MS-domain) | src/dsp/AnamorphEngine.cpp:1412-1426 (`applyWidth`) |
+| 2d · Multiband Width | src/dsp/AnamorphEngine.cpp:1428-1547 (`multiband.processBlock`) |
+| 3 · Dry/Wet Mix | src/dsp/AnamorphEngine.cpp:1549-1657 |
+| 4 · Mono Maker (post-Mix) | src/dsp/AnamorphEngine.cpp:1664 (`monoMaker.process`) |
+| 5 · Output stage | src/dsp/AnamorphEngine.cpp:1666-1792 |
+| 6 · Band Solo monitor | src/dsp/AnamorphEngine.cpp:1810 (`soloMonitor.process`) |
+| 6b · NaN/Inf self-heal | src/dsp/AnamorphEngine.cpp:1812-1862 |
+| 7 · Bypass crossfade | src/dsp/AnamorphEngine.cpp:1864-1889 (`bypassBlend`) |
+| 8 · Metering tap | src/dsp/AnamorphEngine.cpp:1891-1900 (`scope.pushBlock`) |
 
 ## Invariants (must hold; each is testable)
 
 | Invariant | Where enforced | Test |
 |---|---|---|
-| **Mono Maker runs POST-Mix**, on the mixed signal, in place. | src/dsp/AnamorphEngine.cpp:1638 (`monoMaker.process`) | testMonoMakerPostMix |
-| **Band Solo is the very last audio stage and is monitoring-only** — it never changes any effect stage; `mask==0` → bit-exact true output. | src/dsp/AnamorphEngine.cpp:1784 (`soloMonitor.process`); src/dsp/SoloMonitor.h:12-16, 33 | testSoloMonitor, testSoloNoGhostInSilence |
+| **Mono Maker runs POST-Mix**, on the mixed signal, in place. | src/dsp/AnamorphEngine.cpp:1664 (`monoMaker.process`) | testMonoMakerPostMix |
+| **Band Solo is the very last audio stage and is monitoring-only** — it never changes any effect stage; `mask==0` → bit-exact true output. | src/dsp/AnamorphEngine.cpp:1810 (`soloMonitor.process`); src/dsp/SoloMonitor.h:12-16, 33 | testSoloMonitor, testSoloNoGhostInSilence |
 | **Effect engine is solo-agnostic** — the Multiband always sums every band; solo is a downstream monitor. | src/dsp/MultibandWidth.h:43-45 | testSoloMonitor (energy-transparent) |
-| **Dry path is delay-compensated** to the wet (oversampling) latency. | src/dsp/AnamorphEngine.cpp:1523-1631, getLatencySamples | testBypassNullAndLatency |
-| **Dry path is phase-matched** through the same crossovers as the wet (A(dry)) so a partial Mix never combs the mono sum. The reconstruction is gated off in the settled-full-wet state (Mix exactly 1, Match off, no crossfade — Wave 2 / H4) and re-engages phase-matched on a Mix dip. | src/dsp/AnamorphEngine.cpp:1402-1521, 1523-1631 | testMultibandMonoCompat, testDryAlignGateRecomb |
-| **Mix = 0 is a bit-exact null** (smoothstep clean→aligned crossfade over first ~5% of Mix). | src/dsp/AnamorphEngine.cpp:1536, 1570-1590 (`kAlignMix`) | testBypassNullAndLatency / testTransparentDefault |
+| **Dry path is delay-compensated** to the wet (oversampling) latency. | src/dsp/AnamorphEngine.cpp:1549-1657, getLatencySamples | testBypassNullAndLatency |
+| **Dry path is phase-matched** through the same crossovers as the wet (A(dry)) so a partial Mix never combs the mono sum. The reconstruction is gated off in the settled-full-wet state (Mix exactly 1, Match off, no crossfade — Wave 2 / H4) and re-engages phase-matched on a Mix dip. | src/dsp/AnamorphEngine.cpp:1428-1547, 1549-1657 | testMultibandMonoCompat, testDryAlignGateRecomb |
+| **Mix = 0 is a bit-exact null** (smoothstep clean→aligned crossfade over first ~5% of Mix). | src/dsp/AnamorphEngine.cpp:1562, 1596-1616 (`kAlignMix`) | testBypassNullAndLatency / testTransparentDefault |
 | **Oversampling wraps only Drive + Chorus/Dim-D**; linear stages stay outside; OS off ⇒ 0 latency. | src/dsp/AnamorphEngine.cpp (`osActiveFor`, the wrap and its `else` arm) | testBypassNullAndLatency |
 | **Engaging / disengaging the oversampling wrap is a CROSSFADE, not a ducked switch** (ADR-0035). `osBlend` (12 ms) mixes the base-rate and the wrapped path, which is only possible because ADR-0034 gave them the same latency and so made them sample-aligned. A duck cannot mask this swap: the duck's gain is applied at the output stage, downstream of Haas (12–35 ms) and Velvet (~21 ms), so the handover's discontinuity entered their delay lines at full level and re-emerged after the fade. An oversampling **factor** change still ducks — that one moves the latency, so the paths are not aligned and must not be mixed; that duck therefore **settles** the blend on the state it adopts rather than carrying it across, and the mix reads its wrapped path from the live oversampler pointer, so it can never weight a path that does not exist. | src/dsp/AnamorphEngine.cpp (`osBlend`, the two paths and their mix) | testDriveCrossingIsSeamlessWithOversampling, testOversamplingOffHandoffKeepsProcessing |
 | **Reported latency follows the SELECTED FACTOR, not the wrap's engagement** (ADR-0034). Where the wrap is skipped for want of nonlinear work, a 2-channel integer ring stands in for its group delay **in the wrap's own place in the chain**, so the five `-lat` ring reads below measure from an unchanged point and no parameter can move the host's PDC. | src/dsp/AnamorphEngine.cpp (`osCompDelayBuffer`, `osLatencyFor`) | testOversamplingLatencyIsFactorOnly |
-| **Bypass is a click-free crossfade to the delay-aligned RAW input**, not a mute; chain + analysis always run. | src/dsp/AnamorphEngine.cpp:1130-1201, 1838-1863 (`bypassBlend`) | testBypassCrossfadeClickFree, testLevelMatchRunsInBypass |
-| **Level Match measures the post-Mono-Maker output vs the delay-aligned reconstruction A(dry).** | src/dsp/AnamorphEngine.cpp:1650-1655 (`loudness.process`) | testLevelMatchUnity, testMultibandUnityMatch |
+| **Bypass is a click-free crossfade to the delay-aligned RAW input**, not a mute; chain + analysis always run. | src/dsp/AnamorphEngine.cpp:1156-1227, 1864-1889 (`bypassBlend`) | testBypassCrossfadeClickFree, testLevelMatchRunsInBypass |
+| **Level Match measures the post-Mono-Maker output vs the delay-aligned reconstruction A(dry).** | src/dsp/AnamorphEngine.cpp:1676-1681 (`loudness.process`) | testLevelMatchUnity, testMultibandUnityMatch |
 
 ## Notes
 
 - **M/S domain.** When `msMode` is on, Input conditioning decodes Mid/Side→L/R inside
   `applyInputConditioning`; Balance/polarity act in the M/S domain before decode.
-  Source: src/dsp/AnamorphEngine.cpp:761-823 (`applyInputConditioning`); the M/S
-  decode branch is src/dsp/AnamorphEngine.cpp:798-811.
+  Source: src/dsp/AnamorphEngine.cpp:787-849 (`applyInputConditioning`); the M/S
+  decode branch is src/dsp/AnamorphEngine.cpp:824-837.
 - **Discrete switches** (algorithm/routing/band-count/oversampling-path) are applied at the
   silent bottom of a raised-cosine duck (fade-out ~6 ms, fade-in ~28 ms). Bypass, Multiband
   Enable, and Band Solo are **not** ducked — they use their own click-free crossfades. Nor is a
@@ -109,11 +109,11 @@ which is what it is for and what does not rot.
   of 2026-09-21 carries the measurement.
   Source: src/dsp/AnamorphEngine.cpp:359-420 (`discreteDiffers`); the duck fade
   times at src/dsp/AnamorphEngine.cpp:87-88 (`switchIncOut`); the Multiband Enable
-  crossfade at src/dsp/AnamorphEngine.cpp:1417-1521 (`mbEnableBlend`) — which since ADR-0005's
+  crossfade at src/dsp/AnamorphEngine.cpp:1443-1547 (`mbEnableBlend`) — which since ADR-0005's
   Correction of 2026-09-21 also glides the reconstructed dry `A(dry)` toward the clean dry on the
   same curve, so the Mix stage's dry source is never switched in one sample; Band Solo at
-  src/dsp/AnamorphEngine.cpp:1784 (`soloMonitor.process`); the Bypass crossfade at
-  src/dsp/AnamorphEngine.cpp:1838-1863 (`bypassBlend`).
+  src/dsp/AnamorphEngine.cpp:1810 (`soloMonitor.process`); the Bypass crossfade at
+  src/dsp/AnamorphEngine.cpp:1864-1889 (`bypassBlend`).
 - **Forced bulk swaps** (undo / redo / A/B / preset — `requestDuck()`) run the same duck, but
   its output is **dry-filled**: stage 5 crossfades toward the delay-aligned raw input (the
   true-bypass ring) instead of dipping to silence, so the swap is heard as a short dip to the

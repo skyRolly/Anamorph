@@ -68,6 +68,17 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   a resume from the same spot. The peak now clears on the restart in every host — and still
   **not** at the stop itself, so it is there to read while you are stopped. Regression coverage:
   State test 121. Evidence: PR #155. [Verified]
+- **Level Match no longer re-measures when nothing about the sound changed.** Level Match watches
+  the difference your processing makes and holds that reading steady so A/B-ing does not lurch. It
+  re-measures whenever the signal path really moves — a different algorithm, a routing change — and
+  that is right. It was also re-measuring for a change to **Dim-D Style** when Dimension D is not
+  the selected algorithm, where that control reaches nothing at all. On its own the stray reading
+  was already harmless, but two ordinary actions carried it in: switching **A/B** or recalling a
+  **preset** whose only difference is that control, and toggling **Level Match itself** with that
+  control also different — both threw away a converged reading and started again. Dim-D Style now
+  only counts as a change to the sound when Dimension D is actually in use, matching how the same
+  control already behaves elsewhere. Changing it *while* Dimension D is selected still re-measures,
+  because then it really is audible. Regression coverage: Test 58. Evidence: PR #155. [Verified]
 - **Anamorph now tells your host how long its sound really takes to decay.** The reported tail length
   was a fixed 0.1 s, and the chain can ring for considerably longer than that — measured at up to
   0.25 s, with the low crossover settings and Band Solo that produce it. Hosts use that figure to

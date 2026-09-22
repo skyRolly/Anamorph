@@ -122,7 +122,7 @@ the flag refreshed, every route is bit-identical to the entry route.
 - `:831-845` (SoloMonitor every-block); `src/dsp/SoloMonitor.cpp:59-109`
 
 Evidence [Verified]:
-- Source: src/dsp/AnamorphEngine.cpp:306-333, 1174-1385; src/dsp/SoloMonitor.cpp:59-109
+- Source: src/dsp/AnamorphEngine.cpp:306-333, 1200-1411; src/dsp/SoloMonitor.cpp:59-109
 - Tests: testNoClicksAcrossTransitions, testSoloNoGhostInSilence, testBypassCrossfadeClickFree,
   testMultibandEnableCrossfadeClickFree, testSoloMultibandEnableClickFree,
   testInertDiscreteChangeDoesNotDuck, testAlgoResetSurvivesMidFadeRetarget

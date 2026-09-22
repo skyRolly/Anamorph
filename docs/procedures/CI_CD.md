@@ -177,9 +177,14 @@ edge above must not be read as release non-blocking.
   each `ResetScope`. It exists for this repository's dominant recurring defect — an invariant held
   by a hand-maintained list that nothing compares to its subject — which produced round 4's
   `dimMode` duck and both of round 6's host-reset findings. It makes no judgement: it requires that
-  one was made per member and holds the code to the declaration. Its blind spot is **scalar**
-  engine state (`dryDelayWrite`, `pendingForced`), cleared by assignment rather than by a call and
-  covered by State tests 57 and 118–120 instead.
+  one was made per member and holds the code to the declaration. Since round 8 it also requires the
+  two SELECTION lists (`discreteDiffers`, `processingDiffers`) to attach the **same condition** to a
+  field they both name — the narrowest rule that would have caught a measured defect, since R4
+  guarded `dimMode` in one and left the other comparing it unconditionally and the lint stayed green
+  for four rounds. A legitimate divergence is declared in `GUARD_DIVERGENCE` with a reason. It still
+  does not claim the condition is *correct*; Test 58 is what catches a wrong one. Its blind spot is
+  **scalar** engine state (`dryDelayWrite`, `pendingForced`), cleared by assignment rather than by a
+  call and covered by State tests 57 and 118–120 instead.
   Each of the five runs its own `--self-test` **first**, in this job and ahead of the lint it
   verifies — the step immediately before, for the four that can be; for `check-citations.py` its own
   step ahead of the one that resolves the base revision and then compares, which is the job-and-order

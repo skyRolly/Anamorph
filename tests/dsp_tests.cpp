@@ -6171,6 +6171,174 @@ static void testAlgoResetSurvivesMidFadeRetarget()
     std::printf ("  every pair, both block sizes, both retarget delays: routes identical\n");
 }
 
+// ---------------------------------------------------------------------------
+//  Regression (R8 / review): an INERT dimMode move must not re-arm Level Match.
+//
+//  R4 gave `discreteDiffers` a Dimension-D relevance guard on `dimMode` (Test 55
+//  above) because `chorus.setDimMode (p.dimMode)` is the field's only reader and it
+//  sits inside `else if (p.algorithm == Algorithm::DimensionD)`. `processingDiffers`
+//  asks the NARROWER question -- "did the signal path change?" -- and still compared
+//  `dimMode` unconditionally. Its one consumer is the silent duck bottom:
+//
+//      const bool procChanged = processingDiffers (pendingP, p);
+//      ...
+//      if (procChanged) loudness.softReset();
+//
+//  THE REPORTED SCENARIO DOES NOT REPRODUCE, and that is worth a control rather than
+//  a correction in prose. A plain Dim-D Style move under Haas opens NO duck at all
+//  after R4, so this function is never consulted and the measurement is untouched.
+//  Leg 1 asserts exactly that, so a future widening of `discreteDiffers` cannot make
+//  this test pass for the wrong reason.
+//
+//  TWO ROUTES DO REACH IT, both measured:
+//    * a FORCED duck -- A/B, preset load, undo, all of which call
+//      `AnamorphEngine::requestDuck()` (PluginProcessor.cpp) -- ducks whatever
+//      differs, so a slot or preset whose only processing delta is dimMode landed on
+//      that line.
+//    * `autoGainMatch` is the ONE field `discreteDiffers` lists and `processingDiffers`
+//      does not, so toggling Level Match opens a duck of its own; an inert dimMode in
+//      the same snapshot then made `procChanged` true. That defeats the rule written
+//      at the call site -- "Toggling Level Match / Bypass must NOT re-measure, or
+//      enabling Match with a big boost slams loud for a moment".
+//
+//  WHAT THIS ASSERTS, and why it is not a state variable. `softReset()` clears the
+//  K-weighting filters and the energy integrators and KEEPS the published gain, and
+//  the silence gate is judged FROM those integrators (`meanSq < 1e-6`, tau = 0.4 s).
+//  So converge, go silent, make the change, and keep feeding silence:
+//      analysis PRESERVED -> stale integrators hold energy -> `silent` reads false ->
+//                            MEASURE keeps gliding -> the published gain DRIFTS
+//      analysis RE-ARMED  -> integrators at 1e-9 -> `silent` true -> gain FROZEN
+//  Measured on this engine: 0.030446 dB of drift when preserved against 0.000454 dB
+//  when re-armed (one block of pre-bottom drift, and then nothing) -- a 67x
+//  separation, so the 1e-3 threshold sits nowhere near either number.
+//
+//  THE ATTRIBUTION LEGS ARE THE POINT. Each defect leg is paired with the SAME duck
+//  and dimMode held still; both of those preserved before the fix, so the re-arm was
+//  attributable to dimMode and to nothing else in the snapshot.
+static void testInertDimModeDoesNotReArmLevelMatch()
+{
+    std::printf ("Test 58: an inert dimMode move does not re-arm Level Match\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 256;
+
+    auto base = [] (anamorph::Algorithm algo)
+    {
+        anamorph::EngineParameters p;
+        p.algorithm     = algo;
+        p.algoAmount    = 0.4f;
+        p.haasDelayMs   = 12.0f;
+        p.width         = 0.3f;
+        p.driveDb       = 8.0f;
+        p.mix           = 1.0f;
+        p.autoGainMatch = true;          // Level Match engaged
+        p.dimMode       = 1;
+        return p;
+    };
+
+    // Converge on noise, go silent, apply `next` (optionally behind a forced duck),
+    // then keep feeding silence and report how far the published gain moved.
+    auto moveAfter = [&] (const anamorph::EngineParameters& start,
+                          const anamorph::EngineParameters& next, bool forced)
+    {
+        anamorph::AnamorphEngine engine;
+        engine.primeParameters (start);                 // production order (Test 55's note)
+        engine.prepare (sr, bs);
+        engine.setParameters (start);
+
+        juce::AudioBuffer<float> buf (2, bs);
+        juce::Random rng (777);
+        for (int b = 0; b < (int) std::ceil (3.0 * sr / bs); ++b)   // 3 s to converge
+        {
+            for (int i = 0; i < bs; ++i)
+            {
+                buf.setSample (0, i, rng.nextFloat() * 1.2f - 0.6f);
+                buf.setSample (1, i, rng.nextFloat() * 1.2f - 0.6f);
+            }
+            engine.process (buf);
+        }
+        auto runSilence = [&] (int blocks, float from)
+        {
+            float worst = 0.0f;
+            for (int b = 0; b < blocks; ++b)
+            {
+                buf.clear();
+                engine.process (buf);
+                worst = juce::jmax (worst, std::abs (engine.getMatchGainDb() - from));
+            }
+            return worst;
+        };
+        runSilence (8, engine.getMatchGainDb());        // the transport stops
+        const float at = engine.getMatchGainDb();
+
+        if (forced) engine.requestDuck();               // A/B, preset recall, undo
+        engine.setParameters (next);
+        return runSilence ((int) std::ceil (1.4 * sr / bs), at);
+    };
+
+    auto leg = [&] (const char* what, float move, bool wantPreserved)
+    {
+        const bool preserved = move > 1.0e-3f;
+        std::printf ("  %-50s moved %.6f dB -> %s\n", what, move,
+                     preserved ? "analysis PRESERVED" : "analysis RE-ARMED");
+        check (preserved == wantPreserved, what);
+    };
+
+    const auto haas = base (anamorph::Algorithm::Haas);
+    const auto dimD = base (anamorph::Algorithm::DimensionD);
+
+    // --- The baseline this test reads everything against: no change at all.
+    leg ("R8 control: no change -- the ordinary silent drift", moveAfter (haas, haas, false), true);
+
+    // --- Leg 1: the reported scenario. It opens no duck at all after R4, so nothing
+    //     here is consulted -- asserted so it cannot start passing for another reason.
+    {
+        auto p = haas; p.dimMode = 3;
+        leg ("R8: a plain Dim-D Style move under Haas", moveAfter (haas, p, false), true);
+    }
+
+    // --- Leg 2: the forced-duck route (A/B / preset / undo).
+    {
+        auto p = haas; p.dimMode = 3;
+        leg ("R8: dimMode alone through a FORCED duck", moveAfter (haas, p, true), true);
+    }
+    {   // its attribution control: the same forced duck, dimMode held still.
+        leg ("R8 control: a forced duck that changes nothing",
+             moveAfter (haas, haas, true), true);
+    }
+
+    // --- Leg 3: the Level-Match-toggle route.
+    {
+        auto p = haas; p.dimMode = 3; p.autoGainMatch = false;
+        leg ("R8: dimMode + Level Match toggled, one snapshot", moveAfter (haas, p, false), true);
+    }
+    {   // its attribution control: the same toggle, dimMode held still.
+        auto p = haas; p.autoGainMatch = false;
+        leg ("R8 control: Level Match toggled alone", moveAfter (haas, p, false), true);
+    }
+
+    // --- AND THE RE-ARM MUST STILL HAPPEN WHEREVER THE PATH REALLY MOVED. These are
+    //     the legs a fix that simply deleted dimMode from the list would also pass, so
+    //     they are what pins the GUARD rather than the removal.
+    {
+        auto p = dimD; p.dimMode = 3;                     // audible: Dimension D is live
+        leg ("R8: dimMode WHILE Dimension D is active", moveAfter (dimD, p, false), false);
+    }
+    {
+        auto p = haas; p.algorithm = anamorph::Algorithm::DimensionD;
+        leg ("R8: switching TO Dimension D", moveAfter (haas, p, false), false);
+    }
+    {
+        auto p = haas; p.haasSide = anamorph::HaasSide::Right;
+        leg ("R8: haasSide (reaches a module unconditionally)", moveAfter (haas, p, false), false);
+    }
+    {
+        auto p = haas; p.dimMode = 3; p.haasSide = anamorph::HaasSide::Right;
+        leg ("R8: dimMode riding a real discrete change", moveAfter (haas, p, false), false);
+    }
+}
+
 static int runForcedSwapAuditProbe()
 {
     std::printf ("Forced-swap audit (A/B, preset recall, undo). 220 Hz, block 64, 48 kHz.\n");
@@ -6411,6 +6579,7 @@ int main (int argc, char* argv[])
     testInertDiscreteChangeDoesNotDuck();
     testMultibandEnableDrySourceNoStep();
     testAlgoResetSurvivesMidFadeRetarget();
+    testInertDimModeDoesNotReArmLevelMatch();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
