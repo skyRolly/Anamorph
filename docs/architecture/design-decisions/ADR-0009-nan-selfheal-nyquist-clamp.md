@@ -29,7 +29,7 @@ sample must not poison the output or meters. Adding a 0 dBFS clipper would harm 
 - Meters always recover after a non-finite burst (test).
 - The plugin self-heals instead of needing a Multiband off/on.
 
-## Implementation note — 2026-09-22 (R7)
+## Implementation note — 2026-09-22 (PR #155, road-map R7)
 The decision above was not fully implemented until this date; the gap is recorded rather than
 closed silently. The guard reset every stateful node **except the wet-amount glides of
 `HaasProcessor` and `VelvetNoise`**: `currentAmount += k·(target − currentAmount)` cannot leave

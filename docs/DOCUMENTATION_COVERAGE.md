@@ -13003,10 +13003,10 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
 
-## 73rd pass — 2026-09-22, PR #155 R7 (production paths no test had run)
+## 73rd pass — 2026-09-22, PR #155, road-map R7 (production paths no test had run)
 
-**Scope.** R7 of PR #155, after the owner's architecture approval of the R9 reset change (recorded
-in ADR-0007). The historical R7 candidate list was re-assessed against the tree under gcov, not
+**Scope.** The global review's road-map item R7, in PR #155 (not the PR's own seventh round, the
+play edge), after the owner's architecture approval of the R9 reset change (recorded in ADR-0007). The historical R7 candidate list was re-assessed against the tree under gcov, not
 implemented wholesale; each candidate's decision and evidence is in
 `worklogs/R7_PRODUCTION_PATH_COVERAGE.md`.
 

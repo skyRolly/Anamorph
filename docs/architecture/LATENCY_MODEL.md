@@ -51,7 +51,7 @@ Drive sweep across the engagement threshold; reported == actual with the wrap sk
 skipped state's output bit-identical to the OS-off output delayed, which is what proves the wrap is
 genuinely not running). Both of those measure through a ring delayed BY the reported number, so
 neither checks the oversampler against it: that is `testEngagedWrapCarriesTheReportedLatency`
-(Test 60, R7 — with the wrap running, the processed path's phase delay at 300 Hz equals the
+(Test 60, road-map R7 — with the wrap running, the processed path's phase delay at 300 Hz equals the
 reported latency within 0.01 samples at 2×/4×/8× and 44.1/48/96 kHz; built without the
 integer-latency flag the wrap sat up to 0.43 samples off its number and both suites had passed).
 
@@ -69,7 +69,7 @@ same three numbers and notes that 4× and 8× are equal, so an x4 → x8 switch 
 Evidence [Verified]: src/dsp/AnamorphEngine.cpp:69-71 (`latency2` / `latency4` / `latency8`, the
 only writes, made at `prepare()` time).
 
-The rates the TODO here asked for were measured on 2026-09-22 (R7) from a built binary: 4 / 6 / 6
+The rates the TODO here asked for were measured on 2026-09-22 (road-map R7) from a built binary: 4 / 6 / 6
 at 44.1, 48, 88.2, 96 and 192 kHz. Test 60 pins those numbers at 44.1, 48 and 96 kHz, so a change
 to them — a reported-latency change, and a hard-stop for review — fails the suite.
 

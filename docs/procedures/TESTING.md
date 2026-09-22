@@ -177,7 +177,7 @@ removed, so the 50 % bound sits between two measured populations); and both defe
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
 `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
 
-**R7's production-path coverage — Tests 59–61 (PR #155, 2026-09-22).** Three paths every host runs
+**Road-map R7's production-path coverage — Tests 59–61 (PR #155, 2026-09-22).** Three paths every host runs
 and no test had executed, found under gcov and each proven live by mutation
 (`worklogs/R7_PRODUCTION_PATH_COVERAGE.md`). **Test 59** (`testNonFiniteBurstSelfHeals`) feeds one
 block of NaN / +Inf through `AnamorphEngine::process` — the ADR-0009 guard's scrub-and-reset block
@@ -4230,7 +4230,8 @@ instrument this test feeds is a Linux job, so the scoping costs no coverage. Wid
 green run on the other two, not an argument.
 Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).
 
-**R7's production-path coverage in the processor — State tests 123–125 (PR #155, 2026-09-22)**,
+**Road-map R7's production-path coverage in the processor — State tests 123–125 (PR #155,
+2026-09-22)**,
 each driven through `AnamorphAudioProcessor` as a host drives it and proven live by mutation
 (`worklogs/R7_PRODUCTION_PATH_COVERAGE.md`). **State test 123**
 (`testAHostNanParameterDoesNotLatchTheChain`) sends one NaN `amount` through

@@ -1,12 +1,13 @@
-# R7 — production paths no test had run (PR #155)
+# Road-map R7 — production paths no test had run (PR #155)
 
 2026-09-22 · branch `claude/anamorph-comprehensive-review-90tpty` · PR #155 · entered from `f8e6630`
 (the PR's finalization: the owner's architecture approval of the R9 reset change recorded in
 ADR-0007, the five anchors this PR broke repaired, the final reset-semantics check — all in
 `R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md` §T).
 
-The road map's R7 item (`GLOBAL_REVIEW_v0.9.9_INVESTIGATION.md` §4) listed five pieces of work
-against F14 and F15. It was **not** implemented as a list. Each candidate — those five, plus the
+The road map's R7 item (`GLOBAL_REVIEW_v0.9.9_INVESTIGATION.md` §4) — not this PR's own seventh
+round, the play edge (State test 121, `R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md` §L–M) — listed
+five pieces of work against F14 and F15. It was **not** implemented as a list. Each candidate — those five, plus the
 three the round's brief added (the re-prepare Level-Match gain, the ppq/no-position transport
 branches, latency under oversampling) — was re-measured on the current tree first, and the
 evidence decided whether it became work.
