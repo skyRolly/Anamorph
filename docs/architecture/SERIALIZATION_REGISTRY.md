@@ -389,7 +389,7 @@ indistinguishable, since slot A has just been seeded from the same live state. T
 when slot A was valid and slot B was not, i.e. an `AB` node whose `slotBParams` alone was missing or
 unparsable: slot B came back as a **duplicate of slot A** rather than as the state just restored, and
 a later save wrote that duplicate out. Source: src/PluginProcessor.cpp:2907-2997
-(`readSlot`), :904-932 (`abEnsureInit`); src/PluginProcessor.h:612-625 (`StateSet::isValid`).
+(`readSlot`), :904-932 (`abEnsureInit`); src/PluginProcessor.h:663-676 (`StateSet::isValid`).
 
 An absent or empty `slotABase` / `slotBBase` means **"no baseline was recorded"**, which is *not* the
 same as "modified". Only a pre-0.6.4 slot produces it in this plug-in's own output — every in-memory

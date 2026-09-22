@@ -63,7 +63,58 @@ public:
     // The request is to stop tails and sounds; a loudness MEASUREMENT is neither,
     // and ADR-0007 requires the Level-Match measure to hold across silence so the
     // next entry does not slam. `AnamorphEngine::ResetScope` carries that reasoning.
-    void reset() override { engine.reset (anamorph::AnamorphEngine::ResetScope::audioTailsOnly); }
+    void reset() override
+    {
+        engine.reset (anamorph::AnamorphEngine::ResetScope::audioTailsOnly);
+
+        // ...AND THE TRANSPORT EDGE DETECTOR, because this reset ENDS a processing
+        // session and `prevPlaying` is a memory of one.
+        //
+        // The meter hold is cleared on a "playback restart" (LevelMeters.h:57-59),
+        // which `processBlock` finds as the rising edge `playing && ! prevPlaying`.
+        // That edge only exists if the plug-in SAW a non-playing block -- and the
+        // host class this override was added for is precisely the one that does not
+        // send any: VST3 `setProcessing(false)` calls this and then stops calling
+        // `process` (juce_audio_plugin_client_VST3.cpp:3475-3479), `setProcessing(true)`
+        // simply resumes, and NEITHER side re-prepares (`CallPrepareToPlay::no` at
+        // :3469). AU `Reset()` is the same shape (juce_audio_plugin_client_AU_1.mm:255-263).
+        // So `prevPlaying` was still true when playback came back, the edge never
+        // occurred, and the held peak survived a restart it is supposed to be cleared by.
+        //
+        // MEASURED through the wrapper with a real AudioPlayHead, held peak -0.92 dB,
+        // reset with no intervening `processBlock`:
+        //
+        //   resume where the transport left off      -0.92 dB  -- restart MISSED
+        //   resume at the last block's own start     -0.92 dB  -- restart MISSED
+        //   resume at 0 (host returned to start)    -33.98 dB  -- cleared, but by the
+        //                                                         SEEK detector, not this
+        //                                                         edge: it only works
+        //                                                         because that host moved
+        //                                                         the playhead
+        //   the host kept calling process while
+        //   stopped, so the edge did occur         -33.98 dB  -- already correct
+        //
+        // Clearing the hold HERE instead would be wrong and is the R6 defect again:
+        // the reset arrives at the STOP, and stopping to read the number is what the
+        // latch is for. What is stale is the EDGE DETECTOR, not the meter, so that is
+        // what this invalidates -- the next playing block becomes a genuine rising
+        // edge and the existing path does the clearing, at the restart.
+        //
+        // `prevPosValid` and `prevPosSamples` are deliberately left alone, and that is
+        // a measured decision rather than an oversight. This write already reaches the
+        // seek detector -- `prevPlaying` is the `? :` in its `expected` -- so clearing
+        // it changes that arithmetic too; what it cannot change is any OUTCOME, because
+        // `seeked` is read only by `(playing && seeked)` and `(playing && ! prevPlaying)`
+        // is now true on the very same block. The stale position is therefore inert, and
+        // by the block after it has been overwritten. State test 121 carries both
+        // directions: a resume that IS a seek (the host returned to zero) and one that
+        // is not (it resumed in place) land on the same single clear.
+        //
+        // A plain write, under the same contract that makes `engine.reset()` above
+        // safe: this call is the host telling us processing has stopped, so no
+        // `processBlock` runs concurrently (THREAD_MODEL.md, Host reset).
+        prevPlaying = false;
+    }
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 

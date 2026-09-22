@@ -58,6 +58,16 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   still clears when you click it, and when the plug-in is re-initialised at a new sample rate, where
   the old number no longer means anything. Regression coverage: State test 120. Evidence: PR #155.
   [Verified]
+- **...and starting playback again now clears them, in every host.** The held peak is meant to clear
+  when playback restarts, and Anamorph found that restart by watching for the first playing block
+  after a non-playing one. Hosts that simply *stop calling the plug-in* while the transport is
+  stopped — which is what a VST3 host does when it suspends processing — never sent that
+  non-playing block, so the restart was invisible and the previous take's peak was still sitting
+  there over the new one. It only looked right in hosts that return the playhead to the start,
+  where a different check happened to catch it. Measured: a held **−0.92 dB** survived a stop and
+  a resume from the same spot. The peak now clears on the restart in every host — and still
+  **not** at the stop itself, so it is there to read while you are stopped. Regression coverage:
+  State test 121. Evidence: PR #155. [Verified]
 - **Anamorph now tells your host how long its sound really takes to decay.** The reported tail length
   was a fixed 0.1 s, and the chain can ring for considerably longer than that — measured at up to
   0.25 s, with the low crossover settings and Band Solo that produce it. Hosts use that figure to

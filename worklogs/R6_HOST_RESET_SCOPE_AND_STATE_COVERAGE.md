@@ -414,6 +414,146 @@ uses, because its R5 note said "deliberately leaves `loudness` alone" and that w
 
 ---
 
+## L. Follow-up, same round: the reset left the transport edge detector stale
+
+A second review finding on the same entry point, investigated after the above shipped and
+**confirmed** — but the suggested reading of it needed correcting, and the fix is not the obvious one.
+
+### The finding, and what it actually is
+
+`PluginProcessor::reset()` cleared the engine's audio tails and left `prevPlaying` and `prevPosValid`
+alone. The held peak is cleared on a "playback restart", which `processBlock` finds as the rising
+edge `playing && ! prevPlaying`. **An edge needs a falling half**, and the falling half exists only
+if the plug-in SAW a non-playing block.
+
+The host class this override was added for is precisely the one that sends none. VST3
+`setProcessing(false)` calls `reset()` and then stops calling `process`
+(`juce_audio_plugin_client_VST3.cpp:3475-3479`); `setProcessing(true)` simply resumes; and neither
+side re-prepares — `preparePlugin` is called with `CallPrepareToPlay::no` at `:3469`. AU `Reset()`
+is the same shape (`juce_audio_plugin_client_AU_1.mm:255-263`). Anamorph ships VST3, AU and
+Standalone (`CMakeLists.txt:413-418`), so both plug-in formats are affected.
+
+### Measured, before deciding anything
+
+Through `AnamorphAudioProcessor` with a real `juce::AudioPlayHead`, a held peak of −0.92 dB,
+`reset()` with **no `processBlock` in between**, then a resume:
+
+| lifecycle | held peak after the resume | |
+|---|---|---|
+| resume where the transport left off | **−0.92 dB** | restart MISSED |
+| resume at the last block's own start | **−0.92 dB** | restart MISSED |
+| resume at 0 (host returned to start) | −33.98 dB | cleared |
+| a host that kept calling `process` while stopped | −33.98 dB | cleared |
+
+Rows 3 and 4 are why this is a real inconsistency rather than a theory, and neither is the play edge
+doing its job: row 3 is the **seek** detector firing because that host moved the playhead to zero,
+and row 4 is a host that never took this path at all. The same user action — stop, then play —
+therefore cleared the number or did not, decided by the host's processing model.
+
+### The decision: which of the four candidate fixes, and why
+
+| candidate | verdict |
+|---|---|
+| clear the hold **in `reset()`** | **Rejected.** That clears the number at the STOP — §C's finding in reverse. Stopping to read it is what the latch is for. |
+| change the **play-edge detection** | **Rejected.** Wider blast radius, and it does not address the cause: stale state carried across a lifecycle boundary. |
+| clear `prevPosValid` **only** | **Refuted.** `prevPlaying` would still be true, so the edge still never occurs. It does not fix either failing row. |
+| clear **`prevPlaying`** in `reset()` | **Adopted.** What is stale is the EDGE DETECTOR, not the meter: the next playing block becomes a genuine rising edge and the existing path does the clearing, at the restart. |
+| no change | **Refuted by measurement** — rows 1 and 2. |
+
+`prevPosValid` and `prevPosSamples` are deliberately left alone, and that is measured rather than
+assumed. `prevPlaying` already reaches the seek detector (it is the `? :` in its `expected`), so this
+write changes that arithmetic too — what it cannot change is any OUTCOME, because `seeked` is read
+only by `(playing && seeked)` and `(playing && ! prevPlaying)` is now true on the same block. The
+test carries both directions: a resume that IS a seek and one that is not land on the same single
+clear.
+
+### The differential, whole
+
+Nine lifecycles, pre-fix and post-fix, same harness. **Exactly two rows change.**
+
+| | pre-fix | post-fix | required |
+|---|---|---|---|
+| A resume where the transport left off | HELD | **CLEARED** | cleared |
+| B resume at the last block's own start | HELD | **CLEARED** | cleared |
+| C resume at 0 (also a seek) | CLEARED | CLEARED | cleared |
+| D non-playing blocks, then reset, then play | CLEARED | CLEARED | cleared |
+| E stopped and reset, still stopped (§C's rule) | HELD | HELD | held |
+| F 400 more blocks of continuous playback | HELD | HELD | held |
+| G a seek while playing | CLEARED | CLEARED | cleared |
+| H the GUI readout click | CLEARED | CLEARED | cleared |
+| I no playhead at all | HELD | HELD | held |
+| ADR-0007: gain across the reset | −2.7638 dB, Δ 0.000000000 | identical | identical |
+| ADR-0007: movement over 1.4 s of silence | 0.000000 dB | identical | identical |
+
+### Related, checked and deliberately not changed
+
+`prepareToPlay` leaves `prevPlaying` stale too — the same class. It is **benign and left alone**:
+`prepare()` runs `reset (ResetScope::everything)`, which calls `levels.reset()` and clears the hold
+outright, so a missed edge afterwards has nothing left to clear. Recorded here rather than fixed,
+because a minimal diff is the point and there is no defect to answer for.
+
+### Coverage
+
+**State test 121** — *a host reset arms the next restart* — carries all nine lifecycles plus the two
+ADR-0007 legs, each rig on the heap so no leg inherits another's transport memory (which is the very
+state under test). **18 checks**, frame **512 bytes**, so the suite maximum is unchanged at
+709,760 B (`testSettingsPublicationIsFieldLevelAndOrderedByObservation`) and the 1 MB-stack parity
+step's documented figure stays correct. The state suite goes **4690 → 4708**.
+
+---
+
+## M. Validation of the follow-up
+
+`scripts/preflight.sh` **exit 0** — `check-docs` 149 clean (self-test 464), portability 120,
+realtime 93, dispatch 52, state-coverage 64, citations 242, linux-abi 19. **DSP 469 / 0**,
+**state 4708 / 0**. Both suites green under **`ulimit -s 1024`**.
+
+The header edit added 51 lines at `PluginProcessor.h:66`, which moved five anchors. Four were
+**declared re-aims** (`DELIBERATE_REAIMS`) and one a glossed citation, so all five were re-derived
+**by hand from their own symbols** rather than by the line map, and both the document and the
+declaration table were updated together:
+`parameterValueChanged` 567-570 → **618-621**, `ViewGenWatcher::parameterValueChanged` 772 → **823**,
+`UndoStacks` 682 → **733** (two entries), `StateSet::isValid` 612-625 → **663-676** (the struct opens
+at 663 and closes at 676). Two further ordinary-drift anchors were re-anchored by `--fix` and then
+verified by hand: the class span 25-537 → **25-588**, and `StateSet::selection` 612-624 →
+**663-675** (`selection` sits at 674). 534 anchors intact.
+
+**Not run:** Windows, macOS, MSVC, AppleClang, TSan, RTSan, `pluginval`, the sanitizer lanes, and
+the two warning gates — they need the pinned gcc-16 / clang-22 and only gcc-13 / clang-18 are local.
+Linux is the whole of the local coverage. **No host was exercised**: the lifecycle claims above come
+from the pinned JUCE wrapper sources and from a stub `juce::AudioPlayHead`, not from a DAW.
+
+### One intermittent state-suite failure, observed and NOT attributed
+
+Reported rather than waved away, because it is unresolved. **One** local run of the state suite
+reported `4708 checks, 1 failure(s)`. That run's stdout was piped through `tail -2`, so the `[FAIL]`
+line was discarded and **the failing check is not known**.
+
+It has not reproduced in **nine** subsequent full runs: four on an idle box, three under a
+deliberate six-way CPU spin on a four-CPU container, and two under a concurrent 4-way `ninja`
+rebuild of the 2 MB `tests/state_tests.cpp` — which is what was running when the failure appeared.
+Every one returned `4708 checks, 0 failure(s)`.
+
+What can be said without overclaiming:
+
+* **It is not State test 120 or 121.** Both are deterministic — fixed buffers, fixed transport
+  positions, fixed RNG seeds, one heap processor per leg, no threads and no pumped timers — and
+  both passed in all ten runs.
+* The suite carries **six pre-existing wall-clock assertions** (`elapsedMs < 400.0`,
+  `pollMillis < 500`, `millis < 500`, and three `ms < 2000.0`), which is the shape a load-induced
+  intermittent failure would take. The one with the tightest budget was measured across six runs
+  and is **not** marginal: it reports **51 ms against its 400 ms bound**, unchanged under load.
+* This change writes a single `bool` in a host callback the format contract says is not concurrent
+  with `processBlock`. There is no new thread, lock, timer or ordering.
+
+So: **not reproduced, not attributed, and explicitly not called a flake** — "flake" is a verdict
+this round has not earned. CI captures the whole log, so if it recurs there the failing check will
+be named; nothing here suppresses, retries or loosens anything to hide it.
+
+
+
+---
+
 ## K. Remaining findings, and what the next item is
 
 Nothing new was manufactured. The round leaves:

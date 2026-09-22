@@ -36275,6 +36275,245 @@ static void testAHostResetClearsAudioAndKeepsTheUsersState()
     }
 }
 
+// ---------------------------------------------------------------------------
+//  State test 121 -- A HOST RESET ARMS THE NEXT RESTART (R7 / the Devin finding)
+//
+//  State test 120 settled WHAT a host reset clears. This one is about the state it
+//  has to INVALIDATE so that the next thing the host does is read correctly.
+//
+//  The held peak is cleared on a "playback restart" (LevelMeters.h:57-59), and
+//  `processBlock` finds that restart as the rising edge `playing && ! prevPlaying`
+//  (PluginProcessor.cpp). An edge needs a falling half, and the falling half only
+//  exists if the plug-in SAW a non-playing block.
+//
+//  THE HOST CLASS THIS OVERRIDE EXISTS FOR IS THE ONE THAT SENDS NONE. VST3
+//  `setProcessing(false)` calls `reset()` and then stops calling `process`
+//  (juce_audio_plugin_client_VST3.cpp:3475-3479); `setProcessing(true)` simply
+//  resumes, and neither side re-prepares -- `preparePlugin` is called with
+//  `CallPrepareToPlay::no` (:3469). AU `Reset()` is the same shape
+//  (juce_audio_plugin_client_AU_1.mm:255-263). So `prevPlaying` was still true when
+//  playback returned, the edge never happened, and the held peak survived a restart
+//  it is supposed to be cleared by.
+//
+//  MEASURED through the wrapper with a real AudioPlayHead, before the fix -- a held
+//  peak of -0.92 dB, `reset()` with NO processBlock in between, then a resume:
+//
+//      resume where the transport left off       -0.92 dB   restart MISSED
+//      resume at the last block's own start      -0.92 dB   restart MISSED
+//      resume at 0 (host returned to start)     -33.98 dB   cleared
+//      a host that kept calling process         -33.98 dB   cleared
+//
+//  The third and fourth rows are why this is a REAL inconsistency rather than a
+//  theory, and they are the reason the test carries them as controls. Neither is
+//  the play edge doing its job on the reset: row 3 is the SEEK detector firing
+//  because that host moved the playhead to zero, and row 4 is a host that never
+//  took the path at all. The same user action -- stop, then play -- therefore
+//  cleared the number or did not, depending on the host's processing model.
+//
+//  WHAT THE FIX IS NOT. Calling `resetHold()` from `reset()` would clear the number
+//  at the STOP, which is State test 120's finding in reverse: stopping to read it is
+//  what the latch is for. What is stale is the EDGE DETECTOR, not the meter.
+//
+//  `prevPosValid` is deliberately left alone, and legs C and A together are the
+//  measurement behind that: with `prevPlaying` false the first playing block fires
+//  the edge whether the seek verdict is true (C, the playhead moved) or false
+//  (A, it did not), so a stale position cannot change any outcome.
+static void testAHostResetArmsTheNextRestart()
+{
+    std::printf ("State test 121: a host reset arms the next restart (Devin/R7)\n");
+
+    const double sr = 48000.0; const int block = 256;
+
+    struct Head : juce::AudioPlayHead
+    {
+        bool playing = false;
+        juce::int64 pos = 0;
+        juce::Optional<juce::AudioPlayHead::PositionInfo> getPosition() const override
+        {
+            juce::AudioPlayHead::PositionInfo info;
+            info.setIsPlaying (playing);
+            info.setTimeInSamples (pos);
+            return info;
+        }
+    };
+
+    // One rig per leg, each on the heap (State test 59's note), so no leg inherits
+    // another's transport memory -- which is the very state under test.
+    struct Rig
+    {
+        const std::unique_ptr<AnamorphAudioProcessor> owner
+            { std::make_unique<AnamorphAudioProcessor>() };            // heap: State test 59's note
+        AnamorphAudioProcessor& proc { *owner };
+        Head head;
+        juce::AudioBuffer<float> buf;
+        juce::MidiBuffer midi;
+
+        Rig (double sampleRate, int blockSize) : buf (2, blockSize)
+        {
+            proc.setPlayHead (&head);
+            proc.prepareToPlay (sampleRate, blockSize);
+        }
+        ~Rig() { proc.setPlayHead (nullptr); }
+
+        // Quiet material with one loud sample in block 4, so there is a held peak
+        // well above what the quiet material alone would latch.
+        void run (int blocks, bool transient = false)
+        {
+            for (int b = 0; b < blocks; ++b)
+            {
+                for (int i = 0; i < buf.getNumSamples(); ++i)
+                {
+                    const float v = (transient && b == 4 && i == 7) ? 0.9f : 0.02f;
+                    buf.setSample (0, i, v); buf.setSample (1, i, v);
+                }
+                midi.clear();
+                proc.processBlock (buf, midi);
+                if (head.playing) head.pos += buf.getNumSamples();
+            }
+        }
+        float held() const { return proc.getEngine().getLevels().output.getPeakHoldL(); }
+    };
+
+    // `cleared` is judged against the peak the leg actually latched, not a constant:
+    // the quiet material settles around -33.98 dB, so a 10 dB margin below the held
+    // -0.92 dB separates "the latch was dropped" from "the latch is still there"
+    // without pinning either number.
+    auto leg = [&] (const char* what, float before, float after, bool wantCleared)
+    {
+        const bool cleared = after < before - 10.0f;
+        std::printf ("  %-44s %+7.2f -> %+7.2f  %s\n", what, before, after,
+                     cleared ? "cleared" : "held");
+        check (cleared == wantCleared, what);
+    };
+
+    // --- THE DEFECT: a reset with NO processBlock in between, then a resume. The
+    //     three resume positions are the three a host can plausibly report.
+    for (int variant = 0; variant < 3; ++variant)
+    {
+        Rig r (sr, block);
+        r.head.playing = true;
+        r.run (40, true);
+        const float before = r.held();
+        check (before > -20.0f, "R7 control: the transient latched a held peak");
+
+        const juce::int64 stopped = r.head.pos;
+        r.head.playing = false;
+        r.proc.reset();                    // the host's reset, and NO block after it
+        check (juce::exactlyEqual (r.held(), before),
+               "R7: the reset itself does not clear the held peak (State test 120)");
+
+        r.head.playing = true;
+        r.head.pos = variant == 0 ? stopped                 // resumed where it stopped
+                   : variant == 1 ? stopped - block         // resumed at the last block
+                                  : 0;                      // host returned to start
+        r.run (4);
+        leg (variant == 0 ? "R7: resume where the transport left off"
+           : variant == 1 ? "R7: resume at the last block's own start"
+                          : "R7 control: resume at 0 (a seek as well)",
+             before, r.held(), true);
+    }
+
+    // --- WHAT MUST NOT CHANGE. Each of these passed before the fix; a fix that
+    //     broke one of them would be trading one defect for another.
+    {   // the host that keeps calling processBlock while stopped -- the path that
+        // already produced the edge, and still must.
+        Rig r (sr, block);
+        r.head.playing = true; r.run (40, true);
+        const float before = r.held();
+        r.head.playing = false; r.run (3); r.proc.reset();
+        r.head.playing = true; r.run (4);
+        leg ("R7: non-playing blocks, reset, then play", before, r.held(), true);
+    }
+    {   // State test 120's finding: stopped and reset, and STAYING stopped, keeps it.
+        Rig r (sr, block);
+        r.head.playing = true; r.run (40, true);
+        const float before = r.held();
+        r.head.playing = false; r.proc.reset(); r.run (6);
+        leg ("R7: stopped and reset, still stopped, HOLDS", before, r.held(), false);
+    }
+    {   // and continuous playback must not acquire a spurious clear.
+        Rig r (sr, block);
+        r.head.playing = true; r.run (40, true);
+        const float before = r.held();
+        r.run (400);
+        leg ("R7: 400 more blocks of playback, HOLDS", before, r.held(), false);
+    }
+    {   // the seek detector is untouched...
+        Rig r (sr, block);
+        r.head.playing = true; r.run (40, true);
+        const float before = r.held();
+        r.head.pos += (juce::int64) sr; r.run (4);
+        leg ("R7: a seek while playing still clears", before, r.held(), true);
+    }
+    {   // ...and so is the GUI's own path.
+        Rig r (sr, block);
+        r.head.playing = true; r.run (40, true);
+        const float before = r.held();
+        r.proc.getEngine().getLevels().resetHold(); r.run (2);
+        leg ("R7: the GUI readout click still clears", before, r.held(), true);
+    }
+    {   // A host with no playhead at all reports nothing to restart FROM, so the
+        //     number stays -- and the reset must still not crash.
+        Rig r (sr, block);
+        r.proc.setPlayHead (nullptr);
+        r.run (40, true);
+        const float before = r.held();
+        r.proc.reset(); r.run (4);
+        leg ("R7: no playhead: nothing restarts, HOLDS", before, r.held(), false);
+    }
+
+    // --- AND ADR-0007 IS UNTOUCHED BY ALL OF IT. The published Level-Match gain
+    //     still crosses the reset bit-exactly and still freezes on the silence after
+    //     it; this leg is State test 120's first one re-run through the transport, so
+    //     a change to reset() cannot quietly cost the measurement.
+    {
+        Rig r (sr, block);
+        auto set = [&r] (const char* id, float v)
+        {
+            if (auto* p = r.proc.getAPVTS().getParameter (id))
+                p->setValueNotifyingHost (p->convertTo0to1 (v));
+        };
+        set ("advancedMode", 1.0f); set ("autoGainMatch", 1.0f);
+        set ("drive", 8.0f); set ("mix", 1.0f); set ("width", 0.3f); set ("amount", 0.4f);
+
+        r.head.playing = true;
+        juce::Random rng (777);
+        const int converge = (int) std::ceil (3.0 * sr / block);
+        for (int b = 0; b < converge; ++b)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                r.buf.setSample (0, i, rng.nextFloat() * 1.2f - 0.6f);
+                r.buf.setSample (1, i, rng.nextFloat() * 1.2f - 0.6f);
+            }
+            r.midi.clear();
+            r.proc.processBlock (r.buf, r.midi);
+            r.head.pos += block;
+        }
+        const float conv = r.proc.getEngine().getMatchGainDb();
+        check (std::abs (conv) > 0.5f, "R7 control: Level Match converged through the transport");
+
+        r.head.playing = false;
+        r.proc.reset();
+        const float at = r.proc.getEngine().getMatchGainDb();
+        check (juce::exactlyEqual (at, conv),
+               "R7: the reset still carries the Level-Match gain across (ADR-0007)");
+
+        float worst = 0.0f;
+        const int silence = (int) std::ceil (1.4 * sr / block);
+        for (int b = 0; b < silence; ++b)
+        {
+            r.buf.clear(); r.midi.clear();
+            r.proc.processBlock (r.buf, r.midi);
+            worst = juce::jmax (worst, std::abs (r.proc.getEngine().getMatchGainDb() - at));
+        }
+        std::printf ("  Level Match %+.4f dB across the reset, %.6f dB of movement on silence\n",
+                     conv, worst);
+        check (worst < 1.0e-6f,
+               "R7: and still freezes on the silence after it (ADR-0007)");
+    }
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -36458,6 +36697,7 @@ int main (int argc, char* argv[])
     testAHostResetReachesTheEngine();
     testTheReportedTailCoversTheRealTail();
     testAHostResetClearsAudioAndKeepsTheUsersState();
+    testAHostResetArmsTheNextRestart();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();
