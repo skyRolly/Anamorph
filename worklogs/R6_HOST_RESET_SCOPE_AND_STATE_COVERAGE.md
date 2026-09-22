@@ -875,10 +875,11 @@ largest frame is unchanged at **709,760 B** (`testSettingsPublicationIsFieldLeve
   scope, not WHICH reset. Swapping `loudness.reset()` and `loudness.softReset()` between the scopes
   passes it. In the real tree, byte-restored afterwards: the whole swap fails State tests 118, 120
   and 121 (5 checks, all on the host-reset half). **The re-prepare half alone** — `everything`
-  taking `softReset()`, so a re-prepare keeps the published gain that ADR-0007's note of 2026-09-21
-  says a new sample rate invalidates — **fails nothing**: the lint passes, and so do all 4732 state
-  and 479 DSP checks. That is a coverage gap in a documented contract, not a user-facing defect. It
-  is recorded in the lint's docstring and in `CI_CD.md`, and not closed here.
+  taking `softReset()` — **fails nothing**: the lint passes, and so do all 4732 state and 479 DSP
+  checks. *[Corrected in §T: this round read that as "a re-prepare keeps the published gain", and it
+  does not. `prepare()` zeroes the matcher through `loudness.prepare()` before it ever reaches
+  `reset (everything)`, so the mutant changed no behaviour. Removing both flushes is what keeps the
+  gain, and State test 120 leg 2 fails on it. There is no coverage gap here.]*
 
 ### Documentation changed, and why each
 
@@ -984,7 +985,7 @@ tree, not from the original review.
 | item | severity · likelihood | safeguards today | cost of postponing | decision |
 |---|---|---|---|---|
 | **R7 — production-reachable unexercised paths** (F15, F14) | medium · the paths run in every host | F15's transport hole is now partly covered: State tests 120–122 install an `AudioPlayHead` and reach the sample-clock path, the play edge, the seek and the no-playhead path. Still reached by **no test**: the ppq fallback in `processBlock` (0 test files call `setPpqPosition`), bus-layout negotiation and the mono up-mix (0 files), `ScopeBuffer::readLatest` (0 files), and the engine-wide NaN/Inf self-heal (F14 — Tests 19 and 45 feed non-finite samples to the meters, never to `AnamorphEngine::process`) | high, and measured by this branch: the host-lifecycle defects fixed in R5, R6, R7 and R9 were each found by review rather than by a test, and each fix had to add the test that was missing (State tests 118, 120, 121, 122) | **proceed — the next priority.** Additive tests, the lowest regression risk on the list, and the class that keeps producing findings. Start with the re-prepare leg below, then F14's self-heal, then F15's holes in the order listed |
-| **A re-prepare keeps the Level-Match gain — untested** (new, §Q) | low · a sample-rate change is rare | none: measured, the mutation passes the lint and all 5211 checks | small but silent — the next edit to `reset()` has nothing to stop it | **proceed**, as R7's first item: one State-test leg (converge, re-prepare at a new rate, assert the published gain is 0). A per-method column in the lint is a table-shape change, and the test is cheaper and exact |
+| ~~**A re-prepare keeps the Level-Match gain — untested**~~ *(refuted in §T: State test 120 leg 2 already pins it)* | low · a sample-rate change is rare | none: measured, the mutation passes the lint and all 5211 checks | small but silent — the next edit to `reset()` has nothing to stop it | **proceed**, as R7's first item: one State-test leg (converge, re-prepare at a new rate, assert the published gain is 0). A per-method column in the lint is a table-shape change, and the test is cheaper and exact |
 | **F13** — Level Match state that outlives its validity | medium · every preset / undo / A/B with Level Match on | ADR-0007; Tests 16, 58; State tests 118, 120, 121 | medium: (1) `matchGainSmooth` not snapped on a forced duck carries the previous state's match gain through a preset load, undo or redo (review: high → medium; not measured); (2) continuous-only swaps not re-arming is design debt; (3) `LoudnessMatch`'s missing non-finite guard is low (the review's verifier: the self-heal fires first) | (1) **investigate** — measure the carried gain through a preset load before choosing a fix; (2) **architecture decision** — it is R6c's question and changes ADR-0007's re-arm contract; (3) **defer**, and let it ride with F14's test, which is the one that can reach it |
 | **F10** — re-entrant `mouseUp` leaks two gestures | high · low, needs a re-entrant host | none for three of `gestureBands`' four writers (source-readable: `SpectrumImager.cpp:3254` is the only consult) | medium: a host sees an automation touch that never ends | **investigate**: the root cause is readable in source, and the state suite already drives imager presses (State test 105). A synthetic re-entrant `mouseUp` would turn "likelihood unverified" into a measurement before R6b is sized |
 | **F9** — adoption under the held `soundReplacement` lock | high · unverified, needs a host holding the other edge | the TSan lane and canary, which cannot hold the other edge | unknown; the review marked it overstated | **investigate reachability** before any fix (open question 6 of the global review); no change on this round's evidence |
@@ -997,17 +998,117 @@ tree, not from the original review.
 | **Intermittent state failure** (§M, §P) | unattributed | whole CI logs name any recurrence | none this round: nine full local runs, every failure in them a deliberate pre-fix or mutation check | **investigate on recurrence only**; no retry, no loosening |
 | **Vectorscope frozen frame** | UX question, not established as a defect | none; the idle gate treats a frozen ring as a static picture | low | **architecture decision** if blanking is wanted: it needs a second producer on the SPSC `ScopeBuffer` (a threading-model change), so it is not a follow-on to this fix |
 
-**The next engineering priority is R7**, entered through its cheapest item, the re-prepare leg. The
+**The next engineering priority is R7**, entered through its cheapest item, the re-prepare leg *(which §T shows is already covered)*. The
 reasons: it is the only open item whose absence produced findings on this branch, round after round;
 its work is additive tests, so it cannot regress the product; and every higher-severity item (F9,
 F10, F12) needs a measurement first that the same test harness provides.
 
 ---
 
+## T. PR #155 finalization, after the architecture approval
+
+### Baseline and CI, read for the current head
+
+- **HEAD `e13664f`** (R9's worklog correction on top of `c5f3d8f`, R9's code), level with origin,
+  tree clean. PR #155 open, `mergeable_state: clean`.
+- **CI on `e13664f`, complete.** Push run 35778680286: all 13 jobs `success` — `source-lint`,
+  `docs`, `linux` (Clang 22 build and first-party warning gate, pluginval ×3 deterministic and ×3
+  randomised, the suites again under a 1 MB stack), `linux-lto-tests` (GCC 16 and its warning gate),
+  `sanitizers` (ASan + UBSan + vptr, then valgrind on both suites), `tsan`, `realtime` (RTSan),
+  `fuzz`, `windows` (MSVC, pluginval), `windows-avx2-ab`, `macos` (AppleClang universal, the x86_64
+  slice under Rosetta, pluginval VST3 and AU), `macos-intel`, `macos-crossslice`; `merge-check`
+  skipped, as on every push. The pull-request run 35778689255 ran `merge-check` — the merge with
+  `main`, both suites — `success`. CodeQL, Microsoft C++ Code Analysis and Dependency review on the
+  same SHA: `success`.
+- **`c5f3d8f` never completed a run of its own**: both Build & Validate runs were cancelled by the
+  branch's `cancel-in-progress` when `e13664f` was pushed. `e13664f` changes only the worklog, so its
+  run is the first complete validation of R9's code.
+- **The architecture approval** is the owner's ruling of 2026-09-22. It is recorded in ADR-0007 in
+  the form ADR-0008 established: "Architecture Review Gate: APPROVED by the owner", with its
+  four-step table. GitHub holds no approving review object for it — the reviews on the PR are CodeQL
+  bot comments — so the ADR entry and the PR body are the record.
+
+### The five anchors this PR broke, repaired
+
+| where | was | now | the claim |
+|---|---|---|---|
+| ADR-0039:126 | `AnamorphEngine.cpp:609`, `:616` | `src/dsp/AnamorphEngine.cpp:770` (`multiband.setCrossovers`) and `src/dsp/AnamorphEngine.cpp:777` (`soloMonitor.setCrossovers`) | "the engine only reads them" |
+| ADR-0040:41 | the same two | the same two | the same |
+| `src/gui/SpectrumImager.cpp:662` | `AnamorphEngine.cpp:609` | `src/dsp/AnamorphEngine.cpp:770` (`multiband.setCrossovers`) | the same |
+
+At the merge base `bfd0e06` the old numbers were exactly those two `setCrossovers` calls; R4–R8
+moved them by 161 lines. The claim itself was re-checked, not assumed: in `src/dsp/` the split
+parameters are compared (`sameParameters`) and read into the two crossover banks, and nothing
+writes them.
+
+**Why the full path.** A bare filename is invisible to the gate, which is how all five drifted
+unseen. The repository's own precedent (round 48, `TESTING.md`) is to rewrite such anchors "in
+full-path form, which puts them under the gate from now on". Each now carries a gloss naming the
+call on its line, so a reader can check the aim too. `SpectrumImager.cpp` kept its line count, since
+it is a tracked file cited from elsewhere.
+
+**Verified with the gate's own code, both ways.**
+- *Content.* `glossed_problems_in` — the function the gate runs on its opted-in documents — over
+  the three files: all five anchors claimed, 0 problems. Five mutants, each anchor moved onto a
+  neighbouring line or the other call: all five caught ("names 'multiband.setCrossovers', which is
+  not there").
+- *Drift* — the failure that broke them in the first place. With these anchors committed as the
+  base, two lines were inserted above `:770` and two blank lines removed after `:777`, so that only
+  that window moved. `--check --base HEAD` then exited 1 on exactly these five: "DRIFTED …
+  `src/dsp/AnamorphEngine.cpp:770 -> …:772`" (and `:777 -> :779`) in ADR-0039, ADR-0040 and
+  `SpectrumImager.cpp`, with `--fix` offering the moved calls. The gate's checked-anchor count rose
+  from 535 to 540. The source was restored byte-identically afterwards.
+- *What CI will not do.* These three files are not in `GLOSS_CHECKED_DOCS`, so CI runs the drift
+  half on them and not the gloss half. The list admits a document only after every citation in it
+  has been read, and that is the ADR-anchor audit this round's brief rules out.
+
+### The final reset-semantics pass — no inconsistency, no code change
+
+Read from the code, not from §Q: `AnamorphEngine::reset` has exactly two callers, `prepare()`
+(`everything`) and `PluginProcessor::reset()` (`audioTailsOnly`).
+
+| requirement | where it holds | pinned by |
+|---|---|---|
+| `audioTailsOnly` clears the live meters | `levels.resetLive()` | State test 122 A |
+| peak hold and clip latches survive it | `resetLive()` touches neither | State tests 120 (leg 3), 122 B |
+| the Level-Match published gain survives it | `loudness.softReset()` | State tests 118, 120 (leg 1), 121 |
+| the Level-Match analysis is cleared | `softReset()` clears the biquads and integrators | State test 120 leg 1 (silence moves 0.000000 dB) |
+| correlation is cleared and published | `correlation.reset()` on both scopes | State test 122 A and D |
+| `everything` is the full reset | `loudness.reset()`, `levels.reset()` | State tests 120 (leg 2), 122 D |
+| a re-prepare is distinct and complete | `prepare()` → `loudness.prepare()` (→ `LoudnessMatch::reset()`), `levels.prepare()`, `correlation.prepare()`, then `reset (everything)` | the same |
+| the readout click stays distinct | `resetHold()` → next block: peak hold, RMS clip, RMS hold | State tests 121, 122 C/E |
+| the playback restart stays distinct | play / seek edge → `resetHold()` | State tests 121, 122 C |
+| the thread-model record matches | THREAD_MODEL host rows, *Level meters*, *Correlation*, *Meter hold reset*; THREADING_POLICY Audio → GUI | read against the code above |
+
+### A correction to R9: the re-prepare "gap" was not one
+
+§Q and §S recorded that "a re-prepare that keeps the Level-Match gain passes the lint and both
+suites", and made closing it R7's first item. **Wrong.** The mutation behind it — `reset
+(everything)` taking `softReset()` — never made a re-prepare keep the gain. `prepare()` zeroes the
+matcher through `loudness.prepare()` → `LoudnessMatch::reset()` before it reaches `reset
+(everything)`, and that is the only caller of the `everything` scope. Measured on the state suite,
+restored byte-identically afterwards:
+
+| mutant | what it removes | state suite |
+|---|---|---|
+| M1 | the `everything` branch's `loudness.reset()` (→ `softReset()`) | 4732 / 0 — nothing changed |
+| M3 | `LoudnessMatch::prepare()`'s own `reset()` | 4732 / 0 — nothing changed |
+| M2 | both | **1 failure**: State test 120, "ResetScope::everything still flushes the matcher, published gain included" |
+
+The contract is pinned already, by State test 120 leg 2, beside leg 1's host-reset half — which is
+exactly the pair R7's first item was meant to add. The two flushes are redundant, and either one
+alone keeps the behaviour, so no single-flush mutant can be observed at all. No test was added, and
+no product code changed. The lint docstring and `CI_CD.md` now say this, and §Q and §S carry
+correction markers. The R9 commit message (`c5f3d8f`) keeps the mistaken sentence; it is pushed
+history and is not rewritten.
+
+---
+
 ## K. Remaining findings, and what the next item is
 
 > **Updated after R9 (§Q–§S).** The R6 list below stands, with four changes. **R7 is now the next
-> priority**, entered through the re-prepare Level-Match leg (§S). **R6b** is sequenced after an F10
+> priority**, entered through the re-prepare Level-Match leg (§S) — which §T then found already
+> covered by State test 120 leg 2; R7's record is `worklogs/R7_PRODUCTION_PATH_COVERAGE.md`. **R6b** is sequenced after an F10
 > measurement. The lint's **per-method blindness** joins the scalar-state gap as a documented
 > enforcement gap. The **documentation pass** gains the unchecked-anchor drift and the missing test
 > entries listed in §Q.

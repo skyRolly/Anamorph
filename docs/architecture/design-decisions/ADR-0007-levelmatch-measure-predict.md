@@ -176,6 +176,18 @@ after the reset, and silence with no reset — and 9 of its 24 checks fail again
 declared `everything`, deliberately: `resetLive()` is not counted as a reset, so the full
 `levels.reset()` the correction above removed from the host path still cannot come back unseen.
 
+**Architecture Review Gate: APPROVED by the owner, 2026-09-22 (R9).** The approval covers the
+reset / thread-model change as implemented in `c5f3d8f`: a host reset clears and publishes the live
+meter display and the correlation meter from `reset()`'s thread; the held peak, the clip latches
+and the published Level-Match gain survive it; a re-prepare still resets all of it.
+
+| Step | Requirement | Evidence |
+|---|---|---|
+| 1 | the author flags the change as gated | the PR #155 body and the `c5f3d8f` commit message, both naming the two gated classes: a new writer of the meter and correlation atomics, and this Correction |
+| 2 | a human reviewer with DSP/audio context reviews against the relevant Policy + ADR | **The owner's ruling of 2026-09-22**: *"Human Architecture Approval has now been granted for the reset/thread-model change introduced in this PR"* |
+| 3 | if the change is a decision, an ADR is added/updated | this Correction; `THREAD_MODEL.md` (the two host rows, and the *Level meters*, *Correlation* and *Meter hold reset* rows); `THREADING_POLICY.md` (the Audio → GUI row) |
+| 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered** — no parameter ID, range, default, automation flag, serialization field or reported-latency value changes |
+
 ## Consequences
 - No drift on silence; no ratchet; no Mix=100% slam; unbiased at unity.
 - Deliberately **not** a continuously-adapting AGC.

@@ -87,11 +87,13 @@ every data member would turn a 12-row table into a 50-row one whose rows are mos
 table nobody reads is a table nobody maintains.
 
 It sees WHETHER a module is reset under a scope, not WHICH reset.  `reset()` and `softReset()` both
-count, so swapping them between the two scopes still reads `both` and passes.  Measured in round 9:
-that swap's host-reset half fails State tests 118, 120 and 121; its re-prepare half ALONE --
-`everything` taking `softReset()`, so a re-prepare keeps the published Level-Match gain ADR-0007
-says it zeroes -- fails nothing, in this lint or in either suite.  Recorded as a coverage gap, not
-closed here: telling the methods apart means declaring one per module per scope.
+count, so swapping them between the two scopes still reads `both` and passes.  Measured: that
+swap's host-reset half fails State tests 118, 120 and 121.  Its re-prepare half ALONE fails nothing,
+and correctly -- it changes no behaviour.  `reset (everything)` has one caller, `prepare()`, which
+has already zeroed the matcher through `loudness.prepare()` -> `LoudnessMatch::reset()`; the two
+flushes are redundant.  Removing BOTH is what would let a re-prepare keep the published gain, and
+State test 120 (leg 2) fails on that.  So no behaviour hides behind this blind spot today; telling
+the methods apart would mean declaring one per module per scope, and nothing measured asks for it.
 
 A PARTIAL reset is deliberately NOT counted.  `levels.resetLive()` clears the live display and
 keeps the user's latches; counting it as a reset would make the Round-6 defect -- a full
