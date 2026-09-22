@@ -767,9 +767,13 @@ nothing.
 
 The first block the host ran cleared the RMS clip and re-latched it from pre-stop state.
 
-**Out of scope, recorded:** the vectorscope holds its last frame when the ring stops moving. That is
-the designed idle gate — `Vectorscope::tick` names the case, "the ring is FROZEN (the host stopped
-calling processBlock)" — and it reads `ScopeBuffer`, which has no `reset()` and is not in this path.
+**Out of scope, recorded:** the vectorscope holds its last frame when the ring stops moving — the
+same class of display (audio that has ended, still shown). `Vectorscope::tick` names the case, "the
+ring is FROZEN (the host stopped calling processBlock)", but only to skip repaints of a picture that
+cannot change; it does not establish that holding the frame is the intended look. It is not in this
+path: `ScopeBuffer` has no `reset()`, and giving it one here would make `reset()`'s thread a second
+producer on a single-producer ring — a threading-model change. Whether a stop should blank the scope
+is a UX decision this round does not take.
 
 ### The semantics, and what was rejected
 
@@ -820,8 +824,9 @@ thread publishes every block and the GUI reads relaxed from any thread. The non-
 them are safe under the same format contract that already covers every other write `reset()` makes:
 no `processBlock` runs concurrently with a host reset (THREAD_MODEL.md, Host reset row). Nothing new
 is added to the audio path, and there is no new ordering, lock, wait or `callAsync`. The prepare
-thread already published through `levels.reset()`, and R5 did so from this thread too. THREAD_MODEL.md
-and THREADING_POLICY.md now name both extra writers.
+thread already published the level meters through `levels.reset()`, and R5 did so from this thread
+too; the correlation meter's publication is new on both threads. THREAD_MODEL.md and
+THREADING_POLICY.md now name the extra writers.
 
 ### The trade-off
 
@@ -990,7 +995,7 @@ tree, not from the original review.
 | **Conditional membership** (Part 9) | informational | Test 58 | none | **preserve** test-only (§R) |
 | **F16 / road-map R8** — documentation drift | low · certain | the citation gate covers path-qualified anchors only | rises with every round: this one found five unchecked anchors this PR's own earlier rounds broke, eleven older ones, and the missing test entries (§Q) | **proceed** as a documentation-only pass, separate from code rounds. Do not widen it into an ADR evidence audit, which R8's own text rules out |
 | **Intermittent state failure** (§M, §P) | unattributed | whole CI logs name any recurrence | none this round: nine full local runs, every failure in them a deliberate pre-fix or mutation check | **investigate on recurrence only**; no retry, no loosening |
-| **Vectorscope frozen frame** | not a defect | the idle gate's own comment names the case | — | **refute** |
+| **Vectorscope frozen frame** | UX question, not established as a defect | none; the idle gate treats a frozen ring as a static picture | low | **architecture decision** if blanking is wanted: it needs a second producer on the SPSC `ScopeBuffer` (a threading-model change), so it is not a follow-on to this fix |
 
 **The next engineering priority is R7**, entered through its cheapest item, the re-prepare leg. The
 reasons: it is the only open item whose absence produced findings on this branch, round after round;
