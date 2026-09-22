@@ -131,6 +131,20 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   one's audio, and the artefact was as loud as the signal itself. Changing algorithm the moment
   after another control now sounds exactly the same as changing both together. Decision: ADR-0004
   (Correction, 2026-09-21). Regression coverage: Test 57. Evidence: PR #155. [Verified]
+- **One invalid automation value no longer silences Haas and Velvet until the plug-in is
+  re-initialised.** A host can hand a plug-in a parameter value that is not a number at all — a host
+  bug or a damaged automation lane — and it reaches the audio engine, whose protection against
+  invalid audio catches the result, replaces it with silence and resets the processing so it can
+  carry on. With **Haas** or **Velvet** selected it could not carry on: the invalid **Amount** stayed
+  stuck inside the effect's own smoothing, so the output stayed silent after the host went back to
+  sending ordinary values — through stopping and restarting the transport, and through a host reset
+  — until the host re-initialised the plug-in, for example when the audio settings changed or the
+  project was reopened. Measured through the plug-in: silence (**−180 dB**) one second after the
+  host's values were valid again, on material that had been coming out at **−11.7 dB**. The reset
+  now clears that state too: the output drops out for one buffer at most and the effect glides back
+  in as soon as the host sends a valid value. Chorus and Dimension D were never affected, and nothing
+  changes for ordinary automation. Decision: ADR-0009 (Implementation note, 2026-09-22). Regression
+  coverage: State test 123 and Test 59. Evidence: PR #155. [Verified]
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands
   back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own

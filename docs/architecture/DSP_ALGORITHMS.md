@@ -17,10 +17,13 @@ Invariant: encode→decode is gain/phase exact; mono compatibility by constructi
 ## HaasProcessor — `src/dsp/HaasProcessor.{h,cpp}`
 
 Precedence (Haas) widening: a single fractional delay line per channel (power-of-two circular
-buffer, linear-interpolated read, `.cpp:34-43`). The delayed side is dry/wet blended:
+buffer, linear-interpolated read, `.cpp:45-54`). The delayed side is dry/wet blended:
 `right[n] += amount·(delayed − right[n])` (`.cpp:62`). Both delay length and wet amount are
 one-pole smoothed (`smooth=0.0005`, `aSmooth=0.001`). Linear → stays **outside** oversampling.
-Invariant: `amount 0 = identity`. Buffer sized for ~40 ms (covers the 35 ms max).
+Invariant: `amount 0 = identity`. Buffer sized for ~40 ms (covers the 35 ms max). `reset()` also
+reseeds a **non-finite** wet glide to 0 (parked identity) and leaves a finite one alone: a NaN
+`amount` target makes the glide NaN for good, and the engine's NaN self-heal needs it gone
+(ADR-0009, Implementation note 2026-09-22; State test 123).
 
 ## VelvetNoise — `src/dsp/VelvetNoise.{h,cpp}`
 
@@ -33,10 +36,11 @@ into the stored weight — ALG-4, Wave 2, bit-identical), then `Side' = Side + d
 (`.cpp:243-251`). With the density glide settled and no stop fade in flight, the gather runs
 tap-outer over a linear image of the history (H5, Wave 2): one contiguous unit-stride run per
 tap into a per-sample accumulator that keeps the original ascending-tap summation order —
-bit-identical output, streaming instead of 64 random-index reads per sample (`.cpp:99-180`).
+bit-identical output, streaming instead of 64 random-index reads per sample (`.cpp:104-185`).
 The density-glide, stop-fade and parked paths keep the original per-sample loop verbatim. A presence follower + fixed-time gate fades the tail; a play→stop edge applies
 a ~4 ms zero-slope smoothstep tail-kill then flushes history. Mid is untouched → `L+R = 2·Mid`.
-Invariant: `amount 0 = identity`.
+Invariant: `amount 0 = identity`. `reset()` reseeds a non-finite wet glide to 0, as `HaasProcessor`
+does and for the same reason (ADR-0009, Implementation note 2026-09-22).
 
 ## ChorusEngine — `src/dsp/ChorusEngine.{h,cpp}`
 

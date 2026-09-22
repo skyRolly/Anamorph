@@ -30,6 +30,16 @@ void HaasProcessor::reset()
     std::fill (bufR.begin(), bufR.end(), 0.0f);
     writeL = writeR = 0;
     currentSamples = targetSamples;
+    // A NON-FINITE wet glide is the one state this reset used to leave behind, and it is
+    // the engine's NaN self-heal that needs it gone (ADR-0009: "resets the stateful
+    // nodes"). One NaN `amount` target -- a host's bad automation point, which JUCE's range
+    // clamp passes -- makes `currentAmount` NaN, and the exponential glide can never leave
+    // NaN, so the self-heal zeroed every block for good (State test 123: -180 dB until a
+    // re-prepare). Parked identity, 0, is the reseed: the glide walks back in to a finite
+    // target, and while the target is still NaN the parked path above holds identity.
+    // Finite state is untouched, so every other caller of reset() is bit-identical.
+    if (! std::isfinite (currentAmount))
+        currentAmount = 0.0f;
 }
 
 float HaasProcessor::readDelayed (std::vector<float>& line, int& widx, float delaySamps) noexcept

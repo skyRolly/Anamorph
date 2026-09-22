@@ -6043,7 +6043,7 @@ was blind was not.
 
 **The oracle, and why it costs no product change.** The module already holds two implementations of
 the same arithmetic. The gather's eligibility gate ends with `numSamples <= (int) accum.size()`
-(`src/dsp/VelvetNoise.cpp:166`) — a clause whose stated purpose is direct callers rather than the
+(`src/dsp/VelvetNoise.cpp:171`) — a clause whose stated purpose is direct callers rather than the
 engine — and `accum` is sized from `prepare()`'s `maxBlockSize` alone. An instance prepared for a
 **smaller** block therefore runs the per-sample loop over the same audio, and everything else about
 it is identical: ring, tap positions and signs, weights, envelope/gate coefficients and stop step
@@ -6413,7 +6413,7 @@ marked rather than erased.
 
 ## The A7-9 near-silent scope correction + the cross-slice record parser (2026-08-30)
 
-A review pass against `src/dsp/VelvetNoise.cpp:158` asked what happens to **near-silent NONZERO**
+A review pass against `src/dsp/VelvetNoise.cpp:163` asked what happens to **near-silent NONZERO**
 input at the stalled fixpoints, and the measured answer corrected a claim every A7-9 record carried:
 "the residual appears only on digital silence" was this programme's *observation*, never a property.
 The absorption `x + residual == x` needs `|x| >= 2^24 × |residual|`; a twin-binary A/B against the
@@ -13002,6 +13002,40 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 73rd pass — 2026-09-22, PR #155 R7 (production paths no test had run)
+
+**Scope.** R7 of PR #155, after the owner's architecture approval of the R9 reset change (recorded
+in ADR-0007). The historical R7 candidate list was re-assessed against the tree under gcov, not
+implemented wholesale; each candidate's decision and evidence is in
+`worklogs/R7_PRODUCTION_PATH_COVERAGE.md`.
+
+**One product defect, fixed.** ADR-0009's self-heal could not recover Haas or Velvet from one
+non-finite `amount` target: the wet glide stayed NaN and the guard zeroed every block until a
+re-prepare (measured −180 dB through a stop and play, and through a host reset).
+`HaasProcessor::reset()` and `VelvetNoise::reset()` now reseed a non-finite glide to 0; finite
+state is untouched.
+
+**Tests.** DSP Tests 59 (a non-finite burst), 60 (the engaged wrap's PDC) and 61 (the scope ring);
+State tests 123 (a host NaN parameter), 124 (the documented I/O contract) and 125 (the transport
+machine without a sample clock). Each fails on a mutant of the code it guards and passes on the
+tree; the mutants and their failure counts are tabled in the worklog.
+
+**Documents changed.** ADR-0009 (Implementation note); `CHANGELOG.md` `[0.9.9]` (one Fixed entry);
+`LATENCY_MODEL.md` (Test 60; its "and the sample rate" corrected by measurement; its TODO answered);
+`COMPATIBILITY_MATRIX.md` (State test 124 on the three I/O rows); `DSP_ALGORITHMS.md` (the reseed,
+and the two bare anchors this change shifted); `procedures/TESTING.md` (both entries); this entry;
+the new worklog.
+
+**Drift reported, not fixed** — outside this round's remit, each already present at the merge base
+unless stated: the `COMPATIBILITY_MATRIX.md` I/O-row anchors into `PluginProcessor.cpp` (its
+`:76-86`, `:120-121` and `:204-208`); `DSP_ALGORITHMS.md`'s Haas `.cpp:62` and Velvet `.cpp:243-251`;
+`procedures/TESTING.md`'s "53 DSP tests"; no `TESTING.md` entry for Tests 55–58 or State tests
+117–122, and no pass entry here for PR #155's rounds R4–R9 (both this PR's own); and
+`THREAD_MODEL.md`'s "No direct cross-thread access to non-atomic shared state", which does not
+describe the scope ring's lapped-frame overwrite (worklog §F15-ScopeBuffer).
+
+**Counts.** DSP **492 / 0** (479 + 13), State **4 760 / 0** (4 732 + 28). [Verified]
 
 ## 72nd pass — 2026-09-19, round 52 (the depth cap enforces the depth definition; the probe's oracle consolidated)
 

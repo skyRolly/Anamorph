@@ -36780,6 +36780,339 @@ static void testAHostResetClearsTheLiveMeters()
     }
 }
 
+// ---------------------------------------------------------------------------
+//  State test 123 -- A NON-FINITE PARAMETER VALUE FROM THE HOST DOES NOT LATCH THE CHAIN
+//  (ADR-0009; F14's second half, R7)
+//
+//  REACHABLE, measured rather than assumed. A host's parameter change arrives through
+//  JUCE's VST3 wrapper as `setValueAndNotifyIfChanged`, which calls
+//  `setValueNotifyingHost (newValue)`. Its `approximatelyEqual` early-out is false for
+//  NaN, `NormalisableRange::clampTo0To1` is `jlimit`, which passes NaN, and
+//  `ParamPointers::toEngine` forwards the raw atomic -- so a host's NaN becomes
+//  `EngineParameters::algoAmount == NaN`. NaN is not a legal VST3 value; a host that sends
+//  one is buggy. ADR-0009 exists for exactly that class: it already defends the chain
+//  against pathological host AUDIO.
+//
+//  THE LATCH. Haas and Velvet glide their wet amount exponentially,
+//  `currentAmount += k * (target - currentAmount)`. One NaN target makes `currentAmount`
+//  NaN, and a later finite target cannot bring it back: NaN plus anything is NaN. The
+//  output goes non-finite, and the engine's self-heal (ADR-0009) catches it every block,
+//  zeroes it and resets the modules -- but `HaasProcessor::reset()` and
+//  `VelvetNoise::reset()` never touched the glide, so the next block is NaN again. The
+//  global review's root cause 5: one module-reset list serving two recovery paths.
+//  MEASURED through this wrapper, amount 0.7, one NaN point, then 0.7 again:
+//      Haas, Velvet     -180.00 dB 1 s and 2 s later -- silent until a re-prepare
+//      Chorus, Dim-D    recovered (they carry no such glide)
+//  "The plugin self-heals instead of needing a Multiband off/on" is ADR-0009's own
+//  consequence; here only a re-prepare helped -- a stop and play, or a host reset, did not.
+//
+//  WHAT THIS ASSERTS, per algorithm, through the processor exactly as a host drives it:
+//  the host never receives a non-finite sample, and one second after the host sends a
+//  finite value again the output is back within 6 dB of where it was before (Chorus and
+//  Dim-D restart their LFO phase in the self-heal, measured up to ~2.7 dB). A control
+//  checks that the NaN really reaches the raw parameter -- if JUCE ever starts rejecting
+//  it, this test must say its premise has gone rather than pass for the wrong reason.
+static void testAHostNanParameterDoesNotLatchTheChain()
+{
+    std::printf ("State test 123: a non-finite parameter value from the host does not latch the chain (F14)\n");
+
+    const double sr = 48000.0; const int block = 256;
+    const char* names[] = { "Haas", "Velvet", "Chorus", "Dim-D" };
+
+    auto rmsDb = [] (const juce::AudioBuffer<float>& b)
+    {
+        double s = 0.0;
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < b.getNumSamples(); ++i)
+            {
+                const double v = b.getSample (c, i);
+                s += v * v;
+            }
+        const double r = std::sqrt (s / (2.0 * b.getNumSamples()));
+        return r > 1.0e-9 ? 20.0 * std::log10 (r) : -180.0;
+    };
+
+    for (int algo = 0; algo < 4; ++algo)
+    {
+        const auto o = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        auto& p = *o;
+        p.prepareToPlay (sr, block);
+
+        auto* amount = p.getAPVTS().getParameter ("amount");
+        auto* alg    = p.getAPVTS().getParameter ("algorithm");
+        alg->setValueNotifyingHost (alg->convertTo0to1 ((float) algo));
+        amount->setValueNotifyingHost (amount->convertTo0to1 (0.7f));
+
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        juce::Random rng (3);
+        bool finite = true;
+        auto run = [&] (int blocks)
+        {
+            double last = -180.0;
+            for (int b = 0; b < blocks; ++b)
+            {
+                for (int i = 0; i < block; ++i)
+                {
+                    buf.setSample (0, i, rng.nextFloat() - 0.5f);
+                    buf.setSample (1, i, rng.nextFloat() - 0.5f);
+                }
+                midi.clear();
+                p.processBlock (buf, midi);
+                for (int c = 0; c < 2; ++c)
+                    for (int i = 0; i < block; ++i)
+                        if (! std::isfinite (buf.getSample (c, i))) finite = false;
+                last = rmsDb (buf);
+            }
+            return last;
+        };
+
+        const double before = run ((int) std::ceil (0.5 * sr / block));
+        amount->setValueNotifyingHost (std::numeric_limits<float>::quiet_NaN());   // the host's bad point
+        const bool reached = std::isnan (p.getAPVTS().getRawParameterValue ("amount")->load());
+        run (1);
+        amount->setValueNotifyingHost (amount->convertTo0to1 (0.7f));              // ...and its next, finite one
+        const double after = run ((int) std::ceil (1.0 * sr / block));
+
+        std::printf ("  %-6s: before %6.2f dB, 1 s after the host is finite again %7.2f dB, output finite %d\n",
+                     names[algo], before, after, (int) finite);
+        char what[160];
+        std::snprintf (what, sizeof what, "F14 control (%s): the host's NaN reaches the raw parameter", names[algo]);
+        check (reached, what);
+        std::snprintf (what, sizeof what, "F14 (%s): the host never receives a non-finite sample", names[algo]);
+        check (finite, what);
+        std::snprintf (what, sizeof what, "F14 (%s): one NaN point does not latch the chain -- back within 6 dB", names[algo]);
+        check (std::abs (after - before) < 6.0, what);
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 124 -- THE DOCUMENTED I/O CONTRACT: STEREO->STEREO AND MONO->STEREO (R7, F15)
+//
+//  "Turn mono into stereo" is the product's first README bullet, and the contract is
+//  written down twice: README "stereo->stereo and mono->stereo (output is always stereo;
+//  mono->mono is not supported)", COMPATIBILITY_MATRIX "mono -> stereo ... mono duplicated to
+//  both channels". Measured under gcov, neither half ran anywhere: `isBusesLayoutSupported`
+//  zero times in both suites, and the up-mix -- `buffer.copyFrom (1, 0, buffer, 0, ...)` in
+//  `processBlock` -- zero times. pluginval walks layouts in CI, but only for crashes.
+//
+//  A mono-input track hands the plug-in a 2-channel buffer whose second channel is
+//  OUTPUT-ONLY: whatever the host left in it is not audio. So the up-mix is not a courtesy,
+//  it is what keeps that junk out of the widener. This asserts, through the real
+//  negotiation and the real processBlock: the four layouts the documents name are accepted
+//  or refused as they say, and a mono->stereo processor fed a junk-filled second channel
+//  produces output BIT-IDENTICAL to a stereo->stereo one fed the same signal on both
+//  sides -- with widening engaged, so the equality is not the trivial one of a transparent
+//  default. Nothing beyond the documents is asserted: surround and disabled-input layouts
+//  are refused by the code too, but no document states it, so this does not pin it.
+static void testTheDocumentedIoContract()
+{
+    std::printf ("State test 124: the documented I/O contract -- stereo->stereo and mono->stereo\n");
+
+    using CS = juce::AudioChannelSet;
+    auto layout = [] (const CS& in, const CS& out)
+    {
+        juce::AudioProcessor::BusesLayout l;
+        l.inputBuses.add (in);
+        l.outputBuses.add (out);
+        return l;
+    };
+
+    {
+        const auto o = std::make_unique<AnamorphAudioProcessor>();   // heap: State test 59's note
+        check (o->checkBusesLayoutSupported (layout (CS::stereo(), CS::stereo())),
+               "R7 I/O: stereo->stereo is accepted (README)");
+        check (o->checkBusesLayoutSupported (layout (CS::mono(), CS::stereo())),
+               "R7 I/O: mono->stereo is accepted (README)");
+        check (! o->checkBusesLayoutSupported (layout (CS::mono(), CS::mono())),
+               "R7 I/O: mono->mono is refused (README: \"not supported\")");
+        check (! o->checkBusesLayoutSupported (layout (CS::stereo(), CS::mono())),
+               "R7 I/O: stereo->mono is refused (README: \"output is always stereo\")");
+    }
+
+    const double sr = 48000.0; const int block = 256;
+    auto engage = [] (AnamorphAudioProcessor& p)
+    {
+        auto set = [&p] (const char* id, float v)
+        {
+            if (auto* rp = p.getAPVTS().getParameter (id))
+                rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+        };
+        set ("algorithm", 0.0f);   // Haas
+        set ("amount",    0.7f);
+        set ("width",     1.6f);
+        set ("drive",     4.0f);
+    };
+
+    const auto monoOwner   = std::make_unique<AnamorphAudioProcessor>();
+    const auto stereoOwner = std::make_unique<AnamorphAudioProcessor>();
+    auto& mono = *monoOwner;
+    auto& stereo = *stereoOwner;
+    const bool monoSet = mono.setBusesLayout (layout (CS::mono(), CS::stereo()));
+    check (monoSet && mono.getMainBusNumInputChannels() == 1 && mono.getMainBusNumOutputChannels() == 2,
+           "R7 I/O: the host's mono->stereo request is taken (setBusesLayout)");
+    for (auto* p : { &mono, &stereo })
+    {
+        p->prepareToPlay (sr, block);
+        engage (*p);
+    }
+
+    juce::AudioBuffer<float> m (2, block), st (2, block);
+    juce::MidiBuffer midi;
+    juce::Random rng (11);
+    bool identical = true, widened = false;
+    for (int b = 0; b < 200; ++b)
+    {
+        for (int i = 0; i < block; ++i)
+        {
+            const float x = rng.nextFloat() - 0.5f;
+            m.setSample (0, i, x);
+            m.setSample (1, i, 0.9f * std::sin (0.37f * (float) (b * block + i)));  // output-only junk
+            st.setSample (0, i, x);
+            st.setSample (1, i, x);
+        }
+        midi.clear(); mono.processBlock (m, midi);
+        midi.clear(); stereo.processBlock (st, midi);
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < block; ++i)
+                if (! juce::exactlyEqual (m.getSample (c, i), st.getSample (c, i))) identical = false;
+        for (int i = 0; i < block && ! widened; ++i)
+            widened = std::abs (m.getSample (0, i) - m.getSample (1, i)) > 1.0e-3f;
+    }
+    std::printf ("  mono->stereo vs stereo->stereo, 200 blocks, widening engaged: %s; output L != R: %s\n",
+                 identical ? "bit-identical" : "DIFFERENT", widened ? "yes" : "no");
+    check (widened, "R7 I/O control: the chain really widens the mono input (L != R at the output)");
+    check (identical, "R7 I/O: mono->stereo output equals stereo->stereo fed L = R -- the junk never reaches it");
+}
+
+// ---------------------------------------------------------------------------
+//  State test 125 -- THE TRANSPORT MACHINE WITHOUT A SAMPLE CLOCK (R7, F15)
+//
+//  `processBlock` finds a playback restart (and a seek) to clear the held peak. It prefers
+//  the host's sample clock and, when a host reports none, derives the position from the
+//  musical one: `ppq * 60 / bpm * sampleRate`. State tests 120-122 drive a playhead that
+//  always reports samples, so under gcov that derivation ran ZERO times, and so did the
+//  branch for a host that reports play state with no position at all.
+//
+//  The derivation is the fragile half. A seek is "the position moved by more than one
+//  block from where continuous playback puts it", so a conversion off by any factor makes
+//  ORDINARY playback read as a seek on every block, and the held peak -- the user's latch
+//  -- would be cleared continuously instead of on a real jump. This drives a ppq-only
+//  playhead at 123.4 BPM (a non-integer number of samples per beat, so the per-block
+//  position is fractional and truncates differently each block) and asserts, through the
+//  published meter: continuous playback keeps the held peak; a jump clears it; a stop and
+//  a restart clear it. Then the same for a playhead reporting play state only, where there
+//  is nothing to seek against and only the play edge can clear.
+static void testTheTransportMachineWithoutASampleClock()
+{
+    std::printf ("State test 125: the transport machine without a sample clock (ppq only; no position)\n");
+
+    const double sr = 48000.0; const int block = 256; const double bpm = 123.4;
+
+    struct Head : juce::AudioPlayHead
+    {
+        bool playing = false, withPpq = true;
+        double ppq = 0.0, bpm = 120.0;
+        juce::Optional<juce::AudioPlayHead::PositionInfo> getPosition() const override
+        {
+            juce::AudioPlayHead::PositionInfo info;       // no setTimeInSamples: that is the point
+            info.setIsPlaying (playing);
+            if (withPpq) { info.setPpqPosition (ppq); info.setBpm (bpm); }
+            return info;
+        }
+    };
+
+    struct Rig
+    {
+        const std::unique_ptr<AnamorphAudioProcessor> owner
+            { std::make_unique<AnamorphAudioProcessor>() };            // heap: State test 59's note
+        AnamorphAudioProcessor& proc { *owner };
+        Head head;
+        juce::AudioBuffer<float> buf;
+        juce::MidiBuffer midi;
+        juce::Random rng { 17 };
+        double rate;
+        // setRateAndBufferSizeDetails FIRST, as every JUCE wrapper does before prepareToPlay:
+        // the ppq derivation reads getSampleRate(), which a bare prepareToPlay leaves at 0 --
+        // and then every derived position is 0, no jump is ever seen, and the continuous leg
+        // below would pass for the wrong reason (measured while writing this test).
+        Rig (double sampleRate, int blockSize) : buf (2, blockSize), rate (sampleRate)
+        {
+            proc.setPlayHead (&head);
+            proc.setRateAndBufferSizeDetails (sampleRate, blockSize);
+            proc.prepareToPlay (sampleRate, blockSize);
+        }
+        ~Rig() { proc.setPlayHead (nullptr); }
+        // `transient` puts one 0.9 sample in the first block; the rest is noise at 0.02.
+        void run (int blocks, bool transient = false)
+        {
+            for (int b = 0; b < blocks; ++b)
+            {
+                for (int i = 0; i < buf.getNumSamples(); ++i)
+                {
+                    const float v = (transient && b == 0 && i == 7) ? 0.9f
+                                                                    : (rng.nextFloat() * 2.0f - 1.0f) * 0.02f;
+                    buf.setSample (0, i, v); buf.setSample (1, i, v);
+                }
+                midi.clear();
+                proc.processBlock (buf, midi);
+                if (head.playing)
+                    head.ppq += buf.getNumSamples() * head.bpm / (60.0 * rate);
+            }
+        }
+        float held() const { return proc.getEngine().getLevels().output.getPeakHoldL(); }
+    };
+
+    for (int withPpq = 1; withPpq >= 0; --withPpq)
+    {
+        const char* kind = withPpq ? "ppq only" : "play state only";
+        char what[160];
+
+        {   // continuous playback keeps the latch -- the leg a wrong conversion breaks
+            Rig r (sr, block);
+            r.head.withPpq = (withPpq == 1); r.head.bpm = bpm; r.head.ppq = 3.0;
+            r.head.playing = true;
+            r.run (4);                                   // the play edge, spent
+            r.run (1, true);                             // latch a distinct peak
+            const float latched = r.held();
+            r.run (400);                                 // ~2.1 s of ordinary playback
+            std::printf ("  %-15s continuous playback: held %+.2f dB -> %+.2f dB\n", kind, latched, r.held());
+            std::snprintf (what, sizeof what, "R7 transport control (%s): the transient latched a peak", kind);
+            check (latched > -3.0f, what);
+            std::snprintf (what, sizeof what, "R7 transport (%s): continuous playback does not read as a seek", kind);
+            check (juce::exactlyEqual (r.held(), latched), what);
+        }
+        if (withPpq)
+        {   // a jump while playing clears it
+            Rig r (sr, block);
+            r.head.bpm = bpm; r.head.ppq = 3.0; r.head.playing = true;
+            r.run (4); r.run (1, true);
+            const float latched = r.held();
+            r.head.ppq += 8.0;                           // the user clicks two bars ahead
+            r.run (2);
+            std::printf ("  %-15s seek while playing: held %+.2f dB -> %+.2f dB\n", kind, latched, r.held());
+            std::snprintf (what, sizeof what, "R7 transport (%s): a seek clears the held peak", kind);
+            check (r.held() < -20.0f, what);
+        }
+        {   // a stop and a restart clear it -- the play edge, which needs no position
+            Rig r (sr, block);
+            r.head.withPpq = (withPpq == 1); r.head.bpm = bpm; r.head.ppq = 3.0;
+            r.head.playing = true;
+            r.run (4); r.run (1, true);
+            const float latched = r.held();
+            r.head.playing = false; r.run (8);           // stopped, the host keeps calling
+            const float whileStopped = r.held();
+            r.head.playing = true;  r.run (2);           // resume where it stopped
+            std::printf ("  %-15s stop, then play: held %+.2f -> %+.2f while stopped -> %+.2f dB\n",
+                         kind, latched, whileStopped, r.held());
+            std::snprintf (what, sizeof what, "R7 transport (%s): the stop itself keeps the held peak", kind);
+            check (juce::exactlyEqual (whileStopped, latched), what);
+            std::snprintf (what, sizeof what, "R7 transport (%s): the restart clears it", kind);
+            check (r.held() < -20.0f, what);
+        }
+    }
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -36965,6 +37298,9 @@ int main (int argc, char* argv[])
     testAHostResetClearsAudioAndKeepsTheUsersState();
     testAHostResetArmsTheNextRestart();
     testAHostResetClearsTheLiveMeters();
+    testAHostNanParameterDoesNotLatchTheChain();
+    testTheDocumentedIoContract();
+    testTheTransportMachineWithoutASampleClock();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

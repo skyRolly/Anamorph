@@ -177,7 +177,25 @@ removed, so the 50 % bound sits between two measured populations); and both defe
 seeded and caught -- a wrong slide fails at sample 32, a missing invalidation at the stop block.
 `worklogs/performance/PERF_AUDIT_v0.9.5_IMPLEMENTATION.md` §2.2.
 
-The newest DSP test is the **Oversampling → Off handoff guard**
+**R7's production-path coverage — Tests 59–61 (PR #155, 2026-09-22).** Three paths every host runs
+and no test had executed, found under gcov and each proven live by mutation
+(`worklogs/R7_PRODUCTION_PATH_COVERAGE.md`). **Test 59** (`testNonFiniteBurstSelfHeals`) feeds one
+block of NaN / +Inf through `AnamorphEngine::process` — the ADR-0009 guard's scrub-and-reset block
+had run zero times — and asserts, over the four algorithms × Oversampling Off / 2× × Level Match
+off / on, that no non-finite sample reaches the host, that the published Level-Match gain stays
+finite, and that the chain is not left latched (within 6 dB of a twin fed zeros; Haas and Velvet
+back within 0.1 dB). **Test 60** (`testEngagedWrapCarriesTheReportedLatency`) measures the engaged
+oversampling wrap's processed-path phase delay at 300 Hz against the reported latency (within 0.01
+samples) and pins the reported 4 / 6 / 6 at 44.1 / 48 / 96 kHz; Tests 3+4 and 52 measure only rings
+delayed BY that number. Its 0.35 fs control is also the only check in either suite that Drive
+engages the wrap at all. **Test 61** (`testScopeRingHandsTheNewestFramesOldestFirst`) drives
+`ScopeBuffer` single-threaded at 441-frame blocks across 2.7 laps: `readLatest` returns exactly the
+newest frames, oldest first, including through the second copy segment a straddling block takes;
+the cross-thread half is deliberately not tested (the worklog says why). Tests 55–58, from the same
+PR's earlier rounds, have no entry here yet; their evidence is in CHANGELOG `[0.9.9]` and the ADR
+corrections those entries cite.
+
+Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
 
@@ -4211,6 +4229,25 @@ KI-007 records that the GPU-less Windows runner cannot host editor GUI tests at 
 instrument this test feeds is a Linux job, so the scoping costs no coverage. Widening it needs one
 green run on the other two, not an argument.
 Evidence [Verified]: tests/state_tests.cpp; CMakeLists.txt (`AnamorphStateTests`).
+
+**R7's production-path coverage in the processor — State tests 123–125 (PR #155, 2026-09-22)**,
+each driven through `AnamorphAudioProcessor` as a host drives it and proven live by mutation
+(`worklogs/R7_PRODUCTION_PATH_COVERAGE.md`). **State test 123**
+(`testAHostNanParameterDoesNotLatchTheChain`) sends one NaN `amount` through
+`setValueNotifyingHost` — the call JUCE's VST3 wrapper makes, which passes NaN to the raw parameter
+(a control asserts that premise, so a JUCE that starts rejecting NaN says so instead of passing) —
+and requires every algorithm back within 6 dB one second after the host is finite again. Before the
+`HaasProcessor` / `VelvetNoise` `reset()` reseed (ADR-0009, Implementation note 2026-09-22) Haas and
+Velvet stayed at −180 dB until a re-prepare. **State test 124** (`testTheDocumentedIoContract`)
+checks the README / `COMPATIBILITY_MATRIX.md` I/O contract through the real negotiation — stereo →
+stereo and mono → stereo accepted, mono → mono and stereo → mono refused — and that a mono → stereo
+processor fed junk in its output-only second channel produces output bit-identical to stereo →
+stereo fed L = R, with widening engaged. **State test 125**
+(`testTheTransportMachineWithoutASampleClock`) drives a ppq-only playhead at 123.4 BPM, and one that
+reports play state only: continuous playback keeps the held peak, a seek clears it (ppq only), a
+stop keeps it and the restart clears it. Its rig calls `setRateAndBufferSizeDetails` before
+`prepareToPlay`, as every JUCE wrapper does: without it `getSampleRate()` is 0, every derived
+position is 0, and the continuous-playback leg passes for the wrong reason.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

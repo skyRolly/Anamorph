@@ -64,6 +64,11 @@ void VelvetNoise::reset()
     gate = 0.0f;
     stopping = false;
     stopGain = 1.0f;
+    // The same reseed as HaasProcessor::reset(), for the same latch: one NaN amount target
+    // left `currentAmount` NaN and the self-heal could not recover it (State test 123).
+    // Parked identity, and only when non-finite -- finite state is bit-identical.
+    if (! std::isfinite (currentAmount))
+        currentAmount = 0.0f;
 }
 
 void VelvetNoise::updateWeights() noexcept

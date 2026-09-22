@@ -6339,6 +6339,356 @@ static void testInertDimModeDoesNotReArmLevelMatch()
     }
 }
 
+// ---------------------------------------------------------------------------
+//  Test 59 -- A NON-FINITE BURST FROM THE HOST SELF-HEALS (ADR-0009; F14, R7)
+//
+//  ADR-0009's second decision bullet -- "an engine-wide per-sample NaN/Inf guard
+//  replaces only non-finite samples with 0 and resets the stateful nodes" -- and its
+//  stated consequence, "the plugin self-heals instead of needing a Multiband off/on",
+//  were entered by no test: measured under gcov, every line of the guard's scrub and
+//  reset block ran ZERO times across this suite. Test 2 asserts the chain PRODUCES no
+//  NaN; Tests 19 and 45 feed NaN to the meters, never to `AnamorphEngine::process`.
+//  Nothing upstream of the guard scrubs host input, so a host NaN reaches every
+//  stateful node in the chain.
+//
+//  WHAT RECOVERY MEANS HERE, and nothing ADR-0009 does not say: the host never receives
+//  a non-finite sample; the chain is not left latched (a NaN held in an IIR state makes
+//  every later block non-finite, which the guard then zeroes -- silence for good); and
+//  the published Level-Match gain is not left non-finite. Twin engines on the heap
+//  (sizeof ~138 KB each): A receives one block with NaN / +Inf on every 7th sample, B the
+//  same block with those samples at 0.
+//
+//  THE COMPARISON IS PER-BLOCK RMS, NOT SAMPLE-EXACT, because the guard's own reset is a
+//  state change the twin never makes. Chorus and Dimension D restart their LFO phase and
+//  then differ from the twin by up to 1.8 dB for as long as the modulation runs; with
+//  Level Match on, A re-converges from a cleared matcher. Haas and Velvet carry no such
+//  phase, and with Level Match off they return to the twin to within 0.1 dB -- the
+//  stronger claim, made only where it holds.
+//
+//  MEASURED, 4 algorithms x Oversampling Off / 2x, Multiband and Mono Maker on, Level
+//  Match off and on: no non-finite output block anywhere; from 10 blocks after the burst
+//  the worst per-block distance from the twin is 2.83 dB (Dim-D, Level Match on) against a
+//  6 dB bound -- a latched chain reads -180 dB, so the bound sits ~170 dB from the failure
+//  and ~3 dB from the widest healthy leg; Haas / Velvet within 0.1 dB after 4-13 blocks.
+//  AND WHAT EACH ASSERTION CATCHES, measured by deleting pieces of the guard:
+//      every module reset removed      -> silent (-180 dB) for good, gain NaN
+//      only `loudness.reset()` removed -> gain NaN for good; with Level Match on, silence
+//      the scrub removed               -> every block after the burst non-finite
+//  The first is exactly the latched channel ADR-0009 was written against.
+//
+//  NOT CLAIMED: extreme FINITE input. ADR-0009 passes valid audio "however loud"
+//  untouched and the guard does not fire; the chain itself recovers within 0.1 s, but the
+//  Level-Match analysis stays displaced for seconds (worklog R7, §F14). That belongs to
+//  Level Match, not to this guard.
+static void testNonFiniteBurstSelfHeals()
+{
+    std::printf ("Test 59: a non-finite burst from the host self-heals (ADR-0009, F14)\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 256;
+    constexpr int    before = 60, after = 120;   // ~0.32 s in, one burst block, ~0.64 s out
+
+    auto rmsDb = [] (const juce::AudioBuffer<float>& b)
+    {
+        double s = 0.0;
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < b.getNumSamples(); ++i)
+            {
+                const double v = b.getSample (c, i);
+                s += v * v;
+            }
+        const double r = std::sqrt (s / (2.0 * b.getNumSamples()));
+        return r > 1.0e-9 ? 20.0 * std::log10 (r) : -180.0;
+    };
+    auto allFinite = [] (const juce::AudioBuffer<float>& b)
+    {
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < b.getNumSamples(); ++i)
+                if (! std::isfinite (b.getSample (c, i))) return false;
+        return true;
+    };
+
+    using anamorph::Algorithm;
+    using anamorph::OversampleFactor;
+    const Algorithm algos[] = { Algorithm::Haas, Algorithm::Velvet, Algorithm::Chorus, Algorithm::DimensionD };
+    const char* names[]     = { "Haas", "Velvet", "Chorus", "Dim-D" };
+
+    bool outFinite = true, gainFinite = true, tracks = true, returns = true;
+    for (int lm = 0; lm <= 1; ++lm)
+        for (int a = 0; a < 4; ++a)
+            for (auto os : { OversampleFactor::Off, OversampleFactor::x2 })
+            {
+                anamorph::EngineParameters p;
+                p.algorithm = algos[a]; p.algoAmount = 0.7f; p.oversample = os;
+                p.driveDb = 8.0f; p.width = 1.6f; p.mix = 0.8f;
+                p.mbEnable = true; p.monoMakerEnable = true;
+                p.autoGainMatch = (lm == 1);
+
+                auto aPtr = std::make_unique<anamorph::AnamorphEngine>();   // heap: see the note above
+                auto bPtr = std::make_unique<anamorph::AnamorphEngine>();
+                for (auto* e : { aPtr.get(), bPtr.get() })
+                {
+                    e->primeParameters (p);                     // production order (Test 55's note)
+                    e->prepare (sr, bs);
+                    e->setParameters (p);
+                }
+
+                juce::AudioBuffer<float> A (2, bs), B (2, bs);
+                juce::Random rng (4242);
+                bool legFinite = true, legGain = true;
+                double worst = 0.0;                  // max |dB| vs the twin, from burst + 10 on
+                int settled = -1;                    // first block after which A stays within 0.1 dB
+                for (int b = 0; b <= before + after; ++b)
+                {
+                    for (int i = 0; i < bs; ++i)
+                    {
+                        const float l = rng.nextFloat() - 0.5f, r = rng.nextFloat() - 0.5f;
+                        const bool bad = (b == before && (i % 7) == 3);
+                        A.setSample (0, i, bad ? std::numeric_limits<float>::quiet_NaN() : l);
+                        A.setSample (1, i, bad ? std::numeric_limits<float>::infinity()  : r);
+                        B.setSample (0, i, bad ? 0.0f : l);
+                        B.setSample (1, i, bad ? 0.0f : r);
+                    }
+                    aPtr->process (A);
+                    bPtr->process (B);
+
+                    legFinite = legFinite && allFinite (A);
+                    legGain   = legGain && std::isfinite (aPtr->getMatchGainDb());
+                    if (b > before)
+                    {
+                        const double d = std::abs (rmsDb (A) - rmsDb (B));
+                        if (b >= before + 10) worst = juce::jmax (worst, d);
+                        if (d < 0.1) { if (settled < 0) settled = b - before; }
+                        else settled = -1;
+                    }
+                }
+
+                // Haas / Velvet have no LFO phase to lose; with Level Match off they must
+                // come back to the twin, not merely near it.
+                const bool strict = (lm == 0) && (a == 0 || a == 1);
+                const bool legReturns = ! strict || (settled >= 0 && settled <= 40);
+                char note[48] = "";
+                if (strict)
+                    std::snprintf (note, sizeof note, settled >= 0 ? " (within 0.1 dB from block +%d)"
+                                                                   : " (never within 0.1 dB)", settled);
+                std::printf ("  %-6s OS %s  Level Match %-3s: output finite %d, gain finite %d, "
+                             "worst |dB| vs twin %5.2f%s\n",
+                             names[a], os == OversampleFactor::Off ? "off" : "2x ", lm ? "on" : "off",
+                             (int) legFinite, (int) legGain, worst, note);
+                outFinite  = outFinite  && legFinite;
+                gainFinite = gainFinite && legGain;
+                tracks     = tracks     && worst < 6.0;
+                returns    = returns    && legReturns;
+            }
+
+    check (outFinite,  "F14: the host never receives a non-finite sample, burst block included");
+    check (gainFinite, "F14: the published Level-Match gain is never left non-finite");
+    check (tracks,     "F14: the chain is not left latched -- within 6 dB of its twin from 10 blocks on");
+    check (returns,    "F14: Haas and Velvet return to the twin within 0.1 dB (Level Match off)");
+}
+
+// ---------------------------------------------------------------------------
+//  Test 60 -- THE ENGAGED WRAP CARRIES EXACTLY THE LATENCY THE HOST IS TOLD (PDC; R7, F15)
+//
+//  The oversamplers are built with JUCE's integer-latency flag "so PDC is exact"
+//  (LATENCY_MODEL.md), and no test measured the PROCESSED path with the wrap running.
+//  Test 3+4 and Test 52 measure through the bypass ring and the skipped-wrap stand-in
+//  ring, and both of those are delayed BY the reported number -- they check a ring
+//  against the number, never the oversampler against it. Measured by building the three
+//  oversamplers without the flag (JUCE's default for that argument): the reported latency
+//  moved from 4 / 6 / 6 to 3 / 4 / 5, the engaged wrap sat 0.137 / 0.433 / 0.049 samples
+//  off the number it reported, and both suites passed. A reported-latency change is a
+//  hard-stop class (CLAUDE.md); a wet path off its reported delay combs against the dry
+//  path the engine aligns by that number (Mix) and against every other track.
+//
+//  WHAT THIS ASSERTS, 2x / 4x / 8x at 44.1, 48 and 96 kHz:
+//    * the reported latency is 4 / 6 / 6 samples at every rate -- LATENCY_MODEL.md's
+//      current values. Changing them is the hard-stop above; this is the check that notices;
+//    * with the wrap RUNNING (Drive 6 dB), the chain's phase delay at 300 Hz equals the
+//      reported latency within 0.01 samples. Measured within 3e-4 on this build; the
+//      mutant above misses by 0.049 at best, five times the bound;
+//    * CONTROL, so that cannot pass through the stand-in ring: at 0.35 fs the engaged
+//      chain's delay differs from the skipped chain's (Drive 0, the integer ring) by more
+//      than 0.1 samples -- the half-band IIR's own phase. Measured 0.88 / 0.44 / 0.84.
+//      It is also the only check in either suite that Drive engages the wrap at all:
+//      with the predicate broken so Drive never does (the shaper then runs without
+//      oversampling), both suites passed and this control alone failed.
+//  Phase delay by single-bin DFT over whole periods of the second half of 200 blocks,
+//  input at -60 dBFS so the Drive shaper is linear. Engines on the heap (~138 KB each).
+static void testEngagedWrapCarriesTheReportedLatency()
+{
+    std::printf ("Test 60: the engaged oversampling wrap carries exactly the reported latency (PDC)\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    constexpr int bs = 256, blocks = 200;
+    using anamorph::OversampleFactor;
+
+    // Delay in samples of the chain at `cycles / period` of the sample rate, over whole
+    // periods (`period` samples hold exactly `cycles` cycles), wrapped to [0, period / cycles).
+    auto delayAt = [] (OversampleFactor f, float driveDb, double sr, int cycles, int period, int& reported)
+    {
+        anamorph::EngineParameters p;
+        p.oversample = f;
+        p.driveDb    = driveDb;
+        const auto e = std::make_unique<anamorph::AnamorphEngine>();
+        e->primeParameters (p);
+        e->prepare (sr, bs);
+        e->setParameters (p);
+        reported = e->getLatencySamples();
+
+        const double w = 2.0 * juce::MathConstants<double>::pi * cycles / period;
+        const int from = blocks * bs / 2;
+        const int len  = (blocks * bs - from) / period * period;
+        double inRe = 0.0, inIm = 0.0, outRe = 0.0, outIm = 0.0;
+        juce::AudioBuffer<float> buf (2, bs);
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < bs; ++i)
+            {
+                const float v = (float) (1.0e-3 * std::sin (w * (b * bs + i)));
+                buf.setSample (0, i, v);
+                buf.setSample (1, i, v);
+            }
+            const juce::AudioBuffer<float> in (buf);
+            e->setParameters (p);
+            e->process (buf);
+            for (int i = 0; i < bs; ++i)
+                if (const int n = b * bs + i; n >= from && n < from + len)
+                {
+                    const double c = std::cos (w * n), s = std::sin (w * n);
+                    inRe  += in.getSample (0, i) * c;  inIm  -= in.getSample (0, i) * s;
+                    outRe += buf.getSample (0, i) * c; outIm -= buf.getSample (0, i) * s;
+                }
+        }
+        const double twoPi = 2.0 * juce::MathConstants<double>::pi;
+        const double d = std::atan2 (inIm, inRe) - std::atan2 (outIm, outRe);
+        return (d - twoPi * std::floor (d / twoPi)) / w;
+    };
+
+    const OversampleFactor fs[3] = { OversampleFactor::x2, OversampleFactor::x4, OversampleFactor::x8 };
+    const int expected[3] = { 4, 6, 6 };
+    bool pinned = true, exact = true, engaged = true;
+    for (double sr : { 44100.0, 48000.0, 96000.0 })
+        for (int o = 0; o < 3; ++o)
+        {
+            int rep = 0, repSkipped = 0;
+            const int lfPeriod = (int) (sr / 300.0);                       // 147 / 160 / 320: whole
+            const double lf = delayAt (fs[o], 6.0f, sr, 1, lfPeriod, rep);
+            const double hfOn  = delayAt (fs[o], 6.0f, sr, 7, 20, rep);     // 0.35 fs
+            const double hfOff = delayAt (fs[o], 0.0f, sr, 7, 20, repSkipped);
+            const double hfPeriod = 20.0 / 7.0;
+            double sig = hfOn - hfOff;
+            sig -= hfPeriod * std::round (sig / hfPeriod);
+            std::printf ("  %5.1f kHz %dx: reported %d (skipped %d) | 300 Hz delay %.4f | 0.35 fs vs skipped %+.3f\n",
+                         sr / 1000.0, 2 << o, rep, repSkipped, lf, sig);
+            pinned  = pinned  && rep == expected[o] && repSkipped == expected[o];
+            exact   = exact   && std::abs (lf - rep) < 0.01;
+            engaged = engaged && std::abs (sig) > 0.1;
+        }
+
+    check (engaged, "R7 PDC control: Drive 6 dB really runs the wrap (its IIR phase is measurable at 0.35 fs)");
+    check (pinned,  "R7 PDC: the reported latency is 4 / 6 / 6 samples at 2x / 4x / 8x at every rate");
+    check (exact,   "R7 PDC: the engaged wrap's delay equals the reported latency within 0.01 samples");
+}
+
+// ---------------------------------------------------------------------------
+//  Test 61 -- THE SCOPE RING HANDS THE GUI THE NEWEST FRAMES, OLDEST FIRST (R7, F15)
+//
+//  `ScopeBuffer::readLatest (dst, n)` is the only way audio reaches the Vectorscope and
+//  the SpectrumImager, and both freshness scans depend on its exact contract: they ask
+//  for the `fresh` newest frames or for the 8192-frame FFT window, and read what comes
+//  back as the newest frames in time order (`SpectrumImager::pushFFT` scans the window's
+//  last `freshN` frames for its silence tracker). Measured under gcov, `readLatest` ran
+//  ZERO times across both suites, and so did `pushBlock`'s second segment -- the copy for
+//  a block that straddles the ring's end -- because every block size the suites use
+//  divides the 16384-frame capacity. A host at 441 or 480 frames per block (10 ms at
+//  44.1 / 48 kHz), or one with variable blocks, straddles it every few dozen blocks.
+//
+//  WHAT THIS ASSERTS, single-threaded: across 2.7 laps of 441-frame blocks of a ramp
+//  (frame k carries L = k, R = -k, exact in float), after every block `readLatest` for 1,
+//  441, 8192 and 16384 frames returns min(n, written, capacity) frames, and they are the
+//  newest ones, oldest first, with `writeCount` equal to the frames written; a request
+//  beyond the capacity is clamped to it; one block larger than the ring keeps only its
+//  newest `capacity` frames.
+//
+//  NOT ASSERTED: the cross-thread half. The index is published by one release-store per
+//  block and acquired by the reader, so a reader never copies a frame above the index it
+//  read; no deterministic test can observe that ordering. A concurrent test would not be
+//  a sound substitute: once the writer laps a reader, its overwrite of frames the reader
+//  has copied has no happens-before edge back to the writer (worklog R7, §F15-ScopeBuffer).
+static void testScopeRingHandsTheNewestFramesOldestFirst()
+{
+    std::printf ("Test 61: the scope ring hands the GUI the newest frames, oldest first\n");
+
+    using anamorph::ScopeBuffer;
+    constexpr int cap = ScopeBuffer::capacity;
+    const auto ring = std::make_unique<ScopeBuffer>();        // 128 KB of frames: heap, not stack
+    std::vector<float> srcL (2 * (size_t) cap), srcR (2 * (size_t) cap);
+    std::vector<float> dstL ((size_t) cap), dstR ((size_t) cap);
+    std::uint64_t written = 0;
+
+    auto fill = [&] (int n)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            srcL[(size_t) i] = (float) (written + (std::uint64_t) i);
+            srcR[(size_t) i] = -srcL[(size_t) i];
+        }
+    };
+    // dst[0, got) must be ramp frames [written - got, written), oldest first.
+    auto newest = [&] (int got)
+    {
+        for (int i = 0; i < got; ++i)
+        {
+            const float k = (float) (written - (std::uint64_t) got + (std::uint64_t) i);
+            if (! juce::exactlyEqual (dstL[(size_t) i], k) || ! juce::exactlyEqual (dstR[(size_t) i], -k))
+                return false;
+        }
+        return true;
+    };
+
+    check (ring->readLatest (dstL.data(), dstR.data(), 8192) == 0 && ring->writeCount() == 0,
+           "R7 scope: an empty ring returns nothing");
+
+    constexpr int block = 441;
+    const int blocks = (int) (2.7 * cap / block);
+    int straddles = 0;
+    bool counts = true, frames = true;
+    for (int b = 0; b < blocks; ++b)
+    {
+        fill (block);
+        if ((int) (written & (std::uint64_t) ScopeBuffer::mask) + block > cap)
+            ++straddles;
+        ring->pushBlock (srcL.data(), srcR.data(), block);
+        written += (std::uint64_t) block;
+        counts = counts && ring->writeCount() == written;
+        for (int n : { 1, block, 8192, cap })
+        {
+            const int got = ring->readLatest (dstL.data(), dstR.data(), n);
+            counts = counts && (std::uint64_t) got == std::min<std::uint64_t> ({ (std::uint64_t) n, written,
+                                                                               (std::uint64_t) cap });
+            frames = frames && newest (got);
+        }
+    }
+    std::printf ("  %d blocks of %d frames, %d of them straddling the ring's end: counts %s, frames %s\n",
+                 blocks, block, straddles, counts ? "exact" : "WRONG", frames ? "newest, in order" : "WRONG");
+    check (straddles > 0, "R7 scope control: blocks really straddled the ring's end (the second segment ran)");
+    check (counts, "R7 scope: readLatest returns min(n, written, capacity) frames; writeCount the frames written");
+    check (frames, "R7 scope: ...and they are exactly the newest frames, oldest first");
+
+    const int clamped = ring->readLatest (dstL.data(), dstR.data(), cap + 5);
+    check (clamped == cap && newest (clamped), "R7 scope: a request beyond the capacity is clamped to it");
+
+    const int big = cap + 1000;                                // a pathological host block
+    fill (big);
+    ring->pushBlock (srcL.data(), srcR.data(), big);
+    written += (std::uint64_t) big;
+    const int got = ring->readLatest (dstL.data(), dstR.data(), cap);
+    check (ring->writeCount() == written && got == cap && newest (got),
+           "R7 scope: a block larger than the ring keeps only its newest frames");
+}
+
 static int runForcedSwapAuditProbe()
 {
     std::printf ("Forced-swap audit (A/B, preset recall, undo). 220 Hz, block 64, 48 kHz.\n");
@@ -6580,6 +6930,9 @@ int main (int argc, char* argv[])
     testMultibandEnableDrySourceNoStep();
     testAlgoResetSurvivesMidFadeRetarget();
     testInertDimModeDoesNotReArmLevelMatch();
+    testNonFiniteBurstSelfHeals();
+    testEngagedWrapCarriesTheReportedLatency();
+    testScopeRingHandsTheNewestFramesOldestFirst();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);
