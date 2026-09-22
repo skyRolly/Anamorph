@@ -18,7 +18,7 @@ not accept and which those entries predate. Entries for the
 0.6.x line and earlier are reconstructed from commit history (the detailed per-version notes predate this changelog) and are marked accordingly.
 Display-name renames are recorded as **Changed**, never as parameter removals (the IDs are immutable).
 
-## [Unreleased]
+## [0.9.9] — 2026-09-22
 
 ### Fixed
 - **A preset save that cannot finish writing now tells you so, instead of destroying the preset it
@@ -79,10 +79,6 @@ Display-name renames are recorded as **Changed**, never as parameter removals (t
   one's audio, and the artefact was as loud as the signal itself. Changing algorithm the moment
   after another control now sounds exactly the same as changing both together. Decision: ADR-0004
   (Correction, 2026-09-21). Regression coverage: Test 57. Evidence: PR #155. [Verified]
-
-## [0.9.9] — 2026-09-19
-
-### Fixed
 - **A damaged project or plug-in preset can no longer crash or freeze Anamorph while it loads.** The
   protections added for `.anamorph` preset files covered only those files. The state your DAW hands
   back when you open a project — and the same state inside a `.vstpreset` you pick in your host's own
@@ -2753,7 +2749,6 @@ encode→decode, transparent-on-load, level meters, oversampling) is described i
 `98e2886` … 0.6.19 `9da01ad`), but the repository has **no tags** to attribute exact per-version
 feature sets to a released artifact. See `README.md` history for the narrative.
 
-[Unreleased]: https://github.com/skyRolly/Anamorph/compare/v0.9.9...HEAD
 [0.9.9]: https://github.com/skyRolly/Anamorph/compare/v0.9.8...v0.9.9
 [0.9.8]: https://github.com/skyRolly/Anamorph/compare/v0.9.7...v0.9.8
 [0.9.7]: https://github.com/skyRolly/Anamorph/releases/tag/v0.9.7
