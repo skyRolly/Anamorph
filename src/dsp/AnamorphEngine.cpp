@@ -391,8 +391,9 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.solo             != b.solo
         || a.algorithm        != b.algorithm
         || a.haasSide         != b.haasSide
-        // dimMode is READ BY ONE LINE, and only under one algorithm: `chorus.setDimMode
-        // (p.dimMode)` at :603, inside `else if (p.algorithm == Algorithm::DimensionD)`.
+        // dimMode is READ BY ONE LINE, and only under one algorithm:
+        // src/dsp/AnamorphEngine.cpp:789 (`chorus.setDimMode`), inside
+        // `else if (p.algorithm == Algorithm::DimensionD)`.
         // With any other algorithm adopted the value reaches no module, so a duck for it
         // buys nothing and costs the whole fade -- measured, on the real wrapper path, at
         // -42.2 dB of steady output under a host lane toggling it once per 128-sample
@@ -406,14 +407,15 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // behaviour it removes is a duck for a dimMode move between two non-DimensionD
         // states, which no module can observe.
         //
-        // NOTHING IS LOST BY NOT DUCKING. `sameParameters` still compares dimMode (:269),
+        // NOTHING IS LOST BY NOT DUCKING. `sameParameters` still compares dimMode
+        // (src/dsp/AnamorphEngine.cpp:362 (`a.dimMode`)),
         // so the value is adopted the ordinary continuous way (`p = np; updateDerived()`),
         // and a later switch TO DimensionD is an `algorithm` difference that ducks, adopts
         // the whole snapshot at the bottom and runs `chorus.setDimMode` with the value
         // already in `p`. ADR-0004 §"Correction, 2026-09-21" records the measurement.
         //
         // haasSide is NOT given the same treatment, and the asymmetry is the point:
-        // `haas.setSide` at :590 runs UNCONDITIONALLY, so that value reaches a module
+        // src/dsp/AnamorphEngine.cpp:774 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
         // whatever the algorithm is. The test for this exclusion is "does the field reach
         // a module", not "does the algorithm use it".
         || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
@@ -631,8 +633,10 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
         {
             // ORDINARY DUCK, RETARGETED DURING THE FADE-OUT (R4, Part 6). This is
             // the fourth path into `pendingP` and the only one that used to leave
-            // `pendingAlgoReset` alone. The other three -- :433 (forced entry),
-            // :445 (discrete entry) and :480 (the FadeIn re-arm) -- all recompute
+            // `pendingAlgoReset` alone. The other three -- the forced entry
+            // (src/dsp/AnamorphEngine.cpp:554), the discrete entry
+            // (src/dsp/AnamorphEngine.cpp:566) and the FadeIn re-arm
+            // (src/dsp/AnamorphEngine.cpp:601) -- all recompute
             // it; this one did not, because the re-arm guard above tests
             // `switchState == FadeIn` and a change arriving during FADE-OUT
             // therefore falls straight through to `pendingP = np` at the top.
@@ -641,7 +645,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             //     block N    : change the band count   -> duck opens, flag = false
             //     block N+1  : change the algorithm    -> pendingP retargeted
             // -- reached the silent bottom, adopted the new algorithm with
-            // `p = pendingP` (:894) and skipped `haas/velvet/chorus.reset()`
+            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1051) and skipped `haas/velvet/chorus.reset()`
             // because the flag still described the FIRST change. The incoming
             // algorithm then started on the outgoing one's delay-line and LFO
             // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:

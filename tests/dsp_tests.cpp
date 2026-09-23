@@ -6763,7 +6763,7 @@ static void testHostResetChorusSeedIsScoped()
     // --- C1 / C2: a host reset landing inside a duck -------------------------------
     // C1 changes ONLY the Amount: the flush does not snap the engine's own smoothers
     // (Width / Mix / Output), a separate finding recorded in the worklog.
-    struct Swap { const char* name; bool forced; anamorph::EngineParameters from, to; };
+    struct Swap { const char* name = ""; bool forced = false; anamorph::EngineParameters from, to; };
     Swap swaps[2];
     swaps[0].name = "C1 forced swap, Chorus 0.3 -> 0.9"; swaps[0].forced = true;
     swaps[0].from.algorithm = Algorithm::Chorus; swaps[0].from.algoAmount = 0.3f;
