@@ -48,7 +48,7 @@ public:
     // and any in-flight duck exactly as the last block left them.
     //
     // `AnamorphEngine::reset()` is already written for precisely this request --
-    // its own comment says "so a host reset lands in a clean steady state" -- and
+    // it clears every audio tail and lands any duck in flight on its target -- and
     // it allocates nothing: every buffer it clears is already sized.
     //
     // THREADING. This is the same standing the THREAD_MODEL gives `prepareToPlay`

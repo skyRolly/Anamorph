@@ -1240,6 +1240,11 @@ The chorus is the only module whose `reset()` destroys a sound-state glide:
 **What that means for the code.** A host reset must be bit-identical to a clean start, with two
 exceptions: the Level-Match published gain and the meter latches.
 
+> **Correction (§V).** True of a SETTLED session, which is all this section measured. With a glide
+> in flight at the reset -- a live edit, an ordinary duck's riders, the module glides a forced
+> swap's own bottom leaves running -- a host reset keeps it gliding, and a clean start does not.
+> A forced swap in flight is the one case the code got wrong; §V fixes it.
+
 **The wet blend and the depth are the user's sound, not audio.** At HEAD the code broke the contract
 for Chorus and Dimension-D and nowhere else. The code is wrong and the documents are right. No ADR
 changes.
@@ -1354,6 +1359,10 @@ is longer than the 5.3 ms State test 126 A asserts. A fresh `prepare()` does exa
 
 ### A separate finding, recorded and not fixed
 
+> **Resolved in §V.** Re-measured, and the mechanism is wider than this note says: the node resets
+> also snapped onto the OLD targets (Haas delay, crossovers). Fixed there; the Haas-amount glide
+> below belongs to the forced swap itself, not to the reset.
+
 **A host reset inside a forced swap's fade-out does not land in "a clean steady state".** The flush
 adopts `pendingP` through `updateDerived()` only. It calls neither `snapSmoothers()` nor the other
 modules' snaps, so the new Mix, Width and Output targets glide in:
@@ -1426,9 +1435,318 @@ Each carries a correction marker pointing here.
 
 ---
 
+## V. Finalizing PR #155, and the host reset inside a forced swap
+
+### Baseline
+
+- **Branch and head.** `claude/anamorph-comprehensive-review-90tpty` at `e7883c0`, level with origin, tree clean.
+- **Version.** 0.9.9 (`CMakeLists.txt`, CHANGELOG `[0.9.9]`). No tag has been cut.
+- **History.** The branch carries R4–R10 on top of the merge base `bfd0e06`, and nothing else.
+- **CI on `e7883c0`, read for that SHA and nothing older.**
+  - Push run 35864410040: every job `success` — `source-lint`, `docs`, `linux`, `linux-lto-tests`, `sanitizers`, `tsan`, `realtime`, `fuzz`, `windows`, `windows-avx2-ab`, `macos`, `macos-intel`, `macos-crossslice`.
+  - Pull-request run 35864417362: `merge-check` `success`.
+  - CodeQL (`Analyze (c-cpp)`, `Analyze (actions)`), Microsoft C++ Code Analysis (`Analyze`) and dependency review: all `success`.
+  - The `PREfast` check completed `success`, but it opened two new alerts. Both are C26495 (`type.6`) on `testHostResetChorusSeedIsScoped::Swap::name` and `::forced`, at `tests/dsp_tests.cpp:6766`.
+
+### Merge-readiness fixes (`4e93d76`)
+
+**PREfast.**
+- The `Swap` declaration had no default member initializers. It now has them: `const char* name = ""; bool forced = false;`. The rule keys on the declaration, not on the sites (see `procedures/TESTING.md`, the C26495 disposition).
+- No suppression was added and no baseline was changed.
+- Whether the alerts are gone is read from the analysis run on the pushed head, not assumed.
+
+**The bare same-file anchors.** `AnamorphEngine.cpp`'s comments carried seven bare `:NNN` references (`:269`, `:433`, `:445`, `:480`, `:590`, `:603`, `:894`).
+- **All seven were added by this PR**, in R4's `35d765f`. None exists at the merge base.
+- **All seven were stale.**
+  - Four aimed at R4's own numbering and drifted when later rounds grew `reset()`.
+  - Three (`:590`, `:603`, `:894`) were written against the merge-base numbering and were already wrong in R4's own commit.
+- **The citation gate cannot see them**, because it only reads a full path.
+- **The fix.** Each is now a full-path anchor re-derived from the code it names: `sameParameters`' dimMode compare, the three `pendingAlgoReset` recomputes, `haas.setSide`, `chorus.setDimMode`, and the bottom's `p = pendingP`.
+- **Proven gated.** A scratch clone with a line inserted above them shows `--fix` re-anchoring all seven: the checked-anchor count goes from 542 to 549.
+
+**`API_REFERENCE.md`, the `reset` row.** The row carried a stale signature, `void ()`, and a wrong claim: "settles smoothers". It now gives the real signature, `void (ResetScope resetScope = ResetScope::everything)`, and describes what the code now does. That description covers:
+- the duck resolved first;
+- every audio tail cleared;
+- the three crossfades settled;
+- each scope's Level-Match and meter halves;
+- the Chorus re-seed;
+- the statement that it snaps no live glide, and so equals a clean start only when none is in flight.
+
+### The finding, re-measured before any change
+
+Previous round (§U, "a separate finding"): a host reset inside a forced swap's fade-out left Mix, Width and Output gliding for ~20 ms (max|d| 0.053 / 0.131 / 0.245) and the Haas amount for ~200 ms (0.21).
+
+**How it was re-measured.** A workflow ran four independent lenses: engine matrix, processor routes, contract reading, and fix candidates. A synthesis stage followed, then a skeptic who rebuilt the recommended fix from scratch and tried to refute it. Harnesses are in the session scratchpad, `wf2/`. Every number below was measured by at least one lens, and the key ones by two.
+
+**Reproduced exactly.** The previous figures recur to four digits: 0.0529, 0.1311, 0.2447, 0.2115.
+
+**The Haas-amount "~200 ms" was the end of that measurement window**, not the end of the glide:
+- the amount stays above 1e-3 of target until ~125 ms;
+- it then stalls at 0.89997 against 0.9, a permanent 2.2e-5 residual;
+- **a natural forced swap with no reset leaves the same glide** (0.055–0.068 against a fresh engine).
+
+**What is in flight at the reset.** A forced swap is represented by:
+- `pendingForced` = true;
+- the target held in `pendingP`, while `p` keeps the OLD state live through the fade-out;
+- `switchState` = FadeOut;
+- the dry fill latched.
+
+The bottom — the first `process()` after the fade reaches 0 — does, in order: adopt `pendingP`, `updateDerived()`, `snapSmoothers()`, reset every node, settle `osBlend`, and take the Level-Match injection. The host reset did two things differently:
+
+1. **It cleared the nodes BEFORE adopting.** `haas.reset()` snaps the Haas delay, `multiband.reset()` the crossovers and band widths, and the Band Solo monitor its split — all onto the OLD targets. Then the flush's `updateDerived()` set new targets, and each glided there from the old value. The Haas delay stalls short for good: engine level, 0.122 samples short 12 → 30 ms; processor level, 432.0305 against 432.0000 samples.
+2. **It never snapped the smoothers.** Mix, Width, Output, both balances, Drive, drive blend and polarity glided in from the old values.
+
+**Magnitudes against a fresh engine at the target** (48 kHz, block 256, reset 64 samples in):
+
+| field | max\|d\| | lasts |
+|---|---|---|
+| Mix / Width / Output | 0.053 / 0.131 / 0.245 | 20 ms |
+| input / output balance | 0.245 / 0.123 | 20 ms |
+| Drive 0 → 6 dB | 0.291 | 32 ms |
+| Drive at 2× / 4× / 8× oversampling | 0.46 / 0.38 / 0.40 | ~24 ms |
+| polarity | 0.98 | 5 ms |
+| Haas delay | 0.21–0.43 | never lands |
+| multiband crossover / band width / Band Solo split | 0.19 / 0.004 / 0.15 | 377 ms / never / 382 ms |
+| Oversampling Off → 2× + Drive (latency-changing) | 0.63 | 24 ms |
+| Chorus / Dimension-D Amount, Bypass, Multiband Enable, 2× → 4× | identical | — |
+
+**Through the processor**, all five routes reproduce: A/B both directions, preset load, undo, redo.
+- Mix 0.10–0.14, Width 0.17–0.21, Output 0.30–0.38.
+- Haas delay 0.42–0.47, gliding for 0.33 s and then stalled for good.
+- Every route reaches the same forced FadeOut, with `pendingForced` = 1 measured for every route and control.
+- A/B to the active slot, and host automation, never force a duck.
+
+**Trigger conditions.**
+- **Timing window.** From the first `process()` that consumes the duck request until the start of the `process()` that runs the bottom. The fade reaches silence after 289 samples at 48 kHz, but the bottom only runs at the next block boundary, so at block 256 a reset glides at any of samples 1–512.
+  - A reset before the request is consumed: the swap simply runs afterwards, bit-identical to no reset.
+  - A reset in the fade-in or later: identical to a clean start.
+- **Entry paths.** Every way into a forced fade-out reproduces: a fresh one, an ordinary duck upgraded to forced, a re-arm from the fade-in, and a retarget.
+- **Ordinary ducks are not affected.** Their continuous controls went live when they opened, and a reset produces exactly what the same live edit plus a reset produces.
+- **Direction and settings.** Direction is symmetric to four digits; sample rate and block size were checked at 44.1/64, 48/256 and 96/1024. Idle time between the reset and the next block makes no difference.
+- **Algorithms and modules.** Every one whose state the bottom snaps.
+
+### The contract, from the repository
+
+**The forced swap's own contract.** ADR-0004, decision 1: forced bulk swaps "defer *all* params to the bottom and snap smoothers there so nothing pops mid-fade". The `setParameters` comment says the same: "applied ENTIRELY at the silent bottom (continuous included, smoothers snapped)". So does SIGNAL_FLOW's "smoother snap + wholesale node reset".
+
+**The host reset's contract.** "The in-flight duck" is among what a host reset clears:
+- the `ResetScope` comment;
+- THREAD_MODEL's *Host reset* row;
+- the R6 inventory: "flush to target" on both scopes;
+- the flush comment: "straight to its target … a clean steady state".
+
+**Classifying the state.**
+- **User-selected target:** the parameter tree, rebuilt into `pendingP`.
+- **Transition in progress:** the duck's gain ramp, the dry fill, and the smoothers' and modules' glides.
+- **Audio tails:** the nodes, rings and oversamplers, the Level-Match analysis, and the live meters.
+- **Transition bookkeeping:** `switchState`, `pendingP`, `pendingForced`, `pendingAlgoReset`, `dryDuck*`, and the `duckRequest` / `matchInject` mailboxes.
+- **Ownership:** everything but the target and the A/B match memory belongs to the engine on the audio thread, and `reset()` may write it under the host's no-concurrent-`processBlock` contract.
+
+**The alternatives the brief listed, against that record:**
+
+| alternative | verdict |
+|---|---|
+| keep the transition phase | contradicts every "clears / flushes the duck" text |
+| abort (revert to the old state) | contradicts "straight to its target"; fails Test 62 C1/C2 and Tests 3+4; and cannot hold anyway — the target lives in the parameter tree and returns on the next block, with the duck request already spent |
+| snap everything to the selected target, i.e. a fresh engine | goes further than the swap itself: it would also snap the Haas / Velvet amount, Velvet density and Mono Maker cutoff, which the natural bottom leaves gliding, and which `prepare()`'s own comment and §U's rejected row keep out of the reset |
+| **complete the transition immediately, to exactly where its bottom would have landed** | **the repository's existing decision.** The code did it for the adopted snapshot and the bookkeeping, and not for the two steps above |
+
+**Is an architecture decision needed? No.**
+- None of the gate's classes applies: the DSP graph, signal order, threading, parameters, schema, latency, format and build are all untouched.
+- The fix conflicts with no Accepted ADR; it carries out ADR-0004 decision 1 on the reset path.
+- It writes only members `reset()` already writes, on the same threading contract, and adopts the same `pendingP` as before, so the reported latency after the reset is unchanged.
+
+Snapping the module glides, or snapping on every reset, WOULD be new behaviour decisions. Neither is done (below).
+
+### Relation to §U's Chorus re-seed
+
+**A separate mechanism, and no abstraction was built over the two.**
+- §U re-seeds a sound that the Chorus's own `reset()` destroys, on every host reset of a modulation algorithm.
+- This fix completes a transition in flight, on the reset that lands inside one.
+
+**Where they compose.**
+- The re-seed stays LAST, after the flush — which is now at the top — so a forced swap into Chorus or Dimension-D starts at the NEW Amount (Test 62 C1) with the smoothers landed too (Test 63 L5).
+- Only the forced-swap state needed settling. Nothing else a host reset touches changed.
+
+### The fix
+
+`AnamorphEngine::reset()` now resolves the duck FIRST, in the bottom's order, before the node resets:
+
+```cpp
+if (switchState != SwitchState::Normal)
+{
+    p = pendingP;
+    updateDerived();
+    if (pendingForced)
+        snapSmoothers();
+}
+```
+
+- The old flush further down is gone. Its bookkeeping stays in place: `pendingP = p`, `switchState = Normal`, `pendingForced = false`, the three crossfade settles, and §U's Chorus re-seed, last.
+- Every module reset then snaps onto the adopted targets.
+- `snapSmoothers()` runs only when the flushed duck is FORCED.
+
+**What it leaves alone, each measured bit-identical to the pre-fix engine by the skeptic:**
+- **Resets with no duck in flight.** A host reset while a live edit is still gliding (11 cases, 2 timings); a reset in steady state; a completed swap then reset; a reset in the fade-in.
+- **Ordinary ducks and paths that never meet the fix.** An ordinary duck in flight (17 kinds × 3 timings, including every discrete control); a duck request not yet consumed; and the natural bottom's code, which is unchanged.
+- **Other contracts.** `prepareToPlay` (40 of 40 route cases at two rates); a NaN Amount on every algorithm; and the Level-Match published gain across the reset, since `loudness.softReset()` is untouched.
+
+**Intended changes beyond the headline fields.**
+- The Haas delay, crossovers, band widths and Band Solo split now land exactly.
+- Polarity lands instantly.
+- Drive lands at the oversampled rate.
+- With Level Match on, the post-reset audio matches what the natural bottom would feed the analysis.
+- A direct `engine.prepare()` or `reset(everything)` mid-swap (tests only; `prepareToPlay` primes the snapshot first) now lands on a clean start too.
+
+**Rejected variants, each caught by a named leg** (full suites on each):
+
+| variant | result |
+|---|---|
+| snap only, flush left in place | Test 63 fails 6 (Haas delay ×2, crossovers, the three entry paths); State test 127 fails 8 |
+| reorder only, no snap | Test 63 fails 12 (smoothers ×6, Chorus / Dimension-D ×2, latency-changing, entry paths ×3); State test 127 fails 10 |
+| snap on any duck flush | Test 63 A5 fails (an ordinary duck's riders snapped); it also moves the printed numbers of DSP Tests 10, 15, 16, 21 and 55 |
+| snap on every host reset | Test 63 A4 and A5 fail (live glides snapped); the same printed numbers move |
+| also snap the Haas / Velvet / Mono Maker glides on the reset | passes both suites once guarded for NaN, but snaps tighter than the swap itself does: a behaviour decision, not taken. Unguarded, a NaN Mono Maker cutoff mutes 220 of 220 blocks |
+| snap those glides at the natural bottom as well | fails State test 35 |
+
+### NaN crossover: the reset now matches the natural swap
+
+One behaviour change was measured on a pathological input and is recorded here, not hidden. It concerns a NaN multiband crossover target that arrives with a forced swap.
+- **Why NaN gets through.** `MultibandWidth::setCrossovers` clamps with `jlimit`, and `jlimit` passes NaN.
+- **Why it matters.** `MultibandWidth::reset()` snaps the bank onto the target.
+
+Measured, muted blocks while the target is NaN / after it is finite again (48 kHz, block 256):
+
+| case | pre-fix | post-fix |
+|---|---|---|
+| live NaN, no reset | 0 / 0 | 0 / 0 |
+| live NaN, plain host reset | 40 of 40 / 1 | 40 of 40 / 1 |
+| forced swap to NaN, natural | 38 of 40 / 1 | 38 of 40 / 1 |
+| forced swap to NaN, host reset in the fade-out | 0 / 0 | 40 of 40 / 1 |
+
+- The pre-fix 0 was an accident: the reset snapped the bank onto the OLD finite targets, and the NaN target was then ignored by the glide.
+- The fix makes that case behave like the other two paths.
+- It recovers one block after a finite value returns. The self-heal's `multiband.reset()` re-snaps onto it, so this is not the R7 class of permanent latch.
+- The root cause, NaN admitted by `setCrossovers`, predates this PR. It is an ADR-0009 question (road map, below).
+
+### Regression coverage
+
+**Test 63** (`testHostResetInAForcedSwapLandsSettled`, engine level, 20 checks). The oracle is a fresh engine at the target, compared bit-exactly over 1 s. Completing the swap and clearing every tail IS a clean start — A2 proves that on both engines — for every field the bottom lands. No leg moves a module glide.
+- **Defect legs**, which fail pre-fix and pass post-fix:
+  - L1: the smoothers, both directions, with the reset at 1, 64 and 289 samples (289: silent, bottom not yet run).
+  - L2: the Haas delay, both directions.
+  - L3: crossover, band width and Band Solo.
+  - L4: Oversampling Off → 2× with Drive.
+  - L5: into Chorus and into Dimension-D.
+  - L6: the three other entry paths.
+- **Adversarial legs**, which pass on both engines:
+  - A2: a swap completed first.
+  - A3: a reset in the fade-in.
+  - A4: a live glide kept.
+  - A5: an ordinary duck's riders kept.
+  - A7: an unconsumed request commutes with the reset.
+- A4 and A5 use the same controls on silent history with no reset as their oracle. Its lines hold only zeros, which is what the reset leaves, so only control state can differ.
+- **Pre-fix: 15 of 20 fail (every defect leg). Post-fix: 0.** The rest of the DSP suite prints identically either way.
+
+**State test 127** (`testAHostResetInsideAForcedSwapLandsSettled`, 15 checks), through `AnamorphAudioProcessor`.
+- Routes: A/B in both directions, preset reload, undo, redo.
+- The edit moves Mix, Width, Output and the Haas delay, with Advanced Mode on.
+- The reset lands 64 samples in, 287 samples in (the fade's last sample), or after the swap finished.
+- The oracle is a processor holding the post-route parameters, set before `prepareToPlay`.
+- **Pre-fix: 10 of 15 fail** (max|d| 0.29–0.46, every in-fade leg). **Post-fix: 0.** The rest of the state suite prints identically, bar thread-timing lines.
+
+**Adversarial checks from the brief** (Part 12), with where each is established:
+
+| check | evidence |
+|---|---|
+| reset outside a transition | A4; skeptic, 11 cases × 2 |
+| normal A/B, preset, undo, redo without a reset | the bottom's code is unchanged; skeptic, natural forced swap bit-identical; DSP Test 47 and State tests 35, 118–126 unchanged |
+| reset during an unrelated transition (an ordinary duck, a live glide) | A4, A5; skeptic, 17 kinds × 3 |
+| fresh prepare | Test 49, State test 126 D and E; skeptic, 40 of 40 |
+| a reset followed at once by processing | every leg |
+| a reset followed by no processing | routes lens: an idle gap is bit-identical (the engine has no clock); the meter publication at the reset is State test 122 |
+| Chorus / Dimension-D reset | Test 62, State test 126, Test 63 L5 |
+| Level-Match reset | State tests 118, 120, 121 unchanged; `softReset()` untouched |
+
+### The comment, corrected
+
+The flush comment promised "a clean steady state (bit-exact transparent from sample 0)". That was false for a forced swap in flight, and false for ANY glide in flight.
+
+It is replaced, at the top of `reset()`, by what the code now guarantees:
+- every audio tail cleared;
+- any duck landed on its target, a forced one exactly as its bottom would;
+- the reset is a clean start only where no glide was in flight — a live edit, an ordinary duck's riders, and the module glides a forced swap's own bottom leaves running.
+
+**The same overstatement was corrected in four other places**, and one description of the flush's position was brought up to date:
+- the Chorus re-seed comment: "of a settled session";
+- the State test 126 header;
+- the 74th coverage pass;
+- §U's contract sentence, with a correction marker;
+- `PluginProcessor.h`, which quoted the old phrase;
+- `snapSmoothers()`, whose comment named one caller of three;
+- `check-state-coverage.py`'s description of where the snapshot is flushed.
+
+### Recorded, not fixed
+
+1. **The natural forced swap's own module glides.** The bottom leaves the Haas / Velvet amount, Velvet density and Mono Maker cutoff gliding: vs a fresh engine, 0.055–0.068 (Haas amount) and 0.11–0.15 (Mono Maker) for ~130–170 ms. It zeroes the Chorus / Dimension-D wet and depth with no re-seed: 0.54 / 0.43 vs fresh after a Chorus 0.3 → 0.9 swap. Snapping them is a behaviour decision; the obvious variant fails State test 35.
+2. **A NaN Mono Maker cutoff present at `prepare()` latches the output silent for good.** Measured independently on the pre-fix and fixed engines, identically:
+   - 20 of 20 blocks muted;
+   - then 200 of 200 after a finite 200 Hz arrives;
+   - then 50 of 50 after a later host reset.
+
+   The same NaN arriving live is harmless (0 muted). `prepare()`'s unguarded `monoMaker.snapToTargets()` locks the NaN into the coefficients. This is the ADR-0009 / R7 class (a permanent latch), independent of this change.
+3. **NaN crossovers are admitted** by `MultibandWidth::setCrossovers` (above): recoverable, and pre-existing.
+4. **Level Match after a continuous-only forced swap drifts 0.56–0.6 dB for ~4 s** (routes lens; not re-measured by the synthesis). `processingDiffers()` ignores continuous fields, so the analysis is not restarted at the bottom. This is adjacent to F13.
+5. **A duck request not yet consumed at a reset still plays a full duck after the restart.** Unchanged by every variant; A7 pins today's behaviour.
+6. **Float-fixpoint stalls on live edits**, pre-existing: Haas amount 2.2e-5, Haas delay 0.03–0.12 samples, Mono Maker 299.973 Hz, band width 5.7e-5.
+
+### Documentation
+
+**Changed:**
+- `AnamorphEngine.cpp` (the reset comment, the Chorus re-seed comment, `snapSmoothers()`);
+- `PluginProcessor.h`;
+- `API_REFERENCE.md`;
+- `procedures/TESTING.md` (Test 63, State test 127);
+- `DOCUMENTATION_COVERAGE.md` (the 75th pass; the 74th pass qualified);
+- this section, with correction markers in §U and at the separate-finding note it closes;
+- `check-state-coverage.py`'s text;
+- `check-citations.py`.
+
+**Citations.**
+- `--fix` re-anchored 68 citations. That includes the seven engine self-anchors and `SpectrumImager.cpp`'s, each checked against the code it names.
+- Two anchors cited the flush span itself, which was edited, so they were UNMAPPABLE: `DOCUMENTATION_COVERAGE.md` (Test 38's note) and `REALTIME_SAFETY_AUDIT.md`. Both were re-aimed by hand onto the moved adoption block. Their transitions are declared in `DELIBERATE_REAIMS` for both old spellings: `:282-289` at the push predecessor, `:208-215` at the merge base and `origin/main`.
+- The gate passes against `HEAD`, `HEAD~1`, the merge base and `origin/main`.
+
+**Not changed:**
+- **No ADR.** The fix carries out ADR-0004 decision 1 and the documented host-reset contract.
+- **No CHANGELOG entry.** The host-reset path exists only in this unreleased PR (the merge base has no `reset()` override; before it, `reset()`'s one caller was `prepare()`, which snaps). CHANGELOG_POLICY: never a `Fixed` bullet for a fix that only existed in an unreleased branch. `[0.9.9]`'s "Normal processing after a stop is unchanged" now also holds for a stop that lands inside an A/B, preset, undo or redo swap.
+
+### Road map, re-derived from this evidence
+
+| item | decision | reasoning | trigger to reopen or advance |
+|---|---|---|---|
+| **NaN admission in Mono Maker / multiband (ADR-0009 gap)** | **investigate — next** | Measured this round: one NaN Mono Maker cutoff present at `prepare()` silences the plug-in until the next re-prepare with a finite value. That is the same class as R7's Haas / Velvet latch, which was fixed as a product defect. Open question: can a host deliver NaN before `prepareToPlay` (automation read ahead, a state restore)? R7 showed that JUCE's VST3 parameter path passes NaN | reachability measured through the processor; if reachable, it proceeds as a fix |
+| F13 Level Match preset / undo carry | investigate, after the above | This round adds adjacent, unverified evidence: a continuous-only forced swap does not restart the analysis (item 4). It should be measured with F13 rather than separately | the routes figure re-measured |
+| forced swap's own module glides | defer; owner decision | not a defect of the reset; snapping them changes the swap (State test 35) | a report of a swell after A/B / preset / undo, or an owner ruling |
+| F12 Advanced Mode host-write behaviour | defer, unchanged | no new evidence this round | unchanged |
+| F10 re-entrant mouseUp | defer, unchanged | no new evidence this round | unchanged |
+| F9, R6a–R6d, the standalone documentation pass | preserve unchanged | outside this round | as recorded in §K |
+
+### Validation, local
+
+- **Suites, GCC 13 Release, the committed tree:** DSP **516 / 0**, state **4791 / 0**, and the same under `ulimit -s 1024`.
+- **Against the pre-fix engine**, with the final tests: DSP 516 / 15, state 4791 / 10.
+- **Checks:** `check-docs`, `check-portability`, `check-realtime`, `check-dispatch` and `check-state-coverage` all pass, and every self-test passes. The citation gate passes on four bases.
+- Warnings, sanitizers and CI for the pushed head are in the PR record.
+
+---
+
 ---
 
 ## K. Remaining findings, and what the next item is
+
+> **Updated after §V.** §V's road-map table supersedes the ordering below: NaN admission in Mono
+> Maker / multiband (an ADR-0009 gap measured in §V) is investigated next, then F13.
 
 > **Updated after R9 (§Q–§S).** The R6 list below stands, with four changes. **R7 is now the next
 > priority**, entered through the re-prepare Level-Match leg (§S) — which §T then found already

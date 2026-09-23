@@ -224,7 +224,7 @@ EXTERNAL_TYPES = {
     "int": "scalar: cleared by assignment",
     "bool": "scalar: cleared by assignment",
     "float": "scalar: cleared by assignment",
-    "EngineParameters": "the parameter snapshot, flushed by assignment at the bottom of reset()",
+    "EngineParameters": "the parameter snapshot, flushed by assignment at the top of reset()",
     "SwitchState": "scalar enum: cleared by assignment",
     "std::atomic": "a cross-thread mailbox, not chain state; assignment if anything",
     "juce::AudioBuffer": "cleared by .clear(), not by a reset() call",

@@ -6761,8 +6761,8 @@ static void testHostResetChorusSeedIsScoped()
     const int half = (int) (0.5 * sr / bs), probe = (int) (0.15 * sr / bs);
 
     // --- C1 / C2: a host reset landing inside a duck -------------------------------
-    // C1 changes ONLY the Amount: the flush does not snap the engine's own smoothers
-    // (Width / Mix / Output), a separate finding recorded in the worklog.
+    // C1 changes ONLY the Amount, so it pins the seed's placement and nothing else;
+    // Test 63 pins how the rest of a forced swap lands at a host reset.
     struct Swap { const char* name = ""; bool forced = false; anamorph::EngineParameters from, to; };
     Swap swaps[2];
     swaps[0].name = "C1 forced swap, Chorus 0.3 -> 0.9"; swaps[0].forced = true;
@@ -6839,6 +6839,265 @@ static void testHostResetChorusSeedIsScoped()
         std::printf ("  H  Haas session host-reset, then switched to Chorus: %s the same session without the reset\n",
                      ok ? "bit-identical to" : "DIFFERENT from");
         check (ok, "a host reset outside Chorus / Dimension-D leaves the idle chorus alone");
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Test 63 -- A HOST RESET INSIDE A FORCED SWAP LANDS WHERE THE SWAP'S OWN BOTTOM WOULD
+//  (PR #155; State test 127 is the same contract through the processor's four routes)
+//
+//  A forced swap -- A/B, preset load, undo, redo (`requestDuck`) -- keeps the OLD state live
+//  through its ~6 ms fade-out and applies the new one at the silent bottom: adopted, smoothers
+//  SNAPPED, every node cleared (ADR-0004, decision 1). A host reset (`audioTailsOnly`) landing
+//  before that bottom used to adopt the target AFTER the node resets and without the snap, so
+//  Mix / Width / Output / Drive / balance / polarity glided in over ~20 ms, and the Haas delay
+//  and the multiband crossovers and widths -- which their own reset() snaps -- were snapped to
+//  the OLD values and glided from there, the delay stalling short of its target for good.
+//
+//  ORACLE: a fresh engine at the target. Completing the swap and clearing every tail IS a
+//  clean start (leg A2 proves that on the pre-fix engine too), for every field the bottom
+//  lands. The fields its bottom leaves gliding -- the Haas / Velvet amount, Velvet density and
+//  Mono Maker cutoff -- are deliberately not moved by any leg here (worklog §V).
+//    L1  engine smoothers, both directions, reset 1 / 64 / 289 samples into the fade-out
+//        (289 = the fade has reached silence and the bottom has not run yet);
+//    L2  Haas delay, both directions;  L3  multiband crossover, band width and Band Solo;
+//    L4  Oversampling Off -> 2x with Drive (a latency-changing swap: no dry fill);
+//    L5  into Chorus / Dimension-D with the smoothers, so the Chorus re-seed (Test 62) and
+//        this landing compose;
+//    L6  the other three ways into a forced fade-out: an ordinary duck upgraded to forced,
+//        a forced re-arm from the fade-in, a forced swap retargeted mid fade-out.
+//  And what must NOT change (each passes on the pre-fix engine as well):
+//    A2  a forced swap that completed before the reset lands on a clean start;
+//    A3  a reset in the fade-in lands on a clean start (the bottom has run);
+//    A4  a live edit gliding at the reset keeps gliding (the reset snaps nothing);
+//    A5  an ordinary duck's live riders keep gliding the same way;
+//    A7  a duck request the engine has not consumed yet commutes with the reset.
+//  A4 / A5's oracle is the same control sequence on SILENT history with no reset: its delay
+//  lines hold only zeros, which is what the reset leaves, so only control state can differ.
+//  Mutants and their failures: worklog R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md §V.
+static void testHostResetInAForcedSwapLandsSettled()
+{
+    std::printf ("Test 63: a host reset inside a forced swap lands where the swap's bottom would\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 256;
+    using anamorph::Algorithm;
+    using Params = anamorph::EngineParameters;
+    using Engine = anamorph::AnamorphEngine;
+    constexpr auto host = Engine::ResetScope::audioTailsOnly;
+    const int history = (int) (0.5 * sr / bs), window = (int) (1.0 * sr / bs) + 1;
+
+    auto activate = [] (const Params& p)
+    {
+        auto e = std::make_unique<Engine>();                    // heap: ~138 KB
+        e->primeParameters (p);                                 // the wrapper's order
+        e->prepare (sr, bs);
+        e->setParameters (p);
+        return e;
+    };
+    // `blocks` blocks of `n` samples of noise from `rng` (silence when `quiet`); outputs appended.
+    auto run = [] (Engine& e, const Params& p, int blocks, int n, juce::Random& rng,
+                   std::vector<float>* out, bool quiet = false)
+    {
+        juce::AudioBuffer<float> buf (2, n);
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                const float v = quiet ? 0.0f : rng.nextFloat() - 0.5f;
+                buf.setSample (0, i, v);
+                buf.setSample (1, i, quiet ? 0.0f : 0.6f * v + 0.2f * (rng.nextFloat() - 0.5f));
+            }
+            e.setParameters (p);
+            e.process (buf);
+            if (out != nullptr)
+                for (int i = 0; i < n; ++i)
+                {
+                    out->push_back (buf.getSample (0, i));
+                    out->push_back (buf.getSample (1, i));
+                }
+        }
+    };
+    // Bit-exact comparison; prints the worst difference and where the last one sits.
+    auto compare = [] (const char* name, const std::vector<float>& a, const std::vector<float>& b)
+    {
+        double worst = 0.0; long last = -1;
+        for (size_t i = 0; i < std::min (a.size(), b.size()); ++i)
+            if (! juce::exactlyEqual (a[i], b[i]))
+            {
+                worst = juce::jmax (worst, (double) std::abs (a[i] - b[i]));
+                last = (long) (i / 2);
+            }
+        const bool ok = a.size() == b.size() && last < 0;
+        if (ok) std::printf ("  %-58s: bit-identical\n", name);
+        else    std::printf ("  %-58s: max|d| %.4f, last difference %.2f ms after the reset\n",
+                             name, worst, (double) last * 1000.0 / sr);
+        return ok;
+    };
+    // The clean-start oracle: a fresh engine at `to`, fed the same input from the reset on.
+    auto fresh = [&] (const Params& to)
+    {
+        std::vector<float> out;
+        const auto f = activate (to);
+        juce::Random rng (99);
+        run (*f, to, window, bs, rng, &out);
+        return out;
+    };
+    // Settle at `from`, run `drive` (which ends inside a forced fade-out), host reset, then
+    // one second at `to`.
+    auto afterReset = [&] (const Params& from, const Params& to, const std::function<void (Engine&, juce::Random&)>& drive)
+    {
+        const auto e = activate (from);
+        juce::Random pre (3), mid (4), post (99);
+        run (*e, from, history, bs, pre, nullptr);
+        drive (*e, mid);
+        e->reset (host);
+        std::vector<float> out;
+        run (*e, to, window, bs, post, &out);
+        return out;
+    };
+    auto forcedAt = [&] (const Params& to, int samples)
+    {
+        return [&run, to, samples] (Engine& e, juce::Random& rng) { e.requestDuck(); run (e, to, 1, samples, rng, nullptr); };
+    };
+    auto with = [] (Params p, const std::function<void (Params&)>& edit) { edit (p); return p; };
+
+    Params haas; haas.algorithm = Algorithm::Haas; haas.algoAmount = 0.3f;
+    const auto smooth = with (haas, [] (Params& p) { p.mix = 0.5f; p.width = 1.8f; p.outputGainDb = -6.0f;
+                                                     p.inputBalance = 0.5f; p.outputBalance = -0.5f;
+                                                     p.driveDb = 6.0f; p.polarityL = true; });
+    char name[96];
+
+    // --- L1: the engine's smoothers, both directions, early and late in the fade-out ---
+    for (int dir = 0; dir < 2; ++dir)
+        for (const int k : { 1, 64, 289 })
+        {
+            const auto& from = dir == 0 ? haas : smooth;
+            const auto& to   = dir == 0 ? smooth : haas;
+            std::snprintf (name, sizeof name, "L1 Mix/Width/Output/balances/Drive/polarity %s, reset @%d",
+                           dir == 0 ? "on " : "off", k);
+            check (compare (name, afterReset (from, to, forcedAt (to, k)), fresh (to)),
+                   "a host reset inside a forced swap lands the engine smoothers snapped, as the bottom does");
+        }
+
+    // --- L2: the Haas delay, which haas.reset() snaps -- to whatever target it holds -------
+    for (const auto& [dFrom, dTo] : { std::pair<float, float> { 12.0f, 30.0f }, std::pair<float, float> { 20.0f, 9.0f } })
+    {
+        const auto from = with (haas, [d = dFrom] (Params& p) { p.haasDelayMs = d; });
+        const auto to   = with (haas, [d = dTo]   (Params& p) { p.haasDelayMs = d; });
+        std::snprintf (name, sizeof name, "L2 Haas delay %.0f -> %.0f ms, reset @64", dFrom, dTo);
+        check (compare (name, afterReset (from, to, forcedAt (to, 64)), fresh (to)),
+               "a host reset inside a forced swap snaps the Haas delay to the NEW target");
+    }
+
+    // --- L3: multiband crossover, band width, Band Solo -- snapped by their own reset() ---
+    {
+        const auto from = with (haas, [] (Params& p) { p.mbEnable = true; });
+        const auto to   = with (from, [] (Params& p) { p.mbFreqMid = 1500.0f; p.mbWidthLow = 1.8f; p.mbSolo = 0x2; });
+        check (compare ("L3 multiband crossover + band width + Band Solo, reset @64",
+                        afterReset (from, to, forcedAt (to, 64)), fresh (to)),
+               "a host reset inside a forced swap lands the crossovers and band widths on the NEW targets");
+    }
+
+    // --- L4: a latency-changing swap (no dry fill): Oversampling Off -> 2x with Drive ------
+    {
+        const auto to = with (haas, [] (Params& p) { p.oversample = anamorph::OversampleFactor::x2; p.driveDb = 6.0f; });
+        check (compare ("L4 Oversampling Off -> 2x + Drive 6 dB, reset @64", afterReset (haas, to, forcedAt (to, 64)), fresh (to)),
+               "a host reset inside a latency-changing forced swap lands settled");
+    }
+
+    // --- L5: into the modulation voices, where Test 62's re-seed runs too -------------
+    for (const auto alg : { Algorithm::Chorus, Algorithm::DimensionD })
+    {
+        const auto to = with (smooth, [alg] (Params& p) { p.algorithm = alg; p.algoAmount = 0.7f; p.dimMode = 3; });
+        std::snprintf (name, sizeof name, "L5 Haas -> %s with the smoothers, reset @64",
+                       alg == Algorithm::Chorus ? "Chorus" : "Dimension-D");
+        check (compare (name, afterReset (haas, to, forcedAt (to, 64)), fresh (to)),
+               "a host reset inside a forced swap into Chorus / Dimension-D starts at the configured sound");
+    }
+
+    // --- L6: the other three ways into a forced fade-out -------------------------------
+    {
+        const auto to = with (smooth, [] (Params& p) { p.haasDelayMs = 25.0f; });
+        const auto velvet = with (haas, [] (Params& p) { p.algorithm = Algorithm::Velvet; });
+        const auto midway = with (haas, [] (Params& p) { p.mix = 0.7f; p.width = 1.3f; });
+        const auto early  = with (haas, [] (Params& p) { p.mix = 0.2f; p.width = 0.5f; });
+        check (compare ("L6 ordinary duck upgraded to forced, reset in the fade-out",
+                        afterReset (haas, to, [&] (Engine& e, juce::Random& rng)
+                        { run (e, velvet, 1, 32, rng, nullptr); e.requestDuck(); run (e, to, 1, 32, rng, nullptr); }),
+                        fresh (to)),
+               "a host reset inside an ordinary duck upgraded to forced lands settled");
+        check (compare ("L6 forced swap re-armed from its fade-in, reset in the fade-out",
+                        afterReset (haas, to, [&] (Engine& e, juce::Random& rng)
+                        { e.requestDuck(); run (e, midway, 1, 289, rng, nullptr);   // fade reaches silence
+                          run (e, midway, 1, 200, rng, nullptr);                    // bottom, then 200 into the fade-in
+                          e.requestDuck(); run (e, to, 1, 64, rng, nullptr); }),
+                        fresh (to)),
+               "a host reset inside a forced swap re-armed from the fade-in lands settled");
+        check (compare ("L6 forced swap retargeted mid fade-out, reset",
+                        afterReset (haas, to, [&] (Engine& e, juce::Random& rng)
+                        { e.requestDuck(); run (e, early, 1, 32, rng, nullptr); run (e, to, 1, 32, rng, nullptr); }),
+                        fresh (to)),
+               "a host reset inside a retargeted forced swap lands on the LATEST target, settled");
+    }
+
+    // --- A2 / A3: the swap's bottom has already run ------------------------------------
+    {
+        const auto to = with (smooth, [] (Params& p) { p.haasDelayMs = 25.0f; });
+        check (compare ("A2 forced swap completed, then a host reset",
+                        afterReset (haas, to, [&] (Engine& e, juce::Random& rng)
+                        { e.requestDuck(); run (e, to, 12, bs, rng, nullptr); }),     // 64 ms: back to Normal
+                        fresh (to)),
+               "a forced swap that completed before a host reset lands on a clean start");
+        check (compare ("A3 host reset 10 ms into the forced fade-in",
+                        afterReset (haas, to, [&] (Engine& e, juce::Random& rng)
+                        { e.requestDuck(); run (e, to, 1, 289, rng, nullptr); run (e, to, 1, 480, rng, nullptr); }),
+                        fresh (to)),
+               "a host reset in a forced fade-in lands on a clean start");
+    }
+
+    // --- A4 / A5: live glides are not snapped ------------------------------------------
+    // The same control sequence on silent history, with no reset: its lines hold only zeros.
+    auto noResetTwin = [&] (const Params& reached)
+    {
+        const auto t = activate (haas);
+        juce::Random pre (3), mid (4), post (99);
+        run (*t, haas, history, bs, pre, nullptr, true);
+        run (*t, reached, 1, 64, mid, nullptr, true);
+        std::vector<float> out;
+        run (*t, reached, window, bs, post, &out);
+        return out;
+    };
+    {
+        const auto rider = with (haas, [] (Params& p) { p.mix = 0.5f; p.width = 1.8f; p.outputGainDb = -6.0f; });
+        check (compare ("A4 live Mix/Width/Output edit gliding at the reset",
+                        afterReset (haas, rider, [&] (Engine& e, juce::Random& rng) { run (e, rider, 1, 64, rng, nullptr); }),
+                        noResetTwin (rider)),
+               "a host reset does not snap a live edit's glide");
+        const auto ducked = with (rider, [] (Params& p) { p.mbBands = 3; });   // discrete, inaudible: Multiband is off
+        check (compare ("A5 ordinary duck with live riders at the reset",
+                        afterReset (haas, ducked, [&] (Engine& e, juce::Random& rng) { run (e, ducked, 1, 64, rng, nullptr); }),
+                        noResetTwin (rider)),
+               "a host reset does not snap an ordinary duck's live riders");
+    }
+
+    // --- A7: a duck request not yet consumed commutes with the reset -------------------
+    {
+        const auto to = with (smooth, [] (Params& p) { p.haasDelayMs = 25.0f; });
+        std::vector<float> outs[2];
+        for (int requestFirst = 0; requestFirst < 2; ++requestFirst)
+        {
+            const auto e = activate (haas);
+            juce::Random pre (3), post (99);
+            run (*e, haas, history, bs, pre, nullptr);
+            if (requestFirst == 1) e->requestDuck();
+            e->reset (host);
+            if (requestFirst == 0) e->requestDuck();
+            run (*e, to, window, bs, post, &outs[requestFirst]);
+        }
+        check (compare ("A7 unconsumed duck request before vs after the reset", outs[1], outs[0]),
+               "a duck request the engine has not consumed commutes with a host reset");
     }
 }
 
@@ -7087,6 +7346,7 @@ int main (int argc, char* argv[])
     testEngagedWrapCarriesTheReportedLatency();
     testScopeRingHandsTheNewestFramesOldestFirst();
     testHostResetChorusSeedIsScoped();
+    testHostResetInAForcedSwapLandsSettled();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

@@ -207,6 +207,25 @@ same session with no reset, so an idle chorus is left alone. Against the pre-fix
 checks fail (the forced swap and the duck). Each guard is proven live by its own mutant
 (`worklogs/R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md` §U).
 
+**A host reset inside a forced swap lands where the swap's bottom would — Test 63 (PR #155,
+2026-09-23).** A forced swap (A/B, preset load, undo, redo) applies its new state at the silent
+bottom of a ~6 ms fade, smoothers snapped and every node cleared (ADR-0004, decision 1). A host
+reset landing before that bottom adopted the new state after the node resets and without the snap,
+so Mix / Width / Output / Drive / balance / polarity glided in over ~20 ms and the Haas delay and the
+multiband crossovers and widths glided from the OLD values, the delay stalling short of its target
+for good. **Test 63** (`testHostResetInAForcedSwapLandsSettled`) compares, bit-exactly over 1 s,
+a host reset inside the fade with a fresh engine at the target: the engine smoothers in both
+directions with the reset 1, 64 and 289 samples in (289: silent, bottom not yet run); the Haas delay
+both ways; crossover, band width and Band Solo; a latency-changing Oversampling Off → 2× swap with
+Drive; swaps into Chorus and Dimension-D (with Test 62's re-seed); and the other three ways into a
+forced fade-out (an ordinary duck upgraded, a re-arm from the fade-in, a retarget). Its adversarial
+legs pass on both engines: a swap finished before the reset, a reset in the fade-in, a live edit's
+glide and an ordinary duck's riders left gliding (oracle: the same controls on silent history, no
+reset), and an unconsumed duck request commuting with the reset. Against the pre-fix engine 15 of
+its 20 checks fail, every in-fade leg; each rejected variant (the snap alone, the reorder alone, a
+snap on every duck or every reset) fails a named leg
+(`worklogs/R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md` §V).
+
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
@@ -4275,6 +4294,16 @@ transport stop faded the sound back in from dry over ~50 ms and left the depth g
 of its target (−47 dB at 48 kHz); 8 of its 16 checks fail against that engine. Its rig sets the
 parameters before `prepareToPlay`: set after it, they open a discrete duck the fresh twin does not
 have.
+
+**A host reset inside an A/B, preset, undo or redo swap lands settled — State test 127 (PR #155,
+2026-09-23).** **State test 127** (`testAHostResetInsideAForcedSwapLandsSettled`) drives each route
+that raises a forced swap — A/B in both directions, a preset reload, undo and redo — with Advanced
+Mode on and an edit that moves Mix, Width, Output and the Haas delay, and calls
+`AnamorphAudioProcessor::reset()` 64 samples and 287 samples (the last sample of the fade) after the
+route, and again after the swap has finished. Every leg must be bit-identical to a processor holding
+the post-route parameters, set before `prepareToPlay`, over the next 0.5 s. Against the pre-fix
+engine the ten in-fade legs fail (max|d| 0.29–0.46; the A/B, undo and redo legs still differ at the
+end of the 0.5 s window, where the Haas delay stalled) and the five finished-swap legs pass.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with

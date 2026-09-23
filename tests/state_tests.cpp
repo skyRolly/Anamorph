@@ -37128,9 +37128,9 @@ static void testTheTransportMachineWithoutASampleClock()
 //  signal where the configured sound is silence until the delayed tap arrives; and the
 //  output still differed from a clean start by -47 dB (Chorus) / -53 dB (Dim-D) two seconds
 //  later, where the depth glide had stalled short of its target. On AU the same happened at
-//  every session start: JUCE's `Reset()` runs prepareToPlay() and then reset(). Every other
-//  module was already bit-identical to a clean start after a host reset (worklog
-//  R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md §U).
+//  every session start: JUCE's `Reset()` runs prepareToPlay() and then reset(). In a settled
+//  session every other module was already a clean start after a host reset (worklog
+//  R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md §U; a forced swap in flight is State test 127).
 //
 //  WHAT THIS ASSERTS, through the processor exactly as a host drives it, for both voices:
 //    A. the configured Amount is the effective wet from the first sample after the reset:
@@ -37301,6 +37301,143 @@ static void testAHostResetKeepsTheConfiguredChorusSound()
             check (same, what);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+//  State test 127 -- A HOST RESET INSIDE AN A/B, PRESET, UNDO OR REDO SWAP LANDS SETTLED
+//  (PR #155; Test 63 is the engine-level half, with the timing and entry-path legs)
+//
+//  All four routes raise `engine.requestDuck()` (PluginProcessor.cpp: the preset manager's
+//  onAboutToLoad, undo(), redo(), abSwitchToAdopted()), so each one is a FORCED swap: the old
+//  sound plays out a ~6 ms fade and the new one is applied, snapped, at the silent bottom. A
+//  host reset -- `reset()`, what VST3 setProcessing(false) and AU Reset() call -- landing in
+//  that fade used to adopt the new state without the snap and after the node resets: Mix /
+//  Width / Output glided in over ~20 ms and the Haas delay glided from the OLD value for
+//  ~0.3 s, then stalled a fraction of a sample short for good.
+//
+//  Each route moves Mix, Width, Output and the Haas delay together (Advanced Mode on:
+//  without it Mix and Output never reach the engine). The host reset lands 64 samples
+//  (near the start) and 287 samples (the last sample of the fade) after the route; a third
+//  leg lets the swap finish first. ORACLE: a processor holding the post-route parameters,
+//  set before prepareToPlay, fed the same input from the reset on -- bit-exact. None of the
+//  three moves a glide the swap's own bottom leaves running (Haas amount, Mono Maker cutoff).
+static void testAHostResetInsideAForcedSwapLandsSettled()
+{
+    std::printf ("State test 127: a host reset inside an A/B, preset, undo or redo swap lands settled\n");
+
+    const double sr = 48000.0; const int block = 256;
+    using KV = std::vector<std::pair<const char*, float>>;
+
+    // One seeded input stream, so every processor reads the same samples at the same position.
+    std::vector<float> inL, inR;
+    {
+        juce::Random rng (12345);
+        const size_t total = (size_t) (12.0 * sr);
+        inL.resize (total); inR.resize (total);
+        for (size_t i = 0; i < total; ++i)
+        {
+            const float v = rng.nextFloat() - 0.5f;
+            inL[i] = v; inR[i] = 0.6f * v + 0.2f * (rng.nextFloat() - 0.5f);
+        }
+    }
+    // Process `n` samples from stream position `pos` in blocks of `block` (and a remainder).
+    auto feed = [&] (AnamorphAudioProcessor& p, size_t& pos, int n, std::vector<float>* out)
+    {
+        juce::MidiBuffer midi;
+        while (n > 0)
+        {
+            const int len = juce::jmin (n, block);
+            juce::AudioBuffer<float> buf (2, len);
+            for (int i = 0; i < len; ++i)
+            {
+                buf.setSample (0, i, inL[pos + (size_t) i]);
+                buf.setSample (1, i, inR[pos + (size_t) i]);
+            }
+            midi.clear();
+            p.processBlock (buf, midi);
+            if (out != nullptr)
+                for (int i = 0; i < len; ++i)
+                    for (int ch = 0; ch < 2; ++ch)
+                        out->push_back (buf.getSample (ch, i));
+            pos += (size_t) len; n -= len;
+        }
+    };
+    auto set = [] (AnamorphAudioProcessor& p, const KV& kv, bool asEdit)
+    {
+        for (const auto& [id, v] : kv)
+            if (auto* rp = p.getAPVTS().getParameter (id))
+            {
+                if (asEdit) rp->beginChangeGesture();
+                rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+                if (asEdit) rp->endChangeGesture();
+            }
+        if (asEdit) p.pollUndoCoalesce();                       // close the undo step now
+    };
+    const KV base = { { "advancedMode", 1.0f }, { "algorithm", 0.0f }, { "amount", 0.5f }, { "haasDelay", 9.0f } };
+    const KV edit = { { "mix", 0.5f }, { "width", 1.8f }, { "outputGain", -6.0f }, { "haasDelay", 20.0f } };
+    const int settle = (int) (0.5 * sr);
+    const char* routeName[] = { "A/B, edited B -> A", "A/B, A -> edited B", "preset reload", "undo", "redo" };
+
+    for (int route = 0; route < 5; ++route)
+        for (int leg = 0; leg < 3; ++leg)                        // reset @64, reset @287, swap finished first
+        {
+            auto p = std::make_unique<AnamorphAudioProcessor>();    // heap: State test 59's note
+            constexpr int factory = 1;                               // a factory preset that is not "Default"
+            if (route == 2) { p->getPresets().load (factory); set (*p, { { "advancedMode", 1.0f } }, false); }
+            else            set (*p, base, false);
+            p->prepareToPlay (sr, block);
+            size_t pos = 0;
+            feed (*p, pos, settle, nullptr);
+            std::function<void()> go;
+            switch (route)
+            {
+                case 0: p->abCopyToOther(); p->abSwitchTo (1); feed (*p, pos, settle, nullptr);
+                        set (*p, edit, true);  feed (*p, pos, settle, nullptr);
+                        go = [&p] { p->abSwitchTo (0); };                                   break;
+                case 1: p->abCopyToOther(); p->abSwitchTo (1); feed (*p, pos, settle, nullptr);
+                        set (*p, edit, true);  feed (*p, pos, settle, nullptr);
+                        p->abSwitchTo (0);     feed (*p, pos, settle, nullptr);
+                        go = [&p] { p->abSwitchTo (1); };                                   break;
+                case 2: set (*p, edit, true);  feed (*p, pos, settle, nullptr);
+                        go = [&p] { p->getPresets().load (factory); };                      break;
+                case 3: set (*p, edit, true);  feed (*p, pos, settle, nullptr);
+                        go = [&p] { p->undo(); };                                          break;
+                default: set (*p, edit, true); feed (*p, pos, settle, nullptr);
+                        p->undo();             feed (*p, pos, settle, nullptr);
+                        go = [&p] { p->redo(); };                                          break;
+            }
+            go();
+            feed (*p, pos, leg == 0 ? 64 : leg == 1 ? 287 : (int) (0.1 * sr), nullptr);
+            p->reset();                                                     // the host's stop
+
+            // The oracle: the post-route parameters, set before prepareToPlay.
+            auto fresh = std::make_unique<AnamorphAudioProcessor>();
+            {
+                auto& from = p->getParameters();
+                auto& to   = fresh->getParameters();
+                for (int i = 0; i < from.size(); ++i) to[i]->setValueNotifyingHost (from[i]->getValue());
+            }
+            fresh->prepareToPlay (sr, block);
+            std::vector<float> a, b;
+            size_t freshPos = pos;
+            feed (*p, pos, settle, &a);
+            feed (*fresh, freshPos, settle, &b);
+            double worst = 0.0; long last = -1;
+            for (size_t i = 0; i < a.size(); ++i)
+                if (! juce::exactlyEqual (a[i], b[i]))
+                {
+                    worst = juce::jmax (worst, (double) std::abs (a[i] - b[i]));
+                    last = (long) (i / 2);
+                }
+            const char* when = leg == 0 ? "reset 64 samples in" : leg == 1 ? "reset 287 samples in" : "reset after it finished";
+            if (last < 0) std::printf ("  %-20s %-24s: bit-identical to a fresh processor\n", routeName[route], when);
+            else          std::printf ("  %-20s %-24s: max|d| %.4f, last difference %.1f ms after the reset\n",
+                                       routeName[route], when, worst, (double) last * 1000.0 / sr);
+            char what[160];
+            std::snprintf (what, sizeof what, "%s, %s: the output is a clean start at the new settings",
+                           routeName[route], when);
+            check (last < 0 && ! a.empty(), what);
+        }
 }
 
 int main (int argc, char* argv[])
@@ -37492,6 +37629,7 @@ int main (int argc, char* argv[])
     testTheDocumentedIoContract();
     testTheTransportMachineWithoutASampleClock();
     testAHostResetKeepsTheConfiguredChorusSound();
+    testAHostResetInsideAForcedSwapLandsSettled();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

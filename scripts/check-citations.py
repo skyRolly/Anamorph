@@ -652,6 +652,29 @@ DELIBERATE_REAIMS = {
     ("docs/architecture/design-decisions/ADR-0010-host-hidden-internalstate.md",
      "src/PluginProcessor.cpp:1135, 1483-1487",
      "src/PluginProcessor.cpp:1328, 1773-1777"): "openGestures",
+    #
+    # 2026-09-23 (PR #155, the host reset inside a forced swap): TWO ENTRIES, ONE EDIT, and each
+    # needs the table for the reason it exists. Both documents cite `reset()`'s duck flush for the
+    # same unchanged claim -- "`reset()` flushes an in-flight duck straight to its target" -- and
+    # that flush was MOVED to the top of `reset()` (so the node resets snap onto the adopted
+    # targets) and given a snap for a forced swap. The cited span was itself edited, so the line
+    # map returns `None` and the run reports UNMAPPABLE. The claim is still true, so each anchor is
+    # re-aimed by hand onto the adoption block at the top of the function, which is what the
+    # sentence describes. The token is resolved at the new spelling. The merge base and
+    # `origin/main` carry `:208-215` for the same sentence; that transition is declared too, since
+    # a declaration answers only for the base that carries its old spelling.
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/dsp/AnamorphEngine.cpp:282-289",
+     "src/dsp/AnamorphEngine.cpp:203-209"): "pendingP",
+    ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
+     "src/dsp/AnamorphEngine.cpp:282-289",
+     "src/dsp/AnamorphEngine.cpp:203-209"): "pendingP",
+    ("docs/DOCUMENTATION_COVERAGE.md",
+     "src/dsp/AnamorphEngine.cpp:208-215",
+     "src/dsp/AnamorphEngine.cpp:203-209"): "pendingP",
+    ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
+     "src/dsp/AnamorphEngine.cpp:208-215",
+     "src/dsp/AnamorphEngine.cpp:203-209"): "pendingP",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

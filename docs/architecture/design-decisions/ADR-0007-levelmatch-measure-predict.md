@@ -194,7 +194,7 @@ and the published Level-Match gain survive it; a re-prepare still resets all of 
 
 ## Related code
 - `src/dsp/LoudnessMatch.cpp:15-43` (K-weighting), `:74-95` (predict), `:131-156` (measure/hold)
-- `src/dsp/AnamorphEngine.cpp:1177-1210` (A(dry) ref + silence-edge snap)
+- `src/dsp/AnamorphEngine.cpp:1198-1231` (A(dry) ref + silence-edge snap)
 - `src/PluginProcessor.cpp:402-424` (`applyAutoGain`)
 
 Evidence [Verified]:

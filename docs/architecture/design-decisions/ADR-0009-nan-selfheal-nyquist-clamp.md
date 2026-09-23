@@ -47,11 +47,11 @@ ADR-0007 question (worklog `R7_PRODUCTION_PATH_COVERAGE.md`, §F14).
 
 ## Related code
 - `src/dsp/MultibandWidth.cpp:55-71` (clamp+order); `SoloMonitor.cpp:41-57`; `MonoMaker.h:36-39` (setFrequency clamp)
-- `src/dsp/AnamorphEngine.cpp:1842-1892` (NaN/Inf self-heal)
+- `src/dsp/AnamorphEngine.cpp:1863-1913` (NaN/Inf self-heal)
 - `src/dsp/LevelMeters.h:98-102, 167` (`sanitize`)
 
 Evidence [Verified]:
-- Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:1842-1892; src/dsp/LevelMeters.h
+- Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:1863-1913; src/dsp/LevelMeters.h
 - Tests: testCrossoverAutomationSafe, testMeterRecoversFromNaN, testNoBadSamples,
   testNonFiniteBurstSelfHeals (Test 59), testAHostNanParameterDoesNotLatchTheChain (State test 123)
 - History [Partially Verified]: CHANGELOG.md [0.8.2], [0.8.3]
