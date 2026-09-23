@@ -1655,7 +1655,7 @@ Measured, muted blocks while the target is NaN / after it is finite again (48 kH
 - The edit moves Mix, Width, Output and the Haas delay, on a Haas sound, with Advanced Mode on. The preset route loads "Drum Spread" by its factory id: the first draft loaded list index 1, a Velvet preset, where the Haas delay is inaudible, so that route did not test the node-reset half of the fix (found by the final review; a snap-only engine passed it).
 - The reset lands 64 samples in, 287 samples in (the fade is 288), or after the swap finished.
 - The oracle is a processor holding the post-route parameters, set before `prepareToPlay`.
-- **Pre-fix: 10 of 15 fail** (max|d| 0.29–0.46, every in-fade leg). **Post-fix: 0.** The rest of the state suite prints identically, bar thread-timing lines.
+- **Pre-fix: 10 of 15 fail** (max|d| 0.15–0.44, every in-fade leg). **Post-fix: 0.** The rest of the state suite prints identically, bar thread-timing lines.
 
 **Adversarial checks from the brief** (Part 12), with where each is established:
 
@@ -1750,6 +1750,36 @@ An adversarial review ran after the push: three lenses (engine correctness, test
    - `check-state-coverage.py`'s flush wording;
    - the stale-anchor history above;
    - this section's count of corrected places.
+
+### CI on `4e0ff84`: the macOS arm64 failure, and why it was the oracle
+
+**Every job passed on `4e0ff84` except `macos`,** whose native arm64 run of the state suite failed 9 checks of State test 127. The x86_64 slice of the same job passed, under Rosetta, as did `macos-intel`, Linux, Windows, the sanitizers, TSan, RTSan and valgrind.
+
+**What failed.** The failing legs were A/B edited B → A, preset reload and undo — every leg, "after it finished" included. All three return the processor to its BASE state. They differed from the fresh processor by less than 5e-5, for the whole window. A/B A → B and redo, which end on the edited state, passed.
+
+**Reproduced locally**, identically, by building the state suite with clang 18, `-march=haswell -ffp-contract=on` (FMA contraction, as AppleClang does on arm64).
+
+**Diagnosis** (engine internals dumped from both processors):
+- Every snapshot field and every other smoother matched.
+- The only difference was `outGainSmooth`'s target: 0.99999994 in the processor that had been at −6 dB, and 1.0 in the fresh one.
+- **Mechanism.** Under FMA, 0 dB round-trips normalised → plain to −5.4e-7 dB. JUCE's `SmoothedValue::setTargetValue` ignores a new target within `approximatelyEqual` of its current one. So a fresh engine, whose smoother starts at the neutral 1.0, keeps 1.0, while an engine arriving from 0.5 takes the exact value.
+
+**Verdict: not the defect, not a reset question.**
+- The same history with no forced swap and no undo — edited, then edited back by hand — differs identically.
+- So does the finished-swap leg.
+
+**Fix: the test's end states, not the engine.**
+- Both ends of the A/B, undo and redo routes now sit off the neutral values: base Mix 0.8, Width 1.3, Output −3 dB.
+- The preset route cannot do that, because a load returns every parameter the preset omits to its default. Its edit therefore leaves Output alone.
+
+**Results after the fix:**
+
+| build | State test 127 |
+|---|---|
+| FMA | passes: 4791 / 0, and the DSP suite 518 / 0 |
+| x86, fixed engine | passes |
+| pre-fix engine | 10 in-fade legs fail (max\|d\| 0.15–0.44, every one to the end of the window); the finished legs pass |
+| snap-only engine | 10 fail |
 
 ### Validation, local
 

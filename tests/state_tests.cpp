@@ -37316,7 +37316,8 @@ static void testAHostResetKeepsTheConfiguredChorusSound()
 //  ~0.3 s, then stalled a fraction of a sample short for good.
 //
 //  Each route moves Mix, Width, Output and the Haas delay together, on a Haas sound (Advanced
-//  Mode on: without it Mix and Output never reach the engine). The host reset lands 64
+//  Mode on: without it Mix and Output never reach the engine; the preset route leaves Output
+//  alone, see `base` below). The host reset lands 64
 //  samples (near the start) and 287 samples (the fade is 288) after the route; a third leg
 //  lets the swap finish first. ORACLE: a processor holding the post-route parameters, set
 //  before prepareToPlay, fed the same input from the reset on -- bit-exact. None of the
@@ -37373,8 +37374,18 @@ static void testAHostResetInsideAForcedSwapLandsSettled()
             }
         if (asEdit) p.pollUndoCoalesce();                       // close the undo step now
     };
-    const KV base = { { "advancedMode", 1.0f }, { "algorithm", 0.0f }, { "amount", 0.5f }, { "haasDelay", 9.0f } };
+    // Both ends of every route sit AWAY from the neutral values a fresh engine starts its
+    // smoothers at (Mix 1, Width 1, 0 dB). Where a platform contracts to FMA (the arm64 runner),
+    // 0 dB round-trips normalised -> plain to -5.4e-7 dB, and JUCE's SmoothedValue declines a
+    // target within approximatelyEqual of its current one: the clean start keeps its neutral
+    // 1.0 while a processor that came back from -6 dB takes the exact 0.99999994 -- one ulp of
+    // gain, which is not the defect (measured on the runner; reproduced with clang
+    // -march=haswell -ffp-contract=on). A preset load returns every parameter the preset
+    // omits to its default, so that route's edit leaves Output alone.
+    const KV base = { { "advancedMode", 1.0f }, { "algorithm", 0.0f }, { "amount", 0.5f }, { "haasDelay", 9.0f },
+                      { "mix", 0.8f }, { "width", 1.3f }, { "outputGain", -3.0f } };
     const KV edit = { { "mix", 0.5f }, { "width", 1.8f }, { "outputGain", -6.0f }, { "haasDelay", 20.0f } };
+    const KV presetEdit = { { "mix", 0.5f }, { "width", 1.8f }, { "haasDelay", 20.0f } };
     const int settle = (int) (0.5 * sr);
     const char* routeName[] = { "A/B, edited B -> A", "A/B, A -> edited B", "preset reload", "undo", "redo" };
 
@@ -37407,7 +37418,7 @@ static void testAHostResetInsideAForcedSwapLandsSettled()
                         set (*p, edit, true);  feed (*p, pos, settle, nullptr);
                         p->abSwitchTo (0);     feed (*p, pos, settle, nullptr);
                         go = [&p] { p->abSwitchTo (1); };                                   break;
-                case 2: set (*p, edit, true);  feed (*p, pos, settle, nullptr);
+                case 2: set (*p, presetEdit, true); feed (*p, pos, settle, nullptr);
                         go = [&p, factory] { p->getPresets().load (factory); };             break;
                 case 3: set (*p, edit, true);  feed (*p, pos, settle, nullptr);
                         go = [&p] { p->undo(); };                                          break;

@@ -4299,11 +4299,12 @@ have.
 **A host reset inside an A/B, preset, undo or redo swap lands settled — State test 127 (PR #155,
 2026-09-23).** **State test 127** (`testAHostResetInsideAForcedSwapLandsSettled`) drives each route
 that raises a forced swap — A/B in both directions, a reload of the Haas factory preset "Drum Spread"
-(found by id), undo and redo — with Advanced Mode on and an edit that moves Mix, Width, Output and the
-Haas delay, and calls `AnamorphAudioProcessor::reset()` 64 samples and 287 samples (the fade is 288)
-after the route, and again after the swap has finished. Every leg must be bit-identical to a processor holding
+(found by id), undo and redo — with Advanced Mode on and an edit that moves Mix, Width, Output (not on
+the preset route) and the Haas delay, both ends kept off the smoothers' neutral values, and calls
+`AnamorphAudioProcessor::reset()` 64 samples and 287 samples (the fade is 288) after the route, and
+again after the swap has finished. Every leg must be bit-identical to a processor holding
 the post-route parameters, set before `prepareToPlay`, over the next 0.5 s. Against the pre-fix
-engine the ten in-fade legs fail (max|d| 0.29–0.46; every one still differs at the end of the 0.5 s
+engine the ten in-fade legs fail (max|d| 0.15–0.44; every one still differs at the end of the 0.5 s
 window, where the Haas delay stalled) and the five finished-swap legs pass.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
