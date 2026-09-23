@@ -6850,9 +6850,9 @@ static void testHostResetChorusSeedIsScoped()
 //  through its ~6 ms fade-out and applies the new one at the silent bottom: adopted, smoothers
 //  SNAPPED, every node cleared (ADR-0004, decision 1). A host reset (`audioTailsOnly`) landing
 //  before that bottom used to adopt the target AFTER the node resets and without the snap, so
-//  Mix / Width / Output / Drive / balance / polarity glided in over ~20 ms, and the Haas delay
-//  and the multiband crossovers and widths -- which their own reset() snaps -- were snapped to
-//  the OLD values and glided from there, the delay stalling short of its target for good.
+//  Mix / Width / Output / balance (20 ms), Drive (32 ms) and polarity (5 ms) glided in, and
+//  the Haas delay and the multiband crossovers and widths -- which their own reset() snaps --
+//  were snapped to the OLD values and glided from there, the delay stalling short for good.
 //
 //  ORACLE: a fresh engine at the target. Completing the swap and clearing every tail IS a
 //  clean start (leg A2 proves that on the pre-fix engine too), for every field the bottom
@@ -6869,7 +6869,9 @@ static void testHostResetChorusSeedIsScoped()
 //  And what must NOT change (each passes on the pre-fix engine as well):
 //    A2  a forced swap that completed before the reset lands on a clean start;
 //    A3  a reset in the fade-in lands on a clean start (the bottom has run);
-//    A4  a live edit gliding at the reset keeps gliding (the reset snaps nothing);
+//    A4  a live edit's glide that no reset() lands keeps gliding: the engine's smoothers, the
+//        Haas amount, Velvet density and Mono Maker cutoff (the Haas delay, crossovers and the
+//        Chorus are landed by their own reset() in any case, duck or none);
 //    A5  an ordinary duck's live riders keep gliding the same way;
 //    A7  a duck request the engine has not consumed yet commutes with the reset.
 //  A4 / A5's oracle is the same control sequence on SILENT history with no reset: its delay
@@ -7059,11 +7061,11 @@ static void testHostResetInAForcedSwapLandsSettled()
 
     // --- A4 / A5: live glides are not snapped ------------------------------------------
     // The same control sequence on silent history, with no reset: its lines hold only zeros.
-    auto noResetTwin = [&] (const Params& reached)
+    auto noResetTwin = [&] (const Params& reached, const Params& from)
     {
-        const auto t = activate (haas);
+        const auto t = activate (from);
         juce::Random pre (3), mid (4), post (99);
-        run (*t, haas, history, bs, pre, nullptr, true);
+        run (*t, from, history, bs, pre, nullptr, true);
         run (*t, reached, 1, 64, mid, nullptr, true);
         std::vector<float> out;
         run (*t, reached, window, bs, post, &out);
@@ -7073,12 +7075,24 @@ static void testHostResetInAForcedSwapLandsSettled()
         const auto rider = with (haas, [] (Params& p) { p.mix = 0.5f; p.width = 1.8f; p.outputGainDb = -6.0f; });
         check (compare ("A4 live Mix/Width/Output edit gliding at the reset",
                         afterReset (haas, rider, [&] (Engine& e, juce::Random& rng) { run (e, rider, 1, 64, rng, nullptr); }),
-                        noResetTwin (rider)),
+                        noResetTwin (rider, haas)),
                "a host reset does not snap a live edit's glide");
+        const auto mono = with (haas, [] (Params& p) { p.monoMakerEnable = true; });
+        const auto moduleRider = with (mono, [] (Params& p) { p.algoAmount = 0.9f; p.monoMakerFreq = 300.0f; });
+        check (compare ("A4 live Haas amount / Mono Maker cutoff edit gliding at the reset",
+                        afterReset (mono, moduleRider, [&] (Engine& e, juce::Random& rng) { run (e, moduleRider, 1, 64, rng, nullptr); }),
+                        noResetTwin (moduleRider, mono)),
+               "a host reset does not snap a live Haas amount or Mono Maker cutoff glide");
+        const auto velvet = with (haas, [] (Params& p) { p.algorithm = Algorithm::Velvet; p.algoAmount = 0.6f; });
+        const auto dense = with (velvet, [] (Params& p) { p.velvetDensity = 0.9f; });
+        check (compare ("A4 live Velvet density edit gliding at the reset",
+                        afterReset (velvet, dense, [&] (Engine& e, juce::Random& rng) { run (e, dense, 1, 64, rng, nullptr); }),
+                        noResetTwin (dense, velvet)),
+               "a host reset does not snap a live Velvet density glide");
         const auto ducked = with (rider, [] (Params& p) { p.mbBands = 3; });   // discrete, inaudible: Multiband is off
         check (compare ("A5 ordinary duck with live riders at the reset",
                         afterReset (haas, ducked, [&] (Engine& e, juce::Random& rng) { run (e, ducked, 1, 64, rng, nullptr); }),
-                        noResetTwin (rider)),
+                        noResetTwin (rider, haas)),
                "a host reset does not snap an ordinary duck's live riders");
     }
 

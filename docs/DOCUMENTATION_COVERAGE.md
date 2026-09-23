@@ -422,7 +422,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:1207-1213` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:1210-1216` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1916,10 +1916,10 @@ No other approval is claimed by this entry.
 
 **Test 38 never armed a parameter CHANGE.** The per-configuration `setParameters (p); reset();` ran
 *before* the block loop, and `reset()` flushes an in-flight duck straight to its target
-(`src/dsp/AnamorphEngine.cpp:203-209`) — so by the time the counters were armed the switch was over,
+(`src/dsp/AnamorphEngine.cpp:205-211`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:1056-1176`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:1059-1179`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2026,7 +2026,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:1863-1913` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:1866-1916` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -13016,12 +13016,12 @@ and all stale; each is now a full-path anchor re-derived from the code it names,
 
 **One product defect, fixed; no contract changed.** A host reset inside a forced swap's fade-out
 cleared the nodes before adopting the target and never snapped the smoothers, so Mix / Width /
-Output / Drive / balance / polarity glided in over ~20 ms and the Haas delay, crossovers and band
-widths glided from the OLD values (the delay stalling short for good). `reset()` now resolves the
+Output / balance glided in over 20 ms (Drive 32 ms, polarity 5 ms) and the Haas delay, crossovers
+and band widths glided from the OLD values (the delay stalling short for good). `reset()` now resolves the
 duck first, in the bottom's order, snapping only a forced one — ADR-0004 decision 1 carried out on
-the reset path. Ordinary ducks and live glides are untouched.
+the reset path. Ordinary ducks and live glides behave exactly as before.
 
-**Tests.** DSP Test 63 (20 checks; 15 fail pre-fix, every in-fade leg) and State test 127 (15
+**Tests.** DSP Test 63 (22 checks; 15 fail pre-fix, every in-fade leg) and State test 127 (15
 checks through all five routes; 10 fail pre-fix). Each rejected variant fails a named leg.
 
 **Documents changed.** The reset comment (the "bit-exact transparent from sample 0" promise
@@ -13037,7 +13037,7 @@ a re-prepare (an ADR-0009 gap, the road map's next item); NaN crossovers are adm
 the natural forced swap's own module glides; a Level-Match drift after a continuous-only forced
 swap (unverified, adjacent to F13).
 
-**Counts.** DSP **516 / 0** (496 + 20), State **4 791 / 0** (4 776 + 15). [Verified]
+**Counts.** DSP **518 / 0** (496 + 22), State **4 791 / 0** (4 776 + 15). [Verified]
 
 ## 74th pass — 2026-09-23, PR #155 (a host reset faded the chorus back in)
 

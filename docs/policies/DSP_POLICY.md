@@ -8,7 +8,7 @@ architecture docs, and the ADRs. These must hold across releases.
 1. **The signal chain is strictly serial, in this fixed order** (see `SIGNAL_FLOW.md`):
    Input conditioning → Effect engine (Drive → algorithm → global Width → Multiband) →
    Dry/Wet Mix → Mono Maker → Output stage → Band Solo monitor → metering.
-   Evidence [Verified]: src/dsp/AnamorphEngine.cpp:904-1470.
+   Evidence [Verified]: src/dsp/AnamorphEngine.cpp:907-1473.
 
 2. **Mono Maker runs post-Mix, in place.** It collapses the lows of the *mixed* signal so the
    low end is mono at any Mix amount. (ADR-0006) Evidence: AnamorphEngine.cpp:761-766; test

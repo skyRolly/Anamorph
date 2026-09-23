@@ -37315,12 +37315,12 @@ static void testAHostResetKeepsTheConfiguredChorusSound()
 //  Width / Output glided in over ~20 ms and the Haas delay glided from the OLD value for
 //  ~0.3 s, then stalled a fraction of a sample short for good.
 //
-//  Each route moves Mix, Width, Output and the Haas delay together (Advanced Mode on:
-//  without it Mix and Output never reach the engine). The host reset lands 64 samples
-//  (near the start) and 287 samples (the last sample of the fade) after the route; a third
-//  leg lets the swap finish first. ORACLE: a processor holding the post-route parameters,
-//  set before prepareToPlay, fed the same input from the reset on -- bit-exact. None of the
-//  three moves a glide the swap's own bottom leaves running (Haas amount, Mono Maker cutoff).
+//  Each route moves Mix, Width, Output and the Haas delay together, on a Haas sound (Advanced
+//  Mode on: without it Mix and Output never reach the engine). The host reset lands 64
+//  samples (near the start) and 287 samples (the fade is 288) after the route; a third leg
+//  lets the swap finish first. ORACLE: a processor holding the post-route parameters, set
+//  before prepareToPlay, fed the same input from the reset on -- bit-exact. None of the
+//  legs moves a glide the swap's own bottom leaves running (Haas amount, Mono Maker cutoff).
 static void testAHostResetInsideAForcedSwapLandsSettled()
 {
     std::printf ("State test 127: a host reset inside an A/B, preset, undo or redo swap lands settled\n");
@@ -37382,7 +37382,16 @@ static void testAHostResetInsideAForcedSwapLandsSettled()
         for (int leg = 0; leg < 3; ++leg)                        // reset @64, reset @287, swap finished first
         {
             auto p = std::make_unique<AnamorphAudioProcessor>();    // heap: State test 59's note
-            constexpr int factory = 1;                               // a factory preset that is not "Default"
+            // A Haas factory preset, found by its immutable id so the preset route reaches the
+            // Haas delay too ("Drum Spread": algorithm Haas, delay 9 ms).
+            int factory = -1;
+            {
+                const auto& entries = p->getPresets().entries();
+                for (int i = 0; i < entries.size(); ++i)
+                    if (entries.getReference (i).isFactory && entries.getReference (i).factoryId == "drumSpread")
+                        factory = i;
+            }
+            if (route == 2 && factory < 0) { check (false, "State test 127 needs the Drum Spread factory preset"); continue; }
             if (route == 2) { p->getPresets().load (factory); set (*p, { { "advancedMode", 1.0f } }, false); }
             else            set (*p, base, false);
             p->prepareToPlay (sr, block);
@@ -37399,7 +37408,7 @@ static void testAHostResetInsideAForcedSwapLandsSettled()
                         p->abSwitchTo (0);     feed (*p, pos, settle, nullptr);
                         go = [&p] { p->abSwitchTo (1); };                                   break;
                 case 2: set (*p, edit, true);  feed (*p, pos, settle, nullptr);
-                        go = [&p] { p->getPresets().load (factory); };                      break;
+                        go = [&p, factory] { p->getPresets().load (factory); };             break;
                 case 3: set (*p, edit, true);  feed (*p, pos, settle, nullptr);
                         go = [&p] { p->undo(); };                                          break;
                 default: set (*p, edit, true); feed (*p, pos, settle, nullptr);

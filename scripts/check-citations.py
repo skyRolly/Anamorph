@@ -653,8 +653,8 @@ DELIBERATE_REAIMS = {
      "src/PluginProcessor.cpp:1135, 1483-1487",
      "src/PluginProcessor.cpp:1328, 1773-1777"): "openGestures",
     #
-    # 2026-09-23 (PR #155, the host reset inside a forced swap): TWO ENTRIES, ONE EDIT, and each
-    # needs the table for the reason it exists. Both documents cite `reset()`'s duck flush for the
+    # 2026-09-23 (PR #155, the host reset inside a forced swap): FOUR ENTRIES -- two documents, two
+    # old spellings each -- for ONE EDIT, and each needs the table for the reason it exists. Both documents cite `reset()`'s duck flush for the
     # same unchanged claim -- "`reset()` flushes an in-flight duck straight to its target" -- and
     # that flush was MOVED to the top of `reset()` (so the node resets snap onto the adopted
     # targets) and given a snap for a forced swap. The cited span was itself edited, so the line
@@ -665,16 +665,16 @@ DELIBERATE_REAIMS = {
     # a declaration answers only for the base that carries its old spelling.
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/dsp/AnamorphEngine.cpp:282-289",
-     "src/dsp/AnamorphEngine.cpp:203-209"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
     ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
      "src/dsp/AnamorphEngine.cpp:282-289",
-     "src/dsp/AnamorphEngine.cpp:203-209"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
     ("docs/DOCUMENTATION_COVERAGE.md",
      "src/dsp/AnamorphEngine.cpp:208-215",
-     "src/dsp/AnamorphEngine.cpp:203-209"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
     ("docs/architecture/REALTIME_SAFETY_AUDIT.md",
      "src/dsp/AnamorphEngine.cpp:208-215",
-     "src/dsp/AnamorphEngine.cpp:203-209"): "pendingP",
+     "src/dsp/AnamorphEngine.cpp:205-211"): "pendingP",
 }
 
 # Lines whose CONTENT is expected to change on its own schedule, keyed by the

@@ -190,16 +190,18 @@ void AnamorphEngine::reset (ResetScope resetScope)
     //    would have completed it: it holds its continuous controls back in pendingP to be
     //    applied SNAPPED (ADR-0004, decision 1), so they are snapped here too. Adopted
     //    after the node resets and unsnapped, as it used to be, a host reset inside the
-    //    ~6 ms fade-out glided Mix / Width / Output / Drive / balance / polarity in over
-    //    ~20 ms, and the Haas delay and the crossovers from the OLD values -- the delay
-    //    then stalling short of its target for good (Test 63, State test 127).
+    //    ~6 ms fade-out glided Mix / Width / Output / balance in over 20 ms (Drive 32 ms,
+    //    polarity 5 ms), and the Haas delay and the crossovers from the OLD values -- the
+    //    delay then stalling short of its target for good (Test 63, State test 127).
     //  * An ORDINARY duck adopts its discrete change only: its continuous controls went
-    //    live when it opened (copyContinuous), so a glide in flight keeps gliding, exactly
-    //    as a live edit does through a reset with no duck at all.
-    // So a host reset clears every audio tail and lands any duck on its target; it equals
-    // a clean start only where no glide was in flight -- a live edit, an ordinary duck's
-    // riders, and the module glides a forced swap's own bottom leaves running (the Haas /
-    // Velvet amount, Velvet density, Mono Maker cutoff).
+    //    live when it opened (copyContinuous), so the reset treats them exactly as it
+    //    treats a live edit with no duck at all.
+    // So a host reset clears every audio tail, lands any duck on its target, and lands the
+    // glides a node's own reset() snaps (the Haas delay, crossovers, band widths, Band Solo
+    // split; on this scope the Chorus wet and depth, below). It snaps no other glide still
+    // in flight -- the engine's smoothers after a live edit, the Haas / Velvet amount,
+    // Velvet density, Mono Maker cutoff -- and it keeps the Level-Match gain (ADR-0007). It
+    // equals a clean start only where none of those was moving.
     if (switchState != SwitchState::Normal)
     {
         p = pendingP;
@@ -332,8 +334,9 @@ void AnamorphEngine::reset (ResetScope resetScope)
     // self-heal, where a fade masks it or the glide must go -- and prepare() re-seeds both
     // (ER-DSP-09). The host reset had nothing that did, so every transport stop (and every AU
     // Reset(), which JUCE runs right after prepareToPlay()) faded the sound back in from dry
-    // over ~50 ms and left the depth glide stalled short of its target. With this, a host reset
-    // of a settled session is a clean start from the first sample (State test 126, Test 62).
+    // over ~50 ms and left the depth glide stalled short of its target. With this, a host reset of
+    // a settled session is a clean start from the first sample, Level Match aside (State test
+    // 126, Test 62).
     //  * LAST, after the duck flush: a forced swap in flight holds the Amount in pendingP.
     //  * audioTailsOnly only: `everything` is prepare()'s flush, and prepare() snaps itself.
     //  * Chorus / Dimension-D only: an idle chorus is left exactly as it was, so a host reset
@@ -412,7 +415,7 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         || a.algorithm        != b.algorithm
         || a.haasSide         != b.haasSide
         // dimMode is READ BY ONE LINE, and only under one algorithm:
-        // src/dsp/AnamorphEngine.cpp:810 (`chorus.setDimMode`), inside
+        // src/dsp/AnamorphEngine.cpp:813 (`chorus.setDimMode`), inside
         // `else if (p.algorithm == Algorithm::DimensionD)`.
         // With any other algorithm adopted the value reaches no module, so a duck for it
         // buys nothing and costs the whole fade -- measured, on the real wrapper path, at
@@ -428,14 +431,14 @@ bool AnamorphEngine::discreteDiffers (const EngineParameters& a, const EnginePar
         // states, which no module can observe.
         //
         // NOTHING IS LOST BY NOT DUCKING. `sameParameters` still compares dimMode
-        // (src/dsp/AnamorphEngine.cpp:382 (`a.dimMode`)),
+        // (src/dsp/AnamorphEngine.cpp:385 (`a.dimMode`)),
         // so the value is adopted the ordinary continuous way (`p = np; updateDerived()`),
         // and a later switch TO DimensionD is an `algorithm` difference that ducks, adopts
         // the whole snapshot at the bottom and runs `chorus.setDimMode` with the value
         // already in `p`. ADR-0004 §"Correction, 2026-09-21" records the measurement.
         //
         // haasSide is NOT given the same treatment, and the asymmetry is the point:
-        // src/dsp/AnamorphEngine.cpp:795 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
+        // src/dsp/AnamorphEngine.cpp:798 (`haas.setSide`) runs UNCONDITIONALLY, so that value reaches a module
         // whatever the algorithm is. The test for this exclusion is "does the field reach
         // a module", not "does the algorithm use it".
         || (a.dimMode != b.dimMode && (a.algorithm == Algorithm::DimensionD
@@ -654,9 +657,9 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             // ORDINARY DUCK, RETARGETED DURING THE FADE-OUT (R4, Part 6). This is
             // the fourth path into `pendingP` and the only one that used to leave
             // `pendingAlgoReset` alone. The other three -- the forced entry
-            // (src/dsp/AnamorphEngine.cpp:574), the discrete entry
-            // (src/dsp/AnamorphEngine.cpp:586) and the FadeIn re-arm
-            // (src/dsp/AnamorphEngine.cpp:621) -- all recompute
+            // (src/dsp/AnamorphEngine.cpp:577), the discrete entry
+            // (src/dsp/AnamorphEngine.cpp:589) and the FadeIn re-arm
+            // (src/dsp/AnamorphEngine.cpp:624) -- all recompute
             // it; this one did not, because the re-arm guard above tests
             // `switchState == FadeIn` and a change arriving during FADE-OUT
             // therefore falls straight through to `pendingP = np` at the top.
@@ -665,7 +668,7 @@ void AnamorphEngine::setParameters (const EngineParameters& np) noexcept
             //     block N    : change the band count   -> duck opens, flag = false
             //     block N+1  : change the algorithm    -> pendingP retargeted
             // -- reached the silent bottom, adopted the new algorithm with
-            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1072) and skipped `haas/velvet/chorus.reset()`
+            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1075) and skipped `haas/velvet/chorus.reset()`
             // because the flag still described the FIRST change. The incoming
             // algorithm then started on the outgoing one's delay-line and LFO
             // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:

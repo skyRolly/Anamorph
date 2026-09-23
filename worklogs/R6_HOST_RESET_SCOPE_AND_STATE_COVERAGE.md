@@ -1241,9 +1241,10 @@ The chorus is the only module whose `reset()` destroys a sound-state glide:
 exceptions: the Level-Match published gain and the meter latches.
 
 > **Correction (§V).** True of a SETTLED session, which is all this section measured. With a glide
-> in flight at the reset -- a live edit, an ordinary duck's riders, the module glides a forced
-> swap's own bottom leaves running -- a host reset keeps it gliding, and a clean start does not.
-> A forced swap in flight is the one case the code got wrong; §V fixes it.
+> in flight at the reset that no node reset lands -- the engine's smoothers after a live edit or an
+> ordinary duck, the Haas / Velvet amount, Velvet density, Mono Maker cutoff -- a host reset keeps
+> it gliding, and a clean start does not. A forced swap in flight is the one case the code got
+> wrong; §V fixes it.
 
 **The wet blend and the depth are the user's sound, not audio.** At HEAD the code broke the contract
 for Chorus and Dimension-D and nowhere else. The code is wrong and the documents are right. No ADR
@@ -1459,7 +1460,7 @@ Each carries a correction marker pointing here.
 - **All seven were added by this PR**, in R4's `35d765f`. None exists at the merge base.
 - **All seven were stale.**
   - Four aimed at R4's own numbering and drifted when later rounds grew `reset()`.
-  - Three (`:590`, `:603`, `:894`) were written against the merge-base numbering and were already wrong in R4's own commit.
+  - Three were already wrong in R4's own commit: `:590` matched the merge-base numbering, and `:603` and `:894` matched no commit in this PR's range (`chorus.setDimMode` sat at `:605` at the merge base and `:666` in R4; the bottom's `p = pendingP` at `:867` and `:928`).
 - **The citation gate cannot see them**, because it only reads a full path.
 - **The fix.** Each is now a full-path anchor re-derived from the code it names: `sameParameters`' dimMode compare, the three `pendingAlgoReset` recomputes, `haas.setSide`, `chorus.setDimMode`, and the bottom's `p = pendingP`.
 - **Proven gated.** A scratch clone with a line inserted above them shows `--fix` re-anchoring all seven: the checked-anchor count goes from 542 to 549.
@@ -1470,7 +1471,7 @@ Each carries a correction marker pointing here.
 - the three crossfades settled;
 - each scope's Level-Match and meter halves;
 - the Chorus re-seed;
-- the statement that it snaps no live glide, and so equals a clean start only when none is in flight.
+- which glides it lands (those the node resets snap: Haas delay, crossovers, band widths, Band Solo split) and which it leaves gliding (the engine's smoothers, the Haas / Velvet amount, Velvet density, Mono Maker cutoff), so it equals a clean start, Level Match aside, only when none of the latter is moving.
 
 ### The finding, re-measured before any change
 
@@ -1602,10 +1603,11 @@ if (switchState != SwitchState::Normal)
 
 | variant | result |
 |---|---|
-| snap only, flush left in place | Test 63 fails 6 (Haas delay ×2, crossovers, the three entry paths); State test 127 fails 8 |
+| snap only, flush left in place | Test 63 fails 6 (Haas delay ×2, crossovers, the three entry paths); State test 127 fails 10 |
 | reorder only, no snap | Test 63 fails 12 (smoothers ×6, Chorus / Dimension-D ×2, latency-changing, entry paths ×3); State test 127 fails 10 |
 | snap on any duck flush | Test 63 A5 fails (an ordinary duck's riders snapped); it also moves the printed numbers of DSP Tests 10, 15, 16, 21 and 55 |
 | snap on every host reset | Test 63 A4 and A5 fail (live glides snapped); the same printed numbers move |
+| snap the Haas / Velvet / Mono Maker glides on every host reset | Test 63's two module-glide A4 legs fail; both suites otherwise pass (found by the final review, and the reason those legs exist) |
 | also snap the Haas / Velvet / Mono Maker glides on the reset | passes both suites once guarded for NaN, but snaps tighter than the swap itself does: a behaviour decision, not taken. Unguarded, a NaN Mono Maker cutoff mutes 220 of 220 blocks |
 | snap those glides at the natural bottom as well | fails State test 35 |
 
@@ -1631,7 +1633,7 @@ Measured, muted blocks while the target is NaN / after it is finite again (48 kH
 
 ### Regression coverage
 
-**Test 63** (`testHostResetInAForcedSwapLandsSettled`, engine level, 20 checks). The oracle is a fresh engine at the target, compared bit-exactly over 1 s. Completing the swap and clearing every tail IS a clean start — A2 proves that on both engines — for every field the bottom lands. No leg moves a module glide.
+**Test 63** (`testHostResetInAForcedSwapLandsSettled`, engine level, 22 checks). The oracle is a fresh engine at the target, compared bit-exactly over 1 s. Completing the swap and clearing every tail IS a clean start — A2 proves that on both engines — for every field the bottom lands. No leg moves a module glide.
 - **Defect legs**, which fail pre-fix and pass post-fix:
   - L1: the smoothers, both directions, with the reset at 1, 64 and 289 samples (289: silent, bottom not yet run).
   - L2: the Haas delay, both directions.
@@ -1642,16 +1644,16 @@ Measured, muted blocks while the target is NaN / after it is finite again (48 kH
 - **Adversarial legs**, which pass on both engines:
   - A2: a swap completed first.
   - A3: a reset in the fade-in.
-  - A4: a live glide kept.
+  - A4: a live glide kept — the engine's smoothers, and (two legs) the Haas amount, Mono Maker cutoff and Velvet density.
   - A5: an ordinary duck's riders kept.
   - A7: an unconsumed request commutes with the reset.
 - A4 and A5 use the same controls on silent history with no reset as their oracle. Its lines hold only zeros, which is what the reset leaves, so only control state can differ.
-- **Pre-fix: 15 of 20 fail (every defect leg). Post-fix: 0.** The rest of the DSP suite prints identically either way.
+- **Pre-fix: 15 of 22 fail (every defect leg). Post-fix: 0.** The rest of the DSP suite prints identically either way.
 
 **State test 127** (`testAHostResetInsideAForcedSwapLandsSettled`, 15 checks), through `AnamorphAudioProcessor`.
 - Routes: A/B in both directions, preset reload, undo, redo.
-- The edit moves Mix, Width, Output and the Haas delay, with Advanced Mode on.
-- The reset lands 64 samples in, 287 samples in (the fade's last sample), or after the swap finished.
+- The edit moves Mix, Width, Output and the Haas delay, on a Haas sound, with Advanced Mode on. The preset route loads "Drum Spread" by its factory id: the first draft loaded list index 1, a Velvet preset, where the Haas delay is inaudible, so that route did not test the node-reset half of the fix (found by the final review; a snap-only engine passed it).
+- The reset lands 64 samples in, 287 samples in (the fade is 288), or after the swap finished.
 - The oracle is a processor holding the post-route parameters, set before `prepareToPlay`.
 - **Pre-fix: 10 of 15 fail** (max|d| 0.29–0.46, every in-fade leg). **Post-fix: 0.** The rest of the state suite prints identically, bar thread-timing lines.
 
@@ -1675,9 +1677,11 @@ The flush comment promised "a clean steady state (bit-exact transparent from sam
 It is replaced, at the top of `reset()`, by what the code now guarantees:
 - every audio tail cleared;
 - any duck landed on its target, a forced one exactly as its bottom would;
-- the reset is a clean start only where no glide was in flight — a live edit, an ordinary duck's riders, and the module glides a forced swap's own bottom leaves running.
+- the glides a node's own reset() snaps landed (Haas delay, crossovers, band widths, Band Solo split; on this scope the Chorus wet and depth);
+- every other glide in flight left gliding (the engine's smoothers after a live edit, the Haas / Velvet amount, Velvet density, Mono Maker cutoff), and the Level-Match gain kept;
+- so a clean start only where none of those was moving.
 
-**The same overstatement was corrected in four other places**, and one description of the flush's position was brought up to date:
+**The same overstatement was corrected in five other places**, and two more comments were brought up to date:
 - the Chorus re-seed comment: "of a settled session";
 - the State test 126 header;
 - the 74th coverage pass;
@@ -1732,10 +1736,25 @@ It is replaced, at the top of `reset()`, by what the code now guarantees:
 | F10 re-entrant mouseUp | defer, unchanged | no new evidence this round | unchanged |
 | F9, R6a–R6d, the standalone documentation pass | preserve unchanged | outside this round | as recorded in §K |
 
+### Final review of `4e0ff84`, and what it changed
+
+An adversarial review ran after the push: three lenses (engine correctness, test validity, documentation accuracy), then a verifier that re-measured every finding. **The reorder itself holds.** It found no behaviour defect: 15 ordinary-duck and live-edit scenarios hash identically on both engines, and every forced swap tried lands on a clean start. It confirmed three findings worth fixing now and six cosmetic ones, all fixed in the follow-up commit:
+
+1. **The new text said a host reset snaps no live glide. It does snap some: those a node's own `reset()` lands.** These are the Haas delay, crossovers, band widths and the Band Solo split, plus the Chorus re-seed on this scope. The behaviour predates this PR; only the new wording was wrong. It was corrected in the reset comment, `API_REFERENCE.md`, Test 63's header and this section.
+2. **Test 63's A4 could not see a module-glide snap.** An engine that also snaps the Haas / Velvet / Mono Maker glides on every host reset passed both suites. Two A4 legs now pin that those glides keep gliding: the Haas amount with the Mono Maker cutoff, and Velvet density. That mutant now fails both legs; the pre-fix and fixed engines pass them.
+3. **State test 127's preset route loaded a Velvet preset**, so a snap-only engine passed it. The route now loads "Drum Spread" by its factory id, and the snap-only engine fails all ten in-fade legs.
+4. **Cosmetic, all fixed:**
+   - the Chorus re-seed's "clean start" now says "Level Match aside";
+   - the per-control glide durations are now given (20 ms, Drive 32 ms, polarity 5 ms), not "~20 ms" for all six;
+   - the `DELIBERATE_REAIMS` comment's entry count;
+   - `check-state-coverage.py`'s flush wording;
+   - the stale-anchor history above;
+   - this section's count of corrected places.
+
 ### Validation, local
 
-- **Suites, GCC 13 Release, the committed tree:** DSP **516 / 0**, state **4791 / 0**, and the same under `ulimit -s 1024`.
-- **Against the pre-fix engine**, with the final tests: DSP 516 / 15, state 4791 / 10.
+- **Suites, GCC 13 Release, the committed tree:** DSP **518 / 0**, state **4791 / 0**, and the same under `ulimit -s 1024`.
+- **Against the pre-fix engine**, with the final tests: DSP 518 / 15, state 4791 / 10.
 - **Checks:** `check-docs`, `check-portability`, `check-realtime`, `check-dispatch` and `check-state-coverage` all pass, and every self-test passes. The citation gate passes on four bases.
 - Warnings, sanitizers and CI for the pushed head are in the PR record.
 
