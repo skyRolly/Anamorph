@@ -422,7 +422,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:1163-1169` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:1182-1188` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -1919,7 +1919,7 @@ No other approval is claimed by this entry.
 (`src/dsp/AnamorphEngine.cpp:282-289`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:1012-1132`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:1031-1151`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -2026,7 +2026,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:1819-1869` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:1838-1888` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -13002,6 +13002,38 @@ user-step endpoint semantics to ADR-0008 while every wheel rule stands);
 `docs/procedures/TESTING.md` (State test 90, leg Z7, the M65 survivor note, M61-M65);
 `CHANGELOG.md` `[0.9.8]` (one Fixed entry);
 `worklogs/SPECTRUMIMAGER_TOPOLOGY_TRANSACTION_AUDIT_v0.9.8.md` §74. [Verified]
+
+## 74th pass — 2026-09-23, PR #155 (a host reset faded the chorus back in)
+
+**Scope.** The review finding "Chorus fades in after host reset", measured before any change
+(`worklogs/R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md` §U). Confirmed: `ResetScope::audioTailsOnly`
+ran `chorus.reset()`, which zeroes the Chorus / Dimension-D wet and modulation depth, and nothing on
+the host path re-seeded them as `prepare()` does (ER-DSP-09). Every other module was already
+bit-identical to a clean start.
+
+**One product defect, fixed; the contract unchanged.** `AnamorphEngine::reset()` now ends with
+`chorus.snapToTargets()` on the host scope, for a modulation algorithm with a finite Amount, after
+the duck flush. ADR-0007's rule and THREAD_MODEL's *Host reset* row already required it, so no ADR
+changes; the defect never shipped (the host-reset override is this PR's), so no CHANGELOG entry.
+
+**Tests.** DSP Test 62 (where the seed runs, and where it must not); State test 126 (the configured
+sound from the first sample, tails still cleared, `prepare()` and the AU order unchanged). Against
+the pre-fix engine 2 and 8 of their checks fail; each guard has its own mutant in the worklog.
+
+**Documents changed.** The `prepare()` comment in `AnamorphEngine.cpp` (it said `reset()` itself
+runs at the duck bottom and on the self-heal; those call `chorus.reset()` directly);
+`procedures/TESTING.md` (both entries); this entry; the worklog's §U and two correction markers
+(R6's state inventory, §T's reset-semantics pass); and 61 citations (118 line numbers, 19 documents
+and one source comment) re-anchored by `check-citations.py --fix` — the fix shifted every later line of `AnamorphEngine.cpp` by 19, and
+each was verified as exactly that shift with no text change.
+
+**Drift reported, not fixed.** `architecture/API_REFERENCE.md`'s `reset` row (signature `void ()`,
+stale since `ResetScope`; "settles smoothers", where `reset()` settles the three crossfades); the
+bare same-file anchors in `AnamorphEngine.cpp`'s comments (`:269`, `:433`, `:445`, `:480`, `:590`,
+`:603`, `:894`), already stale at `8b0850b`; and a host reset inside a forced swap's fade-out, which
+adopts the new Mix / Width / Output without snapping them (a separate finding, recorded in §U).
+
+**Counts.** DSP **496 / 0** (492 + 4), State **4 776 / 0** (4 760 + 16). [Verified]
 
 ## 73rd pass — 2026-09-22, PR #155, road-map R7 (production paths no test had run)
 

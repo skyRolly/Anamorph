@@ -114,6 +114,10 @@ ballistics, so nothing is lost by not clearing them.
 | `correlation`, `levels` | clear | **preserve** | display-only, and the held peak is the user's latch |
 | `scope` (`ScopeBuffer`) | — | — | has no `reset()` at all; out by construction |
 
+> **Correction (§U).** The first row is true of `chorus`'s buffers and false of its wet blend and
+> modulation depth, which `ChorusEngine::reset()` zeroes too. Those are the user's sound; a host
+> reset now re-seeds them, as `prepare()` does (ER-DSP-09).
+
 **The rule: a host reset clears AUDIO, and leaves DISPLAY and the user's own latches alone.**
 `everything` still clears both, because a re-prepare really does invalidate every readout.
 
@@ -1064,6 +1068,9 @@ it is a tracked file cited from elsewhere.
 
 ### The final reset-semantics pass — no inconsistency, no code change
 
+> **Correction (§U).** This pass read the meter and Level-Match halves of the contract, not the
+> modules' sound state: a host reset restarted the Chorus / Dimension-D wet and depth from zero.
+
 Read from the code, not from §Q: `AnamorphEngine::reset` has exactly two callers, `prepare()`
 (`everything`) and `PluginProcessor::reset()` (`audioTailsOnly`).
 
@@ -1101,6 +1108,323 @@ alone keeps the behaviour, so no single-flush mutant can be observed at all. No 
 no product code changed. The lint docstring and `CI_CD.md` now say this, and §Q and §S carry
 correction markers. The R9 commit message (`c5f3d8f`) keeps the mistaken sentence; it is pushed
 history and is not rewritten.
+
+## U. The Devin finding: "Chorus fades in after host reset"
+
+HEAD `8b0850b`. The finding reached this round as a title and three locations:
+`src/PluginProcessor.h:68` (the host-reset override), the `AnamorphEngine::reset` path, and
+`ChorusEngine::reset`. PR #155 has no review thread for it, so there is no thread to reply to. It
+was treated as a hypothesis. The code was left alone until the mechanism had been measured.
+
+### The original hypothesis
+
+Stated as the finding implies it: `ResetScope::audioTailsOnly` runs `chorus.reset()`, which zeroes
+the chorus's wet blend and modulation depth along with its delay line. Nothing on the host path
+re-seeds them, so after every host reset a Chorus or Dimension-D session fades in from dry.
+
+This round asked four questions:
+1. Does a host reset restart the Chorus wet, the Dimension-D wet, the modulation depth, or any
+   other user-visible sound state from zero?
+2. How does that compare with `prepare()`, which already calls `snapToTargets()`?
+3. What is the intended contract?
+4. Is the fix the finding implies the right one?
+
+### The mechanism, read from the code
+
+- **Two callers.** `AnamorphEngine::reset` has exactly two: `prepare()` (`everything`) and
+  `PluginProcessor::reset()` (`audioTailsOnly`, `src/PluginProcessor.h:66-68`, added in R5 by
+  `d5a0a0e`). VST3 `setProcessing(false)` and AU `Reset()` reach the second (THREAD_MODEL, *Host
+  reset*). The merge base has no override, so the host path exists only in this unreleased PR.
+- **`ChorusEngine::reset()`** clears the buffers and write indices. It also sets `phase`,
+  `currentWet` and `currentDepth` to 0 (`src/dsp/ChorusEngine.cpp:28-30`). One engine serves both
+  Chorus and Dimension-D, so both voices share this state.
+- **`prepare()`** follows its `reset (everything)` with `chorus.snapToTargets()`
+  (`src/dsp/AnamorphEngine.cpp:179`, ER-DSP-09). That sets `currentWet = amount` and arms
+  `snapDepthPending`. The depth snap is consumed at the next `processBlock`, after `setWorkingRate`
+  (`src/dsp/ChorusEngine.h:42`).
+- **The host path had no such re-seed.** Both glides therefore restart from 0 at the one-pole's
+  ~10 ms time constant.
+- **The depth glide never reaches its target.** It stalls at a float fixpoint short of the target:
+  239 ULP at 48 kHz, 1919 ULP (0.23 samples) at 8x. This is ordinary one-pole behaviour; the defect
+  is the rewind to 0 that exposes it.
+- **On AU this also undid ER-DSP-09 at session start.** JUCE's AU `Reset()` is
+  `if (! prepared) prepareToPlay(); juceFilter->reset();` (`juce_audio_plugin_client_AU_1.mm:255-263`).
+- **The other `chorus.reset()` callers are a different case.** They call the module directly and
+  never call `AnamorphEngine::reset`:
+  - the duck bottoms (`AnamorphEngine.cpp:1048`, `:1058`, `:1108`);
+  - the wrap's cold-to-warm restart (`:1321`);
+  - the NaN self-heal (`:1875`).
+
+  At each of these a fade masks the rewind, or the glide is meant to go. R5 added the first caller
+  where nothing masks it. The prepare() comment explaining why the snap is not inside `reset()`
+  claimed that `reset()` itself runs at the duck bottom and on the self-heal. That is not true; the
+  comment is corrected in this change.
+
+### Measured behaviour, before any change
+
+**Method: twins.**
+- **A:** settle 1 s of seeded noise, host reset, probe.
+- **B:** a fresh instance prepared at the same settings. At processor level the parameters are set
+  *before* `prepareToPlay`; setting them after it opens a ~34 ms discrete duck and confounds the
+  comparison.
+- A and B are compared bit-exactly. The measurements were taken at engine level and through
+  `AnamorphAudioProcessor::reset()`, at 48 kHz with 256-sample blocks.
+
+**Residual against the fresh twin (Chorus, Amount 1.0).**
+
+| window after the reset | 0-5 ms | 20-50 ms | 50-200 ms | persistent |
+|---|---|---|---|---|
+| Chorus, Amount 1.0 | **+308 dB** | 0.5 dB | −16 dB | **−47 dB** |
+
+- **0-5 ms.** The prepared twin is exact silence: 100 % wet, empty delay line. The reset instance
+  leaks the dry signal.
+- **Dimension-D** (mode 3) has the same shape; its persistent residual is −53 dB.
+- **The persistent term is the depth stall.** Across the oversampling factors it measured −49, −42,
+  −36 and −30 dB at Off, 2x, 4x and 8x.
+
+**Effective wet**, measured with a DC probe into the empty line as `1 − out/x`:
+
+| time after the reset | 0.02 ms | 1 ms | 2 ms | 5 ms | 10 ms | 13 ms |
+|---|---|---|---|---|---|---|
+| Amount 1.0 (the twin: 1.000 throughout) | 0.004 | 0.097 | 0.183 | 0.395 | 0.633 | 0.728 |
+
+At Amount 0.7 the effective wet was 0.068 at 1 ms and 0.277 at 5 ms, against the twin's 0.7.
+
+**Isolating the two halves.** Each half has its own audible cause, so both must be re-seeded.
+
+| variant | 0-5 ms | persistent |
+|---|---|---|
+| re-seed the wet only | −inf (exact) | −46.7 dB |
+| re-seed the depth only | +308 dB | −92.9 dB |
+
+**Other paths measured.**
+- **AU order**, through the processor: `prepareToPlay` then `reset()` differed from `prepareToPlay`
+  alone by −5.2 dB (Chorus) and −2.7 dB (Dimension-D) over the first 43 ms.
+- **Census of 240 random configurations** (OS 2x/4x/8x, Drive with OS, Multiband, Mix, Bypass).
+  115 of 115 Chorus / Dimension-D configurations differed from a fresh prepare; 0 of the 125 others
+  did.
+- **Existing coverage: none.** At HEAD the DSP suite (492 / 0) and the state suite (4760 / 0) pass
+  with and without the fix, and State tests 118-123 print identical output either way.
+
+**The four questions, answered.**
+
+| state | host reset at HEAD | `prepare()` |
+|---|---|---|
+| Chorus wet (`currentWet`) | **restarts at 0, glides back** | snapped to the Amount |
+| Dimension-D wet (the same `currentWet`) | **restarts at 0, glides back** | snapped |
+| modulation depth (`currentDepth`) | **restarts at 0, stalls 239 ULP short** | snapped (deferred one block) |
+| LFO phase | restarts at 0 | restarts at 0: identical |
+| Haas amount / delay, Velvet wet, Mono Maker, Multiband widths, solo, Drive + OS, Width / Mix / Output | unchanged: bit-identical to the fresh twin | — |
+| Level-Match published gain | kept (ADR-0007) | cleared |
+| meter latches | kept (display, §Q) | cleared |
+
+The chorus is the only module whose `reset()` destroys a sound-state glide:
+- Haas snaps its delay and keeps a finite wet.
+- Velvet keeps its wet.
+- Mono Maker keeps its cutoff.
+- MultibandWidth snaps its widths.
+
+### The contract, and whether it changes
+
+**The finding contradicts the contract as already written.** The contract itself does not change.
+
+**What the documents say:**
+- **ADR-0007's rule:** "a host reset clears audio and the live display that describes audio that
+  has ended, and leaves the user's latches and the Level-Match result alone."
+- **THREAD_MODEL's *Host reset* row** says the same.
+- **`ResetScope::audioTailsOnly`** (`src/dsp/AnamorphEngine.h`) lists buffers, filters, rings, the
+  duck, the matcher's analysis and the live display. It does not list smoothed sound state.
+- **The duck-flush comment in `reset()`** promises "a clean steady state".
+- **CHANGELOG `[0.9.9]`** says "Normal processing after a stop is unchanged".
+
+**What that means for the code.** A host reset must be bit-identical to a clean start, with two
+exceptions: the Level-Match published gain and the meter latches.
+
+**The wet blend and the depth are the user's sound, not audio.** At HEAD the code broke the contract
+for Chorus and Dimension-D and nowhere else. The code is wrong and the documents are right. No ADR
+changes.
+
+### The final decision, and why it is correct
+
+The code, appended as the last statement of `AnamorphEngine::reset()`:
+
+```cpp
+if (resetScope == ResetScope::audioTailsOnly
+    && isModAlgorithm (p.algorithm)
+    && std::isfinite (p.algoAmount))
+    chorus.snapToTargets();
+```
+
+**Why this is the correct fix:**
+- It re-seeds exactly the two values the census found wrong, from the targets the user set, with
+  the method `prepare()` already uses for the same reason (ER-DSP-09).
+- `snapToTargets()` is two plain stores, `noexcept`. It adds no allocation, lock or wait, and adds
+  nothing to `process()`.
+- It leaves unchanged the parameters, the state schema, the signal order, the reported latency and
+  the threading model. It also leaves `prepare()`, `ChorusEngine`, `snapSmoothers()` and the order
+  of every existing statement in `reset()` as they were.
+- It is not an Architecture Review Gate class: it makes the approved R9 contract hold for the one
+  module that broke it.
+
+Each of the four conditions is pinned by a mutant (the table below):
+
+- **Last, after the duck flush.** A forced swap (A/B, preset, undo) holds the new Amount in
+  `pendingP` until the flush's `p = pendingP; updateDerived();`. A snap taken beside `chorus.reset()`
+  at the top of `reset()` seeds the *old* Amount: −3.4 dB and max |d| 0.174 for Chorus 0.3 → 0.9,
+  and Haas 0.3 → Chorus 0.9 landed on 0.3.
+- **`audioTailsOnly` only.** `everything` is `prepare()`'s own flush, and `prepare()` snaps after
+  it. Dropping this condition passes every check but changes existing DSP output through the direct
+  `engine.reset()` callers in the suite: Test 55's dimMode control moves from −24.66 to −33.71 dB.
+  The fix may change nothing but the defect.
+- **Chorus / Dimension-D only.** In any other algorithm the chorus is idle. At HEAD a host reset
+  leaves it exactly as it was: it was already reset at the duck bottom that left the modulation
+  voice. Without this condition the reset arms `snapDepthPending`, and a later Haas → Chorus switch
+  differs from the same session with no reset, from 222 ms on.
+  - An investigator preferred the unguarded form, so that the switch matches a twin prepared in
+    Haas (that twin differs by −12.7 dB). That −12.7 dB is the existing history-dependence of the
+    one-shot depth snap: a Haas session that ever ran Chorus already differs from one prepared in
+    Haas, with no host reset involved.
+  - The guarded form matches the continuation with no reset, which is the contract. It is identical
+    to the unguarded form in every finite Chorus / Dimension-D case.
+- **Finite Amount only.** Seeding a NaN target defeats R7's reseed rule (ADR-0009, Implementation
+  note 2026-09-22), where a non-finite target parks at the 0 that `reset()` gave it. Measured
+  without the guard, the first finite block after a host reset taken during a NaN Amount is zeroed
+  by the self-heal (256 samples), and the self-heal's `loudness.reset()` drops the Level-Match gain
+  to 0.000 dB. HEAD shows neither.
+
+**Alternatives rejected on measurement:**
+
+| alternative | why not |
+|---|---|
+| snap beside `chorus.reset()` at the top of `reset()` | seeds the pre-flush Amount inside a forced swap (above) |
+| change `ChorusEngine::reset()`, or add a tails-only reset to the module | changes the duck-bottom, wrap and self-heal paths. A tails-only module method failed 4 of the scenarios measured, among them a forced swap, a reset mid-`osBlend` and one mid-Amount glide; skipping `chorus.reset()` on the host path instead leaves the tail ringing (V6 below) |
+| snap all four modules | a wider behaviour change with no defect behind it; the others are already bit-identical |
+| no scope guard / no `isModAlgorithm` / no `isfinite` | each measured above |
+
+**The mutants.** Each was applied to the engine alone, against the final tests:
+
+| variant | failures |
+|---|---|
+| V0 — HEAD, no fix | **10**: Test 62 C1, C2; State test 126 A ×4, B ×2, E ×2 |
+| V2 — no `isfinite` | Test 62 G |
+| V3 — no `isModAlgorithm` | Test 62 H |
+| V4 — snap before the duck flush | Test 62 C1, C2 |
+| V5 — no scope guard | 0, but changes Test 55's printed control (−24.66 → −33.71 dB). Kept out on the no-side-effect rule, not caught by a check |
+| V6 — skip `chorus.reset()` on the host path instead | State test 126 C ×2 (the tail survives), A ×4, B ×2; Test 62 C1 |
+
+**After the fix.**
+- The 240-configuration census gives 0 of 240 differing from a fresh prepare.
+- The effective wet is the Amount from the first sample.
+
+**One consequence, stated so it is not mistaken for a dropout.** At 100 % wet the first
+milliseconds after a host reset are exact silence, until the delay line's shortest tap fills. That
+is longer than the 5.3 ms State test 126 A asserts. A fresh `prepare()` does exactly the same.
+
+### Regression coverage
+
+- **Test 62** (`testHostResetChorusSeedIsScoped`, `tests/dsp_tests.cpp`, engine level, 4 checks)
+  pins where the seed sits and when it must not run:
+  - **C1:** a forced swap Chorus 0.3 → 0.9 in flight at the reset.
+  - **C2:** an ordinary duck Haas → Dimension-D in flight at the reset.
+  - **G:** a NaN Amount pending at the reset.
+  - **H:** a Haas session host-reset and then switched to Chorus.
+  - C1 and C2 are bit-identical to a fresh engine at the new settings; H is bit-identical to the
+    same session without the reset.
+  - **Pre-fix: 2 failures (C1, C2). Post-fix: 0.**
+- **State test 126** (`testAHostResetKeepsTheConfiguredChorusSound`, `tests/state_tests.cpp`,
+  16 checks) is driven through `AnamorphAudioProcessor::reset()`, the call the wrappers make, for
+  Chorus and Dimension-D:
+  - **A:** Amount 1.0 and 0.7: the configured wet is there from the first sample. On the first
+    block the worst |out − x(1 − Amount)| is below 1e-6; measured 0 and 2.98e-8. Pre-fix: 0.499
+    and 0.349.
+  - **B:** OS Off / 2x × Amount 1.0 / 0.7: bit-identical to a fresh processor for 0.5 s. Pre-fix,
+    47 608-47 616 of 47 616 samples differ.
+  - **C:** audio tails are still cleared: silence after loud material is exactly 0 after the reset.
+    A control without the reset peaks at 0.495 (Chorus) and 0.479 (Dimension-D).
+  - **D:** `prepare()` is unchanged: a fresh prepare opens at the configured wet, and a re-prepare
+    at OS 2x equals a fresh processor bit-exactly.
+  - **E:** the AU order, `prepareToPlay()` then `reset()`, is bit-identical to `prepareToPlay()`
+    alone.
+  - **Pre-fix: 8 failures (A ×4, B ×2, E ×2). Post-fix: 0.** C and D pass on both, as they must:
+    they pin what the fix must not change.
+- **Both prove the pre-fix failure against the final test text.** HEAD's engine with the final
+  tests gives DSP 496 / 2 and state 4776 / 8. The tree gives 496 / 0 and 4776 / 0.
+- **Existing coverage of `prepare()`**: Test 49 (`testRestoredModulesDoNotGlideIn`), unchanged and
+  passing.
+
+### A separate finding, recorded and not fixed
+
+**A host reset inside a forced swap's fade-out does not land in "a clean steady state".** The flush
+adopts `pendingP` through `updateDerived()` only. It calls neither `snapSmoothers()` nor the other
+modules' snaps, so the new Mix, Width and Output targets glide in:
+- over 20 ms, max |d| 0.053, 0.131 and 0.245;
+- a Haas Amount change glides for ~200 ms (max |d| 0.21).
+
+The comment above the flush ("bit-exact transparent from sample 0") is false in that case.
+
+**Why it is not fixed here:**
+- It needs a forced duck (A/B, preset, undo) in flight in the ~6 ms before a stop.
+- It is not the Devin finding.
+- Fixing it changes which values `reset()` snaps: a behaviour decision beyond the smallest fix.
+
+It is recorded for the road map. Test 62 C1 changes only the Amount, so it pins this fix without
+depending on that one.
+
+### Where earlier passes missed it
+
+- **R5** added the host-reset caller without checking it against ER-DSP-09, the defect class
+  `prepare()`'s snap exists for.
+- **R6's state inventory** (above) classed `chorus` as "delay lines and filter banks: audio". That
+  is true of its buffers and false of its wet and depth glides.
+- **§T's "final reset-semantics pass"** read the meter and Level-Match halves of the contract and
+  not the modules' sound state.
+
+Each carries a correction marker pointing here.
+
+### Documentation
+
+**Changed:**
+- the `prepare()` comment in `AnamorphEngine.cpp` (corrected, same line count);
+- `procedures/TESTING.md` (Test 62, State test 126);
+- `DOCUMENTATION_COVERAGE.md` (the 74th pass);
+- this section and its correction markers;
+- 61 citations (118 line numbers) across 19 documents and one source comment, re-anchored by
+  `check-citations.py --fix`. The fix block shifted every line after `AnamorphEngine.cpp:307` by 19.
+  Each of the 118 was verified mechanically as exactly +19, past 307, with no text change.
+
+**Not changed, on purpose:**
+- **No ADR.** The documented contract (ADR-0007, THREAD_MODEL, `ResetScope`) is unchanged, and the
+  code now meets it.
+- **No CHANGELOG entry.** The defect never shipped: the merge base has no reset override
+  (CHANGELOG_POLICY, "never a `Fixed` bullet for a fix that only ever existed in an unreleased
+  branch"). The existing `[0.9.9]` sentence "Normal processing after a stop is unchanged" was false
+  at HEAD and is now true, pinned by State test 126.
+
+**Drift reported, not fixed:**
+- `architecture/API_REFERENCE.md`, the `reset` row: it gives the signature as `void ()` (stale since
+  R5 added `ResetScope`) and says "settles smoothers". `reset()` settles the three crossfades, not
+  the Width / Mix / Output smoothers.
+- The bare same-file anchors in `AnamorphEngine.cpp`'s own comments (`:433`, `:445`, `:480`,
+  `:590`, `:603`, `:894`, `:269`) were already stale at `8b0850b`. The citation gate does not see
+  the bare form.
+
+### Validation, local
+
+- **Suites, GCC 13 Release:** DSP **496 / 0**, state **4776 / 0**, and the same under
+  `ulimit -s 1024`.
+- **ASan + UBSan** (local Clang 18, RelWithDebInfo, CI's sanitizer flags): DSP and state pass with
+  no report. The state binary needs `ulimit -s unlimited` locally: under this compiler `main`'s
+  frame is ~13.6 MB, and an earlier head overflowed the same way at 8 MB. That is a property of the
+  local toolchain, not of this change.
+- **Lints:** `check-docs`, `check-portability`, `check-realtime`, `check-dispatch` and
+  `check-state-coverage` all pass.
+- **Citation gate:** passes against `HEAD`, `HEAD~1` and the merge base.
+- **Warnings:** the GCC gate flags and Clang 18's warning set, over the changed translation units,
+  give nothing on an added line. Three found on State test 126's first draft were fixed:
+  - an unneeded lambda capture, twice;
+  - a float `==` comparison, now `juce::exactlyEqual`.
+
+---
 
 ---
 

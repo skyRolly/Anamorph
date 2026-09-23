@@ -168,12 +168,12 @@ void AnamorphEngine::prepare (double sampleRate, int maxBlockSize)
     // the twelfth): Haas 0.17, Velvet 0.09, Chorus 0.29, Dimension-D 0.39 and the
     // Mono Maker crossover 0.35 of their settled values.
     //
-    // Placed HERE, not inside reset() and not inside snapSmoothers(): reset() also
-    // runs at the silent bottom of a switch duck and on the NaN self-heal, and
-    // snapSmoothers() is called from that duck path too (see the switch handler),
-    // so folding this in would change how live edits settle. prepare() is the one
-    // moment where snapping is unambiguously right -- all delay and filter state
-    // has just been cleared, so there is nothing for a glide to protect.
+    // Placed HERE, not inside the modules' reset() and not inside snapSmoothers():
+    // the resets also run at a duck's silent bottom and on the NaN self-heal, and
+    // snapSmoothers() at a forced duck's bottom, so folding this in would change how
+    // live edits settle. Here all delay and filter state has just been cleared: no
+    // glide to protect. A host reset is the one other such moment; it re-seeds the
+    // one module whose reset() zeroes its sound -- the chorus (end of reset()).
     haas.snapToTargets();
     velvet.snapToTargets();
     chorus.snapToTargets();
@@ -305,6 +305,25 @@ void AnamorphEngine::reset (ResetScope resetScope)
     // as the Bypass and Multiband Enable crossfades are settled above.
     osBlend.setCurrentAndTargetValue (osActiveFor (p) ? 1.0f : 0.0f);
     osRunning = osActiveFor (p); // reset() cleared the oversamplers: warm iff engaged
+
+    // ...AND THE USER'S MODULATION SOUND, on a host reset. `chorus.reset()` above zeroes the
+    // Chorus / Dimension-D wet blend and modulation depth along with the delay line. That is
+    // right for its direct callers -- the duck bottoms, the OS-path restart and the NaN
+    // self-heal, where a fade masks it or the glide must go -- and prepare() re-seeds both
+    // (ER-DSP-09). The host reset had nothing that did, so every transport stop (and every AU
+    // Reset(), which JUCE runs right after prepareToPlay()) faded the sound back in from dry
+    // over ~50 ms and left the depth glide stalled short of its target. With this, a host
+    // reset is bit-identical to a clean start from the first sample (State test 126, Test 62).
+    //  * LAST, after the duck flush: a forced swap in flight holds the Amount in pendingP.
+    //  * audioTailsOnly only: `everything` is prepare()'s flush, and prepare() snaps itself.
+    //  * Chorus / Dimension-D only: an idle chorus is left exactly as it was, so a host reset
+    //    changes nothing a later algorithm switch would hear.
+    //  * finite Amount only: a NaN target stays parked at the 0 chorus.reset() gave it
+    //    (ADR-0009 -- the rule R7 put in HaasProcessor / VelvetNoise::reset()).
+    if (resetScope == ResetScope::audioTailsOnly
+        && isModAlgorithm (p.algorithm)
+        && std::isfinite (p.algoAmount))
+        chorus.snapToTargets();
 }
 
 // ---------------------------------------------------------------------------

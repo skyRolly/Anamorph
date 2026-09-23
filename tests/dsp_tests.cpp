@@ -6689,6 +6689,159 @@ static void testScopeRingHandsTheNewestFramesOldestFirst()
            "R7 scope: a block larger than the ring keeps only its newest frames");
 }
 
+// ---------------------------------------------------------------------------
+//  Test 62 -- THE HOST RESET'S CHORUS RE-SEED: AFTER THE FLUSH, FINITE, MODULATION ONLY
+//  (Devin review of PR #155, "Chorus fades in after host reset"; State test 126 is the
+//  user-facing half, through the processor)
+//
+//  `AnamorphEngine::reset (audioTailsOnly)` ends by re-seeding the Chorus / Dimension-D wet
+//  and depth glides (`chorus.snapToTargets()`), as prepare() does. State test 126 proves the
+//  defect and the fix. This pins the three decisions behind that line, each of which an
+//  innocent-looking edit could undo without failing anything else:
+//    C1. it runs AFTER the in-flight duck flush. A forced swap (A/B, preset, undo) holds the
+//        new Amount in pendingP until `p = pendingP`, so a host reset landing inside the
+//        fade-out must start at the NEW Amount -- bit-identical to a fresh engine at it;
+//    C2. an ordinary duck in flight (Haas -> Dimension-D) is adopted and starts at the new
+//        algorithm's configured sound, which also pins that the algorithm test reads the
+//        FLUSHED snapshot;
+//    G.  a NaN Amount pending at the reset is not seeded: when the host sends a finite value
+//        again, no block after the reset is zeroed by the self-heal (ADR-0009, R7);
+//    H.  outside Chorus / Dimension-D the idle chorus is left alone: a Haas session that is
+//        host-reset and then switched to Chorus sounds exactly like the same session with no
+//        reset.
+//  Mutants and their failures: worklog R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md §U.
+static void testHostResetChorusSeedIsScoped()
+{
+    std::printf ("Test 62: the host reset's chorus re-seed -- after the flush, finite, modulation only\n");
+    juce::ScopedNoDenormals noDenormals;
+
+    constexpr double sr = 48000.0;
+    constexpr int    bs = 256;
+    using anamorph::Algorithm;
+    using Scope = anamorph::AnamorphEngine::ResetScope;
+
+    auto activate = [] (const anamorph::EngineParameters& p)
+    {
+        auto e = std::make_unique<anamorph::AnamorphEngine>();   // heap: ~138 KB
+        e->primeParameters (p);                                 // the wrapper's order
+        e->prepare (sr, bs);
+        e->setParameters (p);
+        return e;
+    };
+    // `blocks` blocks of `n` samples of seeded noise (silence when `quiet`); outputs appended.
+    auto run = [] (anamorph::AnamorphEngine& e, const anamorph::EngineParameters& p, int blocks, int n,
+                   juce::Random& rng, std::vector<float>* out, bool quiet = false)
+    {
+        juce::AudioBuffer<float> buf (2, n);
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                const float v = quiet ? 0.0f : rng.nextFloat() - 0.5f;
+                buf.setSample (0, i, v);
+                buf.setSample (1, i, quiet ? 0.0f : 0.6f * v + 0.2f * (rng.nextFloat() - 0.5f));
+            }
+            e.setParameters (p);
+            e.process (buf);
+            if (out != nullptr)
+                for (int i = 0; i < n; ++i)
+                {
+                    out->push_back (buf.getSample (0, i));
+                    out->push_back (buf.getSample (1, i));
+                }
+        }
+    };
+    auto same = [] (const std::vector<float>& a, const std::vector<float>& b)
+    {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i)
+            if (! juce::exactlyEqual (a[i], b[i])) return false;
+        return true;
+    };
+    const int half = (int) (0.5 * sr / bs), probe = (int) (0.15 * sr / bs);
+
+    // --- C1 / C2: a host reset landing inside a duck -------------------------------
+    // C1 changes ONLY the Amount: the flush does not snap the engine's own smoothers
+    // (Width / Mix / Output), a separate finding recorded in the worklog.
+    struct Swap { const char* name; bool forced; anamorph::EngineParameters from, to; };
+    Swap swaps[2];
+    swaps[0].name = "C1 forced swap, Chorus 0.3 -> 0.9"; swaps[0].forced = true;
+    swaps[0].from.algorithm = Algorithm::Chorus; swaps[0].from.algoAmount = 0.3f;
+    swaps[0].to = swaps[0].from; swaps[0].to.algoAmount = 0.9f;
+    swaps[1].name = "C2 ordinary duck, Haas -> Dimension-D"; swaps[1].forced = false;
+    swaps[1].from.algorithm = Algorithm::Haas; swaps[1].from.algoAmount = 0.7f;
+    swaps[1].to = swaps[1].from; swaps[1].to.algorithm = Algorithm::DimensionD; swaps[1].to.dimMode = 3;
+    for (const auto& s : swaps)
+    {
+        const auto e = activate (s.from);
+        const auto twin = activate (s.to);
+        juce::Random rng (11);
+        run (*e, s.from, half, bs, rng, nullptr);
+        if (s.forced) e->requestDuck();
+        run (*e, s.to, 1, 64, rng, nullptr);                    // 1.3 ms into the fade-out
+        e->reset (Scope::audioTailsOnly);                       // the host's request lands here
+        std::vector<float> a, b;
+        juce::Random r1 (99), r2 (99);
+        run (*e, s.to, probe, bs, r1, &a);
+        run (*twin, s.to, probe, bs, r2, &b);
+        const bool ok = same (a, b);
+        std::printf ("  %-38s: after the host reset %s a fresh engine at the new settings\n",
+                     s.name, ok ? "bit-identical to" : "DIFFERENT from");
+        check (ok, s.forced ? "host reset in a forced swap starts at the NEW Amount (the seed runs after the flush)"
+                            : "host reset in a duck starts at the new algorithm's configured sound");
+    }
+
+    // --- G: a NaN Amount pending at the reset is not seeded -------------------------
+    {
+        anamorph::EngineParameters p; p.algorithm = Algorithm::Chorus; p.algoAmount = 0.7f;
+        auto nanP = p; nanP.algoAmount = std::numeric_limits<float>::quiet_NaN();
+        const auto e = activate (p);
+        juce::Random rng (5);
+        run (*e, p, half, bs, rng, nullptr);
+        run (*e, nanP, 1, bs, rng, nullptr);                    // the host's bad point (self-heals, R7)
+        e->reset (Scope::audioTailsOnly);                       // ...and a stop while it is still pending
+        std::vector<float> out;
+        run (*e, p, 40, bs, rng, &out);                         // the host is finite again
+        int zeroedBlocks = 0; bool finite = true;
+        for (int b = 0; b < 40; ++b)
+        {
+            bool allZero = true;
+            for (int i = 0; i < 2 * bs; ++i)
+            {
+                const float v = out[(size_t) (b * 2 * bs + i)];
+                finite = finite && std::isfinite (v);
+                allZero = allZero && juce::exactlyEqual (v, 0.0f);
+            }
+            if (allZero) ++zeroedBlocks;
+        }
+        std::printf ("  G  NaN Amount pending at the reset: %d self-healed (all-zero) block(s) after it, output finite %d\n",
+                     zeroedBlocks, (int) finite);
+        check (finite && zeroedBlocks == 0,
+               "a NaN Amount pending at a host reset is not seeded -- no self-healed block when the host recovers");
+    }
+
+    // --- H: outside Chorus / Dimension-D the idle chorus is left alone -------------
+    {
+        anamorph::EngineParameters chorusP; chorusP.algorithm = Algorithm::Chorus; chorusP.algoAmount = 0.7f;
+        auto haasP = chorusP; haasP.algorithm = Algorithm::Haas;
+        std::vector<float> outs[2];
+        for (int withReset = 0; withReset < 2; ++withReset)
+        {
+            const auto e = activate (chorusP);
+            juce::Random rng (21);
+            run (*e, chorusP, half, bs, rng, nullptr);
+            run (*e, haasP, half, bs, rng, nullptr);            // switch to Haas (duck, then Haas)
+            run (*e, haasP, 20, bs, rng, nullptr, true);        // ~107 ms of silence: every tail gone
+            if (withReset == 1) e->reset (Scope::audioTailsOnly);
+            run (*e, chorusP, half, bs, rng, &outs[withReset]); // back to Chorus
+        }
+        const bool ok = same (outs[0], outs[1]);
+        std::printf ("  H  Haas session host-reset, then switched to Chorus: %s the same session without the reset\n",
+                     ok ? "bit-identical to" : "DIFFERENT from");
+        check (ok, "a host reset outside Chorus / Dimension-D leaves the idle chorus alone");
+    }
+}
+
 static int runForcedSwapAuditProbe()
 {
     std::printf ("Forced-swap audit (A/B, preset recall, undo). 220 Hz, block 64, 48 kHz.\n");
@@ -6933,6 +7086,7 @@ int main (int argc, char* argv[])
     testNonFiniteBurstSelfHeals();
     testEngagedWrapCarriesTheReportedLatency();
     testScopeRingHandsTheNewestFramesOldestFirst();
+    testHostResetChorusSeedIsScoped();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)
 
     std::printf ("\n%d checks, %d failures\n", checks, failures);

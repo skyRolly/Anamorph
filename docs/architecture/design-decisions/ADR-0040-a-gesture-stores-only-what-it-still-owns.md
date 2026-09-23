@@ -38,8 +38,8 @@ gate.
 
 No first-party listener writes a multiband parameter — the four in `src/` bump counters or count
 gestures (`PluginProcessor.cpp:308-317`, `:814-825`, `PluginProcessor.h:312-318`) — and the engine
-only reads these parameters — `src/dsp/AnamorphEngine.cpp:770` (`multiband.setCrossovers`) and
-`src/dsp/AnamorphEngine.cpp:777` (`soloMonitor.setCrossovers`). Every writer is therefore the imager
+only reads these parameters — `src/dsp/AnamorphEngine.cpp:789` (`multiband.setCrossovers`) and
+`src/dsp/AnamorphEngine.cpp:796` (`soloMonitor.setCrossovers`). Every writer is therefore the imager
 itself, the host, or one of the repository's own whole-sound replacement paths.
 
 ## Problem

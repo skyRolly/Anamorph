@@ -37113,6 +37113,196 @@ static void testTheTransportMachineWithoutASampleClock()
     }
 }
 
+// ---------------------------------------------------------------------------
+//  State test 126 -- A HOST RESET KEEPS THE CONFIGURED CHORUS AND DIMENSION-D SOUND
+//  (Devin review of PR #155: "Chorus fades in after host reset")
+//
+//  `ChorusEngine::reset()` zeroes its wet and depth glides. That is right where it was
+//  written for -- the silent bottom of a switch duck and the NaN self-heal, where the
+//  output fades back in anyway -- and `prepare()` calls it and then re-seeds both glides
+//  from the snapshot (`snapToTargets()`, ER-DSP-09). The HOST reset (R5) called it with no
+//  re-seed, so after every VST3 `setProcessing (false)` / AU `Reset()` the configured sound
+//  restarted from dry and glided back. MEASURED at 48 kHz, Oversampling Off: the effective
+//  wet at the first sample after the reset was 0.2 % of the configured Amount and 39.5 % of
+//  it 5 ms later, for Chorus and Dimension-D alike; at Amount 1.0 the listener heard the dry
+//  signal where the configured sound is silence until the delayed tap arrives; and the
+//  output still differed from a clean start by -47 dB (Chorus) / -53 dB (Dim-D) two seconds
+//  later, where the depth glide had stalled short of its target. On AU the same happened at
+//  every session start: JUCE's `Reset()` runs prepareToPlay() and then reset(). Every other
+//  module was already bit-identical to a clean start after a host reset (worklog
+//  R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md §U).
+//
+//  WHAT THIS ASSERTS, through the processor exactly as a host drives it, for both voices:
+//    A. the configured Amount is the effective wet from the first sample after the reset:
+//       while the delay line is still empty, out = x * (1 - Amount);
+//    B. a host reset is a clean start -- the output is bit-identical to a freshly prepared
+//       processor with the same settings (Oversampling Off and 2x, Amount 1.0 and 0.7),
+//       which also pins the modulation depth the wet check cannot see;
+//    C. the tails are still cleared: silence in after the reset is exact silence out,
+//       where the same material with no reset rings on (control);
+//    D. prepare() is unchanged: a fresh prepare starts at the configured wet, and a
+//       re-prepare is a clean start too;
+//    E. the AU order -- prepareToPlay() and then reset() at once -- is the clean start
+//       prepareToPlay() alone gives.
+//  Settings are applied BEFORE prepareToPlay, as a restored session's are, so the fresh
+//  twin does not begin inside an algorithm-change duck.
+static void testAHostResetKeepsTheConfiguredChorusSound()
+{
+    std::printf ("State test 126: a host reset keeps the configured Chorus and Dimension-D sound\n");
+
+    const double sr = 48000.0; const int block = 256;       // one block = 5.3 ms, inside every base delay
+    const char* voiceName[] = { "Chorus", "Dim-D" };
+
+    // A processor holding one configuration: algorithm (2 Chorus, 3 Dimension-D), Amount,
+    // Oversampling combo id (1 Off, 2 2x). Heap: State test 59's note.
+    auto make = [&] (int algorithm, float amount, int osCombo)
+    {
+        auto p = std::make_unique<AnamorphAudioProcessor>();
+        p->getInternal().oversampleValue().setValue (osCombo);
+        for (auto [id, v] : { std::pair<const char*, float> { "algorithm", (float) algorithm },
+                              std::pair<const char*, float> { "amount", amount } })
+            if (auto* rp = p->getAPVTS().getParameter (id))
+                rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+        p->prepareToPlay (sr, block);
+        return p;
+    };
+    // `blocks` blocks of seeded noise (or of `level`, when given), outputs appended to `out`.
+    auto run = [&] (AnamorphAudioProcessor& p, int blocks, unsigned seed, std::vector<float>* out,
+                    const float* level = nullptr)
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        juce::Random rng ((juce::int64) seed);
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < block; ++i)
+            {
+                const float v = level != nullptr ? *level : rng.nextFloat() - 0.5f;
+                buf.setSample (0, i, v);
+                buf.setSample (1, i, level != nullptr ? v : 0.6f * v + 0.2f * (rng.nextFloat() - 0.5f));
+            }
+            midi.clear();
+            p.processBlock (buf, midi);
+            if (out != nullptr)
+                for (int i = 0; i < block; ++i)
+                    for (int ch = 0; ch < 2; ++ch)
+                        out->push_back (buf.getSample (ch, i));
+        }
+    };
+    const int oneSecond = (int) (sr / block), probe = oneSecond / 2;
+
+    for (int v = 0; v < 2; ++v)
+    {
+        const int algorithm = 2 + v;
+        char what[200];
+
+        // --- A: the configured wet, immediately --------------------------------------
+        for (float amount : { 1.0f, 0.7f })
+        {
+            const auto p = make (algorithm, amount, 1);
+            run (*p, oneSecond, 7, nullptr);
+            p->reset();                                            // the host's request
+            const float half = 0.5f;
+            std::vector<float> out;
+            run (*p, 1, 0, &out, &half);
+            double worst = 0.0;
+            for (float s : out) worst = juce::jmax (worst, std::abs ((double) s - 0.5 * (1.0 - amount)));
+            std::printf ("  %-6s Amount %.1f: first block after the host reset, worst |out - x(1 - Amount)| %.3e\n",
+                         voiceName[v], amount, worst);
+            std::snprintf (what, sizeof what,
+                           "%s A (Amount %.1f): the configured wet is there from the first sample after a host reset",
+                           voiceName[v], amount);
+            check (worst < 1.0e-6, what);
+        }
+
+        // --- B: a host reset is a clean start ----------------------------------------
+        bool identical = true;
+        for (int osCombo : { 1, 2 })
+            for (float amount : { 1.0f, 0.7f })
+            {
+                const auto reset = make (algorithm, amount, osCombo);
+                const auto fresh = make (algorithm, amount, osCombo);
+                run (*reset, oneSecond, 7, nullptr);
+                reset->reset();
+                std::vector<float> a, b;
+                run (*reset, probe, 99, &a);
+                run (*fresh, probe, 99, &b);
+                int differing = 0;
+                for (size_t i = 0; i < a.size(); ++i)
+                    if (! juce::exactlyEqual (a[i], b[i])) ++differing;
+                std::printf ("  %-6s OS %s Amount %.1f: host reset vs fresh prepare, %d of %d samples differ\n",
+                             voiceName[v], osCombo == 1 ? "Off" : "2x ", amount, differing, (int) a.size());
+                identical = identical && differing == 0;
+            }
+        std::snprintf (what, sizeof what,
+                       "%s B: after a host reset the output is bit-identical to a clean start (OS Off/2x, Amount 1.0/0.7)",
+                       voiceName[v]);
+        check (identical, what);
+
+        // --- C: the tails are still cleared -------------------------------------------
+        for (bool withReset : { false, true })
+        {
+            const auto p = make (algorithm, 1.0f, 1);
+            run (*p, oneSecond, 7, nullptr);
+            if (withReset) p->reset();
+            const float zero = 0.0f;
+            std::vector<float> out;
+            run (*p, 8, 0, &out, &zero);
+            double peak = 0.0;
+            for (float s : out) peak = juce::jmax (peak, (double) std::abs (s));
+            std::printf ("  %-6s silence after loud material, %s: peak %.3e\n",
+                         voiceName[v], withReset ? "after a host reset" : "no reset (control)", peak);
+            std::snprintf (what, sizeof what, withReset
+                               ? "%s C: a host reset still clears the tail -- silence in, exact silence out"
+                               : "%s C control: without a reset the chorus line does ring into silence",
+                           voiceName[v]);
+            check (withReset ? juce::exactlyEqual (peak, 0.0) : peak > 1.0e-3, what);
+        }
+
+        // --- D: prepare() is unchanged -------------------------------------------------
+        {
+            const auto fresh = make (algorithm, 0.7f, 1);
+            const float half = 0.5f;
+            std::vector<float> out;
+            run (*fresh, 1, 0, &out, &half);
+            double worst = 0.0;
+            for (float s : out) worst = juce::jmax (worst, std::abs ((double) s - 0.5 * 0.3));
+            std::snprintf (what, sizeof what, "%s D: a fresh prepare starts at the configured wet, as before",
+                           voiceName[v]);
+            check (worst < 1.0e-6, what);
+
+            const auto again = make (algorithm, 0.7f, 2);
+            const auto freshToo = make (algorithm, 0.7f, 2);
+            run (*again, oneSecond, 7, nullptr);
+            again->prepareToPlay (sr, block);                      // a re-prepare, not a host reset
+            std::vector<float> a, b;
+            run (*again, probe, 99, &a);
+            run (*freshToo, probe, 99, &b);
+            bool same = a.size() == b.size();
+            for (size_t i = 0; same && i < a.size(); ++i) same = juce::exactlyEqual (a[i], b[i]);
+            std::snprintf (what, sizeof what, "%s D: a re-prepare is still a clean start", voiceName[v]);
+            check (same, what);
+        }
+
+        // --- E: the AU order ---------------------------------------------------------
+        {
+            const auto au = make (algorithm, 0.7f, 1);
+            au->reset();                                           // JUCE's AU Reset(): right after prepare
+            const auto freshToo = make (algorithm, 0.7f, 1);
+            std::vector<float> a, b;
+            run (*au, probe, 99, &a);
+            run (*freshToo, probe, 99, &b);
+            bool same = a.size() == b.size();
+            for (size_t i = 0; same && i < a.size(); ++i) same = juce::exactlyEqual (a[i], b[i]);
+            std::printf ("  %-6s prepareToPlay() then reset() (the AU order): %s prepareToPlay() alone\n",
+                         voiceName[v], same ? "bit-identical to" : "DIFFERENT from");
+            std::snprintf (what, sizeof what, "%s E: prepareToPlay() then reset(), the AU order, is a clean start",
+                           voiceName[v]);
+            check (same, what);
+        }
+    }
+}
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -37301,6 +37491,7 @@ int main (int argc, char* argv[])
     testAHostNanParameterDoesNotLatchTheChain();
     testTheDocumentedIoContract();
     testTheTransportMachineWithoutASampleClock();
+    testAHostResetKeepsTheConfiguredChorusSound();
     testNoStateCommandWaitsForAReplacement();
     testSaveCompletionBelongsToItsOwnAttempt();
     testTheWheelBelongsToThePressItLandsIn();

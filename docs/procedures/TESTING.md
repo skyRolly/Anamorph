@@ -195,6 +195,18 @@ the cross-thread half is deliberately not tested (the worklog says why). Tests 5
 PR's earlier rounds, have no entry here yet; their evidence is in CHANGELOG `[0.9.9]` and the ADR
 corrections those entries cite.
 
+**The host reset's chorus re-seed — Test 62 (PR #155, 2026-09-23).** A host reset
+(`ResetScope::audioTailsOnly`) now re-seeds the Chorus / Dimension-D wet and depth, as `prepare()`
+does (ER-DSP-09); State test 126 below proves the sound. **Test 62**
+(`testHostResetChorusSeedIsScoped`) pins where that seed sits and when it must not run, at engine
+level: a host reset inside a forced swap (Chorus 0.3 → 0.9) and inside an ordinary duck (Haas →
+Dimension-D) is bit-identical to a fresh engine at the NEW settings, so the seed runs after the duck
+flush; a NaN Amount pending at the reset is not seeded, so no block is self-healed when the host
+recovers (ADR-0009); and a Haas session host-reset then switched to Chorus is bit-identical to the
+same session with no reset, so an idle chorus is left alone. Against the pre-fix engine: 2 of its 4
+checks fail (the forced swap and the duck). Each guard is proven live by its own mutant
+(`worklogs/R6_HOST_RESET_SCOPE_AND_STATE_COVERAGE.md` §U).
+
 Before PR #155, the newest DSP test was the **Oversampling → Off handoff guard**
 (`testOversamplingOffHandoffKeepsProcessing`, Test 54, ADR-0035 points 8–9, v0.9.7). It pins that
 switching Oversampling from 2×, 4× or 8× **to Off** does not take the processing with it.
@@ -4249,6 +4261,20 @@ reports play state only: continuous playback keeps the held peak, a seek clears 
 stop keeps it and the restart clears it. Its rig calls `setRateAndBufferSizeDetails` before
 `prepareToPlay`, as every JUCE wrapper does: without it `getSampleRate()` is 0, every derived
 position is 0, and the continuous-playback leg passes for the wrong reason.
+
+**The host reset keeps the configured modulation sound — State test 126 (PR #155, 2026-09-23).**
+**State test 126** (`testAHostResetKeepsTheConfiguredChorusSound`) drives
+`AnamorphAudioProcessor::reset()` — the call VST3 `setProcessing(false)` and AU `Reset()` make —
+for Chorus and Dimension-D. It asserts that the configured Amount (1.0 and 0.7) is the effective wet
+from the first sample after the reset; that the output is bit-identical to a fresh processor for
+0.5 s at Oversampling Off and 2× × Amount 1.0 and 0.7; that audio tails are still cleared (silence
+after loud material is exactly 0, against a no-reset control that rings); that `prepare()` is
+unchanged; and that the AU order, `prepareToPlay()` then `reset()`, is bit-identical to
+`prepareToPlay()` alone. Before the fix a host reset zeroed the chorus's wet and depth, so every
+transport stop faded the sound back in from dry over ~50 ms and left the depth glide stalled short
+of its target (−47 dB at 48 kHz); 8 of its 16 checks fail against that engine. Its rig sets the
+parameters before `prepareToPlay`: set after it, they open a discrete duck the fresh twin does not
+have.
 
 **Changing the parameter surface intentionally** (ADR + `PARAMETER_REGISTRY.md` update
 required, per `PARAMETER_COMPATIBILITY_POLICY.md`): re-freeze the snapshot with
