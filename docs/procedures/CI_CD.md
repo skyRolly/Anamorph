@@ -1483,6 +1483,23 @@ The probe is opt-in, so the guard step never runs it; `--risk014-probe census` w
 `ulimit -s 1024` separately and is green — `main` (80 bytes) → `runRisk014Probe` → `reportShape` is
 **~284 KB, 27 %** of the reserve, and the two never nest more deeply than that.
 
+**Re-measured for PR #156's one new claim, and DISPOSED `DO NOT FIX`.** Diffed by *byte value* across
+the `prefast-sarif-*` artifacts: `main` at `659ca0a` carries 179 `C6262`, and every head of this PR
+from `f155978` on carries 180 — **one added, none removed**: `Function uses '20528' bytes of stack` at
+`tests/dsp_tests.cpp:7509`, `testLevelMatchEngagesAtTheLevelItMeasured` (Test 66, the F13(1b) test).
+It is absent on `5f28e2b`, the commit before the test landed, and unchanged on every later head. The
+other 127 claims in `state_tests.cpp` each moved by an exact multiple of **64 bytes** — one
+`std::function` (MSVC's size) per stack-allocated `AnamorphAudioProcessor`, the State-test-129 seam
+member this PR added (`Seams::atApplyMeasurement`); no `dsp_tests.cpp` value and no rule count moved.
+`g++ -fstack-usage` on ninja's compile line measures the function's real frame at **14,480 bytes**
+(`dynamic,bounded`; largest lambda 1,216) — **1.4 %** of the 1 MiB reserve, 5 % of the DSP suite's
+largest frame. `/analyze`'s 20,528 is 1.42× that: it sums disjoint sibling scopes, and MSVC's
+`std::function` is 64 bytes against libstdc++'s 32. The objects are the field sweep's `char verdict[5][36][48]`
+(8,640 bytes, 60 % of the real frame), its `Row rows[36]` (48 bytes each here, 80 on MSVC, a
+`std::function` apiece), and the other legs' local descriptor arrays and `char nm[96]` labels; the
+engines are already on the heap. Test-only, green under the `ulimit -s 1024` guard step: nothing
+to fix, and moving a 9 KB table to the heap would change nothing measurable.
+
 ### Why the valgrind lane needs the suite's spinners paced (`sanitizers`)
 
 `sanitizers` runs both suites twice: once under ASan+UBSan (about a minute) and once under
