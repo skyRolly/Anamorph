@@ -546,6 +546,10 @@ parameter, schema, signal-order, latency or threading change. Excess in dB (48 k
 | cost | — | none | none | none | a "same sound" comparison with a float tolerance (a preset round trip moved `chorusRate` by one ulp) | none | ~3 % more engine time while Match is off (fast path lost); part-way after a large match move |
 | ADR-0007 note's options | "keep" | listed | listed | listed ("wider change to the engage") | not listed (O4 narrowed) | not listed | not listed |
 
+The rows from "Undo 60 ms after Apply" to "engage + Drive 0→10" (except the positive-match row) come
+from the verifier's independent harness: run minus a fresh destination instance, 20 ms least-squares
+gain, same programme; "—" is not measured.
+
 **O7, re-measure on engage** (a full `loudness.reset()` at a Match-on bottom, then a snap): Undo of
 Apply +2.80 / +4.97 / +6.16 dB at Drive 4 / 8 / 10 (worse than O1) with the snap before the
 measure, +1.41 / +2.29 / +2.66 dB with 2.1–2.2 s to settle with it after — a smaller swell traded
@@ -555,7 +559,7 @@ must not re-measure). Ruled out: a hard stop, and no better.
 **Engage + sound change is a different problem.** While Level Match is off the published value
 describes the sound being played; a forced swap that turns Match on AND changes the sound therefore
 lands (O4) on a stale value, the same staleness a Match-on-both swap shows (continuous-only Drive
-10→0 with Match on in both: −8.72 dB, unchanged by every option). O1's unity start is accidentally
+10→0 with Match on in both: −8.72 dB against the fresh instance, unchanged by every option). O1's unity start is accidentally
 close in one direction (X1) and far in the other (X2). Neither is right; the right answer is a
 measurement question (F13(2), KI-030), not this one.
 
